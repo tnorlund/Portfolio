@@ -24,7 +24,8 @@ How It Works
 ------------
 1. **Load receipts and group by place_id**: Same as V2
 2. **Identify inconsistent groups**: Groups where metadata differs
-3. **Run agent on each inconsistent group**: Agent reasons about the correct values
+3. **Run agent on each inconsistent group**:
+   Agent reasons about the correct values
 4. **Apply fixes**: Update receipts to match canonical values
 
 Usage
@@ -297,7 +298,8 @@ class MerchantHarmonizerV3:
             Total number of receipts loaded
         """
         logger.info(
-            f"Loading receipt metadata for {len(place_ids)} place_id(s) from DynamoDB..."
+            f"Loading receipt metadata for {len(place_ids)} "
+            "place_id(s) from DynamoDB..."
         )
 
         self._place_id_groups = {}
@@ -316,7 +318,8 @@ class MerchantHarmonizerV3:
                 ):
                     continue
 
-                # Extract base place_id if this is a sub-batch (format: "place_id:sub_batch_idx")
+                # Extract base place_id if this is a sub-batch
+                # (format: "place_id:sub_batch_idx")
                 base_place_id = place_id
                 if ":" in place_id:
                     parts = place_id.split(":", 1)
@@ -362,9 +365,10 @@ class MerchantHarmonizerV3:
             for group in self._place_id_groups.values():
                 group.is_consistent = self._is_group_consistent(group)
 
-            logger.info(
-                f"Loaded {total} receipts for {len(self._place_id_groups)} place_id group(s)"
-            )
+                logger.info(
+                    f"Loaded {total} receipts for "
+                    f"{len(self._place_id_groups)} place_id group(s)"
+                )
 
         except Exception:
             logger.exception("Failed to load receipts for place_ids")
@@ -376,7 +380,8 @@ class MerchantHarmonizerV3:
         """
         Check if all receipts in a group have consistent metadata.
 
-        Returns True if all non-empty values match (case-insensitive for merchant_name).
+        Returns True if all non-empty values match
+        (case-insensitive for merchant_name).
         """
         if len(group.receipts) <= 1:
             return True
@@ -450,7 +455,8 @@ class MerchantHarmonizerV3:
             groups_to_process = groups_to_process[:limit]
 
         logger.info(
-            f"Processing {len(groups_to_process)} inconsistent groups with agent..."
+            f"Processing {len(groups_to_process)} "
+            "inconsistent groups with agent..."
         )
 
         # Process each group with the agent
@@ -499,7 +505,8 @@ class MerchantHarmonizerV3:
                     )
                     if is_retryable and attempt < max_retries - 1:
                         logger.warning(
-                            f"Retryable error for {group.place_id} (attempt {attempt + 1}): {error_str[:100]}"
+                            f"Retryable error for {group.place_id} (attempt "
+                            f"{attempt + 1}): {error_str[:100]}"
                         )
                         await asyncio.sleep(2 * (attempt + 1))
                         continue
@@ -587,9 +594,10 @@ class MerchantHarmonizerV3:
 
         Args:
             dry_run: If True, only report what would be updated
-            min_confidence: Minimum confidence fraction to apply fix (0.0 to 1.0).
-                          Note: This uses a 0-1 scale, unlike place_id_finder and
-                          receipt_metadata_finder which use 0-100 scale.
+            min_confidence: Minimum confidence fraction to apply fix
+                (0.0 to 1.0).
+                Note: This uses a 0-1 scale, unlike place_id_finder and
+                receipt_metadata_finder which use 0-100 scale.
 
         Returns:
             UpdateResult with counts and errors
@@ -661,11 +669,13 @@ class MerchantHarmonizerV3:
 
                 if not metadata:
                     logger.warning(
-                        f"Metadata not found for {update['image_id']}#{update['receipt_id']}"
+                        f"Metadata not found for {update['image_id']}#"
+                        f"{update['receipt_id']}"
                     )
                     result.total_failed += 1
                     result.errors.append(
-                        f"{update['image_id']}#{update['receipt_id']}: Metadata not found"
+                        f"{update['image_id']}#{update['receipt_id']}: "
+                        "Metadata not found"
                     )
                     continue
 
@@ -697,7 +707,8 @@ class MerchantHarmonizerV3:
                     self.dynamo.update_receipt_metadata(metadata)
                     result.total_updated += 1
                     logger.debug(
-                        f"Updated {update['image_id'][:8]}...#{update['receipt_id']}: "
+                        "Updated "
+                        f"{update['image_id'][:8]}...#{update['receipt_id']}: "
                         f"{', '.join(updated_fields)}"
                     )
                 else:
@@ -705,7 +716,8 @@ class MerchantHarmonizerV3:
 
             except Exception as e:
                 logger.exception(
-                    f"Failed to update {update['image_id']}#{update['receipt_id']}"
+                    f"Failed to update {update['image_id']}#"
+                    f"{update['receipt_id']}"
                 )
                 result.total_failed += 1
                 result.errors.append(
@@ -738,16 +750,19 @@ class MerchantHarmonizerV3:
         print(f"Total receipts: {summary.get('total_receipts', 0)}")
         print(f"  With place_id: {summary.get('total_with_place_id', 0)}")
         print(
-            f"  Without place_id: {summary.get('total_without_place_id', 0)} (cannot harmonize)"
+            f"  Without place_id: {summary.get('total_without_place_id', 0)} "
+            "(cannot harmonize)"
         )
         print()
 
         print(f"Place ID groups: {summary.get('total_groups', 0)}")
         print(
-            f"  Consistent: {summary.get('consistent_groups', 0)} (no action needed)"
+            f"  Consistent: {summary.get('consistent_groups', 0)} "
+            "(no action needed)"
         )
         print(
-            f"  Inconsistent: {summary.get('inconsistent_groups', 0)} (processed by agent)"
+            f"  Inconsistent: {summary.get('inconsistent_groups', 0)} "
+            "(processed by agent)"
         )
         print()
 
@@ -755,20 +770,24 @@ class MerchantHarmonizerV3:
         if processed > 0:
             print(f"Agent Results ({processed} groups):")
             print(
-                f"  ✅ High confidence (≥80%): {agent_results.get('high_confidence', 0)}"
+                "  ✅ High confidence (≥80%): "
+                f"{agent_results.get('high_confidence', 0)}"
             )
             print(
-                f"  ⚠️  Medium confidence (50-80%): {agent_results.get('medium_confidence', 0)}"
+                "  ⚠️  Medium confidence (50-80%): "
+                f"{agent_results.get('medium_confidence', 0)}"
             )
             print(
-                f"  ❌ Low confidence (<50%): {agent_results.get('low_confidence', 0)}"
+                "  ❌ Low confidence (<50%): "
+                f"{agent_results.get('low_confidence', 0)}"
             )
             if agent_results.get("errors", 0) > 0:
                 print(f"  ⛔ Errors: {agent_results.get('errors', 0)}")
             print()
 
         print(
-            f"Receipts needing updates: {updates.get('total_receipts_needing_update', 0)}"
+            f"Receipts needing updates: "
+            f"{updates.get('total_receipts_needing_update', 0)}"
         )
         print()
 
@@ -785,7 +804,8 @@ class MerchantHarmonizerV3:
             for r in successful[:5]:
                 print(
                     f"  {r.get('canonical_merchant_name', 'Unknown')[:30]:30} "
-                    f"({r.get('receipts_needing_update', 0)}/{r.get('total_receipts', 0)} updates, "
+                    f"({r.get('receipts_needing_update', 0)}/"
+                    f"{r.get('total_receipts', 0)} updates, "
                     f"confidence={r.get('confidence', 0):.0%})"
                 )
             if len(successful) > 5:
@@ -798,7 +818,9 @@ class MerchantHarmonizerV3:
             print(f"Errors ({len(errors)}):")
             for e in errors[:3]:
                 print(
-                    f"  ⛔ {e.get('place_id', 'Unknown')}: {e.get('error', 'Unknown error')[:50]}"
+                    "  ⛔ "
+                    f"{e.get('place_id', 'Unknown')}: "
+                    f"{e.get('error', 'Unknown error')[:50]}"
                 )
             if len(errors) > 3:
                 print(f"  ... and {len(errors) - 3} more")
