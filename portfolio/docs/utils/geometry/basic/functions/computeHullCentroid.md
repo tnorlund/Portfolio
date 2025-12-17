@@ -8,7 +8,7 @@
 
 > **computeHullCentroid**(`hull`): [`Point`](../interfaces/Point.md)
 
-Defined in: [utils/geometry/basic.ts:62](https://github.com/tnorlund/Portfolio/blob/3931424ed98fb3173565ab5011178a7d317bf68f/portfolio/utils/geometry/basic.ts#L62)
+Defined in: [utils/geometry/basic.ts:62](https://github.com/tnorlund/Portfolio/blob/fe01dd3d9c3f65fe0b2ae952f2e593f5c4954d66/portfolio/utils/geometry/basic.ts#L62)
 
 Compute the centroid of a polygon described by its convex hull.
 
