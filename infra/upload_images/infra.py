@@ -538,8 +538,13 @@ class UploadImages(ComponentResource):
             ),
         )
 
-        # Create container-based embed_from_ndjson Lambda (processes NDJSON files from queue)
-        # This Lambda reads words/lines from NDJSON and creates embeddings
+        # =========================================================================
+        # OBSOLETE: embed_from_ndjson role and policies (kept for cleanup)
+        # =========================================================================
+        # These resources are for the now-obsolete embed_ndjson Lambda.
+        # They are left in place to avoid Pulumi trying to delete them.
+        # When the Lambda is manually deleted from AWS, remove these as well.
+        # =========================================================================
         embed_ndjson_role = Role(
             f"{name}-embed-ndjson-role",
             assume_role_policy=json.dumps(
@@ -693,32 +698,46 @@ class UploadImages(ComponentResource):
             ),
         }
 
-        # Use CodeBuildDockerImage for AWS-based builds
-        embed_ndjson_docker_image = CodeBuildDockerImage(
-            f"{name}-embed-ndjson-image",
-            dockerfile_path="infra/upload_images/container/Dockerfile",
-            build_context_path=".",  # Project root for monorepo access
-            source_paths=[
-                "receipt_dynamo",
-                "receipt_dynamo_stream",
-                "receipt_chroma",
-                "receipt_agent",
-                "receipt_places",
-            ],  # Include all packages required by the Dockerfile
-            lambda_function_name=f"{name}-{stack}-embed-from-ndjson",
-            lambda_config=embed_ndjson_lambda_config,
-            platform="linux/arm64",
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=[embed_ndjson_role],
-            ),
-        )
+        # =========================================================================
+        # CONSOLIDATED: embed_ndjson Lambda is now obsolete
+        # =========================================================================
+        # The embed_ndjson functionality has been consolidated into container_ocr.
+        # The container_ocr handler now:
+        # 1. Processes OCR results
+        # 2. Generates embeddings using receipt_chroma.create_embeddings_and_compaction_run()
+        # 3. Resolves merchant information (two-tier: metadata filter + Place ID Finder)
+        # 4. Enriches receipts in DynamoDB
+        #
+        # TODO: After verifying the new container_ocr flow works correctly:
+        # 1. Delete the embed-from-ndjson Lambda from AWS console
+        # 2. Delete the associated IAM role and policies
+        # 3. Remove the commented code below
+        # =========================================================================
 
-        # Use the Lambda function created by CodeBuildDockerImage
-        embed_ndjson_lambda = embed_ndjson_docker_image.lambda_function
+        # OBSOLETE - embed_ndjson Lambda removed, functionality in container_ocr
+        # embed_ndjson_docker_image = CodeBuildDockerImage(
+        #     f"{name}-embed-ndjson-image",
+        #     dockerfile_path="infra/upload_images/container/Dockerfile",
+        #     build_context_path=".",
+        #     source_paths=[
+        #         "receipt_dynamo",
+        #         "receipt_dynamo_stream",
+        #         "receipt_chroma",
+        #         "receipt_agent",
+        #         "receipt_places",
+        #     ],
+        #     lambda_function_name=f"{name}-{stack}-embed-from-ndjson",
+        #     lambda_config=embed_ndjson_lambda_config,
+        #     platform="linux/arm64",
+        #     opts=ResourceOptions(
+        #         parent=self,
+        #         depends_on=[embed_ndjson_role],
+        #     ),
+        # )
+        # embed_ndjson_lambda = embed_ndjson_docker_image.lambda_function
 
-        # Store for potential event source mapping (if queue is provided)
-        self.embed_ndjson_lambda = embed_ndjson_lambda
+        # Set to None since the Lambda is now obsolete
+        self.embed_ndjson_lambda = None
 
         # Remove Step Function embedding path in favor of SQS batching
 
