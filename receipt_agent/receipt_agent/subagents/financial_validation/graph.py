@@ -28,11 +28,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# ==============================================================================
+# ================================================================
 # System Prompt
-# ==============================================================================
+# ================================================================
 
-FINANCIAL_VALIDATION_PROMPT = """You are a financial validation agent for receipts. Your job is to validate that all financial labels are consistent and correct.
+FINANCIAL_VALIDATION_PROMPT = """\
+You are a financial validation agent for receipts.
+Your job is to validate that all financial labels are consistent and correct.
 
 ## Your Task
 
@@ -40,7 +42,8 @@ You're given a receipt with text and labels. Your job is to:
 1. Detect currency from receipt text
 2. Extract financial values (grand total, subtotal, tax, line items)
 3. Validate financial math:
-   - Grand Total ≈ Subtotal + Tax + Fees - Discounts (with tolerance for rounding)
+   - Grand Total ≈ Subtotal + Tax + Fees - Discounts
+     (with tolerance for rounding)
    - Subtotal ≈ Sum of all LINE_TOTAL values
    - Line Items: QUANTITY × UNIT_PRICE ≈ LINE_TOTAL
 4. Identify which labels are incorrect or missing
@@ -48,7 +51,8 @@ You're given a receipt with text and labels. Your job is to:
 
 ## Available Tools
 
-- `get_financial_labels`: Get all financial labels (GRAND_TOTAL, SUBTOTAL, TAX, LINE_TOTAL, etc.)
+- `get_financial_labels`: Get all financial labels
+  (GRAND_TOTAL, SUBTOTAL, TAX, LINE_TOTAL, etc.)
 - `detect_currency`: Detect currency from receipt text
 - `extract_amounts`: Extract numeric amounts from labels
 - `validate_math`: Validate that financial math checks out
@@ -56,7 +60,8 @@ You're given a receipt with text and labels. Your job is to:
 
 ## Validation Rules
 
-- Grand Total = Subtotal + Tax + Fees - Discounts (tolerance: 0.01 for rounding)
+- Grand Total = Subtotal + Tax + Fees - Discounts
+  (tolerance: 0.01 for rounding)
 - Subtotal = Sum of all LINE_TOTAL values (tolerance: 0.01)
 - Line Items: QUANTITY × UNIT_PRICE ≈ LINE_TOTAL (tolerance: 0.01)
 - All amounts must use same currency
@@ -74,9 +79,9 @@ When you find issues, propose corrections with:
 Begin by detecting currency and extracting financial labels."""
 
 
-# ==============================================================================
+# ================================================================
 # Tool Factory
-# ==============================================================================
+# ================================================================
 
 
 def create_financial_validation_tools(
@@ -87,7 +92,8 @@ def create_financial_validation_tools(
 
     @tool
     def get_financial_labels() -> dict:
-        """Get all financial labels (GRAND_TOTAL, SUBTOTAL, TAX, LINE_TOTAL, etc.)."""
+        """Get all financial labels (GRAND_TOTAL, SUBTOTAL, TAX,
+        LINE_TOTAL, etc.)."""
         receipt = state["receipt"]
         labels = receipt.get("labels", [])
         words = receipt.get("words", [])
@@ -251,7 +257,11 @@ def create_financial_validation_tools(
                 issues.append(
                     {
                         "type": "grand_total_mismatch",
-                        "message": f"Grand total ({grand_total}) doesn't match subtotal ({subtotal}) + tax ({tax}) = {calculated}",
+                        "message": (
+                            f"Grand total ({grand_total}) doesn't match "
+                            f"subtotal ({subtotal}) + tax ({tax}) = "
+                            f"{calculated}"
+                        ),
                         "grand_total": grand_total,
                         "calculated": calculated,
                         "difference": grand_total - calculated,
@@ -266,7 +276,10 @@ def create_financial_validation_tools(
                 issues.append(
                     {
                         "type": "subtotal_mismatch",
-                        "message": f"Subtotal ({subtotal}) doesn't match sum of line totals ({sum_line_totals})",
+                        "message": (
+                            f"Subtotal ({subtotal}) doesn't match sum of "
+                            f"line totals ({sum_line_totals})"
+                        ),
                         "subtotal": subtotal,
                         "sum_line_totals": sum_line_totals,
                         "difference": subtotal - sum_line_totals,
@@ -322,9 +335,9 @@ def create_financial_validation_tools(
     return tools, state
 
 
-# ==============================================================================
+# ================================================================
 # Graph Creation
-# ==============================================================================
+# ================================================================
 
 
 def create_financial_validation_graph(
@@ -375,9 +388,9 @@ def create_financial_validation_graph(
     return graph, state_holder
 
 
-# ==============================================================================
+# ================================================================
 # Run Sub-Agent
-# ==============================================================================
+# ================================================================
 
 
 async def run_financial_validation(
@@ -406,8 +419,11 @@ async def run_financial_validation(
         messages=[
             SystemMessage(content=FINANCIAL_VALIDATION_PROMPT),
             HumanMessage(
-                content="Please validate financial consistency for this receipt. "
-                "Start by detecting currency and extracting financial labels."
+                content=(
+                    "Please validate financial consistency for this receipt. "
+                    "Start by detecting currency and "
+                    "extracting financial labels."
+                )
             ),
         ],
     )
