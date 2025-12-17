@@ -385,16 +385,16 @@ def create_receipt_metadata_finder_graph(
                 # Give it another chance if no tool calls
                 if len(state.messages) > 10:
                     logger.warning(
-                "Agent has made many steps without submitting"
-                " - may need reminder"
-            )
-        if len(state.messages) > 20:
-            logger.error(
-                "Agent exceeded 20 steps without submitting"
-                " - forcing end"
-            )
-                    return "end"
-                return "agent"
+                        "Agent has made many steps without submitting"
+                        " - may need reminder"
+                    )
+            if len(state.messages) > 20:
+                logger.error(
+                    "Agent exceeded 20 steps without submitting"
+                    " - forcing end"
+                )
+                return "end"
+            return "agent"
 
         return "agent"
 
