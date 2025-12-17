@@ -141,12 +141,21 @@ Instead of importing from receipt_label:
 try:
     from receipt_label.constants import CORE_LABELS
 except ImportError:
-    # Fallback definition - identical to receipt_label's original
+    # Fallback definition with human-readable descriptions
     CORE_LABELS = {
-        "MERCHANT_NAME": {"type": "string", "required": True},
-        "DATE": {"type": "datetime", "required": True},
-        "CURRENCY": {"type": "string", "required": False},
-        # ... etc
+        "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
+        "STORE_HOURS": "Printed business hours or opening times for the merchant.",
+        "PHONE_NUMBER": "Telephone number printed on the receipt (store's main line).",
+        "ADDRESS_LINE": "Full address line (street + city etc.) printed on the receipt.",
+        "DATE": "Calendar date of the transaction.",
+        "TIME": "Time of the transaction.",
+        "PAYMENT_METHOD": "Payment instrument summary (e.g., VISA ••••1234, CASH).",
+        "PRODUCT_NAME": "Name of a product or item being purchased.",
+        "QUANTITY": "Number of units purchased (e.g., '2', '1.5 lbs').",
+        "UNIT_PRICE": "Price per unit of the product.",
+        "SUBTOTAL": "Subtotal before tax and discounts.",
+        "TAX": "Tax amount (sales tax, VAT, etc.).",
+        "GRAND_TOTAL": "Final total amount paid (after all discounts and taxes).",
     }
 ```
 
@@ -300,7 +309,7 @@ queries = result.local_client.query(...)            # Immediate results!
 
 ## References
 
-- [Receipt Chroma Orchestration](../receipt_chroma/receipt_chroma/orchestration.py)
+- [Receipt Chroma Orchestration](../receipt_chroma/receipt_chroma/embedding/orchestration.py)
 - [Receipt Places Client](../receipt_places/)
 - [Receipt Agent](../receipt_agent/)
 - [Receipt DynamoDB Stream](../receipt_dynamo_stream/)
