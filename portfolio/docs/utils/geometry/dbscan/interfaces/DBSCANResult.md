@@ -6,7 +6,7 @@
 
 # Interface: DBSCANResult
 
-Defined in: [utils/geometry/dbscan.ts:9](https://github.com/tnorlund/Portfolio/blob/ad17b54fbc1e4e39d344a84edbe01c343d5a7ad2/portfolio/utils/geometry/dbscan.ts#L9)
+Defined in: [utils/geometry/dbscan.ts:9](https://github.com/tnorlund/Portfolio/blob/a04f05385c2aaf471495279ae57335629f96a29c/portfolio/utils/geometry/dbscan.ts#L9)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [utils/geometry/dbscan.ts:9](https://github.com/tnorlund/Portfolio/b
 
 > **clusters**: [`Point`](../../../../types/api/interfaces/Point.md)[][]
 
-Defined in: [utils/geometry/dbscan.ts:10](https://github.com/tnorlund/Portfolio/blob/ad17b54fbc1e4e39d344a84edbe01c343d5a7ad2/portfolio/utils/geometry/dbscan.ts#L10)
+Defined in: [utils/geometry/dbscan.ts:10](https://github.com/tnorlund/Portfolio/blob/a04f05385c2aaf471495279ae57335629f96a29c/portfolio/utils/geometry/dbscan.ts#L10)
 
 ***
 
@@ -22,4 +22,4 @@ Defined in: [utils/geometry/dbscan.ts:10](https://github.com/tnorlund/Portfolio/
 
 > **noise**: [`Point`](../../../../types/api/interfaces/Point.md)[]
 
-Defined in: [utils/geometry/dbscan.ts:11](https://github.com/tnorlund/Portfolio/blob/ad17b54fbc1e4e39d344a84edbe01c343d5a7ad2/portfolio/utils/geometry/dbscan.ts#L11)
+Defined in: [utils/geometry/dbscan.ts:11](https://github.com/tnorlund/Portfolio/blob/a04f05385c2aaf471495279ae57335629f96a29c/portfolio/utils/geometry/dbscan.ts#L11)
