@@ -153,9 +153,7 @@ class TestChunkBatching:
 
                     # 50 deltas / 1 per chunk = 50 chunks
                     assert result["total_chunks"] == 50
-                    # ceil(50 / chunks_per_lambda)
-                    expected = (50 + chunks_per_lambda - 1) // chunks_per_lambda
-                    assert result["total_batches"] == expected
+                    assert result["total_batches"] == expected_batches
 
     def test_no_deltas_returns_empty(self, monkeypatch):
         """Test handling when there are no deltas."""

@@ -251,7 +251,6 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 batch_id=batch_id,
                 chunk_index=current_chunk_index,
                 delta_results=delta_results if idx == 0 else [],  # Only use inline delta_results for first chunk
-                database_name=database_name,
                 chunks_s3_key=chunks_s3_key,
                 chunks_s3_bucket=chunks_s3_bucket,
             )
@@ -276,7 +275,7 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 intermediate_key=intermediate_key,
             )
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Failed to process chunk %d of %d",
                 idx + 1,
                 len(chunk_indices),
@@ -339,10 +338,9 @@ def _process_single_chunk(
     batch_id: str,
     chunk_index: int,
     delta_results: List[Dict[str, Any]],
-    database_name: str,
     chunks_s3_key: str,
     chunks_s3_bucket: str,
-) -> str:
+) -> Optional[str]:
     """
     Process a single chunk and return its intermediate key.
 
@@ -350,7 +348,7 @@ def _process_single_chunk(
     batched processing of multiple chunks.
 
     Returns:
-        intermediate_key: S3 key of the intermediate snapshot
+        intermediate_key: S3 key of the intermediate snapshot, or None for empty chunks
     """
     # Download chunk from S3 if needed
     if not delta_results and chunks_s3_key and chunks_s3_bucket:
