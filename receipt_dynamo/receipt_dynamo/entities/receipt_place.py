@@ -114,7 +114,9 @@ class ReceiptPlace(SerializationMixin):
     # === Location & Geometry ===
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    geohash: str = ""  # Precision 6-7 (~1km) for GSI4 queries
+    # Geohash is calculated but GSI4 not yet in Pulumi (deferred for PlaceCluster merchant
+    # deduplication). Kept here for future spatial queries when clustering is activated.
+    geohash: str = ""  # Precision 6-7 (~1km)
     viewport_ne_lat: Optional[float] = None
     viewport_ne_lng: Optional[float] = None
     viewport_sw_lat: Optional[float] = None
@@ -150,8 +152,8 @@ class ReceiptPlace(SerializationMixin):
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
         # Validate required fields
-        assert_valid_uuid(self.image_id, "image_id")
-        validate_positive_int(self.receipt_id, "receipt_id")
+        assert_valid_uuid(self.image_id)
+        validate_positive_int("receipt_id", self.receipt_id)
 
         # Normalize enum field
         if self.validated_by:
@@ -243,7 +245,13 @@ class ReceiptPlace(SerializationMixin):
 
     @property
     def gsi4_key(self) -> dict[str, dict[str, str]]:
-        """Get GSI4 key (spatial queries via geohash)."""
+        """
+        Get GSI4 key (spatial queries via geohash).
+
+        Note: GSI4 is deferred in Pulumi (not yet created). The key structure
+        is defined here for future use when PlaceCluster merchant deduplication
+        is activated and spatial queries are needed.
+        """
         if not self.geohash:
             return {}
         return {

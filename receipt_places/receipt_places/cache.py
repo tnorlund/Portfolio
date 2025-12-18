@@ -66,7 +66,6 @@ class CacheManager:
             self._client = DynamoClient(
                 table_name=self._table_name,
                 region=self._config.aws_region,
-                endpoint_url=self._config.endpoint_url,
             )
 
         logger.info("CacheManager initialized for table: %s", self._table_name)

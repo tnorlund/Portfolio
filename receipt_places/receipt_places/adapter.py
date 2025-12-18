@@ -194,8 +194,10 @@ def adapt_v1_to_legacy(place_v1: PlaceV1) -> Place:
     # Adapt plus code
     plus_code = adapt_v1_plus_code_to_legacy(place_v1.plus_code)
 
-    # Adapt opening hours
-    opening_hours = adapt_v1_opening_hours_to_legacy(place_v1.opening_hours)
+    # Adapt opening hours (try currentOpeningHours first, then fall back to openingHours)
+    opening_hours = adapt_v1_opening_hours_to_legacy(
+        place_v1.current_opening_hours or place_v1.opening_hours
+    )
 
     # Adapt photos
     photos = adapt_v1_photos_to_legacy(place_v1.photos)

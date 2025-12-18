@@ -216,6 +216,7 @@ class PlaceV1(BaseModel):
     # === Business Status & Hours ===
     business_status: Optional[str] = Field(default=None, alias="businessStatus")
     opening_hours: Optional[OpeningHours] = Field(default=None, alias="openingHours")
+    current_opening_hours: Optional[OpeningHours] = Field(default=None, alias="currentOpeningHours")
 
     # === Rating & Reviews ===
     rating: Optional[float] = None

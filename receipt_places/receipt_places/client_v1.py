@@ -81,7 +81,7 @@ class PlacesClientV1:
         "googleMapsUri",
         "rating",
         "userRatingCount",
-        "openingHours",
+        "currentOpeningHours",
         "photos",
     ]
 
