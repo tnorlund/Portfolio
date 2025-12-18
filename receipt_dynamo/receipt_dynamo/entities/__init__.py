@@ -101,6 +101,7 @@ from receipt_dynamo.entities.receipt_metadata import (  # noqa: F401
     ReceiptMetadata,
     item_to_receipt_metadata,
 )
+from receipt_dynamo.entities.receipt_place import ReceiptPlace  # noqa: F401
 from receipt_dynamo.entities.receipt_section import (  # noqa: F401
     ReceiptSection,
     item_to_receipt_section,
@@ -182,6 +183,7 @@ __all__ = [
     "ReceiptLine",
     "ReceiptLineItemAnalysis",
     "ReceiptMetadata",
+    "ReceiptPlace",
     "ReceiptSection",
     "ReceiptStructureAnalysis",
     "ReceiptValidationCategory",

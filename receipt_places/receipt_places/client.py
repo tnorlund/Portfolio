@@ -627,3 +627,49 @@ class PlacesClient:
     def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         return self._cache.get_stats()
+
+
+def create_places_client(
+    api_key: str | None = None,
+    config: PlacesConfig | None = None,
+    cache_manager: CacheManager | None = None,
+) -> PlacesClient:
+    """
+    Factory function to create a Places client.
+
+    Automatically selects between v1 and legacy API based on config.
+
+    Args:
+        api_key: Google Places API key (optional, defaults to config)
+        config: Configuration object (optional, defaults to environment config)
+        cache_manager: Pre-configured cache manager (optional)
+
+    Returns:
+        PlacesClientV1 if config.use_v1_api is True, else PlacesClient (legacy)
+
+    Example:
+        ```python
+        from receipt_places import create_places_client
+
+        # Uses legacy API by default
+        client = create_places_client()
+
+        # Enable v1 API via environment variable
+        # RECEIPT_PLACES_USE_V1_API=true python script.py
+        # Or via config:
+        from receipt_places.config import PlacesConfig
+        config = PlacesConfig(use_v1_api=True)
+        client = create_places_client(config=config)
+        ```
+    """
+    config = config or get_config()
+
+    if config.use_v1_api:
+        # Import here to avoid circular imports and only load v1 if needed
+        from receipt_places.client_v1 import PlacesClientV1
+
+        logger.info("Creating PlacesClientV1 (API v1)")
+        return PlacesClientV1(api_key=api_key, config=config, cache_manager=cache_manager)  # type: ignore
+    else:
+        logger.info("Creating PlacesClient (Legacy API)")
+        return PlacesClient(api_key=api_key, config=config, cache_manager=cache_manager)
