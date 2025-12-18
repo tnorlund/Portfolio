@@ -32,6 +32,15 @@ except ImportError:
     HAS_ANTHROPIC = False
     ChatAnthropic = None  # type: ignore
 
+# Optional: langchain_ollama for Ollama Cloud
+try:
+    from langchain_ollama import ChatOllama
+
+    HAS_OLLAMA = True
+except ImportError:
+    HAS_OLLAMA = False
+    ChatOllama = None  # type: ignore
+
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWordLabel
 
@@ -139,14 +148,21 @@ def create_label_evaluator_graph(
     dynamo_client: Any,
     llm_model: str = "claude-3-5-haiku-latest",
     llm: Any = None,
+    llm_provider: str = "anthropic",
+    ollama_base_url: str = "https://ollama.com",
+    ollama_api_key: Optional[str] = None,
 ) -> Any:
     """
     Create the label evaluator workflow graph.
 
     Args:
         dynamo_client: DynamoDB client for fetching receipt data
-        llm_model: Model to use for LLM review (default: claude-3-5-haiku-latest)
-        llm: Optional pre-configured LLM instance. If None, creates ChatAnthropic.
+        llm_model: Model to use for LLM review (default: claude-3-5-haiku-latest for Anthropic,
+                   or e.g. "gpt-oss:20b-cloud" for Ollama Cloud)
+        llm: Optional pre-configured LLM instance. If provided, ignores other LLM settings.
+        llm_provider: LLM provider to use ("anthropic" or "ollama")
+        ollama_base_url: Base URL for Ollama Cloud API
+        ollama_api_key: API key for Ollama Cloud (required if using ollama provider)
 
     Returns:
         Compiled LangGraph workflow
@@ -157,14 +173,37 @@ def create_label_evaluator_graph(
     # Initialize LLM for review (cheap model for cost efficiency)
     if llm is not None:
         _llm = llm
-    elif HAS_ANTHROPIC and ChatAnthropic is not None:
-        _llm = ChatAnthropic(model=llm_model, temperature=0)
+    elif llm_provider == "ollama":
+        if HAS_OLLAMA and ChatOllama is not None:
+            client_kwargs = {"timeout": 120}
+            if ollama_api_key:
+                client_kwargs["headers"] = {"Authorization": f"Bearer {ollama_api_key}"}
+            _llm = ChatOllama(
+                base_url=ollama_base_url,
+                model=llm_model,
+                client_kwargs=client_kwargs,
+                temperature=0,
+            )
+            logger.info(f"Using Ollama Cloud LLM: {llm_model}")
+        else:
+            _llm = None
+            logger.warning(
+                "langchain_ollama not installed. LLM review will be skipped. "
+                "Install with: pip install langchain-ollama"
+            )
+    elif llm_provider == "anthropic":
+        if HAS_ANTHROPIC and ChatAnthropic is not None:
+            _llm = ChatAnthropic(model=llm_model, temperature=0)
+            logger.info(f"Using Anthropic LLM: {llm_model}")
+        else:
+            _llm = None
+            logger.warning(
+                "langchain_anthropic not installed. LLM review will be skipped. "
+                "Install with: pip install langchain-anthropic"
+            )
     else:
         _llm = None
-        logger.warning(
-            "langchain_anthropic not installed. LLM review will be skipped. "
-            "Install with: pip install langchain-anthropic"
-        )
+        logger.warning(f"Unknown LLM provider: {llm_provider}. LLM review will be skipped.")
 
     def fetch_receipt_data(state: EvaluatorState) -> dict:
         """Fetch words, labels, and metadata for the receipt being evaluated."""
@@ -612,11 +651,18 @@ async def run_label_evaluator(
 
         final_state = await graph.ainvoke(initial_state, config=config)
 
+        # LangGraph returns a dict, access fields as dict keys
+        issues_found = final_state.get("issues_found", [])
+        new_labels = final_state.get("new_labels", [])
+        review_results = final_state.get("review_results", [])
+        merchant_patterns = final_state.get("merchant_patterns")
+        error = final_state.get("error")
+
         result = {
             "image_id": image_id,
             "receipt_id": receipt_id,
-            "issues_found": len(final_state.issues_found),
-            "labels_written": len(final_state.new_labels),
+            "issues_found": len(issues_found),
+            "labels_written": len(new_labels),
             "issues": [
                 {
                     "type": issue.issue_type,
@@ -626,7 +672,7 @@ async def run_label_evaluator(
                     "suggested_label": issue.suggested_label,
                     "reasoning": issue.reasoning,
                 }
-                for issue in final_state.issues_found
+                for issue in issues_found
             ],
             "reviews": [
                 {
@@ -636,19 +682,17 @@ async def run_label_evaluator(
                     "suggested_label": review.suggested_label,
                     "review_completed": review.review_completed,
                 }
-                for review in final_state.review_results
+                for review in review_results
             ],
-            "error": final_state.error,
+            "error": error,
         }
 
-        if final_state.merchant_patterns:
-            result["merchant_receipts_analyzed"] = (
-                final_state.merchant_patterns.receipt_count
-            )
+        if merchant_patterns:
+            result["merchant_receipts_analyzed"] = merchant_patterns.receipt_count
 
         logger.info(
             f"Evaluation complete: {result['issues_found']} issues, "
-            f"{len(final_state.review_results)} reviewed, "
+            f"{len(review_results)} reviewed, "
             f"{result['labels_written']} labels written"
         )
 
