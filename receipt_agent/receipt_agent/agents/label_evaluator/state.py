@@ -83,6 +83,16 @@ class MerchantPatterns:
     # Example: {("PRODUCT_NAME", "LINE_TOTAL"): 47}
     same_line_pairs: Dict[tuple, int] = field(default_factory=dict)
 
+    # Label pairs that share the same value (learned from receipt patterns)
+    # Example: {("SUBTOTAL", "GRAND_TOTAL"): 42, ("LINE_TOTAL", "SUBTOTAL"): 3}
+    # Used to identify valid co-occurring values (e.g., no-tax receipts) vs errors
+    value_pairs: Dict[tuple, int] = field(default_factory=dict)
+
+    # Y-position relationships for label pairs
+    # Example: {("SUBTOTAL", "GRAND_TOTAL"): (0.28, 0.15)} - SUBTOTAL at y=0.28, GRAND_TOTAL at y=0.15
+    # Helps validate spatial ordering (GRAND_TOTAL should be below/after SUBTOTAL)
+    value_pair_positions: Dict[tuple, tuple] = field(default_factory=dict)
+
 
 @dataclass
 class EvaluationIssue:

@@ -189,6 +189,8 @@ def compute_merchant_patterns(
         label_positions=defaultdict(list),
         label_texts=defaultdict(set),
         same_line_pairs=defaultdict(int),
+        value_pairs=defaultdict(int),
+        value_pair_positions=defaultdict(lambda: (None, None)),
     )
 
     for receipt_data in other_receipt_data:
@@ -249,6 +251,39 @@ def compute_merchant_patterns(
                 for label_b in unique_labels[i + 1 :]:
                     pair = tuple(sorted([label_a, label_b]))
                     patterns.same_line_pairs[pair] += 1
+
+        # Track value pairs: when the same text has different labels
+        # Group words by text to find duplicates
+        words_by_text: Dict[str, List[Tuple[ReceiptWord, str]]] = defaultdict(list)
+        for key, label in current_labels.items():
+            word = word_by_id.get(key)
+            if word:
+                words_by_text[word.text].append((word, label.label))
+
+        # For each text value that appears multiple times with different labels
+        for text, word_label_pairs in words_by_text.items():
+            if len(word_label_pairs) > 1:
+                # Check for same text with different labels
+                unique_label_pairs = set()
+                label_positions_by_label = {}
+
+                for word, label in word_label_pairs:
+                    y = word.calculate_centroid()[1]
+                    label_positions_by_label[label] = y
+                    for other_word, other_label in word_label_pairs:
+                        if label != other_label:
+                            pair = tuple(sorted([label, other_label]))
+                            unique_label_pairs.add(pair)
+
+                # Record each value pair and their positions
+                for pair in unique_label_pairs:
+                    patterns.value_pairs[pair] += 1
+                    # Store y-positions: (label1_y, label2_y) where labels are sorted
+                    label1, label2 = pair
+                    y1 = label_positions_by_label.get(label1)
+                    y2 = label_positions_by_label.get(label2)
+                    if y1 is not None and y2 is not None:
+                        patterns.value_pair_positions[pair] = (y1, y2)
 
     return patterns
 
@@ -376,8 +411,9 @@ def check_text_label_conflict(
     """
     Check if the same text appears elsewhere with a different label.
 
-    Detects cases like "Sprouts" appearing at the top (MERCHANT_NAME) and
-    middle (should be PRODUCT_NAME) of the receipt.
+    Uses learned patterns to distinguish between:
+    - Valid value pairs (e.g., SUBTOTAL+GRAND_TOTAL with no tax)
+    - Genuine conflicts (e.g., MERCHANT_NAME appearing as PRODUCT_NAME)
 
     Args:
         ctx: WordContext to check
@@ -404,11 +440,49 @@ def check_text_label_conflict(
     for other in same_text_contexts:
         if other.current_label.label != label:
             # Same text, different labels
-            # Check which position makes more sense using patterns
+            other_label = other.current_label.label
+
+            # Check if this label pair is a learned pattern (valid combination)
+            pair = tuple(sorted([label, other_label]))
+            is_known_pair = patterns and pair in patterns.value_pairs
+
+            if is_known_pair:
+                # This is a known valid combination (e.g., SUBTOTAL + GRAND_TOTAL)
+                # Verify spatial ordering makes sense
+                y_positions = patterns.value_pair_positions.get(pair)
+                if y_positions and y_positions[0] is not None and y_positions[1] is not None:
+                    expected_y1, expected_y2 = y_positions
+                    actual_y1 = ctx.normalized_y if label == pair[0] else other.normalized_y
+                    actual_y2 = ctx.normalized_y if label == pair[1] else other.normalized_y
+
+                    # Check if spatial ordering roughly matches (allow small variation)
+                    # Y values: 0=bottom, 1=top (receipt coordinates)
+                    same_order = (actual_y1 - actual_y2) * (expected_y1 - expected_y2) >= 0
+
+                    if same_order or abs(actual_y1 - actual_y2) < 0.1:
+                        # Spatial ordering is correct or very close, no issue
+                        continue
+                    # If spatial ordering is wrong, flag it
+                    return EvaluationIssue(
+                        issue_type="text_label_conflict",
+                        word=ctx.word,
+                        current_label=label,
+                        suggested_status="NEEDS_REVIEW",
+                        reasoning=(
+                            f"'{ctx.word.text}' labeled {label} at y={ctx.normalized_y:.2f}, "
+                            f"but same text labeled {other_label} at y={other.normalized_y:.2f}. "
+                            f"Spatial ordering doesn't match learned pattern for this label pair."
+                        ),
+                        word_context=ctx,
+                    )
+                # Spatial ordering looks good, no issue
+                continue
+
+            # Not a known pair - check which position makes more sense
             if patterns:
                 my_fit = _position_fit_score(ctx.normalized_y, label, patterns)
                 other_fit = _position_fit_score(
-                    other.normalized_y, other.current_label.label, patterns
+                    other.normalized_y, other_label, patterns
                 )
 
                 if other_fit > my_fit + 0.5:  # Other position is significantly better
@@ -419,13 +493,13 @@ def check_text_label_conflict(
                         suggested_status="NEEDS_REVIEW",
                         reasoning=(
                             f"'{ctx.word.text}' labeled {label} at y={ctx.normalized_y:.2f}, "
-                            f"but same text labeled {other.current_label.label} at "
+                            f"but same text labeled {other_label} at "
                             f"y={other.normalized_y:.2f} which better fits merchant pattern"
                         ),
                         word_context=ctx,
                     )
             else:
-                # No patterns, just flag the conflict
+                # No patterns, flag unknown conflicts
                 return EvaluationIssue(
                     issue_type="text_label_conflict",
                     word=ctx.word,
@@ -433,7 +507,7 @@ def check_text_label_conflict(
                     suggested_status="NEEDS_REVIEW",
                     reasoning=(
                         f"'{ctx.word.text}' labeled {label} at y={ctx.normalized_y:.2f}, "
-                        f"but same text labeled {other.current_label.label} at "
+                        f"but same text labeled {other_label} at "
                         f"y={other.normalized_y:.2f} - inconsistent labeling"
                     ),
                     word_context=ctx,
