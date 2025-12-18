@@ -1,8 +1,9 @@
 """
 Label Evaluator Agent
 
-A deterministic agent that validates receipt word labels by analyzing spatial patterns
-within receipts and across receipts from the same merchant.
+A two-phase agent that validates receipt word labels:
+1. Deterministic evaluation: Analyzes spatial patterns to flag potential issues
+2. LLM review: Uses a cheap LLM (Haiku) to make semantic decisions on flagged issues
 
 Usage:
     from receipt_agent.agents.label_evaluator import (
@@ -14,8 +15,11 @@ Usage:
     # Create the graph with a DynamoDB client
     graph = create_label_evaluator_graph(dynamo_client)
 
-    # Run evaluation (async)
+    # Run evaluation with LLM review (default)
     result = await run_label_evaluator(graph, image_id, receipt_id)
+
+    # Run without LLM review (faster, cheaper)
+    result = await run_label_evaluator(graph, image_id, receipt_id, skip_llm_review=True)
 
     # Or synchronously
     result = run_label_evaluator_sync(graph, image_id, receipt_id)
@@ -37,6 +41,7 @@ from receipt_agent.agents.label_evaluator.graph import (
 )
 from receipt_agent.agents.label_evaluator.helpers import (
     assemble_visual_lines,
+    build_review_context,
     build_word_contexts,
     check_missing_label_in_cluster,
     check_position_anomaly,
@@ -44,12 +49,15 @@ from receipt_agent.agents.label_evaluator.helpers import (
     check_text_label_conflict,
     compute_merchant_patterns,
     evaluate_word_contexts,
+    format_receipt_text,
 )
 from receipt_agent.agents.label_evaluator.state import (
     EvaluationIssue,
     EvaluatorState,
     MerchantPatterns,
     OtherReceiptData,
+    ReviewContext,
+    ReviewResult,
     VisualLine,
     WordContext,
 )
@@ -66,6 +74,8 @@ __all__ = [
     "MerchantPatterns",
     "EvaluationIssue",
     "OtherReceiptData",
+    "ReviewContext",
+    "ReviewResult",
     # Helper functions (for testing and extension)
     "build_word_contexts",
     "assemble_visual_lines",
@@ -75,4 +85,6 @@ __all__ = [
     "check_same_line_conflict",
     "check_text_label_conflict",
     "check_missing_label_in_cluster",
+    "build_review_context",
+    "format_receipt_text",
 ]

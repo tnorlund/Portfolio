@@ -16,6 +16,7 @@ from receipt_agent.agents.label_evaluator.state import (
     EvaluationIssue,
     MerchantPatterns,
     OtherReceiptData,
+    ReviewContext,
     VisualLine,
     WordContext,
 )
@@ -299,6 +300,7 @@ def check_position_anomaly(
                 f"appears at y={mean_y:.2f}\u00b1{std_y:.2f} for this merchant "
                 f"(z-score={z_score:.1f})"
             ),
+            word_context=ctx,
         )
 
     return None
@@ -339,6 +341,7 @@ def check_same_line_conflict(
                 f"'{ctx.word.text}' labeled {label} but on same visual line "
                 f"as PRODUCT_NAME words - likely part of product name"
             ),
+            word_context=ctx,
         )
 
     # ADDRESS_LINE words should generally be together, not mixed with other header labels
@@ -358,6 +361,7 @@ def check_same_line_conflict(
                     f"'{ctx.word.text}' labeled {label} but on same visual line "
                     f"as {', '.join(set(conflicting))} - unusual combination"
                 ),
+                word_context=ctx,
             )
 
     return None
@@ -417,6 +421,7 @@ def check_text_label_conflict(
                             f"but same text labeled {other.current_label.label} at "
                             f"y={other.normalized_y:.2f} which better fits merchant pattern"
                         ),
+                        word_context=ctx,
                     )
             else:
                 # No patterns, just flag the conflict
@@ -430,6 +435,7 @@ def check_text_label_conflict(
                         f"but same text labeled {other.current_label.label} at "
                         f"y={other.normalized_y:.2f} - inconsistent labeling"
                     ),
+                    word_context=ctx,
                 )
 
     return None
@@ -521,6 +527,7 @@ def check_missing_label_in_cluster(
                     f"'{ctx.word.text}' has no label but is surrounded by "
                     f"{count} {most_common_label} words on same visual line"
                 ),
+                word_context=ctx,
             )
 
     return None
@@ -637,3 +644,139 @@ def evaluate_word_contexts(
                 issues.append(issue)
 
     return issues
+
+
+# -----------------------------------------------------------------------------
+# Review Context Building Functions
+# -----------------------------------------------------------------------------
+
+
+def format_receipt_text(
+    visual_lines: List[VisualLine],
+    target_word: Optional[ReceiptWord] = None,
+) -> str:
+    """
+    Format receipt as readable text with optional target word marked.
+
+    Args:
+        visual_lines: Visual lines from assemble_visual_lines()
+        target_word: Optional word to mark with [brackets]
+
+    Returns:
+        Receipt text in reading order, one line per visual line
+    """
+    lines = []
+    for visual_line in visual_lines:
+        line_parts = []
+        for word_ctx in visual_line.words:
+            word_text = word_ctx.word.text
+            # Mark target word with brackets
+            if target_word and (
+                word_ctx.word.line_id == target_word.line_id
+                and word_ctx.word.word_id == target_word.word_id
+            ):
+                word_text = f"[{word_text}]"
+            line_parts.append(word_text)
+        lines.append(" ".join(line_parts))
+    return "\n".join(lines)
+
+
+def get_visual_line_text(issue: EvaluationIssue) -> str:
+    """
+    Get the text of the visual line containing the issue word.
+
+    Args:
+        issue: EvaluationIssue with word_context
+
+    Returns:
+        Visual line text as a string
+    """
+    if not issue.word_context:
+        return issue.word.text
+
+    # Get words on same line including this word
+    same_line = [issue.word_context] + issue.word_context.same_line_words
+    # Sort by x position
+    same_line.sort(key=lambda c: c.normalized_x)
+    return " ".join(c.word.text for c in same_line)
+
+
+def get_visual_line_labels(issue: EvaluationIssue) -> List[str]:
+    """
+    Get the labels of other words on the same visual line.
+
+    Args:
+        issue: EvaluationIssue with word_context
+
+    Returns:
+        List of labels (excluding the target word)
+    """
+    if not issue.word_context:
+        return []
+
+    labels = []
+    for ctx in issue.word_context.same_line_words:
+        if ctx.current_label:
+            labels.append(ctx.current_label.label)
+        else:
+            labels.append("-")
+    return labels
+
+
+def format_label_history(word_context: Optional[WordContext]) -> List[Dict]:
+    """
+    Format label history for a word as a list of dicts.
+
+    Args:
+        word_context: WordContext with label_history
+
+    Returns:
+        List of dicts with label, status, proposed_by, timestamp
+    """
+    if not word_context or not word_context.label_history:
+        return []
+
+    history = []
+    for label in word_context.label_history:
+        history.append(
+            {
+                "label": label.label,
+                "status": label.validation_status,
+                "proposed_by": label.label_proposed_by,
+                "timestamp": (
+                    label.timestamp_added.isoformat()
+                    if hasattr(label.timestamp_added, "isoformat")
+                    else str(label.timestamp_added)
+                ),
+            }
+        )
+    return history
+
+
+def build_review_context(
+    issue: EvaluationIssue,
+    visual_lines: List[VisualLine],
+    merchant_name: str,
+) -> ReviewContext:
+    """
+    Build complete context for LLM review of an issue.
+
+    Args:
+        issue: The evaluation issue to review
+        visual_lines: All visual lines from the receipt
+        merchant_name: Name of the merchant
+
+    Returns:
+        ReviewContext with all information needed for LLM review
+    """
+    return ReviewContext(
+        word_text=issue.word.text,
+        current_label=issue.current_label,
+        issue_type=issue.issue_type,
+        evaluator_reasoning=issue.reasoning,
+        receipt_text=format_receipt_text(visual_lines, target_word=issue.word),
+        visual_line_text=get_visual_line_text(issue),
+        visual_line_labels=get_visual_line_labels(issue),
+        label_history=format_label_history(issue.word_context),
+        merchant_name=merchant_name,
+    )

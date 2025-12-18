@@ -102,6 +102,55 @@ class EvaluationIssue:
     # Optional: suggested correction
     suggested_label: Optional[str] = None
 
+    # Reference to WordContext for building review context
+    word_context: Optional["WordContext"] = None
+
+
+@dataclass
+class ReviewContext:
+    """
+    Context provided to the LLM for reviewing a flagged issue.
+
+    Contains all information needed for the LLM to make a semantic decision
+    about whether the label is correct.
+    """
+
+    # The issue being reviewed
+    word_text: str
+    current_label: Optional[str]
+    issue_type: str
+    evaluator_reasoning: str
+
+    # Receipt context
+    receipt_text: str  # Full receipt in reading order, target word marked with [brackets]
+    visual_line_text: str  # The line containing the word
+    visual_line_labels: List[str]  # Labels of other words on same line
+
+    # Label history for this word
+    label_history: List[Dict[str, Any]]
+
+    # Merchant
+    merchant_name: str
+
+
+@dataclass
+class ReviewResult:
+    """
+    Result from the LLM review of a flagged issue.
+    """
+
+    # The original issue
+    issue: EvaluationIssue
+
+    # LLM decision
+    decision: str  # "VALID", "INVALID", or "NEEDS_REVIEW"
+    reasoning: str  # LLM's explanation
+    suggested_label: Optional[str] = None  # If INVALID, what should it be?
+
+    # Whether LLM review succeeded
+    review_completed: bool = True
+    review_error: Optional[str] = None
+
 
 @dataclass
 class OtherReceiptData:
@@ -143,6 +192,12 @@ class EvaluatorState:
 
     # Evaluation summary
     issues_found: List[EvaluationIssue] = field(default_factory=list)
+
+    # LLM review results
+    review_results: List["ReviewResult"] = field(default_factory=list)
+
+    # Configuration
+    skip_llm_review: bool = False  # If True, skip LLM review and use evaluator results directly
 
     # Error handling
     error: Optional[str] = None
