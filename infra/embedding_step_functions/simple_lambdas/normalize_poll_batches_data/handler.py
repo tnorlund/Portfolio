@@ -28,6 +28,11 @@ logger.setLevel(logging.INFO)
 CHUNK_SIZE_WORDS = int(os.environ.get("CHUNK_SIZE_WORDS", "15"))
 CHUNK_SIZE_LINES = int(os.environ.get("CHUNK_SIZE_LINES", "25"))
 
+# Batched chunk processing: process multiple chunks per Lambda invocation
+# This reduces Lambda invocations by grouping chunks together
+# Conservative: 3, Recommended: 4, Aggressive: 5
+CHUNKS_PER_LAMBDA = int(os.environ.get("CHUNKS_PER_LAMBDA", "4"))
+
 s3_client = boto3.client("s3")
 
 
@@ -146,21 +151,33 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         len(chunks),
     )
 
-    # Step 5: Create chunk indices for Map state (minimal payload)
-    chunk_indices = [
-        {
-            "chunk_index": i,
+    # Step 5: Create chunk batches for Map state (batched processing optimization)
+    # Group multiple chunks together to reduce Lambda invocations
+    chunk_batches = []
+    for i in range(0, len(chunks), CHUNKS_PER_LAMBDA):
+        # Get chunk indices for this batch (up to CHUNKS_PER_LAMBDA chunks)
+        batch_chunk_indices = list(range(i, min(i + CHUNKS_PER_LAMBDA, len(chunks))))
+
+        chunk_batches.append({
+            "chunk_indices": batch_chunk_indices,  # Array of chunk indices to process
             "batch_id": batch_id,
             "chunks_s3_key": chunks_s3_key,
             "chunks_s3_bucket": bucket,
-        }
-        for i in range(len(chunks))
-    ]
+        })
+
+    logger.info(
+        "Created chunk batches: original_chunks=%d, batches=%d, chunks_per_lambda=%d",
+        len(chunks),
+        len(chunk_batches),
+        CHUNKS_PER_LAMBDA,
+    )
 
     return {
         "batch_id": batch_id,
-        "chunks": chunk_indices,
+        "chunks": chunk_batches,  # Now contains batches, not individual chunks
         "total_chunks": len(chunks),
+        "total_batches": len(chunk_batches),
+        "chunks_per_lambda": CHUNKS_PER_LAMBDA,
         "chunks_s3_key": chunks_s3_key,
         "chunks_s3_bucket": bucket,
         "poll_results_s3_key": poll_results_s3_key,

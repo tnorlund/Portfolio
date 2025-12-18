@@ -327,26 +327,26 @@ class WordEmbeddingWorkflow(ComponentResource):
                     },
                     "ProcessWordChunksInParallel": {
                         "Type": "Map",
-                        "Comment": "Process word chunks in parallel",
+                        "Comment": "Process word chunk batches in parallel (batched optimization: processes multiple chunks per Lambda)",
                         "ItemsPath": "$.chunked_data.chunks",
                         "MaxConcurrency": 20,
                         "Parameters": {
-                            "chunk.$": "$$.Map.Item.Value",
+                            "chunk_batch.$": "$$.Map.Item.Value",
                         },
                         "Iterator": {
-                            "StartAt": "ProcessSingleWordChunk",
+                            "StartAt": "ProcessWordChunkBatch",
                             "States": {
-                                "ProcessSingleWordChunk": {
+                                "ProcessWordChunkBatch": {
                                     "Type": "Task",
                                     "Resource": arns[2],
-                                    "Comment": "Process a single word chunk",
+                                    "Comment": "Process a batch of word chunks (reduces Lambda invocations by processing multiple chunks sequentially)",
                                     "Parameters": {
                                         "operation": "process_chunk",
-                                        "batch_id.$": "$.chunk.batch_id",
-                                        "chunk_index.$": "$.chunk.chunk_index",
-                                        # Chunks are always in S3, keys come from chunk object
-                                        "chunks_s3_key.$": "$.chunk.chunks_s3_key",
-                                        "chunks_s3_bucket.$": "$.chunk.chunks_s3_bucket",
+                                        "batch_id.$": "$.chunk_batch.batch_id",
+                                        "chunk_indices.$": "$.chunk_batch.chunk_indices",  # Array of chunk indices (batched)
+                                        # Chunks are always in S3, keys come from chunk_batch object
+                                        "chunks_s3_key.$": "$.chunk_batch.chunks_s3_key",
+                                        "chunks_s3_bucket.$": "$.chunk_batch.chunks_s3_bucket",
                                         "database": "words",
                                     },
                                     "End": True,
