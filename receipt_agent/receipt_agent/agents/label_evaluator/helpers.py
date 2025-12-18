@@ -468,6 +468,69 @@ def check_position_anomaly(
     return None
 
 
+def check_unexpected_label_pair(
+    ctx: WordContext,
+    all_contexts: List[WordContext],
+    patterns: Optional[MerchantPatterns],
+) -> Optional[EvaluationIssue]:
+    """
+    Check if a labeled word appears in an unexpected label pair combination.
+
+    Flags when a label pair exists on the receipt but never appeared together
+    in any of the training receipts from the same merchant. This can indicate
+    mislabeling or unusual receipt structure.
+
+    Args:
+        ctx: WordContext to check
+        all_contexts: All WordContext objects on the receipt
+        patterns: MerchantPatterns from other receipts
+
+    Returns:
+        EvaluationIssue if unexpected label pair detected, None otherwise
+    """
+    if ctx.current_label is None or patterns is None:
+        return None
+
+    # Skip if we have very few training receipts (need confidence)
+    if patterns.receipt_count < 2:
+        return None
+
+    label = ctx.current_label.label
+
+    # Find all other labels present on this receipt
+    other_labels = set()
+    for other_ctx in all_contexts:
+        if other_ctx is not ctx and other_ctx.current_label:
+            other_labels.add(other_ctx.current_label.label)
+
+    if not other_labels:
+        return None
+
+    # Check if any label pair is unexpected (never seen in training data)
+    for other_label in other_labels:
+        pair = tuple(sorted([label, other_label]))
+
+        # If this pair never appeared in training receipts, it's unexpected
+        if pair not in patterns.label_pair_geometry:
+            # But be permissive: only flag if we have good training data coverage
+            # (e.g., if we saw 50+ unique label pairs in training)
+            if len(patterns.label_pair_geometry) >= 20:
+                return EvaluationIssue(
+                    issue_type="unexpected_label_pair",
+                    word=ctx.word,
+                    current_label=label,
+                    suggested_status="NEEDS_REVIEW",
+                    reasoning=(
+                        f"'{ctx.word.text}' labeled {label} appears with {other_label}, "
+                        f"a combination never seen in {patterns.receipt_count} training receipts "
+                        f"for this merchant. This may indicate mislabeling or unusual structure."
+                    ),
+                    word_context=ctx,
+                )
+
+    return None
+
+
 def check_geometric_anomaly(
     ctx: WordContext,
     all_contexts: List[WordContext],
@@ -877,6 +940,12 @@ def evaluate_word_contexts(
             if issue:
                 issues.append(issue)
                 continue  # One issue per word
+
+            # Check for unexpected label pair combinations first
+            issue = check_unexpected_label_pair(ctx, word_contexts, patterns)
+            if issue:
+                issues.append(issue)
+                continue
 
             # Use geometric anomaly detection instead of simple same-line conflict
             issue = check_geometric_anomaly(ctx, word_contexts, patterns)

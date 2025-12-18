@@ -49,6 +49,7 @@ from receipt_agent.agents.label_evaluator.helpers import (
     check_missing_label_in_cluster,
     check_position_anomaly,
     check_text_label_conflict,
+    check_unexpected_label_pair,
     compute_merchant_patterns,
     evaluate_word_contexts,
     format_receipt_text,
