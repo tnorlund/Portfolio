@@ -31,9 +31,7 @@ def _example_receipt_line() -> ReceiptLine:
 def test_receipt_line_init_valid(example_receipt_line: ReceiptLine) -> None:
     """Test valid initialization of ReceiptLine."""
     assert example_receipt_line.receipt_id == 1
-    assert example_receipt_line.image_id == (
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert example_receipt_line.image_id == ("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
     assert example_receipt_line.line_id == 10
     assert example_receipt_line.text == "Line text"
     assert example_receipt_line.bounding_box == {
@@ -220,9 +218,7 @@ def test_receipt_line_init_invalid_angles() -> None:
 @pytest.mark.unit
 def test_receipt_line_init_invalid_confidence() -> None:
     """Test that ReceiptLine raises an error for invalid confidence."""
-    with pytest.raises(
-        ValueError, match="confidence must be float or int, got"
-    ):
+    with pytest.raises(ValueError, match="confidence must be float or int, got"):
         ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -252,9 +248,7 @@ def test_receipt_line_init_invalid_confidence() -> None:
         confidence=1,
     )
     assert receipt.confidence == 1.0
-    with pytest.raises(
-        ValueError, match="confidence must be between 0 and 1, got"
-    ):
+    with pytest.raises(ValueError, match="confidence must be between 0 and 1, got"):
         ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -269,9 +263,7 @@ def test_receipt_line_init_invalid_confidence() -> None:
             angle_radians=0.0,
             confidence=-0.95,
         )
-    with pytest.raises(
-        ValueError, match="confidence must be between 0 and 1, got"
-    ):
+    with pytest.raises(ValueError, match="confidence must be between 0 and 1, got"):
         ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -413,9 +405,7 @@ def test_receipt_line_iter(example_receipt_line: ReceiptLine) -> None:
     }
     assert set(receipt_line_dict.keys()) == expected_keys
     assert receipt_line_dict["receipt_id"] == 1
-    assert receipt_line_dict["image_id"] == (
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert receipt_line_dict["image_id"] == ("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
     assert receipt_line_dict["line_id"] == 10
     assert receipt_line_dict["text"] == "Line text"
     assert receipt_line_dict["bounding_box"] == {
@@ -445,10 +435,7 @@ def test_receipt_line_serialize(example_receipt_line: ReceiptLine) -> None:
 @pytest.mark.unit
 def test_item_to_receipt_line(example_receipt_line: ReceiptLine) -> None:
     """Test the item_to_receipt_line function."""
-    assert (
-        item_to_receipt_line(example_receipt_line.to_item())
-        == example_receipt_line
-    )
+    assert item_to_receipt_line(example_receipt_line.to_item()) == example_receipt_line
 
     # Missing keys
     with pytest.raises(
@@ -532,8 +519,6 @@ def test_receipt_line_gsi3_key():
         confidence=0.95,
     )
     assert line.gsi3_key() == {
-        "GSI3PK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
-        },
+        "GSI3PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
         "GSI3SK": {"S": "LINE"},
     }

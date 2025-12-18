@@ -51,16 +51,12 @@ def test_completion_batch_result_repr(example_completion_batch_result):
 
 @pytest.mark.unit
 def test_completion_batch_result_str(example_completion_batch_result):
-    assert str(example_completion_batch_result) == repr(
-        example_completion_batch_result
-    )
+    assert str(example_completion_batch_result) == repr(example_completion_batch_result)
 
 
 @pytest.mark.unit
 def test_completion_batch_result_eq_and_hash(example_completion_batch_result):
-    clone = item_to_completion_batch_result(
-        example_completion_batch_result.to_item()
-    )
+    clone = item_to_completion_batch_result(example_completion_batch_result.to_item())
     assert clone == example_completion_batch_result
     assert hash(clone) == hash(example_completion_batch_result)
     assert example_completion_batch_result != "not-a-batch"

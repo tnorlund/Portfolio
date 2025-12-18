@@ -166,9 +166,7 @@ class _ReceiptWord(
     ):
         """Deletes all ReceiptWords from a given line within a
         receipt/image."""
-        receipt_words = self.list_receipt_words_from_line(
-            receipt_id, image_id, line_id
-        )
+        receipt_words = self.list_receipt_words_from_line(receipt_id, image_id, line_id)
         self.delete_receipt_words(receipt_words)
 
     @handle_dynamodb_errors("get_receipt_word")
@@ -180,9 +178,7 @@ class _ReceiptWord(
         if receipt_id is None or not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer")
         if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+            raise EntityValidationError("receipt_id must be a positive integer")
         if image_id is None:
             raise EntityValidationError("image_id cannot be None")
         assert_valid_uuid(image_id)
@@ -197,8 +193,7 @@ class _ReceiptWord(
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
             sort_key=(
-                f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
-                f"#WORD#{word_id:05d}"
+                f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}" f"#WORD#{word_id:05d}"
             ),
             entity_class=ReceiptWord,
             converter_func=item_to_receipt_word,
@@ -230,34 +225,26 @@ class _ReceiptWord(
                     "indices must be a list of tuples with 4 elements."
                 )
             if not isinstance(index[0], str):
-                raise EntityValidationError(
-                    "First element of tuple must be a string."
-                )
+                raise EntityValidationError("First element of tuple must be a string.")
             assert_valid_uuid(index[0])
             if not isinstance(index[1], int):
                 raise EntityValidationError(
                     "Second element of tuple must be an integer."
                 )
             if index[1] <= 0:
-                raise EntityValidationError(
-                    "Second element of tuple must be positive."
-                )
+                raise EntityValidationError("Second element of tuple must be positive.")
             if not isinstance(index[2], int):
                 raise EntityValidationError(
                     "Third element of tuple must be an integer."
                 )
             if index[2] <= 0:
-                raise EntityValidationError(
-                    "Third element of tuple must be positive."
-                )
+                raise EntityValidationError("Third element of tuple must be positive.")
             if not isinstance(index[3], int):
                 raise EntityValidationError(
                     "Fourth element of tuple must be an integer."
                 )
             if index[3] <= 0:
-                raise EntityValidationError(
-                    "Fourth element of tuple must be positive."
-                )
+                raise EntityValidationError("Fourth element of tuple must be positive.")
 
         keys = [
             {
@@ -300,17 +287,11 @@ class _ReceiptWord(
                 raise EntityValidationError("SK must contain 'WORD'")
             # Validate format of receipt_id, line_id, word_id (5-digit numbers)
             if len(sk_parts[1]) != 5 or not sk_parts[1].isdigit():
-                raise EntityValidationError(
-                    "SK must contain a 5-digit receipt ID"
-                )
+                raise EntityValidationError("SK must contain a 5-digit receipt ID")
             if len(sk_parts[3]) != 5 or not sk_parts[3].isdigit():
-                raise EntityValidationError(
-                    "SK must contain a 5-digit line ID"
-                )
+                raise EntityValidationError("SK must contain a 5-digit line ID")
             if len(sk_parts[5]) != 5 or not sk_parts[5].isdigit():
-                raise EntityValidationError(
-                    "SK must contain a 5-digit word ID"
-                )
+                raise EntityValidationError("SK must contain a 5-digit word ID")
         results = []
 
         try:
@@ -339,12 +320,8 @@ class _ReceiptWord(
                 while unprocessed.get(self.table_name, {}).get(
                     "Keys"
                 ):  # type: ignore[call-overload]
-                    response = self._client.batch_get_item(
-                        RequestItems=unprocessed
-                    )
-                    batch_items = response["Responses"].get(
-                        self.table_name, []
-                    )
+                    response = self._client.batch_get_item(RequestItems=unprocessed)
+                    batch_items = response["Responses"].get(self.table_name, [])
                     results.extend(batch_items)
                     unprocessed = response.get("UnprocessedKeys", {})
 
@@ -364,14 +341,10 @@ class _ReceiptWord(
         """Returns all ReceiptWords from the table."""
         if limit is not None:
             if not isinstance(limit, int):
-                raise EntityValidationError(
-                    "limit must be an integer or None."
-                )
+                raise EntityValidationError("limit must be an integer or None.")
             if limit <= 0:
                 raise EntityValidationError("limit must be greater than 0.")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
+        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
@@ -391,9 +364,7 @@ class _ReceiptWord(
         receipt/image/line IDs."""
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression=(
-                "#pk = :pk_val AND begins_with(#sk, :sk_val)"
-            ),
+            key_condition_expression=("#pk = :pk_val AND begins_with(#sk, :sk_val)"),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -401,9 +372,7 @@ class _ReceiptWord(
             },
             expression_attribute_values={
                 ":pk_val": {"S": f"IMAGE#{image_id}"},
-                ":sk_val": {
-                    "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
-                },
+                ":sk_val": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"},
                 ":type": {"S": "RECEIPT_WORD"},
             },
             converter_func=item_to_receipt_word,
@@ -424,9 +393,7 @@ class _ReceiptWord(
         if receipt_id is None or not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer")
         if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+            raise EntityValidationError("receipt_id must be a positive integer")
         # Use GSI3 for efficient querying by image_id + receipt_id
         # This eliminates the need for client-side filtering
         results, _ = self._query_entities(

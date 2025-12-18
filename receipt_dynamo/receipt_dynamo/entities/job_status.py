@@ -63,9 +63,7 @@ class JobStatus:
         if isinstance(self.updated_at, datetime):
             self.updated_at = self.updated_at.isoformat()
         elif not isinstance(self.updated_at, str):
-            raise ValueError(
-                "updated_at must be a datetime object or a string"
-            )
+            raise ValueError("updated_at must be a datetime object or a string")
 
         if self.progress is not None:
             if (
@@ -79,14 +77,10 @@ class JobStatus:
         if self.message is not None and not isinstance(self.message, str):
             raise ValueError("message must be a string")
 
-        if self.updated_by is not None and not isinstance(
-            self.updated_by, str
-        ):
+        if self.updated_by is not None and not isinstance(self.updated_by, str):
             raise ValueError("updated_by must be a string")
 
-        if self.instance_id is not None and not isinstance(
-            self.instance_id, str
-        ):
+        if self.instance_id is not None and not isinstance(self.instance_id, str):
             raise ValueError("instance_id must be a string")
 
     @property
@@ -232,9 +226,7 @@ def item_to_job_status(item: Dict[str, Any]) -> JobStatus:
         progress = float(item["progress"]["N"]) if "progress" in item else None
         message = item["message"]["S"] if "message" in item else None
         updated_by = item["updated_by"]["S"] if "updated_by" in item else None
-        instance_id = (
-            item["instance_id"]["S"] if "instance_id" in item else None
-        )
+        instance_id = item["instance_id"]["S"] if "instance_id" in item else None
 
         return JobStatus(
             job_id=job_id,

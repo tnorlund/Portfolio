@@ -515,9 +515,7 @@ def test_line_to_item(example_line):
     item = example_line.to_item()
     assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["SK"] == {"S": "LINE#00001"}
-    assert item["GSI1PK"] == {
-        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    }
+    assert item["GSI1PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["GSI1SK"] == {"S": "LINE#00001"}
     assert item["TYPE"] == {"S": "LINE"}
     assert item["text"] == {"S": "Test"}
@@ -756,8 +754,7 @@ def test_line_rotate_limited_range(angle, use_radians, should_raise):
                     for k in ["x", "y"]
                 )
                 or any(
-                    line.top_left[k] != orig_corners["top_left"][k]
-                    for k in ["x", "y"]
+                    line.top_left[k] != orig_corners["top_left"][k] for k in ["x", "y"]
                 )
                 or any(
                     line.bottom_right[k] != orig_corners["bottom_right"][k]
@@ -768,9 +765,7 @@ def test_line_rotate_limited_range(angle, use_radians, should_raise):
                     for k in ["x", "y"]
                 )
             )
-            assert (
-                corners_changed
-            ), "Expected corners to change after valid rotation."
+            assert corners_changed, "Expected corners to change after valid rotation."
         else:
             assert line.top_right == orig_corners["top_right"]
             assert line.top_left == orig_corners["top_left"]

@@ -129,9 +129,7 @@ class JobService(
         """List jobs by user."""
         return super().list_jobs_by_user(user_id, limit, last_evaluated_key)
 
-    def check_job_dependencies(
-        self, job_id: str
-    ) -> Tuple[bool, List[Dict[str, Any]]]:
+    def check_job_dependencies(self, job_id: str) -> Tuple[bool, List[Dict[str, Any]]]:
         """Check if all dependencies for a job are satisfied.
 
         This is a convenience method that uses the dependency operations

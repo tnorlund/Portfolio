@@ -120,9 +120,7 @@ class _Line(
             angle_radians=0.0,
             confidence=0.5,
         )
-        self._delete_entity(
-            temp_line, condition_expression="attribute_exists(PK)"
-        )
+        self._delete_entity(temp_line, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("delete_lines")
     def delete_lines(self, lines: List[Line]):
@@ -210,9 +208,7 @@ class _Line(
         """
         lines, _ = self._query_entities(
             index_name="GSI1",
-            key_condition_expression=(
-                "#pk = :pk_val AND begins_with(#sk, :sk_val)"
-            ),
+            key_condition_expression=("#pk = :pk_val AND begins_with(#sk, :sk_val)"),
             expression_attribute_names={"#pk": "GSI1PK", "#sk": "GSI1SK"},
             expression_attribute_values={
                 ":pk_val": {"S": f"IMAGE#{image_id}"},

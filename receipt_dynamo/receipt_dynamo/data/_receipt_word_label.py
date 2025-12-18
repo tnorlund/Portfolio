@@ -42,8 +42,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise EntityValidationError(
-                f"last_evaluated_key[{key}] must be a dict containing a key "
-                f"'S'"
+                f"last_evaluated_key[{key}] must be a dict containing a key " f"'S'"
             )
 
 
@@ -66,8 +65,7 @@ class _ReceiptWordLabel(
 
         if not isinstance(receipt_word_labels, list):
             raise EntityValidationError(
-                "receipt_word_labels must be a list of ReceiptWordLabel "
-                "instances."
+                "receipt_word_labels must be a list of ReceiptWordLabel " "instances."
             )
 
         for item in receipt_word_labels:
@@ -125,9 +123,7 @@ class _ReceiptWordLabel(
             ) from error
 
         if error_code == "InternalServerError":
-            raise DynamoDBServerError(
-                f"Internal server error: {error}"
-            ) from error
+            raise DynamoDBServerError(f"Internal server error: {error}") from error
 
         if error_code == "ValidationException":
             raise DynamoDBValidationError(
@@ -142,9 +138,7 @@ class _ReceiptWordLabel(
         ) from error
 
     @handle_dynamodb_errors("add_receipt_word_labels")
-    def add_receipt_word_labels(
-        self, receipt_word_labels: List[ReceiptWordLabel]
-    ):
+    def add_receipt_word_labels(self, receipt_word_labels: List[ReceiptWordLabel]):
         """Adds a list of receipt word labels to the database
 
         Args:
@@ -164,9 +158,7 @@ class _ReceiptWordLabel(
         )
 
         request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=label.to_item())
-            )
+            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=label.to_item()))
             for label in receipt_word_labels
         ]
         self._batch_write_with_retry(request_items)
@@ -188,9 +180,7 @@ class _ReceiptWordLabel(
             ) from error
 
         if error_code == "InternalServerError":
-            raise DynamoDBServerError(
-                f"Internal server error: {error}"
-            ) from error
+            raise DynamoDBServerError(f"Internal server error: {error}") from error
 
         if error_code == "ValidationException":
             raise DynamoDBValidationError(
@@ -213,15 +203,11 @@ class _ReceiptWordLabel(
         Raises:
             ValueError: When the receipt word label does not exist
         """
-        self._validate_entity(
-            receipt_word_label, ReceiptWordLabel, "ReceiptWordLabel"
-        )
+        self._validate_entity(receipt_word_label, ReceiptWordLabel, "ReceiptWordLabel")
         self._update_entity(receipt_word_label)
 
     @handle_dynamodb_errors("update_receipt_word_labels")
-    def update_receipt_word_labels(
-        self, receipt_word_labels: List[ReceiptWordLabel]
-    ):
+    def update_receipt_word_labels(self, receipt_word_labels: List[ReceiptWordLabel]):
         """Updates multiple receipt word labels in the database
 
         Args:
@@ -246,15 +232,11 @@ class _ReceiptWordLabel(
         Raises:
             ValueError: When the receipt word label does not exist
         """
-        self._validate_entity(
-            receipt_word_label, ReceiptWordLabel, "ReceiptWordLabel"
-        )
+        self._validate_entity(receipt_word_label, ReceiptWordLabel, "ReceiptWordLabel")
         self._delete_entity(receipt_word_label)
 
     @handle_dynamodb_errors("delete_receipt_word_labels")
-    def delete_receipt_word_labels(
-        self, receipt_word_labels: List[ReceiptWordLabel]
-    ):
+    def delete_receipt_word_labels(self, receipt_word_labels: List[ReceiptWordLabel]):
         """Deletes multiple receipt word labels from the database
 
         Args:
@@ -322,8 +304,7 @@ class _ReceiptWordLabel(
         # Then check types
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                "receipt_id must be an integer, got "
-                f"{type(receipt_id).__name__}"
+                "receipt_id must be an integer, got " f"{type(receipt_id).__name__}"
             )
         if not isinstance(line_id, int):
             raise EntityValidationError(
@@ -344,9 +325,7 @@ class _ReceiptWordLabel(
 
         # Check for positive integers
         if receipt_id <= 0:
-            raise EntityValidationError(
-                "Receipt ID must be a positive integer."
-            )
+            raise EntityValidationError("Receipt ID must be a positive integer.")
         if line_id <= 0:
             raise EntityValidationError("Line ID must be a positive integer.")
         if word_id <= 0:
@@ -403,9 +382,7 @@ class _ReceiptWordLabel(
         request_keys = [
             {
                 "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {
-                    "S": f"RECEIPT#{receipt_id:05d}#WORD#{word_id:05d}#LABEL"
-                },
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}#WORD#{word_id:05d}#LABEL"},
             }
             for receipt_id, word_id, image_id in keys
         ]
@@ -421,9 +398,7 @@ class _ReceiptWordLabel(
 
             response = self._client.batch_get_item(**batch_get_params)
             items = response.get("Responses", {}).get(self.table_name, [])
-            all_labels.extend(
-                [item_to_receipt_word_label(item) for item in items]
-            )
+            all_labels.extend([item_to_receipt_word_label(item) for item in items])
 
         return all_labels
 
@@ -491,9 +466,7 @@ class _ReceiptWordLabel(
 
         results, last_key = self._query_entities(
             index_name=None,
-            key_condition_expression=(
-                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-            ),
+            key_condition_expression=("#pk = :pk AND begins_with(#sk, :sk_prefix)"),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -539,13 +512,10 @@ class _ReceiptWordLabel(
 
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                f"receipt_id must be an integer, "
-                f"got {type(receipt_id).__name__}"
+                f"receipt_id must be an integer, " f"got {type(receipt_id).__name__}"
             )
         if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+            raise EntityValidationError("receipt_id must be a positive integer")
 
         if limit is not None:
             if not isinstance(limit, int):
@@ -559,9 +529,7 @@ class _ReceiptWordLabel(
         # Use TYPE field to filter instead of SK-based filter expression
         results, last_key = self._query_entities(
             index_name=None,
-            key_condition_expression=(
-                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-            ),
+            key_condition_expression=("#pk = :pk AND begins_with(#sk, :sk_prefix)"),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -622,9 +590,7 @@ class _ReceiptWordLabel(
                     f"got {type(param_value).__name__}"
                 )
             if param_value <= 0:
-                raise EntityValidationError(
-                    f"{param_name} must be a positive integer"
-                )
+                raise EntityValidationError(f"{param_name} must be a positive integer")
 
         if limit is not None:
             if not isinstance(limit, int):
@@ -638,9 +604,7 @@ class _ReceiptWordLabel(
         # Query for labels of the specific word using precise key condition
         results, last_key = self._query_entities(
             index_name=None,
-            key_condition_expression=(
-                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-            ),
+            key_condition_expression=("#pk = :pk AND begins_with(#sk, :sk_prefix)"),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -728,9 +692,7 @@ class _ReceiptWordLabel(
                 and last evaluated key
         """
         if not isinstance(status, ValidationStatus):
-            raise EntityValidationError(
-                "status must be a ValidationStatus instance"
-            )
+            raise EntityValidationError("status must be a ValidationStatus instance")
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None")
 

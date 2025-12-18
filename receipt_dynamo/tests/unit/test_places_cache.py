@@ -81,9 +81,7 @@ def test_places_cache_init_invalid_place_id():
 @pytest.mark.unit
 def test_places_cache_init_invalid_places_response():
     """Test initialization with invalid places_response."""
-    with pytest.raises(
-        ValueError, match="places_response must be a dictionary"
-    ):
+    with pytest.raises(ValueError, match="places_response must be a dictionary"):
         PlacesCache(
             search_type="ADDRESS",
             search_value="123 Main St",
@@ -97,9 +95,7 @@ def test_places_cache_init_invalid_places_response():
 @pytest.mark.unit
 def test_places_cache_init_invalid_last_updated():
     """Test initialization with invalid last_updated."""
-    with pytest.raises(
-        ValueError, match="last_updated must be a valid ISO format"
-    ):
+    with pytest.raises(ValueError, match="last_updated must be a valid ISO format"):
         PlacesCache(
             search_type="ADDRESS",
             search_value="123 Main St",
@@ -140,9 +136,7 @@ def test_pad_search_value(example_places_cache):
 
     # The padded address should be in format: {hash}_{original_value}
     # First split on underscores to get all parts
-    parts = [
-        p for p in padded_address.split("_") if p
-    ]  # Filter out empty strings
+    parts = [p for p in padded_address.split("_") if p]  # Filter out empty strings
     print(f"Parts: {parts}")  # Debug output
 
     # The first part should be the hash
@@ -270,7 +264,5 @@ def test_item_to_places_cache_invalid_json():
         "search_type": {"S": "ADDRESS"},
         "search_value": {"S": "test"},
     }
-    with pytest.raises(
-        ValueError, match="Error converting item to PlacesCache"
-    ):
+    with pytest.raises(ValueError, match="Error converting item to PlacesCache"):
         item_to_places_cache(item)

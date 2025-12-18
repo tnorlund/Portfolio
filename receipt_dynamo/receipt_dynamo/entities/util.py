@@ -12,9 +12,7 @@ def _repr_str(value: Any) -> str:
     return "None" if value is None else f"'{value}'"
 
 
-def format_type_error(
-    name: str, value: Any, expected: type | tuple[type, ...]
-) -> str:
+def format_type_error(name: str, value: Any, expected: type | tuple[type, ...]) -> str:
     """Return a standardized type error message."""
     if isinstance(expected, tuple):
         expected_names = ", ".join(t.__name__ for t in expected)
@@ -133,8 +131,7 @@ def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
         except ValueError as exc:
             options = ", ".join(e.value for e in enum_cls)
             raise ValueError(
-                f"{enum_cls.__name__} must be one of: {options}\n"
-                f"Got: {candidate}"
+                f"{enum_cls.__name__} must be one of: {options}\n" f"Got: {candidate}"
             ) from exc
     raise ValueError(
         f"{enum_cls.__name__} must be a str or {enum_cls.__name__} instance"

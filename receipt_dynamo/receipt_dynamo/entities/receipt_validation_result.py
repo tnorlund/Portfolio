@@ -64,14 +64,10 @@ class ReceiptValidationResult(SerializationMixin):
         if self.field is not None and not isinstance(self.field, str):
             raise ValueError("field must be a string or None")
 
-        if self.expected_value is not None and not isinstance(
-            self.expected_value, str
-        ):
+        if self.expected_value is not None and not isinstance(self.expected_value, str):
             raise ValueError("expected_value must be a string or None")
 
-        if self.actual_value is not None and not isinstance(
-            self.actual_value, str
-        ):
+        if self.actual_value is not None and not isinstance(self.actual_value, str):
             raise ValueError("actual_value must be a string or None")
 
         if isinstance(self.validation_timestamp, datetime):
@@ -81,9 +77,7 @@ class ReceiptValidationResult(SerializationMixin):
         elif self.validation_timestamp is None:
             pass  # Leave as None
         else:
-            raise ValueError(
-                "validation_timestamp must be a datetime, string, or None"
-            )
+            raise ValueError("validation_timestamp must be a datetime, string, or None")
 
         if self.metadata is not None and not isinstance(self.metadata, dict):
             raise ValueError("metadata must be a dictionary or None")
@@ -185,16 +179,12 @@ class ReceiptValidationResult(SerializationMixin):
             else None
         )
         actual_value = (
-            item.get("actual_value", {}).get("S")
-            if "actual_value" in item
-            else None
+            item.get("actual_value", {}).get("S") if "actual_value" in item else None
         )
         validation_timestamp = item.get("validation_timestamp", {}).get("S")
 
         # Extract metadata with recursive conversion
-        metadata = SerializationMixin._dynamo_to_python(
-            item.get("metadata", {"M": {}})
-        )
+        metadata = SerializationMixin._dynamo_to_python(item.get("metadata", {"M": {}}))
 
         # Create the ReceiptValidationResult
         return cls(

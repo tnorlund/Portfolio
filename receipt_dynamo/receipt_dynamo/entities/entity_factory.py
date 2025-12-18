@@ -112,9 +112,7 @@ class EntityFactory(SerializationMixin):
         try:
             return entity_class(**kwargs)
         except Exception as e:
-            raise ValueError(
-                f"Failed to create {entity_class.__name__}: {e}"
-            ) from e
+            raise ValueError(f"Failed to create {entity_class.__name__}: {e}") from e
 
     @classmethod
     def parse_image_receipt_key(cls, pk: str, sk: str) -> Dict[str, Any]:
@@ -172,14 +170,8 @@ class EntityFactory(SerializationMixin):
                 raise ValueError(f"Invalid SK format: {sk}")
             sk_parts = sk.split("#")
 
-            if (
-                len(sk_parts) < 6
-                or sk_parts[2] != "LINE"
-                or sk_parts[4] != "WORD"
-            ):
-                raise ValueError(
-                    f"Invalid SK format for RECEIPT/LINE/WORD: {sk}"
-                )
+            if len(sk_parts) < 6 or sk_parts[2] != "LINE" or sk_parts[4] != "WORD":
+                raise ValueError(f"Invalid SK format for RECEIPT/LINE/WORD: {sk}")
 
             receipt_id = int(sk_parts[1])
             line_id = int(sk_parts[3])
@@ -192,9 +184,7 @@ class EntityFactory(SerializationMixin):
                 "word_id": word_id,
             }
         except (IndexError, ValueError) as e:
-            raise ValueError(
-                f"Error parsing RECEIPT/LINE/WORD key: {e}"
-            ) from e
+            raise ValueError(f"Error parsing RECEIPT/LINE/WORD key: {e}") from e
 
     # Type-safe field extractors
     @staticmethod
@@ -232,8 +222,7 @@ class EntityFactory(SerializationMixin):
             raise ValueError("Missing required field: text")
         if "S" not in item["text"]:
             raise ValueError(
-                "Field 'text' must be a string type (S), got: "
-                + str(item["text"])
+                "Field 'text' must be a string type (S), got: " + str(item["text"])
             )
         return cast(str, item["text"]["S"])
 
@@ -335,9 +324,9 @@ def create_image_receipt_pk_parser() -> KeyParser:
 
     def parser(pk: str) -> Dict[str, Any]:
         return {
-            "image_id": EntityFactory.parse_image_receipt_key(
-                pk, "RECEIPT#00000"
-            )["image_id"]
+            "image_id": EntityFactory.parse_image_receipt_key(pk, "RECEIPT#00000")[
+                "image_id"
+            ]
         }
 
     return parser
@@ -348,9 +337,9 @@ def create_image_receipt_sk_parser() -> KeyParser:
 
     def parser(sk: str) -> Dict[str, Any]:
         return {
-            "receipt_id": EntityFactory.parse_image_receipt_key(
-                "IMAGE#dummy", sk
-            )["receipt_id"]
+            "receipt_id": EntityFactory.parse_image_receipt_key("IMAGE#dummy", sk)[
+                "receipt_id"
+            ]
         }
 
     return parser
@@ -395,6 +384,5 @@ def create_geometry_extractors() -> Dict[str, DynamoDBItemExtractor]:
     ]
 
     return {
-        field: create_geometry_field_extractor(field)
-        for field in geometry_field_names
+        field: create_geometry_field_extractor(field) for field in geometry_field_names
     }

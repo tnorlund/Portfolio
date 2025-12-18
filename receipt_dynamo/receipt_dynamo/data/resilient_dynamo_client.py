@@ -50,16 +50,12 @@ class ResilientDynamoClient(DynamoClient):
         self.circuit_lock = threading.Lock()
 
         # Retry configuration
-        self.max_retry_attempts = resilience_config.get(
-            "max_retry_attempts", 3
-        )
+        self.max_retry_attempts = resilience_config.get("max_retry_attempts", 3)
         self.retry_base_delay = resilience_config.get("retry_base_delay", 1.0)
 
         # Batch processing for AI usage metrics
         self.batch_size = resilience_config.get("batch_size", 25)
-        self.batch_flush_interval = resilience_config.get(
-            "batch_flush_interval", 5.0
-        )
+        self.batch_flush_interval = resilience_config.get("batch_flush_interval", 5.0)
         self.enable_batch_processing = resilience_config.get(
             "enable_batch_processing", True
         )
@@ -189,9 +185,7 @@ class ResilientDynamoClient(DynamoClient):
         self.last_flush_time = time.time()
         return metrics_to_flush
 
-    def _batch_write_metrics_with_retry(
-        self, metrics: List[AIUsageMetric]
-    ) -> None:
+    def _batch_write_metrics_with_retry(self, metrics: List[AIUsageMetric]) -> None:
         """Batch write metrics with retry logic."""
         remaining_metrics = metrics.copy()
 
@@ -206,9 +200,7 @@ class ResilientDynamoClient(DynamoClient):
 
             try:
                 # Use parent's batch write method
-                failed_metrics = super().batch_put_ai_usage_metrics(
-                    remaining_metrics
-                )
+                failed_metrics = super().batch_put_ai_usage_metrics(remaining_metrics)
 
                 if not failed_metrics:
                     self._record_success()
@@ -216,9 +208,7 @@ class ResilientDynamoClient(DynamoClient):
 
                 # Update remaining metrics for retry
                 remaining_metrics = failed_metrics
-                raise RuntimeError(
-                    f"{len(failed_metrics)} metrics failed to write"
-                )
+                raise RuntimeError(f"{len(failed_metrics)} metrics failed to write")
 
             except (RuntimeError, ValueError, KeyError):
                 self._record_failure()

@@ -56,27 +56,18 @@ def import_image(table_name: str, json_path: str) -> None:
         "words": [Word(**item) for item in data["words"]],
         "letters": [Letter(**item) for item in data["letters"]],
         "receipts": [Receipt(**item) for item in data["receipts"]],
-        "receipt_lines": [
-            ReceiptLine(**item) for item in data["receipt_lines"]
-        ],
-        "receipt_words": [
-            ReceiptWord(**item) for item in data["receipt_words"]
-        ],
-        "receipt_letters": [
-            ReceiptLetter(**item) for item in data["receipt_letters"]
-        ],
+        "receipt_lines": [ReceiptLine(**item) for item in data["receipt_lines"]],
+        "receipt_words": [ReceiptWord(**item) for item in data["receipt_words"]],
+        "receipt_letters": [ReceiptLetter(**item) for item in data["receipt_letters"]],
         "receipt_word_labels": [
-            ReceiptWordLabel(**item)
-            for item in data.get("receipt_word_labels", [])
+            ReceiptWordLabel(**item) for item in data.get("receipt_word_labels", [])
         ],
         "receipt_metadatas": [
-            ReceiptMetadata(**item)
-            for item in data.get("receipt_metadatas", [])
+            ReceiptMetadata(**item) for item in data.get("receipt_metadatas", [])
         ],
         "ocr_jobs": [OCRJob(**item) for item in data.get("ocr_jobs", [])],
         "ocr_routing_decisions": [
-            OCRRoutingDecision(**item)
-            for item in data.get("ocr_routing_decisions", [])
+            OCRRoutingDecision(**item) for item in data.get("ocr_routing_decisions", [])
         ],
     }
 
@@ -124,6 +115,4 @@ def import_image(table_name: str, json_path: str) -> None:
 
     if entities["ocr_routing_decisions"]:
         # type: ignore[arg-type]
-        dynamo_client.add_ocr_routing_decisions(
-            entities["ocr_routing_decisions"]
-        )
+        dynamo_client.add_ocr_routing_decisions(entities["ocr_routing_decisions"])

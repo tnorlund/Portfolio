@@ -4,19 +4,19 @@ Pytest fixtures for receipt_places tests.
 Uses moto to mock DynamoDB and responses to mock HTTP requests.
 """
 
-import json
 import os
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import boto3
 import pytest
 import responses
 from moto import mock_aws
 
+from receipt_dynamo import DynamoClient
 from receipt_places.cache import CacheManager
 from receipt_places.client import PlacesClient
 from receipt_places.config import PlacesConfig
-
 
 # DynamoDB table schema that matches receipt_dynamo's PlacesCache
 TABLE_SCHEMA = {
@@ -30,6 +30,7 @@ TABLE_SCHEMA = {
         {"AttributeName": "SK", "AttributeType": "S"},
         {"AttributeName": "GSI1PK", "AttributeType": "S"},
         {"AttributeName": "GSI1SK", "AttributeType": "S"},
+        {"AttributeName": "TYPE", "AttributeType": "S"},
     ],
     "GlobalSecondaryIndexes": [
         {
@@ -37,6 +38,17 @@ TABLE_SCHEMA = {
             "KeySchema": [
                 {"AttributeName": "GSI1PK", "KeyType": "HASH"},
                 {"AttributeName": "GSI1SK", "KeyType": "RANGE"},
+            ],
+            "Projection": {"ProjectionType": "ALL"},
+            "ProvisionedThroughput": {
+                "ReadCapacityUnits": 5,
+                "WriteCapacityUnits": 5,
+            },
+        },
+        {
+            "IndexName": "GSITYPE",
+            "KeySchema": [
+                {"AttributeName": "TYPE", "KeyType": "HASH"},
             ],
             "Projection": {"ProjectionType": "ALL"},
             "ProvisionedThroughput": {
@@ -62,20 +74,43 @@ def aws_credentials() -> None:
     os.environ["AWS_DEFAULT_REGION"] = "us-west-2"
 
 
-@pytest.fixture
-def mock_dynamodb(aws_credentials: None) -> Generator[Any, None, None]:
-    """Create a mock DynamoDB table."""
+@pytest.fixture(scope="function")
+def mock_aws_context() -> Generator[None, None, None]:
+    """Create a mock AWS context for each test."""
     with mock_aws():
-        client = boto3.client("dynamodb", region_name="us-west-2")
+        yield
 
-        # Create the table
-        client.create_table(**TABLE_SCHEMA)
 
-        # Wait for table to be active
-        waiter = client.get_waiter("table_exists")
-        waiter.wait(TableName="test-receipts")
+@pytest.fixture(scope="function")
+def mock_dynamodb(mock_aws_context: None) -> Any:  # noqa: ARG001
+    """Create a mock DynamoDB table client for each test."""
+    # Create a raw boto3 client for direct access
+    client = boto3.client("dynamodb", region_name="us-west-2")
 
-        yield client
+    # Create the table
+    client.create_table(**TABLE_SCHEMA)
+
+    # Wait for table to be active
+    waiter = client.get_waiter("table_exists")
+    waiter.wait(TableName="test-receipts")
+
+    return client
+
+
+@pytest.fixture(scope="function")
+def dynamo_client(mock_aws_context: None) -> DynamoClient:  # noqa: ARG001
+    """Create a DynamoClient with mocked DynamoDB for each test."""
+    # Create the DynamoClient within the mock_aws context
+    # It will verify the table exists
+    client = boto3.client("dynamodb", region_name="us-west-2")
+
+    # Create the table first
+    client.create_table(**TABLE_SCHEMA)
+    waiter = client.get_waiter("table_exists")
+    waiter.wait(TableName="test-receipts")
+
+    # Now create the DynamoClient - it will verify the table exists
+    return DynamoClient(table_name="test-receipts", region="us-west-2")
 
 
 @pytest.fixture
@@ -93,14 +128,14 @@ def test_config() -> PlacesConfig:
 
 @pytest.fixture
 def cache_manager(
-    mock_dynamodb: Any,
+    dynamo_client: DynamoClient,
     test_config: PlacesConfig,
 ) -> CacheManager:
     """Create a CacheManager with mocked DynamoDB."""
     return CacheManager(
         table_name="test-receipts",
         config=test_config,
-        dynamodb_client=mock_dynamodb,
+        dynamodb_client=dynamo_client,
     )
 
 
@@ -131,12 +166,26 @@ SAMPLE_PLACE_DETAILS = {
     "formatted_address": "123 Test St, City, ST 12345",
     "formatted_phone_number": "(555) 123-4567",
     "international_phone_number": "+1 555-123-4567",
+    "website": "https://example.com",
+    "vicinity": "123 Test St, City",
     "types": ["restaurant", "food", "establishment"],
     "business_status": "OPERATIONAL",
     "rating": 4.5,
     "user_ratings_total": 100,
     "geometry": {
         "location": {"lat": 40.7128, "lng": -74.0060},
+    },
+    "opening_hours": {
+        "open_now": True,
+        "weekday_text": [
+            "Monday: 10:00 AM – 10:00 PM",
+            "Tuesday: 10:00 AM – 10:00 PM",
+            "Wednesday: 10:00 AM – 10:00 PM",
+            "Thursday: 10:00 AM – 10:00 PM",
+            "Friday: 10:00 AM – 11:00 PM",
+            "Saturday: 10:00 AM – 11:00 PM",
+            "Sunday: 10:00 AM – 10:00 PM",
+        ],
     },
 }
 
@@ -148,6 +197,10 @@ SAMPLE_FIND_PLACE_RESPONSE = {
             "name": "Test Business",
             "formatted_address": "123 Test St, City, ST 12345",
             "types": ["restaurant"],
+            "business_status": "OPERATIONAL",
+            "geometry": {
+                "location": {"lat": 40.7128, "lng": -74.0060},
+            },
         }
     ],
 }
@@ -164,6 +217,10 @@ SAMPLE_TEXT_SEARCH_RESPONSE = {
             "place_id": "ChIJtest123",
             "name": "Test Business",
             "formatted_address": "123 Test St, City, ST 12345",
+            "types": ["restaurant", "food"],
+            "geometry": {
+                "location": {"lat": 40.7128, "lng": -74.0060},
+            },
         }
     ],
 }
@@ -212,9 +269,11 @@ def add_places_api_mocks(rsps: responses.RequestsMock) -> None:
         json={
             "status": "OK",
             "predictions": [
-                {"description": "123 Test St, City, ST 12345", "place_id": "ChIJtest123"}
+                {
+                    "description": "123 Test St, City, ST 12345",
+                    "place_id": "ChIJtest123",
+                }
             ],
         },
         status=200,
     )
-

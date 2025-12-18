@@ -40,17 +40,13 @@ class OCRJob:
         if not isinstance(self.created_at, datetime):
             raise ValueError("created_at must be a datetime")
 
-        if self.updated_at is not None and not isinstance(
-            self.updated_at, datetime
-        ):
+        if self.updated_at is not None and not isinstance(self.updated_at, datetime):
             raise ValueError("updated_at must be a datetime or None")
 
         self.status = normalize_enum(self.status, OCRStatus)
         self.job_type = normalize_enum(self.job_type, OCRJobType)
 
-        if self.receipt_id is not None and not isinstance(
-            self.receipt_id, int
-        ):
+        if self.receipt_id is not None and not isinstance(self.receipt_id, int):
             raise ValueError("receipt_id must be an integer or None")
 
     @property
