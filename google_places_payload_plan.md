@@ -253,3 +253,357 @@ def parse_legacy_details(payload: Dict[str, Any]) -> Place:
 - Keep your "required fields" as a **configuration per method** (details vs nearby vs text search) so you don't accidentally demand fields you didn't request.
 
 If you paste one example payload you're currently receiving (redact the key), I can tailor the model to the exact endpoints you're calling (e.g., Place Details vs Nearby Search) and add the right nested types (opening hours, photos, reviews, etc.) based on the official field list. [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/data-fields)
+
+---
+
+# Follow-up Q&A
+
+## Q: What's the difference between the Legacy API and the New API?
+
+Big picture: **"Places API (Legacy)"** is the older web-service surface (`maps.googleapis.com/maps/api/place/...`) with fixed response shapes and "pick fields via `fields=` query param (in some methods)". **"Places API (New)"** is the newer v1 surface (`places.googleapis.com/v1/...`) where you **must** use a **response field mask** (typically `X-Goog-FieldMask`) so you only receive—and pay for—what you request. [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/legacy/overview-legacy)
+
+### The practical differences you'll feel in code
+
+**1) Base URL + request style**
+
+- **Legacy:** `https://maps.googleapis.com/maps/api/place/...` (e.g., `/details/json`, `/nearbysearch/json`). [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/legacy/details)
+- **New:** `https://places.googleapis.com/v1/...` (e.g., `/places/{place_id}`). [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/place-details)
+
+**2) Field selection is fundamentally different**
+
+- **New:** For Place Details / Nearby Search / Text Search you **must** specify desired fields using a **field mask** (otherwise you can get errors) and it's also how pricing/latency are optimized. [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/choose-fields)
+- **Legacy:** You typically get a broader, more fixed payload shape (and legacy methods have their own parameters/behavior). [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/legacy/details)
+
+**3) Response shape**
+
+- **Legacy:** usually wraps data in `status` plus `result` (details) or `results` (search). [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/legacy/details)
+- **New:** returns a **Place object** directly (for details), and the presence of fields depends on your field mask. [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/place-details)
+
+**4) Pricing model (and why field masks matter)**
+
+- **New:** Google explicitly frames pricing as "simplified" because you only pay for the data you request, and the mechanism is the field mask. [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/legacy/overview-legacy)
+- **Legacy:** pricing is not driven by that "mask = billed fields" model in the same way (and migration is often prompted by cost control + performance). [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/legacy/overview-legacy)
+
+**5) Feature surface**
+
+- **New:** Google notes it includes *new fields/attributes/accessibility options* compared to legacy. [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/op-overview)
+- **Legacy:** still supported, but clearly positioned as "legacy" in the docs. [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/legacy/overview-legacy)
+
+### What this means for your datatypes / data quality checks
+
+If you stay on **Legacy**, your models can assume:
+
+- `status` exists, and you should validate it (`OK` vs error states) before parsing `result/results`. [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/legacy/details)
+- payload shape is more consistent per endpoint.
+
+If you move to **New**, you should change your validation strategy:
+
+- treat nearly everything as optional **unless it's in your field mask**, and validate "required fields" by comparing against the mask. [Google for Developers](https://developers.google.com/maps/documentation/places/web-service/choose-fields)
+
+If you tell me which legacy endpoints you're calling (details vs nearbysearch vs textsearch vs autocomplete), I'll map them to the New equivalents and give you a clean set of Python models + validators for *your* payloads.
+
+---
+
+## Q: Do I get more data per payload using the new API?
+
+Short answer: **yes, potentially—but only if you ask for it.**
+
+Longer answer: the **new Places API can return *more* data than legacy**, but **you will not automatically get more per payload** because the new API is *opt-in by design* via **field masks**.
+
+Here's how to think about it clearly.
+
+---
+
+### Mental model: "fixed bundle" vs "à la carte"
+
+#### Legacy Places API
+
+- You get a **predefined bundle** of fields per endpoint.
+- You can't finely control *which* fields come back.
+- Some fields are **simply unavailable**, no matter what.
+- Payloads are often **bloated** relative to what you actually need.
+
+➡️ *Convenient, but inflexible.*
+
+---
+
+#### New Places API
+
+- You get **exactly the fields you request** via a field mask.
+- If you request **nothing**, you get **almost nothing** (or an error).
+- If you request **many fields**, you *can* get **more data than legacy ever returned**.
+- Pricing and latency scale with how much you ask for.
+
+➡️ *Powerful, but explicit.*
+
+---
+
+### Do you get "more data" in practice?
+
+#### ✅ Yes, **if you opt into it**
+
+The new API exposes **additional and more structured fields** that legacy never had or exposed poorly, for example:
+
+- Richer **accessibility attributes**
+- More granular **opening hours** structures
+- Better **place type taxonomy**
+- More consistent **internationalization** (localized names)
+- Cleaner **URIs and identifiers**
+- Improved **business metadata** over time (Google is investing here, not legacy)
+
+If your field mask includes these, your payload can be **larger and richer** than legacy.
+
+---
+
+#### ❌ No, **by default**
+
+If you naïvely migrate and request only what legacy "felt like it gave you", your payload will often be:
+
+- Smaller
+- Missing fields you assumed were "always there"
+- Missing fields your downstream code implicitly relied on
+
+This is the #1 migration footgun.
+
+---
+
+### Concrete comparison example (Place Details)
+
+#### Legacy (implicit bundle)
+
+```json
+{
+  "status": "OK",
+  "result": {
+    "place_id": "...",
+    "name": "...",
+    "rating": 4.5,
+    "user_ratings_total": 213,
+    "geometry": { "location": { "lat": ..., "lng": ... } },
+    "formatted_address": "...",
+    "types": [...]
+  }
+}
+```
+
+You didn't ask for these fields — Google chose them.
+
+---
+
+#### New API (explicit)
+
+```http
+X-Goog-FieldMask:
+id,displayName,formattedAddress,location,rating,userRatingCount,types
+```
+
+```json
+{
+  "id": "...",
+  "displayName": { "text": "..." },
+  "formattedAddress": "...",
+  "location": { "latitude": ..., "longitude": ... },
+  "rating": 4.5,
+  "userRatingCount": 213,
+  "types": [...]
+}
+```
+
+Same data — but now **you are in control**.
+
+Add more fields to the mask and you get more.
+
+---
+
+### Why Google did this (important for you as an engineer)
+
+This change is **not cosmetic**. It enables:
+
+1. **Predictable pricing**
+   - You pay for what you request, not a mystery bundle.
+
+2. **Performance guarantees**
+   - Smaller responses → lower latency → better mobile/server performance.
+
+3. **Schema evolution**
+   - Google can add new fields without breaking clients.
+   - Legacy could not evolve safely.
+
+4. **Strong typing**
+   - Field masks + structured objects = better SDKs and validation (what you're building).
+
+---
+
+### Implications for your Python dataclasses & data quality checks
+
+Because you're on **legacy today**, your models likely assume:
+
+- Certain fields are *always present*
+- Payload shape is stable
+
+If/when you move to the new API, you should change your strategy:
+
+#### ✅ Recommended approach
+
+- **Model everything as optional**
+- Maintain a **"required fields" list per endpoint**
+- Validate *against the field mask*, not against the schema
+
+This matches how modern Google APIs are meant to be consumed.
+
+---
+
+### TL;DR
+
+- **Yes**, the new API can return *more data than legacy*
+- **No**, it won't unless you explicitly request it
+- Field masks trade convenience for **control, cost efficiency, and future-proofing**
+- For typed Python wrappers, the new API is *strictly better* once you adapt your validation model
+
+If you want, next we can:
+
+- Map *your exact legacy endpoint* → *new equivalent*
+- Design a **migration-safe model** that supports both without breaking downstream code
+- Define **canonical field masks** for your use cases (details vs enrichment vs ranking)
+
+---
+
+## Q: Do I need a separate API key for the new API?
+
+Short answer: **no — you do NOT need a separate API key.**
+
+You can use the **same API key** for both the **legacy Places API** and the **new Places API**, *as long as the new API is enabled in the same GCP project*.
+
+Here's the clear breakdown, step by step.
+
+---
+
+### How API keys actually work in GCP
+
+An **API key is scoped to a GCP project**, not to a specific API version.
+
+So:
+
+- ✅ One project
+- ✅ One API key
+- ➕ Multiple enabled APIs
+- ➕ Multiple endpoints (legacy + new)
+
+---
+
+### What you *do* need to do
+
+#### 1️⃣ Enable **Places API (New)** in your project
+
+Even if legacy works, the new API is a **separate service toggle**.
+
+In GCP Console:
+
+```
+APIs & Services → Library → Places API (New) → Enable
+```
+
+You do **not** need to disable the legacy API to do this.
+
+---
+
+#### 2️⃣ Use the same API key
+
+You'll keep using:
+
+```http
+X-Goog-Api-Key: YOUR_EXISTING_KEY
+```
+
+The difference is **where** and **how** you send it:
+
+| Legacy | New |
+|--------|-----|
+| `?key=API_KEY` query param | `X-Goog-Api-Key` header (recommended) |
+| Fixed payloads | Field-mask–driven payloads |
+
+---
+
+#### 3️⃣ Make sure billing is enabled
+
+Both legacy and new Places APIs **require billing**.
+
+If legacy is working, billing is already on — no extra action needed.
+
+---
+
+### What *does not* change
+
+- ❌ You do **not** need a new key
+- ❌ You do **not** need a new project
+- ❌ You do **not** need OAuth
+- ❌ You do **not** need to rotate secrets just to migrate
+
+---
+
+### Recommended best practice (since you're building a wrapper)
+
+Since you're early in GCP, I *strongly* recommend:
+
+#### 🔐 Create a **second API key** (optional but smart)
+
+Use the same project, but separate keys for:
+
+- legacy traffic
+- new API traffic
+
+Why this helps:
+
+- Independent quotas
+- Cleaner metrics
+- Easier rollback
+- Tighter restrictions
+
+This is optional, but very clean for production systems.
+
+---
+
+### Key restrictions you should double-check
+
+For server-side Python usage:
+
+- ✅ **Application restriction**: "None" or IP-based
+- ✅ **API restriction**:
+  - `Places API`
+  - `Places API (New)`
+
+If the new API isn't listed, it's not enabled yet.
+
+---
+
+### Quick sanity check: minimal new API request
+
+If this works, you're good:
+
+```bash
+curl -X GET \
+  "https://places.googleapis.com/v1/places/PLACE_ID" \
+  -H "X-Goog-Api-Key: YOUR_EXISTING_KEY" \
+  -H "X-Goog-FieldMask: id,displayName,formattedAddress"
+```
+
+If you get:
+
+- ❌ `PERMISSION_DENIED` → API not enabled
+- ❌ `INVALID_ARGUMENT` → field mask issue
+- ✅ JSON Place object → you're set
+
+---
+
+### TL;DR
+
+- ✅ Same API key works for legacy **and** new
+- ❗ You must enable **Places API (New)** explicitly
+- 🧠 Field masks + headers are the real difference
+- 🔐 Optional: separate keys for cleaner ops
+
+If you want, next I can:
+
+- Walk you through **enabling + restricting the API** safely
+- Help design **field masks** that match your legacy payloads
+- Show how to dual-run legacy + new during migration without breaking consumers
