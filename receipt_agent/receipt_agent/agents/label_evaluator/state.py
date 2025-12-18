@@ -146,6 +146,30 @@ class MerchantPatterns:
     # This helps distinguish between normal multiplicity and errors
     labels_with_same_line_multiplicity: Set[str] = field(default_factory=set)
 
+    # Batch-specific pattern learning (added 2025-12-18)
+    # Separates receipts by data quality and learns specialized patterns
+    batch_classification: Dict[str, int] = field(
+        default_factory=lambda: {"HAPPY": 0, "AMBIGUOUS": 0, "ANTI_PATTERN": 0}
+    )  # Count of receipts in each batch
+
+    # Geometric patterns learned from HAPPY batch (high confidence, conflict-free receipts)
+    # Use strictest thresholds (1.5σ) for evaluation
+    happy_label_pair_geometry: Dict[tuple, LabelPairGeometry] = field(
+        default_factory=dict
+    )
+
+    # Geometric patterns learned from AMBIGUOUS batch (format variations)
+    # Use moderate thresholds (2.0σ) for evaluation
+    ambiguous_label_pair_geometry: Dict[tuple, LabelPairGeometry] = field(
+        default_factory=dict
+    )
+
+    # Geometric patterns learned from ANTI_PATTERN batch (problematic receipts)
+    # Use lenient thresholds (3.0σ) or flag for review
+    anti_label_pair_geometry: Dict[tuple, LabelPairGeometry] = field(
+        default_factory=dict
+    )
+
 
 @dataclass
 class EvaluationIssue:

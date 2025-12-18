@@ -562,6 +562,182 @@ def _print_pattern_statistics(
     logger.info(f"\n{'='*80}\n")
 
 
+def _compute_patterns_for_subset(
+    receipts: List[OtherReceiptData],
+) -> Dict[Tuple[str, str], LabelPairGeometry]:
+    """
+    Compute label pair geometry patterns from a subset of receipts.
+
+    Used for batch-specific pattern learning (HAPPY, AMBIGUOUS, ANTI).
+
+    Args:
+        receipts: Subset of receipts to analyze
+
+    Returns:
+        Dict mapping (label1, label2) pairs to LabelPairGeometry objects
+    """
+    geometry_dict: Dict[Tuple[str, str], LabelPairGeometry] = {}
+
+    for receipt_data in receipts:
+        words = receipt_data.words
+        labels = receipt_data.labels
+
+        # Build word lookup
+        word_by_id: Dict[Tuple[int, int], ReceiptWord] = {
+            (w.line_id, w.word_id): w for w in words
+        }
+
+        # Get most recent label per word, preferring VALID ones
+        labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = defaultdict(
+            list
+        )
+        for label in labels:
+            key = (label.line_id, label.word_id)
+            labels_by_word[key].append(label)
+
+        current_labels: Dict[Tuple[int, int], ReceiptWordLabel] = {}
+        for key, label_list in labels_by_word.items():
+            label_list.sort(
+                key=lambda lbl: (
+                    lbl.timestamp_added.isoformat()
+                    if hasattr(lbl.timestamp_added, "isoformat")
+                    else str(lbl.timestamp_added)
+                ),
+                reverse=True,
+            )
+            valid_labels = [
+                lbl for lbl in label_list if lbl.validation_status == "VALID"
+            ]
+            if valid_labels:
+                current_labels[key] = valid_labels[0]
+            elif label_list:
+                current_labels[key] = label_list[0]
+
+        # Group words by label type to get centroids
+        labels_by_type: Dict[str, List[ReceiptWord]] = defaultdict(list)
+        for key, label in current_labels.items():
+            word = word_by_id.get(key)
+            if word:
+                labels_by_type[label.label].append(word)
+
+        # Compute geometry for label pairs on same line
+        labels_by_line: Dict[int, List[str]] = defaultdict(list)
+        for key, label in current_labels.items():
+            labels_by_line[key[0]].append(label.label)
+
+        # Track unique pairs on same line
+        for line_labels in labels_by_line.values():
+            unique_labels = list(set(line_labels))
+            for i, label_a in enumerate(unique_labels):
+                for label_b in unique_labels[i + 1 :]:
+                    pair = tuple(sorted([label_a, label_b]))
+
+                    # Get centroids for this pair
+                    words_a = labels_by_type[label_a]
+                    words_b = labels_by_type[label_b]
+
+                    if words_a and words_b:
+                        centroid_a = _calculate_centroid([w.position for w in words_a])
+                        centroid_b = _calculate_centroid([w.position for w in words_b])
+
+                        if pair not in geometry_dict:
+                            geometry_dict[pair] = LabelPairGeometry(
+                                label_pair=pair, observations=[]
+                            )
+
+                        angle = _calculate_angle_degrees(centroid_a, centroid_b)
+                        distance = _calculate_distance(centroid_a, centroid_b)
+
+                        geometry_dict[pair].observations.append(
+                            GeometricRelationship(
+                                angle=angle,
+                                distance=distance,
+                                context="",
+                            )
+                        )
+
+    # Compute statistics for each pair
+    for pair, geometry in geometry_dict.items():
+        if geometry.observations:
+            angles = [obs.angle for obs in geometry.observations]
+            distances = [obs.distance for obs in geometry.observations]
+
+            geometry.mean_angle = statistics.mean(angles)
+            geometry.std_angle = (
+                statistics.stdev(angles) if len(angles) >= 2 else 0.0
+            )
+            geometry.mean_distance = statistics.mean(distances)
+            geometry.std_distance = (
+                statistics.stdev(distances) if len(distances) >= 2 else 0.0
+            )
+
+            # Cartesian statistics
+            cartesian_coords = [
+                _convert_polar_to_cartesian(obs.angle, obs.distance)
+                for obs in geometry.observations
+            ]
+
+            dx_values = [coord[0] for coord in cartesian_coords]
+            dy_values = [coord[1] for coord in cartesian_coords]
+
+            geometry.mean_dx = statistics.mean(dx_values)
+            geometry.mean_dy = statistics.mean(dy_values)
+            geometry.std_dx = (
+                statistics.stdev(dx_values) if len(dx_values) >= 2 else 0.0
+            )
+            geometry.std_dy = (
+                statistics.stdev(dy_values) if len(dy_values) >= 2 else 0.0
+            )
+
+            deviations = [
+                math.sqrt((dx - geometry.mean_dx) ** 2 + (dy - geometry.mean_dy) ** 2)
+                for dx, dy in cartesian_coords
+            ]
+            geometry.mean_deviation = statistics.mean(deviations)
+            geometry.std_deviation = (
+                statistics.stdev(deviations) if len(deviations) >= 2 else 0.0
+            )
+
+    return geometry_dict
+
+
+def batch_receipts_by_quality(
+    other_receipt_data: List[OtherReceiptData],
+    merchant_name: str,
+) -> Dict[str, List[OtherReceiptData]]:
+    """
+    Classify receipts into HAPPY, AMBIGUOUS, ANTI_PATTERN batches.
+
+    Uses LLM-based conflict analysis to intelligently separate receipts
+    by data quality for specialized pattern learning.
+
+    Args:
+        other_receipt_data: All receipts for merchant
+        merchant_name: Name of merchant
+
+    Returns:
+        Dict mapping batch names to lists of receipts in that batch
+    """
+    batches: Dict[str, List[OtherReceiptData]] = {
+        "HAPPY": [],
+        "AMBIGUOUS": [],
+        "ANTI_PATTERN": [],
+    }
+
+    for receipt_data in other_receipt_data:
+        batch = assign_batch_with_llm(receipt_data.labels, merchant_name)
+        batches[batch].append(receipt_data)
+
+    logger.info(
+        f"Batched {len(other_receipt_data)} receipts: "
+        f"HAPPY={len(batches['HAPPY'])}, "
+        f"AMBIGUOUS={len(batches['AMBIGUOUS'])}, "
+        f"ANTI_PATTERN={len(batches['ANTI_PATTERN'])}"
+    )
+
+    return batches
+
+
 def compute_merchant_patterns(
     other_receipt_data: List[OtherReceiptData],
     merchant_name: str,
@@ -811,6 +987,57 @@ def compute_merchant_patterns(
     # Print detailed statistics for learned patterns
     _print_pattern_statistics(patterns, merchant_name)
 
+    # Compute batch-specific patterns for LLM-integrated batching
+    logger.info("\n" + "=" * 80)
+    logger.info("BATCH-SPECIFIC PATTERN COMPUTATION (LLM-Integrated Batching)")
+    logger.info("=" * 80)
+
+    try:
+        batches = batch_receipts_by_quality(other_receipt_data, merchant_name)
+        patterns.batch_classification = {
+            batch_name: len(receipts) for batch_name, receipts in batches.items()
+        }
+
+        # Compute patterns for each batch separately
+        for batch_name, batch_receipts in batches.items():
+            if not batch_receipts:
+                logger.info(f"{batch_name} batch: 0 receipts, skipping")
+                continue
+
+            logger.info(
+                f"\n{batch_name} batch: Computing patterns from "
+                f"{len(batch_receipts)} receipts"
+            )
+
+            # Compute patterns for this batch using existing logic
+            batch_patterns = _compute_patterns_for_subset(batch_receipts)
+
+            # Store batch-specific geometry
+            if batch_name == "HAPPY":
+                patterns.happy_label_pair_geometry = batch_patterns
+                logger.info(
+                    f"  Happy patterns: {len(batch_patterns)} label pairs "
+                    f"(threshold: 1.5σ - strict)"
+                )
+            elif batch_name == "AMBIGUOUS":
+                patterns.ambiguous_label_pair_geometry = batch_patterns
+                logger.info(
+                    f"  Ambiguous patterns: {len(batch_patterns)} label pairs "
+                    f"(threshold: 2.0σ - moderate)"
+                )
+            elif batch_name == "ANTI_PATTERN":
+                patterns.anti_label_pair_geometry = batch_patterns
+                logger.info(
+                    f"  Anti-patterns: {len(batch_patterns)} label pairs "
+                    f"(threshold: 3.0σ - lenient)"
+                )
+
+        logger.info("\n" + "=" * 80)
+
+    except Exception as e:
+        logger.warning(f"Batch-specific pattern computation failed: {e}")
+        logger.warning("Proceeding with non-batched patterns only")
+
     return patterns
 
 
@@ -989,7 +1216,12 @@ def check_geometric_anomaly(
     angle wrap-around issues. Compares the deviation from expected position
     against learned patterns from the same merchant.
 
-    Uses adaptive thresholds based on pattern tightness:
+    With LLM batching enabled, checks patterns hierarchically:
+    1. HAPPY patterns (conflict-free receipts): 1.5σ threshold (strict, HIGH confidence)
+    2. AMBIGUOUS patterns (format variations): 2.0σ threshold (moderate, MEDIUM confidence)
+    3. ANTI-PATTERN patterns (problematic receipts): 3.0σ threshold (lenient, LOW confidence)
+
+    Without batching, uses adaptive thresholds based on pattern tightness:
     - TIGHT patterns (std < 0.1): 1.5σ threshold
     - MODERATE patterns (std 0.1-0.2): 2.0σ threshold
     - LOOSE patterns (std > 0.2): 2.5σ threshold
@@ -1005,10 +1237,6 @@ def check_geometric_anomaly(
     if ctx.current_label is None or patterns is None:
         return None
 
-    # Skip if we have no patterns (first receipt with no comparisons)
-    if not patterns.label_pair_geometry:
-        return None
-
     label = ctx.current_label.label
 
     # Find all other labels present on this receipt
@@ -1020,21 +1248,133 @@ def check_geometric_anomaly(
     if not other_labels:
         return None  # No other labels to compare against
 
+    # Check if we have batch-specific patterns (LLM batching enabled)
+    has_batch_patterns = (
+        patterns.happy_label_pair_geometry
+        or patterns.ambiguous_label_pair_geometry
+        or patterns.anti_label_pair_geometry
+    )
+
+    if has_batch_patterns:
+        # Use batch-specific patterns with hierarchical checking
+        # First try HAPPY patterns (strict, high confidence)
+        issue = _check_geometry_against_batch(
+            ctx, all_contexts, patterns, "happy", threshold_multiplier=1.5
+        )
+        if issue:
+            return issue
+
+        # Then try AMBIGUOUS patterns (moderate, medium confidence)
+        issue = _check_geometry_against_batch(
+            ctx, all_contexts, patterns, "ambiguous", threshold_multiplier=2.0
+        )
+        if issue:
+            return issue
+
+        # Finally try ANTI-PATTERN patterns (lenient, low confidence)
+        issue = _check_geometry_against_batch(
+            ctx, all_contexts, patterns, "anti", threshold_multiplier=3.0
+        )
+        if issue:
+            return issue
+    else:
+        # Use original patterns with adaptive thresholds (fallback if no batching)
+        if not patterns.label_pair_geometry:
+            return None
+
+        # Check geometry for each label pair
+        for other_label in other_labels:
+            pair = tuple(sorted([label, other_label]))
+
+            # Check if we have learned geometry for this pair
+            if pair not in patterns.label_pair_geometry:
+                continue
+
+            geometry = patterns.label_pair_geometry[pair]
+            # Skip if we don't have Cartesian statistics (shouldn't happen with new code)
+            if (
+                geometry.mean_dx is None
+                or geometry.mean_dy is None
+                or geometry.std_deviation is None
+            ):
+                continue
+
+            # Get adaptive threshold based on pattern tightness
+            threshold_std = _get_adaptive_threshold(geometry)
+
+            issue = _compute_geometric_issue(
+                ctx, all_contexts, label, other_label, geometry, threshold_std
+            )
+            if issue:
+                return issue
+
+    return None
+
+
+def _check_geometry_against_batch(
+    ctx: WordContext,
+    all_contexts: List[WordContext],
+    patterns: MerchantPatterns,
+    batch_type: str,
+    threshold_multiplier: float,
+) -> Optional[EvaluationIssue]:
+    """
+    Check geometry against batch-specific patterns.
+
+    Args:
+        ctx: WordContext to check
+        all_contexts: All WordContext objects on the receipt
+        patterns: MerchantPatterns with batch-specific geometry
+        batch_type: "happy", "ambiguous", or "anti"
+        threshold_multiplier: Multiplier for standard deviations (1.5, 2.0, or 3.0)
+
+    Returns:
+        EvaluationIssue if geometric anomaly detected, None otherwise
+    """
+    # Get the appropriate batch geometry dictionary
+    if batch_type == "happy":
+        batch_geometry = patterns.happy_label_pair_geometry
+        confidence = "HIGH"
+    elif batch_type == "ambiguous":
+        batch_geometry = patterns.ambiguous_label_pair_geometry
+        confidence = "MEDIUM"
+    else:  # anti
+        batch_geometry = patterns.anti_label_pair_geometry
+        confidence = "LOW"
+
+    if not batch_geometry:
+        return None
+
+    label = ctx.current_label.label
+
+    # Find all other labels present on this receipt
+    other_labels = set()
+    for other_ctx in all_contexts:
+        if other_ctx is not ctx and other_ctx.current_label:
+            other_labels.add(other_ctx.current_label.label)
+
+    if not other_labels:
+        return None
+
     # Check geometry for each label pair
     for other_label in other_labels:
         pair = tuple(sorted([label, other_label]))
 
-        # Check if we have learned geometry for this pair
-        if pair not in patterns.label_pair_geometry:
+        # Check if we have learned geometry for this batch
+        if pair not in batch_geometry:
             continue
 
-        geometry = patterns.label_pair_geometry[pair]
-        # Skip if we don't have Cartesian statistics (shouldn't happen with new code)
-        if geometry.mean_dx is None or geometry.mean_dy is None or geometry.std_deviation is None:
+        geometry = batch_geometry[pair]
+        # Skip if we don't have Cartesian statistics
+        if (
+            geometry.mean_dx is None
+            or geometry.mean_dy is None
+            or geometry.std_deviation is None
+        ):
             continue
 
-        # Get adaptive threshold based on pattern tightness
-        threshold_std = _get_adaptive_threshold(geometry)
+        # For batch-specific checks, use fixed threshold multiplier
+        threshold_std = threshold_multiplier
 
         # Calculate actual geometry on this receipt (using word centroids)
         label_words = [c.word for c in all_contexts if c.current_label and c.current_label.label == label]
@@ -1043,14 +1383,20 @@ def check_geometric_anomaly(
         if not label_words or not other_words:
             continue
 
-        # Calculate centroids using ReceiptWord.calculate_centroid()
+        # Calculate centroids
         x_coords_label = [w.calculate_centroid()[0] for w in label_words]
         y_coords_label = [w.calculate_centroid()[1] for w in label_words]
-        centroid_label = (sum(x_coords_label) / len(x_coords_label), sum(y_coords_label) / len(y_coords_label))
+        centroid_label = (
+            sum(x_coords_label) / len(x_coords_label),
+            sum(y_coords_label) / len(y_coords_label),
+        )
 
         x_coords_other = [w.calculate_centroid()[0] for w in other_words]
         y_coords_other = [w.calculate_centroid()[1] for w in other_words]
-        centroid_other = (sum(x_coords_other) / len(x_coords_other), sum(y_coords_other) / len(y_coords_other))
+        centroid_other = (
+            sum(x_coords_other) / len(x_coords_other),
+            sum(y_coords_other) / len(y_coords_other),
+        )
 
         # Calculate actual geometry
         actual_angle = _calculate_angle_degrees(centroid_label, centroid_other)
@@ -1061,27 +1407,111 @@ def check_geometric_anomaly(
 
         # Compute deviation from expected position in Cartesian space
         deviation = math.sqrt(
-            (actual_dx - geometry.mean_dx)**2 + (actual_dy - geometry.mean_dy)**2
+            (actual_dx - geometry.mean_dx) ** 2 + (actual_dy - geometry.mean_dy) ** 2
         )
 
         # Check if deviation is anomalous
         if geometry.std_deviation and geometry.std_deviation > 0:
             deviation_z_score = deviation / geometry.std_deviation
             if deviation_z_score > threshold_std:
+                batch_label = (
+                    "conflict-free (HAPPY)" if batch_type == "happy"
+                    else "format variation (AMBIGUOUS)" if batch_type == "ambiguous"
+                    else "problematic (ANTI_PATTERN)"
+                )
                 return EvaluationIssue(
                     issue_type="geometric_anomaly",
                     word=ctx.word,
                     current_label=label,
                     suggested_status="NEEDS_REVIEW",
                     reasoning=(
-                        f"'{ctx.word.text}' labeled {label} has unusual geometric relationship "
-                        f"with {other_label}. Expected position ({geometry.mean_dx:.2f}, {geometry.mean_dy:.2f}), "
+                        f"[{confidence} confidence] '{ctx.word.text}' labeled {label} has unusual geometric relationship "
+                        f"with {other_label} (patterns from {batch_label} receipts). "
+                        f"Expected position ({geometry.mean_dx:.2f}, {geometry.mean_dy:.2f}), "
                         f"actual ({actual_dx:.2f}, {actual_dy:.2f}), deviation {deviation:.3f} "
-                        f"(adaptive threshold: {threshold_std}σ = {threshold_std * geometry.std_deviation:.3f}). "
+                        f"(threshold: {threshold_std}σ = {threshold_std * geometry.std_deviation:.3f}). "
                         f"This may indicate mislabeling."
                     ),
                     word_context=ctx,
                 )
+
+    return None
+
+
+def _compute_geometric_issue(
+    ctx: WordContext,
+    all_contexts: List[WordContext],
+    label: str,
+    other_label: str,
+    geometry: LabelPairGeometry,
+    threshold_std: float,
+) -> Optional[EvaluationIssue]:
+    """
+    Helper to compute geometric issue for a given label pair.
+
+    Args:
+        ctx: WordContext to check
+        all_contexts: All WordContext objects on the receipt
+        label: Label of the word being checked
+        other_label: Other label to compare against
+        geometry: LabelPairGeometry pattern
+        threshold_std: Threshold in standard deviations
+
+    Returns:
+        EvaluationIssue if anomaly detected, None otherwise
+    """
+    # Calculate actual geometry on this receipt (using word centroids)
+    label_words = [c.word for c in all_contexts if c.current_label and c.current_label.label == label]
+    other_words = [c.word for c in all_contexts if c.current_label and c.current_label.label == other_label]
+
+    if not label_words or not other_words:
+        return None
+
+    # Calculate centroids
+    x_coords_label = [w.calculate_centroid()[0] for w in label_words]
+    y_coords_label = [w.calculate_centroid()[1] for w in label_words]
+    centroid_label = (
+        sum(x_coords_label) / len(x_coords_label),
+        sum(y_coords_label) / len(y_coords_label),
+    )
+
+    x_coords_other = [w.calculate_centroid()[0] for w in other_words]
+    y_coords_other = [w.calculate_centroid()[1] for w in other_words]
+    centroid_other = (
+        sum(x_coords_other) / len(x_coords_other),
+        sum(y_coords_other) / len(y_coords_other),
+    )
+
+    # Calculate actual geometry
+    actual_angle = _calculate_angle_degrees(centroid_label, centroid_other)
+    actual_distance = _calculate_distance(centroid_label, centroid_other)
+
+    # Convert to Cartesian coordinates
+    actual_dx, actual_dy = _convert_polar_to_cartesian(actual_angle, actual_distance)
+
+    # Compute deviation from expected position in Cartesian space
+    deviation = math.sqrt(
+        (actual_dx - geometry.mean_dx) ** 2 + (actual_dy - geometry.mean_dy) ** 2
+    )
+
+    # Check if deviation is anomalous
+    if geometry.std_deviation and geometry.std_deviation > 0:
+        deviation_z_score = deviation / geometry.std_deviation
+        if deviation_z_score > threshold_std:
+            return EvaluationIssue(
+                issue_type="geometric_anomaly",
+                word=ctx.word,
+                current_label=label,
+                suggested_status="NEEDS_REVIEW",
+                reasoning=(
+                    f"'{ctx.word.text}' labeled {label} has unusual geometric relationship "
+                    f"with {other_label}. Expected position ({geometry.mean_dx:.2f}, {geometry.mean_dy:.2f}), "
+                    f"actual ({actual_dx:.2f}, {actual_dy:.2f}), deviation {deviation:.3f} "
+                    f"(adaptive threshold: {threshold_std}σ = {threshold_std * geometry.std_deviation:.3f}). "
+                    f"This may indicate mislabeling."
+                ),
+                word_context=ctx,
+            )
 
     return None
 
@@ -1395,6 +1825,160 @@ def detect_label_conflicts(labels: List[ReceiptWordLabel]) -> List[Tuple[int, in
                 break  # Only report once per position
 
     return conflicts
+
+
+def classify_conflicts_with_llm(
+    conflicts: List[Tuple[int, int, Set[str]]],
+    receipt_label: str,
+) -> Dict[Tuple[int, int], str]:
+    """
+    Use LLM to classify each conflict as REAL_ERROR or FORMAT_VARIATION.
+
+    This distinguishes between:
+    - REAL_ERROR: Labeling mistake or parsing error (should flag)
+    - FORMAT_VARIATION: Expected format ambiguity in this merchant's receipts
+
+    Args:
+        conflicts: List of (line_id, word_id, labels_set) tuples
+        receipt_label: Name of merchant/receipt type
+
+    Returns:
+        Dict mapping (line_id, word_id) to classification
+    """
+    try:
+        from langchain_ollama import ChatOllama
+    except ImportError:
+        logger.warning("ChatOllama not available, using heuristic classification")
+        return _heuristic_conflict_classification(conflicts)
+
+    classifications = {}
+
+    for line_id, word_id, label_set in conflicts:
+        labels_str = ", ".join(sorted(label_set))
+        conflicting_pairs = []
+
+        for label1, label2 in CONFLICTING_LABEL_PAIRS:
+            if label1 in label_set and label2 in label_set:
+                conflicting_pairs.append(f"{label1} & {label2}")
+
+        prompt = f"""
+You are analyzing label conflicts in a {receipt_label} receipt.
+
+At line {line_id}, word {word_id}, we found these conflicting labels:
+{labels_str}
+
+Conflicting pairs:
+{", ".join(conflicting_pairs)}
+
+Question: Is this a data quality issue or an expected format variation for {receipt_label}?
+
+Consider:
+- UNIT_PRICE ↔ LINE_TOTAL: Sprouts often shows both (FORMAT_VARIATION)
+- PRODUCT_NAME ↔ QUANTITY: Products aren't quantities (REAL_ERROR)
+- QUANTITY ↔ UNIT_PRICE: Quantity confusion (REAL_ERROR)
+
+Answer with ONLY one word: REAL_ERROR or FORMAT_VARIATION
+"""
+
+        try:
+            llm = ChatOllama(model="gpt-oss:20b-cloud", temperature=0.3)
+            response = llm.invoke(prompt)
+            classification = response.content.strip().upper()
+
+            if classification not in ("REAL_ERROR", "FORMAT_VARIATION"):
+                # Fallback if LLM didn't give clean answer
+                classification = _classify_conflict_heuristic(label_set)
+
+            classifications[(line_id, word_id)] = classification
+            logger.debug(
+                f"Conflict at line {line_id}, word {word_id}: {classification}"
+            )
+
+        except Exception as e:
+            logger.warning(
+                f"LLM classification failed for line {line_id}: {e}, using heuristic"
+            )
+            classifications[(line_id, word_id)] = _classify_conflict_heuristic(
+                label_set
+            )
+
+    return classifications
+
+
+def _classify_conflict_heuristic(label_set: Set[str]) -> str:
+    """Heuristic classification when LLM not available."""
+    # UNIT_PRICE ↔ LINE_TOTAL is typically format variation
+    if "UNIT_PRICE" in label_set and "LINE_TOTAL" in label_set:
+        return "FORMAT_VARIATION"
+
+    # PRODUCT_NAME with anything is typically real error
+    if "PRODUCT_NAME" in label_set:
+        return "REAL_ERROR"
+
+    # Default to real error for safety
+    return "REAL_ERROR"
+
+
+def _heuristic_conflict_classification(
+    conflicts: List[Tuple[int, int, Set[str]]]
+) -> Dict[Tuple[int, int], str]:
+    """Classify conflicts using heuristics only."""
+    classifications = {}
+    for line_id, word_id, label_set in conflicts:
+        classifications[(line_id, word_id)] = _classify_conflict_heuristic(label_set)
+    return classifications
+
+
+def assign_batch_with_llm(
+    labels: List[ReceiptWordLabel],
+    receipt_label: str,
+) -> str:
+    """
+    Classify receipt into HAPPY, AMBIGUOUS, or ANTI_PATTERN batch.
+
+    Uses LLM-classified conflicts to make intelligent assignment.
+
+    Args:
+        labels: All labels for receipt
+        receipt_label: Merchant/receipt type name
+
+    Returns:
+        Batch assignment: "HAPPY", "AMBIGUOUS", or "ANTI_PATTERN"
+    """
+    conflicts = detect_label_conflicts(labels)
+
+    if not conflicts:
+        return "HAPPY"  # No conflicts = definitely happy
+
+    # Classify each conflict
+    classifications = classify_conflicts_with_llm(conflicts, receipt_label)
+
+    real_errors = sum(
+        1
+        for (line_id, word_id), classification in classifications.items()
+        if classification == "REAL_ERROR"
+    )
+    format_variations = sum(
+        1
+        for (line_id, word_id), classification in classifications.items()
+        if classification == "FORMAT_VARIATION"
+    )
+
+    logger.info(
+        f"Batch classification: {len(conflicts)} conflicts "
+        f"({real_errors} real errors, {format_variations} format variations)"
+    )
+
+    # Assignment logic
+    if real_errors >= 3:
+        return "ANTI_PATTERN"  # Many real errors = problematic
+    elif format_variations >= 2 and real_errors == 0:
+        return "AMBIGUOUS"  # Format variations but no real errors
+    elif format_variations >= 1 and real_errors <= 1:
+        return "AMBIGUOUS"  # Mixed but mostly variations
+    else:
+        # Small number of issues, might still be usable
+        return "HAPPY" if real_errors == 0 else "AMBIGUOUS"
 
 
 def evaluate_word_contexts(
