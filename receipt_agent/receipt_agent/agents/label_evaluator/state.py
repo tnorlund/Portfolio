@@ -285,6 +285,9 @@ class EvaluatorState:
 
     # Configuration
     skip_llm_review: bool = False  # If True, skip LLM review and use evaluator results directly
+    skip_geometry: bool = False  # If True, skip expensive geometric anomaly detection
+    skip_merchant_patterns: bool = False  # If True, skip all merchant pattern learning
+    max_receipts: Optional[int] = None  # Max other receipts to fetch (None = use default)
 
     # Error handling
     error: Optional[str] = None

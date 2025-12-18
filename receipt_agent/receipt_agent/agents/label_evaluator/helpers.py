@@ -876,7 +876,7 @@ def compute_merchant_patterns(
                     if y1 is not None and y2 is not None:
                         patterns.value_pair_positions[pair] = (y1, y2)
 
-        # Compute geometric relationships between label pairs
+        # Count pair frequencies for geometry (first pass - cheap)
         # Group words by label (using existing ReceiptWord objects)
         words_by_label: Dict[str, List[ReceiptWord]] = defaultdict(list)
         for key, label in current_labels.items():
@@ -884,7 +884,7 @@ def compute_merchant_patterns(
             if word:
                 words_by_label[label.label].append(word)
 
-        # Calculate geometry for each label pair that exists in this receipt
+        # Count label pairs without expensive geometry calculation
         unique_labels = list(words_by_label.keys())
         for i, label_a in enumerate(unique_labels):
             for label_b in unique_labels[i + 1 :]:
@@ -892,25 +892,89 @@ def compute_merchant_patterns(
                 all_pair_frequencies[pair] += 1
                 patterns.all_observed_pairs.add(pair)
 
-                # Calculate centroids using word.calculate_centroid()
-                words_a = words_by_label[label_a]
-                words_b = words_by_label[label_b]
+    # TWO-PASS OPTIMIZATION: Select top pairs before computing expensive geometry
+    # This avoids computing geometry for pairs we'll discard anyway
+    selected_pairs = _select_top_label_pairs(all_pair_frequencies)
+    logger.debug(f"Selected {len(selected_pairs)} label pairs for geometry computation")
 
-                # Average centroids of all words with each label
-                x_coords_a = [w.calculate_centroid()[0] for w in words_a]
-                y_coords_a = [w.calculate_centroid()[1] for w in words_a]
-                centroid_a = (sum(x_coords_a) / len(x_coords_a), sum(y_coords_a) / len(y_coords_a))
+    # Second pass: Compute geometry only for selected top pairs
+    # Cache centroids per label per receipt to avoid recalculation
+    for receipt_data in other_receipt_data:
+        words = receipt_data.words
+        labels = receipt_data.labels
 
-                x_coords_b = [w.calculate_centroid()[0] for w in words_b]
-                y_coords_b = [w.calculate_centroid()[1] for w in words_b]
-                centroid_b = (sum(x_coords_b) / len(x_coords_b), sum(y_coords_b) / len(y_coords_b))
+        # Build word lookup
+        word_by_id: Dict[Tuple[int, int], ReceiptWord] = {
+            (w.line_id, w.word_id): w for w in words
+        }
+
+        # Get most recent label per word, preferring VALID ones
+        labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = defaultdict(list)
+        for label in labels:
+            key = (label.line_id, label.word_id)
+            labels_by_word[key].append(label)
+
+        current_labels: Dict[Tuple[int, int], ReceiptWordLabel] = {}
+        for key, label_list in labels_by_word.items():
+            label_list.sort(
+                key=lambda lbl: (
+                    lbl.timestamp_added.isoformat()
+                    if hasattr(lbl.timestamp_added, "isoformat")
+                    else str(lbl.timestamp_added)
+                ),
+                reverse=True,
+            )
+            valid_labels = [lbl for lbl in label_list if lbl.validation_status == "VALID"]
+            if valid_labels:
+                current_labels[key] = valid_labels[0]
+            elif label_list:
+                current_labels[key] = label_list[0]
+
+        # Cache centroids for this receipt (centroid caching optimization)
+        centroid_cache: Dict[Tuple[int, int], Tuple[float, float]] = {}
+        for key in current_labels.keys():
+            word = word_by_id.get(key)
+            if word:
+                centroid_cache[key] = word.calculate_centroid()
+
+        # Group words by label
+        words_by_label: Dict[str, List[Tuple[int, int]]] = defaultdict(list)
+        for key, label in current_labels.items():
+            words_by_label[label.label].append(key)
+
+        # Compute geometry ONLY for selected pairs
+        unique_labels = list(words_by_label.keys())
+        for i, label_a in enumerate(unique_labels):
+            for label_b in unique_labels[i + 1 :]:
+                pair = tuple(sorted([label_a, label_b]))
+
+                # Skip if not in top pairs
+                if pair not in selected_pairs:
+                    continue
+
+                # Calculate centroids using cached values
+                word_keys_a = words_by_label[label_a]
+                word_keys_b = words_by_label[label_b]
+
+                x_coords_a = [centroid_cache[k][0] for k in word_keys_a if k in centroid_cache]
+                y_coords_a = [centroid_cache[k][1] for k in word_keys_a if k in centroid_cache]
+                if x_coords_a and y_coords_a:
+                    centroid_a = (sum(x_coords_a) / len(x_coords_a), sum(y_coords_a) / len(y_coords_a))
+                else:
+                    continue
+
+                x_coords_b = [centroid_cache[k][0] for k in word_keys_b if k in centroid_cache]
+                y_coords_b = [centroid_cache[k][1] for k in word_keys_b if k in centroid_cache]
+                if x_coords_b and y_coords_b:
+                    centroid_b = (sum(x_coords_b) / len(x_coords_b), sum(y_coords_b) / len(y_coords_b))
+                else:
+                    continue
 
                 # Calculate geometry
                 angle = _calculate_angle_degrees(centroid_a, centroid_b)
                 distance = _calculate_distance(centroid_a, centroid_b)
 
                 # Store in patterns
-                pair = tuple(sorted([label_a, label_b]))
                 if pair not in patterns.label_pair_geometry:
                     patterns.label_pair_geometry[pair] = LabelPairGeometry()
 
@@ -966,22 +1030,11 @@ def compute_merchant_patterns(
             else:
                 geometry.std_deviation = 0.0
 
-    # Select top 4 label pairs and remove geometry for non-selected pairs
+    # Log geometry statistics (pairs already selected in two-pass optimization)
     if patterns.label_pair_geometry:
-        selected_pairs = _select_top_label_pairs(all_pair_frequencies)
-
-        # Remove geometry entries for non-selected pairs
-        pairs_to_remove = [
-            pair for pair in patterns.label_pair_geometry.keys()
-            if pair not in selected_pairs
-        ]
-        for pair in pairs_to_remove:
-            logger.debug(f"Removing geometry for non-selected pair: {pair}")
-            del patterns.label_pair_geometry[pair]
-
         logger.info(
-            f"Kept {len(patterns.label_pair_geometry)} label pairs with geometry "
-            f"(removed {len(pairs_to_remove)})"
+            f"Computed geometry for {len(patterns.label_pair_geometry)} selected label pairs "
+            f"(skipped {len(all_pair_frequencies) - len(patterns.label_pair_geometry)} non-selected pairs)"
         )
 
     # Print detailed statistics for learned patterns

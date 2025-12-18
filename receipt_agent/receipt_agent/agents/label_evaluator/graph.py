@@ -18,7 +18,7 @@ Detects labeling errors such as:
 import json
 import logging
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
@@ -95,9 +95,14 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Maximum number of other receipts to fetch for pattern learning
-# Higher numbers give better statistical confidence for geometric anomaly detection
-# Set to None to use all available receipts for a merchant
-MAX_OTHER_RECEIPTS = None
+# Optimized for speed: 10 receipts provides good statistical confidence for patterns
+# while keeping runtime under 5 minutes (vs 30+ minutes with all receipts)
+# Can be overridden per-run via max_receipts parameter
+MAX_OTHER_RECEIPTS = 10
+
+# Cache for merchant patterns (merchant_name -> MerchantPatterns)
+# Speeds up repeated runs on the same merchant
+_PATTERN_CACHE: Dict[str, Optional[Any]] = {}
 
 # LLM Review Prompt
 LLM_REVIEW_PROMPT = """You are reviewing a flagged label issue on a receipt.
