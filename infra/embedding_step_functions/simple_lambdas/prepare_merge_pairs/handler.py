@@ -1,7 +1,9 @@
-"""Lambda handler for preparing merge pairs in the parallel reduce pattern.
+"""Lambda handler for preparing merge groups in the parallel reduce pattern.
 
-This handler takes a list of intermediate results and groups them into pairs
+This handler takes a list of intermediate results and groups them into groups
 for parallel merging. It continues until only one intermediate remains.
+
+Supports configurable group size (default: 10) for N-way merging.
 """
 
 import json
@@ -18,18 +20,23 @@ logger.setLevel(logging.INFO)
 
 MAX_PAYLOAD_SIZE = 150 * 1024  # 150KB (conservative)
 
+# Configuration for N-way merge
+# Larger group sizes = fewer merge rounds but longer per-Lambda execution
+# Conservative default: 8, Recommended: 10, Aggressive: 12
+MERGE_GROUP_SIZE = int(os.environ.get("MERGE_GROUP_SIZE", "10"))
+
 s3_client = boto3.client("s3")
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # pylint: disable=unused-argument
     """
-    Prepare pairs of intermediates for parallel merging.
+    Prepare groups of intermediates for parallel N-way merging.
 
     This implements the "reduce" step of MapReduce pattern:
     - Takes N intermediates
-    - Groups them into ceil(N/2) pairs
-    - Returns pairs for parallel merging
+    - Groups them into ceil(N/GROUP_SIZE) groups
+    - Returns groups for parallel merging
     - Indicates when only 1 remains (done)
 
     Input:
@@ -49,20 +56,21 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Output (if more than 1 intermediate):
     {
         "done": False,
-        "pairs": [
+        "pairs": [  # Named "pairs" for backward compatibility, but contains groups
             {
-                "pair_index": 0,
+                "pair_index": 0,  # Actually group_index
                 "batch_id": "batch-uuid",
                 "intermediates": [
                     {"intermediate_key": "..."},
-                    {"intermediate_key": "..."}
+                    {"intermediate_key": "..."},
+                    ... (up to GROUP_SIZE items)
                 ],
                 "database": "words",
                 "round": 1
             },
             ...
         ],
-        "pair_count": 4,
+        "pair_count": 2,  # Actually group_count
         "batch_id": "batch-uuid",
         "database": "words",
         "round": 1,
@@ -80,7 +88,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         "poll_results_s3_bucket": "..."
     }
     """
-    logger.info("Starting PrepareMergePairs handler")
+    logger.info("Starting PrepareMergeGroups handler (N-way merge)")
 
     batch_id = event.get("batch_id")
     database = event.get("database", "words")
@@ -103,11 +111,12 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         raise ValueError("batch_id is required")
 
     logger.info(
-        "PrepareMergePairs received: batch_id=%s, database=%s, intermediate_count=%d, round=%d",
+        "PrepareMergeGroups received: batch_id=%s, database=%s, intermediate_count=%d, round=%d, group_size=%d",
         batch_id,
         database,
         len(intermediates),
         current_round,
+        MERGE_GROUP_SIZE,
     )
 
     # Filter out invalid/error results
@@ -164,25 +173,26 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "poll_results_s3_bucket": poll_results_s3_bucket,
         }
 
-    # Group into pairs
-    pairs: List[Dict[str, Any]] = []
+    # Group into N-way groups (configurable size, default 10)
+    groups: List[Dict[str, Any]] = []
     next_round = current_round + 1
 
-    for i in range(0, len(valid_intermediates), 2):
-        pair_intermediates = valid_intermediates[i : i + 2]
-        pairs.append(
+    for i in range(0, len(valid_intermediates), MERGE_GROUP_SIZE):
+        group_intermediates = valid_intermediates[i : i + MERGE_GROUP_SIZE]
+        groups.append(
             {
-                "pair_index": len(pairs),
+                "pair_index": len(groups),  # Keep name for backward compatibility
                 "batch_id": f"{batch_id}-r{next_round}",
-                "intermediates": pair_intermediates,
+                "intermediates": group_intermediates,
                 "database": database,
                 "round": next_round,
             }
         )
 
     logger.info(
-        "Created pairs for parallel merge: pair_count=%d, batch_id=%s, next_round=%d",
-        len(pairs),
+        "Created groups for parallel N-way merge: group_count=%d, group_size=%d, batch_id=%s, next_round=%d",
+        len(groups),
+        MERGE_GROUP_SIZE,
         batch_id,
         next_round,
     )
@@ -190,8 +200,8 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Check payload size and upload to S3 if too large
     result = {
         "done": False,
-        "pairs": pairs,
-        "pair_count": len(pairs),
+        "pairs": groups,  # Use "pairs" field name for backward compatibility
+        "pair_count": len(groups),  # Actually group_count
         "batch_id": batch_id,
         "database": database,
         "round": next_round,
@@ -199,7 +209,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         "poll_results_s3_bucket": poll_results_s3_bucket,
     }
 
-    # Check if we need to upload pairs to S3
+    # Check if we need to upload groups to S3
     result_json = json.dumps(result)
     if len(result_json) > MAX_PAYLOAD_SIZE:
         bucket = os.environ.get("CHROMADB_BUCKET")
@@ -211,14 +221,14 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".json", delete=False
         ) as tmp_file:
-            json.dump(pairs, tmp_file, indent=2)
+            json.dump(groups, tmp_file, indent=2)
             tmp_file_path = tmp_file.name
 
         try:
             s3_client.upload_file(tmp_file_path, bucket, pairs_s3_key)
             logger.info(
-                "Uploaded pairs to S3 (payload too large): pair_count=%d, bucket=%s, s3_key=%s",
-                len(pairs),
+                "Uploaded groups to S3 (payload too large): group_count=%d, bucket=%s, s3_key=%s",
+                len(groups),
                 bucket,
                 pairs_s3_key,
             )
@@ -228,8 +238,8 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             except Exception:
                 pass
 
-        # Return reference to S3 instead of inline pairs
-        # Each pair entry will reference S3 for its data
+        # Return reference to S3 instead of inline groups
+        # Each group entry will reference S3 for its data
         return {
             "done": False,
             "pairs": [
@@ -242,9 +252,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     "database": database,
                     "round": next_round,
                 }
-                for i in range(len(pairs))
+                for i in range(len(groups))
             ],
-            "pair_count": len(pairs),
+            "pair_count": len(groups),
             "batch_id": batch_id,
             "database": database,
             "round": next_round,
