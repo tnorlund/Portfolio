@@ -123,7 +123,7 @@ class TestChunkBatching:
         test_cases = [
             (1, 50),  # No batching: 1 chunk per Lambda
             (2, 25),  # 2 chunks per Lambda
-            (4, 13),  # 4 chunks per Lambda (50/10 chunks = 5 chunks, ceil(5/4) = 2 batches)
+            (4, 13),  # 4 chunks per Lambda (50 deltas / 1 per chunk = 50 chunks; ceil(50/4) = 13 batches)
             (10, 5),  # 10 chunks per Lambda
         ]
 
