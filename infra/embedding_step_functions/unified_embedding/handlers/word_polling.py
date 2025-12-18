@@ -410,7 +410,7 @@ async def _ensure_receipt_metadata_async(
             merchant_category="",
             address=result.get("address") or "",
             phone_number=result.get("phone_number") or "",
-            validated_by="metadata_finder_agent",
+            validated_by="INFERENCE",  # Metadata finder agent uses LLM inference
             reasoning=result.get("reasoning") or "",
             canonical_place_id=result.get("place_id") or "",
             canonical_merchant_name=result.get("merchant_name") or "",
