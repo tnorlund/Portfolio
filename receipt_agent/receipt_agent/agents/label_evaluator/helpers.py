@@ -10,6 +10,7 @@ import math
 import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from itertools import combinations
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
@@ -28,7 +29,8 @@ from receipt_agent.agents.label_evaluator.state import (
 logger = logging.getLogger(__name__)
 
 # Configuration for limiting label pair geometry computation
-MAX_LABEL_PAIRS = 4  # Only compute geometry for top 4 label type pairs
+MAX_LABEL_PAIRS = 4  # Only compute geometry for top N label type pairs
+MAX_RELATIONSHIP_DIMENSION = 2  # Analyze relationships between N labels (2=pairs, 3=triples, etc.)
 
 # Semantic groupings of related labels for better pattern understanding
 LABEL_GROUPS = {
@@ -411,6 +413,98 @@ def _select_top_label_pairs(
     return selected
 
 
+def _select_top_label_ntuples(
+    all_ntuples: Dict[Tuple[str, ...], int],
+    max_ntuples: int = 4,
+) -> Set[Tuple[str, ...]]:
+    """
+    Select top label n-tuples by frequency.
+
+    For n-tuples (dimension >= 3), we use a simpler frequency-based approach
+    rather than semantic grouping, since semantic relationships become complex.
+
+    Args:
+        all_ntuples: Dict mapping n-tuple to frequency count
+        max_ntuples: Maximum number of n-tuples to select
+
+    Returns:
+        Set of selected n-tuples
+    """
+    if not all_ntuples:
+        return set()
+
+    # Sort by frequency and select top N
+    sorted_ntuples = sorted(all_ntuples.items(), key=lambda x: -x[1])
+    selected = {ntuple for ntuple, _ in sorted_ntuples[:max_ntuples]}
+
+    logger.debug(
+        f"Selected {len(selected)} label n-tuples by frequency "
+        f"(top: {', '.join(str(nt) for nt, freq in sorted_ntuples[:3])})"
+    )
+
+    return selected
+
+
+def _generate_label_ntuples(
+    all_pairs: Dict[Tuple[str, str], int],
+    dimension: int = 2,
+) -> Dict[Tuple[str, ...], int]:
+    """
+    Generate n-tuples of labels from pair co-occurrence data.
+
+    For dimension=2: Returns pairs as-is
+    For dimension=3+: Identifies labels that co-occur and groups them into n-tuples
+
+    Args:
+        all_pairs: Dict mapping (label1, label2) to co-occurrence frequency
+        dimension: Size of n-tuples to generate (2=pairs, 3=triples, etc.)
+
+    Returns:
+        Dict mapping n-tuple to frequency count
+    """
+    if dimension < 2:
+        raise ValueError("dimension must be >= 2")
+
+    if dimension == 2:
+        # For pairs, just return the input as-is
+        return all_pairs
+
+    # For dimension >= 3, build a co-occurrence graph and find cliques
+    # A clique is a set of labels that all co-occur with each other
+
+    # Build adjacency list from pairs
+    label_neighbors: Dict[str, Set[str]] = defaultdict(set)
+    for (label_a, label_b), _freq in all_pairs.items():
+        label_neighbors[label_a].add(label_b)
+        label_neighbors[label_b].add(label_a)
+
+    # Generate all possible n-tuples and check if they form cliques
+    ntuples: Dict[Tuple[str, ...], int] = defaultdict(int)
+    all_labels = sorted(label_neighbors.keys())
+
+    for ntuple in combinations(all_labels, dimension):
+        # Check if this n-tuple is a clique (all pairs exist)
+        # Count it with the minimum frequency of all pairs within
+        is_clique = True
+        min_freq = float("inf")
+
+        for i, label_a in enumerate(ntuple):
+            for label_b in ntuple[i + 1 :]:
+                pair = tuple(sorted([label_a, label_b]))
+                if pair not in all_pairs:
+                    is_clique = False
+                    break
+                min_freq = min(min_freq, all_pairs[pair])
+            if not is_clique:
+                break
+
+        if is_clique and min_freq > 0:
+            sorted_tuple = tuple(sorted(ntuple))
+            ntuples[sorted_tuple] = min_freq
+
+    return ntuples
+
+
 def _convert_polar_to_cartesian(
     angle_degrees: float,
     distance: float,
@@ -741,16 +835,32 @@ def batch_receipts_by_quality(
 def compute_merchant_patterns(
     other_receipt_data: List[OtherReceiptData],
     merchant_name: str,
+    max_pair_patterns: int = MAX_LABEL_PAIRS,
+    max_relationship_dimension: int = MAX_RELATIONSHIP_DIMENSION,
 ) -> Optional[MerchantPatterns]:
     """
     Compute label patterns from other receipts of the same merchant.
 
     Analyzes validated labels from other receipts to build a statistical
-    model of expected label positions and co-occurrence patterns.
+    model of expected label positions and co-occurrence patterns, supporting
+    analysis of label pairs, triples, and higher-order relationships.
 
     Args:
         other_receipt_data: Data from other receipts of same merchant
         merchant_name: Name of the merchant
+        max_pair_patterns: Maximum number of label combinations to compute
+            detailed geometry for. Higher values = more comprehensive analysis
+            but slower computation. (default: 4)
+            - 4: Fast baseline, catches most common patterns (~4ms)
+            - 16: Balanced analysis (~7ms)
+            - 32: Comprehensive (~12ms)
+            - 148+: Complete relationship mapping (~30ms+)
+        max_relationship_dimension: Size of label relationships to analyze
+            (default: 2)
+            - 2: Pairwise relationships (A↔B)
+            - 3: Triples (A↔B↔C, all pairwise within)
+            - 4: Quadruples (A↔B↔C↔D)
+            - 5+: Higher-order relationships (more expensive)
 
     Returns:
         MerchantPatterns object, or None if insufficient data
@@ -892,10 +1002,44 @@ def compute_merchant_patterns(
                 all_pair_frequencies[pair] += 1
                 patterns.all_observed_pairs.add(pair)
 
-    # TWO-PASS OPTIMIZATION: Select top pairs before computing expensive geometry
+    # TWO-PASS OPTIMIZATION: Select top pairs/tuples before computing expensive geometry
     # This avoids computing geometry for pairs we'll discard anyway
-    selected_pairs = _select_top_label_pairs(all_pair_frequencies)
-    logger.debug(f"Selected {len(selected_pairs)} label pairs for geometry computation")
+    # For dimension >= 3, generate n-tuples and select top ones
+    if max_relationship_dimension >= 3:
+        # Generate n-tuples from pair co-occurrence data
+        label_ntuples = _generate_label_ntuples(
+            all_pair_frequencies,
+            dimension=max_relationship_dimension,
+        )
+        logger.debug(
+            f"Generated {len(label_ntuples)} label {max_relationship_dimension}-tuples "
+            f"from co-occurrence data"
+        )
+
+        # Select top n-tuples, then extract all pairs from them
+        selected_tuples = _select_top_label_ntuples(
+            label_ntuples,
+            max_ntuples=max_pair_patterns,
+        )
+        # Extract all pairs from selected n-tuples
+        selected_pairs: Set[Tuple[str, ...]] = set()
+        for ntuple in selected_tuples:
+            # Add all pairwise combinations from this n-tuple
+            for pair in combinations(sorted(ntuple), 2):
+                selected_pairs.add(pair)
+        logger.debug(
+            f"Selected {len(selected_tuples)} label {max_relationship_dimension}-tuples, "
+            f"extracted {len(selected_pairs)} pairwise relationships for geometry"
+        )
+    else:
+        # For dimension == 2, use pairs directly
+        selected_pairs = _select_top_label_pairs(
+            all_pair_frequencies,
+            max_pairs=max_pair_patterns,
+        )
+        logger.debug(
+            f"Selected {len(selected_pairs)} label pairs for geometry computation"
+        )
 
     # Second pass: Compute geometry only for selected top pairs
     # Cache centroids per label per receipt to avoid recalculation

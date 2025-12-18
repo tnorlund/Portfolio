@@ -184,6 +184,8 @@ def run_pattern_computation(
     other_receipt_data: List[OtherReceiptData],
     merchant_name: str,
     skip_batching: bool = True,
+    max_pair_patterns: int = 4,
+    max_relationship_dimension: int = 2,
 ) -> Tuple[Optional[MerchantPatterns], float]:
     """
     Run compute_merchant_patterns() and return result with timing.
@@ -192,6 +194,8 @@ def run_pattern_computation(
         other_receipt_data: List of receipts to process
         merchant_name: Merchant name for patterns
         skip_batching: If True, skip LLM batch classification
+        max_pair_patterns: Max number of pairs/tuples to compute
+        max_relationship_dimension: Relationship dimension (2=pairs, 3+=n-tuples)
 
     Returns:
         (MerchantPatterns result, elapsed time in seconds)
@@ -214,7 +218,12 @@ def run_pattern_computation(
 
     try:
         start_time = time.perf_counter()
-        result = compute_merchant_patterns(other_receipt_data, merchant_name)
+        result = compute_merchant_patterns(
+            other_receipt_data,
+            merchant_name,
+            max_pair_patterns=max_pair_patterns,
+            max_relationship_dimension=max_relationship_dimension,
+        )
         elapsed = time.perf_counter() - start_time
 
         logger.info(f"✓ Pattern computation completed in {elapsed:.2f}s")
@@ -231,6 +240,8 @@ def build_metrics(
     elapsed_time: float,
     merchant_name: str,
     skip_batching: bool,
+    max_pair_patterns: int = 4,
+    max_relationship_dimension: int = 2,
 ) -> Dict:
     """
     Build comprehensive metrics dictionary.
@@ -241,6 +252,8 @@ def build_metrics(
         elapsed_time: Execution time in seconds
         merchant_name: Merchant name
         skip_batching: Whether batching was skipped
+        max_pair_patterns: Max pairs/tuples computed
+        max_relationship_dimension: Relationship dimension
 
     Returns:
         Metrics dictionary
@@ -255,6 +268,8 @@ def build_metrics(
             "receipt_count": len(data),
             "function": "compute_merchant_patterns",
             "skip_batching": skip_batching,
+            "max_pair_patterns": max_pair_patterns,
+            "max_relationship_dimension": max_relationship_dimension,
         },
         "execution_metrics": {
             "total_time_seconds": round(elapsed_time, 3),
@@ -310,11 +325,12 @@ def run_with_scalene(
     wrapper_code = f'''
 import sys
 import time
-import pickle
+import json
 
 sys.path.insert(0, "{repo_root}")
 
 # Load data
+import pickle
 with open("{output_dir}/_data_{timestamp}.pkl", "rb") as f:
     other_receipt_data = pickle.load(f)
 
@@ -334,9 +350,9 @@ start = time.perf_counter()
 result = compute_merchant_patterns(other_receipt_data, "{merchant_name}")
 elapsed = time.perf_counter() - start
 
-# Save result
-with open("{output_dir}/_result_{timestamp}.pkl", "wb") as f:
-    pickle.dump((result, elapsed), f)
+# Save only the elapsed time (result is not picklable due to lambda functions)
+with open("{output_dir}/_result_{timestamp}.json", "w") as f:
+    json.dump({{"elapsed": elapsed}}, f)
 '''
 
     wrapper_script = output_dir / f"_wrapper_{timestamp}.py"
@@ -373,12 +389,11 @@ with open("{output_dir}/_result_{timestamp}.pkl", "wb") as f:
         logger.error(f"Scalene failed: {result.stderr}")
         raise RuntimeError(f"Scalene profiling failed: {result.stderr}")
 
-    # Load result
-    import pickle
-
-    result_file = output_dir / f"_result_{timestamp}.pkl"
-    with open(result_file, "rb") as f:
-        _, elapsed_time = pickle.load(f)
+    # Load result timing
+    result_file = output_dir / f"_result_{timestamp}.json"
+    with open(result_file, "r") as f:
+        result_data = json.load(f)
+        elapsed_time = result_data["elapsed"]
 
     # Cleanup temp files
     wrapper_script.unlink()
@@ -430,6 +445,19 @@ def main() -> None:
         help="Output directory for reports (default: logs/profiling)",
     )
     parser.add_argument(
+        "--max-pairs",
+        type=int,
+        default=4,
+        help="Maximum number of label pairs to compute geometry for (default: 4)",
+    )
+    parser.add_argument(
+        "--dimension",
+        type=int,
+        default=2,
+        choices=[2, 3, 4, 5],
+        help="Relationship dimension: 2=pairs, 3=triples, 4=quadruples (default: 2)",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Verbose output with debug logging",
@@ -472,11 +500,14 @@ def main() -> None:
             output_dir,
         )
 
-        # Run once more without Scalene for metrics (avoids Scalene
-        # overhead)
+        # Run once more without Scalene for metrics (avoids Scalene overhead)
         logger.info("Collecting metrics...")
         result, actual_elapsed = run_pattern_computation(
-            other_receipt_data, args.merchant, args.skip_batching
+            other_receipt_data,
+            args.merchant,
+            args.skip_batching,
+            max_pair_patterns=args.max_pairs,
+            max_relationship_dimension=args.dimension,
         )
 
         # Build and save metrics
@@ -486,6 +517,8 @@ def main() -> None:
             actual_elapsed,
             args.merchant,
             args.skip_batching,
+            max_pair_patterns=args.max_pairs,
+            max_relationship_dimension=args.dimension,
         )
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
