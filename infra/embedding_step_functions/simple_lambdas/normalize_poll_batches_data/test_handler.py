@@ -4,7 +4,6 @@ These tests verify that chunks are correctly grouped into batches for
 processing multiple chunks per Lambda invocation.
 """
 
-import json
 from typing import Any, Dict, List
 from unittest.mock import MagicMock, Mock, patch
 
