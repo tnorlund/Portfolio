@@ -89,7 +89,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Maximum number of other receipts to fetch for pattern learning
-MAX_OTHER_RECEIPTS = 10
+# Higher numbers give better statistical confidence for geometric anomaly detection
+MAX_OTHER_RECEIPTS = 100
 
 # LLM Review Prompt
 LLM_REVIEW_PROMPT = """You are reviewing a flagged label issue on a receipt.
