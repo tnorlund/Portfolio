@@ -38,9 +38,7 @@ class _CompactionRun(FlattenedStandardMixin):
         if run is None:
             raise EntityValidationError("run cannot be None")
         if not isinstance(run, CompactionRun):
-            raise EntityValidationError(
-                "run must be an instance of CompactionRun"
-            )
+            raise EntityValidationError("run must be an instance of CompactionRun")
         self._add_entity(run)
 
     @handle_dynamodb_errors("update_compaction_run")
@@ -49,14 +47,10 @@ class _CompactionRun(FlattenedStandardMixin):
         if run is None:
             raise EntityValidationError("run cannot be None")
         if not isinstance(run, CompactionRun):
-            raise EntityValidationError(
-                "run must be an instance of CompactionRun"
-            )
+            raise EntityValidationError("run must be an instance of CompactionRun")
         self._update_entity(
             run,
-            condition_expression=(
-                "attribute_exists(PK) AND attribute_exists(SK)"
-            ),
+            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
         )
 
     @handle_dynamodb_errors("get_compaction_run")
@@ -189,9 +183,7 @@ class _CompactionRun(FlattenedStandardMixin):
             Key={"PK": {"S": pk}, "SK": {"S": sk}},
             UpdateExpression=update_expression,
             ExpressionAttributeValues=expression_attribute_values,
-            ConditionExpression=(
-                "attribute_exists(PK) AND attribute_exists(SK)"
-            ),
+            ConditionExpression=("attribute_exists(PK) AND attribute_exists(SK)"),
         )
 
     @handle_dynamodb_errors("mark_compaction_run_failed")
@@ -246,7 +238,5 @@ class _CompactionRun(FlattenedStandardMixin):
             Key={"PK": {"S": pk}, "SK": {"S": sk}},
             UpdateExpression=update_expression,
             ExpressionAttributeValues=expression_attribute_values,
-            ConditionExpression=(
-                "attribute_exists(PK) AND attribute_exists(SK)"
-            ),
+            ConditionExpression=("attribute_exists(PK) AND attribute_exists(SK)"),
         )

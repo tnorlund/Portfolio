@@ -352,9 +352,7 @@ def test_add_batch_summary_validation_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,error_match", ADD_BATCH_VALIDATION_SCENARIOS
-)
+@pytest.mark.parametrize("invalid_input,error_match", ADD_BATCH_VALIDATION_SCENARIOS)
 def test_add_batch_summaries_validation_errors(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_input: Any,
@@ -413,9 +411,7 @@ def test_add_batch_summary_duplicate_raises(
     client = DynamoClient(dynamodb_table)
     client.add_batch_summary(sample_batch_summary)
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="batch_summary already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="batch_summary already exists"):
         client.add_batch_summary(sample_batch_summary)
 
 
@@ -550,9 +546,7 @@ def test_update_batch_summaries_batch(
     sample_batch_summary.result_file_id = "file-error-1"
     another_batch_summary.result_file_id = "file-error-2"
 
-    client.update_batch_summaries(
-        [sample_batch_summary, another_batch_summary]
-    )
+    client.update_batch_summaries([sample_batch_summary, another_batch_summary])
 
     # Verify both updates
     retrieved1 = client.get_batch_summary(sample_batch_summary.batch_id)
@@ -736,12 +730,8 @@ def test_get_batch_summaries_by_status_success(
     # Filter to only our test summaries (may have others from other tests)
     test_batch_ids = {s.batch_id for s in summaries}
 
-    pending_test = [
-        s for s in pending_summaries if s.batch_id in test_batch_ids
-    ]
-    completed_test = [
-        s for s in completed_summaries if s.batch_id in test_batch_ids
-    ]
+    pending_test = [s for s in pending_summaries if s.batch_id in test_batch_ids]
+    completed_test = [s for s in completed_summaries if s.batch_id in test_batch_ids]
     failed_test = [s for s in failed_summaries if s.batch_id in test_batch_ids]
 
     assert len(pending_test) == 3
@@ -792,12 +782,8 @@ def test_get_batch_summaries_by_status_with_batch_type(
     # Filter to only our test summaries
     test_batch_ids = {s.batch_id for s in summaries}
 
-    embedding_test = [
-        s for s in embedding_summaries if s.batch_id in test_batch_ids
-    ]
-    completion_test = [
-        s for s in completion_summaries if s.batch_id in test_batch_ids
-    ]
+    embedding_test = [s for s in embedding_summaries if s.batch_id in test_batch_ids]
+    completion_test = [s for s in completion_summaries if s.batch_id in test_batch_ids]
 
     assert len(embedding_test) == 1
     assert len(completion_test) == 1
@@ -891,9 +877,7 @@ def test_get_batch_summaries_by_status_batch_type_validation(
     client = DynamoClient(dynamodb_table)
 
     with pytest.raises(EntityValidationError, match=expected_error):
-        client.get_batch_summaries_by_status(
-            BatchStatus.PENDING, batch_type=batch_type
-        )
+        client.get_batch_summaries_by_status(BatchStatus.PENDING, batch_type=batch_type)
 
 
 @pytest.mark.integration

@@ -86,9 +86,7 @@ class _JobLog(FlattenedStandardMixin):
 
         # Convert to WriteRequestTypeDef format and use mixin method
         request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=log.to_item())
-            )
+            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=log.to_item()))
             for log in job_logs
         ]
 
@@ -124,8 +122,7 @@ class _JobLog(FlattenedStandardMixin):
 
         if result is None:
             raise EntityNotFoundError(
-                f"Job log with job_id {job_id} and timestamp {timestamp} "
-                f"not found"
+                f"Job log with job_id {job_id} and timestamp {timestamp} " f"not found"
             )
 
         return result
@@ -158,9 +155,7 @@ class _JobLog(FlattenedStandardMixin):
 
         return self._query_entities(
             index_name=None,
-            key_condition_expression=(
-                "PK = :pk AND begins_with(SK, :sk_prefix)"
-            ),
+            key_condition_expression=("PK = :pk AND begins_with(SK, :sk_prefix)"),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": f"JOB#{job_id}"},
@@ -191,7 +186,5 @@ class _JobLog(FlattenedStandardMixin):
 
         self._delete_entity(
             job_log,
-            condition_expression=(
-                "attribute_exists(PK) AND attribute_exists(SK)"
-            ),
+            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
         )

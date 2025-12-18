@@ -47,10 +47,7 @@ class JobDependency:
             raise ValueError("A job cannot depend on itself")
 
         valid_types = ["COMPLETION", "SUCCESS", "FAILURE", "ARTIFACT"]
-        if (
-            not isinstance(self.type, str)
-            or self.type.upper() not in valid_types
-        ):
+        if not isinstance(self.type, str) or self.type.upper() not in valid_types:
             raise ValueError(f"type must be one of {valid_types}")
         self.type = self.type.upper()
 
@@ -58,9 +55,7 @@ class JobDependency:
         if isinstance(self.created_at, datetime):
             self.created_at = self.created_at.isoformat()
         elif not isinstance(self.created_at, str):
-            raise ValueError(
-                "created_at must be a datetime object or a string"
-            )
+            raise ValueError("created_at must be a datetime object or a string")
 
         if self.condition is not None and not isinstance(self.condition, str):
             raise ValueError("condition must be a string")

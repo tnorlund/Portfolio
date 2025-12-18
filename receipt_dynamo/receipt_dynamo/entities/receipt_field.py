@@ -89,9 +89,7 @@ class ReceiptField:
         elif isinstance(self.timestamp_added, str):
             pass  # Already a string, no conversion needed
         else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -102,9 +100,7 @@ class ReceiptField:
         """
         return {
             "PK": {"S": f"FIELD#{self.field_type}"},
-            "SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
-            },
+            "SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
         }
 
     def gsi1_key(self) -> Dict[str, Any]:
@@ -115,9 +111,7 @@ class ReceiptField:
         """
         return {
             "GSI1PK": {"S": f"IMAGE#{self.image_id}"},
-            "GSI1SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#FIELD#{self.field_type}"
-            },
+            "GSI1SK": {"S": f"RECEIPT#{self.receipt_id:05d}#FIELD#{self.field_type}"},
         }
 
     def to_item(self) -> Dict[str, Any]:

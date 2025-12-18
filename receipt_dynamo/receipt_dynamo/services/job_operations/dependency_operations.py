@@ -97,9 +97,7 @@ class JobDependencyOperations(_JobDependency):
                     is_satisfied = dependency_job.status == "failed"
                 elif dependency.type == "ARTIFACT":
                     # Special condition for artifact dependency
-                    if dependency.condition and hasattr(
-                        dependency_job, "job_config"
-                    ):
+                    if dependency.condition and hasattr(dependency_job, "job_config"):
                         # Check if the artifact exists
                         is_satisfied = self._check_artifact_exists(
                             dependency_job, dependency.condition

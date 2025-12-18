@@ -14,9 +14,7 @@ class ErrorPatterns:
 
     # EntityAlreadyExistsError patterns
     ALREADY_EXISTS_SIMPLE = "already exists"
-    ALREADY_EXISTS_ENTITY = re.compile(
-        r"(Entity already exists: \w+|already exists)"
-    )
+    ALREADY_EXISTS_ENTITY = re.compile(r"(Entity already exists: \w+|already exists)")
 
     # EntityNotFoundError patterns
     NOT_FOUND_SIMPLE = "does not exist"
@@ -51,9 +49,7 @@ class ErrorPatterns:
         """Get pattern for entity already exists error."""
         if entity_type:
             # Return pattern that matches both old and new formats
-            return re.compile(
-                f"(Entity already exists: {entity_type}|already exists)"
-            )
+            return re.compile(f"(Entity already exists: {entity_type}|already exists)")
         return ErrorPatterns.ALREADY_EXISTS_SIMPLE
 
     @staticmethod
@@ -111,9 +107,7 @@ def assert_already_exists_error(
         func(*args, **kwargs)
 
 
-def assert_not_found_error(
-    func, *args, entity_type: Optional[str] = None, **kwargs
-):
+def assert_not_found_error(func, *args, entity_type: Optional[str] = None, **kwargs):
     """Assert that a function raises EntityNotFoundError with appropriate message."""
     from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 

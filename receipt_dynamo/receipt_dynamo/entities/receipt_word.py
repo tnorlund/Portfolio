@@ -140,10 +140,7 @@ class ReceiptWord(
         # Validate is_noise field
         if not isinstance(self.is_noise, bool):
             raise ValueError(
-                (
-                    "is_noise must be a boolean, got "
-                    f"{type(self.is_noise).__name__}"
-                )
+                ("is_noise must be a boolean, got " f"{type(self.is_noise).__name__}")
             )
 
     @property
@@ -209,9 +206,7 @@ class ReceiptWord(
             dict: The secondary index key for the receipt word.
         """
         return {
-            "GSI3PK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
-            },
+            "GSI3PK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
             "GSI3SK": {"S": "WORD"},
         }
 
@@ -333,11 +328,7 @@ class ReceiptWord(
             self.image_id,
             self.line_id,
             self.word_id,
-            (
-                tuple(self.extracted_data.items())
-                if self.extracted_data
-                else None
-            ),
+            (tuple(self.extracted_data.items()) if self.extracted_data else None),
             self.embedding_status,
             self.is_noise,
         )
@@ -380,9 +371,7 @@ def item_to_receipt_word(item: Dict[str, Any]) -> ReceiptWord:
     }
 
     # Handle optional extracted_data field
-    if "extracted_data" in item and not item.get("extracted_data", {}).get(
-        "NULL"
-    ):
+    if "extracted_data" in item and not item.get("extracted_data", {}).get("NULL"):
         custom_extractors["extracted_data"] = (
             EntityFactory.extract_optional_extracted_data
         )

@@ -266,9 +266,7 @@ def test_add_receipt_word_label_validation_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,error_match", UPDATE_BATCH_VALIDATION_SCENARIOS
-)
+@pytest.mark.parametrize("invalid_input,error_match", UPDATE_BATCH_VALIDATION_SCENARIOS)
 def test_update_receipt_word_labels_validation_errors(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_input: Any,
@@ -404,9 +402,7 @@ def test_get_receipt_word_label_invalid_params(
     client = DynamoClient(dynamodb_table)
 
     with pytest.raises((EntityValidationError, OperationError)):
-        client.get_receipt_word_label(
-            image_id, receipt_id, line_id, word_id, label
-        )
+        client.get_receipt_word_label(image_id, receipt_id, line_id, word_id, label)
 
 
 # -------------------------------------------------------------------
@@ -608,9 +604,7 @@ def test_list_receipt_word_labels_for_image_success(
     )
 
     assert len(retrieved) == 5
-    assert all(
-        l.image_id == sample_receipt_word_label.image_id for l in retrieved
-    )
+    assert all(l.image_id == sample_receipt_word_label.image_id for l in retrieved)
     assert last_key is None
 
 
@@ -625,9 +619,7 @@ def test_list_receipt_word_labels_for_image_empty(
     empty_image_id = str(uuid4())
 
     # List labels for empty image
-    retrieved, last_key = client.list_receipt_word_labels_for_image(
-        empty_image_id
-    )
+    retrieved, last_key = client.list_receipt_word_labels_for_image(empty_image_id)
 
     assert len(retrieved) == 0
     assert last_key is None
@@ -657,9 +649,7 @@ def test_list_receipt_word_labels_for_image_with_pagination(
         client.add_receipt_word_label(label)
 
     # Test pagination with limit
-    page1, last_key1 = client.list_receipt_word_labels_for_image(
-        image_id, limit=10
-    )
+    page1, last_key1 = client.list_receipt_word_labels_for_image(image_id, limit=10)
     assert len(page1) == 10
     assert last_key1 is not None
 
@@ -752,9 +742,7 @@ def test_list_receipt_word_labels_for_receipt_success(
         client.add_receipt_word_label(label)
 
     # List labels for receipt 1
-    retrieved_r1, last_key = client.list_receipt_word_labels_for_receipt(
-        image_id, 1
-    )
+    retrieved_r1, last_key = client.list_receipt_word_labels_for_receipt(image_id, 1)
 
     assert len(retrieved_r1) == 5
     assert all(l.receipt_id == 1 for l in retrieved_r1)
@@ -762,9 +750,7 @@ def test_list_receipt_word_labels_for_receipt_success(
     assert last_key is None
 
     # List labels for receipt 2
-    retrieved_r2, last_key = client.list_receipt_word_labels_for_receipt(
-        image_id, 2
-    )
+    retrieved_r2, last_key = client.list_receipt_word_labels_for_receipt(image_id, 2)
 
     assert len(retrieved_r2) == 3
     assert all(l.receipt_id == 2 for l in retrieved_r2)
@@ -881,9 +867,7 @@ def test_list_receipt_word_labels_for_receipt_validation(
     """Tests validation for list_receipt_word_labels_for_receipt parameters."""
     client = DynamoClient(dynamodb_table)
 
-    with pytest.raises(
-        (EntityValidationError, OperationError), match=expected_error
-    ):
+    with pytest.raises((EntityValidationError, OperationError), match=expected_error):
         client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
 
 
@@ -985,9 +969,7 @@ def test_list_receipt_word_labels_with_validation_status(
         client.add_receipt_word_label(invalid_label)
 
     # List labels with specific validation status
-    valid_only, _ = client.list_receipt_word_labels_with_status(
-        ValidationStatus.VALID
-    )
+    valid_only, _ = client.list_receipt_word_labels_with_status(ValidationStatus.VALID)
     invalid_only, _ = client.list_receipt_word_labels_with_status(
         ValidationStatus.INVALID
     )
@@ -998,10 +980,7 @@ def test_list_receipt_word_labels_with_validation_status(
 
     assert len(valid_for_image) == 3
     assert len(invalid_for_image) == 3
+    assert all(l.validation_status == ValidationStatus.VALID for l in valid_for_image)
     assert all(
-        l.validation_status == ValidationStatus.VALID for l in valid_for_image
-    )
-    assert all(
-        l.validation_status == ValidationStatus.INVALID
-        for l in invalid_for_image
+        l.validation_status == ValidationStatus.INVALID for l in invalid_for_image
     )

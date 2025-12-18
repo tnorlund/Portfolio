@@ -79,9 +79,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         if isinstance(self.timestamp_added, datetime):
             self.timestamp_added = self.timestamp_added.isoformat()
         elif not isinstance(self.timestamp_added, str):
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
         if self.raw_s3_bucket and not isinstance(self.raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
@@ -114,9 +112,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             if not isinstance(self.receipt_count, int):
                 raise ValueError("receipt_count must be an integer")
             if self.receipt_count < 0:
-                raise ValueError(
-                    "receipt_count must be a non-negative integer"
-                )
+                raise ValueError("receipt_count must be a non-negative integer")
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -159,9 +155,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             dict: The GSI3 key for the image.
         """
         receipt_count_str = (
-            f"{self.receipt_count:05d}"
-            if self.receipt_count is not None
-            else "00000"
+            f"{self.receipt_count:05d}" if self.receipt_count is not None else "00000"
         )
         return {
             "GSI3PK": {"S": f"IMAGE#{self.image_type}"},
@@ -188,9 +182,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             "raw_s3_key": {"S": self.raw_s3_key},
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
             "cdn_s3_bucket": (
-                {"S": self.cdn_s3_bucket}
-                if self.cdn_s3_bucket
-                else {"NULL": True}
+                {"S": self.cdn_s3_bucket} if self.cdn_s3_bucket else {"NULL": True}
             ),
             **self.cdn_fields_to_dynamodb_item(),
             "image_type": {"S": self.image_type},
@@ -268,9 +260,7 @@ def item_to_image(item: Dict[str, Any]) -> Image:
             image_id=item["PK"]["S"].split("#")[1],
             width=int(item["width"]["N"]),
             height=int(item["height"]["N"]),
-            timestamp_added=datetime.fromisoformat(
-                item["timestamp_added"]["S"]
-            ),
+            timestamp_added=datetime.fromisoformat(item["timestamp_added"]["S"]),
             raw_s3_bucket=item["raw_s3_bucket"]["S"],
             raw_s3_key=item["raw_s3_key"]["S"],
             sha256=item.get("sha256", {}).get("S"),
@@ -279,26 +269,18 @@ def item_to_image(item: Dict[str, Any]) -> Image:
             cdn_webp_s3_key=item.get("cdn_webp_s3_key", {}).get("S"),
             cdn_avif_s3_key=item.get("cdn_avif_s3_key", {}).get("S"),
             cdn_thumbnail_s3_key=item.get("cdn_thumbnail_s3_key", {}).get("S"),
-            cdn_thumbnail_webp_s3_key=item.get(
-                "cdn_thumbnail_webp_s3_key", {}
-            ).get("S"),
-            cdn_thumbnail_avif_s3_key=item.get(
-                "cdn_thumbnail_avif_s3_key", {}
-            ).get("S"),
+            cdn_thumbnail_webp_s3_key=item.get("cdn_thumbnail_webp_s3_key", {}).get(
+                "S"
+            ),
+            cdn_thumbnail_avif_s3_key=item.get("cdn_thumbnail_avif_s3_key", {}).get(
+                "S"
+            ),
             cdn_small_s3_key=item.get("cdn_small_s3_key", {}).get("S"),
-            cdn_small_webp_s3_key=item.get("cdn_small_webp_s3_key", {}).get(
-                "S"
-            ),
-            cdn_small_avif_s3_key=item.get("cdn_small_avif_s3_key", {}).get(
-                "S"
-            ),
+            cdn_small_webp_s3_key=item.get("cdn_small_webp_s3_key", {}).get("S"),
+            cdn_small_avif_s3_key=item.get("cdn_small_avif_s3_key", {}).get("S"),
             cdn_medium_s3_key=item.get("cdn_medium_s3_key", {}).get("S"),
-            cdn_medium_webp_s3_key=item.get("cdn_medium_webp_s3_key", {}).get(
-                "S"
-            ),
-            cdn_medium_avif_s3_key=item.get("cdn_medium_avif_s3_key", {}).get(
-                "S"
-            ),
+            cdn_medium_webp_s3_key=item.get("cdn_medium_webp_s3_key", {}).get("S"),
+            cdn_medium_avif_s3_key=item.get("cdn_medium_avif_s3_key", {}).get("S"),
             image_type=image_type if image_type else ImageType.SCAN.value,
             receipt_count=(
                 int(item["receipt_count"]["N"])

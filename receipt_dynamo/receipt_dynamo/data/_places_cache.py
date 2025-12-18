@@ -62,10 +62,30 @@ class _PlacesCache(
         if item is None:
             raise EntityValidationError("item cannot be None")
         if not isinstance(item, PlacesCache):
-            raise EntityValidationError(
-                "item must be an instance of PlacesCache"
-            )
+            raise EntityValidationError("item must be an instance of PlacesCache")
         self._add_entity(item, condition_expression="attribute_not_exists(PK)")
+
+    @handle_dynamodb_errors("put_places_cache")
+    def put_places_cache(self, item: PlacesCache):
+        """
+        Puts a PlacesCache item unconditionally, allowing overwrites.
+
+        This method allows refreshing expired or stale cache entries without
+        waiting for DynamoDB TTL cleanup. Use this instead of add_places_cache()
+        when you want to update an existing entry or when the TTL may have
+        expired.
+
+        Args:
+            item (PlacesCache): The PlacesCache object to put.
+
+        Raises:
+            EntityValidationError: If item parameters are invalid
+        """
+        if item is None:
+            raise EntityValidationError("item cannot be None")
+        if not isinstance(item, PlacesCache):
+            raise EntityValidationError("item must be an instance of PlacesCache")
+        self._execute_put_item(item, condition_expression=None)
 
     @handle_dynamodb_errors("update_places_cache")
     def update_places_cache(self, item: PlacesCache):
@@ -82,9 +102,7 @@ class _PlacesCache(
         if item is None:
             raise EntityValidationError("item cannot be None")
         if not isinstance(item, PlacesCache):
-            raise EntityValidationError(
-                "item must be an instance of PlacesCache"
-            )
+            raise EntityValidationError("item must be an instance of PlacesCache")
         self._update_entity(item, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_places_caches")
@@ -208,9 +226,7 @@ class _PlacesCache(
         )
 
     @handle_dynamodb_errors("get_places_cache_by_place_id")
-    def get_places_cache_by_place_id(
-        self, place_id: str
-    ) -> Optional[PlacesCache]:
+    def get_places_cache_by_place_id(self, place_id: str) -> Optional[PlacesCache]:
         """
         Retrieves a PlacesCache by its place_id using GSI1.
 
@@ -258,9 +274,7 @@ class _PlacesCache(
         """
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None.")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
+        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )

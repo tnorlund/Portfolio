@@ -69,9 +69,7 @@ def test_spatial_relationship_init_valid(example_spatial_relationship):
 def test_spatial_relationship_init_invalid_to_label():
     """SpatialRelationship with invalid to_label raises ValueError."""
     # Empty label
-    with pytest.raises(
-        ValueError, match="to_label must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="to_label must be a non-empty string"):
         SpatialRelationship(
             to_label="",
             to_line_id=10,
@@ -81,9 +79,7 @@ def test_spatial_relationship_init_invalid_to_label():
         )
 
     # Non-string label
-    with pytest.raises(
-        ValueError, match="to_label must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="to_label must be a non-empty string"):
         SpatialRelationship(
             to_label=123,
             to_line_id=10,
@@ -120,9 +116,7 @@ def test_spatial_relationship_init_invalid_ids():
 @pytest.mark.unit
 def test_spatial_relationship_init_invalid_distance():
     """SpatialRelationship with invalid distance raises ValueError."""
-    with pytest.raises(
-        ValueError, match="distance must be a non-negative number"
-    ):
+    with pytest.raises(ValueError, match="distance must be a non-negative number"):
         SpatialRelationship(
             to_label="TAX",
             to_line_id=10,
@@ -164,10 +158,7 @@ def test_spatial_relationship_label_uppercased():
 @pytest.mark.unit
 def test_spatial_analysis_init_valid(example_spatial_analysis):
     """Test constructing a valid ReceiptWordLabelSpatialAnalysis."""
-    assert (
-        example_spatial_analysis.image_id
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert example_spatial_analysis.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_spatial_analysis.receipt_id == 1
     assert example_spatial_analysis.line_id == 12
     assert example_spatial_analysis.word_id == 45
@@ -245,9 +236,7 @@ def test_spatial_analysis_init_invalid_ids():
 def test_spatial_analysis_init_invalid_from_label():
     """ReceiptWordLabelSpatialAnalysis with invalid from_label raises ValueError."""
     # Empty label
-    with pytest.raises(
-        ValueError, match="from_label must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="from_label must be a non-empty string"):
         ReceiptWordLabelSpatialAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -260,9 +249,7 @@ def test_spatial_analysis_init_invalid_from_label():
         )
 
     # Non-string label
-    with pytest.raises(
-        ValueError, match="from_label must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="from_label must be a non-empty string"):
         ReceiptWordLabelSpatialAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -292,9 +279,7 @@ def test_spatial_analysis_init_invalid_position():
         )
 
     # Missing required keys
-    with pytest.raises(
-        ValueError, match="from_position must contain 'x' and 'y' keys"
-    ):
+    with pytest.raises(ValueError, match="from_position must contain 'x' and 'y' keys"):
         ReceiptWordLabelSpatialAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -311,9 +296,7 @@ def test_spatial_analysis_init_invalid_position():
 def test_spatial_analysis_init_invalid_relationships():
     """ReceiptWordLabelSpatialAnalysis with invalid spatial_relationships raises ValueError."""
     # Non-list relationships
-    with pytest.raises(
-        ValueError, match="spatial_relationships must be a list"
-    ):
+    with pytest.raises(ValueError, match="spatial_relationships must be a list"):
         ReceiptWordLabelSpatialAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -538,9 +521,7 @@ def test_item_to_spatial_analysis_invalid_pk_format():
 def test_spatial_analysis_eq(example_spatial_analysis):
     """Test that ReceiptWordLabelSpatialAnalysis equality works as expected."""
     # Test equality with same data
-    same_analysis = ReceiptWordLabelSpatialAnalysis(
-        **dict(example_spatial_analysis)
-    )
+    same_analysis = ReceiptWordLabelSpatialAnalysis(**dict(example_spatial_analysis))
     assert example_spatial_analysis == same_analysis
 
     # Test inequality with different data

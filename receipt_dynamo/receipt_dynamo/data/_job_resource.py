@@ -146,9 +146,7 @@ class _JobResource(FlattenedStandardMixin):
 
             if released_at:
                 update_expression += ", released_at = :released_at"
-                expression_attribute_values[":released_at"] = {
-                    "S": released_at
-                }
+                expression_attribute_values[":released_at"] = {"S": released_at}
 
             self._client.update_item(
                 TableName=self.table_name,
@@ -159,9 +157,7 @@ class _JobResource(FlattenedStandardMixin):
                 UpdateExpression=update_expression,
                 ExpressionAttributeNames=expression_attribute_names,
                 ExpressionAttributeValues=expression_attribute_values,
-                ConditionExpression=(
-                    "attribute_exists(PK) AND attribute_exists(SK)"
-                ),
+                ConditionExpression=("attribute_exists(PK) AND attribute_exists(SK)"),
             )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
@@ -183,9 +179,7 @@ class _JobResource(FlattenedStandardMixin):
             if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
 
-            raise OperationError(
-                f"Error updating job resource status: {e}"
-            ) from e
+            raise OperationError(f"Error updating job resource status: {e}") from e
 
     @handle_dynamodb_errors("list_job_resources")
     def list_job_resources(
@@ -223,9 +217,7 @@ class _JobResource(FlattenedStandardMixin):
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -278,9 +270,7 @@ class _JobResource(FlattenedStandardMixin):
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(

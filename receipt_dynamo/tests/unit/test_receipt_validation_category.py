@@ -37,8 +37,7 @@ def test_validation_category_init_valid(example_validation_category):
     """Test initialization with valid parameters"""
     assert example_validation_category.receipt_id == 1
     assert (
-        example_validation_category.image_id
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        example_validation_category.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     )
     assert example_validation_category.field_name == "payment_info"
     assert example_validation_category.field_category == "creditcard"
@@ -51,13 +50,9 @@ def test_validation_category_init_valid(example_validation_category):
     assert example_validation_category.result_summary["valid"] == 3
     assert example_validation_category.result_summary["invalid"] == 0
     assert example_validation_category.result_summary["warnings"] == 0
+    assert example_validation_category.validation_timestamp == "2023-05-15T10:30:00"
     assert (
-        example_validation_category.validation_timestamp
-        == "2023-05-15T10:30:00"
-    )
-    assert (
-        example_validation_category.metadata["source_info"]["model"]
-        == "validation-v1"
+        example_validation_category.metadata["source_info"]["model"] == "validation-v1"
     )
     assert example_validation_category.metadata["confidence"] == 0.95
 
@@ -82,9 +77,7 @@ def test_validation_category_init_minimal():
     assert category.field_name == "payment_info"
     assert category.field_category == "creditcard"
     assert category.status == "valid"
-    assert (
-        category.reasoning == "All payment information validated successfully"
-    )
+    assert category.reasoning == "All payment information validated successfully"
     assert category.result_summary["total"] == 3
     assert category.validation_timestamp == "2023-05-15T10:30:00"
 
@@ -264,9 +257,7 @@ def test_validation_category_init_invalid_reasoning():
 @pytest.mark.unit
 def test_validation_category_init_invalid_result_summary():
     """Test initialization with invalid result_summary"""
-    with pytest.raises(
-        ValueError, match="result_summary must be a dictionary"
-    ):
+    with pytest.raises(ValueError, match="result_summary must be a dictionary"):
         ReceiptValidationCategory(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -282,9 +273,7 @@ def test_validation_category_init_invalid_result_summary():
 @pytest.mark.unit
 def test_validation_category_init_invalid_validation_timestamp():
     """Test initialization with invalid validation_timestamp"""
-    with pytest.raises(
-        ValueError, match="validation_timestamp must be a string"
-    ):
+    with pytest.raises(ValueError, match="validation_timestamp must be a string"):
         ReceiptValidationCategory(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -328,9 +317,7 @@ def test_gsi1_key(example_validation_category):
     """Test the gsi1_key property"""
     assert example_validation_category.gsi1_key == {
         "GSI1PK": {"S": "VALIDATION_STATUS#valid"},
-        "GSI1SK": {
-            "S": "VALIDATION#2023-05-15T10:30:00#CATEGORY#payment_info"
-        },
+        "GSI1SK": {"S": "VALIDATION#2023-05-15T10:30:00#CATEGORY#payment_info"},
     }
 
 
@@ -339,9 +326,7 @@ def test_gsi3_key(example_validation_category):
     """Test the gsi3_key property"""
     assert example_validation_category.gsi3_key == {
         "GSI3PK": {"S": "FIELD_STATUS#payment_info#valid"},
-        "GSI3SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
-        },
+        "GSI3SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
     }
 
 
@@ -367,9 +352,7 @@ def test_to_item(example_validation_category):
     # Check that the required fields are present
     assert item["field_category"] == {"S": "creditcard"}
     assert item["status"] == {"S": "valid"}
-    assert item["reasoning"] == {
-        "S": "All payment information validated successfully"
-    }
+    assert item["reasoning"] == {"S": "All payment information validated successfully"}
     assert item["result_summary"] == {
         "M": {
             "total": {"N": "3"},
@@ -398,14 +381,10 @@ def test_from_item(example_validation_category):
     assert category.receipt_id == example_validation_category.receipt_id
     assert category.image_id == example_validation_category.image_id
     assert category.field_name == example_validation_category.field_name
-    assert (
-        category.field_category == example_validation_category.field_category
-    )
+    assert category.field_category == example_validation_category.field_category
     assert category.status == example_validation_category.status
     assert category.reasoning == example_validation_category.reasoning
-    assert (
-        category.result_summary == example_validation_category.result_summary
-    )
+    assert category.result_summary == example_validation_category.result_summary
     assert (
         category.validation_timestamp
         == example_validation_category.validation_timestamp
@@ -486,9 +465,7 @@ def test_itemToReceiptValidationCategory(example_validation_category):
                         },
                     }
                 },
-                "source_information": {
-                    "M": {"package_version": {"S": "0.1.0"}}
-                },
+                "source_information": {"M": {"package_version": {"S": "0.1.0"}}},
                 "source_info": {"M": {}},
                 "version": {"S": "0.1.0"},
                 "processing_history": {
@@ -497,9 +474,7 @@ def test_itemToReceiptValidationCategory(example_validation_category):
                             "M": {
                                 "action": {"S": "created"},
                                 "version": {"S": "0.1.0"},
-                                "timestamp": {
-                                    "S": "2025-03-18T19:03:19.301664"
-                                },
+                                "timestamp": {"S": "2025-03-18T19:03:19.301664"},
                             }
                         },
                         {
@@ -508,9 +483,7 @@ def test_itemToReceiptValidationCategory(example_validation_category):
                                 "warning_count": {"N": "0"},
                                 "error_count": {"N": "0"},
                                 "version": {"S": "0.1.0"},
-                                "timestamp": {
-                                    "S": "2025-03-18T19:03:19.301683"
-                                },
+                                "timestamp": {"S": "2025-03-18T19:03:19.301683"},
                             }
                         },
                     ]
@@ -520,12 +493,9 @@ def test_itemToReceiptValidationCategory(example_validation_category):
         "field_category": {"S": "Business Identity"},
         "status": {"S": "incomplete"},
         "GSI1SK": {
-            "S": "VALIDATION#2025-03-18T19:03:19.301645#CATEGORY#"
-            "business_identity"
+            "S": "VALIDATION#2025-03-18T19:03:19.301645#CATEGORY#" "business_identity"
         },
-        "GSI3SK": {
-            "S": "IMAGE#aabbf168-7a61-483b-97c7-e711de91ce5f#RECEIPT#1"
-        },
+        "GSI3SK": {"S": "IMAGE#aabbf168-7a61-483b-97c7-e711de91ce5f#RECEIPT#1"},
         "TYPE": {"S": "RECEIPT_VALIDATION_CATEGORY"},
         "GSI2SK": {
             "S": "IMAGE#aabbf168-7a61-483b-97c7-e711de91ce5f#"
@@ -535,9 +505,7 @@ def test_itemToReceiptValidationCategory(example_validation_category):
         "GSI1PK": {"S": "ANALYSIS_TYPE"},
         "GSI3PK": {"S": "FIELD_STATUS#business_identity#incomplete"},
         "validation_timestamp": {"S": "2025-03-18T19:03:19.301645"},
-        "SK": {
-            "S": "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#business_identity"
-        },
+        "SK": {"S": "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#business_identity"},
         "PK": {"S": "IMAGE#aabbf168-7a61-483b-97c7-e711de91ce5f"},
         "result_summary": {
             "M": {
@@ -560,9 +528,7 @@ def test_itemToReceiptValidationCategory(example_validation_category):
     assert category.field_name == "business_identity"
     assert category.field_category == "Business Identity"
     assert category.status == "incomplete"
-    assert (
-        category.reasoning == "No validation performed for Business Identity"
-    )
+    assert category.reasoning == "No validation performed for Business Identity"
     assert category.result_summary == {
         "info_count": 0,
         "success_count": 0,
@@ -608,8 +574,6 @@ def test_itemToReceiptValidationCategory(example_validation_category):
         "version": "0.1.0",
     }
     assert (
-        item_to_receipt_validation_category(
-            example_validation_category.to_item()
-        )
+        item_to_receipt_validation_category(example_validation_category.to_item())
         == example_validation_category
     )

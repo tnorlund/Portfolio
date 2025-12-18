@@ -177,10 +177,7 @@ def test_receipt_label_analysis_default_metadata():
     assert "processing_history" in label_analysis.metadata
     assert "source_information" in label_analysis.metadata
     assert len(label_analysis.metadata["processing_history"]) == 1
-    assert (
-        label_analysis.metadata["processing_history"][0]["event_type"]
-        == "creation"
-    )
+    assert label_analysis.metadata["processing_history"][0]["event_type"] == "creation"
 
 
 @pytest.mark.unit
@@ -249,8 +246,7 @@ def test_receipt_label_analysis_to_item(example_receipt_label_analysis):
 
     # Check other attributes
     assert (
-        item["timestamp_added"]["S"]
-        == example_receipt_label_analysis.timestamp_added
+        item["timestamp_added"]["S"] == example_receipt_label_analysis.timestamp_added
     )
     assert item["version"]["S"] == "1.2"
     assert (
@@ -395,9 +391,7 @@ def test_itemToReceiptLabelAnalysis_valid_input():
                         "reasoning": {"S": "This is a business name"},
                         "bounding_box": {
                             "M": {
-                                "top_left": {
-                                    "M": {"x": {"N": "10"}, "y": {"N": "10"}}
-                                },
+                                "top_left": {"M": {"x": {"N": "10"}, "y": {"N": "10"}}},
                                 "top_right": {
                                     "M": {"x": {"N": "50"}, "y": {"N": "10"}}
                                 },
@@ -416,9 +410,7 @@ def test_itemToReceiptLabelAnalysis_valid_input():
         "timestamp_added": {"S": now_str},
         "version": {"S": "1.0"},
         "overall_reasoning": {"S": "Analysis complete"},
-        "metadata": {
-            "S": '{"processing_metrics": {"processing_time_ms": 100}}'
-        },
+        "metadata": {"S": '{"processing_metrics": {"processing_time_ms": 100}}'},
     }
 
     # Convert to ReceiptLabelAnalysis
@@ -440,14 +432,10 @@ def test_itemToReceiptLabelAnalysis_valid_input():
 @pytest.mark.unit
 def test_itemToReceiptLabelAnalysis_missing_keys():
     """Test that item_to_receipt_label_analysis raises ValueError with missing keys."""
-    with pytest.raises(
-        ValueError, match="Item must have PK and SK attributes"
-    ):
+    with pytest.raises(ValueError, match="Item must have PK and SK attributes"):
         item_to_receipt_label_analysis({})
 
-    with pytest.raises(
-        ValueError, match="Item must have PK and SK attributes"
-    ):
+    with pytest.raises(ValueError, match="Item must have PK and SK attributes"):
         item_to_receipt_label_analysis({"PK": {"S": "IMAGE#test"}})
 
 
@@ -456,9 +444,7 @@ def test_itemToReceiptLabelAnalysis_invalid_format():
     """Test that item_to_receipt_label_analysis raises ValueError with invalid SK format."""
     item = {"PK": {"S": "IMAGE#test_image_123"}, "SK": {"S": "INVALID_FORMAT"}}
 
-    with pytest.raises(
-        ValueError, match="Invalid SK format for ReceiptLabelAnalysis"
-    ):
+    with pytest.raises(ValueError, match="Invalid SK format for ReceiptLabelAnalysis"):
         item_to_receipt_label_analysis(item)
 
 

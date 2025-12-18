@@ -54,9 +54,7 @@ class ReceiptSection:
         elif isinstance(self.section_type, str):
             section_type_value = self.section_type
         else:
-            raise ValueError(
-                "section_type must be a string or SectionType enum"
-            )
+            raise ValueError("section_type must be a string or SectionType enum")
         valid_section_types = [t.value for t in SectionType]
         if section_type_value not in valid_section_types:
             raise ValueError(
@@ -85,10 +83,7 @@ class ReceiptSection:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {
-                "S": (
-                    f"RECEIPT#{self.receipt_id:05d}#"
-                    f"SECTION#{self.section_type}"
-                )
+                "S": (f"RECEIPT#{self.receipt_id:05d}#" f"SECTION#{self.section_type}")
             },
         }
 
@@ -98,9 +93,7 @@ class ReceiptSection:
             **self.key,
             "TYPE": {"S": "RECEIPT_SECTION"},
             "section_type": {"S": self.section_type},
-            "line_ids": {
-                "L": [{"N": str(line_id)} for line_id in self.line_ids]
-            },
+            "line_ids": {"L": [{"N": str(line_id)} for line_id in self.line_ids]},
             "created_at": {"S": self.created_at.isoformat()},
         }
 
@@ -181,6 +174,4 @@ def item_to_receipt_section(item: Dict[str, Any]) -> ReceiptSection:
             created_at=created_at,
         )
     except (KeyError, IndexError, ValueError) as e:
-        raise ValueError(
-            f"Error converting item to ReceiptSection: {e}"
-        ) from e
+        raise ValueError(f"Error converting item to ReceiptSection: {e}") from e

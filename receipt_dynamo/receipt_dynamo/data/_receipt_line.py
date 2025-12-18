@@ -103,17 +103,13 @@ class _ReceiptLine(FlattenedStandardMixin):
         self._update_entities(receipt_lines, ReceiptLine, "receipt_lines")
 
     @handle_dynamodb_errors("delete_receipt_line")
-    def delete_receipt_line(
-        self, receipt_id: int, image_id: str, line_id: int
-    ) -> None:
+    def delete_receipt_line(self, receipt_id: int, image_id: str, line_id: int) -> None:
         """Deletes a single ReceiptLine by IDs."""
         # Validate parameters
         if receipt_id is None or not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer")
         if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+            raise EntityValidationError("receipt_id must be a positive integer")
         if image_id is None:
             raise EntityValidationError("image_id cannot be None")
         assert_valid_uuid(image_id)
@@ -157,9 +153,7 @@ class _ReceiptLine(FlattenedStandardMixin):
         if receipt_id is None or not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer")
         if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+            raise EntityValidationError("receipt_id must be a positive integer")
         if image_id is None:
             raise EntityValidationError("image_id cannot be None")
         assert_valid_uuid(image_id)
@@ -200,9 +194,7 @@ class _ReceiptLine(FlattenedStandardMixin):
                     "indices must be a list of tuples with 3 elements."
                 )
             if not isinstance(index[0], str):
-                raise EntityValidationError(
-                    "First element of tuple must be a string."
-                )
+                raise EntityValidationError("First element of tuple must be a string.")
             assert_valid_uuid(index[0])
             if not isinstance(index[1], int):
                 raise EntityValidationError(
@@ -253,9 +245,7 @@ class _ReceiptLine(FlattenedStandardMixin):
             # Handle unprocessed keys
             unprocessed = response.get("UnprocessedKeys", {})
             while unprocessed.get(self.table_name, {}).get("Keys"):
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
+                response = self._client.batch_get_item(RequestItems=unprocessed)
                 results.extend(response["Responses"].get(self.table_name, []))
                 unprocessed = response.get("UnprocessedKeys", {})
 
@@ -296,14 +286,10 @@ class _ReceiptLine(FlattenedStandardMixin):
         """Returns all ReceiptLines from the table."""
         if limit is not None:
             if not isinstance(limit, int):
-                raise EntityValidationError(
-                    "limit must be an integer or None."
-                )
+                raise EntityValidationError("limit must be an integer or None.")
             if limit <= 0:
                 raise EntityValidationError("limit must be greater than 0.")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
+        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
@@ -325,8 +311,7 @@ class _ReceiptLine(FlattenedStandardMixin):
             status_str = embedding_status
         else:
             raise EntityValidationError(
-                "embedding_status must be an instance of EmbeddingStatus "
-                "or a string"
+                "embedding_status must be an instance of EmbeddingStatus " "or a string"
             )
 
         if status_str not in [status.value for status in EmbeddingStatus]:
@@ -364,9 +349,7 @@ class _ReceiptLine(FlattenedStandardMixin):
         if receipt_id is None or not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer")
         if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+            raise EntityValidationError("receipt_id must be a positive integer")
 
         # Use GSI3 for efficient querying by image_id + receipt_id
         # This eliminates the need for client-side filtering

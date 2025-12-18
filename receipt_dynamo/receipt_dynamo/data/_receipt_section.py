@@ -92,15 +92,11 @@ class _ReceiptSection(
         ValueError
             If the receipt_section already exists.
         """
-        self._validate_entity(
-            receipt_section, ReceiptSection, "receipt_section"
-        )
+        self._validate_entity(receipt_section, ReceiptSection, "receipt_section")
         self._add_entity(receipt_section)
 
     @handle_dynamodb_errors("add_receipt_sections")
-    def add_receipt_sections(
-        self, receipt_sections: list[ReceiptSection]
-    ) -> None:
+    def add_receipt_sections(self, receipt_sections: list[ReceiptSection]) -> None:
         """
         Adds multiple ReceiptSections to DynamoDB in batches.
 
@@ -114,9 +110,7 @@ class _ReceiptSection(
         ValueError
             If receipt_sections is invalid.
         """
-        self._validate_entity_list(
-            receipt_sections, ReceiptSection, "receipt_sections"
-        )
+        self._validate_entity_list(receipt_sections, ReceiptSection, "receipt_sections")
 
         request_items = [
             WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=s.to_item()))
@@ -139,15 +133,11 @@ class _ReceiptSection(
         ValueError
             If the receipt_section does not exist.
         """
-        self._validate_entity(
-            receipt_section, ReceiptSection, "receipt_section"
-        )
+        self._validate_entity(receipt_section, ReceiptSection, "receipt_section")
         self._update_entity(receipt_section)
 
     @handle_dynamodb_errors("update_receipt_sections")
-    def update_receipt_sections(
-        self, receipt_sections: list[ReceiptSection]
-    ) -> None:
+    def update_receipt_sections(self, receipt_sections: list[ReceiptSection]) -> None:
         """
         Updates multiple existing ReceiptSections in DynamoDB.
 
@@ -162,9 +152,7 @@ class _ReceiptSection(
             If receipt_sections is invalid or if any receipt_section
             does not exist.
         """
-        self._update_entities(
-            receipt_sections, ReceiptSection, "receipt_sections"
-        )
+        self._update_entities(receipt_sections, ReceiptSection, "receipt_sections")
 
     @handle_dynamodb_errors("delete_receipt_section")
     def delete_receipt_section(
@@ -192,17 +180,12 @@ class _ReceiptSection(
                 TableName=self.table_name,
                 Key={
                     "PK": {"S": f"IMAGE#{image_id}"},
-                    "SK": {
-                        "S": f"RECEIPT#{receipt_id:05d}#SECTION#{section_type}"
-                    },
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#SECTION#{section_type}"},
                 },
                 ConditionExpression="attribute_exists(PK)",
             )
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 raise EntityNotFoundError(
                     f"ReceiptSection with receipt_id {receipt_id}, "
                     f"image_id {image_id}, and section_type {section_type} "
@@ -212,9 +195,7 @@ class _ReceiptSection(
             raise
 
     @handle_dynamodb_errors("delete_receipt_sections")
-    def delete_receipt_sections(
-        self, receipt_sections: list[ReceiptSection]
-    ) -> None:
+    def delete_receipt_sections(self, receipt_sections: list[ReceiptSection]) -> None:
         """
         Deletes multiple ReceiptSections in batch.
 
@@ -228,17 +209,13 @@ class _ReceiptSection(
         ValueError
             If unable to delete receipt_sections.
         """
-        self._validate_entity_list(
-            receipt_sections, ReceiptSection, "receipt_sections"
-        )
+        self._validate_entity_list(receipt_sections, ReceiptSection, "receipt_sections")
 
         try:
             for i in range(0, len(receipt_sections), CHUNK_SIZE):
                 chunk = receipt_sections[i : i + CHUNK_SIZE]
                 request_items = [
-                    WriteRequestTypeDef(
-                        DeleteRequest=DeleteRequestTypeDef(Key=s.key)
-                    )
+                    WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=s.key))
                     for s in chunk
                 ]
                 response = self._client.batch_write_item(
@@ -246,9 +223,7 @@ class _ReceiptSection(
                 )
                 unprocessed = response.get("UnprocessedItems", {})
                 while unprocessed.get(self.table_name):
-                    response = self._client.batch_write_item(
-                        RequestItems=unprocessed
-                    )
+                    response = self._client.batch_write_item(RequestItems=unprocessed)
                     unprocessed = response.get("UnprocessedItems", {})
         except ClientError as e:
             raise EntityValidationError(
@@ -337,9 +312,7 @@ class _ReceiptSection(
                     ":sk": {"S": start_of_sk},
                 },
             )
-            return [
-                item_to_receipt_section(item) for item in response["Items"]
-            ]
+            return [item_to_receipt_section(item) for item in response["Items"]]
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
             if error_code == "ResourceNotFoundException":
@@ -384,9 +357,7 @@ class _ReceiptSection(
         """
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None.")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
+        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )

@@ -92,9 +92,7 @@ class FlattenedStandardMixin:
     ) -> None:
         """Validate a list of entities."""
         self._ensure_validator_initialized()
-        self._validator.validate_entity_list(
-            entities, expected_type, param_name
-        )
+        self._validator.validate_entity_list(entities, expected_type, param_name)
 
     def _validate_image_id(self, image_id: str) -> None:
         """Validate an image ID."""
@@ -109,9 +107,7 @@ class FlattenedStandardMixin:
         if receipt_id is None:
             raise EntityValidationError(f"{param_name} cannot be None")
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise EntityValidationError(
-                f"{param_name} must be a positive integer"
-            )
+            raise EntityValidationError(f"{param_name} must be a positive integer")
 
     def _validate_pagination_params(
         self,
@@ -138,10 +134,7 @@ class FlattenedStandardMixin:
         try:
             self._client.put_item(**put_params)
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 entity_name = entity.__class__.__name__
                 entity_id = getattr(entity, "id", "unknown")
                 raise EntityAlreadyExistsError(
@@ -190,10 +183,7 @@ class FlattenedStandardMixin:
         try:
             self._client.put_item(**put_params)
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 entity_name = entity.__class__.__name__
                 entity_id = getattr(entity, "id", "unknown")
                 raise EntityNotFoundError(
@@ -216,10 +206,7 @@ class FlattenedStandardMixin:
         try:
             self._client.delete_item(**delete_params)
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 entity_name = entity.__class__.__name__
                 entity_id = getattr(entity, "id", "unknown")
                 raise EntityNotFoundError(
@@ -248,9 +235,7 @@ class FlattenedStandardMixin:
 
     # ========== Batch Operations ==========
 
-    def _batch_write_with_retry(
-        self, request_items: List[WriteRequestTypeDef]
-    ) -> None:
+    def _batch_write_with_retry(self, request_items: List[WriteRequestTypeDef]) -> None:
         """Execute batch write operations with retry logic."""
         remaining_items = request_items
 
@@ -265,9 +250,7 @@ class FlattenedStandardMixin:
 
             # Handle unprocessed items
             if "UnprocessedItems" in response:
-                unprocessed = response["UnprocessedItems"].get(
-                    self.table_name, []
-                )
+                unprocessed = response["UnprocessedItems"].get(self.table_name, [])
                 if unprocessed:
                     remaining_items.extend(unprocessed)
 
@@ -382,9 +365,7 @@ class FlattenedStandardMixin:
                     if entity is not None:
                         entities.append(entity)
                         if limit and len(entities) >= limit:
-                            return entities[:limit], response.get(
-                                "LastEvaluatedKey"
-                            )
+                            return entities[:limit], response.get("LastEvaluatedKey")
 
             # Check for more pages
             current_last_key = response.get("LastEvaluatedKey")

@@ -36,14 +36,9 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
         raise EntityValidationError("LastEvaluatedKey must contain PK and SK")
 
     # Check if the values are in the correct format
-    if not all(
-        isinstance(lek[k], dict) and "S" in lek[k] for k in ["PK", "SK"]
-    ):
+    if not all(isinstance(lek[k], dict) and "S" in lek[k] for k in ["PK", "SK"]):
         raise EntityValidationError(
-            (
-                "LastEvaluatedKey values must be in "
-                "DynamoDB format with 'S' attribute"
-            )
+            ("LastEvaluatedKey values must be in " "DynamoDB format with 'S' attribute")
         )
 
 
@@ -65,9 +60,7 @@ class _Queue(
             ValueError: If the queue is invalid or already exists.
         """
         self._validate_entity(queue, Queue, "queue")
-        self._add_entity(
-            queue, condition_expression="attribute_not_exists(PK)"
-        )
+        self._add_entity(queue, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_queues")
     def add_queues(self, queues: list[Queue]) -> None:
@@ -101,9 +94,7 @@ class _Queue(
         self._validate_entity(queue, Queue, "queue")
         self._update_entity(
             queue,
-            condition_expression=(
-                "attribute_exists(PK) AND attribute_exists(SK)"
-            ),
+            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
         )
 
     @handle_dynamodb_errors("delete_queue")
@@ -119,9 +110,7 @@ class _Queue(
         self._validate_entity(queue, Queue, "queue")
         self._delete_entity(
             queue,
-            condition_expression=(
-                "attribute_exists(PK) AND attribute_exists(SK)"
-            ),
+            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
         )
 
     @handle_dynamodb_errors("get_queue")
@@ -229,9 +218,7 @@ class _Queue(
         # expression to ensure it exists
         self._delete_entity(
             queue_job,
-            condition_expression=(
-                "attribute_exists(PK) AND attribute_exists(SK)"
-            ),
+            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
         )
 
         # Update the job count for the queue
@@ -279,9 +266,7 @@ class _Queue(
 
         return self._query_entities(
             index_name=None,
-            key_condition_expression=(
-                "PK = :pk AND begins_with(SK, :job_prefix)"
-            ),
+            key_condition_expression=("PK = :pk AND begins_with(SK, :job_prefix)"),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": f"QUEUE#{queue_name}"},
