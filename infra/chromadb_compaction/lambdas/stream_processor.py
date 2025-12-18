@@ -279,23 +279,3 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     finally:
         # Stop monitoring
         stop_compaction_lambda_monitoring()
-
-
-# Re-export for backward compatibility with existing tests
-from processor import (
-    ChromaDBCollection,
-    FieldChange,
-    ParsedStreamRecord,
-    StreamMessage,
-)
-from processor import detect_entity_type as _detect_entity_type
-from processor import (
-    get_chromadb_relevant_changes,
-)
-from processor import is_compaction_run as _is_compaction_run
-from processor import parse_compaction_run as _parse_compaction_run
-from processor import parse_entity as _parse_entity
-from processor import (
-    parse_stream_record,
-)
-from processor import publish_messages as send_messages_to_queues
