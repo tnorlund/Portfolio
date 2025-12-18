@@ -11,6 +11,7 @@ from typing import Any, cast
 
 import requests  # type: ignore[import-untyped]  # types-requests in dev dependencies
 from tenacity import (
+    RetryError,
     retry,
     retry_if_exception_type,
     stop_after_attempt,
