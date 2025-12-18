@@ -34,6 +34,7 @@ from receipt_dynamo.entities.util import (
     normalize_enum,
     validate_positive_int,
 )
+from receipt_dynamo.utils.geospatial import calculate_geohash
 
 # Validation thresholds (inherit from ReceiptMetadata for consistency)
 MIN_PHONE_DIGITS = 7
@@ -188,6 +189,20 @@ class ReceiptPlace(SerializationMixin):
             val = getattr(self, attr, None)
             if val is not None and not (-180.0 <= val <= 180.0):
                 raise ValueError(f"{attr} out of range: {val}")
+
+        # Auto-calculate geohash from coordinates if not provided
+        if self.latitude is not None and self.longitude is not None:
+            if not self.geohash:
+                try:
+                    self.geohash = calculate_geohash(
+                        self.latitude, self.longitude, precision=6
+                    )
+                except ValueError as e:
+                    # Only warn, don't fail - geohash is optional
+                    import logging
+                    logging.warning(
+                        f"Failed to calculate geohash for {self.place_id}: {e}"
+                    )
 
     @property
     def key(self) -> dict[str, dict[str, str]]:
