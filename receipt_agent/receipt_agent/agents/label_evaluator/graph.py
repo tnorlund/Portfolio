@@ -84,6 +84,12 @@ except ImportError:
         "SUBTOTAL": "Subtotal before tax and discounts.",
         "TAX": "Tax amount (sales tax, VAT, etc.).",
         "GRAND_TOTAL": "Final total amount paid (after all discounts and taxes).",
+        # Payment-related labels (added 2025-12-18)
+        # These were missing from original schema and caused mislabeling in training data.
+        # When these values appeared on receipts, they were incorrectly labeled as LINE_TOTAL.
+        "CHANGE": "Change amount returned to the customer after transaction.",
+        "CASH_BACK": "Cash back amount dispensed from purchase.",
+        "REFUND": "Refund amount (full or partial return).",
     }
 
 logger = logging.getLogger(__name__)

@@ -75,6 +75,19 @@ CROSS_GROUP_PRIORITY_PAIRS = {
     ("LINE_TOTAL", "COUPON"),
 }
 
+# Conflicting label pairs that should NEVER appear on the same word position
+# These indicate data quality issues in training labels
+CONFLICTING_LABEL_PAIRS = {
+    # Line item quantity/price pairs (a price can't be both unit and line total for same item)
+    ("QUANTITY", "UNIT_PRICE"),
+    ("QUANTITY", "LINE_TOTAL"),
+    ("UNIT_PRICE", "LINE_TOTAL"),
+    # Semantic impossibilities
+    ("PRODUCT_NAME", "QUANTITY"),
+    ("PRODUCT_NAME", "UNIT_PRICE"),
+    ("PRODUCT_NAME", "LINE_TOTAL"),
+}
+
 
 # Geometry helpers
 def _calculate_angle_degrees(
@@ -1347,6 +1360,41 @@ def _is_plausible_for_label(text: str, label: str) -> bool:
 
     # Default: be permissive
     return True
+
+
+def detect_label_conflicts(labels: List[ReceiptWordLabel]) -> List[Tuple[int, int, Set[str]]]:
+    """
+    Detect when the same word position has conflicting labels.
+
+    This identifies data quality issues in training labels where semantic
+    contradictions appear (e.g., same price labeled as both UNIT_PRICE and LINE_TOTAL).
+
+    Args:
+        labels: All ReceiptWordLabel objects for a receipt
+
+    Returns:
+        List of (line_id, word_id, conflicting_labels) tuples where labels conflict
+    """
+    # Group labels by position
+    labels_by_position = defaultdict(set)
+    for label in labels:
+        position = (label.line_id, label.word_id)
+        labels_by_position[position].add(label.label)
+
+    conflicts = []
+    for position, label_set in labels_by_position.items():
+        # Check if any conflicting pair exists in this position's labels
+        for label1, label2 in CONFLICTING_LABEL_PAIRS:
+            if label1 in label_set and label2 in label_set:
+                line_id, word_id = position
+                conflicts.append((line_id, word_id, label_set))
+                logger.warning(
+                    f"Label conflict at line {line_id}, word {word_id}: "
+                    f"{label1} and {label2} both present (all labels: {label_set})"
+                )
+                break  # Only report once per position
+
+    return conflicts
 
 
 def evaluate_word_contexts(
