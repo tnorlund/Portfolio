@@ -1,29 +1,35 @@
 #!/usr/bin/env python3
 """
-Profile compute_merchant_patterns() with Scalene.
+Benchmark compute_merchant_patterns() with Scalene profiler.
 
 Micro-benchmark for the two-pass label pattern computation algorithm.
 Loads real receipt data from DynamoDB and profiles the core geometry
 computation, optionally skipping LLM batch classification.
 
-Usage:
+This benchmark is designed to measure performance over time as the package
+evolves, enabling regression detection and optimization validation.
+
+Usage (from repo root):
+    # Install perf dependencies first
+    pip install -e 'receipt_agent[perf]'
+
     # Profile with 10 Sprouts receipts (default, skip LLM batching)
-    python dev.profile_pattern_computation.py --merchant Sprouts
+    python -m receipt_agent.tests.benchmarks.benchmark_pattern_computation --merchant Sprouts
 
     # Include LLM batch classification (slower, more realistic)
-    python dev.profile_pattern_computation.py --merchant Sprouts --include-batching
+    python -m receipt_agent.tests.benchmarks.benchmark_pattern_computation --merchant Sprouts --include-batching
 
     # Custom receipt count
-    python dev.profile_pattern_computation.py --merchant Sprouts --limit 20
+    python -m receipt_agent.tests.benchmarks.benchmark_pattern_computation --merchant Sprouts --limit 20
 
     # Different merchant
-    python dev.profile_pattern_computation.py --merchant Target --limit 10
+    python -m receipt_agent.tests.benchmarks.benchmark_pattern_computation --merchant Target --limit 10
 
     # Use prod stack
-    python dev.profile_pattern_computation.py --merchant Sprouts --stack prod --limit 10
+    python -m receipt_agent.tests.benchmarks.benchmark_pattern_computation --merchant Sprouts --stack prod --limit 10
 
     # Verbose logging
-    python dev.profile_pattern_computation.py --merchant Sprouts --verbose
+    python -m receipt_agent.tests.benchmarks.benchmark_pattern_computation --merchant Sprouts --verbose
 """
 
 import argparse
@@ -32,18 +38,11 @@ import logging
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-# Add repo root to path
-repo_root = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, repo_root)
-
-from receipt_dynamo.data._pulumi import load_env
-from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_agent.agents.label_evaluator.helpers import (
     compute_merchant_patterns,
 )
@@ -51,19 +50,35 @@ from receipt_agent.agents.label_evaluator.state import (
     MerchantPatterns,
     OtherReceiptData,
 )
+from receipt_dynamo.data._pulumi import load_env
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger(__name__)
 
 
-def load_environment(stack: str = "dev") -> Tuple[str, str]:
+def find_repo_root() -> Path:
+    """Find repository root by locating the infra directory."""
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / "infra").exists():
+            return parent
+    raise RuntimeError(
+        "Could not find repo root (looking for 'infra' directory)"
+    )
+
+
+def load_environment(stack: str = "dev") -> str:
     """Load environment configuration from Pulumi."""
     try:
-        infra_dir = os.path.join(repo_root, "infra")
-        env = load_env(stack, working_dir=infra_dir)
+        repo_root = find_repo_root()
+        infra_dir = repo_root / "infra"
+        env = load_env(stack, working_dir=str(infra_dir))
 
         table_name = env.get("dynamodb_table_name")
         if not table_name:
-            raise ValueError(f"Missing dynamodb_table_name in {stack} stack")
+            raise ValueError(
+                f"Missing dynamodb_table_name in {stack} stack"
+            )
 
         return table_name
     except Exception as e:
@@ -185,7 +200,7 @@ def run_pattern_computation(
     if skip_batching:
         import receipt_agent.agents.label_evaluator.helpers as helpers
 
-        def mock_batch_classification(*args, **kwargs):
+        def mock_batch_classification(*args, **kwargs):  # type: ignore
             """Skip LLM calls by returning empty batches."""
             return {
                 "HAPPY": [],
@@ -258,7 +273,9 @@ def build_metrics(
             "label_pairs_selected": len(result.label_pair_geometry)
             if result
             else 0,
-            "label_pairs_total": len(result.all_observed_pairs) if result else 0,
+            "label_pairs_total": len(result.all_observed_pairs)
+            if result
+            else 0,
             "unique_labels": len(result.label_positions) if result else 0,
             "receipts_processed": result.receipt_count if result else 0,
         },
@@ -268,17 +285,15 @@ def build_metrics(
 
 
 def run_with_scalene(
-    profiling_func,
     merchant_name: str,
     data: List[OtherReceiptData],
     skip_batching: bool,
     output_dir: Path,
 ) -> Tuple[Path, float]:
     """
-    Run profiling function with Scalene CLI.
+    Run pattern computation with Scalene CLI profiler.
 
     Args:
-        profiling_func: Function to profile
         merchant_name: Merchant name
         data: Receipt data to process
         skip_batching: Skip LLM batching
@@ -289,6 +304,7 @@ def run_with_scalene(
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     html_path = output_dir / f"pattern_computation_{timestamp}.html"
+    repo_root = find_repo_root()
 
     # Create temporary wrapper script
     wrapper_code = f'''
@@ -329,6 +345,8 @@ with open("{output_dir}/_result_{timestamp}.pkl", "wb") as f:
     # Save data to pickle file
     data_file = output_dir / f"_data_{timestamp}.pkl"
     with open(data_file, "wb") as f:
+        import pickle
+
         pickle.dump(data, f)
 
     # Run with Scalene
@@ -343,7 +361,7 @@ with open("{output_dir}/_result_{timestamp}.pkl", "wb") as f:
         str(wrapper_script),
     ]
 
-    logger.info(f"Running Scalene profiling...")
+    logger.info("Running Scalene profiling...")
     result = subprocess.run(
         cmd,
         capture_output=True,
@@ -356,6 +374,8 @@ with open("{output_dir}/_result_{timestamp}.pkl", "wb") as f:
         raise RuntimeError(f"Scalene profiling failed: {result.stderr}")
 
     # Load result
+    import pickle
+
     result_file = output_dir / f"_result_{timestamp}.pkl"
     with open(result_file, "rb") as f:
         _, elapsed_time = pickle.load(f)
@@ -370,7 +390,7 @@ with open("{output_dir}/_result_{timestamp}.pkl", "wb") as f:
     return html_path, elapsed_time
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(
         description="Profile compute_merchant_patterns() with Scalene"
@@ -438,22 +458,22 @@ def main():
         dynamo_client = DynamoClient(table_name)
 
         # Load receipt data
-        logger.info(f"Loading receipt data...")
+        logger.info("Loading receipt data...")
         other_receipt_data = load_receipt_data(
             dynamo_client, args.merchant, args.limit
         )
 
         # Run profiling with Scalene
-        logger.info(f"Starting Scalene profiling...")
+        logger.info("Starting Scalene profiling...")
         html_path, elapsed_time = run_with_scalene(
-            run_pattern_computation,
             args.merchant,
             other_receipt_data,
             args.skip_batching,
             output_dir,
         )
 
-        # Run once more without Scalene for metrics (avoids Scalene overhead)
+        # Run once more without Scalene for metrics (avoids Scalene
+        # overhead)
         logger.info("Collecting metrics...")
         result, actual_elapsed = run_pattern_computation(
             other_receipt_data, args.merchant, args.skip_batching
