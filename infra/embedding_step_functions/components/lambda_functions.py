@@ -364,6 +364,18 @@ class LambdaFunctionsComponent(ComponentResource):
         ]:
             env_vars["CHROMADB_BUCKET"] = self.chromadb_buckets.bucket_name
 
+        # Add optimization configuration for batched chunk processing
+        # CHUNKS_PER_LAMBDA: Process multiple chunks per Lambda invocation (default: 4)
+        # Reduces Lambda invocations by ~75% (e.g., 64 chunks → 16 Lambda invocations)
+        if config["source_dir"] == "normalize_poll_batches_data":
+            env_vars["CHUNKS_PER_LAMBDA"] = "4"  # Conservative: 3, Recommended: 4, Aggressive: 5
+
+        # Add optimization configuration for N-way merge
+        # MERGE_GROUP_SIZE: Group size for parallel reduce (default: 10 instead of 2)
+        # Reduces merge rounds from O(log₂ N) to O(log₁₀ N)
+        if config["source_dir"] == "prepare_merge_pairs":
+            env_vars["MERGE_GROUP_SIZE"] = "10"  # Conservative: 8, Recommended: 10, Aggressive: 12
+
         # Create the Lambda function
         # Determine which layers are needed based on imports
         # - dynamo_layer: Only receipt_dynamo

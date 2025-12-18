@@ -183,18 +183,26 @@ def compact_handler(
 
 def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Process a chunk of deltas without acquiring locks.
+    Process one or more chunks of deltas without acquiring locks.
+
+    Supports batched processing: can process multiple chunks sequentially
+    in a single Lambda invocation to reduce invocation overhead.
 
     Writes output to intermediate/{batch_id}/chunk-{index}/ in S3.
 
     Supports two modes:
     1. Inline mode: delta_results provided directly in event
-    2. S3 mode: chunks_s3_key and chunks_s3_bucket provided, downloads specific chunk by chunk_index
+    2. S3 mode: chunks_s3_key and chunks_s3_bucket provided, downloads specific chunk(s) by index
+
+    Supports batched processing:
+    - chunk_indices: Array of chunk indices to process (NEW)
+    - chunk_index: Single chunk index (backward compatible)
     """
-    logger.info("Processing chunk compaction")
+    logger.info("Processing chunk compaction (batched mode supported)")
 
     batch_id = event.get("batch_id")
-    chunk_index = event.get("chunk_index")
+    chunk_index = event.get("chunk_index")  # Single chunk (backward compatible)
+    chunk_indices = event.get("chunk_indices")  # Multiple chunks (batched)
     delta_results = event.get("delta_results", [])
     database_name = event.get("database")  # Track database for this chunk
 
@@ -208,13 +216,141 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "error": "batch_id is required for chunk processing",
         }
 
-    if chunk_index is None:
+    # Support both single chunk and multiple chunks
+    if chunk_indices is None and chunk_index is None:
         return {
             "statusCode": 400,
-            "error": "chunk_index is required for chunk processing",
+            "error": "Either chunk_index or chunk_indices is required for chunk processing",
         }
 
-    # If delta_results not provided but S3 info is, download chunk from S3
+    # Convert single chunk_index to array for uniform processing
+    if chunk_indices is None:
+        chunk_indices = [chunk_index]
+
+    logger.info(
+        "Processing chunks in batch",
+        batch_id=batch_id,
+        chunk_count=len(chunk_indices),
+        chunk_indices=chunk_indices,
+    )
+
+    # Process all chunks and collect intermediate results
+    intermediate_results = []
+
+    for idx, current_chunk_index in enumerate(chunk_indices):
+        logger.info(
+            "Processing chunk %d of %d",
+            idx + 1,
+            len(chunk_indices),
+            chunk_index=current_chunk_index,
+        )
+
+        # Process single chunk
+        try:
+            intermediate_key = _process_single_chunk(
+                batch_id=batch_id,
+                chunk_index=current_chunk_index,
+                delta_results=delta_results if idx == 0 else [],  # Only use inline delta_results for first chunk
+                chunks_s3_key=chunks_s3_key,
+                chunks_s3_bucket=chunks_s3_bucket,
+            )
+
+            # Skip empty chunks (None return value)
+            if intermediate_key is None:
+                logger.info(
+                    "Skipping empty chunk %d of %d",
+                    idx + 1,
+                    len(chunk_indices),
+                    chunk_index=current_chunk_index,
+                )
+                continue
+
+            intermediate_results.append({"intermediate_key": intermediate_key})
+
+            logger.info(
+                "Completed chunk %d of %d",
+                idx + 1,
+                len(chunk_indices),
+                chunk_index=current_chunk_index,
+                intermediate_key=intermediate_key,
+            )
+        except Exception as e:
+            logger.exception(
+                "Failed to process chunk %d of %d",
+                idx + 1,
+                len(chunk_indices),
+                chunk_index=current_chunk_index,
+                error=str(e),
+            )
+            raise
+
+    # Handle case where all chunks were empty
+    if len(intermediate_results) == 0:
+        logger.info(
+            "All chunks were empty, returning empty result",
+            batch_id=batch_id,
+        )
+        return {
+            "statusCode": 200,
+            "batch_id": batch_id,
+            "embeddings_processed": 0,
+            "message": "All chunks were empty",
+        }
+
+    # If only one chunk, return its intermediate directly
+    if len(intermediate_results) == 1:
+        logger.info(
+            "Single chunk processed, returning intermediate",
+            intermediate_key=intermediate_results[0]["intermediate_key"],
+        )
+        return intermediate_results[0]
+
+    # Multiple chunks: merge them into a single intermediate
+    logger.info(
+        "Merging %d chunk intermediates into single result",
+        len(intermediate_results),
+        batch_id=batch_id,
+    )
+
+    # Extract intermediate keys for merging
+    intermediate_keys = [result["intermediate_key"] for result in intermediate_results]
+
+    # Merge all intermediates using the existing merge logic
+    merge_result = perform_intermediate_merge(
+        batch_id=f"{batch_id}-batch",
+        group_index=chunk_indices[0],  # Use first chunk index as identifier
+        intermediate_keys=intermediate_keys,
+        database_name=database_name,
+    )
+
+    logger.info(
+        "Batch chunk processing completed",
+        chunk_count=len(chunk_indices),
+        merged_intermediate_key=merge_result["intermediate_key"],
+    )
+
+    return {
+        "intermediate_key": merge_result["intermediate_key"],
+    }
+
+
+def _process_single_chunk(
+    batch_id: str,
+    chunk_index: int,
+    delta_results: List[Dict[str, Any]],
+    chunks_s3_key: str,
+    chunks_s3_bucket: str,
+) -> Optional[str]:
+    """
+    Process a single chunk and return its intermediate key.
+
+    This is extracted from the original process_chunk_handler to support
+    batched processing of multiple chunks.
+
+    Returns:
+        intermediate_key: S3 key of the intermediate snapshot, or None for empty chunks
+    """
+    # Download chunk from S3 if needed
     if not delta_results and chunks_s3_key and chunks_s3_bucket:
         logger.info(
             "Downloading chunk from S3",
@@ -223,16 +359,7 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             bucket=chunks_s3_bucket,
         )
         try:
-            import json
-            import os
-            import tempfile
-
-            import boto3
-
-            s3_client = boto3.client("s3")
-
             # Download chunks file from S3
-            # Use NamedTemporaryFile for secure, atomic temp file creation
             tmp_file = tempfile.NamedTemporaryFile(
                 delete=False, suffix=".json"
             )
@@ -255,12 +382,7 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                         break
 
                 if not chunk_found:
-                    return {
-                        "statusCode": 404,
-                        "error": f"Chunk {chunk_index} not found in S3 chunks file",
-                        "batch_id": batch_id,
-                        "chunk_index": chunk_index,
-                    }
+                    raise ValueError(f"Chunk {chunk_index} not found in S3 chunks file")
 
                 # Extract delta_results from the chunk
                 delta_results = chunk_found.get("delta_results", [])
@@ -281,28 +403,16 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 chunk_index=chunk_index,
                 error=str(e),
             )
-            return {
-                "statusCode": 500,
-                "error": f"Failed to download chunk from S3: {str(e)}",
-                "batch_id": batch_id,
-                "chunk_index": chunk_index,
-            }
+            raise
 
     if not delta_results:
         logger.info(
             "No delta results in chunk, skipping", chunk_index=chunk_index
         )
-        return {
-            "statusCode": 200,
-            "batch_id": batch_id,
-            "chunk_index": chunk_index,
-            "embeddings_processed": 0,
-            "message": "Empty chunk processed",
-        }
+        # Return None to indicate empty chunk (will be filtered out)
+        return None
 
-    # Process all deltas in the chunk (chunk size is controlled by SplitIntoChunks)
-    # Previously had a hardcoded limit of 10, but this was causing deltas to be dropped
-    # when CHUNK_SIZE_WORDS was increased to 15. Now we process all deltas in the chunk.
+    # Process all deltas in the chunk
     chunk_deltas = delta_results
 
     # Group chunk deltas by collection name for collection-aware processing
@@ -321,31 +431,19 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         batch_id=batch_id,
     )
 
-    try:
-        # Process chunk deltas with collection awareness
-        chunk_result = process_chunk_deltas(
-            batch_id, chunk_index, chunk_deltas, deltas_by_collection
-        )
+    # Process chunk deltas with collection awareness
+    chunk_result = process_chunk_deltas(
+        batch_id, chunk_index, chunk_deltas, deltas_by_collection
+    )
 
-        # Prepare minimal response for Map state
-        response = {
-            "intermediate_key": chunk_result["intermediate_key"],
-        }
+    logger.info(
+        "Chunk processing completed",
+        chunk_index=chunk_index,
+        intermediate_key=chunk_result["intermediate_key"],
+    )
 
-        logger.info(
-            "Chunk processing completed",
-            chunk_index=chunk_index,
-            response=response,
-        )
-        return response
-
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error(
-            "Chunk processing failed", chunk_index=chunk_index, error=str(e)
-        )
-        # Raise exception instead of returning error object
-        # This allows Step Functions to properly handle the failure with retry logic
-        raise
+    # Return just the intermediate_key string
+    return chunk_result["intermediate_key"]
 
 
 def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
