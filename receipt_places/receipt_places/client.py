@@ -2,8 +2,7 @@
 Google Places API client with automatic DynamoDB caching.
 
 This module provides a clean interface to the Google Places API
-with built-in caching to minimize API costs. All results are typed
-via Pydantic models with data quality validation.
+with built-in caching to minimize API costs.
 """
 
 import logging
@@ -12,7 +11,6 @@ from typing import Any, cast
 
 import requests  # type: ignore[import-untyped]  # types-requests in dev dependencies
 from tenacity import (
-    RetryError,
     retry,
     retry_if_exception_type,
     stop_after_attempt,
@@ -107,83 +105,38 @@ class PlacesClient:
             "enabled" if self._config.cache_enabled else "disabled",
         )
 
+    @retry(
+        retry=retry_if_exception_type(requests.exceptions.Timeout),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+    )
     def _make_request(
         self,
         endpoint: str,
         params: dict[str, Any],
     ) -> dict[str, Any]:
         """
-        Make an HTTP request to the Places API with configurable retries.
+        Make an HTTP request to the Places API with automatic retries on timeout.
 
-        Retries on:
-        - Timeout exceptions
-        - 429 Too Many Requests (rate limiting)
-        - 5xx Server errors
-
-        Respects the max_retries configuration setting.
+        Retries on timeout exceptions up to 3 times with exponential backoff.
+        HTTP errors and API errors are not retried.
         """
-
-        def should_retry(exc: Exception) -> bool:
-            """Determine if an exception warrants a retry."""
-            if isinstance(exc, requests.exceptions.Timeout):
-                return True
-            if (
-                isinstance(exc, requests.exceptions.HTTPError)
-                and exc.response is not None
-            ):
-                # Retry on 429 (rate limit) and 5xx errors
-                status_code = exc.response.status_code
-                return status_code == 429 or status_code >= 500
-            return False
-
         url = f"{self.BASE_URL}/{endpoint}"
         params["key"] = self._api_key
 
-        # Build retry decorator with config-based max attempts
-        retry_decorator = retry(
-            retry=retry_if_exception_type(
-                (
-                    requests.exceptions.Timeout,
-                    requests.exceptions.RequestException,
-                )
-            ),
-            stop=stop_after_attempt(self._config.max_retries),
-            wait=wait_exponential(multiplier=1, min=1, max=10),
-        )
+        response = requests.get(url, params=params, timeout=self._timeout)
+        response.raise_for_status()
 
-        @retry_decorator
-        def _do_request() -> dict[str, Any]:
-            try:
-                response = requests.get(
-                    url, params=params, timeout=self._timeout
-                )
-                response.raise_for_status()
-            except requests.exceptions.HTTPError as e:
-                # Check if this is a transient error worth retrying
-                if not should_retry(e):
-                    # Not a transient error, don't retry
-                    logger.error(
-                        "HTTP error (non-transient): %s",
-                        e.response.status_code if e.response else "unknown",
-                    )
-                    raise
-                # Transient error, let tenacity handle the retry
-                raise
+        data = cast(dict[str, Any], response.json())
+        status = data.get("status", "UNKNOWN")
 
-            data = cast(dict[str, Any], response.json())
-            status = data.get("status", "UNKNOWN")
+        if status not in ("OK", "ZERO_RESULTS"):
+            error_msg = data.get(
+                "error_message", f"API returned status: {status}"
+            )
+            logger.warning("Places API error: %s (status=%s)", error_msg, status)
 
-            if status not in ("OK", "ZERO_RESULTS"):
-                error_msg = data.get(
-                    "error_message", f"API returned status: {status}"
-                )
-                logger.warning(
-                    "Places API error: %s (status=%s)", error_msg, status
-                )
-
-            return data
-
-        return _do_request()
+        return data
 
     def search_by_phone(self, phone_number: str) -> Place | None:
         """
@@ -220,22 +173,22 @@ class PlacesClient:
         # Fallback to text search
         return self._try_text_search_fallback(phone_number, digits)
 
+    def _extract_digits(self, phone_number: str) -> str:
+        """Extract only digits from phone number."""
+        return "".join(c for c in phone_number if c.isdigit())
+
     def _is_valid_phone(self, phone_number: str) -> bool:
         """Check if phone number has valid format (non-empty, enough digits)."""
         if not phone_number:
             logger.debug("Empty phone number, skipping search")
             return False
 
-        digits = "".join(c for c in phone_number if c.isdigit())
+        digits = self._extract_digits(phone_number)
         if len(digits) < 7:
             logger.debug("Phone number too short: %s", phone_number)
             return False
 
         return True
-
-    def _extract_digits(self, phone_number: str) -> str:
-        """Extract only digits from phone number."""
-        return "".join(c for c in phone_number if c.isdigit())
 
     def _try_cached_phone_result(
         self, digits: str, expected_fields: set[str]

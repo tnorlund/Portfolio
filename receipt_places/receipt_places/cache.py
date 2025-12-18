@@ -5,7 +5,6 @@ This module handles DynamoDB operations for caching Places API responses,
 using the PlacesCache entity and DynamoClient from receipt_dynamo.
 """
 
-import contextlib
 import logging
 import re
 import time
@@ -71,41 +70,6 @@ class CacheManager:
             )
 
         logger.info("CacheManager initialized for table: %s", self._table_name)
-
-    def _normalize_phone(self, phone: str) -> str:
-        """Normalize phone number to digits only."""
-        return "".join(c for c in phone if c.isdigit())
-
-    def _normalize_address(self, address: str) -> str:
-        """
-        Normalize address for consistent cache lookups.
-
-        Converts to uppercase and removes extra whitespace.
-        """
-        if not address:
-            return ""
-
-        # Uppercase and normalize whitespace
-        normalized = " ".join(address.upper().split())
-
-        # Common abbreviation expansions
-        replacements = [
-            (r"\bST\b", "STREET"),
-            (r"\bAVE\b", "AVENUE"),
-            (r"\bBLVD\b", "BOULEVARD"),
-            (r"\bRD\b", "ROAD"),
-            (r"\bDR\b", "DRIVE"),
-            (r"\bLN\b", "LANE"),
-            (r"\bCT\b", "COURT"),
-            (r"\bPL\b", "PLACE"),
-            (r"\bAPT\b", "APARTMENT"),
-            (r"\bSTE\b", "SUITE"),
-        ]
-
-        for pattern, replacement in replacements:
-            normalized = re.sub(pattern, replacement, normalized)
-
-        return normalized
 
     def _build_key(
         self, search_type: SearchType, search_value: str
@@ -339,8 +303,10 @@ class CacheManager:
     def _increment_query_count(self, cache_item: PlacesCache) -> None:
         """Increment the query count for a cache entry."""
         # Non-critical, don't fail the request
-        with contextlib.suppress(Exception):
+        try:
             self._client.increment_query_count(cache_item)
+        except (OperationError, ReceiptDynamoError) as e:
+            logger.debug("Failed to increment query count (non-critical): %s", e)
 
     def delete(
         self,
@@ -393,7 +359,11 @@ class CacheManager:
         """
         Get cache statistics.
 
-        Returns count of entries by search type.
+        Returns count of entries by search type (sampled up to 1000 items).
+
+        NOTE: For large caches, this returns sampled results and includes
+        a "sampled" flag. For accurate total counts, use CloudWatch metrics
+        or DynamoDB Capacity Insights.
         """
         try:
             # list_places_caches returns items from GSI2 (LAST_USED index)
@@ -412,6 +382,7 @@ class CacheManager:
             return {
                 "entries_by_type": stats,
                 "total_entries": sum(stats.values()),
+                "sampled": True,  # Data is sampled up to 1000 items
                 "cache_enabled": self._config.cache_enabled,
                 "ttl_days": self._config.cache_ttl_days,
             }
@@ -420,6 +391,7 @@ class CacheManager:
             return {
                 "entries_by_type": {"ADDRESS": 0, "PHONE": 0, "URL": 0},
                 "total_entries": 0,
+                "sampled": True,
                 "cache_enabled": self._config.cache_enabled,
                 "ttl_days": self._config.cache_ttl_days,
                 "error": str(e),

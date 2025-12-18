@@ -9,19 +9,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class LatLng(BaseModel):
     """Geographic point: latitude and longitude."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     latitude: float = Field(..., alias="lat")
     longitude: float = Field(..., alias="lng")
-
-    class Config:  # pylint: disable=too-few-public-methods
-        """Pydantic config: allows using both field names and aliases."""
-
-        populate_by_name = True
 
     @field_validator("latitude")
     @classmethod
@@ -88,42 +85,31 @@ class OpeningHoursPeriod(BaseModel):
 class OpeningHours(BaseModel):
     """Business opening hours."""
 
-    open_now: bool | None = Field(None, alias="open_now")
+    model_config = ConfigDict(populate_by_name=True)
+
+    open_now: bool | None = None
     periods: list[OpeningHoursPeriod] | None = None
-    weekday_text: list[str] | None = Field(None, alias="weekday_text")
-
-    class Config:  # pylint: disable=too-few-public-methods
-        """Pydantic config: allows using both field names and aliases."""
-
-        populate_by_name = True
+    weekday_text: list[str] | None = None
 
 
 class Photo(BaseModel):
     """Photo metadata from Google Places."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     height: int | None = None
-    html_attributions: list[str] | None = Field(
-        None, alias="html_attributions"
-    )
-    photo_reference: str | None = Field(None, alias="photo_reference")
+    html_attributions: list[str] | None = None
+    photo_reference: str | None = None
     width: int | None = None
-
-    class Config:  # pylint: disable=too-few-public-methods
-        """Pydantic config: allows using both field names and aliases."""
-
-        populate_by_name = True
 
 
 class PlusCode(BaseModel):
     """Plus code for a location."""
 
-    compound_code: str | None = Field(None, alias="compound_code")
-    global_code: str | None = Field(None, alias="global_code")
+    model_config = ConfigDict(populate_by_name=True)
 
-    class Config:  # pylint: disable=too-few-public-methods
-        """Pydantic config: allows using both field names and aliases."""
-
-        populate_by_name = True
+    compound_code: str | None = None
+    global_code: str | None = None
 
 
 class Place(BaseModel):
@@ -135,47 +121,38 @@ class Place(BaseModel):
     to ensure you got the fields you requested.
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     # Identifiers
-    place_id: str | None = Field(None, alias="place_id")
+    place_id: str | None = None
     name: str | None = None
 
     # Address
-    formatted_address: str | None = Field(None, alias="formatted_address")
-    short_formatted_address: str | None = Field(
-        None, alias="short_formatted_address"
-    )
+    formatted_address: str | None = None
+    short_formatted_address: str | None = None
     vicinity: str | None = None
 
     # Geo
     geometry: Geometry | None = None
-    plus_code: PlusCode | None = Field(None, alias="plus_code")
+    plus_code: PlusCode | None = None
 
     # Classification
     types: list[str] | None = None
-    business_status: str | None = Field(None, alias="business_status")
+    business_status: str | None = None
 
     # Ratings & Reviews
     rating: float | None = None
-    user_ratings_total: int | None = Field(None, alias="user_ratings_total")
+    user_ratings_total: int | None = None
 
     # Contact
-    formatted_phone_number: str | None = Field(
-        None, alias="formatted_phone_number"
-    )
-    international_phone_number: str | None = Field(
-        None, alias="international_phone_number"
-    )
+    formatted_phone_number: str | None = None
+    international_phone_number: str | None = None
     website: str | None = None
     url: str | None = None
 
     # Business Info
-    opening_hours: OpeningHours | None = Field(None, alias="opening_hours")
+    opening_hours: OpeningHours | None = None
     photos: list[Photo] | None = None
-
-    class Config:  # pylint: disable=too-few-public-methods
-        """Pydantic config: allows using both field names and aliases."""
-
-        populate_by_name = True
 
     @field_validator("rating")
     @classmethod
@@ -225,85 +202,65 @@ class Place(BaseModel):
 class Candidate(BaseModel):
     """A candidate result from findplacefromtext."""
 
-    formatted_address: str | None = Field(None, alias="formatted_address")
+    model_config = ConfigDict(populate_by_name=True)
+
+    formatted_address: str | None = None
     geometry: Geometry | None = None
     name: str | None = None
-    place_id: str | None = Field(None, alias="place_id")
+    place_id: str | None = None
     types: list[str] | None = None
-    business_status: str | None = Field(None, alias="business_status")
-
-    class Config:  # pylint: disable=too-few-public-methods
-        """Pydantic config: allows using both field names and aliases."""
-
-        populate_by_name = True
+    business_status: str | None = None
 
 
 class Prediction(BaseModel):
     """An autocomplete prediction."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     description: str | None = None
-    place_id: str | None = Field(None, alias="place_id")
+    place_id: str | None = None
     reference: str | None = None
-    structured_formatting: dict[str, Any] | None = Field(
-        None, alias="structured_formatting"
-    )
+    structured_formatting: dict[str, Any] | None = None
     types: list[str] | None = None
-
-    class Config:  # pylint: disable=too-few-public-methods
-        """Pydantic config: allows using both field names and aliases."""
-
-        populate_by_name = True
 
 
 # Legacy API Response Wrappers
 class LegacyDetailsResponse(BaseModel):
     """Response from places/details/json endpoint."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     status: str
     result: dict[str, Any] | None = None
-    error_message: str | None = Field(None, alias="error_message")
-
-    class Config:  # pylint: disable=too-few-public-methods
-        """Pydantic config: allows using both field names and aliases."""
-
-        populate_by_name = True
+    error_message: str | None = None
 
 
 class LegacyCandidatesResponse(BaseModel):
     """Response from places/findplacefromtext/json endpoint."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     status: str
     candidates: list[dict[str, Any]] | None = None
-    error_message: str | None = Field(None, alias="error_message")
-
-    class Config:  # pylint: disable=too-few-public-methods
-        """Pydantic config: allows using both field names and aliases."""
-
-        populate_by_name = True
+    error_message: str | None = None
 
 
 class LegacySearchResponse(BaseModel):
     """Response from textsearch/json or nearbysearch/json endpoints."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     status: str
     results: list[dict[str, Any]] | None = None
-    next_page_token: str | None = Field(None, alias="next_page_token")
-    error_message: str | None = Field(None, alias="error_message")
-
-    class Config:  # pylint: disable=too-few-public-methods
-        """Pydantic config: allows using both field names and aliases."""
-
-        populate_by_name = True
+    next_page_token: str | None = None
+    error_message: str | None = None
 
 
 class LegacyAutocompleteResponse(BaseModel):
     """Response from places/autocomplete/json endpoint."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     status: str
     predictions: list[dict[str, Any]] | None = None
-    error_message: str | None = Field(None, alias="error_message")
-
-    class Config:  # pylint: disable=too-few-public-methods
-        """Pydantic config: allows using both field names and aliases."""
-
-        populate_by_name = True
+    error_message: str | None = None
