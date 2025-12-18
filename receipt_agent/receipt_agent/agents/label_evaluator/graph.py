@@ -457,7 +457,7 @@ def create_label_evaluator_graph(
                     issue, state.visual_lines, merchant_name
                 )
 
-                # Query ChromaDB for similar validated words
+                # Query ChromaDB for similar validated words (scoped to same merchant)
                 similar_words_text = "ChromaDB not configured - no similar words available."
                 if _chroma_client:
                     try:
@@ -466,6 +466,7 @@ def create_label_evaluator_graph(
                             chroma_client=_chroma_client,
                             n_results=10,
                             min_similarity=0.6,
+                            merchant_name=merchant_name,
                         )
                         similar_words_text = format_similar_words_for_prompt(
                             similar_words, max_examples=5

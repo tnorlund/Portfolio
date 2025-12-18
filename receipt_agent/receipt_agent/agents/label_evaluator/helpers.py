@@ -1077,6 +1077,7 @@ def query_similar_validated_words(
     chroma_client: Any,
     n_results: int = 10,
     min_similarity: float = 0.7,
+    merchant_name: Optional[str] = None,
 ) -> List[SimilarWordResult]:
     """
     Query ChromaDB for similar words that have validated labels.
@@ -1090,6 +1091,7 @@ def query_similar_validated_words(
         chroma_client: ChromaDB client (DualChromaClient or similar)
         n_results: Maximum number of results to return
         min_similarity: Minimum similarity score (0.0-1.0) to include
+        merchant_name: Optional merchant name to scope results to same merchant
 
     Returns:
         List of SimilarWordResult objects, sorted by similarity descending
@@ -1157,6 +1159,12 @@ def query_similar_validated_words(
             # Skip self (the query word)
             if doc_id == word_chroma_id:
                 continue
+
+            # Filter by merchant if specified
+            if merchant_name:
+                result_merchant = meta.get("merchant_name")
+                if result_merchant != merchant_name:
+                    continue
 
             # Convert distance to Python float and compute similarity
             try:
