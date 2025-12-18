@@ -15,9 +15,7 @@ from pathlib import Path
 def find_swift_binary():
     """Find the Swift OCR binary, checking common locations."""
     # Check if we're in a Swift package directory
-    swift_package_dir = (
-        Path(__file__).parent.parent.parent / "receipt_ocr_swift"
-    )
+    swift_package_dir = Path(__file__).parent.parent.parent / "receipt_ocr_swift"
     if swift_package_dir.exists():
         # Try to find the built binary
         build_dir = swift_package_dir / ".build" / "debug"
@@ -46,13 +44,9 @@ def find_swift_binary():
 
 def build_swift_binary():
     """Build the Swift OCR binary."""
-    swift_package_dir = (
-        Path(__file__).parent.parent.parent / "receipt_ocr_swift"
-    )
+    swift_package_dir = Path(__file__).parent.parent.parent / "receipt_ocr_swift"
     if not swift_package_dir.exists():
-        raise RuntimeError(
-            f"Swift package directory not found: {swift_package_dir}"
-        )
+        raise RuntimeError(f"Swift package directory not found: {swift_package_dir}")
 
     print("Building Swift OCR binary...")
     try:
@@ -71,9 +65,7 @@ def build_swift_binary():
         if binary_path.exists():
             return str(binary_path)
         else:
-            raise RuntimeError(
-                "Binary was built but not found at expected location"
-            )
+            raise RuntimeError("Binary was built but not found at expected location")
 
     except subprocess.CalledProcessError as e:
         error_msg = f"Failed to build Swift binary:\n"

@@ -193,8 +193,7 @@ class LabelHarmonizerStepFunction(ComponentResource):
             f"{name}-lambda-basic-exec",
             role=lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/"
-                "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
@@ -259,9 +258,7 @@ class LabelHarmonizerStepFunction(ComponentResource):
         RolePolicy(
             f"{name}-lambda-s3-policy",
             role=lambda_role.id,
-            policy=Output.all(
-                self.batch_bucket.arn, chromadb_bucket_arn
-            ).apply(
+            policy=Output.all(self.batch_bucket.arn, chromadb_bucket_arn).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -335,9 +332,7 @@ class LabelHarmonizerStepFunction(ComponentResource):
             code=AssetArchive(
                 {
                     "flatten_merchant_groups.py": FileAsset(
-                        os.path.join(
-                            HANDLERS_DIR, "flatten_merchant_groups.py"
-                        )
+                        os.path.join(HANDLERS_DIR, "flatten_merchant_groups.py")
                     ),
                 }
             ),
@@ -431,9 +426,7 @@ class LabelHarmonizerStepFunction(ComponentResource):
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get(
-                    "langchain_project"
-                )
+                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get("langchain_project")
                 or "label-harmonizer",
             },
         }
@@ -807,9 +800,7 @@ class LabelHarmonizerStepFunction(ComponentResource):
                                         "BackoffRate": 2.0,
                                     },
                                     {
-                                        "ErrorEquals": [
-                                            "OllamaRateLimitError"
-                                        ],
+                                        "ErrorEquals": ["OllamaRateLimitError"],
                                         "IntervalSeconds": 30,
                                         "MaxAttempts": 5,
                                         "BackoffRate": 1.5,
@@ -837,9 +828,7 @@ class LabelHarmonizerStepFunction(ComponentResource):
                     # Store only count to avoid 256KB payload limit
                     # Full results are in S3 at results/{execution_id}/{label_type}/{merchant}.json
                     # AggregateResults will read from S3
-                    "ResultSelector": {
-                        "batch_count.$": "States.ArrayLength($)"
-                    },
+                    "ResultSelector": {"batch_count.$": "States.ArrayLength($)"},
                     "ResultPath": "$.process_results",
                     "Catch": [
                         {
@@ -1144,9 +1133,7 @@ class LabelHarmonizerV3StepFunction(ComponentResource):
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get(
-                    "langchain_project"
-                )
+                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get("langchain_project")
                 or "label-harmonizer-v3",
             },
         }
@@ -1382,9 +1369,7 @@ class LabelHarmonizerV3StepFunction(ComponentResource):
                                         "BackoffRate": 2.0,
                                     },
                                     {
-                                        "ErrorEquals": [
-                                            "OllamaRateLimitError"
-                                        ],
+                                        "ErrorEquals": ["OllamaRateLimitError"],
                                         "IntervalSeconds": 30,
                                         "MaxAttempts": 5,
                                         "BackoffRate": 1.5,

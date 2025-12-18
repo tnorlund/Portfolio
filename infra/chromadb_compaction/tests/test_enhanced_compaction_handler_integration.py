@@ -55,16 +55,12 @@ class TestEnhancedCompactionHandlerIntegration:
         lines_queue_url = mock_sqs_queues["lines_queue_url"]
 
         # Receive the message from lines queue
-        response = sqs.receive_message(
-            QueueUrl=lines_queue_url, MaxNumberOfMessages=1
-        )
+        response = sqs.receive_message(QueueUrl=lines_queue_url, MaxNumberOfMessages=1)
         assert "Messages" in response
         sqs_message = response["Messages"][0]
 
         # Step 3: Convert SQS message to enhanced handler event format
-        handler_event = self._create_handler_event_from_sqs(
-            sqs_message, "lines"
-        )
+        handler_event = self._create_handler_event_from_sqs(sqs_message, "lines")
 
         # Step 4: Process through enhanced compaction handler
         handler_result = enhanced_handler(handler_event, None)
@@ -94,11 +90,7 @@ class TestEnhancedCompactionHandlerIntegration:
         if lines_collection.update.called:
             # ChromaDB update was called - verify structure if possible
             update_call = lines_collection.update.call_args
-            if (
-                update_call
-                and len(update_call) > 1
-                and "metadatas" in update_call[1]
-            ):
+            if update_call and len(update_call) > 1 and "metadatas" in update_call[1]:
                 updated_metadata = update_call[1]["metadatas"][0]
                 # Verify some metadata was updated
                 assert isinstance(updated_metadata, dict)
@@ -119,16 +111,12 @@ class TestEnhancedCompactionHandlerIntegration:
         sqs = mock_sqs_queues["sqs_client"]
         words_queue_url = mock_sqs_queues["words_queue_url"]
 
-        response = sqs.receive_message(
-            QueueUrl=words_queue_url, MaxNumberOfMessages=1
-        )
+        response = sqs.receive_message(QueueUrl=words_queue_url, MaxNumberOfMessages=1)
         assert "Messages" in response
         sqs_message = response["Messages"][0]
 
         # Step 3: Convert to handler event
-        handler_event = self._create_handler_event_from_sqs(
-            sqs_message, "words"
-        )
+        handler_event = self._create_handler_event_from_sqs(sqs_message, "words")
 
         # Step 4: Process through enhanced handler
         handler_result = enhanced_handler(handler_event, None)
@@ -169,13 +157,9 @@ class TestEnhancedCompactionHandlerIntegration:
         # Get SQS message and convert to handler event
         sqs = mock_sqs_queues["sqs_client"]
         lines_queue_url = mock_sqs_queues["lines_queue_url"]
-        response = sqs.receive_message(
-            QueueUrl=lines_queue_url, MaxNumberOfMessages=1
-        )
+        response = sqs.receive_message(QueueUrl=lines_queue_url, MaxNumberOfMessages=1)
         sqs_message = response["Messages"][0]
-        handler_event = self._create_handler_event_from_sqs(
-            sqs_message, "lines"
-        )
+        handler_event = self._create_handler_event_from_sqs(sqs_message, "lines")
 
         # Process through handler
         handler_result = enhanced_handler(handler_event, None)
@@ -201,9 +185,7 @@ class TestEnhancedCompactionHandlerIntegration:
         handler_event = {
             "Records": [
                 {
-                    "messageId": sqs_message.get(
-                        "MessageId", "test-message-id"
-                    ),
+                    "messageId": sqs_message.get("MessageId", "test-message-id"),
                     "receiptHandle": sqs_message.get(
                         "ReceiptHandle", "test-receipt-handle"
                     ),
@@ -260,9 +242,7 @@ class TestEnhancedCompactionHandlerIntegration:
                             "SK": {
                                 "S": "RECEIPT#00001#LINE#00001#WORD#00001#LABEL#PRODUCT_NAME"
                             },
-                            "PK": {
-                                "S": "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff"
-                            },
+                            "PK": {"S": "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff"},
                         },
                         "NewImage": {
                             "label": {"S": "PRODUCT_NAME"},
@@ -272,24 +252,18 @@ class TestEnhancedCompactionHandlerIntegration:
                             "validation_status": {"S": "VALID"},
                             "label_proposed_by": {"S": "PATTERN_DETECTION"},
                             "TYPE": {"S": "RECEIPT_WORD_LABEL"},
-                            "image_id": {
-                                "S": "7e2bd911-7afb-4e0a-84de-57f51ce4daff"
-                            },
+                            "image_id": {"S": "7e2bd911-7afb-4e0a-84de-57f51ce4daff"},
                             "receipt_id": {"N": "1"},
                             "line_id": {"N": "1"},
                             "word_id": {"N": "1"},
                         },
                         "OldImage": {
                             "label": {"S": "UNKNOWN"},
-                            "reasoning": {
-                                "S": "No clear classification available"
-                            },
+                            "reasoning": {"S": "No clear classification available"},
                             "validation_status": {"S": "PENDING"},
                             "label_proposed_by": {"S": "NONE"},
                             "TYPE": {"S": "RECEIPT_WORD_LABEL"},
-                            "image_id": {
-                                "S": "7e2bd911-7afb-4e0a-84de-57f51ce4daff"
-                            },
+                            "image_id": {"S": "7e2bd911-7afb-4e0a-84de-57f51ce4daff"},
                             "receipt_id": {"N": "1"},
                             "line_id": {"N": "1"},
                             "word_id": {"N": "1"},
@@ -318,13 +292,9 @@ class TestEnhancedCompactionHandlerIntegration:
         # Get message and process through handler
         sqs = mock_sqs_queues["sqs_client"]
         lines_queue_url = mock_sqs_queues["lines_queue_url"]
-        response = sqs.receive_message(
-            QueueUrl=lines_queue_url, MaxNumberOfMessages=1
-        )
+        response = sqs.receive_message(QueueUrl=lines_queue_url, MaxNumberOfMessages=1)
         sqs_message = response["Messages"][0]
-        handler_event = self._create_handler_event_from_sqs(
-            sqs_message, "lines"
-        )
+        handler_event = self._create_handler_event_from_sqs(sqs_message, "lines")
 
         handler_result = enhanced_handler(handler_event, None)
 

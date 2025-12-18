@@ -32,10 +32,7 @@ def example_receipt_field():
 def test_receipt_field_init_valid(example_receipt_field):
     """Test constructing a valid ReceiptField."""
     assert example_receipt_field.field_type == "BUSINESS_NAME"
-    assert (
-        example_receipt_field.image_id
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert example_receipt_field.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_receipt_field.receipt_id == 1
     assert len(example_receipt_field.words) == 2
     assert example_receipt_field.words[0]["word_id"] == 1
@@ -233,9 +230,7 @@ def test_receipt_field_key_generation(example_receipt_field):
     """Test that the primary key is correctly generated."""
     assert example_receipt_field.key == {
         "PK": {"S": "FIELD#BUSINESS_NAME"},
-        "SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
-        },
+        "SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
     }
 
 
@@ -253,9 +248,7 @@ def test_receipt_field_to_item(example_receipt_field):
     """Test converting a ReceiptField to a DynamoDB item."""
     assert example_receipt_field.to_item() == {
         "PK": {"S": "FIELD#BUSINESS_NAME"},
-        "SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
-        },
+        "SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
         "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI1SK": {"S": "RECEIPT#00001#FIELD#BUSINESS_NAME"},
         "TYPE": {"S": "RECEIPT_FIELD"},
@@ -331,8 +324,7 @@ def test_receipt_field_eq(example_receipt_field):
 def test_item_to_receipt_field_valid_input(example_receipt_field):
     """Test item_to_receipt_field with a valid DynamoDB item."""
     assert (
-        item_to_receipt_field(example_receipt_field.to_item())
-        == example_receipt_field
+        item_to_receipt_field(example_receipt_field.to_item()) == example_receipt_field
     )
 
 
@@ -341,9 +333,7 @@ def test_item_to_receipt_field_missing_keys():
     """item_to_receipt_field raises ValueError when required keys are missing."""
     incomplete_item = {
         "PK": {"S": "FIELD#BUSINESS_NAME"},
-        "SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
-        },
+        "SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
     }
     with pytest.raises(ValueError, match="Invalid item format\nmissing keys"):
         item_to_receipt_field(incomplete_item)
@@ -354,9 +344,7 @@ def test_item_to_receipt_field_invalid_format():
     """item_to_receipt_field raises ValueError when keys are incorrectly formatted."""
     invalid_item = {
         "PK": {"S": "FIELD#BUSINESS_NAME"},
-        "SK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
-        },
+        "SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
         "words": {
             "L": [
                 {
@@ -371,7 +359,5 @@ def test_item_to_receipt_field_invalid_format():
         "reasoning": {"N": "123"},  # Should be {"S": "123"}
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
     }
-    with pytest.raises(
-        ValueError, match="Error converting item to ReceiptField"
-    ):
+    with pytest.raises(ValueError, match="Error converting item to ReceiptField"):
         item_to_receipt_field(invalid_item)

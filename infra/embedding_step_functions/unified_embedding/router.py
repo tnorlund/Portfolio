@@ -85,11 +85,7 @@ def route_request(event: Dict[str, Any], context: Any) -> Any:
         return response_utils.format_response(result, event)
 
     except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error(
-            "Error in %s handler: %s", handler_type, str(e), exc_info=True
-        )
+        logger.error("Error in %s handler: %s", handler_type, str(e), exc_info=True)
 
         # Let format_response handle error formatting
-        return response_utils.format_response(
-            {"error": str(e)}, event, is_error=True
-        )
+        return response_utils.format_response({"error": str(e)}, event, is_error=True)

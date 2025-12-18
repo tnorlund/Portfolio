@@ -19,9 +19,7 @@ try:
     JSONPATH_AVAILABLE = True
 except ImportError:
     JSONPATH_AVAILABLE = False
-    print(
-        "⚠️  jsonpath_ng not installed. Install with: pip install jsonpath-ng"
-    )
+    print("⚠️  jsonpath_ng not installed. Install with: pip install jsonpath-ng")
     print("   Falling back to simple string matching validation...")
 
 
@@ -126,9 +124,7 @@ def test_group_chunks_merge_jsonpaths():
             if should_succeed:
                 print(f"{status} {jsonpath_expr:50} → {value} ({description})")
             else:
-                print(
-                    f"{status} {jsonpath_expr:50} → Correctly fails ({description})"
-                )
+                print(f"{status} {jsonpath_expr:50} → Correctly fails ({description})")
         else:
             status = "❌"
             all_passed = False

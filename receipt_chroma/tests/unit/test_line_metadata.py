@@ -83,20 +83,14 @@ class TestCreateLineMetadata:
 
     def test_metadata_with_avg_confidence(self):
         """Test metadata with average word confidence."""
-        line = MockReceiptLine(
-            "img1", "rec1", "line1", "hello world", confidence=0.8
-        )
-        metadata = create_line_metadata(
-            line, "prev", "next", avg_word_confidence=0.95
-        )
+        line = MockReceiptLine("img1", "rec1", "line1", "hello world", confidence=0.8)
+        metadata = create_line_metadata(line, "prev", "next", avg_word_confidence=0.95)
         assert metadata["avg_word_confidence"] == 0.95
         assert metadata["confidence"] == 0.8  # Line confidence unchanged
 
     def test_metadata_without_avg_confidence(self):
         """Fallback to line confidence when avg not provided."""
-        line = MockReceiptLine(
-            "img1", "rec1", "line1", "hello world", confidence=0.85
-        )
+        line = MockReceiptLine("img1", "rec1", "line1", "hello world", confidence=0.85)
         metadata = create_line_metadata(line, "prev", "next")
         assert metadata["avg_word_confidence"] == 0.85
         assert metadata["confidence"] == 0.85
@@ -104,9 +98,7 @@ class TestCreateLineMetadata:
     def test_metadata_with_section_label(self):
         """Test metadata with section label."""
         line = MockReceiptLine("img1", "rec1", "line1", "hello world")
-        metadata = create_line_metadata(
-            line, "prev", "next", section_label="header"
-        )
+        metadata = create_line_metadata(line, "prev", "next", section_label="header")
         assert metadata["section_label"] == "header"
 
     def test_metadata_coordinates(self):
@@ -155,12 +147,8 @@ class TestEnrichLineMetadataWithAnchors:
     def test_enrich_with_all_anchors(self):
         """Test enriching with all anchor types."""
         words = [
-            MockReceiptWord(
-                "123-456-7890", {"type": "phone", "value": "123-456-7890"}
-            ),
-            MockReceiptWord(
-                "123 Main St", {"type": "address", "value": "123 Main St"}
-            ),
+            MockReceiptWord("123-456-7890", {"type": "phone", "value": "123-456-7890"}),
+            MockReceiptWord("123 Main St", {"type": "address", "value": "123 Main St"}),
             MockReceiptWord(
                 "example.com", {"type": "url", "value": "https://example.com"}
             ),
@@ -183,18 +171,12 @@ class TestEnrichLineMetadataWithAnchors:
     def test_enrich_stops_after_all_found(self):
         """Test that enrichment stops after all anchors are found."""
         words = [
-            MockReceiptWord(
-                "123-456-7890", {"type": "phone", "value": "123-456-7890"}
-            ),
-            MockReceiptWord(
-                "123 Main St", {"type": "address", "value": "123 Main St"}
-            ),
+            MockReceiptWord("123-456-7890", {"type": "phone", "value": "123-456-7890"}),
+            MockReceiptWord("123 Main St", {"type": "address", "value": "123 Main St"}),
             MockReceiptWord(
                 "example.com", {"type": "url", "value": "https://example.com"}
             ),
-            MockReceiptWord(
-                "extra", {"type": "phone", "value": "999-999-9999"}
-            ),
+            MockReceiptWord("extra", {"type": "phone", "value": "999-999-9999"}),
         ]
         metadata = {"text": "hello"}
         enriched = enrich_line_metadata_with_anchors(metadata, words)

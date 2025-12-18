@@ -365,8 +365,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                                         },
                                         {
                                             "ErrorEquals": [
-                                                "Lambda."
-                                                "TooManyRequestsException"
+                                                "Lambda." "TooManyRequestsException"
                                             ],
                                             "IntervalSeconds": 10,
                                             "MaxAttempts": 5,

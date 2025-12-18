@@ -78,25 +78,18 @@ class TestMetadataRoutingSQS:
         sqs = mock_sqs_queues["sqs_client"]
         lines_queue_url = mock_sqs_queues["lines_queue_url"]
 
-        custom_event = target_event_factory(
-            canonical_merchant_name="Target Store"
-        )
+        custom_event = target_event_factory(canonical_merchant_name="Target Store")
         result = lambda_handler(custom_event, None)
 
         assert result["statusCode"] == 200
         assert result["processed_records"] == 1
 
-        response = sqs.receive_message(
-            QueueUrl=lines_queue_url, MaxNumberOfMessages=1
-        )
+        response = sqs.receive_message(QueueUrl=lines_queue_url, MaxNumberOfMessages=1)
         message = response["Messages"][0]
         body = json.loads(message["Body"])
 
         canonical_change = body["changes"]["canonical_merchant_name"]
-        assert (
-            canonical_change["old"]
-            == "30740 Russell Ranch Rd (Westlake Village)"
-        )
+        assert canonical_change["old"] == "30740 Russell Ranch Rd (Westlake Village)"
         assert canonical_change["new"] == "Target Store"
 
 
@@ -141,9 +134,7 @@ class TestWordLabelRoutingSQS:
         lines_messages = lines_response.get("Messages", [])
         assert len(lines_messages) == 0
 
-    def test_word_label_remove_event(
-        self, word_label_remove_event, mock_sqs_queues
-    ):
+    def test_word_label_remove_event(self, word_label_remove_event, mock_sqs_queues):
         """Test REMOVE events for word labels."""
         sqs = mock_sqs_queues["sqs_client"]
         words_queue_url = mock_sqs_queues["words_queue_url"]
@@ -215,21 +206,15 @@ class TestCompactionRunRoutingSQS:
 
         lambda_handler(compaction_run_insert_event, None)
 
-        response = sqs.receive_message(
-            QueueUrl=lines_queue_url, MaxNumberOfMessages=1
-        )
+        response = sqs.receive_message(QueueUrl=lines_queue_url, MaxNumberOfMessages=1)
         message = response["Messages"][0]
         body = json.loads(message["Body"])
 
         # Check required fields
         assert (
-            body["entity_data"]["run_id"]
-            == "550e8400-e29b-41d4-a716-446655440001"
+            body["entity_data"]["run_id"] == "550e8400-e29b-41d4-a716-446655440001"
         )  # UUID from fixture
-        assert (
-            body["entity_data"]["image_id"]
-            == "7e2bd911-7afb-4e0a-84de-57f51ce4daff"
-        )
+        assert body["entity_data"]["image_id"] == "7e2bd911-7afb-4e0a-84de-57f51ce4daff"
         assert body["entity_data"]["receipt_id"] == 1
         assert "delta_s3_prefix" in body["entity_data"]
         assert len(body["changes"]) == 0  # INSERT events have empty changes
@@ -238,16 +223,12 @@ class TestCompactionRunRoutingSQS:
 class TestBatchProcessing:
     """Test handling of multiple records in batches."""
 
-    def test_large_batch_over_10_messages(
-        self, target_event_factory, mock_sqs_queues
-    ):
+    def test_large_batch_over_10_messages(self, target_event_factory, mock_sqs_queues):
         """Test handling >10 messages (SQS batch limit)."""
         # Create event with 15 metadata changes
         events = {"Records": []}
         for i in range(15):
-            single_event = target_event_factory(
-                canonical_merchant_name=f"Merchant {i}"
-            )
+            single_event = target_event_factory(canonical_merchant_name=f"Merchant {i}")
             record = single_event["Records"][0]
             record["eventID"] = f"event-{i}"
             events["Records"].append(record)
@@ -314,9 +295,7 @@ class TestMessageFormat:
 
         lambda_handler(target_metadata_event, None)
 
-        response = sqs.receive_message(
-            QueueUrl=lines_queue_url, MaxNumberOfMessages=1
-        )
+        response = sqs.receive_message(QueueUrl=lines_queue_url, MaxNumberOfMessages=1)
         message = response["Messages"][0]
         body = json.loads(message["Body"])
 
@@ -329,9 +308,7 @@ class TestMessageFormat:
         assert "T" in body["timestamp"]
         assert body["aws_region"] == "us-east-1"
 
-    def test_message_attributes_complete(
-        self, target_metadata_event, mock_sqs_queues
-    ):
+    def test_message_attributes_complete(self, target_metadata_event, mock_sqs_queues):
         """Verify all required message attributes are set."""
         sqs = mock_sqs_queues["sqs_client"]
         lines_queue_url = mock_sqs_queues["lines_queue_url"]
@@ -356,9 +333,7 @@ class TestMessageFormat:
 class TestErrorHandling:
     """Test error handling and edge cases."""
 
-    def test_no_queues_configured_handles_gracefully(
-        self, target_metadata_event
-    ):
+    def test_no_queues_configured_handles_gracefully(self, target_metadata_event):
         """Test that missing queue URLs are handled gracefully."""
         original_lines = os.environ.pop("LINES_QUEUE_URL", None)
         original_words = os.environ.pop("WORDS_QUEUE_URL", None)

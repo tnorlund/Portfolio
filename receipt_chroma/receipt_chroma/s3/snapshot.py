@@ -71,8 +71,7 @@ def _validate_snapshot_after_upload(
         if download_result.get("status") != "downloaded":
             validation_duration = time.time() - validation_start_time
             logger.error(
-                "Failed to download snapshot for validation: %s "
-                "(duration: %.2fs)",
+                "Failed to download snapshot for validation: %s " "(duration: %.2fs)",
                 versioned_key,
                 validation_duration,
             )
@@ -125,9 +124,7 @@ def _validate_snapshot_after_upload(
             del test_client
             for _ in range(3):
                 gc.collect()
-            time.sleep(
-                0.1
-            )  # Small delay to ensure SQLite connections are released
+            time.sleep(0.1)  # Small delay to ensure SQLite connections are released
 
             validation_duration = time.time() - validation_start_time
             logger.info(
@@ -243,21 +240,17 @@ def upload_snapshot_atomic(
             logger.error("Step 1 failed - upload_result=%s", upload_result)
             return {
                 "status": "error",
-                "error": (
-                    f"Failed to upload to versioned location: {upload_result}"
-                ),
+                "error": (f"Failed to upload to versioned location: {upload_result}"),
                 "collection": collection,
                 "version_id": version_id,
             }
 
         # Step 2: Validate uploaded snapshot before updating pointer
-        validation_result, validation_duration = (
-            _validate_snapshot_after_upload(
-                bucket=bucket,
-                versioned_key=versioned_key,
-                collection_name=collection,
-                s3_client=s3_client,
-            )
+        validation_result, validation_duration = _validate_snapshot_after_upload(
+            bucket=bucket,
+            versioned_key=versioned_key,
+            collection_name=collection,
+            s3_client=s3_client,
         )
 
         if not validation_result:
@@ -270,13 +263,9 @@ def upload_snapshot_atomic(
             )
             try:
                 _cleanup_s3_prefix(s3_client, bucket, versioned_key)
-            except (
-                Exception
-            ) as cleanup_error:  # pylint: disable=broad-exception-caught
+            except Exception as cleanup_error:  # pylint: disable=broad-exception-caught
                 # Cleanup failures are non-critical
-                logger.warning(
-                    "Failed to cleanup versioned upload: %s", cleanup_error
-                )
+                logger.warning("Failed to cleanup versioned upload: %s", cleanup_error)
 
             return {
                 "status": "error",
@@ -287,8 +276,7 @@ def upload_snapshot_atomic(
             }
 
         logger.info(
-            "Step 2 completed - snapshot validation successful "
-            "(duration: %.2fs)",
+            "Step 2 completed - snapshot validation successful " "(duration: %.2fs)",
             validation_duration,
         )
 
@@ -301,13 +289,9 @@ def upload_snapshot_atomic(
             # Clean up versioned upload
             try:
                 _cleanup_s3_prefix(s3_client, bucket, versioned_key)
-            except (
-                Exception
-            ) as cleanup_error:  # pylint: disable=broad-exception-caught
+            except Exception as cleanup_error:  # pylint: disable=broad-exception-caught
                 # Cleanup failures are non-critical
-                logger.warning(
-                    "Failed to cleanup versioned upload: %s", cleanup_error
-                )
+                logger.warning("Failed to cleanup versioned upload: %s", cleanup_error)
 
             return {
                 "status": "error",
@@ -332,12 +316,8 @@ def upload_snapshot_atomic(
 
         # Step 5: Background cleanup of old versions
         try:
-            _cleanup_old_snapshot_versions(
-                s3_client, bucket, collection, keep_versions
-            )
-        except (
-            Exception
-        ) as cleanup_error:  # pylint: disable=broad-exception-caught
+            _cleanup_old_snapshot_versions(s3_client, bucket, collection, keep_versions)
+        except Exception as cleanup_error:  # pylint: disable=broad-exception-caught
             # Cleanup failures are non-critical
             logger.warning("Failed to cleanup old versions: %s", cleanup_error)
 

@@ -34,24 +34,18 @@ def lambda_handler(event, _context):
             serviceName=ecs_service,
             desiredStatus="RUNNING",
         )
-        print(
-            f"[wait_handler] list_tasks arnCount={len(lt.get('taskArns', []))}"
-        )
+        print(f"[wait_handler] list_tasks arnCount={len(lt.get('taskArns', []))}")
         if lt.get("taskArns"):
             dt = ecs.describe_tasks(cluster=ecs_cluster, tasks=lt["taskArns"])
             # Pull first attachment ENI IP
             for t in dt.get("tasks", []):
                 for a in t.get("attachments", []):
                     if a.get("type") == "ElasticNetworkInterface":
-                        details = {
-                            d["name"]: d["value"] for d in a.get("details", [])
-                        }
+                        details = {d["name"]: d["value"] for d in a.get("details", [])}
                         private_ip = details.get("privateIPv4Address")
                         if private_ip:
                             task_ip = private_ip
-                            print(
-                                f"[wait_handler] Found task private IP: {task_ip}"
-                            )
+                            print(f"[wait_handler] Found task private IP: {task_ip}")
                             break
                 if task_ip:
                     break
@@ -78,9 +72,7 @@ def lambda_handler(event, _context):
         attempt += 1
         print(f"[wait_handler] Attempt {attempt}...")
 
-        heartbeat_url = (
-            f"http://{task_ip}:{port}/api/v1/heartbeat" if task_ip else url
-        )
+        heartbeat_url = f"http://{task_ip}:{port}/api/v1/heartbeat" if task_ip else url
         version_url = (
             f"http://{task_ip}:{port}/api/v1/version"
             if task_ip
@@ -90,9 +82,7 @@ def lambda_handler(event, _context):
         for candidate in [heartbeat_url, version_url]:
             try:
                 print(f"[wait_handler] Probing: {candidate}")
-                with urllib.request.urlopen(
-                    candidate, timeout=5
-                ) as resp:  # nosec B310
+                with urllib.request.urlopen(candidate, timeout=5) as resp:  # nosec B310
                     print(f"[wait_handler] HTTP {resp.status} for {candidate}")
                     if resp.status == 200:
                         return {
@@ -100,13 +90,9 @@ def lambda_handler(event, _context):
                             "body": json.dumps({"ok": True}),
                         }
             except urllib.error.HTTPError as he:
-                print(
-                    f"[wait_handler] HTTPError {he.code} for {candidate}: {he}"
-                )
+                print(f"[wait_handler] HTTPError {he.code} for {candidate}: {he}")
                 if he.code == 410 and candidate.endswith("/heartbeat"):
-                    print(
-                        "[wait_handler] Treating 410 Gone on /heartbeat as healthy"
-                    )
+                    print("[wait_handler] Treating 410 Gone on /heartbeat as healthy")
                     return {
                         "statusCode": 200,
                         "body": json.dumps({"ok": True}),

@@ -68,9 +68,7 @@ class TestProduceEmbeddingDelta:
             assert objects["KeyCount"] > 0
 
     @pytest.mark.parametrize("s3_bucket", ["test-delta-bucket"], indirect=True)
-    @pytest.mark.parametrize(
-        "sqs_queue", ["test-compaction-queue"], indirect=True
-    )
+    @pytest.mark.parametrize("sqs_queue", ["test-compaction-queue"], indirect=True)
     def test_produce_delta_with_sqs(self, s3_bucket, sqs_queue, temp_dir):
         """Test delta production with SQS notification."""
         with mock_aws():
@@ -94,9 +92,7 @@ class TestProduceEmbeddingDelta:
 
             # Verify SQS message was sent
             sqs = boto3.client("sqs", region_name="us-east-1")
-            messages = sqs.receive_message(
-                QueueUrl=sqs_queue, MaxNumberOfMessages=1
-            )
+            messages = sqs.receive_message(QueueUrl=sqs_queue, MaxNumberOfMessages=1)
             assert "Messages" in messages
 
     @pytest.mark.parametrize("s3_bucket", ["test-delta-bucket"], indirect=True)

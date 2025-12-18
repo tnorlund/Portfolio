@@ -78,9 +78,7 @@ def classify_image_layout(
     )
 
     # Classify based on which format is closer
-    return (
-        ImageType.SCAN if scan_distance < photo_distance else ImageType.PHOTO
-    )
+    return ImageType.SCAN if scan_distance < photo_distance else ImageType.PHOTO
 
 
 def _open_image(image_path: Path) -> PIL_Image.Image:

@@ -215,9 +215,7 @@ def dynamodb_table():
                 },
                 {
                     "IndexName": "GSITYPE",
-                    "KeySchema": [
-                        {"AttributeName": "TYPE", "KeyType": "HASH"}
-                    ],
+                    "KeySchema": [{"AttributeName": "TYPE", "KeyType": "HASH"}],
                     "Projection": {"ProjectionType": "ALL"},
                     "ProvisionedThroughput": {
                         "ReadCapacityUnits": 5,
@@ -228,9 +226,7 @@ def dynamodb_table():
         )
 
         # Wait for the table to be created
-        dynamodb.meta.client.get_waiter("table_exists").wait(
-            TableName=table_name
-        )
+        dynamodb.meta.client.get_waiter("table_exists").wait(TableName=table_name)
 
         # Yield the table name so your tests can reference it
         yield table_name

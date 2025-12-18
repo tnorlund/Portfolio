@@ -69,12 +69,7 @@ def load_receipt_image(
             print(f"✅ Loaded receipt raw image: {receipt.raw_s3_key}")
         except Exception:
             img = None
-    if (
-        img is None
-        and not prefer_cdn
-        and receipt.cdn_s3_bucket
-        and receipt.cdn_s3_key
-    ):
+    if img is None and not prefer_cdn and receipt.cdn_s3_bucket and receipt.cdn_s3_key:
         try:
             img = get_image_from_s3(receipt.cdn_s3_bucket, receipt.cdn_s3_key)
             print("✅ Loaded receipt image from CDN")
@@ -86,9 +81,7 @@ def load_receipt_image(
     return img
 
 
-def apply_coeffs(
-    pt: Tuple[float, float], coeffs: List[float]
-) -> Tuple[float, float]:
+def apply_coeffs(pt: Tuple[float, float], coeffs: List[float]) -> Tuple[float, float]:
     x, y = pt
     a, b, c, d, e, f, g, h = coeffs
     denom = g * x + h * y + 1.0
@@ -227,9 +220,7 @@ def main():
     table = env.get("table_name")
     if not table:
         raise ValueError("DYNAMODB_TABLE_NAME not set")
-    raw_bucket = (
-        args.raw_bucket or env.get("raw_bucket") or env.get("raw_bucket_name")
-    )
+    raw_bucket = args.raw_bucket or env.get("raw_bucket") or env.get("raw_bucket_name")
 
     split_data = json.loads(args.split_json.read_text())
     obox_left = split_data.get("left_obox")
@@ -237,9 +228,7 @@ def main():
 
     client = DynamoClient(table)
     receipt = client.get_receipt(args.image_id, args.receipt_id)
-    lines = client.list_receipt_lines_from_receipt(
-        args.image_id, args.receipt_id
-    )
+    lines = client.list_receipt_lines_from_receipt(args.image_id, args.receipt_id)
 
     # reload lines in same order as split (using ids)
     left_ids = {ln["line_id"] for ln in split_data["left_lines"]}
@@ -262,9 +251,7 @@ def main():
     if obox_left:
         warp_cluster(img, obox_left, lines_left, "#FF0000", base_prefix_left)
     if obox_right:
-        warp_cluster(
-            img, obox_right, lines_right, "#00AA00", base_prefix_right
-        )
+        warp_cluster(img, obox_right, lines_right, "#00AA00", base_prefix_right)
 
 
 if __name__ == "__main__":

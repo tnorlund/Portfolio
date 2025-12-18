@@ -85,9 +85,7 @@ def test_read_only_mode_raises_error():
     """Test that read-only mode raises error on write attempts."""
     with ChromaClient(mode="read") as client:
         with pytest.raises(RuntimeError, match="read-only"):
-            client.upsert(
-                collection_name="test", ids=["1"], documents=["test"]
-            )
+            client.upsert(collection_name="test", ids=["1"], documents=["test"])
 
 
 @pytest.mark.unit
@@ -142,9 +140,7 @@ def test_reset():
     """Test reset() method."""
     with ChromaClient(mode="write", metadata_only=True) as client:
         # Add some data
-        client.upsert(
-            collection_name="reset_test", ids=["1"], documents=["doc1"]
-        )
+        client.upsert(collection_name="reset_test", ids=["1"], documents=["doc1"])
 
         assert client.count("reset_test") == 1
 
@@ -161,9 +157,7 @@ def test_query_requires_embeddings_or_texts():
     with ChromaClient(mode="write", metadata_only=True) as client:
         client.get_collection("test_query_validation", create_if_missing=True)
 
-        with pytest.raises(
-            ValueError, match="Either query_embeddings or query_texts"
-        ):
+        with pytest.raises(ValueError, match="Either query_embeddings or query_texts"):
             client.query(collection_name="test_query_validation", n_results=10)
 
 
@@ -173,9 +167,7 @@ def test_delete_requires_ids_or_where():
     with ChromaClient(mode="write", metadata_only=True) as client:
         client.get_collection("test_delete_validation", create_if_missing=True)
 
-        with pytest.raises(
-            ValueError, match="Either ids or where must be provided"
-        ):
+        with pytest.raises(ValueError, match="Either ids or where must be provided"):
             client.delete(collection_name="test_delete_validation")
 
 
@@ -188,12 +180,8 @@ def test_custom_embedding_function():
     # Use DefaultEmbeddingFunction as a real embedding function
     custom_embedding_fn = embedding_functions.DefaultEmbeddingFunction()
 
-    with ChromaClient(
-        mode="write", embedding_function=custom_embedding_fn
-    ) as client:
-        collection = client.get_collection(
-            "test_custom_embed", create_if_missing=True
-        )
+    with ChromaClient(mode="write", embedding_function=custom_embedding_fn) as client:
+        collection = client.get_collection("test_custom_embed", create_if_missing=True)
         # Verify custom embedding function is set
         assert client._embedding_function is custom_embedding_fn
 
@@ -202,9 +190,7 @@ def test_custom_embedding_function():
 @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-123"})
 def test_openai_embedding_function_setup():
     """Test that OpenAI embedding function is set up when not metadata_only."""
-    with patch(
-        "receipt_chroma.data.chroma_client.embedding_functions"
-    ) as mock_ef:
+    with patch("receipt_chroma.data.chroma_client.embedding_functions") as mock_ef:
         mock_openai_fn = MagicMock()
         mock_ef.OpenAIEmbeddingFunction.return_value = mock_openai_fn
 
@@ -221,9 +207,7 @@ def test_openai_embedding_function_setup():
 @patch.dict("os.environ", {}, clear=True)
 def test_openai_embedding_function_with_placeholder_key():
     """Test that OpenAI embedding function uses placeholder when no API key."""
-    with patch(
-        "receipt_chroma.data.chroma_client.embedding_functions"
-    ) as mock_ef:
+    with patch("receipt_chroma.data.chroma_client.embedding_functions") as mock_ef:
         mock_openai_fn = MagicMock()
         mock_ef.OpenAIEmbeddingFunction.return_value = mock_openai_fn
 
@@ -239,9 +223,7 @@ def test_openai_embedding_function_with_placeholder_key():
 def test_upsert_with_embeddings():
     """Test upsert with explicit embeddings (not documents)."""
     with ChromaClient(mode="write", metadata_only=True) as client:
-        collection = client.get_collection(
-            "test_embeddings", create_if_missing=True
-        )
+        collection = client.get_collection("test_embeddings", create_if_missing=True)
 
         embeddings = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
         client.upsert(
@@ -258,9 +240,7 @@ def test_upsert_with_embeddings():
 def test_upsert_duplicate_id_handling():
     """Test that duplicate IDs are handled by deleting and retrying."""
     with ChromaClient(mode="write", metadata_only=True) as client:
-        collection = client.get_collection(
-            "test_duplicates", create_if_missing=True
-        )
+        collection = client.get_collection("test_duplicates", create_if_missing=True)
 
         # First upsert
         client.upsert(
@@ -310,9 +290,7 @@ def test_query_with_embeddings():
         # Add data with correct embedding dims
         # (384 for DefaultEmbeddingFunction)
         # First get the collection to know the embedding dimension
-        collection = client.get_collection(
-            "test_query_emb", create_if_missing=True
-        )
+        collection = client.get_collection("test_query_emb", create_if_missing=True)
         embedding_dim = collection.metadata.get("hnsw:space") or 384
 
         # Create embeddings with correct dimension
@@ -349,9 +327,7 @@ def test_query_texts_in_read_mode_raises_error():
 
     # Now try to query with texts in read mode
     with ChromaClient(mode="read") as client:
-        with pytest.raises(
-            ValueError, match="Text queries require write mode"
-        ):
+        with pytest.raises(ValueError, match="Text queries require write mode"):
             client.query(
                 collection_name="read_mode_test",
                 query_texts=["test query"],
@@ -411,9 +387,7 @@ def test_http_client_creation_with_url():
 def test_collection_not_found_without_create():
     """Error when collection missing and create_if_missing=False."""
     with ChromaClient(mode="write", metadata_only=True) as client:
-        with pytest.raises(
-            ValueError, match="Collection 'nonexistent' not found"
-        ):
+        with pytest.raises(ValueError, match="Collection 'nonexistent' not found"):
             client.get_collection("nonexistent", create_if_missing=False)
 
 
@@ -437,9 +411,7 @@ def test_http_client_invalid_port():
         mock_chromadb.HttpClient.return_value = mock_http_client
 
         # URL with invalid port (non-numeric)
-        client = ChromaClient(
-            http_url="http://localhost:invalid", mode="write"
-        )
+        client = ChromaClient(http_url="http://localhost:invalid", mode="write")
         _ = client.client
 
         # Should still create client, but port should be None
@@ -453,9 +425,7 @@ def test_http_client_invalid_port():
 def test_upsert_value_error_not_duplicate():
     """Test that non-duplicate ValueError in upsert is re-raised."""
     with ChromaClient(mode="write", metadata_only=True) as client:
-        collection = client.get_collection(
-            "test_error", create_if_missing=True
-        )
+        collection = client.get_collection("test_error", create_if_missing=True)
 
         # Mock collection to raise ValueError that's not about duplicates
         original_upsert = collection.upsert
@@ -467,6 +437,4 @@ def test_upsert_value_error_not_duplicate():
 
         # Should re-raise the error
         with pytest.raises(ValueError, match="Some other error"):
-            client.upsert(
-                collection_name="test_error", ids=["id1"], documents=["doc1"]
-            )
+            client.upsert(collection_name="test_error", ids=["id1"], documents=["doc1"])

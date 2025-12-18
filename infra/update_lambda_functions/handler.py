@@ -21,9 +21,7 @@ import boto3
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-STACK_NAME = os.environ.get(
-    "STACK_NAME", "dev"
-)  # Default to 'dev' if not specified
+STACK_NAME = os.environ.get("STACK_NAME", "dev")  # Default to 'dev' if not specified
 
 
 def lambda_handler(event, context):
@@ -45,9 +43,7 @@ def lambda_handler(event, context):
             logger.error(f"No versions found for layer: {layer_name}")
             return {
                 "statusCode": 400,
-                "body": {
-                    "message": f"No versions found for layer '{layer_name}'"
-                },
+                "body": {"message": f"No versions found for layer '{layer_name}'"},
             }
         latest_version = response["LayerVersions"][0]
         layer_arn = latest_version["LayerVersionArn"]
@@ -62,9 +58,9 @@ def lambda_handler(event, context):
     paginator = lambda_client.get_paginator("list_functions")
     for page in paginator.paginate():
         for function in page["Functions"]:
-            tags = lambda_client.list_tags(
-                Resource=function["FunctionArn"]
-            ).get("Tags", {})
+            tags = lambda_client.list_tags(Resource=function["FunctionArn"]).get(
+                "Tags", {}
+            )
             if tags.get("environment") == STACK_NAME:
                 layers = function.get("Layers", [])
                 current_arns = [l["Arn"] for l in layers]
@@ -77,9 +73,7 @@ def lambda_handler(event, context):
 
                 # Remove any existing version of the same layer
                 new_layers = [
-                    l
-                    for l in current_arns
-                    if not same_layer_family(l, layer_arn)
+                    l for l in current_arns if not same_layer_family(l, layer_arn)
                 ]
                 new_layers.append(layer_arn)
 
@@ -92,9 +86,7 @@ def lambda_handler(event, context):
                     f"Updated {function['FunctionName']} with new layers: {new_layers}"
                 )
             else:
-                logger.info(
-                    f"Skipping {function['FunctionName']} due to tag mismatch"
-                )
+                logger.info(f"Skipping {function['FunctionName']} due to tag mismatch")
 
     return {
         "statusCode": 200,

@@ -84,9 +84,7 @@ class EcsLambda(ComponentResource):
         memory_size: int = 512,
         environment: Optional[Dict[str, str]] = None,
         layers: Optional[List[Output[str] | str]] = None,
-        package_extras: Optional[
-            str
-        ] = None,  # e.g., "lambda" to install `pkg[lambda]`
+        package_extras: Optional[str] = None,  # e.g., "lambda" to install `pkg[lambda]`
         sync_mode: Optional[bool] = None,
         opts: Optional[ResourceOptions] = None,
     ) -> None:
@@ -96,9 +94,7 @@ class EcsLambda(ComponentResource):
         self.package_dir = package_dir
         self.handler = handler  # e.g., "my_module.lambda_handler"
         self.python_version = python_version
-        self.description = (
-            description or f"AWS-built Lambda function for {name}"
-        )
+        self.description = description or f"AWS-built Lambda function for {name}"
         self.role_arn = role_arn
         self.timeout = timeout
         self.memory_size = memory_size
@@ -133,13 +129,9 @@ class EcsLambda(ComponentResource):
                 f"🔄 Building function '{self.name}' in SYNC mode (will wait)"
             )
         else:
-            pulumi.log.info(
-                f"⚡ Function '{self.name}' in ASYNC mode (fast pulumi up)"
-            )
+            pulumi.log.info(f"⚡ Function '{self.name}' in ASYNC mode (fast pulumi up)")
             if self.force_rebuild:
-                pulumi.log.info(
-                    "   🔨 Force rebuild enabled - will trigger build"
-                )
+                pulumi.log.info("   🔨 Force rebuild enabled - will trigger build")
             else:
                 pulumi.log.info(
                     f"   📦 Hash: {package_hash[:12]}... - will build only if changed"
@@ -278,9 +270,7 @@ done
         # Accept any Python files; `pyproject.toml` and/or `requirements.txt` are optional
         py_files = glob.glob(os.path.join(src_path, "**/*.py"), recursive=True)
         if not py_files:
-            raise ValueError(
-                f"Package directory {src_path} contains no Python files"
-            )
+            raise ValueError(f"Package directory {src_path} contains no Python files")
 
     def _calculate_package_hash(self) -> str:
         src_path = os.path.join(PROJECT_DIR, self.package_dir)
@@ -313,9 +303,7 @@ done
 
                 deps = data.get("project", {}).get("dependencies", [])
                 if self.package_extras:
-                    optional = data.get("project", {}).get(
-                        "optional-dependencies", {}
-                    )
+                    optional = data.get("project", {}).get("optional-dependencies", {})
                     deps.extend(optional.get(self.package_extras, []))
 
                 for dep in deps:
@@ -335,9 +323,7 @@ done
                                 f"📦 Found local dependency: {dir_name} for {self.name}"
                             )
             except (OSError, ValueError) as e:
-                pulumi.log.warn(
-                    f"Could not parse pyproject.toml for deps: {e}"
-                )
+                pulumi.log.warn(f"Could not parse pyproject.toml for deps: {e}")
         return local_deps
 
     def _encode(self, script: str) -> str:
@@ -508,9 +494,7 @@ echo "✅ Uploaded source.zip"
                 lambda b: self._generate_upload_script(b, package_hash)
             ),
             triggers=[package_hash],
-            opts=pulumi.ResourceOptions(
-                parent=self, delete_before_replace=True
-            ),
+            opts=pulumi.ResourceOptions(parent=self, delete_before_replace=True),
         )
 
         # IAM role for CodeBuild/CodePipeline
@@ -522,16 +506,12 @@ echo "✅ Uploaded source.zip"
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codebuild.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         },
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codepipeline.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codepipeline.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         },
                     ],
@@ -626,9 +606,7 @@ echo "✅ Uploaded source.zip"
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codepipeline.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codepipeline.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -673,9 +651,7 @@ echo "✅ Uploaded source.zip"
         RolePolicy(
             f"{self.name}-fn-pipeline-codebuild",
             role=pipeline_role.id,
-            policy=Output.all(
-                config.region, get_caller_identity().account_id
-            ).apply(
+            policy=Output.all(config.region, get_caller_identity().account_id).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -790,9 +766,7 @@ echo "✅ Uploaded source.zip"
             ],
             opts=pulumi.ResourceOptions(
                 parent=self,
-                depends_on=(
-                    [_bucket_versioning] if _bucket_versioning else None
-                ),
+                depends_on=([_bucket_versioning] if _bucket_versioning else None),
             ),
         )
 

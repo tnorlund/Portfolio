@@ -99,9 +99,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 tmp_file_path = tmp_file.name
 
             try:
-                s3_client.download_file(
-                    result_bucket, result_key, tmp_file_path
-                )
+                s3_client.download_file(result_bucket, result_key, tmp_file_path)
                 with open(tmp_file_path, "r", encoding="utf-8") as f:
                     individual_result = json.load(f)
                 # Flatten the result: if it's a list, extend; if it's a dict, append; otherwise append as-is
@@ -169,9 +167,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     logger.info(
         "poll_results is in legacy format (full results), uploading to S3",
         batch_id=batch_id,
-        poll_results_count=(
-            len(poll_results) if isinstance(poll_results, list) else 0
-        ),
+        poll_results_count=(len(poll_results) if isinstance(poll_results, list) else 0),
     )
 
     poll_results_s3_key = f"poll_results/{batch_id}/poll_results.json"

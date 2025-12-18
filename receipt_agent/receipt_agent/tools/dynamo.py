@@ -235,12 +235,14 @@ def get_receipts_by_merchant(
 
         receipts = []
         for meta in metadatas:
-            receipts.append({
-                "image_id": meta.image_id,
-                "receipt_id": meta.receipt_id,
-                "place_id": meta.place_id,
-                "validation_status": meta.validation_status,
-            })
+            receipts.append(
+                {
+                    "image_id": meta.image_id,
+                    "receipt_id": meta.receipt_id,
+                    "place_id": meta.place_id,
+                    "validation_status": meta.validation_status,
+                }
+            )
 
             if meta.place_id:
                 place_ids[meta.place_id] = place_ids.get(meta.place_id, 0) + 1
@@ -288,4 +290,3 @@ def get_receipts_by_merchant(
     except Exception as e:
         logger.error(f"Error getting receipts by merchant: {e}")
         return {"error": str(e)}
-

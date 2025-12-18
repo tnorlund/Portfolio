@@ -158,14 +158,10 @@ def _looks_like_address(name: str) -> bool:
     # Use word-boundary matching to avoid false positives like "1ST BANK"
     # Match suffixes only at word boundaries
     suffix_pattern = (
-        r"\b("
-        + "|".join(re.escape(suffix) for suffix in ADDRESS_SUFFIXES)
-        + r")\b"
+        r"\b(" + "|".join(re.escape(suffix) for suffix in ADDRESS_SUFFIXES) + r")\b"
     )
     has_suffix = bool(re.search(suffix_pattern, name_upper))
-    has_address_markers = (
-        re.match(r"^\d+", name.strip()) or "#" in name or "," in name
-    )
+    has_address_markers = re.match(r"^\d+", name.strip()) or "#" in name or "," in name
     return has_suffix and has_address_markers
 
 
@@ -248,9 +244,7 @@ class FinderResult:
     total_not_found: int = 0
     total_errors: int = 0
     matches: list[MetadataMatch] = field(default_factory=list)
-    field_counts: dict[str, int] = field(
-        default_factory=lambda: defaultdict(int)
-    )
+    field_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
 
 @dataclass
@@ -358,9 +352,7 @@ class ReceiptMetadataFinder:
         Returns:
             Total number of receipts with missing metadata
         """
-        logger.info(
-            "Loading receipt metadata with missing fields from DynamoDB..."
-        )
+        logger.info("Loading receipt metadata with missing fields from DynamoDB...")
 
         self._receipts_with_missing_metadata = []
         total = 0
@@ -388,31 +380,22 @@ class ReceiptMetadataFinder:
                         meta.merchant_name and meta.merchant_name.strip()
                     )
                     has_address = bool(meta.address and meta.address.strip())
-                    has_phone = bool(
-                        meta.phone_number and meta.phone_number.strip()
-                    )
+                    has_phone = bool(meta.phone_number and meta.phone_number.strip())
 
                     # If any field is missing, include it
                     if not (
-                        has_place_id
-                        and has_merchant_name
-                        and has_address
-                        and has_phone
+                        has_place_id and has_merchant_name and has_address and has_phone
                     ):
                         receipt = ReceiptRecord(
                             image_id=meta.image_id,
                             receipt_id=meta.receipt_id,
                             merchant_name=(
-                                meta.merchant_name
-                                if has_merchant_name
-                                else None
+                                meta.merchant_name if has_merchant_name else None
                             ),
                             place_id=meta.place_id if has_place_id else None,
                             address=meta.address if has_address else None,
                             phone=meta.phone_number if has_phone else None,
-                            validation_status=getattr(
-                                meta, "validation_status", None
-                            ),
+                            validation_status=getattr(meta, "validation_status", None),
                         )
 
                         self._receipts_with_missing_metadata.append(receipt)
@@ -491,10 +474,7 @@ class ReceiptMetadataFinder:
         for i, receipt in enumerate(receipts_to_process):
             if (i + 1) % 5 == 0:
                 logger.info(
-                    (
-                        "Processed "
-                        f"{i + 1}/{len(receipts_to_process)} receipts..."
-                    )
+                    ("Processed " f"{i + 1}/{len(receipts_to_process)} receipts...")
                 )
 
             # Retry logic for server errors
@@ -562,9 +542,7 @@ class ReceiptMetadataFinder:
                 match.address = agent_result.get("address")
                 match.phone_number = agent_result.get("phone_number")
                 match.confidence = agent_result.get("confidence", 0.0) * 100.0
-                match.field_confidence = agent_result.get(
-                    "field_confidence", {}
-                )
+                match.field_confidence = agent_result.get("field_confidence", {})
                 match.sources = agent_result.get("sources", {})
                 match.fields_found = agent_result.get("fields_found", [])
                 match.reasoning = agent_result.get("reasoning", "")
@@ -581,9 +559,7 @@ class ReceiptMetadataFinder:
                     "address",
                     "phone_number",
                 ]
-                found_required = [
-                    f for f in required_fields if f in match.fields_found
-                ]
+                found_required = [f for f in required_fields if f in match.fields_found]
                 if len(found_required) == len(required_fields):
                     result.total_found_all += 1
                 elif len(found_required) > 0:
@@ -605,9 +581,7 @@ class ReceiptMetadataFinder:
                 elif agent_result:
                     # Agent completed but found no metadata - normal "not
                     # found" outcome
-                    match.not_found_reason = agent_result.get(
-                        "reasoning", "no_match"
-                    )
+                    match.not_found_reason = agent_result.get("reasoning", "no_match")
                 else:
                     # No result and no error - should not happen, but treat as
                     # not found
@@ -720,10 +694,7 @@ class ReceiptMetadataFinder:
 
         # Actually apply updates
         logger.info(
-            (
-                "Applying metadata updates to "
-                f"{len(matches_to_update)} receipts..."
-            )
+            ("Applying metadata updates to " f"{len(matches_to_update)} receipts...")
         )
 
         for match in matches_to_update:
@@ -760,8 +731,7 @@ class ReceiptMetadataFinder:
 
                     # Determine matched fields in canonical format
                     matched_fields = [
-                        FIELD_NAME_MAPPING.get(f, f)
-                        for f in match.fields_found
+                        FIELD_NAME_MAPPING.get(f, f) for f in match.fields_found
                     ]
 
                     # Create new ReceiptMetadata
@@ -810,9 +780,7 @@ class ReceiptMetadataFinder:
                 # CRITICAL: Never use an address as a merchant name
                 if match.merchant_name:
                     # Validate that match.merchant_name is NOT an address
-                    match_looks_like_address = _looks_like_address(
-                        match.merchant_name
-                    )
+                    match_looks_like_address = _looks_like_address(match.merchant_name)
 
                     # Skip if the match itself looks like an address
                     if match_looks_like_address:
@@ -830,9 +798,7 @@ class ReceiptMetadataFinder:
                         updated_fields.append("merchant_name")
                     elif metadata.merchant_name != match.merchant_name:
                         # Check if current merchant_name looks like an address
-                        looks_like_address = _looks_like_address(
-                            metadata.merchant_name
-                        )
+                        looks_like_address = _looks_like_address(metadata.merchant_name)
                         # Always update if different and we have high
                         # confidence, or if current looks like address
                         if looks_like_address or match.confidence >= 80:
@@ -849,18 +815,14 @@ class ReceiptMetadataFinder:
 
                 # Update matched_fields to include all fields we found
                 new_matched_fields = (
-                    list(metadata.matched_fields)
-                    if metadata.matched_fields
-                    else []
+                    list(metadata.matched_fields) if metadata.matched_fields else []
                 )
                 for field in match.fields_found:
                     mapped_field = FIELD_NAME_MAPPING.get(field, field)
                     if mapped_field not in new_matched_fields:
                         new_matched_fields.append(mapped_field)
 
-                if set(new_matched_fields) != set(
-                    metadata.matched_fields or []
-                ):
+                if set(new_matched_fields) != set(metadata.matched_fields or []):
                     metadata.matched_fields = new_matched_fields
                     updated_fields.append("matched_fields")
 
@@ -880,9 +842,7 @@ class ReceiptMetadataFinder:
                 has_place_id = bool(metadata.place_id)
 
                 # Determine appropriate validation status
-                if (
-                    has_place_id and confidence >= 0.8
-                ):  # 80% confidence threshold
+                if has_place_id and confidence >= 0.8:  # 80% confidence threshold
                     new_status = MerchantValidationStatus.MATCHED.value
                 elif has_place_id and confidence >= 0.5:  # 50-80% confidence
                     new_status = MerchantValidationStatus.UNSURE.value
@@ -941,32 +901,24 @@ class ReceiptMetadataFinder:
             report = self._last_report
 
         if not report:
-            print(
-                "No report available. Run find_all_metadata_agentic() first."
-            )
+            print("No report available. Run find_all_metadata_agentic() first.")
             return
 
         print("=" * 70)
         print("RECEIPT METADATA FINDER REPORT")
         print("=" * 70)
-        print(
-            f"Total receipts with missing metadata: {report.total_processed}"
-        )
+        print(f"Total receipts with missing metadata: {report.total_processed}")
         # Calculate percentages safely (guard against division by zero)
         if report.total_processed == 0:
             found_all_percentage = 0.0
             found_partial_percentage = 0.0
             not_found_percentage = 0.0
         else:
-            found_all_percentage = (
-                report.total_found_all / report.total_processed * 100
-            )
+            found_all_percentage = report.total_found_all / report.total_processed * 100
             found_partial_percentage = (
                 report.total_found_partial / report.total_processed * 100
             )
-            not_found_percentage = (
-                report.total_not_found / report.total_processed * 100
-            )
+            not_found_percentage = report.total_not_found / report.total_processed * 100
 
         print(
             (
@@ -1009,11 +961,7 @@ class ReceiptMetadataFinder:
             for match in found_matches[:10]:
                 fields_str = ", ".join(match.fields_found)
                 print(
-                    (
-                        "  ✅ "
-                        f"{fields_str} "
-                        f"(confidence={match.confidence:.0f}%)"
-                    )
+                    ("  ✅ " f"{fields_str} " f"(confidence={match.confidence:.0f}%)")
                 )
             if len(found_matches) > 10:
                 print(f"  ... and {len(found_matches) - 10} more")

@@ -88,9 +88,7 @@ class LayoutLMTrainingInfra(ComponentResource):
         default_vpc = aws.ec2.get_vpc(default=True)
         subnets = aws.ec2.get_subnets(
             filters=[
-                aws.ec2.GetSubnetsFilterArgs(
-                    name="vpc-id", values=[default_vpc.id]
-                )
+                aws.ec2.GetSubnetsFilterArgs(name="vpc-id", values=[default_vpc.id])
             ]
         )
 
@@ -298,9 +296,7 @@ PY
                     propagate_at_launch=True,
                 )
             ],
-            opts=ResourceOptions(
-                parent=self, ignore_changes=["desired_capacity"]
-            ),
+            opts=ResourceOptions(parent=self, ignore_changes=["desired_capacity"]),
         )
 
         # Simple output handles

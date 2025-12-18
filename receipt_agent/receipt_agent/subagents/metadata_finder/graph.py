@@ -210,8 +210,7 @@ def create_metadata_submission_tool(state_holder: dict):
         )
         reasoning: str = Field(
             description=(
-                "Explanation of how you found the metadata and why you're "
-                "confident"
+                "Explanation of how you found the metadata and why you're " "confident"
             )
         )
         sources: dict[str, str] = Field(
@@ -390,8 +389,7 @@ def create_receipt_metadata_finder_graph(
                     )
             if len(state.messages) > 20:
                 logger.error(
-                    "Agent exceeded 20 steps without submitting"
-                    " - forcing end"
+                    "Agent exceeded 20 steps without submitting" " - forcing end"
                 )
                 return "end"
             return "agent"
@@ -520,9 +518,7 @@ async def run_receipt_metadata_finder(
         ],
     )
 
-    logger.info(
-        f"Starting receipt metadata finder for {image_id}#{receipt_id}"
-    )
+    logger.info(f"Starting receipt metadata finder for {image_id}#{receipt_id}")
 
     # Run the workflow
     try:

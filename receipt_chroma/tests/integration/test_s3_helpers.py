@@ -33,9 +33,7 @@ def temp_dir():
 class TestDownloadSnapshotFromS3:
     """Test downloading snapshots from S3."""
 
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-snapshot-bucket"], indirect=True
-    )
+    @pytest.mark.parametrize("s3_bucket", ["test-snapshot-bucket"], indirect=True)
     def test_download_snapshot_success(self, s3_bucket, temp_dir):
         """Test successful snapshot download."""
         with mock_aws():
@@ -70,9 +68,7 @@ class TestDownloadSnapshotFromS3:
             assert (local_path / "file1.txt").exists()
             assert (local_path / "subdir" / "file2.txt").exists()
 
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-snapshot-bucket"], indirect=True
-    )
+    @pytest.mark.parametrize("s3_bucket", ["test-snapshot-bucket"], indirect=True)
     def test_download_snapshot_not_found(self, s3_bucket, temp_dir):
         """Test downloading non-existent snapshot."""
         with mock_aws():
@@ -85,12 +81,8 @@ class TestDownloadSnapshotFromS3:
             assert result["status"] == "failed"
             assert "error" in result
 
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-snapshot-bucket"], indirect=True
-    )
-    def test_download_snapshot_with_verify_integrity(
-        self, s3_bucket, temp_dir
-    ):
+    @pytest.mark.parametrize("s3_bucket", ["test-snapshot-bucket"], indirect=True)
+    def test_download_snapshot_with_verify_integrity(self, s3_bucket, temp_dir):
         """Test download with integrity verification."""
         with mock_aws():
             s3 = boto3.client("s3", region_name="us-east-1")
@@ -119,9 +111,7 @@ class TestDownloadSnapshotFromS3:
 class TestUploadSnapshotWithHash:
     """Test uploading snapshots to S3 with hash."""
 
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-snapshot-bucket"], indirect=True
-    )
+    @pytest.mark.parametrize("s3_bucket", ["test-snapshot-bucket"], indirect=True)
     def test_upload_snapshot_success(self, s3_bucket, temp_dir):
         """Test successful snapshot upload."""
         with mock_aws():
@@ -151,9 +141,7 @@ class TestUploadSnapshotWithHash:
             )
             assert objects["KeyCount"] >= 2  # Files + hash file
 
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-snapshot-bucket"], indirect=True
-    )
+    @pytest.mark.parametrize("s3_bucket", ["test-snapshot-bucket"], indirect=True)
     def test_upload_snapshot_without_hash(self, s3_bucket, temp_dir):
         """Test upload without hash calculation."""
         with mock_aws():
@@ -173,9 +161,7 @@ class TestUploadSnapshotWithHash:
             assert result["status"] == "uploaded"
             assert result["hash"] is None
 
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-snapshot-bucket"], indirect=True
-    )
+    @pytest.mark.parametrize("s3_bucket", ["test-snapshot-bucket"], indirect=True)
     def test_upload_snapshot_with_metadata(self, s3_bucket, temp_dir):
         """Test upload with custom metadata."""
         with mock_aws():
@@ -192,9 +178,7 @@ class TestUploadSnapshotWithHash:
 
             assert result["status"] == "uploaded"
 
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-snapshot-bucket"], indirect=True
-    )
+    @pytest.mark.parametrize("s3_bucket", ["test-snapshot-bucket"], indirect=True)
     def test_upload_snapshot_clear_destination(self, s3_bucket, temp_dir):
         """Test upload with destination clearing."""
         with mock_aws():
@@ -228,9 +212,7 @@ class TestUploadSnapshotWithHash:
                 obj["Key"] for obj in objects.get("Contents", [])
             ]
 
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-snapshot-bucket"], indirect=True
-    )
+    @pytest.mark.parametrize("s3_bucket", ["test-snapshot-bucket"], indirect=True)
     def test_upload_snapshot_path_not_exists(self, s3_bucket):
         """Test upload with non-existent path."""
         with mock_aws():

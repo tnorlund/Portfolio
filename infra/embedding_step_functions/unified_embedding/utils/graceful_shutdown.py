@@ -241,9 +241,7 @@ class GracefulShutdownManager:
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
-                op_name = (
-                    operation_name or f"{func.__module__}.{func.__name__}"
-                )
+                op_name = operation_name or f"{func.__module__}.{func.__name__}"
 
                 with self.managed_operation(op_name) as stop_event:
                     # Check if shutdown was initiated before we started
@@ -269,15 +267,11 @@ class TimeoutAwareShutdownManager(GracefulShutdownManager):
         super().__init__()
 
         # Register with timeout protection
-        timeout_protection.register_shutdown_callback(
-            self._on_timeout_approaching
-        )
+        timeout_protection.register_shutdown_callback(self._on_timeout_approaching)
 
     def _on_timeout_approaching(self):
         """Called when Lambda timeout is approaching."""
-        self.logger.warning(
-            "Lambda timeout approaching - initiating graceful shutdown"
-        )
+        self.logger.warning("Lambda timeout approaching - initiating graceful shutdown")
         self.initiate_shutdown("timeout_approaching")
 
     def check_and_handle_shutdown(self) -> bool:
@@ -352,9 +346,10 @@ def managed_operation(operation_id: str):
 @contextmanager
 def timeout_aware_operation(operation_id: str, check_interval: float = 1.0):
     """Context manager for operations that should check timeout periodically."""
-    with shutdown_manager.timeout_aware_operation(
-        operation_id, check_interval
-    ) as (stop_event, should_stop):
+    with shutdown_manager.timeout_aware_operation(operation_id, check_interval) as (
+        stop_event,
+        should_stop,
+    ):
         yield stop_event, should_stop
 
 

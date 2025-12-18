@@ -45,22 +45,16 @@ def wait_for_compaction(
     last_state = None
     compaction_run_found = False
 
-    print(
-        f"⏳ Waiting for compaction to complete (max {max_wait_seconds}s)..."
-    )
+    print(f"⏳ Waiting for compaction to complete (max {max_wait_seconds}s)...")
 
     # First, wait a bit for NDJSON worker to create CompactionRun
     if initial_wait_seconds > 0:
-        print(
-            f"   Waiting {initial_wait_seconds}s for CompactionRun to be created..."
-        )
+        print(f"   Waiting {initial_wait_seconds}s for CompactionRun to be created...")
         time.sleep(initial_wait_seconds)
 
     while time.time() - start_time < max_wait_seconds:
         # Get most recent CompactionRun for this receipt
-        runs, _ = client.list_compaction_runs_for_receipt(
-            image_id, receipt_id, limit=1
-        )
+        runs, _ = client.list_compaction_runs_for_receipt(image_id, receipt_id, limit=1)
 
         if runs:
             if not compaction_run_found:
@@ -100,9 +94,7 @@ def wait_for_compaction(
             if not compaction_run_found:
                 elapsed = int(time.time() - start_time)
                 if elapsed % 10 == 0:  # Print every 10 seconds
-                    print(
-                        f"   Waiting for CompactionRun to be created... ({elapsed}s)"
-                    )
+                    print(f"   Waiting for CompactionRun to be created... ({elapsed}s)")
 
         time.sleep(poll_interval)
 
@@ -135,9 +127,7 @@ def check_compaction_status(
     Returns:
         Tuple of (run_id, lines_state, words_state) or (None, None, None) if no run found
     """
-    runs, _ = client.list_compaction_runs_for_receipt(
-        image_id, receipt_id, limit=1
-    )
+    runs, _ = client.list_compaction_runs_for_receipt(image_id, receipt_id, limit=1)
     if not runs:
         return (None, None, None)
 

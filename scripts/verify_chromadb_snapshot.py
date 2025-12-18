@@ -90,9 +90,7 @@ def _download_and_verify(
     available_collections: list[str] = []
     if client.client is not None:
         try:
-            available_collections = [
-                c.name for c in client.client.list_collections()
-            ]
+            available_collections = [c.name for c in client.client.list_collections()]
         except (AttributeError, RuntimeError, TypeError, ValueError):
             # Best-effort only; ignore errors here
             available_collections = []
@@ -163,9 +161,7 @@ def main() -> int:
     parser.add_argument(
         "--version-words", default=None, help="Force words snapshot version"
     )
-    parser.add_argument(
-        "--image-id", default=None, help="Filter: image_id to verify"
-    )
+    parser.add_argument("--image-id", default=None, help="Filter: image_id to verify")
     parser.add_argument(
         "--receipt-id",
         type=int,
@@ -177,9 +173,7 @@ def main() -> int:
 
     bucket = _resolve_bucket(args.env)
     if not bucket:
-        print(
-            "ERROR: Could not resolve CHROMADB bucket from env or Pulumi outputs."
-        )
+        print("ERROR: Could not resolve CHROMADB bucket from env or Pulumi outputs.")
         return 2
 
     base = Path(args.out_dir)

@@ -123,7 +123,10 @@ class TestChunkBatching:
         test_cases = [
             (1, 50),  # No batching: 1 chunk per Lambda
             (2, 25),  # 2 chunks per Lambda
-            (4, 13),  # 4 chunks per Lambda (50 deltas / 1 per chunk = 50 chunks; ceil(50/4) = 13 batches)
+            (
+                4,
+                13,
+            ),  # 4 chunks per Lambda (50 deltas / 1 per chunk = 50 chunks; ceil(50/4) = 13 batches)
             (10, 5),  # 10 chunks per Lambda
         ]
 
@@ -236,7 +239,10 @@ class TestChunkBatching:
                 result = handler.lambda_handler(event, None)
 
                 # Should include poll_results S3 keys
-                assert result["poll_results_s3_key"] == "poll_results/test-batch/poll_results.json"
+                assert (
+                    result["poll_results_s3_key"]
+                    == "poll_results/test-batch/poll_results.json"
+                )
                 assert result["poll_results_s3_bucket"] == "test-bucket"
 
     def test_exact_multiple_of_batch_size(self, monkeypatch):

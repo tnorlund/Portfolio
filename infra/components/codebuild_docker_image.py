@@ -79,19 +79,13 @@ class CodeBuildDockerImage(ComponentResource):
         *,
         dockerfile_path: str,  # Path to Dockerfile relative to project root
         build_context_path: str,  # Path to build context (usually project root)
-        source_paths: Optional[
-            list[str]
-        ] = None,  # Specific paths to include in build
-        lambda_function_name: Optional[
-            str
-        ] = None,  # If provided, updates Lambda
+        source_paths: Optional[list[str]] = None,  # Specific paths to include in build
+        lambda_function_name: Optional[str] = None,  # If provided, updates Lambda
         lambda_config: Optional[Dict[str, Any]] = None,  # Lambda configuration
         build_args: Optional[Dict[str, str]] = None,
         platform: str = "linux/arm64",
         sync_mode: Optional[bool] = None,
-        lambda_aliases: Optional[
-            list[str]
-        ] = None,  # Pulumi aliases for Lambda rename
+        lambda_aliases: Optional[list[str]] = None,  # Pulumi aliases for Lambda rename
         opts: Optional[ResourceOptions] = None,
     ) -> None:
         super().__init__(f"codebuild-docker:{name}", name, {}, opts)
@@ -109,9 +103,7 @@ class CodeBuildDockerImage(ComponentResource):
         self.lambda_config = lambda_config or {}
         self.build_args = build_args or {}
         self.platform = platform
-        self.lambda_aliases = (
-            lambda_aliases or []
-        )  # Pulumi aliases for Lambda rename
+        self.lambda_aliases = lambda_aliases or []  # Pulumi aliases for Lambda rename
 
         # Configure build mode and flags
         (
@@ -128,13 +120,9 @@ class CodeBuildDockerImage(ComponentResource):
         content_hash = self._calculate_content_hash()
 
         if self.sync_mode:
-            pulumi.log.info(
-                f"🔄 Building image '{self.name}' in SYNC mode (will wait)"
-            )
+            pulumi.log.info(f"🔄 Building image '{self.name}' in SYNC mode (will wait)")
         else:
-            pulumi.log.info(
-                f"⚡ Image '{self.name}' in ASYNC mode (fast pulumi up)"
-            )
+            pulumi.log.info(f"⚡ Image '{self.name}' in ASYNC mode (fast pulumi up)")
             pulumi.log.info(
                 f"   📦 Hash: {content_hash[:12]}... - will build only if changed"
             )
@@ -167,9 +155,7 @@ class CodeBuildDockerImage(ComponentResource):
 
         # Export outputs
         self.repository_url = self.ecr_repo.repository_url
-        self.image_uri = self.ecr_repo.repository_url.apply(
-            lambda url: f"{url}:latest"
-        )
+        self.image_uri = self.ecr_repo.repository_url.apply(lambda url: f"{url}:latest")
         # Digest is managed by CodeBuild, provide a placeholder
         # The actual digest is used during Lambda updates in post_build phase
         self.digest = pulumi.Output.from_input("sha256:placeholder")
@@ -329,9 +315,7 @@ class CodeBuildDockerImage(ComponentResource):
                         paths.append(full_path)
 
                 # Also hash the handler directory
-                handler_dir = (
-                    Path(PROJECT_DIR) / Path(self.dockerfile_path).parent
-                )
+                handler_dir = Path(PROJECT_DIR) / Path(self.dockerfile_path).parent
                 if handler_dir.exists():
                     for file_path in sorted(handler_dir.rglob("*.py")):
                         if file_path.is_file() and not any(
@@ -383,9 +367,7 @@ class CodeBuildDockerImage(ComponentResource):
         packages_to_include = sorted(set(packages_to_include))
 
         # Build rsync include patterns for each package
-        rsync_includes = self._generate_package_rsync_patterns(
-            packages_to_include
-        )
+        rsync_includes = self._generate_package_rsync_patterns(packages_to_include)
 
         # Paths are relative to project root
         # Get absolute project root path
@@ -488,9 +470,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
         """Setup S3, CodeBuild, and CodePipeline for Docker builds."""
 
         # Artifact bucket
-        build_bucket, bucket_versioning = make_artifact_bucket(
-            self.name, parent=self
-        )
+        build_bucket, bucket_versioning = make_artifact_bucket(self.name, parent=self)
 
         # Upload context command - depends on versioning to ensure bucket is ready for CodePipeline
         upload_cmd_deps = [build_bucket]
@@ -523,16 +503,12 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codebuild.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         },
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codepipeline.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codepipeline.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         },
                     ],
@@ -638,11 +614,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
             ),
             artifacts=ProjectArtifactsArgs(type="CODEPIPELINE"),
             environment=ProjectEnvironmentArgs(
-                type=(
-                    "ARM_CONTAINER"
-                    if "arm" in self.platform
-                    else "LINUX_CONTAINER"
-                ),
+                type=("ARM_CONTAINER" if "arm" in self.platform else "LINUX_CONTAINER"),
                 # Medium keeps Docker support while reducing CodeBuild cost
                 compute_type="BUILD_GENERAL1_MEDIUM",
                 image=(
@@ -668,11 +640,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                     ),
                     ProjectEnvironmentEnvironmentVariableArgs(
                         name="LAMBDA_FUNCTION_NAME",
-                        value=(
-                            self.lambda_function_name
-                            if self.lambda_config
-                            else ""
-                        ),
+                        value=(self.lambda_function_name if self.lambda_config else ""),
                     ),
                     ProjectEnvironmentEnvironmentVariableArgs(
                         name="DEBUG_MODE",
@@ -683,9 +651,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
             build_timeout=60,  # Docker builds can take time
             cache=ProjectCacheArgs(
                 type="S3",
-                location=Output.concat(
-                    build_bucket.bucket, "/cache/", self.name
-                ),
+                location=Output.concat(build_bucket.bucket, "/cache/", self.name),
             ),
             logs_config=ProjectLogsConfigArgs(
                 cloudwatch_logs=ProjectLogsConfigCloudwatchLogsArgs(
@@ -705,9 +671,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codepipeline.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codepipeline.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -865,9 +829,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
             ],
             opts=ResourceOptions(
                 parent=self,
-                depends_on=(
-                    [bucket_versioning] if bucket_versioning else None
-                ),
+                depends_on=([bucket_versioning] if bucket_versioning else None),
             ),
         )
 
@@ -1048,8 +1010,8 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
 
         # Add reserved concurrent executions if provided
         if self.lambda_config.get("reserved_concurrent_executions"):
-            lambda_args["reserved_concurrent_executions"] = (
-                self.lambda_config.get("reserved_concurrent_executions")
+            lambda_args["reserved_concurrent_executions"] = self.lambda_config.get(
+                "reserved_concurrent_executions"
             )
 
         # Add description if provided

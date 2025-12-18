@@ -115,9 +115,7 @@ def load_dual_chroma_from_s3(
 
     # Verify OpenAI API key is available for embeddings
     if not settings.openai_api_key:
-        logger.warning(
-            "RECEIPT_AGENT_OPENAI_API_KEY not set - embeddings may fail"
-        )
+        logger.warning("RECEIPT_AGENT_OPENAI_API_KEY not set - embeddings may fail")
     else:
         logger.info("OpenAI API key available for embeddings")
 

@@ -5,9 +5,7 @@ route_label_validation_count = aws.apigatewayv2.Route(
     "label_validation_count_route",
     api_id=api.id,
     route_key="GET /label_validation_count",
-    target=integration_label_validation_count.id.apply(
-        lambda id: f"integrations/{id}"
-    ),
+    target=integration_label_validation_count.id.apply(lambda id: f"integrations/{id}"),
     # Note: HTTP APIs (v2) don't support per-route caching
     # You'd need to switch to REST API (v1) for caching
 )

@@ -42,30 +42,17 @@ CORE_LABELS = {
     # Merchant & Store Info (6 labels)
     "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
     "STORE_HOURS": "Printed business hours or opening times for the merchant.",
-    "PHONE_NUMBER": (
-        "Telephone number printed on the receipt "
-        "(store's main line)."
-    ),
-    "WEBSITE": (
-        "Web or email address printed on the receipt "
-        "(e.g., sprouts.com)."
-    ),
+    "PHONE_NUMBER": ("Telephone number printed on the receipt " "(store's main line)."),
+    "WEBSITE": ("Web or email address printed on the receipt " "(e.g., sprouts.com)."),
     "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
     # Location / Address (1 label)
-    "ADDRESS_LINE": (
-        "Full address line (street + city etc.) printed on the receipt."
-    ),
+    "ADDRESS_LINE": ("Full address line (street + city etc.) printed on the receipt."),
     # Transaction Info (5 labels)
     "DATE": "Calendar date of the transaction.",
     "TIME": "Time of the transaction.",
-    "PAYMENT_METHOD": (
-        "Payment instrument summary (e.g., VISA ••••1234, CASH)."
-    ),
+    "PAYMENT_METHOD": ("Payment instrument summary (e.g., VISA ••••1234, CASH)."),
     "COUPON": "Coupon code or description that reduces price.",
-    "DISCOUNT": (
-        "Any non-coupon discount line item "
-        "(e.g., 10% member discount)."
-    ),
+    "DISCOUNT": ("Any non-coupon discount line item " "(e.g., 10% member discount)."),
     # Line-Item Fields (4 labels) - NOTE: LINE_TOTAL added here
     "PRODUCT_NAME": "Descriptive text of a purchased product (item name).",
     "QUANTITY": "Numeric count or weight of the item (e.g., 2, 1.31 lb).",
@@ -229,9 +216,7 @@ def create_enhanced_financial_validation_tools(
                             "word_id": label.get("word_id"),
                             "text": text,
                             "numeric_value": value,
-                            "validation_status": label.get(
-                                "validation_status"
-                            ),
+                            "validation_status": label.get("validation_status"),
                         }
                     )
 
@@ -291,9 +276,7 @@ def create_enhanced_financial_validation_tools(
             "currency": detected,
             "evidence": evidence,
             "confidence": (
-                0.9
-                if len(evidence) > 0 and "Defaulting" not in evidence[0]
-                else 0.5
+                0.9 if len(evidence) > 0 and "Defaulting" not in evidence[0] else 0.5
             ),
         }
 
@@ -304,10 +287,7 @@ def create_enhanced_financial_validation_tools(
 
         # Get values
         grand_total = None
-        if (
-            "GRAND_TOTAL" in financial_labels
-            and financial_labels["GRAND_TOTAL"]
-        ):
+        if "GRAND_TOTAL" in financial_labels and financial_labels["GRAND_TOTAL"]:
             grand_total = financial_labels["GRAND_TOTAL"][0]["numeric_value"]
 
         subtotal = None
@@ -316,9 +296,7 @@ def create_enhanced_financial_validation_tools(
 
         tax = 0.0  # Default to 0 if no tax
         if "TAX" in financial_labels and financial_labels["TAX"]:
-            tax = sum(
-                item["numeric_value"] or 0 for item in financial_labels["TAX"]
-            )
+            tax = sum(item["numeric_value"] or 0 for item in financial_labels["TAX"])
 
         # Sum discounts and coupons (these reduce the total)
         discounts = 0.0
@@ -377,9 +355,7 @@ def create_enhanced_financial_validation_tools(
                 "tax": tax,
                 "discounts": discounts,
                 "expected_total": (
-                    subtotal + tax - discounts
-                    if subtotal is not None
-                    else None
+                    subtotal + tax - discounts if subtotal is not None else None
                 ),
             },
         }
@@ -516,13 +492,9 @@ def create_enhanced_financial_validation_tools(
                 item for item in line_labels if item["label"] == "UNIT_PRICE"
             ]
 
-            quantity = (
-                quantity_items[0]["numeric_value"] if quantity_items else None
-            )
+            quantity = quantity_items[0]["numeric_value"] if quantity_items else None
             unit_price = (
-                unit_price_items[0]["numeric_value"]
-                if unit_price_items
-                else None
+                unit_price_items[0]["numeric_value"] if unit_price_items else None
             )
 
             line_info = {
@@ -563,9 +535,7 @@ def create_enhanced_financial_validation_tools(
                 )
                 line_info["calculated_total"] = calculated_total
             else:
-                line_info["math_valid"] = (
-                    None  # Cannot validate without both values
-                )
+                line_info["math_valid"] = None  # Cannot validate without both values
 
             validated_lines.append(line_info)
 
@@ -611,9 +581,7 @@ def create_enhanced_financial_validation_tools(
                             "has_labels": list(label_set),
                             "missing_labels": missing,
                             "severity": (
-                                "high"
-                                if "PRODUCT_NAME" in missing
-                                else "medium"
+                                "high" if "PRODUCT_NAME" in missing else "medium"
                             ),
                         }
                     )

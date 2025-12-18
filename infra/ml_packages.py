@@ -113,9 +113,7 @@ class MLPackageBuilder(pulumi.ComponentResource):
         self.stack = pulumi.get_stack()
 
         # Get project root directory
-        self.project_dir = os.path.dirname(
-            os.path.dirname(os.path.abspath(__file__))
-        )
+        self.project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
         # Create an S3 bucket for package artifacts and build state
         # Note: No ACL needed - S3 buckets are private by default in newer AWS accounts
@@ -139,9 +137,7 @@ class MLPackageBuilder(pulumi.ComponentResource):
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codebuild.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -215,9 +211,7 @@ class MLPackageBuilder(pulumi.ComponentResource):
                             # Network interface permission for VPC endpoints
                             {
                                 "Effect": "Allow",
-                                "Action": [
-                                    "ec2:CreateNetworkInterfacePermission"
-                                ],
+                                "Action": ["ec2:CreateNetworkInterfacePermission"],
                                 "Resource": "*",
                             },
                             # IAM pass role permission
@@ -317,9 +311,7 @@ class MLPackageBuilder(pulumi.ComponentResource):
             # Upload package source to S3 first
             package_dir = os.path.join(self.project_dir, package)
             if not os.path.isdir(package_dir):
-                raise ValueError(
-                    f"Package directory '{package_dir}' does not exist"
-                )
+                raise ValueError(f"Package directory '{package_dir}' does not exist")
 
             # Create a command to zip and upload the package source to S3
             upload_command = command.local.Command(
@@ -408,9 +400,7 @@ class MLPackageBuilder(pulumi.ComponentResource):
                         subnets=self.subnet_ids,
                         security_group_ids=self.security_group_ids,
                     )
-                    if all(
-                        [self.vpc_id, self.subnet_ids, self.security_group_ids]
-                    )
+                    if all([self.vpc_id, self.subnet_ids, self.security_group_ids])
                     else None
                 ),
                 # Use apply to handle the Output nature of efs_storage_id
@@ -501,8 +491,7 @@ class MLPackageBuilder(pulumi.ComponentResource):
                 ),
                 opts=pulumi.ResourceOptions(
                     parent=codebuild_project,
-                    depends_on=[codebuild_project, upload_command]
-                    + self.vpc_endpoints,
+                    depends_on=[codebuild_project, upload_command] + self.vpc_endpoints,
                 ),
             )
 

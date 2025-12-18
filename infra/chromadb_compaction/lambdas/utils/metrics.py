@@ -23,9 +23,7 @@ class MetricsCollector:
             namespace: CloudWatch namespace for metrics
         """
         self.namespace = namespace
-        self.enabled = (
-            os.environ.get("ENABLE_METRICS", "true").lower() == "true"
-        )
+        self.enabled = os.environ.get("ENABLE_METRICS", "true").lower() == "true"
         self.logger = get_operation_logger(__name__)
 
         if self.enabled:
@@ -212,9 +210,7 @@ class EmbeddedMetricsFormatter:
             namespace: CloudWatch namespace for metrics
         """
         self.namespace = namespace
-        self.enabled = (
-            os.environ.get("ENABLE_METRICS", "true").lower() == "true"
-        )
+        self.enabled = os.environ.get("ENABLE_METRICS", "true").lower() == "true"
 
     def create_metric_log(
         self,
@@ -237,9 +233,7 @@ class EmbeddedMetricsFormatter:
 
         emf_log = {
             "_aws": {
-                "Timestamp": int(
-                    time.time() * 1000
-                ),  # EMF expects milliseconds
+                "Timestamp": int(time.time() * 1000),  # EMF expects milliseconds
                 "CloudWatchMetrics": [
                     {
                         "Namespace": self.namespace,
@@ -247,8 +241,7 @@ class EmbeddedMetricsFormatter:
                             [list(dimensions.keys())] if dimensions else [[]]
                         ),
                         "Metrics": [
-                            {"Name": name, "Unit": "Count"}
-                            for name in metrics.keys()
+                            {"Name": name, "Unit": "Count"} for name in metrics.keys()
                         ],
                     }
                 ],
@@ -293,9 +286,7 @@ metrics = MetricsCollector()
 emf_metrics = EmbeddedMetricsFormatter()
 
 
-def timed_operation(
-    metric_name: str, dimensions: Optional[Dict[str, str]] = None
-):
+def timed_operation(metric_name: str, dimensions: Optional[Dict[str, str]] = None):
     """Decorator for timing operations with both CloudWatch and EMF metrics.
 
     Args:
@@ -316,9 +307,7 @@ def timed_operation(
                 duration = time.time() - start_time
 
                 # Publish to both CloudWatch and EMF
-                metrics.put_metric(
-                    metric_name, duration, "Seconds", dimensions
-                )
+                metrics.put_metric(metric_name, duration, "Seconds", dimensions)
                 emf_metrics.log_metrics(
                     {metric_name: duration},
                     dimensions,
@@ -332,9 +321,7 @@ def timed_operation(
 
                 # Publish error metrics
                 error_dimensions = {**(dimensions or {}), "status": "error"}
-                metrics.put_metric(
-                    metric_name, duration, "Seconds", error_dimensions
-                )
+                metrics.put_metric(metric_name, duration, "Seconds", error_dimensions)
                 emf_metrics.log_metrics(
                     {metric_name: duration},
                     error_dimensions,
@@ -361,13 +348,9 @@ def track_s3_operation(operation: str):
 
 def track_chromadb_operation(operation: str):
     """Track ChromaDB operation duration."""
-    return timed_operation(
-        "ChromaDBOperationDuration", {"operation": operation}
-    )
+    return timed_operation("ChromaDBOperationDuration", {"operation": operation})
 
 
 def track_dynamodb_operation(operation: str):
     """Track DynamoDB operation duration."""
-    return timed_operation(
-        "DynamoDBOperationDuration", {"operation": operation}
-    )
+    return timed_operation("DynamoDBOperationDuration", {"operation": operation})

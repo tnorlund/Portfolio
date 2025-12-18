@@ -33,9 +33,7 @@ def create_metadata_message(
     """
     if changes is None:
         changes = {
-            "merchant_name": FieldChange(
-                old="Old Merchant", new="New Merchant"
-            ),
+            "merchant_name": FieldChange(old="Old Merchant", new="New Merchant"),
         }
 
     return StreamMessage(

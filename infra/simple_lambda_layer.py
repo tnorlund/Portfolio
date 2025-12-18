@@ -55,9 +55,7 @@ class SimpleLambdaLayer(ComponentResource):
         else:
             self.python_versions = list(python_versions)
 
-        self.description = (
-            description or f"Automatically built Lambda layer for {name}"
-        )
+        self.description = description or f"Automatically built Lambda layer for {name}"
         self.opts = opts
 
         # Validate package directory
@@ -73,9 +71,7 @@ class SimpleLambdaLayer(ComponentResource):
         package_path = os.path.join(PROJECT_DIR, self.package_dir)
 
         if not os.path.exists(package_path):
-            raise ValueError(
-                f"Package directory {package_path} does not exist"
-            )
+            raise ValueError(f"Package directory {package_path} does not exist")
 
         required_files = ["pyproject.toml"]
         missing_files = [
@@ -88,9 +84,7 @@ class SimpleLambdaLayer(ComponentResource):
                 f"Package directory {package_path} is missing required files: {', '.join(missing_files)}"
             )
 
-        python_files = glob.glob(
-            os.path.join(package_path, "**/*.py"), recursive=True
-        )
+        python_files = glob.glob(os.path.join(package_path, "**/*.py"), recursive=True)
         if not python_files:
             raise ValueError(
                 f"Package directory {package_path} contains no Python files"
@@ -170,9 +164,7 @@ class SimpleLambdaLayer(ComponentResource):
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codebuild.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -255,9 +247,9 @@ class SimpleLambdaLayer(ComponentResource):
                 location=pulumi.Output.concat(
                     build_bucket.bucket, f"/{self.name}/source.zip"
                 ),
-                buildspec=pulumi.Output.from_input(
-                    self._get_buildspec()
-                ).apply(lambda spec: json.dumps(spec)),
+                buildspec=pulumi.Output.from_input(self._get_buildspec()).apply(
+                    lambda spec: json.dumps(spec)
+                ),
             ),
             artifacts=aws.codebuild.ProjectArtifactsArgs(
                 type="S3",
@@ -310,9 +302,7 @@ class SimpleLambdaLayer(ComponentResource):
                     args[0], args[1], args[2], package_path, package_hash
                 )
             ),
-            opts=pulumi.ResourceOptions(
-                parent=self, depends_on=[codebuild_project]
-            ),
+            opts=pulumi.ResourceOptions(parent=self, depends_on=[codebuild_project]),
         )
 
         # Create the Lambda layer version resource
@@ -345,9 +335,7 @@ class SimpleLambdaLayer(ComponentResource):
             )
 
             # Create a persistent script file in /tmp with a unique name
-            script_name = (
-                f"pulumi-orchestrate-{self.name}-{package_hash[:8]}.sh"
-            )
+            script_name = f"pulumi-orchestrate-{self.name}-{package_hash[:8]}.sh"
             script_path = os.path.join("/tmp", script_name)
 
             # Write the script file
@@ -361,9 +349,7 @@ class SimpleLambdaLayer(ComponentResource):
             # No arguments or environment variables in the command line
             return f"/bin/bash {script_path}"
         except (OSError, IOError) as e:
-            raise RuntimeError(
-                f"Failed to create orchestration script: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to create orchestration script: {e}") from e
 
     def _generate_orchestration_script(
         self, bucket, project_name, layer_name, package_path, package_hash

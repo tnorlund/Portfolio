@@ -47,9 +47,7 @@ def chunk_into_embedding_batches(
     """
     # Build a mapping image_id -> receipt_id ->
     # dict[(line_id, word_id) -> ReceiptWord] for uniqueness
-    words_by_image: dict[
-        str, dict[int, dict[tuple[int, int], ReceiptWord]]
-    ] = {}
+    words_by_image: dict[str, dict[int, dict[tuple[int, int], ReceiptWord]]] = {}
     for word in words:
         image_dict = words_by_image.setdefault(word.image_id, {})
         receipt_dict = image_dict.setdefault(word.receipt_id, {})
@@ -181,9 +179,7 @@ def lambda_handler(event: Any, context: Any) -> Dict[str, Any]:
                     )
 
         # Serialize and upload in one step
-        uploaded = upload_serialized_words(
-            serialize_receipt_words(batches), bucket
-        )
+        uploaded = upload_serialized_words(serialize_receipt_words(batches), bucket)
         logger.info("Uploaded %d files", len(uploaded))
 
         # Clean the output to match expected format
@@ -197,9 +193,7 @@ def lambda_handler(event: Any, context: Any) -> Dict[str, Any]:
             for e in uploaded
         ]
 
-        logger.info(
-            "Successfully prepared %d batches for processing", len(cleaned)
-        )
+        logger.info("Successfully prepared %d batches for processing", len(cleaned))
 
         return {
             "batches": cleaned,

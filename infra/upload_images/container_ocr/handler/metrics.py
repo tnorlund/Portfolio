@@ -19,9 +19,7 @@ class MetricsCollector:
             namespace: CloudWatch namespace for metrics
         """
         self.namespace = namespace
-        self.enabled = (
-            os.environ.get("ENABLE_METRICS", "true").lower() == "true"
-        )
+        self.enabled = os.environ.get("ENABLE_METRICS", "true").lower() == "true"
 
         if self.enabled:
             try:
@@ -138,9 +136,7 @@ class EmbeddedMetricsFormatter:
             namespace: CloudWatch namespace for metrics
         """
         self.namespace = namespace
-        self.enabled = (
-            os.environ.get("ENABLE_METRICS", "true").lower() == "true"
-        )
+        self.enabled = os.environ.get("ENABLE_METRICS", "true").lower() == "true"
 
     def create_metric_log(
         self,
@@ -163,9 +159,7 @@ class EmbeddedMetricsFormatter:
 
         emf_log: Dict[str, Any] = {
             "_aws": {
-                "Timestamp": int(
-                    time.time() * 1000
-                ),  # EMF expects milliseconds
+                "Timestamp": int(time.time() * 1000),  # EMF expects milliseconds
                 "CloudWatchMetrics": [
                     {
                         "Namespace": self.namespace,
@@ -214,9 +208,7 @@ class EmbeddedMetricsFormatter:
             return
 
         emf_log = self.create_metric_log(metrics_dict, dimensions, properties)
-        print(
-            emf_log, flush=True
-        )  # CloudWatch automatically parses EMF from stdout
+        print(emf_log, flush=True)  # CloudWatch automatically parses EMF from stdout
 
 
 # Global metrics collector instance

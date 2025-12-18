@@ -81,9 +81,7 @@ class MerchantCandidate(BaseModel):
         ge=0.0,
         le=1.0,
     )
-    source: str = Field(
-        description="Source of this candidate (chroma/places/llm)"
-    )
+    source: str = Field(description="Source of this candidate (chroma/places/llm)")
     matched_fields: list[str] = Field(
         default_factory=list,
         description="Fields that matched",

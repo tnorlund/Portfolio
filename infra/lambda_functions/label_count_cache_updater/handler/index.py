@@ -64,12 +64,10 @@ def fetch_label_counts(core_label):
 
     # Fetch all receipt word labels for this label
     while True:
-        batch, last_evaluated_key = (
-            dynamo_client.get_receipt_word_labels_by_label(
-                label=core_label,
-                limit=1000,
-                last_evaluated_key=last_evaluated_key,
-            )
+        batch, last_evaluated_key = dynamo_client.get_receipt_word_labels_by_label(
+            label=core_label,
+            limit=1000,
+            last_evaluated_key=last_evaluated_key,
         )
         receipt_word_labels.extend(batch)
 
@@ -130,8 +128,7 @@ def handler(event, context):  # pylint: disable=unused-argument
     with ThreadPoolExecutor(max_workers=5) as executor:
         # Submit all tasks
         futures = {
-            executor.submit(fetch_label_counts, label): label
-            for label in CORE_LABELS
+            executor.submit(fetch_label_counts, label): label for label in CORE_LABELS
         }
 
         # Collect results
@@ -141,9 +138,7 @@ def handler(event, context):  # pylint: disable=unused-argument
                 core_label_counts[label] = counts
             except Exception as e:  # pylint: disable=broad-except
                 label = futures[future]
-                logger.error(
-                    "Error fetching counts for label %s: %s", label, e
-                )
+                logger.error("Error fetching counts for label %s: %s", label, e)
                 # Continue with other labels even if one fails
 
     # Update cache entries

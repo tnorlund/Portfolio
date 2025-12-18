@@ -26,9 +26,7 @@ def is_step_function_invocation(event: Dict[str, Any]) -> bool:
         return False
 
     # If requestContext exists with apiId, it's from API Gateway
-    if "requestContext" in event and "apiId" in event.get(
-        "requestContext", {}
-    ):
+    if "requestContext" in event and "apiId" in event.get("requestContext", {}):
         return False
 
     # Otherwise, assume it's from Step Functions or direct invocation
@@ -68,11 +66,7 @@ def format_response(
 
     response = {
         "statusCode": status_code,
-        "body": (
-            json.dumps(data, default=str)
-            if not isinstance(data, str)
-            else data
-        ),
+        "body": (json.dumps(data, default=str) if not isinstance(data, str) else data),
         "headers": {"Content-Type": "application/json"},
     }
     if correlation_id:

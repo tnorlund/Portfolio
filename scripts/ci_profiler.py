@@ -54,10 +54,7 @@ class SimpleCIProfiler:
     def save_metrics(self, metrics: Dict[str, Any]) -> None:
         """Save metrics to file."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = (
-            self.metrics_dir
-            / f"metrics_{metrics['job_name']}_{timestamp}.json"
-        )
+        filename = self.metrics_dir / f"metrics_{metrics['job_name']}_{timestamp}.json"
 
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(metrics, f, indent=2)
@@ -73,9 +70,7 @@ class SimpleCIProfiler:
             try:
                 # Extract timestamp from filename
                 timestamp_str = (
-                    file_path.stem.split("_")[-2]
-                    + "_"
-                    + file_path.stem.split("_")[-1]
+                    file_path.stem.split("_")[-2] + "_" + file_path.stem.split("_")[-1]
                 )
                 file_time = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
 
@@ -124,9 +119,7 @@ class SimpleCIProfiler:
                     for m in job_metrics
                 )
                 / len(job_metrics),
-                "avg_cpu_count": sum(
-                    m["system_info"]["cpu_count"] for m in job_metrics
-                )
+                "avg_cpu_count": sum(m["system_info"]["cpu_count"] for m in job_metrics)
                 / len(job_metrics),
             }
 
@@ -168,12 +161,8 @@ class SimpleCIProfiler:
 
 def main():
     """Main CLI interface."""
-    parser = argparse.ArgumentParser(
-        description="Simple CI Performance Profiler"
-    )
-    parser.add_argument(
-        "--collect", action="store_true", help="Collect metrics"
-    )
+    parser = argparse.ArgumentParser(description="Simple CI Performance Profiler")
+    parser.add_argument("--collect", action="store_true", help="Collect metrics")
     parser.add_argument(
         "--job-name",
         required="--collect" in sys.argv,

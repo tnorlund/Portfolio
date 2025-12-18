@@ -10,9 +10,7 @@ import pytest
 
 
 def pytest_configure(config):
-    if config.getoption("markexpr") and "end_to_end" in config.getoption(
-        "markexpr"
-    ):
+    if config.getoption("markexpr") and "end_to_end" in config.getoption("markexpr"):
         print("\n" + "=" * 70)
         print("⚠️  WARNING: Running END-TO-END tests for receipt_layoutlm")
         print("These tests will access real AWS services and may incur costs.")

@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 # Import PlacesClient from receipt_places (standalone package)
 try:
     from receipt_places import PlacesClient
+
     PLACES_CLIENT_AVAILABLE = True
 except ImportError:
     PlacesClient = None  # type: ignore
@@ -309,9 +310,7 @@ def compare_metadata_with_places(
     def similarity(a: Optional[str], b: Optional[str]) -> float:
         if not a or not b:
             return 0.0
-        return SequenceMatcher(
-            None, a.lower().strip(), b.lower().strip()
-        ).ratio()
+        return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
 
     def normalize_phone(phone: Optional[str]) -> str:
         if not phone:
@@ -334,17 +333,11 @@ def compare_metadata_with_places(
     # Generate recommendations
     recommendations: list[str] = []
     if name_sim < 0.85:
-        recommendations.append(
-            f"Consider updating merchant_name to '{places_name}'"
-        )
+        recommendations.append(f"Consider updating merchant_name to '{places_name}'")
     if addr_sim < 0.75 and places_address:
-        recommendations.append(
-            f"Consider updating address to '{places_address}'"
-        )
+        recommendations.append(f"Consider updating address to '{places_address}'")
     if phone_match is False:
-        recommendations.append(
-            f"Consider updating phone to '{places_phone}'"
-        )
+        recommendations.append(f"Consider updating phone to '{places_phone}'")
 
     # Overall assessment
     matched_fields: list[str] = []
@@ -385,4 +378,3 @@ def compare_metadata_with_places(
     }
 
     return result
-

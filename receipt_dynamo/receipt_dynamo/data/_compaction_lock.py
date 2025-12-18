@@ -56,9 +56,7 @@ class _CompactionLock(FlattenedStandardMixin):
         if lock is None:
             raise EntityValidationError("lock cannot be None")
         if not isinstance(lock, CompactionLock):
-            raise EntityValidationError(
-                "lock must be an instance of CompactionLock"
-            )
+            raise EntityValidationError("lock must be an instance of CompactionLock")
 
         # Since _add_entity doesn't support complex conditions with expression
         # values, we need to handle this at the DynamoDB client level
@@ -67,9 +65,7 @@ class _CompactionLock(FlattenedStandardMixin):
         put_params = {
             "TableName": self.table_name,
             "Item": lock.to_item(),
-            "ConditionExpression": (
-                "attribute_not_exists(PK) OR expires < :now"
-            ),
+            "ConditionExpression": ("attribute_not_exists(PK) OR expires < :now"),
             "ExpressionAttributeValues": {":now": {"S": now}},
         }
 
@@ -115,10 +111,7 @@ class _CompactionLock(FlattenedStandardMixin):
         try:
             self._client.delete_item(**delete_params)
         except ClientError as e:
-            if (
-                e.response["Error"]["Code"]
-                == "ConditionalCheckFailedException"
-            ):
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 # Check if lock exists and who owns it
                 existing_lock = self.get_compaction_lock(lock_id, collection)
                 if existing_lock is None:
@@ -170,17 +163,13 @@ class _CompactionLock(FlattenedStandardMixin):
         if lock is None:
             raise EntityValidationError("lock cannot be None")
         if not isinstance(lock, CompactionLock):
-            raise EntityValidationError(
-                "lock must be an instance of CompactionLock"
-            )
+            raise EntityValidationError("lock must be an instance of CompactionLock")
 
         # _update_entity does a PUT, which replaces the entire item
         # We use attribute_exists to ensure the lock still exists
         self._update_entity(
             lock,
-            condition_expression=(
-                "attribute_exists(PK) AND attribute_exists(SK)"
-            ),
+            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
         )
 
     @handle_dynamodb_errors("get_compaction_lock")
@@ -321,9 +310,7 @@ class _CompactionLock(FlattenedStandardMixin):
 
         # Batch delete expired locks
         delete_requests = [
-            WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=lock.key)
-            )
+            WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=lock.key))
             for lock in all_expired_locks
         ]
 

@@ -98,9 +98,7 @@ def _load_chunks_from_s3(event: Dict[str, Any]) -> Dict[str, Any]:
             tmp_file_path = tmp_file.name
 
         try:
-            s3_client.download_file(
-                chunks_s3_bucket, chunks_s3_key, tmp_file_path
-            )
+            s3_client.download_file(chunks_s3_bucket, chunks_s3_key, tmp_file_path)
             with open(tmp_file_path, "r", encoding="utf-8") as f:
                 chunks = json.load(f)
             total_chunks = len(chunks)
@@ -259,21 +257,15 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
         else:
             # Unknown or legacy batch - use default
             chunk_size = CHUNK_SIZE
-            logger.info(
-                "Unknown batch type, using default chunk size: %d", chunk_size
-            )
+            logger.info("Unknown batch type, using default chunk size: %d", chunk_size)
 
         # Estimate if we'll need S3 based on number of deltas
         # Each delta result can be ~1-3KB (includes delta_key, batch_id, embedding_count, etc.)
         # Each chunk adds ~500 bytes overhead (chunk_index, batch_id, operation)
         # With larger chunks, we'll have fewer chunks overall
         estimated_chunks = (len(valid_deltas) + chunk_size - 1) // chunk_size
-        estimated_size_per_delta = (
-            2500  # ~2.5KB per delta result (conservative)
-        )
-        estimated_size_per_chunk_overhead = (
-            500  # ~500 bytes per chunk overhead
-        )
+        estimated_size_per_delta = 2500  # ~2.5KB per delta result (conservative)
+        estimated_size_per_chunk_overhead = 500  # ~500 bytes per chunk overhead
         estimated_total_size = (
             len(valid_deltas) * estimated_size_per_delta
             + estimated_chunks * estimated_size_per_chunk_overhead
@@ -286,8 +278,7 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
         # Single chunk should be safe, but multiple chunks = use S3
         use_s3_early = (
             estimated_total_size > MAX_PAYLOAD_SIZE
-            or estimated_chunks
-            > 1  # More than 1 chunk = ALWAYS use S3 to be safe
+            or estimated_chunks > 1  # More than 1 chunk = ALWAYS use S3 to be safe
             or len(valid_deltas)
             > chunk_size  # More deltas than fit in one chunk = use S3
         )
@@ -355,9 +346,7 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
             # Get S3 bucket from environment
             bucket = os.environ.get("CHROMADB_BUCKET")
             if not bucket:
-                raise ValueError(
-                    "CHROMADB_BUCKET environment variable not set"
-                )
+                raise ValueError("CHROMADB_BUCKET environment variable not set")
 
             # Upload chunks to S3
             chunks_s3_key = f"chunks/{batch_id}/chunks.json"
@@ -400,9 +389,7 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
             }
         else:
             # Response is small enough, return chunks directly
-            logger.info(
-                "Response payload within limit, returning chunks directly"
-            )
+            logger.info("Response payload within limit, returning chunks directly")
             return {
                 "batch_id": batch_id,
                 "chunks": chunks,

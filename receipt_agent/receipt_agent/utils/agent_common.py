@@ -41,9 +41,7 @@ def create_ollama_llm(
         base_url=settings.ollama_base_url,
         model=settings.ollama_model,
         client_kwargs={
-            "headers": (
-                {"Authorization": f"Bearer {api_key}"} if api_key else {}
-            ),
+            "headers": ({"Authorization": f"Bearer {api_key}"} if api_key else {}),
             "timeout": timeout,
         },
         temperature=temperature,
@@ -158,9 +156,7 @@ def create_agent_node_with_retry(
                     wait_time = (base_delay * (2**attempt)) + jitter
                     wait_time = min(wait_time, max_wait)
 
-                    error_type = (
-                        "connection" if is_connection_error else "server"
-                    )
+                    error_type = "connection" if is_connection_error else "server"
                     logger.warning(
                         f"Ollama {error_type} error in {agent_name} "
                         f"(attempt {attempt + 1}/{max_retries}): {error_str[:200]}. "

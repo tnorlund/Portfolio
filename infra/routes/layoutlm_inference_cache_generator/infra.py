@@ -93,9 +93,7 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
         )
 
         # Convert Input[str] to Output[str] for proper resolution
-        layoutlm_training_bucket_output = Output.from_input(
-            layoutlm_training_bucket
-        )
+        layoutlm_training_bucket_output = Output.from_input(layoutlm_training_bucket)
 
         # DynamoDB access policy
         self.dynamodb_policy = aws.iam.RolePolicy(
@@ -181,7 +179,9 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
         )
 
         # Build Docker image using CodeBuild
-        dockerfile_path = "infra/routes/layoutlm_inference_cache_generator/lambdas/Dockerfile"
+        dockerfile_path = (
+            "infra/routes/layoutlm_inference_cache_generator/lambdas/Dockerfile"
+        )
         build_context_path = "."  # Project root
 
         # Create Lambda function name first (needed for CodeBuild)
@@ -193,9 +193,7 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
             f"{name}-image",
             dockerfile_path=dockerfile_path,
             build_context_path=build_context_path,
-            source_paths=[
-                "receipt_layoutlm"
-            ],  # Include receipt_layoutlm package
+            source_paths=["receipt_layoutlm"],  # Include receipt_layoutlm package
             lambda_function_name=lambda_function_name,
             lambda_config={
                 "role_arn": self.lambda_role.arn,

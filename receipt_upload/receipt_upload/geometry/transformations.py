@@ -152,9 +152,7 @@ def solve_8x8_system(A, b):  # pylint: disable=invalid-name
         # 3) Normalize pivot row (so A[i][i] = 1)
         pivot_val = A[i][i]
         if abs(pivot_val) < 1e-12:
-            raise ValueError(
-                "Matrix is singular or poorly conditioned for pivoting."
-            )
+            raise ValueError("Matrix is singular or poorly conditioned for pivoting.")
         inv_pivot = 1.0 / pivot_val
         A[i] = [val * inv_pivot for val in A[i]]
         b[i] = b[i] * inv_pivot
@@ -201,10 +199,7 @@ def find_perspective_coeffs(
     def are_collinear(p1, p2, p3):
         """Check if three points are collinear using cross product"""
         return (
-            abs(
-                (p2[0] - p1[0]) * (p3[1] - p1[1])
-                - (p3[0] - p1[0]) * (p2[1] - p1[1])
-            )
+            abs((p2[0] - p1[0]) * (p3[1] - p1[1]) - (p3[0] - p1[0]) * (p2[1] - p1[1]))
             < 1e-10
         )
 
@@ -240,9 +235,7 @@ def find_perspective_coeffs(
                 abs(dst_points[i][0] - dst_points[j][0]) < 1e-10
                 and abs(dst_points[i][1] - dst_points[j][1]) < 1e-10
             ):
-                raise ValueError(
-                    f"Destination points {i} and {j} are identical"
-                )
+                raise ValueError(f"Destination points {i} and {j} are identical")
 
     # Each source→destination pair gives 2 linear equations:
     #   sx = a*dx + b*dy + c - g*dx*sx - h*dy*sx  (written in standard form)

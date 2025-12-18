@@ -17,9 +17,7 @@ from pulumi import Output
 config = pulumi.Config("portfolio")
 if config.get_bool("docker-buildkit") != False:  # Default to True if not set
     os.environ["DOCKER_BUILDKIT"] = "1"
-    os.environ["COMPOSE_DOCKER_CLI_BUILD"] = (
-        "1"  # Also enable for docker-compose
-    )
+    os.environ["COMPOSE_DOCKER_CLI_BUILD"] = "1"  # Also enable for docker-compose
 
     # Warning if BuildKit might not be inherited by Docker
     if not os.environ.get("DOCKER_BUILDKIT"):
@@ -147,9 +145,7 @@ pulumi.export(
     "step_function_failure_topic_arn",
     notification_system.step_function_topic_arn,
 )
-pulumi.export(
-    "critical_error_topic_arn", notification_system.critical_error_topic_arn
-)
+pulumi.export("critical_error_topic_arn", notification_system.critical_error_topic_arn)
 
 # Create billing alerts for CloudWatch custom metrics costs
 billing_alerts = BillingAlerts(
@@ -250,9 +246,7 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
 # Create embedding infrastructure using shared bucket and queues
 # Depend on EFS mount targets if EFS exists (Lambda needs mount targets in "available" state)
 embedding_depends_on = (
-    chromadb_infrastructure.efs.mount_targets
-    if chromadb_infrastructure.efs
-    else None
+    chromadb_infrastructure.efs.mount_targets if chromadb_infrastructure.efs else None
 )
 
 embedding_infrastructure = EmbeddingInfrastructure(
@@ -418,9 +412,7 @@ else:
     # Check if training bucket name is provided as config (for inference-only usage)
     training_bucket_config = ml_cfg.get("training-bucket-name")
     if training_bucket_config:
-        layoutlm_training_bucket_name = Output.from_input(
-            training_bucket_config
-        )
+        layoutlm_training_bucket_name = Output.from_input(training_bucket_config)
 
 # Create LayoutLM inference API if we have a training bucket (either from training infra or config)
 if layoutlm_training_bucket_name is not None:
@@ -492,9 +484,7 @@ if layoutlm_training_bucket_name is not None:
             action="lambda:InvokeFunction",
             function=layoutlm_inference_lambda.name,
             principal="apigateway.amazonaws.com",
-            source_arn=api_gateway.api.execution_arn.apply(
-                lambda arn: f"{arn}/*/*"
-            ),
+            source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
         )
 
     pulumi.export(
@@ -505,7 +495,9 @@ if layoutlm_training_bucket_name is not None:
 
 # Use stack-specific existing key pair from AWS console
 # (stack variable already defined earlier for VPC endpoint configuration)
-key_pair_name = f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
+key_pair_name = (
+    f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
+)
 
 # Create EC2 Instance Profile for ML training instances
 ml_training_role = aws.iam.Role(
@@ -1055,12 +1047,8 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 
 # ChromaDB infrastructure exports (hybrid deployment)
 pulumi.export("chromadb_bucket_name", shared_chromadb_buckets.bucket_name)
-pulumi.export(
-    "chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url
-)
-pulumi.export(
-    "chromadb_words_queue_url", chromadb_infrastructure.words_queue_url
-)
+pulumi.export("chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url)
+pulumi.export("chromadb_words_queue_url", chromadb_infrastructure.words_queue_url)
 pulumi.export(
     "stream_processor_function_arn",
     chromadb_infrastructure.stream_processor_arn,
@@ -1130,9 +1118,7 @@ label_harmonizer_v3_sf = LabelHarmonizerV3StepFunction(
     batch_size=50,  # 50 receipts per batch
 )
 
-pulumi.export(
-    "label_harmonizer_v3_sf_arn", label_harmonizer_v3_sf.state_machine_arn
-)
+pulumi.export("label_harmonizer_v3_sf_arn", label_harmonizer_v3_sf.state_machine_arn)
 pulumi.export(
     "label_harmonizer_v3_batch_bucket_name",
     label_harmonizer_v3_sf.batch_bucket_name,
@@ -1181,9 +1167,7 @@ metadata_harmonizer_sf = MetadataHarmonizerStepFunction(
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
 )
 
-pulumi.export(
-    "metadata_harmonizer_sf_arn", metadata_harmonizer_sf.state_machine_arn
-)
+pulumi.export("metadata_harmonizer_sf_arn", metadata_harmonizer_sf.state_machine_arn)
 pulumi.export(
     "metadata_harmonizer_batch_bucket_name",
     metadata_harmonizer_sf.batch_bucket_name,

@@ -131,9 +131,7 @@ def test_file_unlocked_with_gc_and_delay(temp_chromadb_dir):
                 shutil.copy2(file_path, dest)  # Should always succeed
 
         # Verify copied database can be opened
-        with ChromaClient(
-            persist_directory=copy_dir, mode="read"
-        ) as new_client:
+        with ChromaClient(persist_directory=copy_dir, mode="read") as new_client:
             new_collection = new_client.get_collection("test")
             assert new_collection.count() == 1
     finally:

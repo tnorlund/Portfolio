@@ -37,12 +37,8 @@ def update_file(file_path: str):
         original_content = content
 
         # Replace "DYNAMO_TABLE_NAME" with "DYNAMODB_TABLE_NAME" in strings
-        content = re.sub(
-            r'"DYNAMO_TABLE_NAME"', '"DYNAMODB_TABLE_NAME"', content
-        )
-        content = re.sub(
-            r"'DYNAMO_TABLE_NAME'", "'DYNAMODB_TABLE_NAME'", content
-        )
+        content = re.sub(r'"DYNAMO_TABLE_NAME"', '"DYNAMODB_TABLE_NAME"', content)
+        content = re.sub(r"'DYNAMO_TABLE_NAME'", "'DYNAMODB_TABLE_NAME'", content)
 
         # Update comments mentioning the old variable
         content = re.sub(
@@ -72,9 +68,7 @@ def main():
         if update_file(file_path):
             updated_count += 1
 
-    print(
-        f"\n📊 Summary: {updated_count} files updated out of {len(TEST_FILES)} total"
-    )
+    print(f"\n📊 Summary: {updated_count} files updated out of {len(TEST_FILES)} total")
 
     if updated_count > 0:
         print(

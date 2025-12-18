@@ -86,6 +86,4 @@ class SpotInterruptionHandler:
 
         # Export the SNS topic ARN
         self.sns_topic_arn = self.sns_topic.arn
-        pulumi.export(
-            f"{name}_spot_interruption_sns_topic_arn", self.sns_topic_arn
-        )
+        pulumi.export(f"{name}_spot_interruption_sns_topic_arn", self.sns_topic_arn)

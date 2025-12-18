@@ -218,8 +218,7 @@ class TestLockManagerOperations:
         # After context exit, lock should be released
         assert manager.is_locked() is False
         assert (
-            manager.heartbeat_thread is None
-            or not manager.heartbeat_thread.is_alive()
+            manager.heartbeat_thread is None or not manager.heartbeat_thread.is_alive()
         )
 
 
@@ -280,9 +279,7 @@ class TestLockManagerHeartbeat:
 
         # Heartbeat should be updated
         assert updated_heartbeat is not None
-        if isinstance(initial_heartbeat, str) and isinstance(
-            updated_heartbeat, str
-        ):
+        if isinstance(initial_heartbeat, str) and isinstance(updated_heartbeat, str):
             initial_dt = datetime.fromisoformat(
                 initial_heartbeat.replace("Z", "+00:00")
             )
@@ -303,9 +300,7 @@ class TestLockManagerHeartbeat:
         lock_manager_lines.max_heartbeat_failures = 2
 
         # Mock update_heartbeat to fail
-        mocker.patch.object(
-            lock_manager_lines, "update_heartbeat", return_value=False
-        )
+        mocker.patch.object(lock_manager_lines, "update_heartbeat", return_value=False)
 
         lock_manager_lines.start_heartbeat()
         time.sleep(2.5)  # Wait for multiple failures

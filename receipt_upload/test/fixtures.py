@@ -380,9 +380,7 @@ def geometry_test_data():
 def sample_lines():
     """Create a set of sample Line entities."""
     factory = SampleEntityFactory()
-    return [
-        factory.create_line(line_id=i, text=f"Line {i}") for i in range(1, 6)
-    ]
+    return [factory.create_line(line_id=i, text=f"Line {i}") for i in range(1, 6)]
 
 
 @pytest.fixture

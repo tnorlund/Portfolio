@@ -82,9 +82,7 @@ class MerchantResolvingEmbeddingProcessor:
             try:
                 from receipt_places import PlacesClient
 
-                self.places_client = PlacesClient(
-                    api_key=google_places_api_key
-                )
+                self.places_client = PlacesClient(api_key=google_places_api_key)
             except ImportError:
                 _log("WARNING: receipt_places not available")
 
@@ -118,15 +116,9 @@ class MerchantResolvingEmbeddingProcessor:
         """
         # Fetch lines/words if not provided
         if lines is None or words is None:
-            lines = self.dynamo.list_receipt_lines_from_receipt(
-                image_id, receipt_id
-            )
-            words = self.dynamo.list_receipt_words_from_receipt(
-                image_id, receipt_id
-            )
-            _log(
-                f"Fetched {len(lines)} lines and {len(words)} words from DynamoDB"
-            )
+            lines = self.dynamo.list_receipt_lines_from_receipt(image_id, receipt_id)
+            words = self.dynamo.list_receipt_words_from_receipt(image_id, receipt_id)
+            _log(f"Fetched {len(lines)} lines and {len(words)} words from DynamoDB")
         else:
             _log(f"Using provided {len(lines)} lines and {len(words)} words")
 
@@ -142,9 +134,7 @@ class MerchantResolvingEmbeddingProcessor:
         # Get existing receipt metadata
         receipt_metadata = None
         try:
-            receipt_metadata = self.dynamo.get_receipt_metadata(
-                image_id, receipt_id
-            )
+            receipt_metadata = self.dynamo.get_receipt_metadata(image_id, receipt_id)
         except Exception as e:
             _log(f"Could not fetch receipt metadata: {e}")
 
@@ -166,9 +156,7 @@ class MerchantResolvingEmbeddingProcessor:
                 receipt_metadata=receipt_metadata,
                 receipt_word_labels=word_labels,
                 merchant_name=(
-                    receipt_metadata.merchant_name
-                    if receipt_metadata
-                    else None
+                    receipt_metadata.merchant_name if receipt_metadata else None
                 ),
                 sqs_notify=True,  # Trigger async compaction
             )
@@ -264,9 +252,7 @@ class MerchantResolvingEmbeddingProcessor:
                 if merchant_result.merchant_name:
                     # Only update if current is empty or different
                     if not metadata.merchant_name:
-                        updates["merchant_name"] = (
-                            merchant_result.merchant_name
-                        )
+                        updates["merchant_name"] = merchant_result.merchant_name
 
                 if merchant_result.address:
                     if not metadata.address:
@@ -282,9 +268,7 @@ class MerchantResolvingEmbeddingProcessor:
                         receipt_id=receipt_id,
                         **updates,
                     )
-                    _log(
-                        f"Updated receipt metadata with: {list(updates.keys())}"
-                    )
+                    _log(f"Updated receipt metadata with: {list(updates.keys())}")
             else:
                 _log(f"No existing metadata for {image_id}#{receipt_id}")
 

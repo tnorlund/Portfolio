@@ -159,9 +159,7 @@ class LockManager:
                 logger.info("Released lock: %s", self.lock_id)
 
             except Exception as e:
-                logger.error(
-                    "Error releasing lock %s: %s", self.lock_id, str(e)
-                )
+                logger.error("Error releasing lock %s: %s", self.lock_id, str(e))
             finally:
                 # Clear state even if delete fails
                 self.lock_id = None
@@ -282,8 +280,7 @@ class LockManager:
                 with self._lock:
                     self.consecutive_heartbeat_failures += 1
                     logger.error(
-                        "Heartbeat update failed (attempt %d/%d) - "
-                        "lock may be lost",
+                        "Heartbeat update failed (attempt %d/%d) - " "lock may be lost",
                         self.consecutive_heartbeat_failures,
                         self.max_heartbeat_failures,
                     )
@@ -433,10 +430,7 @@ class LockManager:
                     self.lock_id, self.collection
                 )
 
-                if (
-                    current_lock is None
-                    or current_lock.owner != self.lock_owner
-                ):
+                if current_lock is None or current_lock.owner != self.lock_owner:
                     return None
 
                 # Convert expires string back to datetime for comparison
@@ -448,11 +442,7 @@ class LockManager:
                     expires_dt = current_lock.expires
 
                 remaining = expires_dt - datetime.now(timezone.utc)
-                return (
-                    remaining
-                    if remaining.total_seconds() > 0
-                    else timedelta(0)
-                )
+                return remaining if remaining.total_seconds() > 0 else timedelta(0)
 
             except Exception as e:
                 logger.error(
@@ -479,9 +469,7 @@ class LockManager:
             try:
                 # First validate we still own it
                 if not self.validate_ownership():
-                    logger.error(
-                        "Cannot refresh lock - ownership validation failed"
-                    )
+                    logger.error("Cannot refresh lock - ownership validation failed")
                     return False
 
                 # Create updated lock with extended expiration

@@ -17,9 +17,7 @@ from receipt_layoutlm.receipt_layoutlm.data_loader import CORE_LABELS
 from receipt_dynamo import DynamoClient
 
 
-def get_dataset_stats(
-    table_name: str, output_file: str = None
-) -> Dict[str, Any]:
+def get_dataset_stats(table_name: str, output_file: str = None) -> Dict[str, Any]:
     """Get dataset statistics and output JSON for agent.
 
     Args:
@@ -50,9 +48,7 @@ def get_dataset_stats(
     if entity_labels:
         max_count = max(entity_labels.values())
         min_count = min(entity_labels.values())
-        imbalance_ratio = (
-            max_count / min_count if min_count > 0 else float("inf")
-        )
+        imbalance_ratio = max_count / min_count if min_count > 0 else float("inf")
     else:
         imbalance_ratio = 0.0
 

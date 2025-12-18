@@ -100,9 +100,7 @@ def dynamodb_table():
                 },
                 {
                     "IndexName": "GSITYPE",
-                    "KeySchema": [
-                        {"AttributeName": "TYPE", "KeyType": "HASH"}
-                    ],
+                    "KeySchema": [{"AttributeName": "TYPE", "KeyType": "HASH"}],
                     "Projection": {"ProjectionType": "ALL"},
                     "ProvisionedThroughput": {
                         "ReadCapacityUnits": 5,
@@ -111,9 +109,7 @@ def dynamodb_table():
                 },
             ],
         )
-        dynamodb.meta.client.get_waiter("table_exists").wait(
-            TableName=table_name
-        )
+        dynamodb.meta.client.get_waiter("table_exists").wait(TableName=table_name)
         yield table_name
 
 
@@ -121,9 +117,7 @@ def dynamodb_table():
 class TestS3SnapshotOperations:
     """Test S3 snapshot atomic operations."""
 
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-chromadb-bucket"], indirect=True
-    )
+    @pytest.mark.parametrize("s3_bucket", ["test-chromadb-bucket"], indirect=True)
     def test_initialize_empty_snapshot(self, s3_bucket, temp_chromadb_dir):
         """Test initializing an empty snapshot."""
         result = initialize_empty_snapshot(
@@ -151,12 +145,8 @@ class TestS3SnapshotOperations:
         pointer_value = pointer_obj["Body"].read().decode("utf-8").strip()
         assert pointer_value == result["version_id"]
 
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-chromadb-bucket"], indirect=True
-    )
-    def test_upload_and_download_snapshot_atomic(
-        self, s3_bucket, temp_chromadb_dir
-    ):
+    @pytest.mark.parametrize("s3_bucket", ["test-chromadb-bucket"], indirect=True)
+    def test_upload_and_download_snapshot_atomic(self, s3_bucket, temp_chromadb_dir):
         """Test atomic upload and download workflow."""
         # Create a snapshot with data
         with ChromaClient(
@@ -195,9 +185,7 @@ class TestS3SnapshotOperations:
             assert download_result["version_id"] == upload_result["version_id"]
 
             # Verify downloaded snapshot can be opened
-            with ChromaClient(
-                persist_directory=download_dir, mode="read"
-            ) as client:
+            with ChromaClient(persist_directory=download_dir, mode="read") as client:
                 collection = client.get_collection("test")
                 assert collection.count() == 2
         finally:
@@ -205,9 +193,7 @@ class TestS3SnapshotOperations:
 
             shutil.rmtree(download_dir, ignore_errors=True)
 
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-chromadb-bucket"], indirect=True
-    )
+    @pytest.mark.parametrize("s3_bucket", ["test-chromadb-bucket"], indirect=True)
     def test_upload_with_lock_manager(
         self, s3_bucket, temp_chromadb_dir, dynamodb_table
     ):
@@ -244,9 +230,7 @@ class TestS3SnapshotOperations:
         assert upload_result["status"] == "uploaded"
         lock_manager.release()
 
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-chromadb-bucket"], indirect=True
-    )
+    @pytest.mark.parametrize("s3_bucket", ["test-chromadb-bucket"], indirect=True)
     def test_download_nonexistent_snapshot_initializes(
         self, s3_bucket, temp_chromadb_dir
     ):
@@ -261,15 +245,11 @@ class TestS3SnapshotOperations:
         assert download_result.get("initialized") is True
 
         # Verify snapshot can be opened
-        with ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="read"
-        ) as client:
+        with ChromaClient(persist_directory=temp_chromadb_dir, mode="read") as client:
             collection = client.get_collection("new_collection")
             assert collection.count() == 0  # Empty collection
 
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-chromadb-bucket"], indirect=True
-    )
+    @pytest.mark.parametrize("s3_bucket", ["test-chromadb-bucket"], indirect=True)
     def test_atomic_pointer_pattern(self, s3_bucket, temp_chromadb_dir):
         """Test that atomic pointer pattern works correctly."""
         # Upload first version
@@ -329,9 +309,7 @@ class TestS3SnapshotOperations:
             assert download_result["version_id"] == version2
 
             # Verify it has both documents
-            with ChromaClient(
-                persist_directory=download_dir, mode="read"
-            ) as client:
+            with ChromaClient(persist_directory=download_dir, mode="read") as client:
                 collection = client.get_collection("test")
                 assert collection.count() == 2
         finally:

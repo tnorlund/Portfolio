@@ -51,9 +51,7 @@ except ImportError:
         EFS_AVAILABLE = True
     except ImportError:
         EFS_AVAILABLE = False
-        logger.info(
-            "EFS snapshot manager not available, will use S3-only mode"
-        )
+        logger.info("EFS snapshot manager not available, will use S3-only mode")
 
 # Initialize clients
 s3_client = boto3.client("s3")
@@ -66,9 +64,7 @@ lock_duration_minutes = int(
 )  # 16 minutes to match Lambda timeout (15 min) with buffer
 
 
-def close_chromadb_client(
-    client: Any, collection_name: Optional[str] = None
-) -> None:
+def close_chromadb_client(client: Any, collection_name: Optional[str] = None) -> None:
     """
     Properly close ChromaDB client to ensure SQLite files are flushed and unlocked.
 
@@ -250,7 +246,9 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             intermediate_key = _process_single_chunk(
                 batch_id=batch_id,
                 chunk_index=current_chunk_index,
-                delta_results=delta_results if idx == 0 else [],  # Only use inline delta_results for first chunk
+                delta_results=(
+                    delta_results if idx == 0 else []
+                ),  # Only use inline delta_results for first chunk
                 chunks_s3_key=chunks_s3_key,
                 chunks_s3_bucket=chunks_s3_bucket,
             )
@@ -360,16 +358,12 @@ def _process_single_chunk(
         )
         try:
             # Download chunks file from S3
-            tmp_file = tempfile.NamedTemporaryFile(
-                delete=False, suffix=".json"
-            )
+            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
             tmp_file_path = tmp_file.name
             tmp_file.close()
 
             try:
-                s3_client.download_file(
-                    chunks_s3_bucket, chunks_s3_key, tmp_file_path
-                )
+                s3_client.download_file(chunks_s3_bucket, chunks_s3_key, tmp_file_path)
 
                 with open(tmp_file_path, "r", encoding="utf-8") as f:
                     all_chunks = json.load(f)
@@ -406,9 +400,7 @@ def _process_single_chunk(
             raise
 
     if not delta_results:
-        logger.info(
-            "No delta results in chunk, skipping", chunk_index=chunk_index
-        )
+        logger.info("No delta results in chunk, skipping", chunk_index=chunk_index)
         # Return None to indicate empty chunk (will be filtered out)
         return None
 
@@ -519,24 +511,18 @@ def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             s3_key=groups_s3_key,
             bucket=groups_s3_bucket,
             chunk_group_type=(
-                type(chunk_group).__name__
-                if chunk_group is not None
-                else "None"
+                type(chunk_group).__name__ if chunk_group is not None else "None"
             ),
         )
         try:
             # Download groups file from S3
             # Use NamedTemporaryFile for secure, atomic temp file creation
-            tmp_file = tempfile.NamedTemporaryFile(
-                delete=False, suffix=".json"
-            )
+            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
             tmp_file_path = tmp_file.name
             tmp_file.close()
 
             try:
-                s3_client.download_file(
-                    groups_s3_bucket, groups_s3_key, tmp_file_path
-                )
+                s3_client.download_file(groups_s3_bucket, groups_s3_key, tmp_file_path)
 
                 with open(tmp_file_path, "r", encoding="utf-8") as f:
                     all_groups = json.load(f)
@@ -778,16 +764,12 @@ def merge_pair_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             bucket=pairs_s3_bucket,
         )
         try:
-            tmp_file = tempfile.NamedTemporaryFile(
-                delete=False, suffix=".json"
-            )
+            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
             tmp_file_path = tmp_file.name
             tmp_file.close()
 
             try:
-                s3_client.download_file(
-                    pairs_s3_bucket, pairs_s3_key, tmp_file_path
-                )
+                s3_client.download_file(pairs_s3_bucket, pairs_s3_key, tmp_file_path)
 
                 with open(tmp_file_path, "r", encoding="utf-8") as f:
                     all_pairs = json.load(f)
@@ -1072,9 +1054,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     # can take time but doesn't require exclusive access to the snapshot.
     # =========================================================================
     bucket = os.environ["CHROMADB_BUCKET"]
-    predownloaded_intermediates = (
-        []
-    )  # List of (intermediate_key, temp_dir) tuples
+    predownloaded_intermediates = []  # List of (intermediate_key, temp_dir) tuples
     predownload_start = time.time()
 
     # Extract intermediate keys
@@ -1177,9 +1157,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             # Get details about the existing lock
             existing_lock = None
             try:
-                existing_lock = dynamo_client.get_compaction_lock(
-                    lock_id, collection
-                )
+                existing_lock = dynamo_client.get_compaction_lock(lock_id, collection)
             except Exception as e:
                 logger.debug(
                     "Could not query existing lock details",
@@ -1194,9 +1172,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
             # Don't wait if this would exceed max_total_wait_seconds
             if total_wait_elapsed + wait_seconds > max_total_wait_seconds:
-                wait_seconds = max(
-                    0, max_total_wait_seconds - total_wait_elapsed
-                )
+                wait_seconds = max(0, max_total_wait_seconds - total_wait_elapsed)
                 if wait_seconds <= 0:
                     break  # No time left, exit loop
 
@@ -1228,15 +1204,12 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                     (now - heartbeat).total_seconds() if heartbeat else None
                 )
                 is_actively_held = (
-                    heartbeat_age_seconds is not None
-                    and heartbeat_age_seconds < 120
+                    heartbeat_age_seconds is not None and heartbeat_age_seconds < 120
                 )  # Heartbeat within last 2 minutes = active
 
                 # If lock is actively held (being heartbeated), fail faster
                 # Don't wait for a lock that's being actively maintained - let Step Functions retry
-                if (
-                    is_actively_held and attempt >= 3
-                ):  # Give it a few attempts first
+                if is_actively_held and attempt >= 3:  # Give it a few attempts first
                     logger.warning(
                         "Lock is actively held (recent heartbeat) - failing fast to let Step Functions retry",
                         batch_id=batch_id,
@@ -1280,9 +1253,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             total_wait_elapsed = time.time() - total_wait_start
             existing_lock = None
             try:
-                existing_lock = dynamo_client.get_compaction_lock(
-                    lock_id, collection
-                )
+                existing_lock = dynamo_client.get_compaction_lock(lock_id, collection)
             except Exception:
                 pass
 
@@ -1320,9 +1291,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                     if heartbeat_age < 120:
                         heartbeat_info = f" (lock actively held - heartbeat {heartbeat_age:.0f}s ago)"
                     else:
-                        heartbeat_info = (
-                            f" (heartbeat {heartbeat_age:.0f}s ago)"
-                        )
+                        heartbeat_info = f" (heartbeat {heartbeat_age:.0f}s ago)"
 
                 error_msg = (
                     f"Could not acquire lock {lock_id} for final merge after {attempt-1} attempts{timeout_reason}. "
@@ -1561,9 +1530,7 @@ def process_chunk_deltas(
         )
 
         # Simple cleanup for ChromaDB 1.0.21 (testing if workarounds are needed)
-        close_chromadb_client(
-            chroma_client, collection_name="chunk_processing"
-        )
+        close_chromadb_client(chroma_client, collection_name="chunk_processing")
         chroma_client = None
 
         # Upload intermediate chunk to S3
@@ -1634,9 +1601,7 @@ def download_and_merge_delta(
 
     try:
         # Download delta from S3
-        logger.debug(
-            "Downloading delta from S3", delta_key=delta_key, bucket=bucket
-        )
+        logger.debug("Downloading delta from S3", delta_key=delta_key, bucket=bucket)
         download_start = time.time()
         download_from_s3(bucket, delta_key, delta_temp)
         download_duration = time.time() - download_start
@@ -1702,9 +1667,7 @@ def download_and_merge_delta(
         logger.debug("Listing collections in delta", delta_key=delta_key)
         delta_collections = delta_client.list_collections()
         if not delta_collections:
-            logger.warning(
-                "No collections found in delta", delta_key=delta_key
-            )
+            logger.warning("No collections found in delta", delta_key=delta_key)
             validation_error_type = "no_collections"
             return 0
 
@@ -1742,9 +1705,7 @@ def download_and_merge_delta(
         total_processed = 0
         total_batches = (total_count + batch_size - 1) // batch_size
 
-        for batch_num, offset in enumerate(
-            range(0, total_count, batch_size), 1
-        ):
+        for batch_num, offset in enumerate(range(0, total_count, batch_size), 1):
             batch_start_time = time.time()
             logger.debug(
                 "Processing batch",
@@ -1871,9 +1832,7 @@ def download_and_merge_delta(
         # CRITICAL: Close delta client before cleanup to ensure SQLite files are flushed
         try:
             if delta_client is not None:
-                close_chromadb_client(
-                    delta_client, collection_name="delta_processing"
-                )
+                close_chromadb_client(delta_client, collection_name="delta_processing")
                 delta_client = None
         except Exception:
             pass
@@ -1957,9 +1916,7 @@ def perform_intermediate_merge(
                 # Merge all collections from this chunk
                 # ChromaClient.list_collections() returns list of strings
                 for collection_name in chunk_client.list_collections():
-                    chunk_collection = chunk_client.get_collection(
-                        collection_name
-                    )
+                    chunk_collection = chunk_client.get_collection(collection_name)
                     chunk_count = chunk_collection.count()
 
                     if chunk_count == 0:
@@ -1977,9 +1934,7 @@ def perform_intermediate_merge(
 
                     # Get or create collection in main client
                     try:
-                        main_collection = chroma_client.get_collection(
-                            collection_name
-                        )
+                        main_collection = chroma_client.get_collection(collection_name)
                     except Exception:
                         main_collection = chroma_client.get_collection(
                             collection_name,
@@ -1998,9 +1953,7 @@ def perform_intermediate_merge(
 
                     # Use a safe batch size well below ChromaDB's limit
                     batch_size = 1000
-                    total_batches = (
-                        chunk_count + batch_size - 1
-                    ) // batch_size
+                    total_batches = (chunk_count + batch_size - 1) // batch_size
 
                     logger.info(
                         "Processing chunk collection in batches",
@@ -2094,9 +2047,7 @@ def perform_intermediate_merge(
         )
 
         # CRITICAL: Close ChromaDB client BEFORE uploading to ensure SQLite files are flushed and unlocked
-        close_chromadb_client(
-            chroma_client, collection_name="intermediate_merge"
-        )
+        close_chromadb_client(chroma_client, collection_name="intermediate_merge")
         chroma_client = None
 
         # Upload merged intermediate snapshot
@@ -2164,9 +2115,7 @@ def perform_final_merge(
     if database_name:
         snapshot_key = f"{database_name}/snapshot/latest/"
         collection_name = database_name
-        logger.info(
-            "Using database-specific snapshot path", snapshot_key=snapshot_key
-        )
+        logger.info("Using database-specific snapshot path", snapshot_key=snapshot_key)
     else:
         # Backward compatibility - unified snapshot
         snapshot_key = "snapshot/latest/"
@@ -2183,15 +2132,13 @@ def perform_final_merge(
         mode_reason = "explicitly set to S3-only"
     elif storage_mode == "efs":
         use_efs = EFS_AVAILABLE
-        mode_reason = (
-            "explicitly set to EFS" if use_efs else "EFS not available"
-        )
+        mode_reason = "explicitly set to EFS" if use_efs else "EFS not available"
     elif storage_mode == "auto":
         # Auto-detect based on EFS availability
-        use_efs = bool(
-            EFS_AVAILABLE and efs_root and efs_root != "/tmp/chroma"
+        use_efs = bool(EFS_AVAILABLE and efs_root and efs_root != "/tmp/chroma")
+        mode_reason = (
+            f"auto-detected (efs_root={'available' if use_efs else 'not available'})"
         )
-        mode_reason = f"auto-detected (efs_root={'available' if use_efs else 'not available'})"
     else:
         # Default to S3-only for unknown modes
         use_efs = False
@@ -2214,9 +2161,7 @@ def perform_final_merge(
     try:
         # Load snapshot from EFS if available, otherwise from S3
         if use_efs and EFS_AVAILABLE:
-            logger.info(
-                "Using EFS + S3 hybrid approach", collection=collection_name
-            )
+            logger.info("Using EFS + S3 hybrid approach", collection=collection_name)
             efs_manager = get_efs_snapshot_manager(
                 collection_name, bucket, logger, metrics=None
             )
@@ -2230,9 +2175,7 @@ def perform_final_merge(
                 use_efs = False
             else:
                 # Ensure snapshot is available on EFS
-                snapshot_result = efs_manager.ensure_snapshot_available(
-                    latest_version
-                )
+                snapshot_result = efs_manager.ensure_snapshot_available(latest_version)
                 if snapshot_result["status"] != "available":
                     logger.warning(
                         "Failed to ensure snapshot availability on EFS, falling back to S3",
@@ -2295,9 +2238,7 @@ def perform_final_merge(
 
                     # Ensure collection exists (should already exist if snapshot was initialized)
                     try:
-                        collection = chroma_client.get_collection(
-                            collection_name
-                        )
+                        collection = chroma_client.get_collection(collection_name)
                         logger.info(
                             "Collection exists in snapshot",
                             collection=collection_name,
@@ -2358,9 +2299,7 @@ def perform_final_merge(
 
                     # Create the collection (will be empty)
                     try:
-                        collection = chroma_client.get_collection(
-                            collection_name
-                        )
+                        collection = chroma_client.get_collection(collection_name)
                         logger.info(
                             "Collection already exists in new snapshot",
                             collection=collection_name,
@@ -2423,8 +2362,7 @@ def perform_final_merge(
                 total_chunks=total_chunks,
             )
             chunk_keys = [
-                f"intermediate/{batch_id}/chunk-{i}/"
-                for i in range(total_chunks)
+                f"intermediate/{batch_id}/chunk-{i}/" for i in range(total_chunks)
             ]
 
         for i, intermediate_key in enumerate(chunk_keys):
@@ -2469,15 +2407,11 @@ def perform_final_merge(
                 # Merge all collections from chunk
                 # ChromaClient.list_collections() returns list of strings
                 for collection_name in chunk_client.list_collections():
-                    chunk_collection = chunk_client.get_collection(
-                        collection_name
-                    )
+                    chunk_collection = chunk_client.get_collection(collection_name)
 
                     # Get or create collection in main snapshot
                     try:
-                        main_collection = chroma_client.get_collection(
-                            collection_name
-                        )
+                        main_collection = chroma_client.get_collection(collection_name)
                     except Exception:
                         main_collection = chroma_client.get_collection(
                             collection_name,
@@ -2577,9 +2511,7 @@ def perform_final_merge(
 
             emf_metrics.log_metrics(
                 {
-                    "SnapshotValidationSuccess": (
-                        1 if validation_success else 0
-                    ),
+                    "SnapshotValidationSuccess": (1 if validation_success else 0),
                     "SnapshotValidationAttempts": 1,
                     "SnapshotValidationDuration": validation_duration,
                 },
@@ -2683,9 +2615,7 @@ def perform_final_merge(
 
             # Use database-specific path if provided
             if database_name:
-                timestamped_key = (
-                    f"{database_name}/snapshot/timestamped/{timestamp}/"
-                )
+                timestamped_key = f"{database_name}/snapshot/timestamped/{timestamp}/"
             else:
                 # Backward compatibility
                 timestamped_key = f"snapshot/timestamped/{timestamp}/"
@@ -2758,9 +2688,7 @@ def perform_final_merge(
                 for _, old_prefix in version_dirs[4:]:
                     # Delete all objects under old_prefix
                     try:
-                        del_pages = paginator.paginate(
-                            Bucket=bucket, Prefix=old_prefix
-                        )
+                        del_pages = paginator.paginate(Bucket=bucket, Prefix=old_prefix)
                         to_delete = []
                         for del_page in del_pages:
                             for obj in del_page.get("Contents", []):
@@ -2816,18 +2744,12 @@ def cleanup_intermediate_chunks(batch_id: str, total_chunks: int) -> None:
         intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
         try:
             # List and delete all objects with this prefix
-            response = s3_client.list_objects_v2(
-                Bucket=bucket, Prefix=intermediate_key
-            )
+            response = s3_client.list_objects_v2(Bucket=bucket, Prefix=intermediate_key)
 
             if "Contents" in response:
                 objects = [{"Key": obj["Key"]} for obj in response["Contents"]]
-                s3_client.delete_objects(
-                    Bucket=bucket, Delete={"Objects": objects}
-                )
-                logger.info(
-                    "Deleted intermediate chunk", chunk_index=chunk_index
-                )
+                s3_client.delete_objects(Bucket=bucket, Delete={"Objects": objects})
+                logger.info("Deleted intermediate chunk", chunk_index=chunk_index)
         except Exception as e:
             logger.warning(
                 "Failed to delete chunk", chunk_index=chunk_index, error=str(e)
@@ -2841,15 +2763,11 @@ def cleanup_intermediate_chunks_by_keys(intermediate_keys: List[str]) -> None:
     for intermediate_key in intermediate_keys:
         try:
             # List and delete all objects with this prefix
-            response = s3_client.list_objects_v2(
-                Bucket=bucket, Prefix=intermediate_key
-            )
+            response = s3_client.list_objects_v2(Bucket=bucket, Prefix=intermediate_key)
 
             if "Contents" in response:
                 objects = [{"Key": obj["Key"]} for obj in response["Contents"]]
-                s3_client.delete_objects(
-                    Bucket=bucket, Delete={"Objects": objects}
-                )
+                s3_client.delete_objects(Bucket=bucket, Delete={"Objects": objects})
                 logger.info(
                     "Deleted intermediate chunk by key",
                     intermediate_key=intermediate_key,

@@ -22,9 +22,7 @@ class DownloadResult(TypedDict, total=False):
     """Result from downloading a snapshot from S3."""
 
     status: Required[Literal["downloaded", "failed"]]  # Always present
-    snapshot_key: NotRequired[
-        str
-    ]  # Usually present, but not in exception cases
+    snapshot_key: NotRequired[str]  # Usually present, but not in exception cases
     local_path: NotRequired[str]  # Only present on successful download
     file_count: NotRequired[int]  # Only present on successful download
     total_size_bytes: NotRequired[int]  # Only present on successful download
@@ -205,14 +203,10 @@ def upload_snapshot_with_hash(
     try:
         snapshot_path = Path(local_snapshot_path)
         if not snapshot_path.exists():
-            logger.error(
-                "Local snapshot path does not exist: %s", local_snapshot_path
-            )
+            logger.error("Local snapshot path does not exist: %s", local_snapshot_path)
             return {
                 "status": "failed",
-                "error": (
-                    f"Snapshot path does not exist: {local_snapshot_path}"
-                ),
+                "error": (f"Snapshot path does not exist: {local_snapshot_path}"),
             }
 
         # Clear destination directory if requested
@@ -238,9 +232,7 @@ def upload_snapshot_with_hash(
                         hash_str = f"{rel_path}:{stat.st_size}:{stat.st_mtime}"
                         hash_obj.update(hash_str.encode())
                 hash_value = hash_obj.hexdigest()
-                logger.info(
-                    "Calculated %s hash: %s", hash_algorithm, hash_value
-                )
+                logger.info("Calculated %s hash: %s", hash_algorithm, hash_value)
             except Exception as e:
                 logger.warning("Failed to calculate hash: %s", e)
                 hash_value = None
@@ -261,9 +253,7 @@ def upload_snapshot_with_hash(
             if metadata:
                 extra_args["Metadata"] = metadata
 
-            s3_client.upload_file(
-                str(file_path), bucket, s3_key, ExtraArgs=extra_args
-            )
+            s3_client.upload_file(str(file_path), bucket, s3_key, ExtraArgs=extra_args)
 
             file_count += 1
             total_size += file_path.stat().st_size
@@ -308,9 +298,7 @@ def _cleanup_s3_prefix(s3_client: S3Client, bucket: str, prefix: str) -> None:
         if "Contents" in page:
             delete_keys = [{"Key": obj["Key"]} for obj in page["Contents"]]
             if delete_keys:
-                s3_client.delete_objects(
-                    Bucket=bucket, Delete={"Objects": delete_keys}
-                )
+                s3_client.delete_objects(Bucket=bucket, Delete={"Objects": delete_keys})
 
 
 def _cleanup_old_snapshot_versions(
@@ -345,9 +333,7 @@ def _cleanup_old_snapshot_versions(
             _cleanup_s3_prefix(s3_client, bucket, version_prefix)
             logger.info("Cleaned up old snapshot version: %s", version_prefix)
         except Exception as e:
-            logger.warning(
-                "Failed to cleanup version %s: %s", version_prefix, e
-            )
+            logger.warning("Failed to cleanup version %s: %s", version_prefix, e)
 
 
 def upload_delta_tarball(
@@ -435,13 +421,9 @@ def upload_delta_tarball(
                 "ContentType": "application/gzip",
             }
             if metadata:
-                extra_args["Metadata"] = {
-                    k: str(v) for k, v in metadata.items()
-                }
+                extra_args["Metadata"] = {k: str(v) for k, v in metadata.items()}
 
-            s3_client.upload_file(
-                tar_path, bucket, s3_key, ExtraArgs=extra_args
-            )
+            s3_client.upload_file(tar_path, bucket, s3_key, ExtraArgs=extra_args)
 
             logger.info(
                 "Uploaded delta tarball: bucket=%s, key=%s, size_bytes=%d",

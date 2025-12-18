@@ -151,9 +151,7 @@ class ChromaDBQueues(ComponentResource):
                         {
                             "Sid": "AllowAccountAccess",
                             "Effect": "Allow",
-                            "Principal": {
-                                "AWS": f"arn:aws:iam::{args[1]}:root"
-                            },
+                            "Principal": {"AWS": f"arn:aws:iam::{args[1]}:root"},
                             "Action": "sqs:*",
                             "Resource": args[0],
                         },
@@ -183,9 +181,7 @@ class ChromaDBQueues(ComponentResource):
                         {
                             "Sid": "AllowAccountAccess",
                             "Effect": "Allow",
-                            "Principal": {
-                                "AWS": f"arn:aws:iam::{args[1]}:root"
-                            },
+                            "Principal": {"AWS": f"arn:aws:iam::{args[1]}:root"},
                             "Action": "sqs:*",
                             "Resource": args[0],
                         },

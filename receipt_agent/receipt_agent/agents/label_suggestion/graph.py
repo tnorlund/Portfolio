@@ -24,28 +24,15 @@ logger = logging.getLogger(__name__)
 CORE_LABELS = {
     "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
     "STORE_HOURS": "Printed business hours or opening times for the merchant.",
-    "PHONE_NUMBER": (
-        "Telephone number printed on the receipt "
-        "(store's main line)."
-    ),
-    "WEBSITE": (
-        "Web or email address printed on the receipt "
-        "(e.g., sprouts.com)."
-    ),
+    "PHONE_NUMBER": ("Telephone number printed on the receipt " "(store's main line)."),
+    "WEBSITE": ("Web or email address printed on the receipt " "(e.g., sprouts.com)."),
     "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
-    "ADDRESS_LINE": (
-        "Full address line (street + city etc.) printed on the receipt."
-    ),
+    "ADDRESS_LINE": ("Full address line (street + city etc.) printed on the receipt."),
     "DATE": "Calendar date of the transaction.",
     "TIME": "Time of the transaction.",
-    "PAYMENT_METHOD": (
-        "Payment instrument summary (e.g., VISA ••••1234, CASH)."
-    ),
+    "PAYMENT_METHOD": ("Payment instrument summary (e.g., VISA ••••1234, CASH)."),
     "COUPON": "Coupon code or description that reduces price.",
-    "DISCOUNT": (
-        "Any non-coupon discount line item "
-        "(e.g., '10% member discount')."
-    ),
+    "DISCOUNT": ("Any non-coupon discount line item " "(e.g., '10% member discount')."),
     "PRODUCT_NAME": "Name of a product or item being purchased.",
     "QUANTITY": "Number of units purchased (e.g., '2', '1.5 lbs').",
     "UNIT_PRICE": "Price per unit of the product.",
@@ -191,9 +178,7 @@ async def suggest_labels_for_receipt(
                     [0.0] * 1536
                 ],  # Dummy embedding (text-embedding-3-small dimension)
                 n_results=100,
-                where={
-                    "merchant_name": {"$eq": merchant_name.strip().title()}
-                },
+                where={"merchant_name": {"$eq": merchant_name.strip().title()}},
                 include=["metadatas"],
             )
             if test_query and test_query.get("metadatas"):
@@ -284,9 +269,7 @@ async def suggest_labels_for_receipt(
             if not embedding_times:
                 embedding_times = []
             dynamo_get_times.append(timing.get("dynamo_get_word_seconds", 0))
-            dynamo_list_times.append(
-                timing.get("dynamo_list_words_seconds", 0)
-            )
+            dynamo_list_times.append(timing.get("dynamo_list_words_seconds", 0))
             chroma_get_times.append(timing.get("chroma_get_seconds", 0))
             embedding_times.append(timing.get("embedding_seconds", 0))
             # Override with actual query time from timing if available
@@ -308,12 +291,8 @@ async def suggest_labels_for_receipt(
             # No candidates found - skip
             skipped_no_candidates += 1
             total_matches = candidates_result.get("total_matches", 0)
-            words_with_valid = candidates_result.get(
-                "words_with_valid_labels", 0
-            )
-            words_without_valid = candidates_result.get(
-                "words_without_valid_labels", 0
-            )
+            words_with_valid = candidates_result.get("words_with_valid_labels", 0)
+            words_without_valid = candidates_result.get("words_without_valid_labels", 0)
 
             skipped_words_details.append(
                 {
@@ -331,8 +310,7 @@ async def suggest_labels_for_receipt(
                 }
             )
             logger.debug(
-                f"No candidates found for word '{word_text}' "
-                f"(word_id: {word_id})"
+                f"No candidates found for word '{word_text}' " f"(word_id: {word_id})"
             )
             continue
 
@@ -402,11 +380,7 @@ async def suggest_labels_for_receipt(
 
         # CASE 2b: Single candidate with decent similarity.
         # Suggest directly (NO LLM).
-        if (
-            len(candidates) == 1
-            and avg_similarity >= 0.70
-            and match_count >= 2
-        ):
+        if len(candidates) == 1 and avg_similarity >= 0.70 and match_count >= 2:
             suggestions.append(
                 {
                     "word_id": word_id,
@@ -429,19 +403,14 @@ async def suggest_labels_for_receipt(
                 len(candidates) >= 2
                 and candidates[0]["avg_similarity"] >= 0.65
                 and candidates[1]["avg_similarity"] >= 0.60
-                and (
-                    candidates[0]["avg_similarity"]
-                    - candidates[1]["avg_similarity"]
-                )
+                and (candidates[0]["avg_similarity"] - candidates[1]["avg_similarity"])
                 < 0.10
             )
 
             # Use LLM for ambiguous cases.
             # Covers multiple candidates or medium similarity.
             if has_multiple_candidates or (
-                avg_similarity >= 0.65
-                and avg_similarity < 0.75
-                and match_count >= 2
+                avg_similarity >= 0.65 and avg_similarity < 0.75 and match_count >= 2
             ):
                 llm_calls += 1
 
@@ -478,9 +447,7 @@ Respond with JSON:
 }}"""
 
                 try:
-                    response = await llm.ainvoke(
-                        [HumanMessage(content=prompt)]
-                    )
+                    response = await llm.ainvoke([HumanMessage(content=prompt)])
                     # Parse response (simplified for now)
                     # Production should use structured output
                     content = (
@@ -510,15 +477,12 @@ Respond with JSON:
                                     ),
                                     "reasoning": llm_result.get(
                                         "reasoning",
-                                        "LLM decision based on ChromaDB "
-                                        "results",
+                                        "LLM decision based on ChromaDB " "results",
                                     ),
                                 }
                             )
                 except Exception as e:
-                    logger.debug(
-                        f"LLM call failed for word '{word_text}': {e}"
-                    )
+                    logger.debug(f"LLM call failed for word '{word_text}': {e}")
                     # Fall back to top candidate if LLM fails.
                     # Similarity must be decent.
                     if avg_similarity >= 0.70 and match_count >= 2:

@@ -24,9 +24,7 @@ try:
 
     IMAGE_PROCESSING_AVAILABLE = True
 except ImportError as e:
-    logging.getLogger().error(
-        "Image processing imports failed: %s", e, exc_info=True
-    )
+    logging.getLogger().error("Image processing imports failed: %s", e, exc_info=True)
     IMAGE_PROCESSING_AVAILABLE = False
 
 # Import helper modules
@@ -122,9 +120,7 @@ def combine_receipts(
 
         # Combine words from receipts
         if not IMAGE_PROCESSING_AVAILABLE:
-            raise ValueError(
-                "Image processing not available - transforms required"
-            )
+            raise ValueError("Image processing not available - transforms required")
 
         combined_words = combine_receipt_words_to_image_coords(
             client, image_id, receipt_ids, image_width, image_height
@@ -135,9 +131,7 @@ def combine_receipts(
             combined_words, image_width, image_height
         )
         bounds = min_rect_result["bounds"]
-        src_corners = min_rect_result[
-            "src_corners"
-        ]  # Source corners in image space
+        src_corners = min_rect_result["src_corners"]  # Source corners in image space
         warped_width = min_rect_result["warped_width"]
         warped_height = min_rect_result["warped_height"]
 
@@ -208,38 +202,32 @@ def combine_receipts(
 
                 # Set all CDN keys on Receipt entity (matching upload workflow pattern)
                 records["receipt"].cdn_s3_key = receipt_cdn_keys.get("jpeg")
-                records["receipt"].cdn_webp_s3_key = receipt_cdn_keys.get(
-                    "webp"
-                )
-                records["receipt"].cdn_avif_s3_key = receipt_cdn_keys.get(
-                    "avif"
-                )
+                records["receipt"].cdn_webp_s3_key = receipt_cdn_keys.get("webp")
+                records["receipt"].cdn_avif_s3_key = receipt_cdn_keys.get("avif")
                 records["receipt"].cdn_thumbnail_s3_key = receipt_cdn_keys.get(
                     "jpeg_thumbnail"
                 )
-                records["receipt"].cdn_thumbnail_webp_s3_key = (
-                    receipt_cdn_keys.get("webp_thumbnail")
+                records["receipt"].cdn_thumbnail_webp_s3_key = receipt_cdn_keys.get(
+                    "webp_thumbnail"
                 )
-                records["receipt"].cdn_thumbnail_avif_s3_key = (
-                    receipt_cdn_keys.get("avif_thumbnail")
+                records["receipt"].cdn_thumbnail_avif_s3_key = receipt_cdn_keys.get(
+                    "avif_thumbnail"
                 )
-                records["receipt"].cdn_small_s3_key = receipt_cdn_keys.get(
-                    "jpeg_small"
+                records["receipt"].cdn_small_s3_key = receipt_cdn_keys.get("jpeg_small")
+                records["receipt"].cdn_small_webp_s3_key = receipt_cdn_keys.get(
+                    "webp_small"
                 )
-                records["receipt"].cdn_small_webp_s3_key = (
-                    receipt_cdn_keys.get("webp_small")
-                )
-                records["receipt"].cdn_small_avif_s3_key = (
-                    receipt_cdn_keys.get("avif_small")
+                records["receipt"].cdn_small_avif_s3_key = receipt_cdn_keys.get(
+                    "avif_small"
                 )
                 records["receipt"].cdn_medium_s3_key = receipt_cdn_keys.get(
                     "jpeg_medium"
                 )
-                records["receipt"].cdn_medium_webp_s3_key = (
-                    receipt_cdn_keys.get("webp_medium")
+                records["receipt"].cdn_medium_webp_s3_key = receipt_cdn_keys.get(
+                    "webp_medium"
                 )
-                records["receipt"].cdn_medium_avif_s3_key = (
-                    receipt_cdn_keys.get("avif_medium")
+                records["receipt"].cdn_medium_avif_s3_key = receipt_cdn_keys.get(
+                    "avif_medium"
                 )
 
                 # Calculate SHA256 from the combined image (same method as upload workflow)
@@ -248,9 +236,7 @@ def combine_receipts(
                 )
 
         # Get best ReceiptMetadata
-        best_metadata = get_best_receipt_metadata(
-            client, image_id, receipt_ids
-        )
+        best_metadata = get_best_receipt_metadata(client, image_id, receipt_ids)
         receipt_metadata = None
         if best_metadata:
             receipt_metadata = ReceiptMetadata(
@@ -276,11 +262,9 @@ def combine_receipts(
                 validation_status=best_metadata.validation_status
                 or MerchantValidationStatus.MATCHED.value,
                 canonical_place_id=best_metadata.canonical_place_id or "",
-                canonical_merchant_name=best_metadata.canonical_merchant_name
-                or "",
+                canonical_merchant_name=best_metadata.canonical_merchant_name or "",
                 canonical_address=best_metadata.canonical_address or "",
-                canonical_phone_number=best_metadata.canonical_phone_number
-                or "",
+                canonical_phone_number=best_metadata.canonical_phone_number or "",
             )
 
         # Migrate labels
@@ -317,12 +301,8 @@ def combine_receipts(
             "receipt": dict(records["receipt"]),
             "receipt_lines": [dict(line) for line in records["receipt_lines"]],
             "receipt_words": [dict(word) for word in records["receipt_words"]],
-            "receipt_letters": [
-                dict(letter) for letter in records["receipt_letters"]
-            ],
-            "receipt_metadata": (
-                dict(receipt_metadata) if receipt_metadata else None
-            ),
+            "receipt_letters": [dict(letter) for letter in records["receipt_letters"]],
+            "receipt_metadata": (dict(receipt_metadata) if receipt_metadata else None),
             "migrated_labels": [dict(label) for label in migrated_labels],
             "compaction_run": dict(compaction_run) if compaction_run else None,
             "bounds": bounds,
@@ -384,9 +364,7 @@ def combine_receipts(
                         # Delete the existing metadata (pass the ReceiptMetadata object)
                         try:
                             client.delete_receipt_metadata(receipt_metadata)
-                        except (
-                            Exception
-                        ) as delete_err:  # pylint: disable=broad-except
+                        except Exception as delete_err:  # pylint: disable=broad-except
                             logger.warning(
                                 "Error deleting existing metadata (may not exist): %s",
                                 delete_err,

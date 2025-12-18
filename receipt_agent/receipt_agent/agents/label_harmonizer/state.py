@@ -16,9 +16,7 @@ class LabelHarmonizerAgentState(BaseModel):
     receipt_id: int = Field(description="Receipt ID within the image")
 
     # Receipt data (loaded by tools)
-    receipt_text: Optional[str] = Field(
-        default=None, description="Full receipt text"
-    )
+    receipt_text: Optional[str] = Field(default=None, description="Full receipt text")
     words: list[dict[str, Any]] = Field(
         default_factory=list, description="Receipt words"
     )
@@ -30,9 +28,7 @@ class LabelHarmonizerAgentState(BaseModel):
     )
 
     # Analysis results
-    currency: Optional[str] = Field(
-        default=None, description="Detected currency"
-    )
+    currency: Optional[str] = Field(default=None, description="Detected currency")
     totals_validation: Optional[dict[str, Any]] = Field(
         default=None, description="Totals validation results"
     )
@@ -49,6 +45,3 @@ class LabelHarmonizerAgentState(BaseModel):
     )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-

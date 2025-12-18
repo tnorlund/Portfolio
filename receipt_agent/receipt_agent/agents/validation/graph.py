@@ -266,4 +266,3 @@ async def run_validation(
 
     logger.warning("No final state returned from graph")
     return initial_state
-

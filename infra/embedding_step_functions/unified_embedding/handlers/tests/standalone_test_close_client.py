@@ -23,12 +23,8 @@ import sys
 
 # Check Python version
 if sys.version_info >= (3, 14):
-    print(
-        "⚠️  Warning: Python 3.14+ detected. ChromaDB may have compatibility issues."
-    )
-    print(
-        "   Consider using Python 3.12: python3.12 -m venv .venv_test_chromadb"
-    )
+    print("⚠️  Warning: Python 3.14+ detected. ChromaDB may have compatibility issues.")
+    print("   Consider using Python 3.12: python3.12 -m venv .venv_test_chromadb")
     print()
 
 import os
@@ -48,9 +44,7 @@ from unittest.mock import MagicMock
 sys.modules["utils"] = MagicMock()
 sys.modules["utils.logging"] = MagicMock()
 mock_logger = MagicMock()
-sys.modules["utils.logging"].get_operation_logger = MagicMock(
-    return_value=mock_logger
-)
+sys.modules["utils.logging"].get_operation_logger = MagicMock(return_value=mock_logger)
 sys.modules["utils.logging"].get_logger = MagicMock(return_value=mock_logger)
 
 sys.modules["receipt_dynamo"] = MagicMock()
@@ -99,9 +93,7 @@ try:
     import chromadb
 
     # After import, check if chromadb.config lacks BaseSettings and reapply if needed
-    if hasattr(chromadb, "config") and not hasattr(
-        chromadb.config, "BaseSettings"
-    ):
+    if hasattr(chromadb, "config") and not hasattr(chromadb.config, "BaseSettings"):
         try:
             chromadb.config.BaseSettings = pydantic_settings.BaseSettings
         except NameError:
@@ -181,9 +173,7 @@ def test_close_releases_file_locks():
             copied_file = Path(copy_dir) / "chroma.sqlite3"
             shutil.copy2(sqlite_file, copied_file)
             assert copied_file.exists(), "Should be able to copy SQLite file"
-            assert (
-                copied_file.stat().st_size > 0
-            ), "Copied file should have content"
+            assert copied_file.stat().st_size > 0, "Copied file should have content"
             print("✅ Successfully copied SQLite file")
         finally:
             shutil.rmtree(copy_dir, ignore_errors=True)
@@ -194,9 +184,7 @@ def test_close_releases_file_locks():
         try:
             shutil.copytree(temp_dir, copy_dir, dirs_exist_ok=True)
             copy_path = Path(copy_dir)
-            assert (
-                copy_path.exists()
-            ), "Should be able to copy entire directory"
+            assert copy_path.exists(), "Should be able to copy entire directory"
             assert (
                 copy_path / "chroma.sqlite3"
             ).exists(), "SQLite file should be copied"
@@ -214,9 +202,7 @@ def test_close_releases_file_locks():
                 tar.add(temp_dir, arcname="chromadb")
 
             assert Path(tar_path).exists(), "Should be able to create tarball"
-            assert (
-                Path(tar_path).stat().st_size > 0
-            ), "Tarball should have content"
+            assert Path(tar_path).stat().st_size > 0, "Tarball should have content"
             print(
                 f"✅ Successfully created tarball ({Path(tar_path).stat().st_size} bytes)"
             )
@@ -227,12 +213,8 @@ def test_close_releases_file_locks():
                 with tarfile.open(tar_path, "r:gz") as tar:
                     tar.extractall(extract_dir)
 
-                extracted_sqlite = (
-                    Path(extract_dir) / "chromadb" / "chroma.sqlite3"
-                )
-                assert (
-                    extracted_sqlite.exists()
-                ), "SQLite file should be in tarball"
+                extracted_sqlite = Path(extract_dir) / "chromadb" / "chroma.sqlite3"
+                assert extracted_sqlite.exists(), "SQLite file should be in tarball"
                 print("✅ Successfully extracted tarball")
             finally:
                 shutil.rmtree(extract_dir, ignore_errors=True)
@@ -244,9 +226,7 @@ def test_close_releases_file_locks():
         print("\n📋 Test 1.4: New client reading from same directory...")
         new_client = chromadb.PersistentClient(path=temp_dir)
         new_collection = new_client.get_collection("test_collection")
-        assert (
-            new_collection.count() == 3
-        ), "New client should be able to read data"
+        assert new_collection.count() == 3, "New client should be able to read data"
         print("✅ New client successfully read data")
         close_chromadb_client(new_client, collection_name="test_collection")
 

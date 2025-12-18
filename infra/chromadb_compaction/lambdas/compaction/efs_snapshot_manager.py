@@ -27,9 +27,7 @@ from receipt_chroma.s3 import (
 class EFSSnapshotManager:
     """Manages ChromaDB snapshots using EFS + S3 hybrid approach."""
 
-    def __init__(
-        self, collection: str, bucket: str, logger: Any, metrics: Any = None
-    ):
+    def __init__(self, collection: str, bucket: str, logger: Any, metrics: Any = None):
         """
         Initialize EFS snapshot manager.
 
@@ -45,9 +43,7 @@ class EFSSnapshotManager:
 
         # EFS mount path (from Lambda environment)
         self.efs_root = os.environ.get("CHROMA_ROOT", "/tmp/chroma")
-        self.efs_snapshots_dir = os.path.join(
-            self.efs_root, "snapshots", collection
-        )
+        self.efs_snapshots_dir = os.path.join(self.efs_root, "snapshots", collection)
 
         # S3 configuration
         self.bucket = bucket
@@ -66,9 +62,7 @@ class EFSSnapshotManager:
                 with open(self.version_file, "r") as f:
                     return f.read().strip()
         except Exception as e:
-            self.logger.warning(
-                "Failed to read EFS version file", error=str(e)
-            )
+            self.logger.warning("Failed to read EFS version file", error=str(e))
         return None
 
     def set_efs_version(self, version: str) -> None:
@@ -86,9 +80,7 @@ class EFSSnapshotManager:
             pointer_key = f"{self.collection}/snapshot/latest-pointer.txt"
 
             try:
-                response = s3_client.get_object(
-                    Bucket=self.bucket, Key=pointer_key
-                )
+                response = s3_client.get_object(Bucket=self.bucket, Key=pointer_key)
                 version_id = response["Body"].read().decode("utf-8").strip()
                 return version_id
             except ClientError as e:

@@ -24,21 +24,13 @@ def example_ocr_routing_decision():
 def test_ocr_routing_decision_init_valid(example_ocr_routing_decision):
     """Test the OCRRoutingDecision constructor"""
     assert (
-        example_ocr_routing_decision.image_id
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        example_ocr_routing_decision.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     )
-    assert (
-        example_ocr_routing_decision.job_id
-        == "4f52804b-2fad-4e00-92c8-b593da3a8ed4"
-    )
+    assert example_ocr_routing_decision.job_id == "4f52804b-2fad-4e00-92c8-b593da3a8ed4"
     assert example_ocr_routing_decision.s3_bucket == "test-bucket"
     assert example_ocr_routing_decision.s3_key == "test-key/image.jpg"
-    assert example_ocr_routing_decision.created_at == datetime(
-        2024, 1, 1, 12, 0, 0
-    )
-    assert example_ocr_routing_decision.updated_at == datetime(
-        2024, 1, 1, 13, 0, 0
-    )
+    assert example_ocr_routing_decision.created_at == datetime(2024, 1, 1, 12, 0, 0)
+    assert example_ocr_routing_decision.updated_at == datetime(2024, 1, 1, 13, 0, 0)
     assert example_ocr_routing_decision.receipt_count == 3
     assert example_ocr_routing_decision.status == "COMPLETED"
 
@@ -221,9 +213,7 @@ def test_ocr_routing_decision_to_item(example_ocr_routing_decision):
     assert item["receipt_count"]["N"] == "3"
     assert item["status"]["S"] == "COMPLETED"
     assert item["GSI1PK"]["S"] == "OCR_ROUTING_DECISION_STATUS#COMPLETED"
-    assert (
-        item["GSI1SK"]["S"] == "ROUTING#4f52804b-2fad-4e00-92c8-b593da3a8ed4"
-    )
+    assert item["GSI1SK"]["S"] == "ROUTING#4f52804b-2fad-4e00-92c8-b593da3a8ed4"
 
 
 @pytest.mark.unit
@@ -319,10 +309,7 @@ def test_item_to_ocr_routing_decision(example_ocr_routing_decision):
     assert reconstructed.s3_key == example_ocr_routing_decision.s3_key
     assert reconstructed.created_at == example_ocr_routing_decision.created_at
     assert reconstructed.updated_at == example_ocr_routing_decision.updated_at
-    assert (
-        reconstructed.receipt_count
-        == example_ocr_routing_decision.receipt_count
-    )
+    assert reconstructed.receipt_count == example_ocr_routing_decision.receipt_count
     assert reconstructed.status == example_ocr_routing_decision.status
 
 

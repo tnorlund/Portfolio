@@ -89,9 +89,7 @@ def run_tests(
         # Integration tests: parallel with extended timeout
         cmd.extend(["-n", "auto"])
         cmd.extend(["--timeout", "300"])  # 5 minutes for integration
-        cmd.extend(
-            ["--dist", "loadfile"]
-        )  # Better load balance for integration
+        cmd.extend(["--dist", "loadfile"])  # Better load balance for integration
     else:
         # Unit tests: parallel with optimized timeout
         cmd.extend(["-n", "auto"])
@@ -166,9 +164,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Optimized test runner")
-    parser.add_argument(
-        "package", help="Package to test (e.g., receipt_dynamo)"
-    )
+    parser.add_argument("package", help="Package to test (e.g., receipt_dynamo)")
     parser.add_argument(
         "test_paths",
         nargs="*",

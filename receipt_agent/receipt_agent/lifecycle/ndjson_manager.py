@@ -38,13 +38,9 @@ def export_receipt_ndjson(
     try:
         # Fetch authoritative words/lines from DynamoDB if not provided
         if receipt_lines is None:
-            receipt_lines = client.list_receipt_lines_from_receipt(
-                image_id, receipt_id
-            )
+            receipt_lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
         if receipt_words is None:
-            receipt_words = client.list_receipt_words_from_receipt(
-                image_id, receipt_id
-            )
+            receipt_words = client.list_receipt_words_from_receipt(image_id, receipt_id)
 
         prefix = f"receipts/{image_id}/receipt-{receipt_id:05d}/"
         lines_key = prefix + "lines.ndjson"

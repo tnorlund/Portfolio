@@ -58,9 +58,7 @@ def update_receipt_metadata(
     if "words" in collection_name:
         # Get all words for this receipt from DynamoDB
         try:
-            words = dynamo_client.list_receipt_words_from_receipt(
-                image_id, receipt_id
-            )
+            words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
 
             logger.info("Found words in DynamoDB", count=len(words))
             if OBSERVABILITY_AVAILABLE and metrics:
@@ -85,9 +83,7 @@ def update_receipt_metadata(
     elif "lines" in collection_name:
         # Get all lines for this receipt from DynamoDB
         try:
-            lines = dynamo_client.list_receipt_lines_from_receipt(
-                image_id, receipt_id
-            )
+            lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
 
             logger.info("Found lines in DynamoDB", count=len(lines))
             if OBSERVABILITY_AVAILABLE and metrics:
@@ -109,9 +105,7 @@ def update_receipt_metadata(
                 )
             return 0
     else:
-        logger.warning(
-            "Unknown collection type", collection_name=collection_name
-        )
+        logger.warning("Unknown collection type", collection_name=collection_name)
 
         if OBSERVABILITY_AVAILABLE and metrics:
             metrics.count(
@@ -212,9 +206,7 @@ def update_receipt_metadata(
                 )
                 if metrics:
                     metrics.timer("CompactionMetadataUpdateTime", elapsed_time)
-                    metrics.count(
-                        "CompactionMetadataUpdatedRecords", len(matching_ids)
-                    )
+                    metrics.count("CompactionMetadataUpdatedRecords", len(matching_ids))
             else:
                 logger.info(
                     "Successfully updated metadata for embeddings",
@@ -303,9 +295,7 @@ def remove_receipt_metadata(
     if "words" in collection_name:
         # Get all words for this receipt from DynamoDB
         try:
-            words = dynamo_client.list_receipt_words_from_receipt(
-                image_id, receipt_id
-            )
+            words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
             chromadb_ids = [
                 f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
                 for word in words
@@ -317,9 +307,7 @@ def remove_receipt_metadata(
     elif "lines" in collection_name:
         # Get all lines for this receipt from DynamoDB
         try:
-            lines = dynamo_client.list_receipt_lines_from_receipt(
-                image_id, receipt_id
-            )
+            lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
             chromadb_ids = [
                 f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
                 for line in lines
@@ -328,9 +316,7 @@ def remove_receipt_metadata(
             logger.error("Failed to query lines from DynamoDB", error=str(e))
             return 0
     else:
-        logger.warning(
-            "Unknown collection type", collection_name=collection_name
-        )
+        logger.warning("Unknown collection type", collection_name=collection_name)
         return 0
 
     if not chromadb_ids:
@@ -356,13 +342,9 @@ def remove_receipt_metadata(
         results = collection.get(ids=chromadb_ids, include=["metadatas"])
         found_count = len(results.get("ids", []))
 
-        logger.info(
-            "Retrieved records from ChromaDB for removal", count=found_count
-        )
+        logger.info("Retrieved records from ChromaDB for removal", count=found_count)
     except Exception as e:
-        logger.error(
-            "Failed to query ChromaDB for metadata removal", error=str(e)
-        )
+        logger.error("Failed to query ChromaDB for metadata removal", error=str(e))
         return 0
 
     matching_ids = results.get("ids", [])
@@ -378,9 +360,7 @@ def remove_receipt_metadata(
                 del updated_metadata[field]
 
         # Add removal timestamp
-        updated_metadata["metadata_removed_at"] = datetime.now(
-            timezone.utc
-        ).isoformat()
+        updated_metadata["metadata_removed_at"] = datetime.now(timezone.utc).isoformat()
         matching_metadatas.append(updated_metadata)
 
     # Update records if any found
@@ -396,12 +376,8 @@ def remove_receipt_metadata(
                     elapsed_seconds=elapsed_time,
                 )
                 if metrics:
-                    metrics.timer(
-                        "CompactionMetadataRemovalTime", elapsed_time
-                    )
-                    metrics.count(
-                        "CompactionMetadataRemovedRecords", len(matching_ids)
-                    )
+                    metrics.timer("CompactionMetadataRemovalTime", elapsed_time)
+                    metrics.count("CompactionMetadataRemovedRecords", len(matching_ids))
             else:
                 logger.info(
                     "Removed metadata from embeddings",
@@ -546,9 +522,7 @@ def update_word_labels(
 
             # Always add/update the current label in validated/invalid sets based on status when provided
             status = (
-                changes.get("validation_status", {}).get("new")
-                if changes
-                else None
+                changes.get("validation_status", {}).get("new") if changes else None
             )
             current_label = None
             if entity_data and isinstance(entity_data, dict):
@@ -580,9 +554,7 @@ def update_word_labels(
             updated_metadata.update(reconstructed_metadata)
 
         # Add update timestamp
-        updated_metadata["last_label_update"] = datetime.now(
-            timezone.utc
-        ).isoformat()
+        updated_metadata["last_label_update"] = datetime.now(timezone.utc).isoformat()
 
         # Update the ChromaDB record
         collection.update(ids=[chromadb_id], metadatas=[updated_metadata])
@@ -593,12 +565,7 @@ def update_word_labels(
                 chromadb_id=chromadb_id,
                 label_status=reconstructed_metadata.get("label_status"),
                 validated_labels_count=(
-                    len(
-                        reconstructed_metadata.get("valid_labels", "").split(
-                            ","
-                        )
-                    )
-                    - 2
+                    len(reconstructed_metadata.get("valid_labels", "").split(",")) - 2
                     if reconstructed_metadata.get("valid_labels")
                     else 0
                 ),
@@ -609,12 +576,7 @@ def update_word_labels(
             metrics.gauge(
                 "CompactionValidatedLabelsCount",
                 (
-                    len(
-                        reconstructed_metadata.get("valid_labels", "").split(
-                            ","
-                        )
-                    )
-                    - 2
+                    len(reconstructed_metadata.get("valid_labels", "").split(",")) - 2
                     if reconstructed_metadata.get("valid_labels")
                     else 0
                 ),
@@ -653,9 +615,7 @@ def remove_word_labels(
 
         if not result["ids"]:
             if logger:
-                logger.warning(
-                    "Word embedding not found", chromadb_id=chromadb_id
-                )
+                logger.warning("Word embedding not found", chromadb_id=chromadb_id)
 
             if OBSERVABILITY_AVAILABLE and metrics:
                 metrics.count("CompactionWordEmbeddingNotFoundForRemoval", 1)
@@ -688,9 +648,7 @@ def remove_word_labels(
             del updated_metadata[field]
 
         # Add removal timestamp
-        updated_metadata["labels_removed_at"] = datetime.now(
-            timezone.utc
-        ).isoformat()
+        updated_metadata["labels_removed_at"] = datetime.now(timezone.utc).isoformat()
 
         # Update the record
         collection.update(ids=[chromadb_id], metadatas=[updated_metadata])
@@ -755,13 +713,11 @@ def reconstruct_label_metadata(
 
     # Calculate label_status - overall state for this word
     if any(
-        lbl.validation_status == ValidationStatus.VALID.value
-        for lbl in word_labels
+        lbl.validation_status == ValidationStatus.VALID.value for lbl in word_labels
     ):
         label_status = "validated"
     elif any(
-        lbl.validation_status == ValidationStatus.PENDING.value
-        for lbl in word_labels
+        lbl.validation_status == ValidationStatus.PENDING.value for lbl in word_labels
     ):
         label_status = "auto_suggested"
     else:
@@ -804,9 +760,7 @@ def reconstruct_label_metadata(
         if lbl.validation_status == ValidationStatus.VALID.value
     ]
     label_validated_at = (
-        sorted(valid_labels, key=lambda l: l.timestamp_added)[
-            -1
-        ].timestamp_added
+        sorted(valid_labels, key=lambda l: l.timestamp_added)[-1].timestamp_added
         if valid_labels
         else None
     )
@@ -898,9 +852,7 @@ def delete_receipt_embeddings(
     if "words" in collection_name:
         # Get all words for this receipt from DynamoDB
         try:
-            words = dynamo_client.list_receipt_words_from_receipt(
-                image_id, receipt_id
-            )
+            words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
 
             logger.info("Found words in DynamoDB", count=len(words))
             if OBSERVABILITY_AVAILABLE and metrics:
@@ -925,9 +877,7 @@ def delete_receipt_embeddings(
     elif "lines" in collection_name:
         # Get all lines for this receipt from DynamoDB
         try:
-            lines = dynamo_client.list_receipt_lines_from_receipt(
-                image_id, receipt_id
-            )
+            lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
 
             logger.info("Found lines in DynamoDB", count=len(lines))
             if OBSERVABILITY_AVAILABLE and metrics:
@@ -949,9 +899,7 @@ def delete_receipt_embeddings(
                 )
             return 0
     else:
-        logger.warning(
-            "Unknown collection type", collection_name=collection_name
-        )
+        logger.warning("Unknown collection type", collection_name=collection_name)
 
         if OBSERVABILITY_AVAILABLE and metrics:
             metrics.count(
@@ -1005,9 +953,7 @@ def delete_receipt_embeddings(
                     elapsed_seconds=elapsed_time,
                 )
                 if metrics:
-                    metrics.timer(
-                        "CompactionEmbeddingDeletionTime", elapsed_time
-                    )
+                    metrics.timer("CompactionEmbeddingDeletionTime", elapsed_time)
                     metrics.count("CompactionEmbeddingsDeleted", found_count)
             else:
                 logger.info(

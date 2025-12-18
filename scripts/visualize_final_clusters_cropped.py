@@ -103,9 +103,7 @@ def transform_receipt_line_to_image_line(
         )
 
         transform_coeffs, orig_receipt_width, orig_receipt_height = (
-            get_receipt_to_image_transform(
-                original_receipt, image_width, image_height
-            )
+            get_receipt_to_image_transform(original_receipt, image_width, image_height)
         )
     except ImportError:
         # Fallback: try receipt_agent package
@@ -152,9 +150,7 @@ def transform_receipt_line_to_image_line(
         # Use them directly - no conversion needed
         corners_img[corner_name] = {
             "x": corner["x"],  # Already normalized 0-1
-            "y": corner[
-                "y"
-            ],  # Already normalized 0-1 in OCR space (y=0 at bottom)
+            "y": corner["y"],  # Already normalized 0-1 in OCR space (y=0 at bottom)
         }
 
     # Step 4: Create Line entity with image-space coordinates
@@ -348,12 +344,8 @@ def visualize_final_clusters_cropped(
             f"📊 Using image-level OCR for clustering, receipt-level OCR entities for visualization"
         )
         original_receipt = client.get_receipt(image_id, receipt_id)
-        receipt_lines = client.list_receipt_lines_from_receipt(
-            image_id, receipt_id
-        )
-        receipt_words = client.list_receipt_words_from_receipt(
-            image_id, receipt_id
-        )
+        receipt_lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
+        receipt_words = client.list_receipt_words_from_receipt(image_id, receipt_id)
         # Note: ReceiptLetters are typically accessed via ReceiptWords
         # For now, we'll skip loading them separately
         receipt_letters = []
@@ -365,9 +357,7 @@ def visualize_final_clusters_cropped(
                 f"{len(receipt_letters)} ReceiptLetters from original receipt"
             )
         else:
-            print(
-                f"⚠️  No ReceiptOCR entities found for receipt_id={receipt_id}"
-            )
+            print(f"⚠️  No ReceiptOCR entities found for receipt_id={receipt_id}")
 
     # Always use image-level OCR for clustering (gets correct 2 clusters)
     print(f"📊 Clustering with image-level OCR...")
@@ -384,9 +374,7 @@ def visualize_final_clusters_cropped(
     # Download original image
     original_image = None
     s3_key = (
-        image_entity.raw_s3_key
-        if image_entity.raw_s3_key
-        else f"raw/{image_id}.png"
+        image_entity.raw_s3_key if image_entity.raw_s3_key else f"raw/{image_id}.png"
     )
     try:
         original_image = get_image_from_s3(raw_bucket, s3_key)
@@ -418,9 +406,7 @@ def visualize_final_clusters_cropped(
     print(f"\n📊 Final clusters for {image_id}:")
     for cluster_id, cluster_lines in sorted(cluster_dict.items()):
         color = get_cluster_color(cluster_id, len(cluster_dict))
-        print(
-            f"   Cluster {cluster_id}: {len(cluster_lines)} lines (color: {color})"
-        )
+        print(f"   Cluster {cluster_id}: {len(cluster_lines)} lines (color: {color})")
 
         # Calculate receipt bounds using same process as receipt_upload
         bounds = calculate_receipt_bounds_from_lines(
@@ -455,17 +441,13 @@ def visualize_final_clusters_cropped(
         for line in cluster_lines:
             # Always use image-level line coordinates for drawing
             # (Receipt-level OCR is only used for text accuracy in the export, not for coordinates)
-            corners_img = get_line_corners_image_coords(
-                line, img_width, img_height
-            )
+            corners_img = get_line_corners_image_coords(line, img_width, img_height)
 
             # Transform corners to warped receipt space using the inverse affine transform
             # The affine transform maps (receipt_x, receipt_y) -> (image_x, image_y)
             # We need the inverse: (image_x, image_y) -> (receipt_x, receipt_y)
             a_i, b_i, c_i, d_i, e_i, f_i = affine_transform
-            a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(
-                a_i, b_i, c_i, d_i, e_i, f_i
-            )
+            a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(a_i, b_i, c_i, d_i, e_i, f_i)
 
             # Store inverse affine transform for ReceiptWords transformation
             cluster_inverse_affine = (a_f, b_f, c_f, d_f, e_f, f_f)
@@ -488,15 +470,11 @@ def visualize_final_clusters_cropped(
                 draw.polygon(corners_warped, outline=color, width=3)
                 drawn_count += 1
             else:
-                print(
-                    f"      ⚠️  Line {line.line_id}: Invalid corners, skipping"
-                )
+                print(f"      ⚠️  Line {line.line_id}: Invalid corners, skipping")
                 skipped_count += 1
 
         if skipped_count > 0:
-            print(
-                f"      ⚠️  Skipped {skipped_count} lines, drew {drawn_count} lines"
-            )
+            print(f"      ⚠️  Skipped {skipped_count} lines, drew {drawn_count} lines")
 
         # Now find ReceiptLines, ReceiptWords, and ReceiptLetters that fall within this cluster's bounds
         # Step 1: Transform cluster bounds from image space to original receipt coordinate space
@@ -505,9 +483,7 @@ def visualize_final_clusters_cropped(
         cluster_receipt_letters = []
         if receipt_id is not None and original_receipt:
             # Get cluster bounds in image space (box_4_ordered is in PIL space, absolute pixels)
-            box_4_ordered = bounds[
-                "box_4_ordered"
-            ]  # [(x, y), ...] in PIL space
+            box_4_ordered = bounds["box_4_ordered"]  # [(x, y), ...] in PIL space
 
             # Transform these corners to original receipt coordinate space
             # We need to use the inverse of the receipt's transform_to_image
@@ -586,10 +562,7 @@ def visualize_final_clusters_cropped(
                         for line in receipt_lines:
                             centroid = line.calculate_centroid()
                             line_x, line_y = centroid[0], centroid[1]
-                            if (
-                                min_x <= line_x <= max_x
-                                and min_y <= line_y <= max_y
-                            ):
+                            if min_x <= line_x <= max_x and min_y <= line_y <= max_y:
                                 cluster_receipt_lines.append(line)
 
                     # Find ReceiptWords
@@ -598,10 +571,7 @@ def visualize_final_clusters_cropped(
                         for word in receipt_words:
                             centroid = word.calculate_centroid()
                             word_x, word_y = centroid[0], centroid[1]
-                            if (
-                                min_x <= word_x <= max_x
-                                and min_y <= word_y <= max_y
-                            ):
+                            if min_x <= word_x <= max_x and min_y <= word_y <= max_y:
                                 cluster_receipt_words.append(word)
 
                     # Find ReceiptLetters
@@ -707,9 +677,7 @@ def visualize_final_clusters_cropped(
                                 dst_points=src_points_receipt_abs_pil,  # Original receipt space (PIL, absolute pixels)
                             )
                             # Invert to get forward transform (original receipt space -> warped receipt space)
-                            direct_transform_coeffs = invert_warp(
-                                *inverse_coeffs
-                            )
+                            direct_transform_coeffs = invert_warp(*inverse_coeffs)
                             direct_transform_available = True
                             print(
                                 f"      ✅ Direct transform computed successfully (using absolute pixels)"
@@ -747,16 +715,13 @@ def visualize_final_clusters_cropped(
                                 word_corners_receipt_abs_pil = [
                                     (
                                         x * orig_receipt_width,
-                                        orig_receipt_height
-                                        - (y * orig_receipt_height),
+                                        orig_receipt_height - (y * orig_receipt_height),
                                     )
                                     for x, y in word_corners_receipt_ocr_norm
                                 ]
 
                                 # Apply direct perspective transform (using absolute pixels)
-                                a, b, c, d, e, f, g, h = (
-                                    direct_transform_coeffs
-                                )
+                                a, b, c, d, e, f, g, h = direct_transform_coeffs
                                 for (
                                     x_receipt_abs_pil,
                                     y_receipt_abs_pil,
@@ -768,9 +733,7 @@ def visualize_final_clusters_cropped(
                                         + h * y_receipt_abs_pil
                                     )
                                     if abs(denom) < 1e-10:
-                                        raise ValueError(
-                                            "Degenerate transform"
-                                        )
+                                        raise ValueError("Degenerate transform")
                                     x_warped_abs = (
                                         a * x_receipt_abs_pil
                                         + b * y_receipt_abs_pil
@@ -797,10 +760,7 @@ def visualize_final_clusters_cropped(
                                 # Don't set direct_transform_available = False here, just skip this word
                                 word_corners_warped = []
 
-                        if (
-                            not direct_transform_available
-                            or not word_corners_warped
-                        ):
+                        if not direct_transform_available or not word_corners_warped:
                             # Fallback: Two-step transform (original receipt space -> image space -> warped receipt space)
                             # Step 1: Transform from receipt space to image space
                             word_copy = copy.deepcopy(word)
@@ -834,36 +794,24 @@ def visualize_final_clusters_cropped(
 
                                 # Convert OCR space to PIL space (y=0 at top) for the affine transform
                                 img_x = img_x_ocr
-                                img_y = (
-                                    img_height - img_y_ocr
-                                )  # Flip Y: OCR -> PIL
+                                img_y = img_height - img_y_ocr  # Flip Y: OCR -> PIL
                                 word_corners_img.append((img_x, img_y))
 
                             # Step 3: Transform to warped receipt space using cluster's affine transform
                             for img_x, img_y in word_corners_img:
                                 receipt_x = a_f * img_x + b_f * img_y + c_f
                                 receipt_y = d_f * img_x + e_f * img_y + f_f
-                                word_corners_warped.append(
-                                    (receipt_x, receipt_y)
-                                )
+                                word_corners_warped.append((receipt_x, receipt_y))
 
                         # Debug for specific words
                         is_debug_word = any(
                             term in (word.text or "") for term in search_terms
                         )
                         if is_debug_word:
-                            min_warped_x = min(
-                                x for x, y in word_corners_warped
-                            )
-                            max_warped_x = max(
-                                x for x, y in word_corners_warped
-                            )
-                            min_warped_y = min(
-                                y for x, y in word_corners_warped
-                            )
-                            max_warped_y = max(
-                                y for x, y in word_corners_warped
-                            )
+                            min_warped_x = min(x for x, y in word_corners_warped)
+                            max_warped_x = max(x for x, y in word_corners_warped)
+                            min_warped_y = min(y for x, y in word_corners_warped)
+                            max_warped_y = max(y for x, y in word_corners_warped)
                             print(
                                 f"      🔍 Debug word '{word.text}': "
                                 f"bounds=({min_warped_x:.1f}-{max_warped_x:.1f}, {min_warped_y:.1f}-{max_warped_y:.1f}), "
@@ -877,9 +825,7 @@ def visualize_final_clusters_cropped(
                             and not (x != x or y != y)  # Check for NaN
                             for x, y in word_corners_warped
                         ):
-                            draw.polygon(
-                                word_corners_warped, outline=color, width=2
-                            )
+                            draw.polygon(word_corners_warped, outline=color, width=2)
                             drawn_count += 1
 
             except Exception as e:
@@ -890,12 +836,8 @@ def visualize_final_clusters_cropped(
 
         # Add legend
         try:
-            font = ImageFont.truetype(
-                "/System/Library/Fonts/Helvetica.ttc", 24
-            )
-            small_font = ImageFont.truetype(
-                "/System/Library/Fonts/Helvetica.ttc", 18
-            )
+            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 24)
+            small_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 18)
         except:
             font = ImageFont.load_default()
             small_font = ImageFont.load_default()
@@ -941,9 +883,7 @@ def visualize_final_clusters_cropped(
 
         # Get inverse affine transform for coordinate transformations
         a_i, b_i, c_i, d_i, e_i, f_i = affine_transform
-        a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(
-            a_i, b_i, c_i, d_i, e_i, f_i
-        )
+        a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(a_i, b_i, c_i, d_i, e_i, f_i)
 
         # Export each line with its coordinates in both image space and warped receipt space
         # Always use image-level OCR for export (coordinates are correct)
@@ -1109,18 +1049,14 @@ def visualize_final_clusters_cropped(
 
     print(f"\n✅ Complete! Visualizations saved to: {output_dir}")
     print(f"   Total clusters: {len(cluster_dict)}")
-    print(
-        f"   Total lines: {sum(len(lines) for lines in cluster_dict.values())}"
-    )
+    print(f"   Total lines: {sum(len(lines) for lines in cluster_dict.values())}")
 
 
 def main():
     parser = argparse.ArgumentParser(
         description="Visualize final clustered receipts (cropped)"
     )
-    parser.add_argument(
-        "--image-id", required=True, help="Image ID to visualize"
-    )
+    parser.add_argument("--image-id", required=True, help="Image ID to visualize")
     parser.add_argument(
         "--output-dir", required=True, type=Path, help="Output directory"
     )

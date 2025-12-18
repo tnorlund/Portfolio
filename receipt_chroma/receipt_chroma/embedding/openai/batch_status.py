@@ -49,9 +49,7 @@ def map_openai_to_dynamo_status(openai_status: str) -> BatchStatus:
     return mapping[openai_status]
 
 
-def process_error_file(
-    openai_batch_id: str, openai_client: OpenAI
-) -> Dict[str, Any]:
+def process_error_file(openai_batch_id: str, openai_client: OpenAI) -> Dict[str, Any]:
     """
     Download and process error file for failed or expired batches.
 
@@ -270,16 +268,10 @@ def handle_failed_status(
     # Mark all failed items for retry based on batch type
     marked_count = 0
     if error_info["error_details"]:
-        failed_ids = [
-            detail["custom_id"] for detail in error_info["error_details"]
-        ]
+        failed_ids = [detail["custom_id"] for detail in error_info["error_details"]]
         # Determine entity type from batch_type
-        entity_type = (
-            "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
-        )
-        marked_count = mark_items_for_retry(
-            failed_ids, entity_type, dynamo_client
-        )
+        entity_type = "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+        marked_count = mark_items_for_retry(failed_ids, entity_type, dynamo_client)
         logger.info(
             "Marked %d failed items from failed batch %s for retry",
             marked_count,
@@ -340,12 +332,8 @@ def handle_expired_status(
     marked_count = 0
     if failed_ids:
         # Determine entity type from batch_type
-        entity_type = (
-            "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
-        )
-        marked_count = mark_items_for_retry(
-            failed_ids, entity_type, dynamo_client
-        )
+        entity_type = "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+        marked_count = mark_items_for_retry(failed_ids, entity_type, dynamo_client)
         logger.info(
             "Marked %d failed items from expired batch %s for retry",
             marked_count,
@@ -400,9 +388,7 @@ def handle_in_progress_status(
     if isinstance(submitted_at, str):
         submitted_at = datetime.fromisoformat(submitted_at)
 
-    hours_elapsed = (
-        datetime.now(timezone.utc) - submitted_at
-    ).total_seconds() / 3600
+    hours_elapsed = (datetime.now(timezone.utc) - submitted_at).total_seconds() / 3600
 
     # Warn if approaching 24h limit
     if hours_elapsed > 20:
@@ -503,9 +489,7 @@ def handle_batch_status(
             batch_id, openai_batch_id, status, dynamo_client
         )
     if status in ["canceling", "cancelled"]:
-        return handle_cancelled_status(
-            batch_id, openai_batch_id, status, dynamo_client
-        )
+        return handle_cancelled_status(batch_id, openai_batch_id, status, dynamo_client)
 
     logger.error("Unknown batch status: %s", status)
     raise ValueError(f"Unknown batch status: {status}")
@@ -538,9 +522,7 @@ def mark_items_for_retry(
             if entity_type == "line":
                 line_id = int(parts[5])
                 # Get and update line
-                lines = dynamo_client.get_lines_from_receipt(
-                    image_id, receipt_id
-                )
+                lines = dynamo_client.get_lines_from_receipt(image_id, receipt_id)
                 for line in lines:
                     if line.line_id == line_id:
                         line.embedding_status = EmbeddingStatus.FAILED
@@ -551,9 +533,7 @@ def mark_items_for_retry(
             elif entity_type == "word":
                 word_id = int(parts[7])
                 # Get and update word
-                words = dynamo_client.get_words_from_receipt(
-                    image_id, receipt_id
-                )
+                words = dynamo_client.get_words_from_receipt(image_id, receipt_id)
                 for word in words:
                     if word.word_id == word_id:
                         word.embedding_status = EmbeddingStatus.FAILED

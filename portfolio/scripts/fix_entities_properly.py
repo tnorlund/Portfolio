@@ -49,26 +49,26 @@ class EntityFixer:
     def fix_all_entities(self):
         """Fix all Image and Receipt entities."""
         logger.info("Starting to fix all Image and Receipt entities...")
-        
+
         # Fix all Images
         self.fix_all_images()
-        
+
         # Fix all Receipts
         self.fix_all_receipts()
-        
+
         # Print summary
         self.print_summary()
 
     def fix_all_images(self):
         """Load and re-save all Image entities."""
         logger.info("Fixing all Image entities...")
-        
+
         # Get all images
         from receipt_dynamo.constants import ImageType
-        
+
         for image_type in [ImageType.PHOTO, ImageType.SCAN]:
             last_evaluated_key = None
-            
+
             while True:
                 try:
                     # Get a batch of images
@@ -77,9 +77,9 @@ class EntityFixer:
                         limit=50,  # Process in smaller batches
                         last_evaluated_key=last_evaluated_key,
                     )
-                    
+
                     self.stats["total_images"] += len(images)
-                    
+
                     # Update each image
                     for image in images:
                         if not self.dry_run:
@@ -90,14 +90,16 @@ class EntityFixer:
                                 logger.debug(f"Fixed Image: {image.image_id}")
                             except Exception as e:
                                 self.stats["errors"] += 1
-                                logger.error(f"Failed to fix Image {image.image_id}: {e}")
+                                logger.error(
+                                    f"Failed to fix Image {image.image_id}: {e}"
+                                )
                         else:
                             self.stats["images_fixed"] += 1
-                    
+
                     # If no more items, break
                     if not last_evaluated_key:
                         break
-                        
+
                 except Exception as e:
                     logger.error(f"Error processing images: {e}")
                     break
@@ -105,9 +107,9 @@ class EntityFixer:
     def fix_all_receipts(self):
         """Load and re-save all Receipt entities."""
         logger.info("Fixing all Receipt entities...")
-        
+
         last_evaluated_key = None
-        
+
         while True:
             try:
                 # Get a batch of receipts
@@ -115,9 +117,9 @@ class EntityFixer:
                     limit=50,  # Process in smaller batches
                     last_evaluated_key=last_evaluated_key,
                 )
-                
+
                 self.stats["total_receipts"] += len(receipts)
-                
+
                 # Update each receipt
                 for receipt in receipts:
                     if not self.dry_run:
@@ -125,7 +127,9 @@ class EntityFixer:
                             # Simply update the receipt - this will ensure all fields are correct
                             self.dynamo_client.update_receipt(receipt)
                             self.stats["receipts_fixed"] += 1
-                            logger.debug(f"Fixed Receipt: {receipt.image_id}:{receipt.receipt_id}")
+                            logger.debug(
+                                f"Fixed Receipt: {receipt.image_id}:{receipt.receipt_id}"
+                            )
                         except Exception as e:
                             self.stats["errors"] += 1
                             logger.error(
@@ -133,11 +137,11 @@ class EntityFixer:
                             )
                     else:
                         self.stats["receipts_fixed"] += 1
-                
+
                 # If no more items, break
                 if not last_evaluated_key:
                     break
-                    
+
             except Exception as e:
                 logger.error(f"Error processing receipts: {e}")
                 break
@@ -149,7 +153,7 @@ class EntityFixer:
         logger.info("=" * 50)
         logger.info(f"Total Images processed: {self.stats['total_images']}")
         logger.info(f"Total Receipts processed: {self.stats['total_receipts']}")
-        
+
         if not self.dry_run:
             logger.info(f"Images fixed: {self.stats['images_fixed']}")
             logger.info(f"Receipts fixed: {self.stats['receipts_fixed']}")
@@ -181,42 +185,42 @@ def main():
         action="store_true",
         help="Enable verbose logging",
     )
-    
+
     args = parser.parse_args()
-    
+
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
-    
+
     # Get configuration from Pulumi
     from pulumi import automation as auto
-    
+
     # Set up the stack
     stack_name = f"tnorlund/portfolio/{args.stack}"
     work_dir = os.path.join(parent_dir, "infra")
-    
+
     logger.info(f"Using stack: {stack_name}")
-    
+
     # Create a stack reference to get outputs
     stack = auto.create_or_select_stack(
         stack_name=stack_name,
         work_dir=work_dir,
     )
-    
+
     # Get the outputs
     outputs = stack.outputs()
-    
+
     # Extract configuration
     dynamo_table_name = outputs["dynamodb_table_name"].value
-    
+
     logger.info(f"DynamoDB table: {dynamo_table_name}")
     logger.info(f"Mode: {'LIVE UPDATE' if args.no_dry_run else 'DRY RUN'}")
-    
+
     # Create and run fixer
     fixer = EntityFixer(
         dynamo_table_name=dynamo_table_name,
         dry_run=not args.no_dry_run,
     )
-    
+
     fixer.fix_all_entities()
 
 

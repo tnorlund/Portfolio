@@ -68,16 +68,12 @@ class LayoutLMInference:
         self._s3_uri_used = model_s3_uri
 
         # Load tokenizer and model from directory
-        self._tokenizer = (
-            self._transformers.LayoutLMTokenizerFast.from_pretrained(
-                resolved_dir
-            )
+        self._tokenizer = self._transformers.LayoutLMTokenizerFast.from_pretrained(
+            resolved_dir
         )
-        self._model = (
-            self._transformers.LayoutLMForTokenClassification.from_pretrained(
-                resolved_dir
-            ).eval()
-        )
+        self._model = self._transformers.LayoutLMForTokenClassification.from_pretrained(
+            resolved_dir
+        ).eval()
         self._device = "cuda" if self._torch.cuda.is_available() else "cpu"
         self._model.to(self._device)
 
@@ -117,15 +113,11 @@ class LayoutLMInference:
         # Prefer best/ if present
         try:
             from botocore.exceptions import ClientError as _S3ClientError  # type: ignore
-        except (
-            ModuleNotFoundError
-        ):  # pragma: no cover - when botocore not installed
+        except ModuleNotFoundError:  # pragma: no cover - when botocore not installed
             _S3ClientError = None  # type: ignore
 
         try:
-            s3.head_object(
-                Bucket=bucket, Key=f"{latest_prefix}best/model.safetensors"
-            )
+            s3.head_object(Bucket=bucket, Key=f"{latest_prefix}best/model.safetensors")
             return f"s3://{bucket}/{latest_prefix}best/"
         except _S3ClientError as _:
             # Fallback: pick latest checkpoint containing model.safetensors
@@ -133,15 +125,12 @@ class LayoutLMInference:
             cand = [
                 o
                 for o in page.get("Contents", [])
-                if o["Key"].endswith("model.safetensors")
-                and "checkpoint-" in o["Key"]
+                if o["Key"].endswith("model.safetensors") and "checkpoint-" in o["Key"]
             ]
             if not cand:
                 return None
             latest = max(cand, key=lambda o: o["LastModified"])
-            return "s3://{}/{}".format(
-                bucket, latest["Key"].rsplit("/", 1)[0] + "/"
-            )
+            return "s3://{}/{}".format(bucket, latest["Key"].rsplit("/", 1)[0] + "/")
 
     def _sync_from_s3(self, s3_uri: str, dst_dir: str) -> None:
         """Download all objects under an s3://bucket/prefix/ into dst_dir.
@@ -173,9 +162,7 @@ class LayoutLMInference:
             pass
         # Fallback to AWS CLI
         if (
-            os.system(
-                f"aws s3 sync {s3_uri} {dst_dir} --no-progress > /dev/null 2>&1"
-            )
+            os.system(f"aws s3 sync {s3_uri} {dst_dir} --no-progress > /dev/null 2>&1")
             != 0
         ):
             # Best-effort; ignore failures to keep CPU-only usage possible
@@ -210,14 +197,11 @@ class LayoutLMInference:
             )
             wids = enc.word_ids()
             bbox_aligned = [
-                [0, 0, 0, 0] if wid is None else word_boxes[wid]
-                for wid in wids
+                [0, 0, 0, 0] if wid is None else word_boxes[wid] for wid in wids
             ]
 
             inputs = {
-                "input_ids": self._torch.tensor(
-                    [enc["input_ids"]], device=device
-                ),
+                "input_ids": self._torch.tensor([enc["input_ids"]], device=device),
                 "attention_mask": self._torch.tensor(
                     [enc["attention_mask"]], device=device
                 ),
@@ -249,9 +233,7 @@ class LayoutLMInference:
                     all_probabilities_per_word.append({})
                     continue
                 # Average logits across subtokens of this word
-                stacked = self._torch.stack(
-                    [seq_logits[i] for i in token_idxs]
-                )
+                stacked = self._torch.stack([seq_logits[i] for i in token_idxs])
                 avg_logits = stacked.mean(dim=0)
                 probs = self._torch.nn.functional.softmax(avg_logits, dim=-1)
                 conf, pred_id = self._torch.max(probs, dim=-1)
@@ -310,9 +292,7 @@ class LayoutLMInference:
             tokens = [tok for _, tok, _ in items]
             raw_boxes = [box for _, _, box in items]
             nboxes = [
-                _normalize_box_from_extents(
-                    b[0], b[1], b[2], b[3], max_x, max_y
-                )
+                _normalize_box_from_extents(b[0], b[1], b[2], b[3], max_x, max_y)
                 for b in raw_boxes
             ]
             tokens_per_line.append(tokens)
@@ -333,9 +313,7 @@ class LayoutLMInference:
                 "num_lines": len(line_preds),
                 "num_words": sum(len(lp.tokens) for lp in line_preds),
                 "device": self._device,
-                "model_name": getattr(
-                    self._model.config, "_name_or_path", None
-                ),
+                "model_name": getattr(self._model.config, "_name_or_path", None),
                 "s3_uri_used": self._s3_uri_used,
                 "model_dir": self._model_dir,
             },

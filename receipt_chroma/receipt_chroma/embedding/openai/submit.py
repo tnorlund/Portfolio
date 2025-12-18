@@ -31,9 +31,7 @@ def upload_to_openai(filepath: Path, openai_client: OpenAI) -> FileObject:
     Returns:
         FileObject from OpenAI API
     """
-    return openai_client.files.create(
-        file=filepath.open("rb"), purpose="batch"
-    )
+    return openai_client.files.create(file=filepath.open("rb"), purpose="batch")
 
 
 def submit_openai_batch(file_id: str, openai_client: OpenAI) -> Batch:
@@ -105,9 +103,7 @@ def create_batch_summary(
     )
 
 
-def add_batch_summary(
-    summary: BatchSummary, dynamo_client: DynamoClient
-) -> None:
+def add_batch_summary(summary: BatchSummary, dynamo_client: DynamoClient) -> None:
     """
     Write the BatchSummary entity to DynamoDB.
 

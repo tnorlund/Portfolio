@@ -47,12 +47,8 @@ def save_records_json_to_s3(
         s3_client = boto3.client("s3")
         # Get batch bucket from parameter, environment (set by step function),
         # or chromadb_bucket as fallback
-        save_bucket = (
-            batch_bucket or os.environ.get("BATCH_BUCKET") or chromadb_bucket
-        )
-        save_execution_id = execution_id or os.environ.get(
-            "EXECUTION_ID", "unknown"
-        )
+        save_bucket = batch_bucket or os.environ.get("BATCH_BUCKET") or chromadb_bucket
+        save_execution_id = execution_id or os.environ.get("EXECUTION_ID", "unknown")
 
         logger.info(
             "Saving records JSON to S3: bucket=%s, execution_id=%s",
@@ -111,12 +107,8 @@ def export_receipt_ndjson_and_queue(
         return
 
     # Fetch authoritative words/lines from DynamoDB (just saved)
-    receipt_words = client.list_receipt_words_from_receipt(
-        image_id, receipt_id
-    )
-    receipt_lines = client.list_receipt_lines_from_receipt(
-        image_id, receipt_id
-    )
+    receipt_words = client.list_receipt_words_from_receipt(image_id, receipt_id)
+    receipt_lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
 
     prefix = f"receipts/{image_id}/receipt-{receipt_id:05d}/"
     lines_key = prefix + "lines.ndjson"
@@ -131,9 +123,7 @@ def export_receipt_ndjson_and_queue(
     s3_client = boto3.client("s3")
 
     # Upload lines NDJSON
-    lines_ndjson_content = "\n".join(
-        json.dumps(row, default=str) for row in line_rows
-    )
+    lines_ndjson_content = "\n".join(json.dumps(row, default=str) for row in line_rows)
     s3_client.put_object(
         Bucket=artifacts_bucket,
         Key=lines_key,
@@ -142,9 +132,7 @@ def export_receipt_ndjson_and_queue(
     )
 
     # Upload words NDJSON
-    words_ndjson_content = "\n".join(
-        json.dumps(row, default=str) for row in word_rows
-    )
+    words_ndjson_content = "\n".join(json.dumps(row, default=str) for row in word_rows)
     s3_client.put_object(
         Bucket=artifacts_bucket,
         Key=words_key,

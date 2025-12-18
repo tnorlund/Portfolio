@@ -125,14 +125,12 @@ class MetadataValidatorAgent:
         self._agentic_state_holder: Optional[dict] = None
 
         if mode == "agentic":
-            self._graph, self._agentic_state_holder = (
-                create_agentic_validation_graph(
-                    dynamo_client=dynamo_client,
-                    chroma_client=chroma_client,
-                    embed_fn=self._embed_fn,
-                    places_api=places_api,
-                    settings=self._settings,
-                )
+            self._graph, self._agentic_state_holder = create_agentic_validation_graph(
+                dynamo_client=dynamo_client,
+                chroma_client=chroma_client,
+                embed_fn=self._embed_fn,
+                places_api=places_api,
+                settings=self._settings,
             )
         else:
             self._graph = create_validation_graph(
@@ -226,9 +224,7 @@ class MetadataValidatorAgent:
         if self._mode == "agentic":
             return await self._validate_agentic(image_id, receipt_id)
         else:
-            return await self._validate_deterministic(
-                image_id, receipt_id, thread_id
-            )
+            return await self._validate_deterministic(image_id, receipt_id, thread_id)
 
     async def _validate_deterministic(
         self,
@@ -392,8 +388,7 @@ class MetadataValidatorAgent:
                 return ((image_id, receipt_id), result)
 
         tasks = [
-            validate_one(image_id, receipt_id)
-            for image_id, receipt_id in receipts
+            validate_one(image_id, receipt_id) for image_id, receipt_id in receipts
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)

@@ -131,9 +131,7 @@ def save_line_embeddings_as_delta(
         )
 
         # Get line context
-        embedding_input = format_line_context_embedding_input(
-            target_line, lines
-        )
+        embedding_input = format_line_context_embedding_input(target_line, lines)
         prev_line, next_line = parse_prev_next_from_formatted(embedding_input)
 
         # Priority: canonical name > regular merchant name
@@ -159,9 +157,7 @@ def save_line_embeddings_as_delta(
 
         # Anchor-only enrichment for lines: attach fields only if this line
         # has anchor words
-        line_metadata = enrich_line_metadata_with_anchors(
-            line_metadata, line_words
-        )
+        line_metadata = enrich_line_metadata_with_anchors(line_metadata, line_words)
 
         # Add to delta arrays
         ids.append(result["custom_id"])

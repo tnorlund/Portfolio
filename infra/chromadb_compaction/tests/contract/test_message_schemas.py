@@ -37,9 +37,7 @@ class TestMetadataMessageContract:
                 "image_id": "7e2bd911-7afb-4e0a-84de-57f51ce4daff",
                 "receipt_id": 1,
             },
-            changes={
-                "canonical_merchant_name": FieldChange(old="Old", new="New")
-            },
+            changes={"canonical_merchant_name": FieldChange(old="Old", new="New")},
             event_name="MODIFY",
             collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
             source="dynamodb_stream",
@@ -73,15 +71,11 @@ class TestMetadataMessageContract:
     def test_metadata_changes_structure(self):
         """Changes dict has old/new structure."""
         changes = {
-            "canonical_merchant_name": FieldChange(
-                old="Old Store", new="New Store"
-            ),
+            "canonical_merchant_name": FieldChange(old="Old Store", new="New Store"),
             "place_id": FieldChange(old="place123", new="place456"),
         }
 
-        changes_dict = {
-            k: {"old": v.old, "new": v.new} for k, v in changes.items()
-        }
+        changes_dict = {k: {"old": v.old, "new": v.new} for k, v in changes.items()}
 
         # Each change should have old and new keys
         for field, change in changes_dict.items():
@@ -125,9 +119,7 @@ class TestWordLabelMessageContract:
                 "word_id": 10,
                 "label": "TOTAL",
             },
-            changes={
-                "validation_status": FieldChange(old="PENDING", new="VALID")
-            },
+            changes={"validation_status": FieldChange(old="PENDING", new="VALID")},
             event_name="MODIFY",
             collections=[ChromaDBCollection.WORDS],
             source="dynamodb_stream",

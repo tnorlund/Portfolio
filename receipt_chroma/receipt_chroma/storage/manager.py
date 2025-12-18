@@ -43,9 +43,7 @@ class StorageManager:
         self.collection = collection
         self.bucket = bucket
         self.mode = mode
-        self.efs_root = efs_root or os.environ.get(
-            "CHROMA_ROOT", "/tmp/chroma"
-        )
+        self.efs_root = efs_root or os.environ.get("CHROMA_ROOT", "/tmp/chroma")
         self.logger = logger
         self.metrics = metrics
 
@@ -78,8 +76,7 @@ class StorageManager:
                 return StorageMode.EFS
             if self.logger:
                 self.logger.warning(
-                    "EFS mode requested but EFS not available, falling back "
-                    "to S3"
+                    "EFS mode requested but EFS not available, falling back " "to S3"
                 )
             return StorageMode.S3_ONLY
 
@@ -129,16 +126,12 @@ class StorageManager:
             # EFS mode: get latest version and ensure it's available locally
             latest_version = self._efs_manager.get_latest_s3_version()
             if latest_version:
-                result = self._efs_manager.ensure_snapshot_available(
-                    latest_version
-                )
+                result = self._efs_manager.ensure_snapshot_available(latest_version)
                 if result["status"] == "available":
                     # Copy from EFS to local_path
                     import shutil
 
-                    shutil.copytree(
-                        result["efs_path"], local_path, dirs_exist_ok=True
-                    )
+                    shutil.copytree(result["efs_path"], local_path, dirs_exist_ok=True)
                     return {
                         "status": "downloaded",
                         "version": latest_version,
@@ -191,9 +184,7 @@ class StorageManager:
                 self._efs_manager.sync_to_s3_async(version_id, local_path)
             except Exception as e:
                 if self.logger:
-                    self.logger.warning(
-                        "Failed to sync to EFS cache", error=str(e)
-                    )
+                    self.logger.warning("Failed to sync to EFS cache", error=str(e))
 
         return result
 
@@ -215,9 +206,7 @@ class StorageManager:
         pointer_key = f"{self.collection}/snapshot/latest-pointer.txt"
 
         try:
-            response = s3_client.get_object(
-                Bucket=self.bucket, Key=pointer_key
-            )
+            response = s3_client.get_object(Bucket=self.bucket, Key=pointer_key)
             return response["Body"].read().decode("utf-8").strip()
         except ClientError as e:
             if e.response["Error"]["Code"] == "NoSuchKey":

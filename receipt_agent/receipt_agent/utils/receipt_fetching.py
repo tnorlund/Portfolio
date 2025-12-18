@@ -48,9 +48,7 @@ def fetch_receipt_details_with_fallback(
         image_ids_to_try = [sanitized_image_id]
         if sanitized_image_id != image_id:
             image_ids_to_try.append(image_id)
-            logger.debug(
-                f"Sanitized image_id '{image_id}' to '{sanitized_image_id}'"
-            )
+            logger.debug(f"Sanitized image_id '{image_id}' to '{sanitized_image_id}'")
 
         # Try to get receipt entity
         receipt = None
@@ -64,9 +62,7 @@ def fetch_receipt_details_with_fallback(
             except EntityNotFoundError:
                 continue
             except Exception as e:
-                logger.debug(
-                    f"Error fetching receipt for {img_id}#{receipt_id}: {e}"
-                )
+                logger.debug(f"Error fetching receipt for {img_id}#{receipt_id}: {e}")
                 continue
 
         # Try to fetch lines and words directly (they might exist even if receipt doesn't)

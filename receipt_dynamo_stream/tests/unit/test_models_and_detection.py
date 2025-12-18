@@ -98,10 +98,7 @@ def test_detect_entity_type_patterns() -> None:
         detect_entity_type("RECEIPT#00001#LINE#00001#WORD#00001#LABEL#TOTAL")
         == "RECEIPT_WORD_LABEL"
     )
-    assert (
-        detect_entity_type("RECEIPT#00001#COMPACTION_RUN#abc")
-        == "COMPACTION_RUN"
-    )
+    assert detect_entity_type("RECEIPT#00001#COMPACTION_RUN#abc") == "COMPACTION_RUN"
     assert detect_entity_type("RECEIPT#00001#LINE#00001") is None
 
 

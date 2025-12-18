@@ -97,9 +97,7 @@ def download_all_images_and_receipts(table_name: str, output_dir: str):
     # Save images to JSON
     images_output_file = os.path.join(output_dir, f"{table_name}_images.json")
     with open(images_output_file, "w") as f:
-        json.dump(
-            [asdict(image) for image in all_images], f, indent=2, default=str
-        )
+        json.dump([asdict(image) for image in all_images], f, indent=2, default=str)
     print(f"Saved {len(all_images)} images to {images_output_file}")
 
     # List all receipts
@@ -120,9 +118,7 @@ def download_all_images_and_receipts(table_name: str, output_dir: str):
                 break
 
     # Save receipts to JSON
-    receipts_output_file = os.path.join(
-        output_dir, f"{table_name}_receipts.json"
-    )
+    receipts_output_file = os.path.join(output_dir, f"{table_name}_receipts.json")
     with open(receipts_output_file, "w") as f:
         json.dump(
             [asdict(receipt) for receipt in all_receipts],
@@ -193,9 +189,7 @@ def download_detailed_data_for_comparison(
                 "receipts": [asdict(receipt) for receipt in details.receipts],
                 "receipt_lines": [asdict(rl) for rl in details.receipt_lines],
                 "receipt_words": [asdict(rw) for rw in details.receipt_words],
-                "receipt_letters": [
-                    asdict(rl) for rl in details.receipt_letters
-                ],
+                "receipt_letters": [asdict(rl) for rl in details.receipt_letters],
                 "receipt_word_labels": [
                     asdict(rwl) for rwl in details.receipt_word_labels
                 ],
@@ -322,9 +316,7 @@ def compare_labels(
                             "prod_validation_status": prod_label.get(
                                 "validation_status"
                             ),
-                            "dev_validation_status": dev_label.get(
-                                "validation_status"
-                            ),
+                            "dev_validation_status": dev_label.get("validation_status"),
                         }
                     )
                 # Check if validation status differs
@@ -342,9 +334,7 @@ def compare_labels(
                             "prod_validation_status": prod_label.get(
                                 "validation_status"
                             ),
-                            "dev_validation_status": dev_label.get(
-                                "validation_status"
-                            ),
+                            "dev_validation_status": dev_label.get("validation_status"),
                             "type": "validation_status_diff",
                         }
                     )
@@ -360,9 +350,7 @@ def compare_labels(
                         "word_id": prod_label.get("word_id"),
                         "prod_label": prod_label.get("label"),
                         "dev_label": "MISSING",
-                        "prod_validation_status": prod_label.get(
-                            "validation_status"
-                        ),
+                        "prod_validation_status": prod_label.get("validation_status"),
                         "dev_validation_status": None,
                         "type": "missing_in_dev",
                     }
@@ -382,14 +370,10 @@ def compare_labels(
 
     # Group differences by type
     status_diffs = [
-        d
-        for d in label_differences
-        if d.get("type") == "validation_status_diff"
+        d for d in label_differences if d.get("type") == "validation_status_diff"
     ]
     text_diffs = [
-        d
-        for d in label_differences
-        if d.get("type") != "validation_status_diff"
+        d for d in label_differences if d.get("type") != "validation_status_diff"
     ]
 
     report.append("-" * 80)
@@ -477,9 +461,7 @@ def rollback_prod_labels_from_backup(
 
     # Convert to ReceiptWordLabel objects
     backup_label_objects = []
-    for label_dict in tqdm(
-        all_backup_labels, desc="Preparing restore", unit="label"
-    ):
+    for label_dict in tqdm(all_backup_labels, desc="Preparing restore", unit="label"):
         label_obj = ReceiptWordLabel(
             image_id=label_dict["image_id"],
             receipt_id=label_dict["receipt_id"],
@@ -550,8 +532,8 @@ def rollback_prod_labels_from_backup(
         for image_id in tqdm(all_image_ids, desc="Fetching current labels"):
             try:
                 # Get all labels for this image from PROD
-                current_labels, _ = (
-                    prod_client.list_receipt_word_labels_for_image(image_id)
+                current_labels, _ = prod_client.list_receipt_word_labels_for_image(
+                    image_id
                 )
                 for label in current_labels:
                     key = (
@@ -563,9 +545,7 @@ def rollback_prod_labels_from_backup(
                     )
                     current_labels_dict[key] = label
             except Exception as e:
-                print(
-                    f"Warning: Could not fetch labels for image {image_id}: {e}"
-                )
+                print(f"Warning: Could not fetch labels for image {image_id}: {e}")
 
         # Determine which labels need update vs add
         labels_to_update = []
@@ -640,9 +620,7 @@ def rollback_prod_labels_from_backup(
             print(
                 f"\n⚠️  Found {len(labels_to_delete)} labels in PROD that are not in backup"
             )
-            print(
-                "These may have been added during sync. Review before deleting."
-            )
+            print("These may have been added during sync. Review before deleting.")
             # For safety, we don't auto-delete. User can review manually.
 
         print(f"\n{'='*80}")
@@ -762,8 +740,7 @@ def sync_prod_labels_from_dev(
                         prod_label.get("label") != dev_label.get("label")
                         or prod_label.get("validation_status")
                         != dev_label.get("validation_status")
-                        or prod_label.get("reasoning")
-                        != dev_label.get("reasoning")
+                        or prod_label.get("reasoning") != dev_label.get("reasoning")
                     ):
                         needs_update = True
 
@@ -779,9 +756,7 @@ def sync_prod_labels_from_dev(
                         labels_unchanged += 1
                 else:
                     # Label in DEV but not PROD - add it
-                    labels_to_add.append(
-                        {"position": position_key, "dev": dev_label}
-                    )
+                    labels_to_add.append({"position": position_key, "dev": dev_label})
 
             # Find labels in PROD but not in DEV
             for label_value, prod_label in prod_by_label_value.items():
@@ -998,9 +973,7 @@ def compare_images_and_receipts(
                             else prod_text
                         ),
                         "dev_text": (
-                            dev_text[:200] + "..."
-                            if len(dev_text) > 200
-                            else dev_text
+                            dev_text[:200] + "..." if len(dev_text) > 200 else dev_text
                         ),
                         "prod_word_count": len(prod_img["receipt_words"]),
                         "dev_word_count": len(dev_img["receipt_words"]),
@@ -1132,12 +1105,8 @@ def main():
     )
     parser.add_argument("--table", type=str, help="DynamoDB table name")
     parser.add_argument("--output-dir", type=str, help="Output directory")
-    parser.add_argument(
-        "--prod-file", type=str, help="PROD data file for comparison"
-    )
-    parser.add_argument(
-        "--dev-file", type=str, help="DEV data file for comparison"
-    )
+    parser.add_argument("--prod-file", type=str, help="PROD data file for comparison")
+    parser.add_argument("--dev-file", type=str, help="DEV data file for comparison")
     parser.add_argument(
         "--report",
         type=str,
@@ -1202,9 +1171,7 @@ def main():
 
     elif args.command == "compare":
         if not args.prod_file or not args.dev_file:
-            print(
-                "Error: --prod-file and --dev-file are required for compare command"
-            )
+            print("Error: --prod-file and --dev-file are required for compare command")
             sys.exit(1)
         compare_images_and_receipts(args.prod_file, args.dev_file, args.report)
 

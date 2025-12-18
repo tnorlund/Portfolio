@@ -81,9 +81,7 @@ class ReceiptValidationSummary:
         elif isinstance(self.timestamp_added, str):
             pass  # Already a string
         elif self.timestamp_added is not None:
-            raise ValueError(
-                "timestamp_added must be a datetime, string, or None"
-            )
+            raise ValueError("timestamp_added must be a datetime, string, or None")
 
         if self.timestamp_updated is None:
             pass  # Leave as None
@@ -92,9 +90,7 @@ class ReceiptValidationSummary:
         elif isinstance(self.timestamp_updated, str):
             pass  # Already a string
         else:
-            raise ValueError(
-                "timestamp_updated must be a datetime, string, or None"
-            )
+            raise ValueError("timestamp_updated must be a datetime, string, or None")
 
     @property
     def key(self) -> Dict[str, Dict[str, str]]:
@@ -114,9 +110,7 @@ class ReceiptValidationSummary:
     def gsi2_key(self) -> Dict[str, Dict[str, str]]:
         """Return the GSI2 key for this item."""
         return {
-            "GSI2PK": {
-                "S": f"VALIDATION_SUMMARY_STATUS#{self.overall_status}"
-            },
+            "GSI2PK": {"S": f"VALIDATION_SUMMARY_STATUS#{self.overall_status}"},
             "GSI2SK": {"S": f"TIMESTAMP#{self.validation_timestamp}"},
         }
 
@@ -260,9 +254,7 @@ class ReceiptValidationSummary:
         timestamp_added = None
         if "timestamp_added" in item and "S" in item["timestamp_added"]:
             try:
-                timestamp_added = datetime.fromisoformat(
-                    item["timestamp_added"]["S"]
-                )
+                timestamp_added = datetime.fromisoformat(item["timestamp_added"]["S"])
             except (ValueError, TypeError):
                 pass
 
@@ -430,6 +422,4 @@ def item_to_receipt_validation_summary(
             timestamp_updated=timestamp_updated,
         )
     except (KeyError, IndexError, ValueError) as e:
-        raise ValueError(
-            "Error converting item to ReceiptValidationSummary"
-        ) from e
+        raise ValueError("Error converting item to ReceiptValidationSummary") from e

@@ -130,9 +130,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             s3.put_object(
                 Bucket=batch_bucket,
                 Key=report_key,
-                Body=json.dumps(summary, indent=2, default=str).encode(
-                    "utf-8"
-                ),
+                Body=json.dumps(summary, indent=2, default=str).encode("utf-8"),
                 ContentType="application/json",
             )
             logger.info(f"Report uploaded to s3://{batch_bucket}/{report_key}")
@@ -145,21 +143,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             s3.put_object(
                 Bucket=batch_bucket,
                 Key=outliers_key,
-                Body=json.dumps(outlier_details, indent=2, default=str).encode(
-                    "utf-8"
-                ),
+                Body=json.dumps(outlier_details, indent=2, default=str).encode("utf-8"),
                 ContentType="application/json",
             )
-            logger.info(
-                f"Outliers uploaded to s3://{batch_bucket}/{outliers_key}"
-            )
+            logger.info(f"Outliers uploaded to s3://{batch_bucket}/{outliers_key}")
         except Exception as e:
             logger.error(f"Failed to upload outliers: {e}")
 
     return {
         "execution_id": execution_id,
         "summary": summary,
-        "report_path": (
-            f"s3://{batch_bucket}/{report_key}" if batch_bucket else None
-        ),
+        "report_path": (f"s3://{batch_bucket}/{report_key}" if batch_bucket else None),
     }

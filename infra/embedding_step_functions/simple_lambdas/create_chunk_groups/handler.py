@@ -138,9 +138,7 @@ def _load_groups_from_s3(event: Dict[str, Any]) -> Dict[str, Any]:
 
     # Set poll_results based on whether it's in S3 or inline
     if poll_results_s3_key and poll_results_s3_bucket:
-        response["poll_results"] = (
-            None  # Keep in S3, will be loaded when needed
-        )
+        response["poll_results"] = None  # Keep in S3, will be loaded when needed
     else:
         response["poll_results"] = []  # Empty if not in S3
 
@@ -236,9 +234,7 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
 
         # If poll_results is large, also store it in S3
         poll_results_s3_key = None
-        if (
-            poll_results_size > 100 * 1024
-        ):  # If poll_results > 100KB, store in S3
+        if poll_results_size > 100 * 1024:  # If poll_results > 100KB, store in S3
             logger.info(
                 "poll_results is large (%d KB), also storing in S3",
                 poll_results_size // 1024,

@@ -51,9 +51,7 @@ class TestLockManagerEdgeCases:
         owner = manager.lock_owner
 
         # Get the lock and verify it has string expires
-        lock = client.get_compaction_lock(
-            "test-lock", ChromaDBCollection.LINES
-        )
+        lock = client.get_compaction_lock("test-lock", ChromaDBCollection.LINES)
         assert isinstance(lock.expires, str)
         assert lock.owner == owner  # Verify owner matches
 
@@ -84,9 +82,7 @@ class TestLockManagerEdgeCases:
         # Manually set expires to invalid type
         mock_lock.expires = 12345  # type: ignore[assignment]
 
-        mocker.patch.object(
-            client, "get_compaction_lock", return_value=mock_lock
-        )
+        mocker.patch.object(client, "get_compaction_lock", return_value=mock_lock)
 
         assert manager.validate_ownership() is False
 
@@ -129,9 +125,7 @@ class TestLockManagerEdgeCases:
         manager.acquire("test-lock")
 
         # Get the lock (which has string expires)
-        lock = client.get_compaction_lock(
-            manager.lock_id, ChromaDBCollection.LINES
-        )
+        lock = client.get_compaction_lock(manager.lock_id, ChromaDBCollection.LINES)
         assert isinstance(lock.expires, str)
 
         # Should work with string expires

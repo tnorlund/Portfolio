@@ -21,8 +21,7 @@ class QuerySimilarLinesInput(BaseModel):
 
     query_text: str = Field(
         description=(
-            "Text to search for similar lines "
-            "(e.g., address or phone line)"
+            "Text to search for similar lines " "(e.g., address or phone line)"
         )
     )
     n_results: int = Field(
@@ -46,9 +45,7 @@ class QuerySimilarLinesInput(BaseModel):
 class QuerySimilarWordsInput(BaseModel):
     """Input schema for query_similar_words tool."""
 
-    word_text: str = Field(
-        description="Word text to search for similar words"
-    )
+    word_text: str = Field(description="Word text to search for similar words")
     label_type: Optional[str] = Field(
         default=None,
         description=(
@@ -66,9 +63,7 @@ class QuerySimilarWordsInput(BaseModel):
 class SearchByMerchantInput(BaseModel):
     """Input schema for search_by_merchant_name tool."""
 
-    merchant_name: str = Field(
-        description="Merchant name to search for"
-    )
+    merchant_name: str = Field(description="Merchant name to search for")
     n_results: int = Field(
         default=20,
         description="Maximum number of receipts to return",
@@ -80,9 +75,7 @@ class SearchByMerchantInput(BaseModel):
 class SearchByPlaceIdInput(BaseModel):
     """Input schema for search_by_place_id tool."""
 
-    place_id: str = Field(
-        description="Google Place ID to search for"
-    )
+    place_id: str = Field(description="Google Place ID to search for")
 
 
 @tool(args_schema=QuerySimilarLinesInput)
@@ -120,9 +113,7 @@ def query_similar_lines(
         # Build where clause for filtering
         where_clause = None
         if merchant_filter:
-            where_clause = {
-                "merchant_name": {"$eq": merchant_filter.strip().title()}
-            }
+            where_clause = {"merchant_name": {"$eq": merchant_filter.strip().title()}}
 
         # Query ChromaDB
         results = _chroma_client.query(
@@ -150,22 +141,23 @@ def query_similar_lines(
             if similarity < min_similarity:
                 continue
 
-            output.append({
-                "rank": idx + 1,
-                "chroma_id": doc_id,
-                "text": doc,
-                "similarity_score": round(similarity, 4),
-                "image_id": meta.get("image_id"),
-                "receipt_id": meta.get("receipt_id"),
-                "line_id": meta.get("line_id"),
-                "merchant_name": meta.get("merchant_name"),
-                "normalized_phone": meta.get("normalized_phone_10"),
-                "normalized_address": meta.get("normalized_full_address"),
-            })
+            output.append(
+                {
+                    "rank": idx + 1,
+                    "chroma_id": doc_id,
+                    "text": doc,
+                    "similarity_score": round(similarity, 4),
+                    "image_id": meta.get("image_id"),
+                    "receipt_id": meta.get("receipt_id"),
+                    "line_id": meta.get("line_id"),
+                    "merchant_name": meta.get("merchant_name"),
+                    "normalized_phone": meta.get("normalized_phone_10"),
+                    "normalized_address": meta.get("normalized_full_address"),
+                }
+            )
 
         logger.info(
-            f"Found {len(output)} similar lines above threshold "
-            f"{min_similarity}"
+            f"Found {len(output)} similar lines above threshold " f"{min_similarity}"
         )
         return output
 
@@ -226,18 +218,20 @@ def query_similar_words(
         ):
             similarity = max(0.0, 1.0 - (dist / 2))
 
-            output.append({
-                "rank": idx + 1,
-                "chroma_id": doc_id,
-                "word_text": doc,
-                "similarity_score": round(similarity, 4),
-                "image_id": meta.get("image_id"),
-                "receipt_id": meta.get("receipt_id"),
-                "line_id": meta.get("line_id"),
-                "word_id": meta.get("word_id"),
-                "label": meta.get("label"),
-                "validation_status": meta.get("validation_status"),
-            })
+            output.append(
+                {
+                    "rank": idx + 1,
+                    "chroma_id": doc_id,
+                    "word_text": doc,
+                    "similarity_score": round(similarity, 4),
+                    "image_id": meta.get("image_id"),
+                    "receipt_id": meta.get("receipt_id"),
+                    "line_id": meta.get("line_id"),
+                    "word_id": meta.get("word_id"),
+                    "label": meta.get("label"),
+                    "validation_status": meta.get("validation_status"),
+                }
+            )
 
         return output
 
@@ -276,9 +270,7 @@ def search_by_merchant_name(
         query_embedding = _embed_fn([merchant_name])[0]
 
         # Filter by merchant name
-        where_clause = {
-            "merchant_name": {"$eq": merchant_name.strip().title()}
-        }
+        where_clause = {"merchant_name": {"$eq": merchant_name.strip().title()}}
 
         results = _chroma_client.query(
             collection_name="lines",
@@ -321,15 +313,9 @@ def search_by_merchant_name(
                 {"image_id": r[0], "receipt_id": r[1]}
                 for r in list(receipts_found)[:10]  # Limit to 10
             ],
-            "addresses": dict(
-                sorted(addresses.items(), key=lambda x: -x[1])[:5]
-            ),
-            "phone_numbers": dict(
-                sorted(phones.items(), key=lambda x: -x[1])[:5]
-            ),
-            "place_ids": dict(
-                sorted(place_ids.items(), key=lambda x: -x[1])[:3]
-            ),
+            "addresses": dict(sorted(addresses.items(), key=lambda x: -x[1])[:5]),
+            "phone_numbers": dict(sorted(phones.items(), key=lambda x: -x[1])[:5]),
+            "place_ids": dict(sorted(place_ids.items(), key=lambda x: -x[1])[:3]),
         }
 
     except Exception as e:
@@ -384,9 +370,7 @@ def search_by_place_id(
 
         # Determine canonical name (most common)
         canonical_name = max(
-            merchant_names.items(),
-            key=lambda x: x[1],
-            default=(None, 0)
+            merchant_names.items(), key=lambda x: x[1], default=(None, 0)
         )[0]
 
         return {
@@ -395,8 +379,7 @@ def search_by_place_id(
             "merchant_name_variants": merchant_names,
             "receipt_count": len(receipts),
             "receipts": [
-                {"image_id": r[0], "receipt_id": r[1]}
-                for r in list(receipts)[:10]
+                {"image_id": r[0], "receipt_id": r[1]} for r in list(receipts)[:10]
             ],
         }
 

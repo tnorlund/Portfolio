@@ -256,13 +256,9 @@ def visualize_final_clusters_cropped(
         draw = ImageDraw.Draw(img)
         # invert affine for warping corners
         a_i, b_i, c_i, d_i, e_i, f_i = affine_transform
-        a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(
-            a_i, b_i, c_i, d_i, e_i, f_i
-        )
+        a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(a_i, b_i, c_i, d_i, e_i, f_i)
         for line in cluster_lines:
-            corners_img = get_line_corners_image_coords(
-                line, img_width, img_height
-            )
+            corners_img = get_line_corners_image_coords(line, img_width, img_height)
             corners_warped = []
             for img_x, img_y in corners_img:
                 receipt_x = a_f * img_x + b_f * img_y + c_f
@@ -289,9 +285,7 @@ def visualize_final_clusters_cropped(
             "letters": [],
         }
         for line in cluster_lines:
-            corners_img = get_line_corners_image_coords(
-                line, img_width, img_height
-            )
+            corners_img = get_line_corners_image_coords(line, img_width, img_height)
             corners_warped = []
             for img_x, img_y in corners_img:
                 receipt_x = a_f * img_x + b_f * img_y + c_f
@@ -307,9 +301,7 @@ def visualize_final_clusters_cropped(
                         "bottom_left": line.bottom_left,
                         "bottom_right": line.bottom_right,
                     },
-                    "image_coords_pil": [
-                        {"x": x, "y": y} for x, y in corners_img
-                    ],
+                    "image_coords_pil": [{"x": x, "y": y} for x, y in corners_img],
                     "warped_receipt_coords": corners_warped,
                     "source": "image_ocr",
                 }

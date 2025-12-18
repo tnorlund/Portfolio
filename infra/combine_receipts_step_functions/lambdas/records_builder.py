@@ -45,16 +45,12 @@ def combine_receipt_words_to_image_coords(
     for receipt_id in receipt_ids:
         try:
             receipt = client.get_receipt(image_id, receipt_id)
-            receipt_words = client.list_receipt_words_from_receipt(
-                image_id, receipt_id
-            )
+            receipt_words = client.list_receipt_words_from_receipt(image_id, receipt_id)
             for word in receipt_words:
                 try:
                     # Use the new Receipt entity method
                     transform_coeffs, receipt_width, receipt_height = (
-                        receipt.get_transform_to_image(
-                            image_width, image_height
-                        )
+                        receipt.get_transform_to_image(image_width, image_height)
                     )
                     word_copy = copy.deepcopy(word)
                     from receipt_upload.geometry.transformations import (
@@ -88,8 +84,7 @@ def combine_receipt_words_to_image_coords(
                         "x": word_copy.bounding_box["x"] * image_width,
                         "y": word_copy.bounding_box["y"] * image_height,
                         "width": word_copy.bounding_box["width"] * image_width,
-                        "height": word_copy.bounding_box["height"]
-                        * image_height,
+                        "height": word_copy.bounding_box["height"] * image_height,
                     }
                     top_left = {
                         "x": word_copy.top_left["x"] * image_width,
@@ -191,9 +186,7 @@ def combine_receipt_letters_to_image_coords(
     for receipt_id in receipt_ids:
         try:
             receipt = client.get_receipt(image_id, receipt_id)
-            receipt_words = client.list_receipt_words_from_receipt(
-                image_id, receipt_id
-            )
+            receipt_words = client.list_receipt_words_from_receipt(image_id, receipt_id)
             for word in receipt_words:
                 try:
                     receipt_letters = client.list_receipt_letters_from_word(
@@ -232,9 +225,7 @@ def combine_receipt_letters_to_image_coords(
                                 receipt_id,
                             )
                             new_word_id = word_id_map.get(original_key)
-                            new_line_id = line_id_map.get(
-                                (word.line_id, receipt_id)
-                            )
+                            new_line_id = line_id_map.get((word.line_id, receipt_id))
                             if new_word_id is None or new_line_id is None:
                                 continue
 
@@ -249,10 +240,8 @@ def combine_receipt_letters_to_image_coords(
                             centroid_x = centroid[0] * image_width
                             centroid_y = centroid[1] * image_height
                             bounding_box = {
-                                "x": letter_copy.bounding_box["x"]
-                                * image_width,
-                                "y": letter_copy.bounding_box["y"]
-                                * image_height,
+                                "x": letter_copy.bounding_box["x"] * image_width,
+                                "y": letter_copy.bounding_box["y"] * image_height,
                                 "width": letter_copy.bounding_box["width"]
                                 * image_width,
                                 "height": letter_copy.bounding_box["height"]
@@ -267,16 +256,12 @@ def combine_receipt_letters_to_image_coords(
                                 "y": letter_copy.top_right["y"] * image_height,
                             }
                             bottom_left = {
-                                "x": letter_copy.bottom_left["x"]
-                                * image_width,
-                                "y": letter_copy.bottom_left["y"]
-                                * image_height,
+                                "x": letter_copy.bottom_left["x"] * image_width,
+                                "y": letter_copy.bottom_left["y"] * image_height,
                             }
                             bottom_right = {
-                                "x": letter_copy.bottom_right["x"]
-                                * image_width,
-                                "y": letter_copy.bottom_right["y"]
-                                * image_height,
+                                "x": letter_copy.bottom_right["x"] * image_width,
+                                "y": letter_copy.bottom_right["y"] * image_height,
                             }
 
                             all_letters.append(
@@ -408,9 +393,7 @@ def create_combined_receipt_records(
         # Receipt corners in normalized warped space (0-1),
         # OCR coordinate system (y=0 at bottom)
         top_left={
-            "x": (
-                top_left_warped[0] / warped_width if warped_width > 0 else 0.0
-            ),
+            "x": (top_left_warped[0] / warped_width if warped_width > 0 else 0.0),
             "y": (
                 (warped_height - top_left_warped[1]) / warped_height
                 if warped_height > 0
@@ -418,9 +401,7 @@ def create_combined_receipt_records(
             ),  # Convert to OCR space
         },
         top_right={
-            "x": (
-                top_right_warped[0] / warped_width if warped_width > 0 else 1.0
-            ),
+            "x": (top_right_warped[0] / warped_width if warped_width > 0 else 1.0),
             "y": (
                 (warped_height - top_right_warped[1]) / warped_height
                 if warped_height > 0
@@ -428,11 +409,7 @@ def create_combined_receipt_records(
             ),
         },
         bottom_left={
-            "x": (
-                bottom_left_warped[0] / warped_width
-                if warped_width > 0
-                else 0.0
-            ),
+            "x": (bottom_left_warped[0] / warped_width if warped_width > 0 else 0.0),
             "y": (
                 (warped_height - bottom_left_warped[1]) / warped_height
                 if warped_height > 0
@@ -440,11 +417,7 @@ def create_combined_receipt_records(
             ),
         },
         bottom_right={
-            "x": (
-                bottom_right_warped[0] / warped_width
-                if warped_width > 0
-                else 1.0
-            ),
+            "x": (bottom_right_warped[0] / warped_width if warped_width > 0 else 1.0),
             "y": (
                 (warped_height - bottom_right_warped[1]) / warped_height
                 if warped_height > 0
@@ -501,9 +474,7 @@ def create_combined_receipt_records(
         line_min_y_ocr = min(
             c[1] for c in line_corners_ocr
         )  # Bottom of line in OCR space
-        line_max_y_ocr = max(
-            c[1] for c in line_corners_ocr
-        )  # Top of line in OCR space
+        line_max_y_ocr = max(c[1] for c in line_corners_ocr)  # Top of line in OCR space
 
         # Create line text
         line_text = " ".join(w["text"] for w in line_words_sorted)
@@ -524,34 +495,20 @@ def create_combined_receipt_records(
             top_left={
                 "x": line_min_x / receipt_width if receipt_width > 0 else 0.0,
                 "y": (
-                    line_max_y_ocr / receipt_height
-                    if receipt_height > 0
-                    else 0.0
+                    line_max_y_ocr / receipt_height if receipt_height > 0 else 0.0
                 ),  # Normalize relative to bottom (OCR space)
             },
             top_right={
                 "x": line_max_x / receipt_width if receipt_width > 0 else 1.0,
-                "y": (
-                    line_max_y_ocr / receipt_height
-                    if receipt_height > 0
-                    else 0.0
-                ),
+                "y": (line_max_y_ocr / receipt_height if receipt_height > 0 else 0.0),
             },
             bottom_left={
                 "x": line_min_x / receipt_width if receipt_width > 0 else 0.0,
-                "y": (
-                    line_min_y_ocr / receipt_height
-                    if receipt_height > 0
-                    else 1.0
-                ),
+                "y": (line_min_y_ocr / receipt_height if receipt_height > 0 else 1.0),
             },
             bottom_right={
                 "x": line_max_x / receipt_width if receipt_width > 0 else 1.0,
-                "y": (
-                    line_min_y_ocr / receipt_height
-                    if receipt_height > 0
-                    else 1.0
-                ),
+                "y": (line_min_y_ocr / receipt_height if receipt_height > 0 else 1.0),
             },
             angle_degrees=0.0,
             angle_radians=0.0,
@@ -674,9 +631,7 @@ def create_combined_receipt_records(
                 ),
             },
             angle_degrees=word.get("angle_degrees", 0.0),
-            angle_radians=word.get("angle_degrees", 0.0)
-            * 3.141592653589793
-            / 180.0,
+            angle_radians=word.get("angle_degrees", 0.0) * 3.141592653589793 / 180.0,
             confidence=word.get("confidence", 1.0),
             is_noise=is_noise,  # Preserve noise flag from original word
         )
@@ -756,12 +711,8 @@ def create_receipt_letters_from_combined(
         # Calculate bounding box in warped space
         letter_min_x = min(c[0] for c in letter_corners_ocr_warped.values())
         letter_max_x = max(c[0] for c in letter_corners_ocr_warped.values())
-        letter_min_y_ocr = min(
-            c[1] for c in letter_corners_ocr_warped.values()
-        )
-        letter_max_y_ocr = max(
-            c[1] for c in letter_corners_ocr_warped.values()
-        )
+        letter_min_y_ocr = min(c[1] for c in letter_corners_ocr_warped.values())
+        letter_max_y_ocr = max(c[1] for c in letter_corners_ocr_warped.values())
 
         # Create ReceiptLetter with coordinates in warped OCR space,
         # normalized (0-1)
@@ -809,22 +760,19 @@ def create_receipt_letters_from_combined(
                     else 0.0
                 ),
                 "y": (
-                    letter_corners_ocr_warped["bottom_left"][1]
-                    / receipt_height
+                    letter_corners_ocr_warped["bottom_left"][1] / receipt_height
                     if receipt_height > 0
                     else 1.0
                 ),
             },
             bottom_right={
                 "x": (
-                    letter_corners_ocr_warped["bottom_right"][0]
-                    / receipt_width
+                    letter_corners_ocr_warped["bottom_right"][0] / receipt_width
                     if receipt_width > 0
                     else 1.0
                 ),
                 "y": (
-                    letter_corners_ocr_warped["bottom_right"][1]
-                    / receipt_height
+                    letter_corners_ocr_warped["bottom_right"][1] / receipt_height
                     if receipt_height > 0
                     else 1.0
                 ),

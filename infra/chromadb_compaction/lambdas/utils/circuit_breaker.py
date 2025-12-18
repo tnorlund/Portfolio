@@ -262,8 +262,7 @@ class CircuitBreaker:
             "time_until_retry": (
                 max(
                     0,
-                    self.recovery_timeout
-                    - (time.time() - self.last_failure_time),
+                    self.recovery_timeout - (time.time() - self.last_failure_time),
                 )
                 if self.state == CircuitState.OPEN
                 else None
@@ -327,10 +326,7 @@ class CircuitBreakerManager:
 
     def get_all_states(self) -> Dict[str, Dict[str, Any]]:
         """Get states of all circuit breakers."""
-        return {
-            name: breaker.get_state()
-            for name, breaker in self._breakers.items()
-        }
+        return {name: breaker.get_state() for name, breaker in self._breakers.items()}
 
     def reset_breaker(self, name: str) -> bool:
         """Manually reset a circuit breaker to closed state.
@@ -344,9 +340,7 @@ class CircuitBreakerManager:
         if name in self._breakers:
             with self._breakers[name]._lock:
                 self._breakers[name]._transition_to_closed()
-                self.logger.info(
-                    "Manually reset circuit breaker", circuit_name=name
-                )
+                self.logger.info("Manually reset circuit breaker", circuit_name=name)
                 return True
         return False
 

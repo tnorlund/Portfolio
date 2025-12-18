@@ -158,12 +158,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Get chunk indices for this batch (up to CHUNKS_PER_LAMBDA chunks)
         batch_chunk_indices = list(range(i, min(i + CHUNKS_PER_LAMBDA, len(chunks))))
 
-        chunk_batches.append({
-            "chunk_indices": batch_chunk_indices,  # Array of chunk indices to process
-            "batch_id": batch_id,
-            "chunks_s3_key": chunks_s3_key,
-            "chunks_s3_bucket": bucket,
-        })
+        chunk_batches.append(
+            {
+                "chunk_indices": batch_chunk_indices,  # Array of chunk indices to process
+                "batch_id": batch_id,
+                "chunks_s3_key": chunks_s3_key,
+                "chunks_s3_bucket": bucket,
+            }
+        )
 
     logger.info(
         "Created chunk batches: original_chunks=%d, batches=%d, chunks_per_lambda=%d",
@@ -212,9 +214,7 @@ def _download_and_combine_poll_results(
                 ) as tmp_file:
                     tmp_file_path = tmp_file.name
 
-                s3_client.download_file(
-                    result_bucket, result_key, tmp_file_path
-                )
+                s3_client.download_file(result_bucket, result_key, tmp_file_path)
 
                 with open(tmp_file_path, "r", encoding="utf-8") as f:
                     result = json.load(f)

@@ -140,9 +140,7 @@ WORD_LABEL_REMOVE_EVENT = {
                 "ApproximateCreationDateTime": 1755754670.0,
                 "Keys": {
                     "PK": {"S": "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff"},
-                    "SK": {
-                        "S": "RECEIPT#00001#LINE#00005#WORD#00010#LABEL#PRODUCT"
-                    },
+                    "SK": {"S": "RECEIPT#00001#LINE#00005#WORD#00010#LABEL#PRODUCT"},
                 },
                 "OldImage": old_word_label.to_item(),
                 "SequenceNumber": "977119800000398701107540003",
@@ -171,9 +169,7 @@ def get_word_label_event_variation(
         word_id=10,
         label="PRODUCT",
         reasoning="Original classification",
-        timestamp_added=datetime.fromisoformat(
-            "2025-08-08T03:53:53.200541+00:00"
-        ),
+        timestamp_added=datetime.fromisoformat("2025-08-08T03:53:53.200541+00:00"),
         validation_status="PENDING",
     )
 
@@ -184,9 +180,7 @@ def get_word_label_event_variation(
         word_id=10,
         label=label,
         reasoning="Updated classification",
-        timestamp_added=datetime.fromisoformat(
-            "2025-08-08T03:53:53.200541+00:00"
-        ),
+        timestamp_added=datetime.fromisoformat("2025-08-08T03:53:53.200541+00:00"),
         validation_status=validation_status,
     )
 
@@ -201,9 +195,7 @@ def get_word_label_event_variation(
                 "dynamodb": {
                     "ApproximateCreationDateTime": 1755754670.0,
                     "Keys": {
-                        "PK": {
-                            "S": "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff"
-                        },
+                        "PK": {"S": "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff"},
                         "SK": {
                             "S": f"RECEIPT#00001#LINE#00005#WORD#00010#LABEL#{label}"
                         },

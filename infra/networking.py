@@ -17,9 +17,7 @@ class VpcForCodeBuild(ComponentResource):
     - Security Groups for CodeBuild and EFS
     """
 
-    def __init__(
-        self, name: str, opts: Optional[pulumi.ResourceOptions] = None
-    ):
+    def __init__(self, name: str, opts: Optional[pulumi.ResourceOptions] = None):
         super().__init__("custom:network:VpcForCodeBuild", name, {}, opts)
 
         # Create VPC
@@ -245,9 +243,7 @@ class PublicVpc(ComponentResource):
     - Public route table with 0.0.0.0/0 via IGW
     """
 
-    def __init__(
-        self, name: str, opts: Optional[pulumi.ResourceOptions] = None
-    ):
+    def __init__(self, name: str, opts: Optional[pulumi.ResourceOptions] = None):
         super().__init__("custom:network:PublicVpc", name, {}, opts)
 
         # Create VPC
@@ -331,9 +327,7 @@ class PublicVpc(ComponentResource):
 
         # Expose attributes for easy consumption
         self.vpc_id = self.vpc.id
-        self.public_subnet_ids = Output.all(
-            *[s.id for s in self.public_subnets]
-        )
+        self.public_subnet_ids = Output.all(*[s.id for s in self.public_subnets])
         self.internet_gateway_id = self.igw.id
         self.public_route_table_id = self.public_rt.id
 

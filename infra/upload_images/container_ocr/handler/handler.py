@@ -270,15 +270,11 @@ def _process_single_record(
                 "merchant_name": merchant_name,
                 "merchant_place_id": embedding_result.get("merchant_place_id"),
                 "merchant_resolution_tier": merchant_tier,
-                "merchant_confidence": embedding_result.get(
-                    "merchant_confidence"
-                ),
+                "merchant_confidence": embedding_result.get("merchant_confidence"),
             }
 
         except Exception as e:
-            _log(
-                f"ERROR: Merchant validation/embedding failed for {image_type}: {e}"
-            )
+            _log(f"ERROR: Merchant validation/embedding failed for {image_type}: {e}")
             logger.error(
                 f"Merchant validation/embedding failed for {image_type}: {e}",
                 exc_info=True,

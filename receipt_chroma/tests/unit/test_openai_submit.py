@@ -56,9 +56,7 @@ class TestCreateBatchSummary:
     def test_creates_summary_from_ndjson(self) -> None:
         """Test creating batch summary from NDJSON file."""
         # Create a temporary NDJSON file
-        with tempfile.NamedTemporaryFile(
-            mode="w", delete=False, suffix=".jsonl"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".jsonl") as f:
             json.dump({"custom_id": "IMAGE#img1#RECEIPT#00001#LINE#00001"}, f)
             f.write("\n")
             json.dump({"custom_id": "IMAGE#img1#RECEIPT#00001#LINE#00002"}, f)
@@ -89,9 +87,7 @@ class TestCreateBatchSummary:
 
     def test_handles_invalid_json_lines(self) -> None:
         """Test that invalid JSON lines are skipped."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", delete=False, suffix=".jsonl"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".jsonl") as f:
             json.dump({"custom_id": "IMAGE#img1#RECEIPT#00001#LINE#00001"}, f)
             f.write("\n")
             f.write("invalid json line\n")
@@ -126,6 +122,4 @@ class TestAddBatchSummary:
 
         add_batch_summary(mock_summary, mock_dynamo_client)
 
-        mock_dynamo_client.add_batch_summary.assert_called_once_with(
-            mock_summary
-        )
+        mock_dynamo_client.add_batch_summary.assert_called_once_with(mock_summary)

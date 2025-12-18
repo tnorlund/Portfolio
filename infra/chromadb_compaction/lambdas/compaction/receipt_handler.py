@@ -57,10 +57,8 @@ def delete_receipt_child_records(
     try:
         # 1. Delete ReceiptWordLabel
         try:
-            receipt_labels, _ = (
-                dynamo_client.list_receipt_word_labels_for_receipt(
-                    image_id, receipt_id
-                )
+            receipt_labels, _ = dynamo_client.list_receipt_word_labels_for_receipt(
+                image_id, receipt_id
             )
             if receipt_labels:
                 dynamo_client.delete_receipt_word_labels(receipt_labels)
@@ -77,9 +75,7 @@ def delete_receipt_child_records(
                         f"Deleted {len(receipt_labels)} receipt word labels for receipt {receipt_id}"
                     )
                 if metrics:
-                    metrics.count(
-                        "CompactionReceiptLabelsDeleted", len(receipt_labels)
-                    )
+                    metrics.count("CompactionReceiptLabelsDeleted", len(receipt_labels))
         except Exception as e:  # noqa: BLE001
             logger.warning(
                 "Failed to delete receipt word labels",
@@ -108,9 +104,7 @@ def delete_receipt_child_records(
                         f"Deleted {len(receipt_words)} receipt words for receipt {receipt_id}"
                     )
                 if metrics:
-                    metrics.count(
-                        "CompactionReceiptWordsDeleted", len(receipt_words)
-                    )
+                    metrics.count("CompactionReceiptWordsDeleted", len(receipt_words))
         except Exception as e:  # noqa: BLE001
             logger.warning(
                 "Failed to delete receipt words",
@@ -139,9 +133,7 @@ def delete_receipt_child_records(
                         f"Deleted {len(receipt_lines)} receipt lines for receipt {receipt_id}"
                     )
                 if metrics:
-                    metrics.count(
-                        "CompactionReceiptLinesDeleted", len(receipt_lines)
-                    )
+                    metrics.count("CompactionReceiptLinesDeleted", len(receipt_lines))
         except Exception as e:  # noqa: BLE001
             logger.warning(
                 "Failed to delete receipt lines",
@@ -153,9 +145,7 @@ def delete_receipt_child_records(
         # 4. Delete ReceiptLetter (best effort - may not have direct list method)
         try:
             # Try to list letters if method exists
-            if hasattr(
-                dynamo_client, "list_receipt_letters_from_image_and_receipt"
-            ):
+            if hasattr(dynamo_client, "list_receipt_letters_from_image_and_receipt"):
                 receipt_letters = (
                     dynamo_client.list_receipt_letters_from_image_and_receipt(
                         image_id, receipt_id
@@ -202,9 +192,7 @@ def delete_receipt_child_records(
                         receipt_id=receipt_id,
                     )
                 else:
-                    logger.info(
-                        f"Deleted receipt metadata for receipt {receipt_id}"
-                    )
+                    logger.info(f"Deleted receipt metadata for receipt {receipt_id}")
                 if metrics:
                     metrics.count("CompactionReceiptMetadataDeleted", 1)
         except Exception as e:  # noqa: BLE001
@@ -237,9 +225,7 @@ def delete_receipt_child_records(
                         f"Deleted {len(runs)} compaction runs for receipt {receipt_id}"
                     )
                 if metrics:
-                    metrics.count(
-                        "CompactionReceiptCompactionRunsDeleted", len(runs)
-                    )
+                    metrics.count("CompactionReceiptCompactionRunsDeleted", len(runs))
         except Exception as e:  # noqa: BLE001
             # Compaction runs might not exist - log but don't fail
             logger.debug(
@@ -308,12 +294,8 @@ def process_receipt_deletions(
 
     try:
         # Download current snapshot using atomic helper
-        logger.info(
-            "Downloading snapshot for receipt deletion", collection=database
-        )
-        temp_dir = tempfile.mkdtemp(
-            prefix=f"chroma_receipt_deletion_{database}_"
-        )
+        logger.info("Downloading snapshot for receipt deletion", collection=database)
+        temp_dir = tempfile.mkdtemp(prefix=f"chroma_receipt_deletion_{database}_")
 
         try:
             download_result = download_snapshot_atomic(
@@ -422,9 +404,7 @@ def process_receipt_deletions(
                     results.append(result)
 
                 except Exception as e:  # noqa: BLE001
-                    logger.error(
-                        "Error processing receipt deletion", error=str(e)
-                    )
+                    logger.error("Error processing receipt deletion", error=str(e))
                     entity_data = deletion_msg.entity_data
                     results.append(
                         MetadataUpdateResult(
@@ -438,9 +418,7 @@ def process_receipt_deletions(
                     )
 
             # Upload updated snapshot
-            if results and any(
-                r.updated_count > 0 for r in results if r.error is None
-            ):
+            if results and any(r.updated_count > 0 for r in results if r.error is None):
                 logger.info(
                     "Uploading updated snapshot after receipt deletion",
                     collection=database,
@@ -473,9 +451,7 @@ def process_receipt_deletions(
                                 error="Failed to upload snapshot",
                             )
                 else:
-                    logger.info(
-                        "Successfully uploaded snapshot", collection=database
-                    )
+                    logger.info("Successfully uploaded snapshot", collection=database)
 
         finally:
             # Cleanup temp directory
@@ -516,9 +492,7 @@ def apply_receipt_deletions_in_memory(
     Also deletes all child records from DynamoDB (ReceiptWordLabel, ReceiptWord,
     ReceiptLine, ReceiptLetter, ReceiptMetadata, CompactionRun).
     """
-    logger.info(
-        "Applying receipt deletions in memory", count=len(receipt_deletions)
-    )
+    logger.info("Applying receipt deletions in memory", count=len(receipt_deletions))
     results: List[MetadataUpdateResult] = []
 
     database = collection.value

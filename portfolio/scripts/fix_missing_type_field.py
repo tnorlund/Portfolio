@@ -41,10 +41,10 @@ class TypeFieldFixer:
     def __init__(self, dynamo_table_name: str, dry_run: bool = True):
         self.table_name = dynamo_table_name
         self.dry_run = dry_run
-        self.dynamo_client = boto3.client('dynamodb')
-        self.resource = boto3.resource('dynamodb')
+        self.dynamo_client = boto3.client("dynamodb")
+        self.resource = boto3.resource("dynamodb")
         self.table = self.resource.Table(dynamo_table_name)
-        
+
         self.stats = {
             "total_scanned": 0,
             "images_missing_type": 0,
@@ -58,47 +58,45 @@ class TypeFieldFixer:
     def scan_for_missing_type(self):
         """Scan entire table for records missing TYPE field."""
         logger.info("Scanning for records missing TYPE field...")
-        
+
         # Scan with filter for missing TYPE
-        scan_kwargs = {
-            'FilterExpression': Attr('TYPE').not_exists()
-        }
-        
+        scan_kwargs = {"FilterExpression": Attr("TYPE").not_exists()}
+
         done = False
         start_key = None
-        
+
         while not done:
             if start_key:
-                scan_kwargs['ExclusiveStartKey'] = start_key
-                
+                scan_kwargs["ExclusiveStartKey"] = start_key
+
             response = self.table.scan(**scan_kwargs)
-            items = response.get('Items', [])
-            self.stats["total_scanned"] += response.get('ScannedCount', 0)
-            
+            items = response.get("Items", [])
+            self.stats["total_scanned"] += response.get("ScannedCount", 0)
+
             for item in items:
                 # Determine record type from PK/SK pattern
-                pk = item.get('PK', '')
-                sk = item.get('SK', '')
-                
-                if pk.startswith('IMAGE#') and sk.startswith('IMAGE#'):
+                pk = item.get("PK", "")
+                sk = item.get("SK", "")
+
+                if pk.startswith("IMAGE#") and sk.startswith("IMAGE#"):
                     self.stats["images_missing_type"] += 1
                     record_type = "IMAGE"
-                elif pk.startswith('IMAGE#') and sk.startswith('RECEIPT#'):
+                elif pk.startswith("IMAGE#") and sk.startswith("RECEIPT#"):
                     self.stats["receipts_missing_type"] += 1
                     record_type = "RECEIPT"
                 else:
                     # Unknown record type, skip
                     continue
-                
+
                 self.problematic_records.append((record_type, item))
                 logger.warning(
                     f"Found {record_type} record missing TYPE field: PK={pk}, SK={sk}"
                 )
-                
+
                 if not self.dry_run:
                     self.fix_record(item, record_type)
-            
-            start_key = response.get('LastEvaluatedKey', None)
+
+            start_key = response.get("LastEvaluatedKey", None)
             done = start_key is None
 
     def fix_record(self, item: Dict[str, Any], record_type: str):
@@ -106,27 +104,20 @@ class TypeFieldFixer:
         try:
             # Update the record to add TYPE field
             self.table.update_item(
-                Key={
-                    'PK': item['PK'],
-                    'SK': item['SK']
-                },
-                UpdateExpression='SET #type = :type',
-                ExpressionAttributeNames={
-                    '#type': 'TYPE'
-                },
-                ExpressionAttributeValues={
-                    ':type': record_type
-                },
-                ConditionExpression='attribute_not_exists(#type)'
+                Key={"PK": item["PK"], "SK": item["SK"]},
+                UpdateExpression="SET #type = :type",
+                ExpressionAttributeNames={"#type": "TYPE"},
+                ExpressionAttributeValues={":type": record_type},
+                ConditionExpression="attribute_not_exists(#type)",
             )
-            
+
             if record_type == "IMAGE":
                 self.stats["images_fixed"] += 1
             else:
                 self.stats["receipts_fixed"] += 1
-                
+
             logger.info(f"Fixed {record_type} record: PK={item['PK']}, SK={item['SK']}")
-            
+
         except Exception as e:
             self.stats["errors"] += 1
             logger.error(
@@ -136,7 +127,7 @@ class TypeFieldFixer:
     def run(self):
         """Run the check and fix process."""
         self.scan_for_missing_type()
-        
+
         # Print summary
         logger.info("\n" + "=" * 50)
         logger.info("TYPE FIELD CHECK SUMMARY")
@@ -144,14 +135,16 @@ class TypeFieldFixer:
         logger.info(f"Total records scanned: {self.stats['total_scanned']}")
         logger.info(f"Images missing TYPE: {self.stats['images_missing_type']}")
         logger.info(f"Receipts missing TYPE: {self.stats['receipts_missing_type']}")
-        
+
         if not self.dry_run:
             logger.info(f"Images fixed: {self.stats['images_fixed']}")
             logger.info(f"Receipts fixed: {self.stats['receipts_fixed']}")
             logger.info(f"Errors: {self.stats['errors']}")
-        
-        total_missing = self.stats["images_missing_type"] + self.stats["receipts_missing_type"]
-        
+
+        total_missing = (
+            self.stats["images_missing_type"] + self.stats["receipts_missing_type"]
+        )
+
         if self.dry_run and total_missing > 0:
             logger.info("\nThis was a DRY RUN - no changes were made")
             logger.info(f"Run with --no-dry-run to fix {total_missing} records")
@@ -175,39 +168,39 @@ def main():
         action="store_true",
         help="Actually fix the records (default is dry run)",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Get configuration from Pulumi
     from pulumi import automation as auto
-    
+
     # Set up the stack
     stack_name = f"tnorlund/portfolio/{args.stack}"
     work_dir = os.path.join(parent_dir, "infra")
-    
+
     logger.info(f"Using stack: {stack_name}")
-    
+
     # Create a stack reference to get outputs
     stack = auto.create_or_select_stack(
         stack_name=stack_name,
         work_dir=work_dir,
     )
-    
+
     # Get the outputs
     outputs = stack.outputs()
-    
+
     # Extract configuration
     dynamo_table_name = outputs["dynamodb_table_name"].value
-    
+
     logger.info(f"DynamoDB table: {dynamo_table_name}")
     logger.info(f"Mode: {'LIVE UPDATE' if args.no_dry_run else 'DRY RUN'}")
-    
+
     # Create and run fixer
     fixer = TypeFieldFixer(
         dynamo_table_name=dynamo_table_name,
         dry_run=not args.no_dry_run,
     )
-    
+
     fixer.run()
 
 

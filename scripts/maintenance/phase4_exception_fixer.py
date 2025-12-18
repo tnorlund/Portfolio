@@ -151,14 +151,10 @@ def fix_missing_from(content: str) -> Tuple[str, int]:
 
         # Fix raise statements in except blocks
         if in_except_block and exception_var:
-            raise_match = re.match(
-                r"(\s*)raise (\w+Error)\((.*)\)(?! from)", line
-            )
+            raise_match = re.match(r"(\s*)raise (\w+Error)\((.*)\)(?! from)", line)
             if raise_match and "ValueError" not in raise_match.group(2):
                 indent, exc_type, message = raise_match.groups()
-                new_line = (
-                    f"{indent}raise {exc_type}({message}) from {exception_var}"
-                )
+                new_line = f"{indent}raise {exc_type}({message}) from {exception_var}"
                 new_lines.append(new_line)
                 changes += 1
                 continue
@@ -221,9 +217,7 @@ def main():
     receipt_dynamo_path = Path("/Users/tnorlund/GitHub/example/receipt_dynamo")
 
     # First, create custom exceptions file
-    exceptions_file = (
-        receipt_dynamo_path / "receipt_dynamo/data/custom_exceptions.py"
-    )
+    exceptions_file = receipt_dynamo_path / "receipt_dynamo/data/custom_exceptions.py"
     with open(exceptions_file, "w") as f:
         f.write(create_custom_exceptions())
     print(f"Created {exceptions_file}")
@@ -246,9 +240,7 @@ def main():
         total_broad += broad
         total_from += from_fixes
 
-    print(
-        f"\nTotal fixes: {total_broad} broad exceptions, {total_from} missing 'from'"
-    )
+    print(f"\nTotal fixes: {total_broad} broad exceptions, {total_from} missing 'from'")
 
 
 if __name__ == "__main__":

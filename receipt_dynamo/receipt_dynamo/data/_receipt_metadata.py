@@ -97,9 +97,7 @@ class _ReceiptMetadata(
             If receipt_metadata is None, not a ReceiptMetadata, or if the
             record already exists.
         """
-        self._validate_entity(
-            receipt_metadata, ReceiptMetadata, "receipt_metadata"
-        )
+        self._validate_entity(receipt_metadata, ReceiptMetadata, "receipt_metadata")
         self._add_entity(
             receipt_metadata,
             condition_expression=(
@@ -108,9 +106,7 @@ class _ReceiptMetadata(
         )
 
     @handle_dynamodb_errors("add_receipt_metadatas")
-    def add_receipt_metadatas(
-        self, receipt_metadatas: List[ReceiptMetadata]
-    ) -> None:
+    def add_receipt_metadatas(self, receipt_metadatas: List[ReceiptMetadata]) -> None:
         """
         Adds multiple ReceiptMetadata records to DynamoDB in batches.
 
@@ -130,17 +126,13 @@ class _ReceiptMetadata(
         )
 
         request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=item.to_item())
-            )
+            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=item.to_item()))
             for item in receipt_metadatas
         ]
         self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("update_receipt_metadata")
-    def update_receipt_metadata(
-        self, receipt_metadata: ReceiptMetadata
-    ) -> None:
+    def update_receipt_metadata(self, receipt_metadata: ReceiptMetadata) -> None:
         """
         Updates an existing ReceiptMetadata record in DynamoDB.
 
@@ -154,14 +146,10 @@ class _ReceiptMetadata(
         ValueError
             If receipt_metadata is invalid or if the record does not exist.
         """
-        self._validate_entity(
-            receipt_metadata, ReceiptMetadata, "receipt_metadata"
-        )
+        self._validate_entity(receipt_metadata, ReceiptMetadata, "receipt_metadata")
         self._update_entity(
             receipt_metadata,
-            condition_expression=(
-                "attribute_exists(PK) and attribute_exists(SK)"
-            ),
+            condition_expression=("attribute_exists(PK) and attribute_exists(SK)"),
         )
 
     @handle_dynamodb_errors("update_receipt_metadatas")
@@ -201,9 +189,7 @@ class _ReceiptMetadata(
         self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("delete_receipt_metadata")
-    def delete_receipt_metadata(
-        self, receipt_metadata: ReceiptMetadata
-    ) -> None:
+    def delete_receipt_metadata(self, receipt_metadata: ReceiptMetadata) -> None:
         """
         Deletes a single ReceiptMetadata record from DynamoDB.
 
@@ -217,9 +203,7 @@ class _ReceiptMetadata(
         ValueError
             If receipt_metadata is invalid.
         """
-        self._validate_entity(
-            receipt_metadata, ReceiptMetadata, "receipt_metadata"
-        )
+        self._validate_entity(receipt_metadata, ReceiptMetadata, "receipt_metadata")
         self._delete_entity(receipt_metadata)
 
     @handle_dynamodb_errors("delete_receipt_metadatas")
@@ -258,9 +242,7 @@ class _ReceiptMetadata(
         self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("get_receipt_metadata")
-    def get_receipt_metadata(
-        self, image_id: str, receipt_id: int
-    ) -> ReceiptMetadata:
+    def get_receipt_metadata(self, image_id: str, receipt_id: int) -> ReceiptMetadata:
         """
         Retrieves a single ReceiptMetadata record from DynamoDB.
 
@@ -328,8 +310,7 @@ class _ReceiptMetadata(
         if not all(isinstance(index, tuple) for index in indices):
             raise EntityValidationError("indices must be a list of tuples")
         if not all(
-            isinstance(index[0], str) and isinstance(index[1], int)
-            for index in indices
+            isinstance(index[0], str) and isinstance(index[1], int) for index in indices
         ):
             raise EntityValidationError(
                 "indices must be a list of tuples of (image_id, receipt_id)"
@@ -392,9 +373,7 @@ class _ReceiptMetadata(
             results.extend(batch_items)
             unprocessed = response.get("UnprocessedKeys", {})
             while unprocessed.get(self.table_name):
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
+                response = self._client.batch_get_item(RequestItems=unprocessed)
                 batch_items = response["Responses"].get(self.table_name, [])
                 results.extend(batch_items)
                 unprocessed = response.get("UnprocessedKeys", {})
@@ -432,12 +411,8 @@ class _ReceiptMetadata(
         if limit is not None and limit <= 0:
             raise EntityValidationError("limit must be positive")
 
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
-            raise EntityValidationError(
-                "last_evaluated_key must be a dictionary"
-            )
+        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+            raise EntityValidationError("last_evaluated_key must be a dictionary")
 
         return self._query_by_type(
             entity_type="RECEIPT_METADATA",
@@ -533,12 +508,8 @@ class _ReceiptMetadata(
             raise EntityValidationError("limit must be an integer")
         if limit is not None and limit <= 0:
             raise EntityValidationError("limit must be positive")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
-            raise EntityValidationError(
-                "last_evaluated_key must be a dictionary"
-            )
+        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+            raise EntityValidationError("last_evaluated_key must be a dictionary")
 
         return self._query_entities(
             index_name="GSI2",

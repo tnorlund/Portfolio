@@ -92,9 +92,7 @@ def create_address_similarity_lambda(
             }
         ),
         handler="index.handler",
-        layers=[
-            dynamo_layer.arn
-        ],  # Keep for consistency, even if not strictly needed
+        layers=[dynamo_layer.arn],  # Keep for consistency, even if not strictly needed
         environment={
             "variables": {
                 "S3_CACHE_BUCKET": Output.from_input(cache_bucket_name),

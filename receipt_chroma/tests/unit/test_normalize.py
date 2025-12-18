@@ -64,10 +64,7 @@ class TestNormalizeAddress:
 
     def test_address_with_punctuation(self):
         """Test address with punctuation."""
-        assert (
-            normalize_address("123 Main St., Suite 100")
-            == "123 MAIN ST STE 100"
-        )
+        assert normalize_address("123 Main St., Suite 100") == "123 MAIN ST STE 100"
         assert normalize_address("456 Oak Rd, Apt 5") == "456 OAK RD APT 5"
 
     def test_empty_address(self):
@@ -101,14 +98,8 @@ class TestNormalizeUrl:
 
     def test_url_with_query_and_fragment(self):
         """Test URL with query and fragment."""
-        assert (
-            normalize_url("https://example.com/path?key=value")
-            == "example.com/path"
-        )
-        assert (
-            normalize_url("https://example.com/path#fragment")
-            == "example.com/path"
-        )
+        assert normalize_url("https://example.com/path?key=value") == "example.com/path"
+        assert normalize_url("https://example.com/path#fragment") == "example.com/path"
         assert (
             normalize_url("https://example.com/path?key=value#fragment")
             == "example.com/path"
@@ -123,9 +114,7 @@ class TestNormalizeUrl:
     def test_url_multiple_slashes(self):
         """Test URL with multiple slashes."""
         assert normalize_url("https://example.com//path") == "example.com/path"
-        assert (
-            normalize_url("https://example.com///path") == "example.com/path"
-        )
+        assert normalize_url("https://example.com///path") == "example.com/path"
 
     def test_email_rejection(self):
         """Test that emails are rejected."""
@@ -149,9 +138,7 @@ class TestBuildFullAddressFromWords:
                 self.text = text
                 self.extracted_data = extracted_data
 
-        word = MockWord(
-            "123 Main St", {"type": "address", "value": "123 Main St"}
-        )
+        word = MockWord("123 Main St", {"type": "address", "value": "123 Main St"})
         result = build_full_address_from_words([word])
         assert result == "123 MAIN ST"
 
@@ -164,12 +151,8 @@ class TestBuildFullAddressFromWords:
                 self.extracted_data = extracted_data
 
         words = [
-            MockWord(
-                "123 Main St", {"type": "address", "value": "123 Main St"}
-            ),
-            MockWord(
-                "New York", {"type": "address", "value": "New York, NY 10001"}
-            ),
+            MockWord("123 Main St", {"type": "address", "value": "123 Main St"}),
+            MockWord("New York", {"type": "address", "value": "New York, NY 10001"}),
         ]
         result = build_full_address_from_words(words)
         assert "123 MAIN ST" in result or "NEW YORK" in result
@@ -205,9 +188,7 @@ class TestBuildFullAddressFromLines:
         """Test with single line."""
 
         class MockLine:
-            def __init__(
-                self, line_id: int, text: str, is_noise: bool = False
-            ):
+            def __init__(self, line_id: int, text: str, is_noise: bool = False):
                 self.line_id = line_id
                 self.text = text
                 self.is_noise = is_noise
@@ -220,9 +201,7 @@ class TestBuildFullAddressFromLines:
         """Test with multiple lines."""
 
         class MockLine:
-            def __init__(
-                self, line_id: int, text: str, is_noise: bool = False
-            ):
+            def __init__(self, line_id: int, text: str, is_noise: bool = False):
                 self.line_id = line_id
                 self.text = text
                 self.is_noise = is_noise
@@ -238,9 +217,7 @@ class TestBuildFullAddressFromLines:
         """Test that lines are sorted by line_id."""
 
         class MockLine:
-            def __init__(
-                self, line_id: int, text: str, is_noise: bool = False
-            ):
+            def __init__(self, line_id: int, text: str, is_noise: bool = False):
                 self.line_id = line_id
                 self.text = text
                 self.is_noise = is_noise
@@ -257,9 +234,7 @@ class TestBuildFullAddressFromLines:
         """Test that noise lines are excluded."""
 
         class MockLine:
-            def __init__(
-                self, line_id: int, text: str, is_noise: bool = False
-            ):
+            def __init__(self, line_id: int, text: str, is_noise: bool = False):
                 self.line_id = line_id
                 self.text = text
                 self.is_noise = is_noise

@@ -34,9 +34,7 @@ def process_sqs_messages(
     stream_messages = []
     delta_message_records = []  # Store full records for delta messages
     processed_count = 0
-    failed_message_ids = (
-        []
-    )  # Track failed message IDs for partial batch failure
+    failed_message_ids = []  # Track failed message IDs for partial batch failure
 
     # Categorize messages by type
     for record in records:
@@ -50,13 +48,9 @@ def process_sqs_messages(
 
             if source == "dynamodb_stream":
                 # Get collection from message attributes
-                collection_value = attributes.get("collection", {}).get(
-                    "stringValue"
-                )
+                collection_value = attributes.get("collection", {}).get("stringValue")
                 if not collection_value:
-                    logger.warning(
-                        "Stream message missing collection attribute"
-                    )
+                    logger.warning("Stream message missing collection attribute")
                     if OBSERVABILITY_AVAILABLE and metrics:
                         metrics.count("CompactionMessageMissingCollection", 1)
                     continue
@@ -103,9 +97,7 @@ def process_sqs_messages(
             else:
                 # Traditional delta message or unknown - treat as delta
                 # Store the full record to get messageId for partial batch failure
-                delta_message_records.append(
-                    {"record": record, "body": message_body}
-                )
+                delta_message_records.append({"record": record, "body": message_body})
 
                 if OBSERVABILITY_AVAILABLE and metrics:
                     metrics.count("CompactionDeltaMessage", 1)

@@ -186,10 +186,10 @@ class AddressSimilarityCacheGenerator(ComponentResource):
         # Build Docker image using CodeBuild
         # Match the compaction component pattern exactly: Dockerfile is in lambdas/ subdirectory
         # Use relative path string (not absolute) to match compaction component
-        dockerfile_path = "infra/routes/address_similarity_cache_generator/lambdas/Dockerfile"
-        build_context_path = (
-            "."  # Project root (relative path for rsync logic)
+        dockerfile_path = (
+            "infra/routes/address_similarity_cache_generator/lambdas/Dockerfile"
         )
+        build_context_path = "."  # Project root (relative path for rsync logic)
 
         # Create Lambda function name first (needed for CodeBuild)
         lambda_function_name = f"{name}-lambda-{stack}"

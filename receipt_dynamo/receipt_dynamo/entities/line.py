@@ -89,9 +89,7 @@ class Line(
         # entities require > 0.0
         if isinstance(self.confidence, int):
             self.confidence = float(self.confidence)
-        if not isinstance(self.confidence, float) or not (
-            0 < self.confidence <= 1
-        ):
+        if not isinstance(self.confidence, float) or not (0 < self.confidence <= 1):
             raise ValueError("confidence must be a float between 0 and 1")
 
     @property

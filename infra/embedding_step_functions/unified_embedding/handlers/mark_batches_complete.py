@@ -99,9 +99,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     "fallback"
                     if poll_results_s3_key_fallback
                     else (
-                        "poll_data"
-                        if poll_results_s3_key_poll_data
-                        else "chunked_data"
+                        "poll_data" if poll_results_s3_key_poll_data else "chunked_data"
                     )
                 )
             )
@@ -215,9 +213,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return {
                 "batches_marked": 0,
                 "batch_ids": [],
-                "skipped_batches": (
-                    len(skipped_batches) if skipped_batches else 0
-                ),
+                "skipped_batches": (len(skipped_batches) if skipped_batches else 0),
             }
 
         logger.info(
@@ -232,9 +228,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         try:
             # Get all batch summaries in one call
-            batch_summaries = dynamo_client.get_batch_summaries_by_batch_ids(
-                batch_ids
-            )
+            batch_summaries = dynamo_client.get_batch_summaries_by_batch_ids(batch_ids)
 
             # Update status for all summaries
             for batch_summary in batch_summaries:
@@ -299,7 +293,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     marked_count += 1
                     logger.debug("Marked batch as complete", batch_id=batch_id)
                 except Exception as e2:
-                    error_msg = f"Failed to mark batch {batch_id} as complete: {str(e2)[:100]}"
+                    error_msg = (
+                        f"Failed to mark batch {batch_id} as complete: {str(e2)[:100]}"
+                    )
                     errors.append(error_msg)
                     logger.error(
                         "Error marking batch as complete",
@@ -327,9 +323,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(
-            "Unexpected error marking batches as complete", error=str(e)
-        )
+        logger.error("Unexpected error marking batches as complete", error=str(e))
         return {
             "statusCode": 500,
             "error": str(e),

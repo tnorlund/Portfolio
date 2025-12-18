@@ -69,12 +69,7 @@ def load_receipt_image(
             print(f"✅ Loaded receipt raw image: {receipt.raw_s3_key}")
 
     # CDN fallback if we didn't prefer it first
-    if (
-        img is None
-        and not prefer_cdn
-        and receipt.cdn_s3_bucket
-        and receipt.cdn_s3_key
-    ):
+    if img is None and not prefer_cdn and receipt.cdn_s3_bucket and receipt.cdn_s3_key:
         img = get_image_from_s3(receipt.cdn_s3_bucket, receipt.cdn_s3_key)
         if img:
             print("✅ Loaded receipt image from CDN")
@@ -94,9 +89,7 @@ def line_centroid_x(line: ReceiptLine) -> float:
     ) / 4
 
 
-def line_corners_image(
-    line: ReceiptLine, w: int, h: int
-) -> List[Tuple[float, float]]:
+def line_corners_image(line: ReceiptLine, w: int, h: int) -> List[Tuple[float, float]]:
     return [
         (line.top_left["x"] * w, (1.0 - line.top_left["y"]) * h),
         (line.top_right["x"] * w, (1.0 - line.top_right["y"]) * h),
@@ -105,9 +98,7 @@ def line_corners_image(
     ]
 
 
-def bbox_from_lines(
-    lines: List[ReceiptLine], w: int, h: int
-) -> Optional[dict]:
+def bbox_from_lines(lines: List[ReceiptLine], w: int, h: int) -> Optional[dict]:
     if not lines:
         return None
     min_x = min(
@@ -166,9 +157,7 @@ def bbox_from_lines(
     }
 
 
-def min_rect_from_lines(
-    lines: List[ReceiptLine], w: int, h: int
-) -> Optional[dict]:
+def min_rect_from_lines(lines: List[ReceiptLine], w: int, h: int) -> Optional[dict]:
     """
     Compute min-area rectangle (oriented) around all line corners in pixel space.
     Returns TL/TR/BR/BL pixel quad.
@@ -287,15 +276,11 @@ def main():
     table_name = env.get("table_name")
     if not table_name:
         raise ValueError("DYNAMODB_TABLE_NAME not set")
-    raw_bucket = (
-        args.raw_bucket or env.get("raw_bucket") or env.get("raw_bucket_name")
-    )
+    raw_bucket = args.raw_bucket or env.get("raw_bucket") or env.get("raw_bucket_name")
 
     client = DynamoClient(table_name)
     receipt = client.get_receipt(args.image_id, args.receipt_id)
-    lines = client.list_receipt_lines_from_receipt(
-        args.image_id, args.receipt_id
-    )
+    lines = client.list_receipt_lines_from_receipt(args.image_id, args.receipt_id)
 
     lines_left = [ln for ln in lines if line_centroid_x(ln) <= args.split_x]
     lines_right = [ln for ln in lines if line_centroid_x(ln) > args.split_x]
@@ -326,10 +311,7 @@ def main():
     )
 
     # Export JSON with left/right clusters and basic metadata
-    out_json = (
-        args.output_dir
-        / f"{args.image_id}_receipt{args.receipt_id}_split.json"
-    )
+    out_json = args.output_dir / f"{args.image_id}_receipt{args.receipt_id}_split.json"
     payload = {
         "image_id": args.image_id,
         "receipt_id": args.receipt_id,

@@ -61,9 +61,7 @@ class ChromaEcsService(ComponentResource):
         self.cluster = aws.ecs.Cluster(
             f"{name}-cluster",
             settings=[
-                aws.ecs.ClusterSettingArgs(
-                    name="containerInsights", value="enabled"
-                )
+                aws.ecs.ClusterSettingArgs(name="containerInsights", value="enabled")
             ],
             tags={"Environment": stack, "ManagedBy": "Pulumi"},
             opts=ResourceOptions(parent=self),
@@ -130,9 +128,7 @@ class ChromaEcsService(ComponentResource):
                 {
                     "name": name,
                     "image": f"{args[0]}:latest",
-                    "portMappings": [
-                        {"containerPort": port, "hostPort": port}
-                    ],
+                    "portMappings": [{"containerPort": port, "hostPort": port}],
                     "environment": [
                         {"name": "CHROMADB_BUCKET", "value": args[1]},
                         {"name": "CHROMA_COLLECTION", "value": collection},
@@ -174,9 +170,7 @@ class ChromaEcsService(ComponentResource):
             ),
             opts=ResourceOptions(
                 parent=self,
-                ignore_changes=[
-                    "container_definitions"
-                ],  # CodeBuild updates image
+                ignore_changes=["container_definitions"],  # CodeBuild updates image
             ),
         )
 
@@ -195,15 +189,13 @@ class ChromaEcsService(ComponentResource):
             service_registries=aws.ecs.ServiceServiceRegistriesArgs(
                 registry_arn=self.sd_service.arn
             ),
-            opts=ResourceOptions(
-                parent=self, depends_on=[self.ns, self.sd_service]
-            ),
+            opts=ResourceOptions(parent=self, depends_on=[self.ns, self.sd_service]),
         )
 
         # Outputs
-        self.endpoint_dns = pulumi.Output.all(
-            self.sd_service.name, self.ns.name
-        ).apply(lambda args: f"{args[0]}.{args[1]}:{port}")
+        self.endpoint_dns = pulumi.Output.all(self.sd_service.name, self.ns.name).apply(
+            lambda args: f"{args[0]}.{args[1]}:{port}"
+        )
 
         self.register_outputs(
             {

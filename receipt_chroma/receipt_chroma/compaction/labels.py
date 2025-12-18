@@ -81,9 +81,7 @@ def apply_label_updates(
                     collection=collection_obj,
                     chromadb_id=chromadb_id,
                     changes=changes,
-                    record_snapshot=getattr(
-                        update_msg, "record_snapshot", None
-                    ),
+                    record_snapshot=getattr(update_msg, "record_snapshot", None),
                     entity_data=entity_data,
                     logger=logger,
                     metrics=metrics,

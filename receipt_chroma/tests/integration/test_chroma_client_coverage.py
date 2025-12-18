@@ -46,23 +46,15 @@ class TestChromaClientErrorPaths:
         client._collections.clear()
 
         # Operations that call _ensure_client should raise RuntimeError
-        with pytest.raises(
-            RuntimeError, match="Cannot use closed ChromaClient"
-        ):
-            client.get_collection(
-                "test"
-            )  # Calls _ensure_client when cache is empty
+        with pytest.raises(RuntimeError, match="Cannot use closed ChromaClient"):
+            client.get_collection("test")  # Calls _ensure_client when cache is empty
 
         # Test accessing client property directly
-        with pytest.raises(
-            RuntimeError, match="Cannot use closed ChromaClient"
-        ):
+        with pytest.raises(RuntimeError, match="Cannot use closed ChromaClient"):
             _ = client.client  # This calls _ensure_client
 
         # Test list_collections which uses client property
-        with pytest.raises(
-            RuntimeError, match="Cannot use closed ChromaClient"
-        ):
+        with pytest.raises(RuntimeError, match="Cannot use closed ChromaClient"):
             client.list_collections()
 
     def test_count_error_handling(self, temp_chromadb_dir, mocker):
@@ -78,9 +70,7 @@ class TestChromaClientErrorPaths:
         # Mock collection.count to raise an exception
         mock_collection = MagicMock()
         mock_collection.count.side_effect = Exception("Count error")
-        mocker.patch.object(
-            client, "get_collection", return_value=mock_collection
-        )
+        mocker.patch.object(client, "get_collection", return_value=mock_collection)
 
         with pytest.raises(Exception, match="Count error"):
             client.count("test")
@@ -98,9 +88,7 @@ class TestChromaClientErrorPaths:
         # Mock collection.delete to raise an exception
         mock_collection = MagicMock()
         mock_collection.delete.side_effect = Exception("Delete error")
-        mocker.patch.object(
-            client, "get_collection", return_value=mock_collection
-        )
+        mocker.patch.object(client, "get_collection", return_value=mock_collection)
 
         with pytest.raises(Exception, match="Delete error"):
             client.delete(collection_name="test", ids=["1"])
@@ -118,14 +106,10 @@ class TestChromaClientErrorPaths:
         # Mock collection.query to raise an exception
         mock_collection = MagicMock()
         mock_collection.query.side_effect = Exception("Query error")
-        mocker.patch.object(
-            client, "get_collection", return_value=mock_collection
-        )
+        mocker.patch.object(client, "get_collection", return_value=mock_collection)
 
         with pytest.raises(Exception, match="Query error"):
-            client.query(
-                collection_name="test", query_embeddings=[[0.1] * 384]
-            )
+            client.query(collection_name="test", query_embeddings=[[0.1] * 384])
 
     def test_get_error_handling(self, temp_chromadb_dir, mocker):
         """Test error handling in get method."""
@@ -140,9 +124,7 @@ class TestChromaClientErrorPaths:
         # Mock collection.get to raise an exception
         mock_collection = MagicMock()
         mock_collection.get.side_effect = Exception("Get error")
-        mocker.patch.object(
-            client, "get_collection", return_value=mock_collection
-        )
+        mocker.patch.object(client, "get_collection", return_value=mock_collection)
 
         with pytest.raises(Exception, match="Get error"):
             client.get(collection_name="test", ids=["1"])
@@ -249,10 +231,7 @@ class TestChromaClientErrorPaths:
         client.upsert(collection_name="test", ids=["1"], documents=["test"])
 
         # Mock internal client close to raise an exception
-        if (
-            hasattr(client._client, "_client")
-            and client._client._client is not None
-        ):
+        if hasattr(client._client, "_client") and client._client._client is not None:
             mocker.patch.object(
                 client._client._client,
                 "close",
@@ -309,9 +288,7 @@ class TestPersistAndUploadDelta:
     """Test persist_and_upload_delta method."""
 
     @pytest.mark.parametrize("s3_bucket", ["test-delta-bucket"], indirect=True)
-    def test_persist_and_upload_delta_success(
-        self, temp_chromadb_dir, s3_bucket
-    ):
+    def test_persist_and_upload_delta_success(self, temp_chromadb_dir, s3_bucket):
         """Test successful delta upload."""
         # Create client in delta mode
         client = ChromaClient(
@@ -342,9 +319,7 @@ class TestPersistAndUploadDelta:
 
         # Verify files were uploaded
         s3_client = boto3.client("s3", region_name="us-east-1")
-        objects = s3_client.list_objects_v2(
-            Bucket=s3_bucket, Prefix="deltas/test/"
-        )
+        objects = s3_client.list_objects_v2(Bucket=s3_bucket, Prefix="deltas/test/")
         assert "Contents" in objects
         assert len(objects["Contents"]) > 0
 
@@ -411,9 +386,7 @@ class TestPersistAndUploadDelta:
             )
 
     @pytest.mark.parametrize("s3_bucket", ["test-delta-bucket"], indirect=True)
-    def test_persist_and_upload_delta_no_files(
-        self, temp_chromadb_dir, s3_bucket
-    ):
+    def test_persist_and_upload_delta_no_files(self, temp_chromadb_dir, s3_bucket):
         """Test that persist_and_upload_delta fails when no files exist."""
         # Create empty directory
         client = ChromaClient(
@@ -479,9 +452,7 @@ class TestHTTPClientErrorHandling:
         # ChromaDB will try to connect, but we can test the error path
         # by checking if it raises an exception or handles it gracefully
         try:
-            client = ChromaClient(
-                http_url="http://localhost:99999", mode="write"
-            )
+            client = ChromaClient(http_url="http://localhost:99999", mode="write")
             # If it doesn't raise, that's fine - ChromaDB handles it
             assert client is not None
         except Exception:
@@ -499,9 +470,7 @@ class TestHTTPClientErrorHandling:
         try:
             # This may fail if no server is running, but that's okay
             # The important part is that the code path is executed
-            client = ChromaClient(
-                http_url="http://localhost:8000", mode="write"
-            )
+            client = ChromaClient(http_url="http://localhost:8000", mode="write")
             # If it succeeds, that's fine - we've covered the creation path
             assert client is not None
         except Exception:
@@ -545,9 +514,7 @@ class TestCollectionCreationWithEmbeddingFunction:
         )
         assert "ids" in results
 
-    def test_get_collection_create_with_embedding_function(
-        self, temp_chromadb_dir
-    ):
+    def test_get_collection_create_with_embedding_function(self, temp_chromadb_dir):
         """Test creating collection with embedding function in get_collection
         (lines 241-248)."""
         from chromadb.utils import embedding_functions

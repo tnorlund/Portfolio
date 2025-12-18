@@ -146,9 +146,7 @@ class TestParsePrevNextFromFormatted:
 
     def test_parse_with_edge(self):
         """Test parsing with edge markers."""
-        fmt = (
-            "<TARGET>line</TARGET> <POS>0</POS> <CONTEXT><EDGE> next</CONTEXT>"
-        )
+        fmt = "<TARGET>line</TARGET> <POS>0</POS> <CONTEXT><EDGE> next</CONTEXT>"
         prev, next_line = parse_prev_next_from_formatted(fmt)
         assert prev == "<EDGE>"
         assert next_line == "next"

@@ -53,13 +53,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     execution_id = event["execution_id"]
     batch_bucket = event.get("batch_bucket") or os.environ["BATCH_BUCKET"]
-    label_types: Optional[List[str]] = event.get(
-        "label_types"
-    )  # Optional filter
+    label_types: Optional[List[str]] = event.get("label_types")  # Optional filter
     max_labels: Optional[int] = event.get("max_labels")  # Optional limit
-    validation_statuses_input: Optional[List[str]] = event.get(
-        "validation_statuses"
-    )
+    validation_statuses_input: Optional[List[str]] = event.get("validation_statuses")
     table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
     logger.info(

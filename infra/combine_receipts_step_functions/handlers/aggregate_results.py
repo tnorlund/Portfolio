@@ -60,18 +60,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     # Aggregate statistics
     total_images = len(combine_results)
-    successful = sum(
-        1 for r in combine_results if r.get("status") == "success"
-    )
+    successful = sum(1 for r in combine_results if r.get("status") == "success")
     no_combination = sum(
         1 for r in combine_results if r.get("status") == "no_combination"
     )
     failed = total_images - successful - no_combination
 
     # Group by status
-    successful_images = [
-        r for r in combine_results if r.get("status") == "success"
-    ]
+    successful_images = [r for r in combine_results if r.get("status") == "success"]
     no_combination_images = [
         r for r in combine_results if r.get("status") == "no_combination"
     ]

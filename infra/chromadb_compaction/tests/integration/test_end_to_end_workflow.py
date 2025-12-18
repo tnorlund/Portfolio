@@ -212,23 +212,17 @@ class TestEndToEndWorkflow:
                     "dynamodb": {
                         "ApproximateCreationDateTime": 1640995200.0,
                         "Keys": {
-                            "PK": {
-                                "S": f"IMAGE#{test_image_id}#RECEIPT#00001"
-                            },
+                            "PK": {"S": f"IMAGE#{test_image_id}#RECEIPT#00001"},
                             "SK": {"S": "METADATA"},
                         },
                         "NewImage": {
-                            "PK": {
-                                "S": f"IMAGE#{test_image_id}#RECEIPT#00001"
-                            },
+                            "PK": {"S": f"IMAGE#{test_image_id}#RECEIPT#00001"},
                             "SK": {"S": "METADATA"},
                             "canonical_merchant_name": {"S": "Target Store"},
                             "merchant_category": {"S": "Retail"},
                         },
                         "OldImage": {
-                            "PK": {
-                                "S": f"IMAGE#{test_image_id}#RECEIPT#00001"
-                            },
+                            "PK": {"S": f"IMAGE#{test_image_id}#RECEIPT#00001"},
                             "SK": {"S": "METADATA"},
                             "canonical_merchant_name": {"S": "Target"},
                             "merchant_category": {"S": "Retail"},
@@ -302,13 +296,9 @@ class TestEndToEndWorkflow:
         processor_mock.StreamMessage = MagicMock
 
         processor_mock.build_messages_from_records = MagicMock(return_value=[])
-        processor_mock.publish_messages = MagicMock(
-            return_value=2
-        )  # 2 messages sent
+        processor_mock.publish_messages = MagicMock(return_value=2)  # 2 messages sent
         processor_mock.parse_stream_record = MagicMock()
-        processor_mock.get_chromadb_relevant_changes = MagicMock(
-            return_value=[]
-        )
+        processor_mock.get_chromadb_relevant_changes = MagicMock(return_value=[])
         processor_mock.detect_entity_type = MagicMock()
         processor_mock.parse_entity = MagicMock()
         processor_mock.is_compaction_run = MagicMock(return_value=False)
@@ -432,12 +422,8 @@ class TestEndToEndWorkflow:
 
         # Step 7: Verify end-to-end data consistency
         # The test data should be consistent across all services
-        receipt_metadata_result = dynamo_client.get_receipt_metadata(
-            test_image_id, 1
-        )
-        assert (
-            receipt_metadata_result.canonical_merchant_name == "Target Store"
-        )
+        receipt_metadata_result = dynamo_client.get_receipt_metadata(test_image_id, 1)
+        assert receipt_metadata_result.canonical_merchant_name == "Target Store"
 
     @mock_aws
     def test_error_propagation_between_services(self):

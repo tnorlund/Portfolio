@@ -261,9 +261,7 @@ def create_place_id_submission_tool(state_holder: dict):
         }
 
         state_holder["place_id_result"] = result
-        logger.info(
-            f"Place ID submitted: {place_id} (confidence={confidence:.2%})"
-        )
+        logger.info(f"Place ID submitted: {place_id} (confidence={confidence:.2%})")
 
         return {
             "status": "submitted",
@@ -341,9 +339,7 @@ def create_place_id_finder_graph(
                     return "tools"
                 # If agent responded without tool calls and no result, check if it's trying to end
                 # Give it one more chance to call submit_place_id
-                if (
-                    len(state.messages) > 10
-                ):  # After several rounds, remind to submit
+                if len(state.messages) > 10:  # After several rounds, remind to submit
                     logger.warning(
                         "Agent has made many steps without submitting - may need reminder"
                     )
@@ -487,9 +483,7 @@ async def run_place_id_finder(
             }
 
     except Exception as e:
-        logger.exception(
-            f"Error in place ID finder for {image_id}#{receipt_id}"
-        )
+        logger.exception(f"Error in place ID finder for {image_id}#{receipt_id}")
         return {
             "image_id": image_id,
             "receipt_id": receipt_id,

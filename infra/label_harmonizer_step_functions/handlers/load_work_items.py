@@ -38,9 +38,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     }
     """
     execution_id = event.get("execution_id", "unknown")
-    batch_bucket = event.get("batch_bucket") or os.environ.get(
-        "BATCH_BUCKET", ""
-    )
+    batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET", "")
     manifest_key = event.get("work_items_manifest_s3_key")
     langchain_project = event.get(
         "langchain_project"

@@ -196,9 +196,7 @@ def build_compaction_run_completion_messages(
         )
 
     except Exception as exc:  # pragma: no cover - defensive
-        logger.exception(
-            "Failed to build compaction run completion message: %s", exc
-        )
+        logger.exception("Failed to build compaction run completion message: %s", exc)
         if metrics:
             metrics.count("CompactionRunCompletionMessageBuildError", 1)
 
@@ -220,9 +218,7 @@ def build_entity_change_message(
         old_entity = parsed_record.old_entity
         new_entity = parsed_record.new_entity
 
-        changes = get_chromadb_relevant_changes(
-            entity_type, old_entity, new_entity
-        )
+        changes = get_chromadb_relevant_changes(entity_type, old_entity, new_entity)
         if metrics:
             metrics.count(
                 "ChromaDBRelevantChanges",
@@ -234,9 +230,7 @@ def build_entity_change_message(
             return None
 
         entity = old_entity or new_entity
-        entity_data, target_collections = _extract_entity_data(
-            entity_type, entity
-        )
+        entity_data, target_collections = _extract_entity_data(entity_type, entity)
         if not entity_data or not target_collections:
             return None
 
@@ -284,9 +278,7 @@ def _extract_entity_data(
     if not entity:
         return {}, []
 
-    if entity_type == "RECEIPT_METADATA" and isinstance(
-        entity, ReceiptMetadata
-    ):
+    if entity_type == "RECEIPT_METADATA" and isinstance(entity, ReceiptMetadata):
         entity_data = {
             "entity_type": entity_type,
             "image_id": entity.image_id,
@@ -297,9 +289,7 @@ def _extract_entity_data(
             ChromaDBCollection.WORDS,
         ]
 
-    if entity_type == "RECEIPT_WORD_LABEL" and isinstance(
-        entity, ReceiptWordLabel
-    ):
+    if entity_type == "RECEIPT_WORD_LABEL" and isinstance(entity, ReceiptWordLabel):
         entity_data = {
             "entity_type": entity_type,
             "image_id": entity.image_id,

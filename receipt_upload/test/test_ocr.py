@@ -212,9 +212,7 @@ class TestProcessOCRDictAsImage:
         """Test basic OCR processing for image."""
         image_id = "550e8400-e29b-41d4-a716-446655440003"
 
-        lines, words, letters = process_ocr_dict_as_image(
-            sample_ocr_data, image_id
-        )
+        lines, words, letters = process_ocr_dict_as_image(sample_ocr_data, image_id)
 
         # Verify counts
         assert len(lines) == 1
@@ -310,9 +308,7 @@ class TestAppleVisionOCRJob:
                 json_path = temp_path / f"{img_path.stem}.json"
                 json_path.write_text('{"lines": []}')
 
-            with patch(
-                "receipt_upload.ocr.platform.system", return_value="Darwin"
-            ):
+            with patch("receipt_upload.ocr.platform.system", return_value="Darwin"):
                 with patch("receipt_upload.ocr.subprocess.run") as mock_run:
                     mock_run.return_value = Mock(
                         stdout="OCR completed successfully",
@@ -347,9 +343,7 @@ class TestAppleVisionOCRJob:
             temp_path = Path(temp_dir)
             non_existent = temp_path / "missing.jpg"
 
-            with pytest.raises(
-                FileNotFoundError, match="Image file not found"
-            ):
+            with pytest.raises(FileNotFoundError, match="Image file not found"):
                 apple_vision_ocr_job([non_existent], temp_path)
 
     @pytest.mark.unit
@@ -360,9 +354,7 @@ class TestAppleVisionOCRJob:
             img_path = temp_path / "image.jpg"
             img_path.write_text("fake")
 
-            with patch(
-                "receipt_upload.ocr.platform.system", return_value="Linux"
-            ):
+            with patch("receipt_upload.ocr.platform.system", return_value="Linux"):
                 with pytest.raises(
                     ValueError,
                     match="Vision Framework can only be run on a Mac",
@@ -378,9 +370,7 @@ class TestAppleVisionOCRJob:
             img_path = temp_path / "image.jpg"
             img_path.write_text("fake")
 
-            with patch(
-                "receipt_upload.ocr.platform.system", return_value="Darwin"
-            ):
+            with patch("receipt_upload.ocr.platform.system", return_value="Darwin"):
                 original_exists = Path.exists
                 with patch.object(Path, "exists") as mock_exists:
 
@@ -405,9 +395,7 @@ class TestAppleVisionOCRJob:
             img_path = temp_path / "image.jpg"
             img_path.write_text("fake")
 
-            with patch(
-                "receipt_upload.ocr.platform.system", return_value="Darwin"
-            ):
+            with patch("receipt_upload.ocr.platform.system", return_value="Darwin"):
                 original_exists = Path.exists
                 with patch.object(Path, "exists") as mock_exists:
 
@@ -418,9 +406,7 @@ class TestAppleVisionOCRJob:
 
                     mock_exists.side_effect = exists_side_effect
 
-                    with patch(
-                        "receipt_upload.ocr.subprocess.run"
-                    ) as mock_run:
+                    with patch("receipt_upload.ocr.subprocess.run") as mock_run:
                         mock_run.side_effect = subprocess.CalledProcessError(
                             1, ["swift"], stderr="Swift error"
                         )
@@ -439,9 +425,7 @@ class TestAppleVisionOCRJob:
             img_path = temp_path / "image.jpg"
             img_path.write_text("fake")
 
-            with patch(
-                "receipt_upload.ocr.platform.system", return_value="Darwin"
-            ):
+            with patch("receipt_upload.ocr.platform.system", return_value="Darwin"):
                 original_exists = Path.exists
                 with patch.object(Path, "exists") as mock_exists:
 
@@ -456,12 +440,8 @@ class TestAppleVisionOCRJob:
 
                     mock_exists.side_effect = exists_side_effect
 
-                    with patch(
-                        "receipt_upload.ocr.subprocess.run"
-                    ) as mock_run:
-                        mock_run.return_value = Mock(
-                            stdout="", stderr="", returncode=0
-                        )
+                    with patch("receipt_upload.ocr.subprocess.run") as mock_run:
+                        mock_run.return_value = Mock(stdout="", stderr="", returncode=0)
 
                         with pytest.raises(
                             FileNotFoundError,
@@ -481,9 +461,7 @@ class TestS3Functions:
             mock_boto.return_value = mock_s3
 
             # Use generic path for mocking - actual code uses mkdtemp
-            with patch(
-                "tempfile.mkdtemp", return_value="test-dir"
-            ):  # nosec B108
+            with patch("tempfile.mkdtemp", return_value="test-dir"):  # nosec B108
                 result = _download_image_from_s3(
                     "image-123", "my-bucket", "images/test.jpg"
                 )
@@ -537,16 +515,12 @@ class TestAppleVisionOCR:
                             mock_json2.name = "result2.json"
                             mock_glob.return_value = [mock_json1, mock_json2]
 
-                            with patch(
-                                "builtins.open", create=True
-                            ) as mock_open:
+                            with patch("builtins.open", create=True) as mock_open:
                                 mock_open.return_value.__enter__.return_value.read.return_value = (
                                     '{"lines": []}'
                                 )
 
-                                with patch(
-                                    "json.load", return_value={"lines": []}
-                                ):
+                                with patch("json.load", return_value={"lines": []}):
                                     with patch(
                                         "receipt_upload.ocr.process_ocr_dict_as_image"
                                     ) as mock_process:
@@ -565,8 +539,7 @@ class TestAppleVisionOCR:
 
                                         assert len(result) == 2
                                         assert all(
-                                            isinstance(k, str)
-                                            for k in result.keys()
+                                            isinstance(k, str) for k in result.keys()
                                         )
 
     @pytest.mark.unit
@@ -588,7 +561,5 @@ class TestAppleVisionOCR:
                         1, ["swift"], stderr="Error"
                     )
 
-                    with pytest.raises(
-                        ValueError, match="Error running Swift script"
-                    ):
+                    with pytest.raises(ValueError, match="Error running Swift script"):
                         apple_vision_ocr(["/path/image.jpg"])

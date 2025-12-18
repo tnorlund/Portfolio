@@ -57,9 +57,7 @@ def delete_all_locks_individually():
 
     for i, lock in enumerate(locks, 1):
         try:
-            client.delete_compaction_lock(
-                lock.lock_id, lock.owner, lock.collection
-            )
+            client.delete_compaction_lock(lock.lock_id, lock.owner, lock.collection)
             success_count += 1
             if i % 50 == 0:  # Progress update every 50 deletions
                 print(

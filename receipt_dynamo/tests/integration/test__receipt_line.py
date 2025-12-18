@@ -108,9 +108,7 @@ FIXED_UUIDS = [
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
+@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
 # pylint: disable=too-many-arguments
 def test_add_receipt_line_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -137,9 +135,7 @@ def test_add_receipt_line_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
+@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
 # pylint: disable=too-many-arguments
 def test_update_receipt_line_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -167,9 +163,7 @@ def test_update_receipt_line_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
+@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
 # pylint: disable=too-many-arguments
 def test_delete_receipt_line_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -201,9 +195,7 @@ def test_delete_receipt_line_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
+@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
 # pylint: disable=too-many-arguments
 def test_get_receipt_line_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -239,9 +231,7 @@ def test_get_receipt_line_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
+@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
 # pylint: disable=too-many-arguments
 def test_add_receipt_lines_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -259,9 +249,7 @@ def test_add_receipt_lines_client_errors(
     mock_transact = mocker.patch.object(
         client._client,
         "transact_write_items",
-        side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
-        ),
+        side_effect=ClientError({"Error": {"Code": error_code}}, "TransactWriteItems"),
     )
 
     with pytest.raises(expected_exception, match=error_match):
@@ -291,9 +279,7 @@ def test_update_receipt_lines_client_errors(
     mock_transact = mocker.patch.object(
         client._client,
         "transact_write_items",
-        side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
-        ),
+        side_effect=ClientError({"Error": {"Code": error_code}}, "TransactWriteItems"),
     )
 
     with pytest.raises(expected_exception, match=error_match):
@@ -323,9 +309,7 @@ def test_delete_receipt_lines_client_errors(
     mock_transact = mocker.patch.object(
         client._client,
         "transact_write_items",
-        side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
-        ),
+        side_effect=ClientError({"Error": {"Code": error_code}}, "TransactWriteItems"),
     )
 
     with pytest.raises(expected_exception, match=error_match):
@@ -694,9 +678,7 @@ def test_add_receipt_line_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="receipt_line already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="receipt_line already exists"):
         client.add_receipt_line(sample_receipt_line)
 
     mock_put.assert_called_once()
@@ -847,9 +829,7 @@ def test_delete_receipt_line_success(
     )
 
     # Verify
-    with pytest.raises(
-        EntityNotFoundError, match="ReceiptLine with.*not found"
-    ):
+    with pytest.raises(EntityNotFoundError, match="ReceiptLine with.*not found"):
         client.get_receipt_line(
             sample_receipt_line.receipt_id,
             sample_receipt_line.image_id,
@@ -968,9 +948,7 @@ def test_add_receipt_lines_unprocessed_items_retry(
 
     client.add_receipt_lines(lines)
 
-    assert (
-        call_count["value"] == 1
-    ), "Should have called transact_write_items once."
+    assert call_count["value"] == 1, "Should have called transact_write_items once."
 
 
 @pytest.mark.integration
@@ -1053,9 +1031,7 @@ def test_delete_receipt_lines_success(
     # Verify deletion
     for line in lines:
         with pytest.raises(EntityNotFoundError):
-            client.get_receipt_line(
-                line.receipt_id, line.image_id, line.line_id
-            )
+            client.get_receipt_line(line.receipt_id, line.image_id, line.line_id)
 
 
 # -------------------------------------------------------------------
@@ -1263,17 +1239,11 @@ def test_list_receipt_lines_by_embedding_status(
         client.add_receipt_line(line)
 
     # Query by status
-    not_embedded = client.list_receipt_lines_by_embedding_status(
-        EmbeddingStatus.NONE
-    )
-    embedded = client.list_receipt_lines_by_embedding_status(
-        EmbeddingStatus.SUCCESS
-    )
+    not_embedded = client.list_receipt_lines_by_embedding_status(EmbeddingStatus.NONE)
+    embedded = client.list_receipt_lines_by_embedding_status(EmbeddingStatus.SUCCESS)
 
     # Verify results
-    assert any(
-        l.embedding_status == EmbeddingStatus.NONE for l in not_embedded
-    )
+    assert any(l.embedding_status == EmbeddingStatus.NONE for l in not_embedded)
     assert any(l.embedding_status == EmbeddingStatus.SUCCESS for l in embedded)
 
 

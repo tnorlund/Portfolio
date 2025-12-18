@@ -76,9 +76,7 @@ def serialize_receipt_lines(
             ndjson_lines = [json.dumps(dict(line)) for line in lines]
             ndjson_content = "\n".join(ndjson_lines)
             # Write to a unique NDJSON file
-            filepath = Path(
-                f"/tmp/{image_id}_{receipt_id}_lines_{uuid4()}.ndjson"
-            )
+            filepath = Path(f"/tmp/{image_id}_{receipt_id}_lines_{uuid4()}.ndjson")
             with filepath.open("w", encoding="utf-8") as f:
                 f.write(ndjson_content)
             # Keep metadata about which receipt this file represents
@@ -145,9 +143,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Chunked into %d batches", len(batches))
 
         # Serialize and upload in one step (like the working version)
-        uploaded = upload_serialized_lines(
-            serialize_receipt_lines(batches), bucket
-        )
+        uploaded = upload_serialized_lines(serialize_receipt_lines(batches), bucket)
         logger.info("Uploaded %d files", len(uploaded))
 
         # Clean the output to match expected format
@@ -161,9 +157,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             for e in uploaded
         ]
 
-        logger.info(
-            "Successfully prepared %d batches for processing", len(cleaned)
-        )
+        logger.info("Successfully prepared %d batches for processing", len(cleaned))
 
         return {
             "batches": cleaned,

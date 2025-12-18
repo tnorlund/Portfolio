@@ -32,9 +32,7 @@ def find_metadata_with_null_place_id(
     Returns:
         List of (image_id, receipt_id) tuples that need fixing
     """
-    logger.info(
-        "Scanning for ReceiptMetadata records with NULL/missing place_id..."
-    )
+    logger.info("Scanning for ReceiptMetadata records with NULL/missing place_id...")
     records_to_fix = []
 
     try:
@@ -45,10 +43,8 @@ def find_metadata_with_null_place_id(
         total_checked = len(metadatas)
 
         while last_evaluated_key is not None:
-            next_metadatas, last_evaluated_key = (
-                dynamo_client.list_receipt_metadatas(
-                    limit=limit, last_evaluated_key=last_evaluated_key
-                )
+            next_metadatas, last_evaluated_key = dynamo_client.list_receipt_metadatas(
+                limit=limit, last_evaluated_key=last_evaluated_key
             )
             metadatas.extend(next_metadatas)
             total_checked += len(next_metadatas)
@@ -109,9 +105,7 @@ def fix_metadata_place_id(
         metadata.place_id = ""
         dynamo_client.put_receipt_metadata(metadata)
 
-        logger.info(
-            f"Fixed place_id for: image_id={image_id}, receipt_id={receipt_id}"
-        )
+        logger.info(f"Fixed place_id for: image_id={image_id}, receipt_id={receipt_id}")
         return True
 
     except Exception as e:

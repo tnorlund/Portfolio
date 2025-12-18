@@ -267,9 +267,7 @@ def lambda_layer_buildspec(
                         f"build/python{v.replace('.', '')}/python/ || true"
                     ),
                     'echo "Removing nested lib directory after flattening"',
-                    (
-                        f"rm -rf build/python{v.replace('.', '')}/python/lib || true"
-                    ),
+                    (f"rm -rf build/python{v.replace('.', '')}/python/lib || true"),
                 ]
             )
         build_commands.append('echo "Done building for all Python versions"')
@@ -306,9 +304,7 @@ def docker_image_buildspec(
     debug_mode: bool,
 ) -> Dict[str, Any]:
     """Buildspec for CodeBuild Docker image builds."""
-    build_args_str = " ".join(
-        [f"--build-arg {k}={v}" for k, v in build_args.items()]
-    )
+    build_args_str = " ".join([f"--build-arg {k}={v}" for k, v in build_args.items()])
     platform_flag = f"--platform {platform}" if platform else ""
 
     return {

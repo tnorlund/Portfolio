@@ -105,10 +105,7 @@ class TestWordEmbeddingRecord:
             word=word, embedding=[0.1, 0.2, 0.3], batch_id="batch1"
         )
 
-        assert (
-            record.chroma_id
-            == "IMAGE#img123#RECEIPT#00042#LINE#00007#WORD#00003"
-        )
+        assert record.chroma_id == "IMAGE#img123#RECEIPT#00042#LINE#00007#WORD#00003"
 
     def test_document_property(self) -> None:
         """Test that document returns word text."""
@@ -239,10 +236,7 @@ class TestBuildWordPayload:
             word_labels=[],
         )
 
-        assert (
-            payload["ids"][0]
-            == "IMAGE#img1#RECEIPT#00005#LINE#00010#WORD#00003"
-        )
+        assert payload["ids"][0] == "IMAGE#img1#RECEIPT#00005#LINE#00010#WORD#00003"
 
     def test_payload_with_labels(self) -> None:
         """Test that word labels are correctly included in metadata."""
@@ -275,9 +269,7 @@ class TestBuildWordPayload:
         """Test that context size parameter works."""
         words: List[Mock] = []
         for i in range(1, 6):
-            words.append(
-                create_mock_word("img1", 1, 1, i, f"Word{i}", x=i * 0.1)
-            )
+            words.append(create_mock_word("img1", 1, 1, i, f"Word{i}", x=i * 0.1))
 
         record = WordEmbeddingRecord(word=words[2], embedding=[0.1, 0.2])
 

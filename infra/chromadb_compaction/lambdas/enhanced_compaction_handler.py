@@ -90,13 +90,9 @@ class MetricsAccumulator:
         key = metric_name
         if dimensions:
             # Include dimensions in key for uniqueness
-            dim_str = "_".join(
-                f"{k}={v}" for k, v in sorted(dimensions.items())
-            )
+            dim_str = "_".join(f"{k}={v}" for k, v in sorted(dimensions.items()))
             key = f"{metric_name}_{dim_str}"
-        self.collected_metrics[key] = (
-            self.collected_metrics.get(key, 0) + value
-        )
+        self.collected_metrics[key] = self.collected_metrics.get(key, 0) + value
 
     def gauge(
         self,
@@ -108,9 +104,7 @@ class MetricsAccumulator:
         """Accumulate gauge metric (use latest value)."""
         key = metric_name
         if dimensions:
-            dim_str = "_".join(
-                f"{k}={v}" for k, v in sorted(dimensions.items())
-            )
+            dim_str = "_".join(f"{k}={v}" for k, v in sorted(dimensions.items()))
             key = f"{metric_name}_{dim_str}"
         self.collected_metrics[key] = value
 
@@ -151,18 +145,14 @@ class MetricsAccumulator:
 
             def __exit__(self, exc_type, exc_val, exc_tb):
                 elapsed = time.time() - self.start_time
-                self.accumulator.gauge(
-                    self.name, elapsed, self.unit, self.dims
-                )
+                self.accumulator.gauge(self.name, elapsed, self.unit, self.dims)
 
         return TimerContext(self, metric_name, dimensions, unit)
 
 
 def configure_receipt_chroma_loggers():
     """Configure receipt_chroma loggers to respect Lambda's LOG_LEVEL."""
-    log_level = getattr(
-        logging, os.environ.get("LOG_LEVEL", "INFO"), logging.INFO
-    )
+    log_level = getattr(logging, os.environ.get("LOG_LEVEL", "INFO"), logging.INFO)
 
     # Configure the main receipt_chroma logger and its child loggers
     receipt_chroma_logger = logging.getLogger("receipt_chroma")
@@ -230,9 +220,7 @@ def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
                 collections=(collection,),
                 timestamp=message_body.get("timestamp", ""),
                 stream_record_id=record.get("messageId", ""),
-                aws_region=attributes.get("region", {}).get(
-                    "stringValue", "us-east-1"
-                ),
+                aws_region=attributes.get("region", {}).get("stringValue", "us-east-1"),
                 record_snapshot=message_body.get("record_snapshot"),
             )
             messages.append(stream_msg)
@@ -319,9 +307,7 @@ def process_collection(
             )
             if metrics:
                 metrics.count("CompactionSnapshotDownloadError", 1)
-            return {
-                "failed_message_ids": [m.stream_record_id for m in messages]
-            }
+            return {"failed_message_ids": [m.stream_record_id for m in messages]}
 
         logger.info(
             "Snapshot downloaded",
@@ -358,12 +344,8 @@ def process_collection(
                 "CompactionMetadataUpdatedRecords",
                 result.total_metadata_updated,
             )
-            metrics.gauge(
-                "CompactionLabelsUpdatedRecords", result.total_labels_updated
-            )
-            metrics.gauge(
-                "CompactionDeltaMergeCount", result.delta_merge_count
-            )
+            metrics.gauge("CompactionLabelsUpdatedRecords", result.total_labels_updated)
+            metrics.gauge("CompactionDeltaMergeCount", result.delta_merge_count)
             if result.has_errors:
                 metrics.count("CompactionProcessingErrors", 1)
 
@@ -380,8 +362,7 @@ def process_collection(
                             entity_data.get("image_id") is not None
                             and entity_data.get("receipt_id") is not None
                             and entity_data["image_id"] == meta_result.image_id
-                            and entity_data["receipt_id"]
-                            == meta_result.receipt_id
+                            and entity_data["receipt_id"] == meta_result.receipt_id
                         ):
                             failed_message_ids.append(msg.stream_record_id)
 
@@ -418,14 +399,10 @@ def process_collection(
             )
 
         if upload_result.get("status") == "error":
-            logger.error(
-                "Snapshot upload failed", error=upload_result.get("error")
-            )
+            logger.error("Snapshot upload failed", error=upload_result.get("error"))
             if metrics:
                 metrics.count("CompactionSnapshotUploadError", 1)
-            return {
-                "failed_message_ids": [m.stream_record_id for m in messages]
-            }
+            return {"failed_message_ids": [m.stream_record_id for m in messages]}
 
         logger.info(
             "Snapshot uploaded",
@@ -473,9 +450,7 @@ def process_sqs_messages(
             metrics.count("CompactionMessageParseError", 1)
         # Return all as failures for retry
         return {
-            "batchItemFailures": [
-                {"itemIdentifier": r["messageId"]} for r in records
-            ]
+            "batchItemFailures": [{"itemIdentifier": r["messageId"]} for r in records]
         }
 
     if not stream_messages:
@@ -561,9 +536,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Check if this is an SQS trigger
         if "Records" in event:
             # Collect metrics
-            collected_metrics["CompactionRecordsReceived"] = len(
-                event["Records"]
-            )
+            collected_metrics["CompactionRecordsReceived"] = len(event["Records"])
 
             # Process SQS messages
             result = process_sqs_messages(
@@ -576,9 +549,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if isinstance(result, dict) and "batchItemFailures" in result:
                 # Emit metrics before returning
                 execution_time = time.time() - start_time
-                collected_metrics["CompactionLambdaExecutionTime"] = (
-                    execution_time
-                )
+                collected_metrics["CompactionLambdaExecutionTime"] = execution_time
                 if result["batchItemFailures"]:
                     collected_metrics["CompactionPartialBatchFailure"] = 1
                     collected_metrics["CompactionFailedMessages"] = len(

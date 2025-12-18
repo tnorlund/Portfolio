@@ -51,9 +51,7 @@ class EmbeddedMetricsFormatter:
             namespace: CloudWatch namespace for metrics
         """
         self.namespace = namespace
-        self.enabled = (
-            os.environ.get("ENABLE_METRICS", "true").lower() == "true"
-        )
+        self.enabled = os.environ.get("ENABLE_METRICS", "true").lower() == "true"
 
     def create_metric_log(
         self,
@@ -80,9 +78,7 @@ class EmbeddedMetricsFormatter:
 
         emf_log = {
             "_aws": {
-                "Timestamp": int(
-                    time.time() * 1000
-                ),  # EMF expects milliseconds
+                "Timestamp": int(time.time() * 1000),  # EMF expects milliseconds
                 "CloudWatchMetrics": [
                     {
                         "Namespace": self.namespace,
@@ -139,9 +135,7 @@ class EmbeddedMetricsFormatter:
         if not self.enabled:
             return
 
-        emf_log = self.create_metric_log(
-            metrics, dimensions, properties, units
-        )
+        emf_log = self.create_metric_log(metrics, dimensions, properties, units)
         if emf_log:
             print(emf_log, flush=True)
 

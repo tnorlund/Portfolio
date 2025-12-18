@@ -39,9 +39,7 @@ logger = logging.getLogger(__name__)
 class LayerVersionUpdater:
     """Update Lambda layer versions in Pulumi state to latest AWS versions."""
 
-    def __init__(
-        self, stack_name: str, layer_names: Optional[List[str]] = None
-    ):
+    def __init__(self, stack_name: str, layer_names: Optional[List[str]] = None):
         """
         Initialize the updater.
 
@@ -64,9 +62,7 @@ class LayerVersionUpdater:
         # Initialize AWS client
         try:
             self.lambda_client = boto3.client("lambda")
-            self.aws_account_id = boto3.client("sts").get_caller_identity()[
-                "Account"
-            ]
+            self.aws_account_id = boto3.client("sts").get_caller_identity()["Account"]
             self.aws_region = self.lambda_client.meta.region_name
             logger.info(
                 f"Connected to AWS (Account: {self.aws_account_id}, Region: {self.aws_region})"
@@ -107,9 +103,7 @@ class LayerVersionUpdater:
                 logger.error(f"Error querying layer {layer_name}: {e}")
             return None
 
-    def find_all_layers_in_state(
-        self, state: Dict[str, Any]
-    ) -> Dict[str, int]:
+    def find_all_layers_in_state(self, state: Dict[str, Any]) -> Dict[str, int]:
         """
         Find all Lambda layer ARNs in Pulumi state and extract their current versions.
 
@@ -121,9 +115,7 @@ class LayerVersionUpdater:
         # Handle different Pulumi state formats
         resources = (
             state.get("deployment", {}).get("resources")
-            or state.get("checkpoint", {})
-            .get("latest", {})
-            .get("resources", [])
+            or state.get("checkpoint", {}).get("latest", {}).get("resources", [])
             or state.get("resources", [])
             or []
         )
@@ -179,9 +171,7 @@ class LayerVersionUpdater:
     def backup_state(self, state: Dict[str, Any]) -> Path:
         """Create a backup of the current state."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = (
-            self.backup_dir / f"state_{self.stack_name}_{timestamp}.json"
-        )
+        backup_path = self.backup_dir / f"state_{self.stack_name}_{timestamp}.json"
 
         with open(backup_path, "w") as f:
             json.dump(state, f, indent=2)
@@ -275,9 +265,7 @@ class LayerVersionUpdater:
                     # Check if this layer needs updating
                     if layer_name in layer_updates:
                         new_version = layer_updates[layer_name]["latest"]
-                        new_arn = (
-                            f"{arn_prefix}{layer_name}{colon}{new_version}"
-                        )
+                        new_arn = f"{arn_prefix}{layer_name}{colon}{new_version}"
                         updated_layers.append(new_arn)
                         logger.debug(f"Updated {layer_arn} -> {new_arn}")
                     else:
@@ -312,9 +300,7 @@ class LayerVersionUpdater:
 
     def run(self, dry_run: bool = True) -> None:
         """Run the update process."""
-        logger.info(
-            f"Starting layer version update for stack '{self.stack_name}'"
-        )
+        logger.info(f"Starting layer version update for stack '{self.stack_name}'")
         if dry_run:
             logger.info("DRY RUN MODE - no changes will be made")
 
@@ -325,14 +311,10 @@ class LayerVersionUpdater:
         backup_path = self.backup_state(state)
 
         # Update layer versions
-        updated_state, changes = self.update_layer_versions_in_state(
-            state, dry_run
-        )
+        updated_state, changes = self.update_layer_versions_in_state(state, dry_run)
 
         if not changes:
-            logger.info(
-                "No changes needed - all layers are already at latest version"
-            )
+            logger.info("No changes needed - all layers are already at latest version")
             return
 
         # Show changes

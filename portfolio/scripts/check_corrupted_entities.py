@@ -10,7 +10,7 @@ import sys
 import boto3
 
 # Get the list of entities that were missing TYPE
-with open('missing_type_records_ReceiptsTable-d7ff76a.json', 'r') as f:
+with open("missing_type_records_ReceiptsTable-d7ff76a.json", "r") as f:
     missing_type_records = json.load(f)
 
 if not missing_type_records:
@@ -43,43 +43,43 @@ prod_outputs = prod_stack.outputs()
 prod_table_name = prod_outputs["dynamodb_table_name"].value
 
 # Create DynamoDB clients
-dynamodb = boto3.resource('dynamodb')
+dynamodb = boto3.resource("dynamodb")
 dev_table = dynamodb.Table(dev_table_name)
 prod_table = dynamodb.Table(prod_table_name)
 
 # Check each record
 stats = {
-    'total': len(missing_type_records),
-    'exists_in_dev': 0,
-    'missing_in_dev': 0,
-    'image_exists': 0,
-    'image_missing': 0,
-    'receipt_exists': 0,
-    'receipt_missing': 0
+    "total": len(missing_type_records),
+    "exists_in_dev": 0,
+    "missing_in_dev": 0,
+    "image_exists": 0,
+    "image_missing": 0,
+    "receipt_exists": 0,
+    "receipt_missing": 0,
 }
 
 print(f"Checking {stats['total']} entities that were missing TYPE...")
 
 for record in missing_type_records:
-    pk = record['PK']
-    sk = record['SK']
-    entity_type = record['TYPE']
-    
+    pk = record["PK"]
+    sk = record["SK"]
+    entity_type = record["TYPE"]
+
     # Check if exists in DEV
-    dev_response = dev_table.get_item(Key={'PK': pk, 'SK': sk})
-    
-    if 'Item' in dev_response:
-        stats['exists_in_dev'] += 1
-        if entity_type == 'IMAGE':
-            stats['image_exists'] += 1
+    dev_response = dev_table.get_item(Key={"PK": pk, "SK": sk})
+
+    if "Item" in dev_response:
+        stats["exists_in_dev"] += 1
+        if entity_type == "IMAGE":
+            stats["image_exists"] += 1
         else:
-            stats['receipt_exists'] += 1
+            stats["receipt_exists"] += 1
     else:
-        stats['missing_in_dev'] += 1
-        if entity_type == 'IMAGE':
-            stats['image_missing'] += 1
+        stats["missing_in_dev"] += 1
+        if entity_type == "IMAGE":
+            stats["image_missing"] += 1
         else:
-            stats['receipt_missing'] += 1
+            stats["receipt_missing"] += 1
         print(f"Missing in DEV: {entity_type} {pk}, {sk}")
 
 print("\nSummary:")
@@ -96,15 +96,17 @@ print(f"  Receipts: {stats['receipt_missing']}")
 # Save the ones that exist in DEV
 entities_to_copy = []
 for record in missing_type_records:
-    pk = record['PK']
-    sk = record['SK']
-    
+    pk = record["PK"]
+    sk = record["SK"]
+
     # Check if exists in DEV
-    dev_response = dev_table.get_item(Key={'PK': pk, 'SK': sk})
-    if 'Item' in dev_response:
+    dev_response = dev_table.get_item(Key={"PK": pk, "SK": sk})
+    if "Item" in dev_response:
         entities_to_copy.append(record)
 
-with open('entities_to_copy_from_dev.json', 'w') as f:
+with open("entities_to_copy_from_dev.json", "w") as f:
     json.dump(entities_to_copy, f, indent=2)
 
-print(f"\nSaved {len(entities_to_copy)} entities that exist in DEV to: entities_to_copy_from_dev.json")
+print(
+    f"\nSaved {len(entities_to_copy)} entities that exist in DEV to: entities_to_copy_from_dev.json"
+)

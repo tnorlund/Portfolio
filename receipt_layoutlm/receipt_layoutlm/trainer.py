@@ -92,9 +92,7 @@ class ReceiptLayoutLMTrainer:
         ds_mod = importlib.import_module("datasets")
         if self.data_config.dataset_snapshot_load:
             try:
-                datasets = ds_mod.load_from_disk(
-                    self.data_config.dataset_snapshot_load
-                )
+                datasets = ds_mod.load_from_disk(self.data_config.dataset_snapshot_load)
             except (FileNotFoundError, OSError, ValueError):
                 # Fallback to normal path if load fails
                 datasets = load_datasets(self.dynamo)
@@ -147,25 +145,17 @@ class ReceiptLayoutLMTrainer:
             if split in datasets:
                 dataset_counts[split] = _count_labels(datasets[split])
         label_list = (
-            self._label_list(datasets["train"])
-            if len(datasets["train"])
-            else ["O"]
+            self._label_list(datasets["train"]) if len(datasets["train"]) else ["O"]
         )
 
-        label2id: Dict[str, int] = {
-            label: i for i, label in enumerate(label_list)
-        }
-        id2label: Dict[int, str] = {
-            i: label for i, label in enumerate(label_list)
-        }
+        label2id: Dict[str, int] = {label: i for i, label in enumerate(label_list)}
+        id2label: Dict[int, str] = {i: label for i, label in enumerate(label_list)}
 
-        model = (
-            self._transformers.LayoutLMForTokenClassification.from_pretrained(
-                self.training_config.pretrained_model_name,
-                num_labels=len(label_list),
-                id2label=id2label,
-                label2id=label2id,
-            )
+        model = self._transformers.LayoutLMForTokenClassification.from_pretrained(
+            self.training_config.pretrained_model_name,
+            num_labels=len(label_list),
+            id2label=id2label,
+            label2id=label2id,
         )
 
         # Initialize category-aware label embeddings if enabled
@@ -270,9 +260,7 @@ class ReceiptLayoutLMTrainer:
         if "save_safetensors" in ta_params:
             args_kwargs["save_safetensors"] = True
         if "label_smoothing_factor" in ta_params:
-            args_kwargs["label_smoothing_factor"] = (
-                self.training_config.label_smoothing
-            )
+            args_kwargs["label_smoothing_factor"] = self.training_config.label_smoothing
         # Performance-related knobs (only if supported by current transformers)
         if "dataloader_num_workers" in ta_params:
             args_kwargs["dataloader_num_workers"] = min(
@@ -360,7 +348,9 @@ class ReceiptLayoutLMTrainer:
             TrainerCallback = getattr(self._transformers, "TrainerCallback")
 
             class _MetricLoggerCallback(TrainerCallback):  # type: ignore
-                def __init__(self, run_path: str, job_id: str, dynamo_client: Any) -> None:
+                def __init__(
+                    self, run_path: str, job_id: str, dynamo_client: Any
+                ) -> None:
                     self.run_path = run_path
                     self.job_id = job_id
                     self.dynamo = dynamo_client
@@ -379,9 +369,7 @@ class ReceiptLayoutLMTrainer:
                     epoch_metrics = data.get("epoch_metrics", [])
 
                     current_epoch = (
-                        float(state.epoch)
-                        if getattr(state, "epoch", None)
-                        else None
+                        float(state.epoch) if getattr(state, "epoch", None) else None
                     )
 
                     entry = {
@@ -411,13 +399,18 @@ class ReceiptLayoutLMTrainer:
                                         EntityError,
                                         OperationError,
                                     )
+
                                     metric = JobMetric(
                                         job_id=self.job_id,
                                         metric_name="val_f1",
                                         value=float(f1_value),
                                         timestamp=datetime.now().isoformat(),
                                         unit="ratio",
-                                        epoch=int(current_epoch) if current_epoch is not None else None,
+                                        epoch=(
+                                            int(current_epoch)
+                                            if current_epoch is not None
+                                            else None
+                                        ),
                                         step=int(getattr(state, "global_step", 0)),
                                     )
                                     self.dynamo.add_job_metric(metric)
@@ -428,13 +421,19 @@ class ReceiptLayoutLMTrainer:
                     # Add training loss from log_history if available
                     if state and hasattr(state, "log_history") and state.log_history:
                         # Get the most recent training step log entry
-                        train_logs = [log for log in state.log_history if "loss" in log and "eval_loss" not in log]
+                        train_logs = [
+                            log
+                            for log in state.log_history
+                            if "loss" in log and "eval_loss" not in log
+                        ]
                         if train_logs:
                             latest_train = train_logs[-1]
                             if "loss" in latest_train:
                                 entry["train_loss"] = float(latest_train["loss"])
                             if "learning_rate" in latest_train:
-                                entry["learning_rate"] = float(latest_train["learning_rate"])
+                                entry["learning_rate"] = float(
+                                    latest_train["learning_rate"]
+                                )
 
                     epoch_metrics.append(entry)
                     data["epoch_metrics"] = epoch_metrics
@@ -464,9 +463,7 @@ class ReceiptLayoutLMTrainer:
                 job_id=job.job_id,
                 timestamp=datetime.now().isoformat(),
                 log_level="INFO",
-                message=json.dumps(
-                    {"type": "run_config", "data": run_payload}
-                ),
+                message=json.dumps({"type": "run_config", "data": run_payload}),
                 source="receipt_layoutlm.trainer",
             )
             self.dynamo.add_job_log(cfg_log)
@@ -480,7 +477,9 @@ class ReceiptLayoutLMTrainer:
                 f1_fn = getattr(seqeval, "f1_score")
                 precision_fn = getattr(seqeval, "precision_score")
                 recall_fn = getattr(seqeval, "recall_score")
-                classification_report_fn = getattr(seqeval, "classification_report", None)
+                classification_report_fn = getattr(
+                    seqeval, "classification_report", None
+                )
             except ModuleNotFoundError:
                 # Fallback to token accuracy if seqeval unavailable
                 seqeval = None
@@ -516,18 +515,35 @@ class ReceiptLayoutLMTrainer:
                 if classification_report_fn:
                     try:
                         # Get unique labels (excluding O for per-label metrics)
-                        unique_labels = sorted(set([tag for seq in y_true + y_pred for tag in seq if tag != "O"]))
+                        unique_labels = sorted(
+                            set(
+                                [
+                                    tag
+                                    for seq in y_true + y_pred
+                                    for tag in seq
+                                    if tag != "O"
+                                ]
+                            )
+                        )
                         if unique_labels:
                             report = classification_report_fn(
-                                y_true, y_pred, labels=unique_labels, output_dict=True, zero_division=0
+                                y_true,
+                                y_pred,
+                                labels=unique_labels,
+                                output_dict=True,
+                                zero_division=0,
                             )
                             # Extract per-label metrics
                             for label in unique_labels:
                                 if label in report:
                                     per_label_metrics[label] = {
                                         "f1": float(report[label].get("f1-score", 0.0)),
-                                        "precision": float(report[label].get("precision", 0.0)),
-                                        "recall": float(report[label].get("recall", 0.0)),
+                                        "precision": float(
+                                            report[label].get("precision", 0.0)
+                                        ),
+                                        "recall": float(
+                                            report[label].get("recall", 0.0)
+                                        ),
                                         "support": int(report[label].get("support", 0)),
                                     }
                     except Exception:
@@ -607,17 +623,24 @@ class ReceiptLayoutLMTrainer:
                 f1_with_epochs = [
                     (m.get("epoch"), m.get("eval_f1") or m.get("f1"))
                     for m in f1_metrics
-                    if m.get("epoch") is not None and (m.get("eval_f1") is not None or m.get("f1") is not None)
+                    if m.get("epoch") is not None
+                    and (m.get("eval_f1") is not None or m.get("f1") is not None)
                 ]
                 if f1_with_epochs:
-                    best_epoch, best_f1 = max(f1_with_epochs, key=lambda x: x[1] if x[1] is not None else -1)
+                    best_epoch, best_f1 = max(
+                        f1_with_epochs, key=lambda x: x[1] if x[1] is not None else -1
+                    )
 
                     # Check if early stopping triggered
                     # If best epoch is not the last epoch, early stopping likely triggered
                     if epoch_metrics:
                         last_epoch = max(
-                            (m.get("epoch") for m in epoch_metrics if m.get("epoch") is not None),
-                            default=None
+                            (
+                                m.get("epoch")
+                                for m in epoch_metrics
+                                if m.get("epoch") is not None
+                            ),
+                            default=None,
                         )
                         if last_epoch is not None and best_epoch is not None:
                             # Check if we stopped before max epochs
@@ -637,15 +660,25 @@ class ReceiptLayoutLMTrainer:
             # Add early stopping information if available
             if best_epoch is not None:
                 summary_payload["best_epoch"] = float(best_epoch)
-                summary_payload["best_f1"] = float(best_f1) if best_f1 is not None else None
+                summary_payload["best_f1"] = (
+                    float(best_f1) if best_f1 is not None else None
+                )
                 summary_payload["early_stopping_triggered"] = early_stopping_triggered
                 if epoch_metrics:
                     last_epoch = max(
-                        (m.get("epoch") for m in epoch_metrics if m.get("epoch") is not None),
-                        default=None
+                        (
+                            m.get("epoch")
+                            for m in epoch_metrics
+                            if m.get("epoch") is not None
+                        ),
+                        default=None,
                     )
                     if last_epoch is not None:
-                        summary_payload["epochs_since_best"] = int(last_epoch - best_epoch) if best_epoch is not None else None
+                        summary_payload["epochs_since_best"] = (
+                            int(last_epoch - best_epoch)
+                            if best_epoch is not None
+                            else None
+                        )
 
             # Extract checkpoint and training time information from trainer_state.json
             trainer_state_path = os.path.join(output_dir, "trainer_state.json")
@@ -672,7 +705,9 @@ class ReceiptLayoutLMTrainer:
                                 run_prefix = f"runs/{job_name}/"
 
                             # Best checkpoint is synced to best/ subdirectory
-                            summary_payload["best_checkpoint_s3_path"] = f"s3://{bucket}/{run_prefix}best/"
+                            summary_payload["best_checkpoint_s3_path"] = (
+                                f"s3://{bucket}/{run_prefix}best/"
+                            )
                         else:
                             # Just store local path
                             summary_payload["best_checkpoint_path"] = best_checkpoint
@@ -746,18 +781,21 @@ class ReceiptLayoutLMTrainer:
         # Get label embeddings from the classifier layer
         # The classifier is typically a linear layer: classifier.weight is [num_labels, hidden_size]
         if not hasattr(model, "classifier") or not hasattr(model.classifier, "weight"):
-            print("⚠️  Model doesn't have classifier.weight, skipping category-aware initialization")
+            print(
+                "⚠️  Model doesn't have classifier.weight, skipping category-aware initialization"
+            )
             return
 
-        label_embeddings = model.classifier.weight.data  # Shape: [num_labels, hidden_size]
+        label_embeddings = (
+            model.classifier.weight.data
+        )  # Shape: [num_labels, hidden_size]
 
         # Only process labels that exist in our label2id mapping
         available_labels = set(label2id.keys())
         category_labels: Dict[str, List[str]] = {}
         for category, labels in LABEL_CATEGORIES.items():
             category_labels[category] = [
-                label for label in labels
-                if label in available_labels and label != "O"
+                label for label in labels if label in available_labels and label != "O"
             ]
 
         # Calculate category centroids (average embedding for labels in each category)
@@ -775,7 +813,9 @@ class ReceiptLayoutLMTrainer:
 
             if len(category_embs) > 0:
                 # Calculate centroid (mean of embeddings)
-                category_centroids[category] = self._torch.stack(category_embs).mean(dim=0)
+                category_centroids[category] = self._torch.stack(category_embs).mean(
+                    dim=0
+                )
 
         # Adjust label embeddings to be closer to their category centroids
         # Use a weighted average: 70% original embedding, 30% category centroid
@@ -859,25 +899,35 @@ class ReceiptLayoutLMTrainer:
                         if not os.path.isabs(best_checkpoint):
                             best_checkpoint = os.path.join(output_dir, best_checkpoint)
                         if os.path.exists(best_checkpoint):
-                            print(f"📤 Syncing best checkpoint to s3://{bucket}/{run_prefix}best/")
+                            print(
+                                f"📤 Syncing best checkpoint to s3://{bucket}/{run_prefix}best/"
+                            )
                             best_prefix = f"{run_prefix}best/"
                             for root, dirs, files in os.walk(best_checkpoint):
                                 for file in files:
                                     local_path = os.path.join(root, file)
-                                    rel_path = os.path.relpath(local_path, best_checkpoint)
+                                    rel_path = os.path.relpath(
+                                        local_path, best_checkpoint
+                                    )
                                     s3_key = f"{best_prefix}{rel_path}"
                                     s3_client.upload_file(local_path, bucket, s3_key)
                             print(f"✅ Model synced to s3://{bucket}/{run_prefix}")
                         else:
-                            print(f"⚠️  Best checkpoint path not found: {best_checkpoint}")
+                            print(
+                                f"⚠️  Best checkpoint path not found: {best_checkpoint}"
+                            )
                     else:
                         print(f"⚠️  No best checkpoint recorded in trainer_state.json")
                 else:
-                    print(f"⚠️  trainer_state.json not found, synced full run directory only")
+                    print(
+                        f"⚠️  trainer_state.json not found, synced full run directory only"
+                    )
 
             except ModuleNotFoundError:
                 # Fallback to AWS CLI
-                print(f"📤 Syncing run directory to s3://{bucket}/{run_prefix} (using AWS CLI)")
+                print(
+                    f"📤 Syncing run directory to s3://{bucket}/{run_prefix} (using AWS CLI)"
+                )
                 result = subprocess.run(
                     ["aws", "s3", "sync", output_dir, f"s3://{bucket}/{run_prefix}"],
                     capture_output=True,
@@ -898,17 +948,29 @@ class ReceiptLayoutLMTrainer:
                         if not os.path.isabs(best_checkpoint):
                             best_checkpoint = os.path.join(output_dir, best_checkpoint)
                         if os.path.exists(best_checkpoint):
-                            print(f"📤 Syncing best checkpoint to s3://{bucket}/{run_prefix}best/")
+                            print(
+                                f"📤 Syncing best checkpoint to s3://{bucket}/{run_prefix}best/"
+                            )
                             subprocess.run(
-                                ["aws", "s3", "sync", best_checkpoint, f"s3://{bucket}/{run_prefix}best/"],
+                                [
+                                    "aws",
+                                    "s3",
+                                    "sync",
+                                    best_checkpoint,
+                                    f"s3://{bucket}/{run_prefix}best/",
+                                ],
                                 capture_output=True,
                             )
                             print(f"✅ Model synced to s3://{bucket}/{run_prefix}")
                         else:
-                            print(f"⚠️  Best checkpoint path not found: {best_checkpoint}")
+                            print(
+                                f"⚠️  Best checkpoint path not found: {best_checkpoint}"
+                            )
                     else:
                         print(f"⚠️  No best checkpoint recorded in trainer_state.json")
         except Exception as e:
             # Don't fail training if S3 sync fails
             print(f"⚠️  Failed to sync model to S3: {e}")
-            print(f"   You can manually sync with: aws s3 sync {output_dir} s3://{bucket}/{run_prefix}")
+            print(
+                f"   You can manually sync with: aws s3 sync {output_dir} s3://{bucket}/{run_prefix}"
+            )

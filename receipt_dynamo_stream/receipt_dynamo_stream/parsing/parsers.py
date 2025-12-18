@@ -73,8 +73,7 @@ def parse_entity(  # pylint: disable=too-many-arguments,too-many-positional-argu
                     "sk": sk,
                     "has_timestamp_added": "timestamp_added" in complete_item,
                     "has_reasoning": "reasoning" in complete_item,
-                    "has_validation_status": "validation_status"
-                    in complete_item,
+                    "has_validation_status": "validation_status" in complete_item,
                 },
             )
 
@@ -140,12 +139,8 @@ def parse_stream_record(
         old_image = cast(Optional[DynamoImage], dynamodb.get("OldImage"))
         new_image = cast(Optional[DynamoImage], dynamodb.get("NewImage"))
 
-        old_entity = parse_entity(
-            old_image, entity_type, "old", pk, sk, metrics
-        )
-        new_entity = parse_entity(
-            new_image, entity_type, "new", pk, sk, metrics
-        )
+        old_entity = parse_entity(old_image, entity_type, "old", pk, sk, metrics)
+        new_entity = parse_entity(new_image, entity_type, "new", pk, sk, metrics)
 
         if old_image and not old_entity:
             logger.error(
@@ -178,9 +173,7 @@ def parse_stream_record(
         )
 
     except (KeyError, ValueError) as exc:
-        logger.warning(
-            "Failed to parse stream record", extra={"error": str(exc)}
-        )
+        logger.warning("Failed to parse stream record", extra={"error": str(exc)})
         if metrics:
             metrics.count("StreamRecordParsingError", 1)
         return None

@@ -77,9 +77,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         dynamo_client = DynamoClient(get_required_env("DYNAMODB_TABLE_NAME"))
 
         # Query all lines in the receipt for context
-        all_lines_in_receipt = query_receipt_lines(
-            dynamo_client, image_id, receipt_id
-        )
+        all_lines_in_receipt = query_receipt_lines(dynamo_client, image_id, receipt_id)
         logger.info(
             "Found lines in receipt",
             count=len(all_lines_in_receipt),
@@ -144,9 +142,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Update line embedding status in DynamoDB
         set_pending_and_update_lines(dynamo_client, lines_to_embed)
-        logger.info(
-            "Updated embedding status for lines", count=len(lines_to_embed)
-        )
+        logger.info("Updated embedding status for lines", count=len(lines_to_embed))
 
         # Save batch summary to database
         add_batch_summary(batch_summary, dynamo_client)

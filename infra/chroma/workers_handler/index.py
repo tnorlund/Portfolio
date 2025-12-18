@@ -19,9 +19,7 @@ def build_chromadb_id(word: Dict[str, Any]) -> str:
     )
 
 
-def get_embeddings_for_words(
-    dynamo_table: str, ids: List[str]
-) -> List[List[float]]:
+def get_embeddings_for_words(dynamo_table: str, ids: List[str]) -> List[List[float]]:
     dynamo_client = DynamoClient(dynamo_table)
     words, _ = dynamo_client.list_receipt_words(limit=50)
 
@@ -59,9 +57,7 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
     # External internet egress probe
     try:
-        with urllib.request.urlopen(
-            "https://checkip.amazonaws.com", timeout=5
-        ) as r:
+        with urllib.request.urlopen("https://checkip.amazonaws.com", timeout=5) as r:
             ip_txt = r.read().decode().strip()
             print(f"[worker] Internet OK status={r.status} ip={ip_txt}")
     except Exception as e:
@@ -72,9 +68,7 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         with urllib.request.urlopen(
             "https://www.gstatic.com/generate_204", timeout=5
         ) as r:
-            print(
-                f"[worker] Google generate_204 OK status={r.status} (expected 204)"
-            )
+            print(f"[worker] Google generate_204 OK status={r.status} (expected 204)")
     except Exception as e:
         print(f"[worker] Google generate_204 probe failed: {e}")
 
@@ -104,13 +98,9 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             f"http://{host}:{port}/api/v1/version", timeout=5
         ) as r:
             body = r.read().decode(errors="ignore")
-            print(
-                f"[worker] Chroma version probe OK status={r.status} body={body}"
-            )
+            print(f"[worker] Chroma version probe OK status={r.status} body={body}")
     except urllib.error.HTTPError as he:
-        print(
-            f"[worker] Chroma version probe HTTP error status={he.code} msg={he}"
-        )
+        print(f"[worker] Chroma version probe HTTP error status={he.code} msg={he}")
     except Exception as e:
         print(f"[worker] Chroma version probe failed: {e}")
     client = chromadb.HttpClient(host=host, port=int(port))

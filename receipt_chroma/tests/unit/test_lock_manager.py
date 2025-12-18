@@ -73,9 +73,7 @@ class TestLockManagerUnit:
 
     def test_acquire_lock_failure(self, lock_manager, mock_dynamo_client):
         """Test lock acquisition failure."""
-        mock_dynamo_client.add_compaction_lock.side_effect = Exception(
-            "DB error"
-        )
+        mock_dynamo_client.add_compaction_lock.side_effect = Exception("DB error")
 
         result = lock_manager.acquire("test-lock")
 
@@ -103,9 +101,7 @@ class TestLockManagerUnit:
     def test_release_lock_error(self, lock_manager, mock_dynamo_client):
         """Test lock release with error."""
         mock_dynamo_client.add_compaction_lock.return_value = None
-        mock_dynamo_client.delete_compaction_lock.side_effect = Exception(
-            "Error"
-        )
+        mock_dynamo_client.delete_compaction_lock.side_effect = Exception("Error")
 
         lock_manager.acquire("test-lock")
         lock_manager.release()
@@ -166,9 +162,7 @@ class TestLockManagerUnit:
     def test_update_heartbeat_failure(self, lock_manager, mock_dynamo_client):
         """Test heartbeat update failure."""
         mock_dynamo_client.add_compaction_lock.return_value = None
-        mock_dynamo_client.update_compaction_lock.side_effect = Exception(
-            "Error"
-        )
+        mock_dynamo_client.update_compaction_lock.side_effect = Exception("Error")
 
         lock_manager.acquire("test-lock")
         result = lock_manager.update_heartbeat()
@@ -207,9 +201,7 @@ class TestLockManagerUnit:
         """Test ownership validation without a lock."""
         assert lock_manager.validate_ownership() is False
 
-    def test_validate_ownership_success(
-        self, lock_manager, mock_dynamo_client
-    ):
+    def test_validate_ownership_success(self, lock_manager, mock_dynamo_client):
         """Test successful ownership validation."""
         from receipt_dynamo.entities.compaction_lock import CompactionLock
 
@@ -229,9 +221,7 @@ class TestLockManagerUnit:
 
         assert lock_manager.validate_ownership() is True
 
-    def test_validate_ownership_expired(
-        self, lock_manager, mock_dynamo_client
-    ):
+    def test_validate_ownership_expired(self, lock_manager, mock_dynamo_client):
         """Test ownership validation with expired lock."""
         from receipt_dynamo.entities.compaction_lock import CompactionLock
 
@@ -251,9 +241,7 @@ class TestLockManagerUnit:
 
         assert lock_manager.validate_ownership() is False
 
-    def test_validate_ownership_wrong_owner(
-        self, lock_manager, mock_dynamo_client
-    ):
+    def test_validate_ownership_wrong_owner(self, lock_manager, mock_dynamo_client):
         """Test ownership validation with wrong owner."""
         from uuid import uuid4
 
@@ -278,9 +266,7 @@ class TestLockManagerUnit:
         """Test getting remaining time without a lock."""
         assert lock_manager.get_remaining_time() is None
 
-    def test_get_remaining_time_success(
-        self, lock_manager, mock_dynamo_client
-    ):
+    def test_get_remaining_time_success(self, lock_manager, mock_dynamo_client):
         """Test getting remaining time successfully."""
         from receipt_dynamo.entities.compaction_lock import CompactionLock
 
@@ -329,9 +315,7 @@ class TestLockManagerUnit:
         """Test refreshing without a lock."""
         assert lock_manager.refresh_lock() is False
 
-    def test_refresh_lock_validation_fails(
-        self, lock_manager, mock_dynamo_client
-    ):
+    def test_refresh_lock_validation_fails(self, lock_manager, mock_dynamo_client):
         """Test refresh when ownership validation fails."""
         mock_dynamo_client.add_compaction_lock.return_value = None
 
@@ -356,9 +340,7 @@ class TestLockManagerUnit:
 
         assert lock_manager.is_locked() is False
 
-    def test_context_manager_acquire_fails(
-        self, lock_manager, mock_dynamo_client
-    ):
+    def test_context_manager_acquire_fails(self, lock_manager, mock_dynamo_client):
         """Test context manager when lock acquisition fails."""
         mock_dynamo_client.add_compaction_lock.side_effect = Exception("Error")
 
@@ -366,9 +348,7 @@ class TestLockManagerUnit:
             with lock_manager:
                 pass
 
-    def test_heartbeat_worker_stops_on_signal(
-        self, lock_manager, mock_dynamo_client
-    ):
+    def test_heartbeat_worker_stops_on_signal(self, lock_manager, mock_dynamo_client):
         """Test that heartbeat worker stops when signaled."""
         mock_dynamo_client.add_compaction_lock.return_value = None
         mock_dynamo_client.update_compaction_lock.return_value = None
@@ -383,14 +363,10 @@ class TestLockManagerUnit:
         # Thread should stop
         assert not lock_manager.heartbeat_thread.is_alive()
 
-    def test_heartbeat_worker_max_failures(
-        self, lock_manager, mock_dynamo_client
-    ):
+    def test_heartbeat_worker_max_failures(self, lock_manager, mock_dynamo_client):
         """Test heartbeat worker stops after max failures."""
         mock_dynamo_client.add_compaction_lock.return_value = None
-        mock_dynamo_client.update_compaction_lock.side_effect = Exception(
-            "Error"
-        )
+        mock_dynamo_client.update_compaction_lock.side_effect = Exception("Error")
 
         lock_manager.max_heartbeat_failures = 2
         lock_manager.acquire("test-lock")

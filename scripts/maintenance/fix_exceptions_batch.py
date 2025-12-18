@@ -104,9 +104,7 @@ def fix_file(filepath: Path) -> Tuple[int, int]:
                 if in_except_block and except_var and not from_var:
                     new_line = f"{indent}raise {exc_type}({message}) from {except_var}"
                 elif from_var:
-                    new_line = (
-                        f"{indent}raise {exc_type}({message}) from {from_var}"
-                    )
+                    new_line = f"{indent}raise {exc_type}({message}) from {from_var}"
                 else:
                     new_line = f"{indent}raise {exc_type}({message})"
 
@@ -123,10 +121,7 @@ def fix_file(filepath: Path) -> Tuple[int, int]:
             and "from" not in line
         ):
             # Don't add 'from e' to ValueError for parameter validation
-            if any(
-                keyword in line
-                for keyword in ["parameter", "must be", "required"]
-            ):
+            if any(keyword in line for keyword in ["parameter", "must be", "required"]):
                 new_lines.append(line)
             else:
                 # This ValueError is likely related to the caught exception
@@ -183,12 +178,8 @@ def fix_file(filepath: Path) -> Tuple[int, int]:
                     while ")" not in new_lines[j]:
                         j += 1
                     # Extract all imported names
-                    import_text = "\n".join(
-                        new_lines[existing_import_idx : j + 1]
-                    )
-                    current_imports = re.findall(
-                        r"(\w+)(?:,|\s*\))", import_text
-                    )
+                    import_text = "\n".join(new_lines[existing_import_idx : j + 1])
+                    current_imports = re.findall(r"(\w+)(?:,|\s*\))", import_text)
                 else:
                     # Single line import
                     import_match = re.search(
@@ -219,9 +210,9 @@ def fix_file(filepath: Path) -> Tuple[int, int]:
                             j += 1
                         new_lines[existing_import_idx : j + 1] = import_lines
                     else:
-                        new_lines[
-                            existing_import_idx : existing_import_idx + 1
-                        ] = import_lines
+                        new_lines[existing_import_idx : existing_import_idx + 1] = (
+                            import_lines
+                        )
                 else:
                     # Single line format
                     new_lines[existing_import_idx] = (
@@ -252,18 +243,13 @@ def fix_file(filepath: Path) -> Tuple[int, int]:
 
 def main():
     """Fix exceptions in all data layer files"""
-    data_dir = Path(
-        "/Users/tnorlund/GitHub/example/receipt_dynamo/receipt_dynamo/data"
-    )
+    data_dir = Path("/Users/tnorlund/GitHub/example/receipt_dynamo/receipt_dynamo/data")
 
     total_fixes = 0
     files_fixed = 0
 
     for filepath in data_dir.glob("*.py"):
-        if (
-            filepath.name == "__init__.py"
-            or filepath.name == "shared_exceptions.py"
-        ):
+        if filepath.name == "__init__.py" or filepath.name == "shared_exceptions.py":
             continue
 
         fixes, _ = fix_file(filepath)

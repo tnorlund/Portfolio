@@ -13,12 +13,8 @@ class LabelValidationState(BaseModel):
 
     # Input
     word_text: str = Field(description="Word text being validated")
-    suggested_label_type: str = Field(
-        description="Suggested label type to validate"
-    )
-    merchant_name: Optional[str] = Field(
-        default=None, description="Merchant name"
-    )
+    suggested_label_type: str = Field(description="Suggested label type to validate")
+    merchant_name: Optional[str] = Field(default=None, description="Merchant name")
     original_reasoning: str = Field(
         description="Original reasoning from suggestion LLM"
     )
@@ -37,6 +33,3 @@ class LabelValidationState(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
-
-
-

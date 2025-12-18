@@ -32,9 +32,7 @@ class TimeoutProtection:
     def _get_lambda_timeout(self) -> int:
         """Get Lambda timeout from context or environment."""
         # Try to get from Lambda context first
-        context_remaining = getattr(
-            self, "_lambda_context_remaining_time_ms", None
-        )
+        context_remaining = getattr(self, "_lambda_context_remaining_time_ms", None)
         if context_remaining:
             return int(context_remaining() / 1000)
 
@@ -51,9 +49,7 @@ class TimeoutProtection:
             self._lambda_context_remaining_time_ms = (
                 context.get_remaining_time_in_millis
             )
-            self.lambda_timeout = int(
-                context.get_remaining_time_in_millis() / 1000
-            )
+            self.lambda_timeout = int(context.get_remaining_time_in_millis() / 1000)
             # CRITICAL: Reset start_time when context is set to ensure accurate timing
             # This prevents timeouts caused by module import time vs Lambda execution time mismatch
             self.start_time = time.time()
@@ -136,11 +132,7 @@ class TimeoutProtection:
                 "LambdaRemainingTime",
                 remaining,
                 "Seconds",
-                {
-                    "function": os.environ.get(
-                        "AWS_LAMBDA_FUNCTION_NAME", "unknown"
-                    )
-                },
+                {"function": os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "unknown")},
             )
 
             # Warn if approaching timeout
@@ -241,9 +233,7 @@ class TimeoutProtection:
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
-                op_name = (
-                    operation_name or f"{func.__module__}.{func.__name__}"
-                )
+                op_name = operation_name or f"{func.__module__}.{func.__name__}"
 
                 with self.operation_timeout(op_name, max_duration):
                     return func(*args, **kwargs)
@@ -302,11 +292,7 @@ class GracefulTimeoutHandler:
             metrics.count(
                 "LambdaTimeoutHandled",
                 1,
-                {
-                    "function": os.environ.get(
-                        "AWS_LAMBDA_FUNCTION_NAME", "unknown"
-                    )
-                },
+                {"function": os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "unknown")},
             )
 
             return True
@@ -341,9 +327,7 @@ def check_timeout():
 
 
 @contextmanager
-def operation_with_timeout(
-    operation_name: str, max_duration: Optional[float] = None
-):
+def operation_with_timeout(operation_name: str, max_duration: Optional[float] = None):
     """Context manager for operations with timeout protection.
 
     Args:

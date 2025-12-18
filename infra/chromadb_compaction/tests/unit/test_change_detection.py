@@ -82,12 +82,10 @@ class TestMetadataChangeDetection:
         assert "canonical_merchant_name" in changes
         assert isinstance(changes["canonical_merchant_name"], FieldChange)
         assert (
-            changes["canonical_merchant_name"].old
-            == old_entity.canonical_merchant_name
+            changes["canonical_merchant_name"].old == old_entity.canonical_merchant_name
         )
         assert (
-            changes["canonical_merchant_name"].new
-            == new_entity.canonical_merchant_name
+            changes["canonical_merchant_name"].new == new_entity.canonical_merchant_name
         )
         assert "place_id" in changes
         assert changes["place_id"].old == old_entity.place_id
@@ -95,9 +93,7 @@ class TestMetadataChangeDetection:
         assert "merchant_name" in changes
         assert changes["merchant_name"].old == old_entity.merchant_name
         assert changes["merchant_name"].new == new_entity.merchant_name
-        assert (
-            "address" not in changes
-        )  # No change (both entities have same address)
+        assert "address" not in changes  # No change (both entities have same address)
 
     def test_no_changes_detected(self):
         """Test when no relevant changes are detected."""
@@ -154,9 +150,7 @@ class TestWordLabelChangeDetection:
             reasoning="Same reasoning",
         )
 
-        changes = get_chromadb_relevant_changes(
-            "RECEIPT_WORD_LABEL", entity, entity
-        )
+        changes = get_chromadb_relevant_changes("RECEIPT_WORD_LABEL", entity, entity)
         assert not changes
 
 

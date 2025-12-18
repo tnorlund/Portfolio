@@ -105,10 +105,7 @@ class TestLabelUpdateResult:
             changes=["validation_status", "label_confidence"],
         )
 
-        assert (
-            result.chromadb_id
-            == "IMAGE#id#RECEIPT#00001#LINE#00001#WORD#00001"
-        )
+        assert result.chromadb_id == "IMAGE#id#RECEIPT#00001#LINE#00001#WORD#00001"
         assert result.updated_count == 1
         assert result.event_name == "MODIFY"
         assert result.changes == ["validation_status", "label_confidence"]
@@ -199,9 +196,7 @@ class TestCollectionUpdateResult:
         metadata_results = [
             MetadataUpdateResult("lines", "lines", 5, "id1", 1),
             MetadataUpdateResult("lines", "lines", 3, "id2", 2),
-            MetadataUpdateResult(
-                "lines", "lines", 0, "id3", 3, error="Failed"
-            ),
+            MetadataUpdateResult("lines", "lines", 0, "id3", 3, error="Failed"),
         ]
 
         result = CollectionUpdateResult(
@@ -237,9 +232,7 @@ class TestCollectionUpdateResult:
         # No errors
         result_no_errors = CollectionUpdateResult(
             collection=ChromaDBCollection.LINES,
-            metadata_updates=[
-                MetadataUpdateResult("lines", "lines", 5, "id1", 1)
-            ],
+            metadata_updates=[MetadataUpdateResult("lines", "lines", 5, "id1", 1)],
             label_updates=[],
             delta_merge_count=0,
             delta_merge_results=[],
@@ -250,9 +243,7 @@ class TestCollectionUpdateResult:
         result_with_metadata_error = CollectionUpdateResult(
             collection=ChromaDBCollection.LINES,
             metadata_updates=[
-                MetadataUpdateResult(
-                    "lines", "lines", 0, "id1", 1, error="Failed"
-                )
+                MetadataUpdateResult("lines", "lines", 0, "id1", 1, error="Failed")
             ],
             label_updates=[],
             delta_merge_count=0,
@@ -264,9 +255,7 @@ class TestCollectionUpdateResult:
         result_with_label_error = CollectionUpdateResult(
             collection=ChromaDBCollection.WORDS,
             metadata_updates=[],
-            label_updates=[
-                LabelUpdateResult("id1", 0, "MODIFY", [], error="Failed")
-            ],
+            label_updates=[LabelUpdateResult("id1", 0, "MODIFY", [], error="Failed")],
             delta_merge_count=0,
             delta_merge_results=[],
         )
@@ -276,12 +265,8 @@ class TestCollectionUpdateResult:
         """Test converting CollectionUpdateResult to dictionary."""
         result = CollectionUpdateResult(
             collection=ChromaDBCollection.LINES,
-            metadata_updates=[
-                MetadataUpdateResult("lines", "lines", 5, "id1", 1)
-            ],
-            label_updates=[
-                LabelUpdateResult("label-id", 2, "MODIFY", ["status"])
-            ],
+            metadata_updates=[MetadataUpdateResult("lines", "lines", 5, "id1", 1)],
+            label_updates=[LabelUpdateResult("label-id", 2, "MODIFY", ["status"])],
             delta_merge_count=10,
             delta_merge_results=[{"run_id": "run-1", "merged_count": 10}],
         )

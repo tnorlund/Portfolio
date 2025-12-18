@@ -83,8 +83,7 @@ def parse_entity(
                     "sk": sk,
                     "has_timestamp_added": "timestamp_added" in complete_item,
                     "has_reasoning": "reasoning" in complete_item,
-                    "has_validation_status": "validation_status"
-                    in complete_item,
+                    "has_validation_status": "validation_status" in complete_item,
                 },
             )
 
@@ -168,12 +167,8 @@ def parse_stream_record(
         new_image = record["dynamodb"].get("NewImage")
 
         # Parse entities using receipt_dynamo parsers
-        old_entity = parse_entity(
-            old_image, entity_type, "old", pk, sk, metrics
-        )
-        new_entity = parse_entity(
-            new_image, entity_type, "new", pk, sk, metrics
-        )
+        old_entity = parse_entity(old_image, entity_type, "old", pk, sk, metrics)
+        new_entity = parse_entity(new_image, entity_type, "new", pk, sk, metrics)
 
         # Enhanced diagnostic logging for parsing failures
         if old_image and not old_entity:

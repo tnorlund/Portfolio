@@ -42,25 +42,31 @@ logger = logging.getLogger(__name__)
 class EntityCopier:
     """Copies entities from DEV to PROD with bucket name corrections."""
 
-    def __init__(self, dev_table: str, prod_table: str, 
-                 dev_raw_bucket: str, prod_raw_bucket: str,
-                 dev_site_bucket: str, prod_site_bucket: str,
-                 dry_run: bool = True):
+    def __init__(
+        self,
+        dev_table: str,
+        prod_table: str,
+        dev_raw_bucket: str,
+        prod_raw_bucket: str,
+        dev_site_bucket: str,
+        prod_site_bucket: str,
+        dry_run: bool = True,
+    ):
         self.dev_client = DynamoClient(dev_table)
         self.prod_client = DynamoClient(prod_table)
-        
+
         # Also create direct table access for checking corrupted records
-        self.dynamodb = boto3.resource('dynamodb')
+        self.dynamodb = boto3.resource("dynamodb")
         self.dev_table = self.dynamodb.Table(dev_table)
         self.prod_table = self.dynamodb.Table(prod_table)
-        
+
         self.dev_raw_bucket = dev_raw_bucket
         self.prod_raw_bucket = prod_raw_bucket
         self.dev_site_bucket = dev_site_bucket
         self.prod_site_bucket = prod_site_bucket
-        
+
         self.dry_run = dry_run
-        
+
         self.stats = {
             "images_checked": 0,
             "receipts_checked": 0,
@@ -70,74 +76,105 @@ class EntityCopier:
             "receipts_fixed": 0,
             "errors": 0,
         }
-        
+
         self.corrupted_entities = []
 
     def find_corrupted_entities(self):
         """Find all corrupted entities in PROD."""
         logger.info("Scanning PROD for corrupted entities...")
-        
+
         # We already know which entities were corrupted - they were the ones missing TYPE
         # Let's check those specific entities from our previous scan
-        
+
         # First, let's scan for entities that have TYPE but might be missing other fields
         scan_kwargs = {
-            'FilterExpression': 'attribute_exists(#type)',
-            'ExpressionAttributeNames': {'#type': 'TYPE'}
+            "FilterExpression": "attribute_exists(#type)",
+            "ExpressionAttributeNames": {"#type": "TYPE"},
         }
-        
+
         done = False
         start_key = None
-        
+
         while not done:
             if start_key:
-                scan_kwargs['ExclusiveStartKey'] = start_key
-                
+                scan_kwargs["ExclusiveStartKey"] = start_key
+
             response = self.prod_table.scan(**scan_kwargs)
-            items = response.get('Items', [])
-            
+            items = response.get("Items", [])
+
             for item in items:
-                pk = item.get('PK', '')
-                sk = item.get('SK', '')
-                entity_type = item.get('TYPE', '')
-                
-                if entity_type == 'IMAGE' and pk.startswith('IMAGE#') and sk.startswith('IMAGE#'):
+                pk = item.get("PK", "")
+                sk = item.get("SK", "")
+                entity_type = item.get("TYPE", "")
+
+                if (
+                    entity_type == "IMAGE"
+                    and pk.startswith("IMAGE#")
+                    and sk.startswith("IMAGE#")
+                ):
                     self.stats["images_checked"] += 1
                     # Check if Image entity is corrupted (missing required fields)
                     if self.is_image_corrupted(item):
                         # First check if this entity exists in DEV
-                        dev_item = self.dev_table.get_item(Key={'PK': pk, 'SK': sk}).get('Item')
+                        dev_item = self.dev_table.get_item(
+                            Key={"PK": pk, "SK": sk}
+                        ).get("Item")
                         if dev_item:
                             self.stats["images_corrupted"] += 1
-                            self.corrupted_entities.append(('IMAGE', pk, sk))
-                            logger.debug(f"Found corrupted Image that exists in DEV: {pk}")
+                            self.corrupted_entities.append(("IMAGE", pk, sk))
+                            logger.debug(
+                                f"Found corrupted Image that exists in DEV: {pk}"
+                            )
                         else:
                             logger.warning(f"Corrupted Image not found in DEV: {pk}")
-                        
-                elif entity_type == 'RECEIPT' and pk.startswith('IMAGE#') and sk.startswith('RECEIPT#'):
+
+                elif (
+                    entity_type == "RECEIPT"
+                    and pk.startswith("IMAGE#")
+                    and sk.startswith("RECEIPT#")
+                ):
                     self.stats["receipts_checked"] += 1
                     # Check if Receipt entity is corrupted (missing required fields)
                     if self.is_receipt_corrupted(item):
                         # First check if this entity exists in DEV
-                        dev_item = self.dev_table.get_item(Key={'PK': pk, 'SK': sk}).get('Item')
+                        dev_item = self.dev_table.get_item(
+                            Key={"PK": pk, "SK": sk}
+                        ).get("Item")
                         if dev_item:
                             self.stats["receipts_corrupted"] += 1
-                            self.corrupted_entities.append(('RECEIPT', pk, sk))
-                            logger.debug(f"Found corrupted Receipt that exists in DEV: {pk}, {sk}")
+                            self.corrupted_entities.append(("RECEIPT", pk, sk))
+                            logger.debug(
+                                f"Found corrupted Receipt that exists in DEV: {pk}, {sk}"
+                            )
                         else:
-                            logger.warning(f"Corrupted Receipt not found in DEV: {pk}, {sk}")
-            
-            start_key = response.get('LastEvaluatedKey', None)
+                            logger.warning(
+                                f"Corrupted Receipt not found in DEV: {pk}, {sk}"
+                            )
+
+            start_key = response.get("LastEvaluatedKey", None)
             done = start_key is None
-            
+
             # Progress update
-            total_checked = self.stats["images_checked"] + self.stats["receipts_checked"]
-            total_corrupted = self.stats["images_corrupted"] + self.stats["receipts_corrupted"]
-            logger.info(f"Checked {total_checked} entities, found {total_corrupted} corrupted that exist in DEV...")
+            total_checked = (
+                self.stats["images_checked"] + self.stats["receipts_checked"]
+            )
+            total_corrupted = (
+                self.stats["images_corrupted"] + self.stats["receipts_corrupted"]
+            )
+            logger.info(
+                f"Checked {total_checked} entities, found {total_corrupted} corrupted that exist in DEV..."
+            )
 
     def is_image_corrupted(self, item: Dict[str, Any]) -> bool:
         """Check if an Image entity is corrupted."""
-        required_fields = ['width', 'height', 'timestamp_added', 'raw_s3_bucket', 'raw_s3_key', 'image_type']
+        required_fields = [
+            "width",
+            "height",
+            "timestamp_added",
+            "raw_s3_bucket",
+            "raw_s3_key",
+            "image_type",
+        ]
         for field in required_fields:
             if field not in item:
                 return True
@@ -145,8 +182,17 @@ class EntityCopier:
 
     def is_receipt_corrupted(self, item: Dict[str, Any]) -> bool:
         """Check if a Receipt entity is corrupted."""
-        required_fields = ['width', 'height', 'timestamp_added', 'raw_s3_bucket', 'raw_s3_key', 
-                          'top_left', 'top_right', 'bottom_left', 'bottom_right']
+        required_fields = [
+            "width",
+            "height",
+            "timestamp_added",
+            "raw_s3_bucket",
+            "raw_s3_key",
+            "top_left",
+            "top_right",
+            "bottom_left",
+            "bottom_right",
+        ]
         for field in required_fields:
             if field not in item:
                 return True
@@ -156,37 +202,43 @@ class EntityCopier:
         """Fix a single corrupted entity by copying from DEV."""
         try:
             # Get the entity from DEV
-            dev_item = self.dev_table.get_item(Key={'PK': pk, 'SK': sk}).get('Item')
-            
+            dev_item = self.dev_table.get_item(Key={"PK": pk, "SK": sk}).get("Item")
+
             if not dev_item:
                 logger.warning(f"{entity_type} not found in DEV: {pk}, {sk}")
                 return False
-            
+
             # Update bucket names
-            if 'raw_s3_bucket' in dev_item and dev_item['raw_s3_bucket'] == self.dev_raw_bucket:
-                dev_item['raw_s3_bucket'] = self.prod_raw_bucket
-                
-            if 'cdn_s3_bucket' in dev_item and dev_item['cdn_s3_bucket'] == self.dev_site_bucket:
-                dev_item['cdn_s3_bucket'] = self.prod_site_bucket
-            
+            if (
+                "raw_s3_bucket" in dev_item
+                and dev_item["raw_s3_bucket"] == self.dev_raw_bucket
+            ):
+                dev_item["raw_s3_bucket"] = self.prod_raw_bucket
+
+            if (
+                "cdn_s3_bucket" in dev_item
+                and dev_item["cdn_s3_bucket"] == self.dev_site_bucket
+            ):
+                dev_item["cdn_s3_bucket"] = self.prod_site_bucket
+
             if not self.dry_run:
                 # Write the corrected entity to PROD
                 self.prod_table.put_item(Item=dev_item)
-                
-                if entity_type == 'IMAGE':
+
+                if entity_type == "IMAGE":
                     self.stats["images_fixed"] += 1
                 else:
                     self.stats["receipts_fixed"] += 1
-                    
+
                 logger.debug(f"Fixed {entity_type}: {pk}, {sk}")
             else:
-                if entity_type == 'IMAGE':
+                if entity_type == "IMAGE":
                     self.stats["images_fixed"] += 1
                 else:
                     self.stats["receipts_fixed"] += 1
-                    
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to fix {entity_type} {pk}, {sk}: {e}")
             self.stats["errors"] += 1
@@ -197,26 +249,32 @@ class EntityCopier:
         if not self.corrupted_entities:
             logger.info("No corrupted entities to fix!")
             return
-        
+
         logger.info(f"Fixing {len(self.corrupted_entities)} corrupted entities...")
-        
+
         # Process in batches with threading
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = {
-                executor.submit(self.fix_corrupted_entity, entity_type, pk, sk): (entity_type, pk, sk)
+                executor.submit(self.fix_corrupted_entity, entity_type, pk, sk): (
+                    entity_type,
+                    pk,
+                    sk,
+                )
                 for entity_type, pk, sk in self.corrupted_entities
             }
-            
+
             completed = 0
             for future in as_completed(futures):
                 entity_info = futures[future]
                 try:
                     future.result()
                     completed += 1
-                    
+
                     if completed % 10 == 0:
-                        logger.info(f"Progress: {completed}/{len(self.corrupted_entities)} entities fixed")
-                        
+                        logger.info(
+                            f"Progress: {completed}/{len(self.corrupted_entities)} entities fixed"
+                        )
+
                 except Exception as e:
                     logger.error(f"Failed to process {entity_info}: {e}")
 
@@ -224,10 +282,10 @@ class EntityCopier:
         """Run the complete copy process."""
         # Find corrupted entities
         self.find_corrupted_entities()
-        
+
         # Fix them
         self.fix_all_corrupted_entities()
-        
+
         # Print summary
         self.print_summary()
 
@@ -240,7 +298,7 @@ class EntityCopier:
         logger.info(f"Images corrupted: {self.stats['images_corrupted']}")
         logger.info(f"Receipts checked: {self.stats['receipts_checked']}")
         logger.info(f"Receipts corrupted: {self.stats['receipts_corrupted']}")
-        
+
         if not self.dry_run:
             logger.info(f"Images fixed: {self.stats['images_fixed']}")
             logger.info(f"Receipts fixed: {self.stats['receipts_fixed']}")
@@ -262,14 +320,14 @@ def main():
         action="store_true",
         help="Actually copy the entities (default is dry run)",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Get configurations from Pulumi for both stacks
     from pulumi import automation as auto
-    
+
     work_dir = os.path.join(parent_dir, "infra")
-    
+
     # Get DEV configuration
     logger.info("Getting DEV configuration...")
     dev_stack = auto.create_or_select_stack(
@@ -280,7 +338,7 @@ def main():
     dev_table = dev_outputs["dynamodb_table_name"].value
     dev_raw_bucket = dev_outputs["raw_bucket_name"].value
     dev_site_bucket = dev_outputs["cdn_bucket_name"].value
-    
+
     # Get PROD configuration
     logger.info("Getting PROD configuration...")
     prod_stack = auto.create_or_select_stack(
@@ -291,13 +349,13 @@ def main():
     prod_table = prod_outputs["dynamodb_table_name"].value
     prod_raw_bucket = prod_outputs["raw_bucket_name"].value
     prod_site_bucket = prod_outputs["cdn_bucket_name"].value
-    
+
     logger.info(f"DEV table: {dev_table}")
     logger.info(f"PROD table: {prod_table}")
     logger.info(f"DEV buckets: raw={dev_raw_bucket}, site={dev_site_bucket}")
     logger.info(f"PROD buckets: raw={prod_raw_bucket}, site={prod_site_bucket}")
     logger.info(f"Mode: {'LIVE UPDATE' if args.no_dry_run else 'DRY RUN'}")
-    
+
     # Create and run copier
     copier = EntityCopier(
         dev_table=dev_table,
@@ -308,7 +366,7 @@ def main():
         prod_site_bucket=prod_site_bucket,
         dry_run=not args.no_dry_run,
     )
-    
+
     copier.run()
 
 

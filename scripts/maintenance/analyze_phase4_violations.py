@@ -51,9 +51,7 @@ def analyze_violations():
     # Print summary
     print("\n=== PHASE 4 VIOLATION SUMMARY ===")
     total_violations = 0
-    for check_id, violations in sorted(
-        results.items(), key=lambda x: -len(x[1])
-    ):
+    for check_id, violations in sorted(results.items(), key=lambda x: -len(x[1])):
         count = len(violations)
         total_violations += count
         print(f"\n{check_id} ({checks[check_id]}): {count} violations")

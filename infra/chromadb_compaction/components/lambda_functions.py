@@ -140,8 +140,7 @@ class HybridLambdaDeployment(ComponentResource):
 
         # Decide whether to mount EFS based on access point and mode
         use_efs_mount = (
-            efs_access_point_arn is not None
-            and normalized_storage_mode != "s3"
+            efs_access_point_arn is not None and normalized_storage_mode != "s3"
         )
 
         # Validate storage_mode='efs' requires EFS access point
@@ -179,9 +178,9 @@ class HybridLambdaDeployment(ComponentResource):
                     "ManagedBy": "Pulumi",
                 },
                 "environment": {
-                    "DYNAMODB_TABLE_NAME": Output.all(
-                        dynamodb_table_arn
-                    ).apply(lambda args: args[0].split("/")[-1]),
+                    "DYNAMODB_TABLE_NAME": Output.all(dynamodb_table_arn).apply(
+                        lambda args: args[0].split("/")[-1]
+                    ),
                     "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
                     "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
                     "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
@@ -190,9 +189,7 @@ class HybridLambdaDeployment(ComponentResource):
                     "MAX_HEARTBEAT_FAILURES": "3",
                     "LOG_LEVEL": "INFO",
                     "CHROMA_ROOT": (
-                        "/mnt/chroma"
-                        if use_efs_mount
-                        else "/tmp/chroma"  # noqa: S108
+                        "/mnt/chroma" if use_efs_mount else "/tmp/chroma"  # noqa: S108
                     ),
                     # Storage mode configuration: "auto", "s3", or "efs"
                     # - "auto": Use EFS if available, fallback to S3
@@ -379,9 +376,7 @@ class HybridLambdaDeployment(ComponentResource):
         )
 
         # Create event source mappings
-        self._create_event_source_mappings(
-            name, dynamodb_stream_arn, chromadb_queues
-        )
+        self._create_event_source_mappings(name, dynamodb_stream_arn, chromadb_queues)
 
         # Diagnostic EFS listing Lambda (zip-based, same role/VPC/EFS)
         diag_code = pulumi.AssetArchive(
@@ -409,9 +404,7 @@ class HybridLambdaDeployment(ComponentResource):
             environment={
                 "variables": {
                     "CHROMA_ROOT": (
-                        "/mnt/chroma"
-                        if use_efs_mount
-                        else "/tmp/chroma"  # noqa: S108
+                        "/mnt/chroma" if use_efs_mount else "/tmp/chroma"  # noqa: S108
                     ),
                 }
             },

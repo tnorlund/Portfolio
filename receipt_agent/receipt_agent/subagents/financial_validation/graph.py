@@ -185,9 +185,7 @@ def create_financial_validation_tools(
         word_lookup = {(w.get("line_id"), w.get("word_id")): w for w in words}
 
         def extract_value(label_type: str) -> Optional[float]:
-            matching_labels = [
-                l for l in labels if l.get("label") == label_type
-            ]
+            matching_labels = [l for l in labels if l.get("label") == label_type]
             if not matching_labels:
                 return None
 
@@ -244,11 +242,7 @@ def create_financial_validation_tools(
         sum_line_totals = amounts.get("sum_line_totals")
 
         # Check grand total
-        if (
-            grand_total is not None
-            and subtotal is not None
-            and tax is not None
-        ):
+        if grand_total is not None and subtotal is not None and tax is not None:
             calculated = subtotal + tax
             tolerance = 0.01
             if abs(grand_total - calculated) > tolerance:

@@ -45,12 +45,8 @@ class EFSSnapshotManager:
         self.metrics = metrics
 
         # EFS mount path
-        self.efs_root = efs_root or os.environ.get(
-            "CHROMA_ROOT", "/tmp/chroma"
-        )
-        self.efs_snapshots_dir = os.path.join(
-            self.efs_root, "snapshots", collection
-        )
+        self.efs_root = efs_root or os.environ.get("CHROMA_ROOT", "/tmp/chroma")
+        self.efs_snapshots_dir = os.path.join(self.efs_root, "snapshots", collection)
 
         # S3 configuration
         self.bucket = bucket
@@ -69,9 +65,7 @@ class EFSSnapshotManager:
                 with open(self.version_file, "r", encoding="utf-8") as f:
                     return f.read().strip()
         except Exception as e:
-            self.logger.warning(
-                "Failed to read EFS version file", error=str(e)
-            )
+            self.logger.warning("Failed to read EFS version file", error=str(e))
         return None
 
     def set_efs_version(self, version: str) -> None:

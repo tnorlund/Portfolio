@@ -60,15 +60,11 @@ def merge_compaction_deltas(
 
                 # If delta prefix not provided on message, skip
                 if not delta_prefix:
-                    logger.warning(
-                        "Skipping compaction run without delta prefix"
-                    )
+                    logger.warning("Skipping compaction run without delta prefix")
                     continue
 
                 # Download delta to temporary directory (unique per run)
-                delta_subdir = (
-                    f"delta_{run_id}" if run_id else f"delta_{hash(msg)}"
-                )
+                delta_subdir = f"delta_{run_id}" if run_id else f"delta_{hash(msg)}"
                 delta_dir = os.path.join(workdir, delta_subdir)
                 os.makedirs(delta_dir, exist_ok=True)
 
@@ -106,12 +102,8 @@ def merge_compaction_deltas(
                             f"Getting collection from delta: collection_name={collection_name}"
                         )
                         src = delta_client.get_collection(collection_name)
-                        logger.info(
-                            "Successfully got collection, reading data"
-                        )
-                        data = src.get(
-                            include=["documents", "embeddings", "metadatas"]
-                        )
+                        logger.info("Successfully got collection, reading data")
+                        data = src.get(include=["documents", "embeddings", "metadatas"])
                         ids = data.get("ids", []) or []
                         logger.info(
                             f"Read data from delta collection: id_count={len(ids)}"
@@ -159,9 +151,7 @@ def merge_compaction_deltas(
                         logger.info(
                             f"Delta has no collection or failed to read: collection={collection_name}, run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, error={str(e)}"
                         )
-                        logger.exception(
-                            "Exception details for delta collection read"
-                        )
+                        logger.exception("Exception details for delta collection read")
                     finally:
                         # Ensure delta_client is closed to prevent file handle leaks
                         delta_client.close()
@@ -240,10 +230,7 @@ def _download_delta_to_dir(
                 member_path_abs = os.path.abspath(
                     os.path.join(dest_dir_abs, member.name)
                 )
-                if (
-                    os.path.commonpath([dest_dir_abs, member_path_abs])
-                    != dest_dir_abs
-                ):
+                if os.path.commonpath([dest_dir_abs, member_path_abs]) != dest_dir_abs:
                     raise ValueError(f"Unsafe path in tarball: {member.name}")
             tar.extractall(dest_dir_abs)
 
@@ -276,14 +263,9 @@ def _download_delta_to_dir(
 
             found_any = True
             relative_path = key[len(prefix) :].lstrip("/")
-            target_path_abs = os.path.abspath(
-                os.path.join(dest_dir_abs, relative_path)
-            )
+            target_path_abs = os.path.abspath(os.path.join(dest_dir_abs, relative_path))
 
-            if (
-                os.path.commonpath([dest_dir_abs, target_path_abs])
-                != dest_dir_abs
-            ):
+            if os.path.commonpath([dest_dir_abs, target_path_abs]) != dest_dir_abs:
                 logger.warning(
                     f"Skipping unsafe delta object path: key={key}, dest_dir={dest_dir}"
                 )
@@ -294,6 +276,4 @@ def _download_delta_to_dir(
             s3_client.download_file(bucket, key, target_path)
 
     if not found_any:
-        raise FileNotFoundError(
-            f"No delta files found at s3://{bucket}/{prefix}"
-        )
+        raise FileNotFoundError(f"No delta files found at s3://{bucket}/{prefix}")

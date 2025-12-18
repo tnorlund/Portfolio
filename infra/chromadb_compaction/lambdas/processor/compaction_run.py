@@ -21,9 +21,7 @@ def is_compaction_run(pk: str, sk: str) -> bool:
     return pk.startswith("IMAGE#") and "#COMPACTION_RUN#" in sk
 
 
-def parse_compaction_run(
-    new_image: Dict[str, Any], pk: str, sk: str
-) -> Dict[str, Any]:
+def parse_compaction_run(new_image: Dict[str, Any], pk: str, sk: str) -> Dict[str, Any]:
     """
     Parse NewImage into a CompactionRun using shared parser.
 
@@ -45,9 +43,7 @@ def parse_compaction_run(
     # receipt_id is typically zero-padded in SK: RECEIPT#00001#...
     receipt_token = sk.split("#")[1] if "#" in sk else ""
     try:
-        receipt_id = int(
-            receipt_token.replace("RECEIPT", "").replace("#", "") or 0
-        )
+        receipt_id = int(receipt_token.replace("RECEIPT", "").replace("#", "") or 0)
     except Exception:
         # Fall back to attribute if present
         receipt_id = int(new_image.get("receipt_id", {}).get("N", 0))

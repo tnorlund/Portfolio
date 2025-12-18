@@ -60,14 +60,10 @@ def process_scan(
     # Download the OCR JSON
     json_s3_key = ocr_routing_decision.s3_key
     json_s3_bucket = ocr_routing_decision.s3_bucket
-    ocr_json_path = download_file_from_s3(
-        json_s3_bucket, json_s3_key, Path("/tmp")
-    )
+    ocr_json_path = download_file_from_s3(json_s3_bucket, json_s3_key, Path("/tmp"))
     with open(ocr_json_path, "r", encoding="utf-8") as f:
         ocr_json = json.load(f)
-    ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(
-        ocr_json, image_id
-    )
+    ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(ocr_json, image_id)
     logger.info(
         "[scan] Parsed OCR: lines=%d, words=%d, letters=%d for image=%s",
         len(ocr_lines),
@@ -204,9 +200,7 @@ def process_scan(
         f_i = src_tl[1]
 
         # Invert it to get the forward transform for lines, words, etc.
-        a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(
-            a_i, b_i, c_i, d_i, e_i, f_i
-        )
+        a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(a_i, b_i, c_i, d_i, e_i, f_i)
 
         # 4) Warp the image using the "inverse" (dst->src) matrix
         affine_img = image.transform(

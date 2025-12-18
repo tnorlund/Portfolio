@@ -18,9 +18,7 @@ from typing import Optional
 try:
     from langsmith import Client
 except ImportError:
-    print(
-        "Error: langsmith package not installed. Install with: pip install langsmith"
-    )
+    print("Error: langsmith package not installed. Install with: pip install langsmith")
     sys.exit(1)
 
 
@@ -122,9 +120,7 @@ def main():
                     print(f"     Start: {trace.start_time}")
                     print(f"     Status: {trace.status}")
                     if hasattr(trace, "metadata") and trace.metadata:
-                        receipt_count = trace.metadata.get(
-                            "receipt_count", "N/A"
-                        )
+                        receipt_count = trace.metadata.get("receipt_count", "N/A")
                         print(f"     Receipt count: {receipt_count}")
                     print()
             else:

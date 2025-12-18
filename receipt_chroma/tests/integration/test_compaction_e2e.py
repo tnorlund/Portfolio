@@ -49,9 +49,7 @@ class TestCompactionEndToEnd:
 
         # Step 1: Create and upload initial snapshot with matching UUIDs
         snapshot_dir = tempfile.mkdtemp()
-        snapshot_client = ChromaClient(
-            persist_directory=snapshot_dir, mode="write"
-        )
+        snapshot_client = ChromaClient(persist_directory=snapshot_dir, mode="write")
         snapshot_client.upsert(
             collection_name="lines",
             ids=[
@@ -93,9 +91,7 @@ class TestCompactionEndToEnd:
             receipt_id=1,
             event_name="MODIFY",
             changes={
-                "merchant_name": FieldChange(
-                    old="Old Merchant", new="New Merchant"
-                )
+                "merchant_name": FieldChange(old="Old Merchant", new="New Merchant")
             },
             collections=(ChromaDBCollection.LINES,),
         )
@@ -143,9 +139,7 @@ class TestCompactionEndToEnd:
             assert verify_download["status"] == "downloaded"
 
             # Verify changes were persisted
-            verify_client = ChromaClient(
-                persist_directory=verify_dir, mode="read"
-            )
+            verify_client = ChromaClient(persist_directory=verify_dir, mode="read")
             collection = verify_client.get_collection("lines")
             data = collection.get(
                 ids=[
@@ -183,9 +177,7 @@ class TestCompactionEndToEnd:
 
         # Step 1: Create and upload initial snapshot with matching UUIDs
         snapshot_dir = tempfile.mkdtemp()
-        snapshot_client = ChromaClient(
-            persist_directory=snapshot_dir, mode="write"
-        )
+        snapshot_client = ChromaClient(persist_directory=snapshot_dir, mode="write")
         snapshot_client.upsert(
             collection_name="lines",
             ids=[
@@ -221,9 +213,7 @@ class TestCompactionEndToEnd:
             collection_name="lines",
             ids=[f"IMAGE#{delta_image_id}#RECEIPT#00002#LINE#00001"],
             embeddings=[[0.9] * 1536],
-            metadatas=[
-                {"text": "Delta line", "merchant_name": "Delta Merchant"}
-            ],
+            metadatas=[{"text": "Delta line", "merchant_name": "Delta Merchant"}],
         )
         delta_client.close()
 
@@ -244,9 +234,7 @@ class TestCompactionEndToEnd:
             receipt_id=1,
             event_name="MODIFY",
             changes={
-                "merchant_name": FieldChange(
-                    old="Old Merchant", new="New Merchant"
-                )
+                "merchant_name": FieldChange(old="Old Merchant", new="New Merchant")
             },
             collections=(ChromaDBCollection.LINES,),
         )
@@ -285,13 +273,9 @@ class TestCompactionEndToEnd:
 
         # Step 5: Verify updated snapshot
         with tempfile.TemporaryDirectory() as verify_dir:
-            storage_manager.download_snapshot(
-                verify_dir, verify_integrity=False
-            )
+            storage_manager.download_snapshot(verify_dir, verify_integrity=False)
 
-            verify_client = ChromaClient(
-                persist_directory=verify_dir, mode="read"
-            )
+            verify_client = ChromaClient(persist_directory=verify_dir, mode="read")
             collection = verify_client.get_collection("lines")
 
             # Should have 3 lines total (2 original + 1 delta)
@@ -305,20 +289,11 @@ class TestCompactionEndToEnd:
                     f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00002",
                 ]
             )
-            assert (
-                original_lines["metadatas"][0]["merchant_name"]
-                == "New Merchant"
-            )
-            assert (
-                original_lines["metadatas"][1]["merchant_name"]
-                == "New Merchant"
-            )
+            assert original_lines["metadatas"][0]["merchant_name"] == "New Merchant"
+            assert original_lines["metadatas"][1]["merchant_name"] == "New Merchant"
 
             # Verify delta was merged
-            assert (
-                f"IMAGE#{delta_image_id}#RECEIPT#00002#LINE#00001"
-                in all_data["ids"]
-            )
+            assert f"IMAGE#{delta_image_id}#RECEIPT#00002#LINE#00001" in all_data["ids"]
 
             verify_client.close()
 
@@ -356,9 +331,7 @@ class TestCompactionEndToEnd:
 
         # Step 1: Create and upload initial snapshot with matching UUIDs
         snapshot_dir = tempfile.mkdtemp()
-        snapshot_client = ChromaClient(
-            persist_directory=snapshot_dir, mode="write"
-        )
+        snapshot_client = ChromaClient(persist_directory=snapshot_dir, mode="write")
         snapshot_client.upsert(
             collection_name="words",
             ids=[
@@ -395,9 +368,7 @@ class TestCompactionEndToEnd:
             receipt_id=1,
             event_name="MODIFY",
             changes={
-                "merchant_name": FieldChange(
-                    old="Old Merchant", new="New Merchant"
-                )
+                "merchant_name": FieldChange(old="Old Merchant", new="New Merchant")
             },
             collections=(ChromaDBCollection.WORDS,),
         )
@@ -409,9 +380,7 @@ class TestCompactionEndToEnd:
             word_id=1,
             label="TOTAL",
             event_name="MODIFY",
-            changes={
-                "validation_status": FieldChange(old="PENDING", new="VALID")
-            },
+            changes={"validation_status": FieldChange(old="PENDING", new="VALID")},
         )
 
         # Step 3: Download, process, upload
@@ -439,19 +408,13 @@ class TestCompactionEndToEnd:
 
         # Step 4: Verify updates persisted
         with tempfile.TemporaryDirectory() as verify_dir:
-            storage_manager.download_snapshot(
-                verify_dir, verify_integrity=False
-            )
+            storage_manager.download_snapshot(verify_dir, verify_integrity=False)
 
-            verify_client = ChromaClient(
-                persist_directory=verify_dir, mode="read"
-            )
+            verify_client = ChromaClient(persist_directory=verify_dir, mode="read")
             collection = verify_client.get_collection("words")
 
             # Verify metadata update
-            word_id = (
-                f"IMAGE#{test_image_id}" "#RECEIPT#00001#LINE#00001#WORD#00001"
-            )
+            word_id = f"IMAGE#{test_image_id}" "#RECEIPT#00001#LINE#00001#WORD#00001"
             word_data = collection.get(ids=[word_id])
             assert word_data["metadatas"][0]["merchant_name"] == "New Merchant"
 
@@ -485,9 +448,7 @@ class TestCompactionEndToEnd:
 
         # Create snapshot with multiple receipts
         snapshot_dir = tempfile.mkdtemp()
-        snapshot_client = ChromaClient(
-            persist_directory=snapshot_dir, mode="write"
-        )
+        snapshot_client = ChromaClient(persist_directory=snapshot_dir, mode="write")
 
         # Add lines for 3 receipts
         for idx, image_id in enumerate(image_ids):
@@ -561,13 +522,9 @@ class TestCompactionEndToEnd:
 
         # Verify all receipts were updated
         with tempfile.TemporaryDirectory() as verify_dir:
-            storage_manager.download_snapshot(
-                verify_dir, verify_integrity=False
-            )
+            storage_manager.download_snapshot(verify_dir, verify_integrity=False)
 
-            verify_client = ChromaClient(
-                persist_directory=verify_dir, mode="read"
-            )
+            verify_client = ChromaClient(persist_directory=verify_dir, mode="read")
             collection = verify_client.get_collection("lines")
 
             for idx, image_id in enumerate(image_ids):
@@ -580,14 +537,8 @@ class TestCompactionEndToEnd:
                     ]
                 )
 
-                assert (
-                    data["metadatas"][0]["merchant_name"]
-                    == f"Merchant {receipt_id}"
-                )
-                assert (
-                    data["metadatas"][1]["merchant_name"]
-                    == f"Merchant {receipt_id}"
-                )
+                assert data["metadatas"][0]["merchant_name"] == f"Merchant {receipt_id}"
+                assert data["metadatas"][1]["merchant_name"] == f"Merchant {receipt_id}"
 
             verify_client.close()
 
@@ -663,7 +614,5 @@ class TestCompactionEndToEnd:
         assert mock_metrics.gauge.called
 
         # Verify specific metric calls
-        metric_calls = [
-            call[0][0] for call in mock_metrics.count.call_args_list
-        ]
+        metric_calls = [call[0][0] for call in mock_metrics.count.call_args_list]
         assert "CompactionCollectionUpdatesProcessed" in metric_calls

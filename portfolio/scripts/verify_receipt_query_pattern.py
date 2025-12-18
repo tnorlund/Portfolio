@@ -28,7 +28,7 @@ prod_outputs = prod_stack.outputs()
 prod_table_name = prod_outputs["dynamodb_table_name"].value
 
 # Create DynamoDB client
-dynamodb = boto3.resource('dynamodb')
+dynamodb = boto3.resource("dynamodb")
 prod_table = dynamodb.Table(prod_table_name)
 
 print(f"=== Verifying Receipt Query Pattern ===")
@@ -42,31 +42,32 @@ print(f"Testing with image_id: {test_image_id}\n")
 # Query all items for this image
 print("1. Query all items with PK = IMAGE#{image_id}:")
 response = prod_table.query(
-    KeyConditionExpression=Key('PK').eq(f'IMAGE#{test_image_id}')
+    KeyConditionExpression=Key("PK").eq(f"IMAGE#{test_image_id}")
 )
-items = response.get('Items', [])
+items = response.get("Items", [])
 print(f"   Found {len(items)} items\n")
 
 for item in items:
     print(f"   - SK: {item.get('SK', 'N/A')}")
     print(f"     TYPE: {item.get('TYPE', 'N/A')}")
-    if item.get('TYPE') == 'RECEIPT':
+    if item.get("TYPE") == "RECEIPT":
         print(f"     ✓ This is a Receipt entity")
         # Show some Receipt-specific fields
-        if 'bounding_box' in item:
+        if "bounding_box" in item:
             print(f"     Has bounding_box: Yes")
-        if 'words' in item:
+        if "words" in item:
             print(f"     Has words: Yes (count: {len(item['words'])})")
-        if 'lines' in item:
+        if "lines" in item:
             print(f"     Has lines: Yes (count: {len(item['lines'])})")
     print()
 
 # Specifically query for Receipt entities
 print("\n2. Query for Receipt entities with SK begins_with 'RECEIPT#':")
 response = prod_table.query(
-    KeyConditionExpression=Key('PK').eq(f'IMAGE#{test_image_id}') & Key('SK').begins_with('RECEIPT#')
+    KeyConditionExpression=Key("PK").eq(f"IMAGE#{test_image_id}")
+    & Key("SK").begins_with("RECEIPT#")
 )
-receipts = response.get('Items', [])
+receipts = response.get("Items", [])
 print(f"   Found {len(receipts)} Receipt entities")
 
 if receipts:
@@ -76,9 +77,9 @@ if receipts:
         print(f"     SK: {receipt.get('SK', 'N/A')}")
         print(f"     TYPE: {receipt.get('TYPE', 'N/A')}")
         # Extract receipt number from SK
-        sk = receipt.get('SK', '')
-        if sk.startswith('RECEIPT#'):
-            receipt_num = sk.replace('RECEIPT#', '')
+        sk = receipt.get("SK", "")
+        if sk.startswith("RECEIPT#"):
+            receipt_num = sk.replace("RECEIPT#", "")
             print(f"     Receipt Number: {receipt_num}")
 
 print("\n=== Summary ===")

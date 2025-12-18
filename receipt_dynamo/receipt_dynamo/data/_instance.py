@@ -42,9 +42,7 @@ class _Instance(
             EntityValidationError: If instance parameters are invalid.
         """
         self._validate_entity(instance, Instance, "instance")
-        self._add_entity(
-            instance, condition_expression="attribute_not_exists(PK)"
-        )
+        self._add_entity(instance, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_instances")
     def add_instances(self, instances: List[Instance]) -> None:
@@ -59,9 +57,7 @@ class _Instance(
         self._validate_entity_list(instances, Instance, "instances")
         # Create write request items for batch operation
         request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=instance.to_item())
-            )
+            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=instance.to_item()))
             for instance in instances
         ]
         self._batch_write_with_retry(request_items)
@@ -78,9 +74,7 @@ class _Instance(
             EntityValidationError: If instance parameters are invalid.
         """
         self._validate_entity(instance, Instance, "instance")
-        self._update_entity(
-            instance, condition_expression="attribute_exists(PK)"
-        )
+        self._update_entity(instance, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("delete_instance")
     def delete_instance(self, instance: Instance) -> None:
@@ -94,9 +88,7 @@ class _Instance(
             EntityValidationError: If instance parameters are invalid.
         """
         self._validate_entity(instance, Instance, "instance")
-        self._delete_entity(
-            instance, condition_expression="attribute_exists(PK)"
-        )
+        self._delete_entity(instance, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("get_instance")
     def get_instance(self, instance_id: str) -> Instance:
@@ -194,9 +186,7 @@ class _Instance(
         self._validate_entity(instance_job, InstanceJob, "instance_job")
         self._update_entity(
             instance_job,
-            condition_expression=(
-                "attribute_exists(PK) AND attribute_exists(SK)"
-            ),
+            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
         )
 
     @handle_dynamodb_errors("delete_instance_job")
@@ -213,9 +203,7 @@ class _Instance(
         self._validate_entity(instance_job, InstanceJob, "instance_job")
         self._delete_entity(
             instance_job,
-            condition_expression=(
-                "attribute_exists(PK) AND attribute_exists(SK)"
-            ),
+            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
         )
 
     @handle_dynamodb_errors("get_instance_job")
@@ -313,9 +301,7 @@ class _Instance(
         # Validate status
         valid_statuses = ["pending", "running", "stopped", "terminated"]
         if not status or status.lower() not in valid_statuses:
-            raise EntityValidationError(
-                f"status must be one of {valid_statuses}"
-            )
+            raise EntityValidationError(f"status must be one of {valid_statuses}")
 
         # Validate the last_evaluated_key if provided
         if last_evaluated_key is not None:

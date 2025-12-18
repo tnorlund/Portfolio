@@ -52,15 +52,11 @@ def load_image(image_entity, raw_bucket: Optional[str]) -> PIL_Image.Image:
         if img:
             print(f"✅ Loaded raw image from bucket: {raw_key}")
     if img is None and image_entity.cdn_s3_bucket and image_entity.cdn_s3_key:
-        img = get_image_from_s3(
-            image_entity.cdn_s3_bucket, image_entity.cdn_s3_key
-        )
+        img = get_image_from_s3(image_entity.cdn_s3_bucket, image_entity.cdn_s3_key)
         if img:
             print("✅ Loaded image from CDN")
     if img is None:
-        img = PIL_Image.new(
-            "RGB", (image_entity.width, image_entity.height), "white"
-        )
+        img = PIL_Image.new("RGB", (image_entity.width, image_entity.height), "white")
         print("⚠️  Using blank white image fallback")
     return img
 
@@ -69,9 +65,7 @@ def main():
     ap = argparse.ArgumentParser(
         description="Save raw receipt images (receipt_id=1) without clustering."
     )
-    ap.add_argument(
-        "--image-ids", nargs="+", required=True, help="Image IDs to fetch"
-    )
+    ap.add_argument("--image-ids", nargs="+", required=True, help="Image IDs to fetch")
     ap.add_argument(
         "--output-dir",
         required=True,
@@ -85,9 +79,7 @@ def main():
     table_name = env.get("table_name")
     if not table_name:
         raise ValueError("DYNAMODB_TABLE_NAME not set")
-    raw_bucket = (
-        args.raw_bucket or env.get("raw_bucket") or env.get("raw_bucket_name")
-    )
+    raw_bucket = args.raw_bucket or env.get("raw_bucket") or env.get("raw_bucket_name")
 
     output_dir: Path = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)

@@ -33,14 +33,10 @@ def _load_results_from_s3(batch_bucket: str, execution_id: str) -> List[Dict]:
                 if key.endswith(".json"):
                     try:
                         response = s3.get_object(Bucket=batch_bucket, Key=key)
-                        result = json.loads(
-                            response["Body"].read().decode("utf-8")
-                        )
+                        result = json.loads(response["Body"].read().decode("utf-8"))
                         results.append(result)
                     except Exception as e:
-                        logger.warning(
-                            f"Failed to load result from {key}: {e}"
-                        )
+                        logger.warning(f"Failed to load result from {key}: {e}")
 
         logger.info(f"Loaded {len(results)} results from S3")
     except Exception as e:
@@ -84,9 +80,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     logger.info(f"Aggregating results for execution {execution_id}")
 
     # Always read results from S3 to avoid 256KB payload limit
-    logger.info(
-        "Reading results from S3 (payload only contains batch_count)..."
-    )
+    logger.info("Reading results from S3 (payload only contains batch_count)...")
     process_results = _load_results_from_s3(batch_bucket, execution_id)
 
     logger.info(f"Processing {len(process_results)} results from S3")
@@ -162,9 +156,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             s3.put_object(
                 Bucket=batch_bucket,
                 Key=report_key,
-                Body=json.dumps(summary, indent=2, default=str).encode(
-                    "utf-8"
-                ),
+                Body=json.dumps(summary, indent=2, default=str).encode("utf-8"),
                 ContentType="application/json",
             )
             logger.info(f"Report uploaded to s3://{batch_bucket}/{report_key}")
@@ -174,7 +166,5 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     return {
         "execution_id": execution_id,
         "summary": summary,
-        "report_path": (
-            f"s3://{batch_bucket}/{report_key}" if batch_bucket else None
-        ),
+        "report_path": (f"s3://{batch_bucket}/{report_key}" if batch_bucket else None),
     }

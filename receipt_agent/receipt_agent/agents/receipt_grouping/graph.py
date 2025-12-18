@@ -140,9 +140,7 @@ def create_receipt_grouping_graph(
         base_url=settings.ollama_base_url,
         model=settings.ollama_model,
         client_kwargs={
-            "headers": (
-                {"Authorization": f"Bearer {api_key}"} if api_key else {}
-            ),
+            "headers": ({"Authorization": f"Bearer {api_key}"} if api_key else {}),
             "timeout": 120,
         },
         temperature=0.0,
@@ -156,9 +154,7 @@ def create_receipt_grouping_graph(
 
         # Log tool calls for debugging
         if hasattr(response, "tool_calls") and response.tool_calls:
-            tool_names = [
-                tc.get("name", "unknown") for tc in response.tool_calls
-            ]
+            tool_names = [tc.get("name", "unknown") for tc in response.tool_calls]
             logger.info(f"Agent tool calls: {tool_names}")
             # Check if submit_grouping was called
             if "submit_grouping" in tool_names:
@@ -295,9 +291,7 @@ async def run_receipt_grouping(
     grouping = state_holder.get("grouping")
 
     if grouping:
-        logger.info(
-            f"Grouping complete: confidence={grouping['confidence']:.2%}"
-        )
+        logger.info(f"Grouping complete: confidence={grouping['confidence']:.2%}")
         return grouping
 
     # Agent ended without submitting grouping

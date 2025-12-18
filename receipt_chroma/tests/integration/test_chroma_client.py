@@ -33,9 +33,7 @@ def test_client_persistence(temp_chromadb_dir):
     # Create a new client and verify data persists
     # For read mode, we need to use query_embeddings or get the collection
     # directly
-    with ChromaClient(
-        persist_directory=temp_chromadb_dir, mode="read"
-    ) as client:
+    with ChromaClient(persist_directory=temp_chromadb_dir, mode="read") as client:
         collection = client.get_collection("test")
         # Verify collection exists and has data
         assert collection.count() == 2
@@ -78,9 +76,7 @@ def test_close_releases_file_locks(temp_chromadb_dir):
                 shutil.copy2(file_path, dest)
 
         # Should be able to open the copied database
-        with ChromaClient(
-            persist_directory=copy_dir, mode="read"
-        ) as new_client:
+        with ChromaClient(persist_directory=copy_dir, mode="read") as new_client:
             new_collection = new_client.get_collection("test")
             assert new_collection.count() == 1
     finally:
@@ -259,14 +255,10 @@ def test_read_only_mode_prevents_writes(temp_chromadb_dir):
     with ChromaClient(
         persist_directory=temp_chromadb_dir, mode="write", metadata_only=True
     ) as client:
-        client.upsert(
-            collection_name="readonly_test", ids=["1"], documents=["test"]
-        )
+        client.upsert(collection_name="readonly_test", ids=["1"], documents=["test"])
 
     # Now try to write in read mode
-    with ChromaClient(
-        persist_directory=temp_chromadb_dir, mode="read"
-    ) as client:
+    with ChromaClient(persist_directory=temp_chromadb_dir, mode="read") as client:
         with pytest.raises(RuntimeError, match="read-only"):
             client.upsert(
                 collection_name="readonly_test", ids=["2"], documents=["test2"]
@@ -319,9 +311,7 @@ def test_close_before_s3_upload(temp_chromadb_dir, s3_bucket):
         assert uploaded_count > 0
 
         # Verify files were uploaded
-        objects = s3_client.list_objects_v2(
-            Bucket=s3_bucket, Prefix="deltas/test/"
-        )
+        objects = s3_client.list_objects_v2(Bucket=s3_bucket, Prefix="deltas/test/")
         assert len(objects.get("Contents", [])) == uploaded_count
 
         # Download and verify the uploaded database can be opened
@@ -344,9 +334,7 @@ def test_close_before_s3_upload(temp_chromadb_dir, s3_bucket):
 
 @pytest.mark.integration
 @pytest.mark.parametrize("s3_bucket", ["test-chromadb-bucket"], indirect=True)
-def test_s3_upload_after_close_prevents_corruption(
-    temp_chromadb_dir, s3_bucket
-):
+def test_s3_upload_after_close_prevents_corruption(temp_chromadb_dir, s3_bucket):
     """
     Test that closing the client before S3 upload prevents database corruption.
 

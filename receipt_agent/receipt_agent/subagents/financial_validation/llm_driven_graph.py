@@ -297,9 +297,7 @@ def create_llm_driven_financial_tools(
                     if table_structure
                     else "No table structure available"
                 ),
-                "line_preview": {
-                    str(line_id): text for line_id, text in preview_lines
-                },
+                "line_preview": {str(line_id): text for line_id, text in preview_lines},
                 "structure_notes": {
                     "words_per_line_avg": len(words) / max(total_lines, 1),
                     "table_columns": (
@@ -308,16 +306,12 @@ def create_llm_driven_financial_tools(
                         else 0
                     ),
                     "table_rows": (
-                        len(table_structure.get("rows", []))
-                        if table_structure
-                        else 0
+                        len(table_structure.get("rows", [])) if table_structure else 0
                     ),
                 },
             }
         except Exception as e:
-            logger.exception(
-                "TOOL: Exception in analyze_receipt_structure: %s", e
-            )
+            logger.exception("TOOL: Exception in analyze_receipt_structure: %s", e)
             return {"error": f"Tool failed: {e}"}
 
     @tool
@@ -346,9 +340,7 @@ def create_llm_driven_financial_tools(
 
                 # Get full line context
                 line_words = lines_by_id.get(line_id, [])
-                line_context = " ".join(
-                    [w.get("text", "") for w in line_words]
-                )
+                line_context = " ".join([w.get("text", "") for w in line_words])
 
                 # Find position within line
                 word_position = next(
@@ -385,9 +377,7 @@ def create_llm_driven_financial_tools(
         # Calculate statistics from full list
         values = [c["numeric_value"] for c in numeric_candidates]
         sorted_values = sorted(values) if values else []
-        median_value = (
-            sorted_values[len(sorted_values) // 2] if sorted_values else 0
-        )
+        median_value = sorted_values[len(sorted_values) // 2] if sorted_values else 0
 
         return {
             "numeric_candidates": truncated_candidates,
@@ -399,11 +389,7 @@ def create_llm_driven_financial_tools(
                 "median_value": median_value,
                 "value_count_by_range": {
                     "over_100": len(
-                        [
-                            c
-                            for c in numeric_candidates
-                            if c["numeric_value"] > 100
-                        ]
+                        [c for c in numeric_candidates if c["numeric_value"] > 100]
                     ),
                     "10_to_100": len(
                         [
@@ -413,11 +399,7 @@ def create_llm_driven_financial_tools(
                         ]
                     ),
                     "under_10": len(
-                        [
-                            c
-                            for c in numeric_candidates
-                            if c["numeric_value"] < 10
-                        ]
+                        [c for c in numeric_candidates if c["numeric_value"] < 10]
                     ),
                 },
             },
@@ -431,9 +413,7 @@ def create_llm_driven_financial_tools(
                         else f"position_{c['position_in_line']}"
                     ),
                 }
-                for c in truncated_candidates[
-                    :10
-                ]  # First 10 for pattern analysis
+                for c in truncated_candidates[:10]  # First 10 for pattern analysis
             ],
         }
 
@@ -502,9 +482,7 @@ def create_llm_driven_financial_tools(
             ]
             if missing_fields:
                 return {
-                    "error": (
-                        f"Assignment missing required fields: {missing_fields}"
-                    )
+                    "error": (f"Assignment missing required fields: {missing_fields}")
                 }
 
             # Validate proposed_type is one of the allowed types
@@ -595,13 +573,9 @@ def create_llm_driven_financial_tools(
             assignments_by_type[financial_type].append(assignment)
 
         # Calculate summary statistics (using deduplicated assignments)
-        confidence_scores = [
-            a.get("confidence", 0) for a in deduplicated_assignments
-        ]
+        confidence_scores = [a.get("confidence", 0) for a in deduplicated_assignments]
         avg_confidence = (
-            sum(confidence_scores) / len(confidence_scores)
-            if confidence_scores
-            else 0
+            sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0
         )
 
         return {
@@ -612,9 +586,7 @@ def create_llm_driven_financial_tools(
             "assignment_summary": {
                 financial_type: {
                     "count": len(assignments),
-                    "avg_confidence": sum(
-                        a.get("confidence", 0) for a in assignments
-                    )
+                    "avg_confidence": sum(a.get("confidence", 0) for a in assignments)
                     / len(assignments),
                     "values": [a.get("value") for a in assignments],
                 }
@@ -655,8 +627,7 @@ def create_llm_driven_financial_tools(
             return float(str(value))
         except (ValueError, TypeError):
             logger.warning(
-                f"Could not coerce value to float: {value} "
-                f"(type: {type(value)})"
+                f"Could not coerce value to float: {value} " f"(type: {type(value)})"
             )
             return None
 
@@ -744,9 +715,7 @@ def create_llm_driven_financial_tools(
             verification_results.append(
                 {
                     "test_name": "GRAND_TOTAL = SUBTOTAL + TAX",
-                    "description": (
-                        "Verify that grand total equals subtotal plus tax"
-                    ),
+                    "description": ("Verify that grand total equals subtotal plus tax"),
                     "grand_total": grand_total,
                     "subtotal": subtotal,
                     "tax": tax,
@@ -755,13 +724,9 @@ def create_llm_driven_financial_tools(
                     "tolerance": tolerance,
                     "passes": math_correct,
                     "confidence_factors": {
-                        "grand_total_confidence": grand_total_info[
-                            "confidence"
-                        ],
+                        "grand_total_confidence": grand_total_info["confidence"],
                         "subtotal_confidence": subtotal_info["confidence"],
-                        "tax_confidence": (
-                            tax_info["confidence"] if tax_info else 1.0
-                        ),
+                        "tax_confidence": (tax_info["confidence"] if tax_info else 1.0),
                     },
                 }
             )
@@ -810,9 +775,7 @@ def create_llm_driven_financial_tools(
                 line_id = assignment.get("line_id")
                 if line_id not in line_groups:
                     line_groups[line_id] = {}
-                line_groups[line_id][
-                    assignment.get("proposed_type")
-                ] = assignment
+                line_groups[line_id][assignment.get("proposed_type")] = assignment
 
             for line_id, line_assignments in line_groups.items():
                 if "LINE_TOTAL" in line_assignments:
@@ -828,9 +791,7 @@ def create_llm_driven_financial_tools(
                         and "UNIT_PRICE" in line_assignments
                     ):
                         quantity_raw = line_assignments["QUANTITY"]["value"]
-                        unit_price_raw = line_assignments["UNIT_PRICE"][
-                            "value"
-                        ]
+                        unit_price_raw = line_assignments["UNIT_PRICE"]["value"]
                         quantity = _coerce_numeric_value(quantity_raw)
                         unit_price = _coerce_numeric_value(unit_price_raw)
 
@@ -885,9 +846,7 @@ def create_llm_driven_financial_tools(
                 "tests_passed": tests_passed,
                 "tests_failed": total_tests - tests_passed,
                 "all_tests_pass": all_tests_pass,
-                "success_rate": (
-                    tests_passed / total_tests if total_tests > 0 else 0
-                ),
+                "success_rate": (tests_passed / total_tests if total_tests > 0 else 0),
                 "invalid_values_count": len(invalid_values),
             },
             "verification_results": verification_results,
@@ -965,9 +924,7 @@ def create_llm_driven_financial_tools(
 
         # Calculate mathematical validation summary
         total_tests = len(verification_results)
-        passed_tests = len(
-            [r for r in verification_results if r.get("passes", False)]
-        )
+        passed_tests = len([r for r in verification_results if r.get("passes", False)])
 
         # Store final result in state for retrieval
         final_result = {
@@ -976,9 +933,7 @@ def create_llm_driven_financial_tools(
                 "verified": passed_tests,
                 "total_tests": total_tests,
                 "all_valid": passed_tests == total_tests,
-                "success_rate": (
-                    passed_tests / total_tests if total_tests > 0 else 0
-                ),
+                "success_rate": (passed_tests / total_tests if total_tests > 0 else 0),
                 "test_details": verification_results,
             },
             "currency": currency,
@@ -989,12 +944,9 @@ def create_llm_driven_financial_tools(
             },
             "summary": {
                 "total_financial_values": len(proposed),
-                "financial_types_identified": list(
-                    financial_candidates.keys()
-                ),
+                "financial_types_identified": list(financial_candidates.keys()),
                 "avg_confidence": (
-                    sum(a.get("confidence", 0) for a in proposed)
-                    / len(proposed)
+                    sum(a.get("confidence", 0) for a in proposed) / len(proposed)
                     if proposed
                     else 0
                 ),
@@ -1187,8 +1139,7 @@ async def run_llm_driven_financial_discovery(
 
         logger.info("LLM Financial Discovery: Graph execution completed")
         logger.info(
-            f"LLM Financial Discovery: Tool state keys: "
-            f"{list(tool_state.keys())}"
+            f"LLM Financial Discovery: Tool state keys: " f"{list(tool_state.keys())}"
         )
 
         # Extract final result from tool state
@@ -1203,8 +1154,7 @@ async def run_llm_driven_financial_discovery(
             return final_result
         else:
             logger.warning(
-                "LLM Financial Discovery: FAILED - no final_result "
-                "in tool_state"
+                "LLM Financial Discovery: FAILED - no final_result " "in tool_state"
             )
             if tool_state:
                 logger.warning(
@@ -1225,9 +1175,7 @@ async def run_llm_driven_financial_discovery(
                 ),
                 "llm_reasoning": {
                     "structure_analysis": (
-                        tool_state.get("financial_reasoning", "")
-                        if tool_state
-                        else ""
+                        tool_state.get("financial_reasoning", "") if tool_state else ""
                     ),
                     "final_assessment": (
                         "Agent completed but did not finalize results"

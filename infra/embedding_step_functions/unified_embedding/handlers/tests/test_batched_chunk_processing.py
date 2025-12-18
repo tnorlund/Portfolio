@@ -122,9 +122,7 @@ class TestBatchedChunkProcessing:
 
         # Mock chunk processing to return different intermediate keys
         def mock_process_side_effect(batch_id, chunk_index, deltas, by_collection):
-            return {
-                "intermediate_key": f"intermediate/{batch_id}/chunk-{chunk_index}/"
-            }
+            return {"intermediate_key": f"intermediate/{batch_id}/chunk-{chunk_index}/"}
 
         mock_process.side_effect = mock_process_side_effect
 
@@ -171,9 +169,7 @@ class TestBatchedChunkProcessing:
 
         # Mock chunk processing
         def mock_process_side_effect(batch_id, chunk_index, deltas, by_collection):
-            return {
-                "intermediate_key": f"intermediate/{batch_id}/chunk-{chunk_index}/"
-            }
+            return {"intermediate_key": f"intermediate/{batch_id}/chunk-{chunk_index}/"}
 
         mock_process.side_effect = mock_process_side_effect
 
@@ -258,9 +254,7 @@ class TestBatchedChunkProcessing:
 
         def mock_process_side_effect(batch_id, chunk_index, deltas, by_collection):
             processed_indices.append(chunk_index)
-            return {
-                "intermediate_key": f"intermediate/{batch_id}/chunk-{chunk_index}/"
-            }
+            return {"intermediate_key": f"intermediate/{batch_id}/chunk-{chunk_index}/"}
 
         mock_process.side_effect = mock_process_side_effect
 
@@ -299,9 +293,7 @@ class TestBatchedChunkProcessing:
         def mock_process_side_effect(batch_id, chunk_index, deltas, by_collection):
             if chunk_index == 1:
                 raise ValueError("Simulated processing error")
-            return {
-                "intermediate_key": f"intermediate/{batch_id}/chunk-{chunk_index}/"
-            }
+            return {"intermediate_key": f"intermediate/{batch_id}/chunk-{chunk_index}/"}
 
         mock_process.side_effect = mock_process_side_effect
 

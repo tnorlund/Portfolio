@@ -202,4 +202,3 @@ class TestToolRegistry:
 
         assert "query_similar_lines" in descriptions
         assert "get_receipt_metadata" in descriptions
-

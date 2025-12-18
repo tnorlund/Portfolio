@@ -119,11 +119,7 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
 
         # Get the target word from the list of words
         target_word = next(
-            (
-                w
-                for w in words
-                if w.line_id == line_id and w.word_id == word_id
-            ),
+            (w for w in words if w.line_id == line_id and w.word_id == word_id),
             None,
         )
         if target_word is None:
@@ -144,9 +140,7 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         ]
 
         # Get word context directly (more efficient than parsing)
-        left_words, right_words = get_word_neighbors(
-            target_word, words, context_size=2
-        )
+        left_words, right_words = get_word_neighbors(target_word, words, context_size=2)
         # Extract first word from each side for backward compatibility with
         # metadata
         left_text = left_words[0] if left_words else "<EDGE>"
@@ -172,14 +166,10 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         )
 
         # Enrich with label information
-        word_metadata = enrich_word_metadata_with_labels(
-            word_metadata, word_labels
-        )
+        word_metadata = enrich_word_metadata_with_labels(word_metadata, word_labels)
 
         # Anchor-only enrichment based on this target word's extracted_data
-        word_metadata = enrich_word_metadata_with_anchors(
-            word_metadata, target_word
-        )
+        word_metadata = enrich_word_metadata_with_anchors(word_metadata, target_word)
 
         # Add to delta arrays
         ids.append(result["custom_id"])

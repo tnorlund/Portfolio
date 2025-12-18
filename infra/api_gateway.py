@@ -97,9 +97,7 @@ route_random_image_details = aws.apigatewayv2.Route(
     "random_image_details_route",
     api_id=api.id,
     route_key="GET /random_image_details",
-    target=integration_random_image_details.id.apply(
-        lambda id: f"integrations/{id}"
-    ),
+    target=integration_random_image_details.id.apply(lambda id: f"integrations/{id}"),
     opts=pulumi.ResourceOptions(
         replace_on_changes=["route_key", "target"],
         delete_before_replace=True,
@@ -293,9 +291,7 @@ route_random_receipt_details = aws.apigatewayv2.Route(
     "random_receipt_details_route",
     api_id=api.id,
     route_key="GET /random_receipt_details",
-    target=integration_random_receipt_details.id.apply(
-        lambda id: f"integrations/{id}"
-    ),
+    target=integration_random_receipt_details.id.apply(lambda id: f"integrations/{id}"),
     opts=pulumi.ResourceOptions(
         replace_on_changes=["route_key", "target"],
         delete_before_replace=True,
@@ -322,9 +318,7 @@ route_address_similarity = aws.apigatewayv2.Route(
     "address_similarity_route",
     api_id=api.id,
     route_key="GET /address_similarity",
-    target=integration_address_similarity.id.apply(
-        lambda id: f"integrations/{id}"
-    ),
+    target=integration_address_similarity.id.apply(lambda id: f"integrations/{id}"),
     opts=pulumi.ResourceOptions(
         replace_on_changes=["route_key", "target"],
         delete_before_replace=True,

@@ -154,9 +154,7 @@ def test_embedding_with_context():
         raise
 
 
-def test_full_receipt_embedding(
-    receipt_id: str, table_name: str = "ReceiptsTable"
-):
+def test_full_receipt_embedding(receipt_id: str, table_name: str = "ReceiptsTable"):
     """Test embedding a full receipt from DynamoDB with merchant validation."""
     logger.info(f"Testing full receipt embedding for receipt_id: {receipt_id}")
 
@@ -178,13 +176,11 @@ def test_full_receipt_embedding(
         # Convert receipt_id to integer for validation
         receipt_id_int = int(receipt_id)
 
-        merchant_metadata, status_info = (
-            validation_handler.validate_receipt_merchant(
-                image_id=receipt_words[0].image_id,
-                receipt_id=receipt_id_int,
-                receipt_lines=receipt_lines,
-                receipt_words=receipt_words,
-            )
+        merchant_metadata, status_info = validation_handler.validate_receipt_merchant(
+            image_id=receipt_words[0].image_id,
+            receipt_id=receipt_id_int,
+            receipt_lines=receipt_lines,
+            receipt_words=receipt_words,
         )
 
         logger.info(
@@ -226,9 +222,7 @@ def test_full_receipt_embedding(
 
         elapsed_time = time.time() - start_time
 
-        logger.info(
-            f"Receipt processing completed in {elapsed_time:.2f} seconds"
-        )
+        logger.info(f"Receipt processing completed in {elapsed_time:.2f} seconds")
 
         # Show merchant validation results
         if merchant_metadata:
@@ -316,9 +310,7 @@ def main():
         test_with_image_id(args.image_id, args.table_name)
 
     else:
-        parser.error(
-            "Please specify --receipt-id, --image-id, or --test-sample"
-        )
+        parser.error("Please specify --receipt-id, --image-id, or --test-sample")
 
 
 if __name__ == "__main__":

@@ -33,16 +33,12 @@ def fix_file_naming(filepath: Path) -> int:
     # Replace function definitions
     for pattern in [function_pattern, method_pattern]:
         matches = list(re.finditer(pattern, content, re.MULTILINE))
-        for match in reversed(
-            matches
-        ):  # Process in reverse to maintain positions
+        for match in reversed(matches):  # Process in reverse to maintain positions
             old_name = match.group(2)
             new_name = camel_to_snake(old_name)
 
             # Replace definition
-            content = (
-                content[: match.start(2)] + new_name + content[match.end(2) :]
-            )
+            content = content[: match.start(2)] + new_name + content[match.end(2) :]
 
             # Replace all calls to this function
             # Look for word boundaries to avoid partial matches
@@ -93,10 +89,7 @@ def main():
         dir_path = receipt_dynamo_path / directory
         if dir_path.exists():
             for filepath in dir_path.glob("*.py"):
-                if (
-                    filepath.name == "__init__.py"
-                    or filepath.parent != dir_path
-                ):
+                if filepath.name == "__init__.py" or filepath.parent != dir_path:
                     continue
 
                 fixes = fix_file_naming(filepath)
@@ -104,9 +97,7 @@ def main():
                     files_fixed += 1
                     total_fixes += fixes
 
-    print(
-        f"\nTotal: Fixed {total_fixes} naming conventions in {files_fixed} files"
-    )
+    print(f"\nTotal: Fixed {total_fixes} naming conventions in {files_fixed} files")
 
 
 if __name__ == "__main__":

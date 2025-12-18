@@ -87,9 +87,7 @@ class LambdaFunctionsComponent(ComponentResource):
         self.vpc_subnet_ids = vpc_subnet_ids
         self.lambda_security_group_id = lambda_security_group_id
         self.efs_access_point_arn = efs_access_point_arn
-        self.efs_mount_targets = (
-            efs_mount_targets  # Store mount targets dependency
-        )
+        self.efs_mount_targets = efs_mount_targets  # Store mount targets dependency
 
         # Create S3 bucket for NDJSON batch files
         self.batch_bucket = Bucket(
@@ -150,8 +148,7 @@ class LambdaFunctionsComponent(ComponentResource):
             f"lambda-basic-execution-{stack}",
             role=self.lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/"
-                "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -337,14 +334,10 @@ class LambdaFunctionsComponent(ComponentResource):
             lambda_func = self._create_zip_lambda(name, lambda_config)
             self.zip_lambda_functions[name] = lambda_func
 
-    def _create_zip_lambda(
-        self, name: str, config: Dict[str, Any]
-    ) -> Function:
+    def _create_zip_lambda(self, name: str, config: Dict[str, Any]) -> Function:
         """Create a single zip-based Lambda function."""
         source_path = (
-            Path(__file__).parent.parent
-            / "simple_lambdas"
-            / config["source_dir"]
+            Path(__file__).parent.parent / "simple_lambdas" / config["source_dir"]
         )
 
         # Common environment variables
@@ -368,13 +361,17 @@ class LambdaFunctionsComponent(ComponentResource):
         # CHUNKS_PER_LAMBDA: Process multiple chunks per Lambda invocation (default: 4)
         # Reduces Lambda invocations by ~75% (e.g., 64 chunks → 16 Lambda invocations)
         if config["source_dir"] == "normalize_poll_batches_data":
-            env_vars["CHUNKS_PER_LAMBDA"] = "4"  # Conservative: 3, Recommended: 4, Aggressive: 5
+            env_vars["CHUNKS_PER_LAMBDA"] = (
+                "4"  # Conservative: 3, Recommended: 4, Aggressive: 5
+            )
 
         # Add optimization configuration for N-way merge
         # MERGE_GROUP_SIZE: Group size for parallel reduce (default: 10 instead of 2)
         # Reduces merge rounds from O(log₂ N) to O(log₁₀ N)
         if config["source_dir"] == "prepare_merge_pairs":
-            env_vars["MERGE_GROUP_SIZE"] = "10"  # Conservative: 8, Recommended: 10, Aggressive: 12
+            env_vars["MERGE_GROUP_SIZE"] = (
+                "10"  # Conservative: 8, Recommended: 10, Aggressive: 12
+            )
 
         # Create the Lambda function
         # Determine which layers are needed based on imports
@@ -418,9 +415,7 @@ class LambdaFunctionsComponent(ComponentResource):
         # Optimized based on actual usage patterns from observability data
         container_configs = {
             "embedding-poll-lines": {
-                "memory": GiB(
-                    1.5
-                ),  # Reduced from 3GB, usage was 668-818MB (22-27%)
+                "memory": GiB(1.5),  # Reduced from 3GB, usage was 668-818MB (22-27%)
                 "timeout": MINUTE * 15,
                 "ephemeral_storage": GiB(
                     4
@@ -428,9 +423,7 @@ class LambdaFunctionsComponent(ComponentResource):
                 "handler_type": "line_polling",
             },
             "embedding-poll-words": {
-                "memory": GiB(
-                    1
-                ),  # Reduced from 3GB, usage was 322-360MB (11-12%)
+                "memory": GiB(1),  # Reduced from 3GB, usage was 322-360MB (11-12%)
                 "timeout": MINUTE * 15,
                 "ephemeral_storage": GiB(
                     4
@@ -482,17 +475,13 @@ class LambdaFunctionsComponent(ComponentResource):
                 )
             elif config["handler_type"] in ["line_polling", "word_polling"]:
                 # Create polling Lambdas using CodeBuildDockerImage (same approach as compaction)
-                lambda_func = self._create_polling_lambda_with_codebuild(
-                    name, config
-                )
+                lambda_func = self._create_polling_lambda_with_codebuild(name, config)
             elif config["handler_type"] in [
                 "submit_words_openai",
                 "submit_openai",
             ]:
                 # Create submit Lambda (words or lines) using CodeBuildDockerImage
-                lambda_func = self._create_submit_lambda_with_codebuild(
-                    name, config
-                )
+                lambda_func = self._create_submit_lambda_with_codebuild(name, config)
             else:
                 raise UnknownHandlerTypeError(config["handler_type"])
             self.container_lambda_functions[name] = lambda_func
@@ -590,9 +579,7 @@ class LambdaFunctionsComponent(ComponentResource):
         # Return the Lambda function created by CodeBuildDockerImage
         return compaction_docker_image.lambda_function
 
-    def _create_polling_lambda_with_codebuild(
-        self, name: str, config: Dict[str, Any]
-    ):
+    def _create_polling_lambda_with_codebuild(self, name: str, config: Dict[str, Any]):
         """Create polling Lambda (line/word) using CodeBuildDockerImage with lambda_config."""
         # Build lambda_config dict matching compaction Lambda format
         lambda_config_dict = {
@@ -619,11 +606,8 @@ class LambdaFunctionsComponent(ComponentResource):
                     "GOOGLE_PLACES_API_KEY"
                 )
                 or "",
-                "OLLAMA_API_KEY": portfolio_config.get_secret("OLLAMA_API_KEY")
-                or "",
-                "LANGCHAIN_API_KEY": portfolio_config.get_secret(
-                    "LANGCHAIN_API_KEY"
-                )
+                "OLLAMA_API_KEY": portfolio_config.get_secret("OLLAMA_API_KEY") or "",
+                "LANGCHAIN_API_KEY": portfolio_config.get_secret("LANGCHAIN_API_KEY")
                 or "",
                 # receipt_agent expects RECEIPT_AGENT_* but we mirror base vars too
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
@@ -673,9 +657,7 @@ class LambdaFunctionsComponent(ComponentResource):
         # Return the Lambda function created by CodeBuildDockerImage
         return polling_docker_image.lambda_function
 
-    def _create_submit_lambda_with_codebuild(
-        self, name: str, config: Dict[str, Any]
-    ):
+    def _create_submit_lambda_with_codebuild(self, name: str, config: Dict[str, Any]):
         """Create submit Lambda (words or lines) using CodeBuildDockerImage with lambda_config."""
         # Determine component name based on handler type
         component_name = (

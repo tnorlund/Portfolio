@@ -56,9 +56,7 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             storage_mode: Storage mode for ChromaDB - "auto", "s3", or "efs" (default: "auto")
             opts: Optional resource options
         """
-        super().__init__(
-            "chromadb:compaction:Infrastructure", name, None, opts
-        )
+        super().__init__("chromadb:compaction:Infrastructure", name, None, opts)
 
         # Normalize and validate storage mode once
         normalized_storage_mode = storage_mode.lower()
@@ -95,9 +93,7 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             and (efs_subnet_ids or subnet_ids)
             and lambda_security_group_id
         ):
-            subnet_ids_for_efs = (
-                efs_subnet_ids if efs_subnet_ids else subnet_ids
-            )
+            subnet_ids_for_efs = efs_subnet_ids if efs_subnet_ids else subnet_ids
             self.efs = ChromaEfs(
                 f"{name}-efs",
                 vpc_id=vpc_id,
@@ -130,9 +126,7 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             dynamodb_stream_arn=dynamodb_stream_arn,
             vpc_subnet_ids=subnet_ids,
             lambda_security_group_id=lambda_security_group_id,
-            efs_access_point_arn=(
-                self.efs.access_point_arn if self.efs else None
-            ),
+            efs_access_point_arn=(self.efs.access_point_arn if self.efs else None),
             storage_mode=normalized_storage_mode,
             opts=ResourceOptions(parent=self, depends_on=lambda_depends_on),
         )
@@ -142,9 +136,7 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         self.words_queue_url = self.chromadb_queues.words_queue_url
         self.bucket_name = self.chromadb_buckets.bucket_name
         self.stream_processor_arn = self.hybrid_deployment.stream_processor_arn
-        self.enhanced_compaction_arn = (
-            self.hybrid_deployment.enhanced_compaction_arn
-        )
+        self.enhanced_compaction_arn = self.hybrid_deployment.enhanced_compaction_arn
 
         # Register outputs
         self.register_outputs(

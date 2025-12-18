@@ -49,9 +49,7 @@ def convert_datetime_strings(obj: Any) -> Any:
                 value.endswith("Z") or "T" in value and len(value) > 10
             ):
                 try:
-                    result[key] = datetime.fromisoformat(
-                        value.replace("Z", "+00:00")
-                    )
+                    result[key] = datetime.fromisoformat(value.replace("Z", "+00:00"))
                 except (ValueError, AttributeError):
                     result[key] = value
             else:
@@ -200,9 +198,7 @@ def copy_all_missing_labels(
     # Process files in parallel
     completed = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_file = {
-            executor.submit(process_one_file, f): f for f in export_files
-        }
+        future_to_file = {executor.submit(process_one_file, f): f for f in export_files}
 
         for future in as_completed(future_to_file):
             completed += 1
@@ -268,9 +264,7 @@ def main():
             sys.exit(1)
 
         # Copy missing labels
-        logger.info(
-            f"Starting copy of missing ReceiptWordLabels from {export_dir}..."
-        )
+        logger.info(f"Starting copy of missing ReceiptWordLabels from {export_dir}...")
         stats = copy_all_missing_labels(
             export_dir,
             prod_client,
@@ -292,9 +286,7 @@ def main():
             for error in stats["errors"][:10]:
                 logger.warning(f"  - {error}")
             if len(stats["errors"]) > 10:
-                logger.warning(
-                    f"  ... and {len(stats['errors']) - 10} more errors"
-                )
+                logger.warning(f"  ... and {len(stats['errors']) - 10} more errors")
 
         if stats["failed"] > 0:
             logger.error("\n❌ Copy completed with errors")

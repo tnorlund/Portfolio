@@ -360,9 +360,7 @@ def create_harmonizer_tools(
                 "merchant_names": dict(
                     sorted(merchant_names.items(), key=lambda x: -x[1])
                 ),
-                "addresses": dict(
-                    sorted(addresses.items(), key=lambda x: -x[1])
-                ),
+                "addresses": dict(sorted(addresses.items(), key=lambda x: -x[1])),
                 "phones": dict(sorted(phones.items(), key=lambda x: -x[1])),
             },
         }
@@ -404,10 +402,7 @@ def create_harmonizer_tools(
                     if receipt_details and receipt_details.receipt:
                         break
                 except Exception as e:
-                    if (
-                        img_id == sanitized_image_id
-                        and sanitized_image_id != image_id
-                    ):
+                    if img_id == sanitized_image_id and sanitized_image_id != image_id:
                         logger.debug(
                             "get_receipt_details failed for sanitized "
                             f"{img_id}#{receipt_id}, "
@@ -440,10 +435,8 @@ def create_harmonizer_tools(
                         lines = dynamo_client.list_receipt_lines_from_receipt(
                             img_id, receipt_id
                         )
-                        words_list = (
-                            dynamo_client.list_receipt_words_from_receipt(
-                                img_id, receipt_id
-                            )
+                        words_list = dynamo_client.list_receipt_words_from_receipt(
+                            img_id, receipt_id
                         )
                         if lines or words_list:
                             logger.info(
@@ -467,8 +460,7 @@ def create_harmonizer_tools(
                 )
                 return {
                     "error": (
-                        f"Receipt details not found for "
-                        f"{image_id}#{receipt_id}"
+                        f"Receipt details not found for " f"{image_id}#{receipt_id}"
                     ),
                     "lines": [],
                     "labeled_words": [],
@@ -549,10 +541,7 @@ def create_harmonizer_tools(
                     if receipt_details and receipt_details.receipt:
                         break
                 except Exception as e:
-                    if (
-                        img_id == sanitized_image_id
-                        and sanitized_image_id != image_id
-                    ):
+                    if img_id == sanitized_image_id and sanitized_image_id != image_id:
                         logger.debug(
                             "get_receipt_details failed for sanitized "
                             f"{img_id}#{receipt_id}, "
@@ -580,14 +569,12 @@ def create_harmonizer_tools(
                 )
                 return {
                     "error": (
-                        f"Receipt details not found for "
-                        f"{image_id}#{receipt_id}"
+                        f"Receipt details not found for " f"{image_id}#{receipt_id}"
                     ),
                     "found": False,
                     "matches": False,
                     "evidence": (
-                        "Receipt details (lines/words) not available in "
-                        "DynamoDB"
+                        "Receipt details (lines/words) not available in " "DynamoDB"
                     ),
                     "recommendation": (
                         "Cannot verify address - receipt details missing. "
@@ -612,10 +599,7 @@ def create_harmonizer_tools(
                             f"{image_id}#{receipt_id}"
                         )
                 except Exception as e:
-                    logger.debug(
-                        "Could not fetch lines directly: "
-                        f"{e}"
-                    )
+                    logger.debug("Could not fetch lines directly: " f"{e}")
 
             if not lines:
                 return {
@@ -631,9 +615,7 @@ def create_harmonizer_tools(
             try:
                 formatted_text = format_receipt_text_receipt_space(lines)
             except Exception as exc:
-                logger.debug(
-                    f"Could not format receipt text (receipt-space): {exc}"
-                )
+                logger.debug(f"Could not format receipt text (receipt-space): {exc}")
                 sorted_lines = sorted(lines, key=lambda line: line.line_id)
                 formatted_text = "\n".join(
                     f"{line.line_id}: {line.text}" for line in sorted_lines
@@ -654,9 +636,7 @@ def create_harmonizer_tools(
                     if len(parts) >= 3:
                         state_part = parts[-1].strip().lower()
                         # Extract state abbreviation or name
-                        state_state = (
-                            state_part.split()[0] if state_part else None
-                        )
+                        state_state = state_part.split()[0] if state_part else None
                         if state_state:
                             city_state = f"{city_state} {state_state}"
 
@@ -678,15 +658,12 @@ def create_harmonizer_tools(
                     if street_num_str in receipt_text_lower:
                         street_num_match = True
                         evidence.append(
-                            "Found street number "
-                            f"'{street_num_str}' in receipt"
+                            "Found street number " f"'{street_num_str}' in receipt"
                         )
 
                 # Check for street name (words after number)
                 street_words = (
-                    address_parts.split()[1:]
-                    if street_num
-                    else address_parts.split()
+                    address_parts.split()[1:] if street_num else address_parts.split()
                 )
                 if street_words:
                     # Check if any street word appears
@@ -710,17 +687,13 @@ def create_harmonizer_tools(
                     if len(word) > 2
                 )
                 if city_state_found:
-                    evidence.append(
-                        f"Found city/state '{city_state}' in receipt"
-                    )
+                    evidence.append(f"Found city/state '{city_state}' in receipt")
                     if not matches:
                         # If we found city/state but not street, it's a partial
                         # match
                         matches = False  # Still not a full match
                 else:
-                    evidence.append(
-                        f"City/state '{city_state}' NOT found in receipt"
-                    )
+                    evidence.append(f"City/state '{city_state}' NOT found in receipt")
 
             # If we have full address match, mark as matches
             if matches:
@@ -742,9 +715,7 @@ def create_harmonizer_tools(
                 "address_to_check": address_to_check,
                 "matches": matches,
                 "evidence": (
-                    "; ".join(evidence)
-                    if evidence
-                    else "No address evidence found"
+                    "; ".join(evidence) if evidence else "No address evidence found"
                 ),
                 "formatted_text": formatted_text[:500],  # Limit length
                 "recommendation": recommendation,
@@ -841,14 +812,10 @@ def create_harmonizer_tools(
                     if receipt_details and receipt_details.lines:
                         lines = receipt_details.lines
                         logger.info(
-                            "Fetched "
-                            f"{len(lines)} lines via get_receipt_details()"
+                            "Fetched " f"{len(lines)} lines via get_receipt_details()"
                         )
                 except Exception as e:
-                    logger.debug(
-                        "get_receipt_details also failed: "
-                        f"{e}"
-                    )
+                    logger.debug("get_receipt_details also failed: " f"{e}")
 
             # Final fallback: Try fetch_receipt_details_with_fallback
             if not lines:
@@ -880,9 +847,7 @@ def create_harmonizer_tools(
             # Use ReceiptMetadata when the Receipt entity lacks fields
             current_metadata = {}
             try:
-                metadata = dynamo_client.get_receipt_metadata(
-                    image_id, receipt_id
-                )
+                metadata = dynamo_client.get_receipt_metadata(image_id, receipt_id)
                 if metadata:
                     current_metadata = {
                         "merchant_name": metadata.merchant_name or "(not set)",
@@ -897,8 +862,7 @@ def create_harmonizer_tools(
                     }
             except Exception as e:
                 logger.debug(
-                    "Could not fetch metadata for "
-                    f"{image_id}#{receipt_id}: {e}"
+                    "Could not fetch metadata for " f"{image_id}#{receipt_id}: {e}"
                 )
                 current_metadata = {
                     "merchant_name": "(not available)",
@@ -909,9 +873,7 @@ def create_harmonizer_tools(
             try:
                 formatted_text = format_receipt_text_receipt_space(lines)
             except Exception as exc:
-                logger.debug(
-                    f"Could not format receipt text (receipt-space): {exc}"
-                )
+                logger.debug(f"Could not format receipt text (receipt-space): {exc}")
                 sorted_lines = sorted(lines, key=lambda line: line.line_id)
                 formatted_text = "\n".join(
                     f"{line.line_id}: {line.text}" for line in sorted_lines
@@ -986,8 +948,7 @@ def create_harmonizer_tools(
         if field not in field_map:
             return {
                 "error": (
-                    "Invalid field: "
-                    f"{field}. Use: merchant_name, address, or phone"
+                    "Invalid field: " f"{field}. Use: merchant_name, address, or phone"
                 )
             }
 
@@ -1037,9 +998,7 @@ def create_harmonizer_tools(
                     "count": len(receipts),
                     "receipts": receipts[:5],  # Limit to 5 examples
                 }
-                for v, receipts in sorted(
-                    variations.items(), key=lambda x: -len(x[1])
-                )
+                for v, receipts in sorted(variations.items(), key=lambda x: -len(x[1]))
             },
             "case_analysis": sorted(case_groups, key=lambda x: -x["count"]),
         }
@@ -1201,8 +1160,7 @@ def create_harmonizer_tools(
                     {
                         "name": name,
                         "place_id": biz.get("place_id"),
-                        "address": biz.get("formatted_address")
-                        or biz.get("vicinity"),
+                        "address": biz.get("formatted_address") or biz.get("vicinity"),
                         "types": types[:5],
                     }
                 )
@@ -1220,15 +1178,11 @@ def create_harmonizer_tools(
             for biz in businesses:
                 biz_name_lower = biz["name"].lower()
                 for receipt_name in receipt_names:
-                    if (
-                        biz_name_lower in receipt_name
-                        or receipt_name in biz_name_lower
-                    ):
+                    if biz_name_lower in receipt_name or receipt_name in biz_name_lower:
                         recommendation = {
                             "business": biz,
                             "reason": (
-                                "Name matches receipt merchant "
-                                f"'{receipt_name}'"
+                                "Name matches receipt merchant " f"'{receipt_name}'"
                             ),
                         }
                         break
@@ -1300,8 +1254,7 @@ def create_harmonizer_tools(
             ):
                 try:
                     logger.info(
-                        "Lazy-loading ChromaDB for metadata finder "
-                        "sub-agent..."
+                        "Lazy-loading ChromaDB for metadata finder " "sub-agent..."
                     )
 
                     # Use shared helper to load dual-chroma setup
@@ -1362,8 +1315,7 @@ def create_harmonizer_tools(
                     # Run metadata finder agent
                     result = await run_receipt_metadata_finder(
                         graph=state["metadata_finder_graph"],
-                        state_holder=state.get("metadata_finder_state_holder")
-                        or {},
+                        state_holder=state.get("metadata_finder_state_holder") or {},
                         image_id=image_id,
                         receipt_id=receipt_id,
                         receipt_lines=(
@@ -1396,8 +1348,7 @@ def create_harmonizer_tools(
                             "found": False,
                             "reasoning": result.get(
                                 "reasoning",
-                                "Metadata finder could not find "
-                                "correct metadata",
+                                "Metadata finder could not find " "correct metadata",
                             ),
                             "method": "metadata_finder_agent",
                         }
@@ -1412,16 +1363,12 @@ def create_harmonizer_tools(
             if not places_api:
                 return {
                     "found": False,
-                    "error": (
-                        "Google Places API not available for metadata search"
-                    ),
+                    "error": ("Google Places API not available for metadata search"),
                     "method": "fallback",
                 }
 
             # Get receipt details
-            receipt_details = dynamo_client.get_receipt_details(
-                image_id, receipt_id
-            )
+            receipt_details = dynamo_client.get_receipt_details(image_id, receipt_id)
             if not receipt_details or not receipt_details.receipt:
                 return {
                     "found": False,
@@ -1438,9 +1385,7 @@ def create_harmonizer_tools(
 
             if receipt.phone_number:
                 try:
-                    place_data = places_api.search_by_phone(
-                        receipt.phone_number
-                    )
+                    place_data = places_api.search_by_phone(receipt.phone_number)
                     if place_data:
                         search_method = "phone"
                 except Exception as e:
@@ -1458,9 +1403,7 @@ def create_harmonizer_tools(
             # Try merchant name text search as last resort
             if not place_data and receipt.merchant_name:
                 try:
-                    place_data = places_api.search_by_text(
-                        receipt.merchant_name
-                    )
+                    place_data = places_api.search_by_text(receipt.merchant_name)
                     if place_data:
                         search_method = "merchant_name"
                 except Exception as e:
@@ -1470,18 +1413,14 @@ def create_harmonizer_tools(
                 # Get full place details
                 found_place_id = place_data.get("place_id")
                 if found_place_id:
-                    place_details = places_api.get_place_details(
-                        found_place_id
-                    )
+                    place_details = places_api.get_place_details(found_place_id)
                     if place_details:
                         return {
                             "found": True,
                             "place_id": found_place_id,
                             "merchant_name": place_details.get("name"),
                             "address": place_details.get("formatted_address"),
-                            "phone_number": place_details.get(
-                                "formatted_phone_number"
-                            )
+                            "phone_number": place_details.get("formatted_phone_number")
                             or place_details.get("international_phone_number"),
                             "confidence": 0.7,
                             # Lower confidence for fallback method
@@ -1502,10 +1441,9 @@ def create_harmonizer_tools(
 
             return {
                 "found": False,
-                            "reasoning": (
-                                "Could not find correct metadata using "
-                                "Google Places search"
-                            ),
+                "reasoning": (
+                    "Could not find correct metadata using " "Google Places search"
+                ),
                 "method": "google_places_fallback",
             }
 
@@ -1630,9 +1568,7 @@ def create_harmonizer_tools(
             if result.get("status") == "success":
                 cove_result = result.get("result", {})
                 outlier_count = cove_result.get("outlier_count", 0)
-                receipt_results_count = len(
-                    cove_result.get("receipt_results", [])
-                )
+                receipt_results_count = len(cove_result.get("receipt_results", []))
                 logger.info(
                     f"CoVe check complete: {outlier_count}/"
                     f"{receipt_results_count} outliers found "
@@ -1683,9 +1619,7 @@ def create_harmonizer_tools(
             ge=0.0, le=1.0, description="Confidence in this decision (0-1)"
         )
         reasoning: str = Field(
-            description=(
-                "Explanation of how you determined the canonical values"
-            )
+            description=("Explanation of how you determined the canonical values")
         )
         source: str = Field(
             description=(
@@ -1747,14 +1681,10 @@ def create_harmonizer_tools(
                 )
             if canonical_address and r.get("address") != canonical_address:
                 changes.append(
-                    f"address: '{r.get('address')}' "
-                    f"→ '{canonical_address}'"
+                    f"address: '{r.get('address')}' " f"→ '{canonical_address}'"
                 )
             if canonical_phone and r.get("phone") != canonical_phone:
-                changes.append(
-                    f"phone: '{r.get('phone')}' "
-                    f"→ '{canonical_phone}'"
-                )
+                changes.append(f"phone: '{r.get('phone')}' " f"→ '{canonical_phone}'")
 
             if changes:
                 updates_needed.append(
@@ -1968,33 +1898,23 @@ async def run_harmonizer_agent(
                 if place_details:
                     google_places_info = {
                         "name": place_details.get("name", ""),
-                        "formatted_address": place_details.get(
-                            "formatted_address", ""
-                        ),
+                        "formatted_address": place_details.get("formatted_address", ""),
                         "formatted_phone_number": place_details.get(
                             "formatted_phone_number"
                         )
                         or place_details.get("international_phone_number", ""),
                         "website": place_details.get("website", ""),
                         "rating": place_details.get("rating"),
-                        "user_ratings_total": place_details.get(
-                            "user_ratings_total"
-                        ),
-                        "types": place_details.get("types", [])[
-                            :5
-                        ],  # First 5 types
-                        "business_status": place_details.get(
-                            "business_status", ""
-                        ),
+                        "user_ratings_total": place_details.get("user_ratings_total"),
+                        "types": place_details.get("types", [])[:5],  # First 5 types
+                        "business_status": place_details.get("business_status", ""),
                     }
                     logger.info(
                         f"Fetched Google Places data for {place_id}: "
                         f"{google_places_info.get('name')}"
                     )
         except Exception as e:
-            logger.warning(
-                f"Could not fetch Google Places data for {place_id}: {e}"
-            )
+            logger.warning(f"Could not fetch Google Places data for {place_id}: {e}")
 
     # Build initial prompt with Google Places data
     prompt_parts = [
@@ -2006,13 +1926,10 @@ async def run_harmonizer_agent(
         prompt_parts.append("\n## Google Places API Data (Source of Truth)")
         prompt_parts.append(f"**Place ID:** {place_id}")
         if google_places_info.get("name"):
-            prompt_parts.append(
-                f"**Official Name:** {google_places_info['name']}"
-            )
+            prompt_parts.append(f"**Official Name:** {google_places_info['name']}")
         if google_places_info.get("formatted_address"):
             prompt_parts.append(
-                f"**Official Address:** "
-                f"{google_places_info['formatted_address']}"
+                f"**Official Address:** " f"{google_places_info['formatted_address']}"
             )
         if google_places_info.get("formatted_phone_number"):
             prompt_parts.append(
@@ -2020,18 +1937,14 @@ async def run_harmonizer_agent(
                 f"{google_places_info['formatted_phone_number']}"
             )
         if google_places_info.get("website"):
-            prompt_parts.append(
-                f"**Website:** {google_places_info['website']}"
-            )
+            prompt_parts.append(f"**Website:** {google_places_info['website']}")
         if google_places_info.get("rating") is not None:
             prompt_parts.append(
                 f"**Rating:** {google_places_info['rating']} "
                 f"({google_places_info.get('user_ratings_total', 0)} reviews)"
             )
         if google_places_info.get("types"):
-            prompt_parts.append(
-                f"**Types:** {', '.join(google_places_info['types'])}"
-            )
+            prompt_parts.append(f"**Types:** {', '.join(google_places_info['types'])}")
         if google_places_info.get("business_status"):
             prompt_parts.append(
                 f"**Business Status:** {google_places_info['business_status']}"
@@ -2047,8 +1960,7 @@ async def run_harmonizer_agent(
         )
 
     prompt_parts.append(
-        "\nStart by getting the group summary, then proceed with "
-        "harmonization."
+        "\nStart by getting the group summary, then proceed with " "harmonization."
     )
 
     # Create initial state

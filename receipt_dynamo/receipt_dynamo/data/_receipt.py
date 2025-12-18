@@ -49,9 +49,7 @@ class _Receipt(
             ValueError: When a receipt with the same ID already exists
         """
         self._validate_entity(receipt, Receipt, "receipt")
-        self._add_entity(
-            receipt, condition_expression="attribute_not_exists(PK)"
-        )
+        self._add_entity(receipt, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_receipts")
     def add_receipts(self, receipts: list[Receipt]):
@@ -66,9 +64,7 @@ class _Receipt(
         self._validate_entity_list(receipts, Receipt, "receipts")
         # Create write request items for batch operation
         request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=receipt.to_item())
-            )
+            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=receipt.to_item()))
             for receipt in receipts
         ]
         self._batch_write_with_retry(request_items)
@@ -84,9 +80,7 @@ class _Receipt(
             ValueError: When the receipt does not exist
         """
         self._validate_entity(receipt, Receipt, "receipt")
-        self._update_entity(
-            receipt, condition_expression="attribute_exists(PK)"
-        )
+        self._update_entity(receipt, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_receipts")
     def update_receipts(self, receipts: list[Receipt]):
@@ -123,9 +117,7 @@ class _Receipt(
             ValueError: When the receipt does not exist
         """
         self._validate_entity(receipt, Receipt, "receipt")
-        self._delete_entity(
-            receipt, condition_expression="attribute_exists(PK)"
-        )
+        self._delete_entity(receipt, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("delete_receipts")
     def delete_receipts(self, receipts: list[Receipt]):
@@ -156,9 +148,7 @@ class _Receipt(
             )
             for receipt in receipts
         ]
-        self._transact_write_with_chunking(
-            transact_items  # type: ignore[arg-type]
-        )
+        self._transact_write_with_chunking(transact_items)  # type: ignore[arg-type]
 
     @handle_dynamodb_errors("get_receipt")
     def get_receipt(self, image_id: str, receipt_id: int) -> Receipt:
@@ -187,9 +177,7 @@ class _Receipt(
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer.")
         if receipt_id < 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer."
-            )
+            raise EntityValidationError("receipt_id must be a positive integer.")
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -208,9 +196,7 @@ class _Receipt(
         return result  # type: ignore[no-any-return]
 
     @handle_dynamodb_errors("get_receipt_details")
-    def get_receipt_details(
-        self, image_id: str, receipt_id: int
-    ) -> ReceiptDetails:
+    def get_receipt_details(self, image_id: str, receipt_id: int) -> ReceiptDetails:
         """Get a receipt with its details
 
         Args:

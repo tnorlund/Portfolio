@@ -157,9 +157,7 @@ class TestProcessCollection:
         mock_upload.assert_called_once()
 
         # Verify temp directory cleanup
-        mock_rmtree.assert_called_once_with(
-            "/tmp/chroma-test", ignore_errors=True
-        )
+        mock_rmtree.assert_called_once_with("/tmp/chroma-test", ignore_errors=True)
 
     @patch("enhanced_compaction_handler.LockManager")
     @patch("enhanced_compaction_handler.download_chroma_snapshot")
@@ -197,22 +195,16 @@ class TestProcessCollection:
         )
 
         # Verify error handling
-        assert result["failed_message_ids"] == [
-            sample_stream_message.stream_record_id
-        ]
+        assert result["failed_message_ids"] == [sample_stream_message.stream_record_id]
 
         # Verify logger was called
         mock_logger.error.assert_called()
 
         # Verify metrics counter
-        mock_metrics.count.assert_called_with(
-            "CompactionSnapshotDownloadError", 1
-        )
+        mock_metrics.count.assert_called_with("CompactionSnapshotDownloadError", 1)
 
         # Verify temp directory cleanup
-        mock_rmtree.assert_called_once_with(
-            "/tmp/chroma-test", ignore_errors=True
-        )
+        mock_rmtree.assert_called_once_with("/tmp/chroma-test", ignore_errors=True)
 
     @patch("enhanced_compaction_handler.LockManager")
     @patch("enhanced_compaction_handler.DynamoClient")
@@ -269,22 +261,16 @@ class TestProcessCollection:
         )
 
         # Verify error handling
-        assert result["failed_message_ids"] == [
-            sample_stream_message.stream_record_id
-        ]
+        assert result["failed_message_ids"] == [sample_stream_message.stream_record_id]
 
         # Verify logger was called
         mock_logger.error.assert_called()
 
         # Verify metrics counter
-        mock_metrics.count.assert_called_with(
-            "CompactionSnapshotUploadError", 1
-        )
+        mock_metrics.count.assert_called_with("CompactionSnapshotUploadError", 1)
 
         # Verify temp directory cleanup
-        mock_rmtree.assert_called_once_with(
-            "/tmp/chroma-test", ignore_errors=True
-        )
+        mock_rmtree.assert_called_once_with("/tmp/chroma-test", ignore_errors=True)
 
     @patch("enhanced_compaction_handler.LockManager")
     @patch("enhanced_compaction_handler.DynamoClient")
@@ -363,9 +349,7 @@ class TestProcessCollection:
         assert "msg-1" in result["failed_message_ids"]
 
         # Verify temp directory cleanup
-        mock_rmtree.assert_called_once_with(
-            "/tmp/chroma-test", ignore_errors=True
-        )
+        mock_rmtree.assert_called_once_with("/tmp/chroma-test", ignore_errors=True)
 
 
 class TestProcessSQSMessages:

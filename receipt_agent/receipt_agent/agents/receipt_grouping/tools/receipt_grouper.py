@@ -19,9 +19,11 @@ logger = logging.getLogger(__name__)
 # Image Context - Injected at runtime
 # ==============================================================================
 
+
 @dataclass
 class ImageContext:
     """Context for the image being analyzed. Injected into tools at runtime."""
+
     image_id: str
 
     # Cached data (loaded once)
@@ -34,23 +36,28 @@ class ImageContext:
 # Tool Input Schemas
 # ==============================================================================
 
+
 class GetImageLinesInput(BaseModel):
     """Input for get_image_lines tool."""
+
     pass
 
 
 class GetImageWordsInput(BaseModel):
     """Input for get_image_words tool."""
+
     pass
 
 
 class GetCurrentReceiptsInput(BaseModel):
     """Input for get_current_receipts tool."""
+
     pass
 
 
 class TryGroupingInput(BaseModel):
     """Input for try_grouping tool."""
+
     grouping: dict = Field(
         description="Dictionary mapping receipt_id (int) to list of line_ids (list[int])"
     )
@@ -58,6 +65,7 @@ class TryGroupingInput(BaseModel):
 
 class EvaluateGroupingInput(BaseModel):
     """Input for evaluate_grouping tool."""
+
     grouping: dict = Field(
         description="Dictionary mapping receipt_id (int) to list of line_ids (list[int])"
     )
@@ -65,17 +73,20 @@ class EvaluateGroupingInput(BaseModel):
 
 class CompareCoordinatesInput(BaseModel):
     """Input for compare_coordinates tool."""
+
     receipt_id: int = Field(description="Receipt ID to compare coordinates for")
 
 
 class TryMergeInput(BaseModel):
     """Input for try_merge tool."""
+
     receipt_id_1: int = Field(description="First receipt ID to merge")
     receipt_id_2: int = Field(description="Second receipt ID to merge")
 
 
 class SubmitGroupingInput(BaseModel):
     """Input for submit_grouping tool."""
+
     grouping: dict = Field(
         description="Final recommended grouping: receipt_id -> list of line_ids"
     )
@@ -86,6 +97,7 @@ class SubmitGroupingInput(BaseModel):
 # ==============================================================================
 # Tool Factory - Creates tools with injected dependencies
 # ==============================================================================
+
 
 def create_receipt_grouper_tools(
     dynamo_client: Any,
@@ -126,34 +138,36 @@ def create_receipt_grouper_tools(
                 ctx.lines = []
                 for line in image_lines:
                     centroid = line.calculate_centroid()
-                    ctx.lines.append({
-                        "line_id": line.line_id,
-                        "text": line.text,
-                        "centroid_x": centroid[0],
-                        "centroid_y": centroid[1],
-                        "bounding_box": {
-                            "x": line.bounding_box.get("x", 0),
-                            "y": line.bounding_box.get("y", 0),
-                            "width": line.bounding_box.get("width", 0),
-                            "height": line.bounding_box.get("height", 0),
-                        },
-                        "top_left": {
-                            "x": line.top_left.get("x", 0),
-                            "y": line.top_left.get("y", 0),
-                        },
-                        "top_right": {
-                            "x": line.top_right.get("x", 0),
-                            "y": line.top_right.get("y", 0),
-                        },
-                        "bottom_left": {
-                            "x": line.bottom_left.get("x", 0),
-                            "y": line.bottom_left.get("y", 0),
-                        },
-                        "bottom_right": {
-                            "x": line.bottom_right.get("x", 0),
-                            "y": line.bottom_right.get("y", 0),
-                        },
-                    })
+                    ctx.lines.append(
+                        {
+                            "line_id": line.line_id,
+                            "text": line.text,
+                            "centroid_x": centroid[0],
+                            "centroid_y": centroid[1],
+                            "bounding_box": {
+                                "x": line.bounding_box.get("x", 0),
+                                "y": line.bounding_box.get("y", 0),
+                                "width": line.bounding_box.get("width", 0),
+                                "height": line.bounding_box.get("height", 0),
+                            },
+                            "top_left": {
+                                "x": line.top_left.get("x", 0),
+                                "y": line.top_left.get("y", 0),
+                            },
+                            "top_right": {
+                                "x": line.top_right.get("x", 0),
+                                "y": line.top_right.get("y", 0),
+                            },
+                            "bottom_left": {
+                                "x": line.bottom_left.get("x", 0),
+                                "y": line.bottom_left.get("y", 0),
+                            },
+                            "bottom_right": {
+                                "x": line.bottom_right.get("x", 0),
+                                "y": line.bottom_right.get("y", 0),
+                            },
+                        }
+                    )
                 # Sort by Y position (top to bottom), then X (left to right)
                 ctx.lines.sort(key=lambda l: (l["centroid_y"], l["centroid_x"]))
             except Exception as e:
@@ -185,16 +199,20 @@ def create_receipt_grouper_tools(
                 image_lines = dynamo_client.list_lines_from_image(ctx.image_id)
                 ctx.words = []
                 for line in image_lines:
-                    line_words = dynamo_client.list_words_from_line(ctx.image_id, line.line_id)
+                    line_words = dynamo_client.list_words_from_line(
+                        ctx.image_id, line.line_id
+                    )
                     for word in line_words:
                         centroid = word.calculate_centroid()
-                        ctx.words.append({
-                            "line_id": word.line_id,
-                            "word_id": word.word_id,
-                            "text": word.text,
-                            "centroid_x": centroid[0],
-                            "centroid_y": centroid[1],
-                        })
+                        ctx.words.append(
+                            {
+                                "line_id": word.line_id,
+                                "word_id": word.word_id,
+                                "text": word.text,
+                                "centroid_x": centroid[0],
+                                "centroid_y": centroid[1],
+                            }
+                        )
                 # Sort by Y position (top to bottom), then X (left to right)
                 ctx.words.sort(key=lambda w: (w["centroid_y"], w["centroid_x"]))
             except Exception as e:
@@ -228,7 +246,8 @@ def create_receipt_grouper_tools(
                 for receipt in image_details.receipts:
                     # Get lines for this receipt
                     receipt_lines = [
-                        rl for rl in image_details.receipt_lines
+                        rl
+                        for rl in image_details.receipt_lines
                         if rl.receipt_id == receipt.receipt_id
                     ]
                     line_ids = sorted([rl.line_id for rl in receipt_lines])
@@ -249,12 +268,14 @@ def create_receipt_grouper_tools(
                     except Exception:
                         pass  # Metadata might not exist
 
-                    ctx.receipts.append({
-                        "receipt_id": receipt.receipt_id,
-                        "line_ids": line_ids,
-                        "line_count": len(line_ids),
-                        "metadata": metadata,
-                    })
+                    ctx.receipts.append(
+                        {
+                            "receipt_id": receipt.receipt_id,
+                            "line_ids": line_ids,
+                            "line_count": len(line_ids),
+                            "metadata": metadata,
+                        }
+                    )
 
                 # Sort by receipt_id
                 ctx.receipts.sort(key=lambda r: r["receipt_id"])
@@ -307,7 +328,9 @@ def create_receipt_grouper_tools(
                 return {"error": f"Receipt {receipt_id} not found"}
 
             # Get receipt lines from DynamoDB
-            receipt_details = dynamo_client.get_receipt_details(ctx.image_id, receipt_id)
+            receipt_details = dynamo_client.get_receipt_details(
+                ctx.image_id, receipt_id
+            )
             receipt_lines = receipt_details.lines if receipt_details else []
 
             # Build image line map
@@ -324,55 +347,84 @@ def create_receipt_grouper_tools(
                 if image_line:
                     # Calculate centroids
                     receipt_centroid = receipt_line.calculate_centroid()
-                    image_centroid = (image_line["centroid_x"], image_line["centroid_y"])
+                    image_centroid = (
+                        image_line["centroid_x"],
+                        image_line["centroid_y"],
+                    )
 
                     # Calculate distance between centroids
-                    distance = ((receipt_centroid[0] - image_centroid[0])**2 +
-                              (receipt_centroid[1] - image_centroid[1])**2)**0.5
+                    distance = (
+                        (receipt_centroid[0] - image_centroid[0]) ** 2
+                        + (receipt_centroid[1] - image_centroid[1]) ** 2
+                    ) ** 0.5
 
-                    receipt_line_data.append({
-                        "line_id": receipt_line.line_id,
-                        "text": receipt_line.text,
-                        "receipt_centroid": {"x": receipt_centroid[0], "y": receipt_centroid[1]},
-                        "image_centroid": {"x": image_centroid[0], "y": image_centroid[1]},
-                        "distance": round(distance, 4),
-                        "matches": distance < 0.01,  # Very close = matches
-                    })
+                    receipt_line_data.append(
+                        {
+                            "line_id": receipt_line.line_id,
+                            "text": receipt_line.text,
+                            "receipt_centroid": {
+                                "x": receipt_centroid[0],
+                                "y": receipt_centroid[1],
+                            },
+                            "image_centroid": {
+                                "x": image_centroid[0],
+                                "y": image_centroid[1],
+                            },
+                            "distance": round(distance, 4),
+                            "matches": distance < 0.01,  # Very close = matches
+                        }
+                    )
 
                     if distance < 0.01:
-                        matches.append({
-                            "line_id": receipt_line.line_id,
-                            "text": receipt_line.text[:50],
-                            "distance": round(distance, 4),
-                        })
+                        matches.append(
+                            {
+                                "line_id": receipt_line.line_id,
+                                "text": receipt_line.text[:50],
+                                "distance": round(distance, 4),
+                            }
+                        )
                     else:
-                        mismatches.append({
+                        mismatches.append(
+                            {
+                                "line_id": receipt_line.line_id,
+                                "text": receipt_line.text[:50],
+                                "distance": round(distance, 4),
+                                "receipt_centroid": {
+                                    "x": receipt_centroid[0],
+                                    "y": receipt_centroid[1],
+                                },
+                                "image_centroid": {
+                                    "x": image_centroid[0],
+                                    "y": image_centroid[1],
+                                },
+                            }
+                        )
+                else:
+                    mismatches.append(
+                        {
                             "line_id": receipt_line.line_id,
                             "text": receipt_line.text[:50],
-                            "distance": round(distance, 4),
-                            "receipt_centroid": {"x": receipt_centroid[0], "y": receipt_centroid[1]},
-                            "image_centroid": {"x": image_centroid[0], "y": image_centroid[1]},
-                        })
-                else:
-                    mismatches.append({
-                        "line_id": receipt_line.line_id,
-                        "text": receipt_line.text[:50],
-                        "error": "Line not found in image lines",
-                    })
+                            "error": "Line not found in image lines",
+                        }
+                    )
 
             # Analyze spatial layout
             if receipt_line_data:
-                y_positions = [line["receipt_centroid"]["y"] for line in receipt_line_data]
+                y_positions = [
+                    line["receipt_centroid"]["y"] for line in receipt_line_data
+                ]
                 y_positions.sort()
 
                 gaps = []
                 for i in range(len(y_positions) - 1):
                     gap = y_positions[i + 1] - y_positions[i]
                     if gap > 0.05:  # Significant gap
-                        gaps.append({
-                            "between_lines": f"{y_positions[i]:.3f} and {y_positions[i+1]:.3f}",
-                            "gap_size": round(gap, 3),
-                        })
+                        gaps.append(
+                            {
+                                "between_lines": f"{y_positions[i]:.3f} and {y_positions[i+1]:.3f}",
+                                "gap_size": round(gap, 3),
+                            }
+                        )
             else:
                 gaps = []
 
@@ -439,10 +491,14 @@ def create_receipt_grouper_tools(
 
             for receipt_id, line_ids in grouping.items():
                 # Get lines for this receipt
-                receipt_lines = [line_map[line_id] for line_id in line_ids if line_id in line_map]
+                receipt_lines = [
+                    line_map[line_id] for line_id in line_ids if line_id in line_map
+                ]
 
                 if not receipt_lines:
-                    result["issues"].append(f"Receipt {receipt_id}: No valid lines found")
+                    result["issues"].append(
+                        f"Receipt {receipt_id}: No valid lines found"
+                    )
                     continue
 
                 # Build full text
@@ -450,17 +506,54 @@ def create_receipt_grouper_tools(
 
                 # Check for common receipt elements
                 text_lower = receipt_text.lower()
-                has_merchant = any(
-                    word in text_lower for word in ["market", "store", "restaurant", "cafe", "shop", "inc", "llc", "corp"]
-                ) or len([w for w in receipt_lines[0]["text"].split() if len(w) > 3]) > 0
+                has_merchant = (
+                    any(
+                        word in text_lower
+                        for word in [
+                            "market",
+                            "store",
+                            "restaurant",
+                            "cafe",
+                            "shop",
+                            "inc",
+                            "llc",
+                            "corp",
+                        ]
+                    )
+                    or len([w for w in receipt_lines[0]["text"].split() if len(w) > 3])
+                    > 0
+                )
 
                 has_address = any(
-                    word in text_lower for word in ["street", "st", "avenue", "ave", "road", "rd", "blvd", "boulevard", "drive", "dr", "way", "lane", "ln"]
-                ) or any(char.isdigit() for char in receipt_text)  # Addresses usually have numbers
+                    word in text_lower
+                    for word in [
+                        "street",
+                        "st",
+                        "avenue",
+                        "ave",
+                        "road",
+                        "rd",
+                        "blvd",
+                        "boulevard",
+                        "drive",
+                        "dr",
+                        "way",
+                        "lane",
+                        "ln",
+                    ]
+                ) or any(
+                    char.isdigit() for char in receipt_text
+                )  # Addresses usually have numbers
 
                 has_phone = any(
                     char in receipt_text for char in ["(", ")", "-"]
-                ) or any(len(part) == 10 and part.isdigit() for part in receipt_text.replace("(", "").replace(")", "").replace("-", "").split())
+                ) or any(
+                    len(part) == 10 and part.isdigit()
+                    for part in receipt_text.replace("(", "")
+                    .replace(")", "")
+                    .replace("-", "")
+                    .split()
+                )
 
                 has_total = any(
                     word in text_lower for word in ["total", "amount", "sum", "$"]
@@ -493,7 +586,11 @@ def create_receipt_grouper_tools(
                 result["receipts"][receipt_id] = {
                     "line_ids": line_ids,
                     "line_count": len(receipt_lines),
-                    "text": receipt_text[:200] + "..." if len(receipt_text) > 200 else receipt_text,
+                    "text": (
+                        receipt_text[:200] + "..."
+                        if len(receipt_text) > 200
+                        else receipt_text
+                    ),
                     "has_merchant_name": has_merchant,
                     "has_address": has_address,
                     "has_phone": has_phone,
@@ -504,7 +601,9 @@ def create_receipt_grouper_tools(
 
                 total_coherence += coherence
                 if receipt_issues:
-                    result["issues"].extend([f"Receipt {receipt_id}: {issue}" for issue in receipt_issues])
+                    result["issues"].extend(
+                        [f"Receipt {receipt_id}: {issue}" for issue in receipt_issues]
+                    )
 
             if receipt_count > 0:
                 result["overall_coherence"] = total_coherence / receipt_count
@@ -552,7 +651,9 @@ def create_receipt_grouper_tools(
             receipt_count = len(grouping)
 
             for receipt_id, line_ids in grouping.items():
-                receipt_lines = [line_map[line_id] for line_id in line_ids if line_id in line_map]
+                receipt_lines = [
+                    line_map[line_id] for line_id in line_ids if line_id in line_map
+                ]
 
                 if not receipt_lines:
                     continue
@@ -560,24 +661,79 @@ def create_receipt_grouper_tools(
                 # Spatial analysis
                 y_positions = [line["centroid_y"] for line in receipt_lines]
                 y_range = max(y_positions) - min(y_positions) if y_positions else 0
-                spatial_score = 1.0 / (1.0 + y_range * 0.1)  # Closer lines = higher score
+                spatial_score = 1.0 / (
+                    1.0 + y_range * 0.1
+                )  # Closer lines = higher score
 
                 # Text analysis (from try_grouping)
                 receipt_text = " ".join(line["text"] for line in receipt_lines)
                 text_lower = receipt_text.lower()
 
-                has_merchant = any(word in text_lower for word in ["market", "store", "restaurant", "cafe", "shop", "inc", "llc", "corp"]) or len([w for w in receipt_lines[0]["text"].split() if len(w) > 3]) > 0
-                has_address = any(word in text_lower for word in ["street", "st", "avenue", "ave", "road", "rd", "blvd", "boulevard", "drive", "dr", "way", "lane", "ln"]) or any(char.isdigit() for char in receipt_text)
-                has_phone = any(char in receipt_text for char in ["(", ")", "-"]) or any(len(part) == 10 and part.isdigit() for part in receipt_text.replace("(", "").replace(")", "").replace("-", "").split())
-                has_total = any(word in text_lower for word in ["total", "amount", "sum", "$"]) or any(char == "$" for char in receipt_text)
+                has_merchant = (
+                    any(
+                        word in text_lower
+                        for word in [
+                            "market",
+                            "store",
+                            "restaurant",
+                            "cafe",
+                            "shop",
+                            "inc",
+                            "llc",
+                            "corp",
+                        ]
+                    )
+                    or len([w for w in receipt_lines[0]["text"].split() if len(w) > 3])
+                    > 0
+                )
+                has_address = any(
+                    word in text_lower
+                    for word in [
+                        "street",
+                        "st",
+                        "avenue",
+                        "ave",
+                        "road",
+                        "rd",
+                        "blvd",
+                        "boulevard",
+                        "drive",
+                        "dr",
+                        "way",
+                        "lane",
+                        "ln",
+                    ]
+                ) or any(char.isdigit() for char in receipt_text)
+                has_phone = any(
+                    char in receipt_text for char in ["(", ")", "-"]
+                ) or any(
+                    len(part) == 10 and part.isdigit()
+                    for part in receipt_text.replace("(", "")
+                    .replace(")", "")
+                    .replace("-", "")
+                    .split()
+                )
+                has_total = any(
+                    word in text_lower for word in ["total", "amount", "sum", "$"]
+                ) or any(char == "$" for char in receipt_text)
 
-                completeness_score = sum([has_merchant, has_address, has_phone, has_total]) / 4.0
+                completeness_score = (
+                    sum([has_merchant, has_address, has_phone, has_total]) / 4.0
+                )
 
                 # Line count score (more lines = better, but not too many)
-                line_count_score = min(len(receipt_lines) / 10.0, 1.0) if len(receipt_lines) >= 3 else len(receipt_lines) / 3.0
+                line_count_score = (
+                    min(len(receipt_lines) / 10.0, 1.0)
+                    if len(receipt_lines) >= 3
+                    else len(receipt_lines) / 3.0
+                )
 
                 # Overall score for this receipt
-                receipt_score = (spatial_score * 0.3 + completeness_score * 0.5 + line_count_score * 0.2)
+                receipt_score = (
+                    spatial_score * 0.3
+                    + completeness_score * 0.5
+                    + line_count_score * 0.2
+                )
 
                 result["receipts"][receipt_id] = {
                     "line_ids": line_ids,
@@ -590,7 +746,11 @@ def create_receipt_grouper_tools(
                     "has_address": has_address,
                     "has_phone": has_phone,
                     "has_total": has_total,
-                    "text_preview": receipt_text[:150] + "..." if len(receipt_text) > 150 else receipt_text,
+                    "text_preview": (
+                        receipt_text[:150] + "..."
+                        if len(receipt_text) > 150
+                        else receipt_text
+                    ),
                 }
 
                 total_score += receipt_score
@@ -600,11 +760,17 @@ def create_receipt_grouper_tools(
 
             # Generate recommendation
             if result["overall_score"] > 0.7:
-                result["recommendation"] = "This grouping looks good - receipts appear complete and coherent"
+                result["recommendation"] = (
+                    "This grouping looks good - receipts appear complete and coherent"
+                )
             elif result["overall_score"] > 0.5:
-                result["recommendation"] = "This grouping is reasonable but could be improved"
+                result["recommendation"] = (
+                    "This grouping is reasonable but could be improved"
+                )
             else:
-                result["recommendation"] = "This grouping has issues - receipts may be incomplete or incorrectly split"
+                result["recommendation"] = (
+                    "This grouping has issues - receipts may be incomplete or incorrectly split"
+                )
 
             return result
 
@@ -659,13 +825,17 @@ def create_receipt_grouper_tools(
                 return {"error": f"Receipt {receipt_id_2} not found"}
 
             # Merge line IDs
-            merged_line_ids = sorted(list(set(receipt_1["line_ids"] + receipt_2["line_ids"])))
+            merged_line_ids = sorted(
+                list(set(receipt_1["line_ids"] + receipt_2["line_ids"]))
+            )
 
             # Get lines for merged receipt
             if ctx.lines is None:
                 get_image_lines()
             line_map = {line["line_id"]: line for line in ctx.lines}
-            merged_lines = [line_map[line_id] for line_id in merged_line_ids if line_id in line_map]
+            merged_lines = [
+                line_map[line_id] for line_id in merged_line_ids if line_id in line_map
+            ]
 
             # Analyze spatial layout of merged lines
             if merged_lines:
@@ -678,10 +848,12 @@ def create_receipt_grouper_tools(
                 for i in range(len(y_positions) - 1):
                     gap = y_positions[i + 1] - y_positions[i]
                     if gap > 0.1:  # Large gap might indicate separate receipts
-                        large_gaps.append({
-                            "gap_size": round(gap, 3),
-                            "between_y": f"{y_positions[i]:.3f} and {y_positions[i+1]:.3f}",
-                        })
+                        large_gaps.append(
+                            {
+                                "gap_size": round(gap, 3),
+                                "between_y": f"{y_positions[i]:.3f} and {y_positions[i+1]:.3f}",
+                            }
+                        )
             else:
                 y_range = 0
                 large_gaps = []
@@ -694,20 +866,58 @@ def create_receipt_grouper_tools(
             text_lower = merged_text.lower()
 
             # Check for receipt elements
-            has_merchant = any(
-                word in text_lower for word in ["market", "store", "restaurant", "cafe", "shop", "inc", "llc", "corp", "farmers", "provisions"]
-            ) or len([w for w in merged_lines[0]["text"].split() if len(w) > 3]) > 0
+            has_merchant = (
+                any(
+                    word in text_lower
+                    for word in [
+                        "market",
+                        "store",
+                        "restaurant",
+                        "cafe",
+                        "shop",
+                        "inc",
+                        "llc",
+                        "corp",
+                        "farmers",
+                        "provisions",
+                    ]
+                )
+                or len([w for w in merged_lines[0]["text"].split() if len(w) > 3]) > 0
+            )
 
             has_address = any(
-                word in text_lower for word in ["street", "st", "avenue", "ave", "road", "rd", "blvd", "boulevard", "drive", "dr", "way", "lane", "ln", "westlake", "thousand", "oaks"]
+                word in text_lower
+                for word in [
+                    "street",
+                    "st",
+                    "avenue",
+                    "ave",
+                    "road",
+                    "rd",
+                    "blvd",
+                    "boulevard",
+                    "drive",
+                    "dr",
+                    "way",
+                    "lane",
+                    "ln",
+                    "westlake",
+                    "thousand",
+                    "oaks",
+                ]
             ) or any(char.isdigit() for char in merged_text)
 
-            has_phone = any(
-                char in merged_text for char in ["(", ")", "-"]
-            ) or any(len(part) == 10 and part.isdigit() for part in merged_text.replace("(", "").replace(")", "").replace("-", "").split())
+            has_phone = any(char in merged_text for char in ["(", ")", "-"]) or any(
+                len(part) == 10 and part.isdigit()
+                for part in merged_text.replace("(", "")
+                .replace(")", "")
+                .replace("-", "")
+                .split()
+            )
 
             has_total = any(
-                word in text_lower for word in ["total", "amount", "sum", "$", "subtotal"]
+                word in text_lower
+                for word in ["total", "amount", "sum", "$", "subtotal"]
             ) or any(char == "$" for char in merged_text)
 
             # Calculate coherence score
@@ -725,31 +935,40 @@ def create_receipt_grouper_tools(
             merchant_names_1 = receipt_1.get("metadata", {}).get("merchant_name", "")
             merchant_names_2 = receipt_2.get("metadata", {}).get("merchant_name", "")
             has_duplicate_merchants = (
-                merchant_names_1 and merchant_names_2 and
-                merchant_names_1.lower() != merchant_names_2.lower()
+                merchant_names_1
+                and merchant_names_2
+                and merchant_names_1.lower() != merchant_names_2.lower()
             )
 
             # Check for duplicate addresses (bad sign)
             address_1 = receipt_1.get("metadata", {}).get("address", "")
             address_2 = receipt_2.get("metadata", {}).get("address", "")
             has_duplicate_addresses = (
-                address_1 and address_2 and
-                address_1.lower() != address_2.lower()
+                address_1 and address_2 and address_1.lower() != address_2.lower()
             )
 
             # Check for duplicate phones (bad sign)
             phone_1 = receipt_1.get("metadata", {}).get("phone", "")
             phone_2 = receipt_2.get("metadata", {}).get("phone", "")
             has_duplicate_phones = (
-                phone_1 and phone_2 and
-                phone_1.replace("-", "").replace("(", "").replace(")", "").replace(" ", "") !=
-                phone_2.replace("-", "").replace("(", "").replace(")", "").replace(" ", "")
+                phone_1
+                and phone_2
+                and phone_1.replace("-", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace(" ", "")
+                != phone_2.replace("-", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace(" ", "")
             )
 
             # Determine if merge makes sense
             issues = []
             if has_duplicate_merchants:
-                issues.append(f"Different merchants: '{merchant_names_1}' vs '{merchant_names_2}'")
+                issues.append(
+                    f"Different merchants: '{merchant_names_1}' vs '{merchant_names_2}'"
+                )
                 coherence *= 0.5  # Penalize heavily
             if has_duplicate_addresses:
                 issues.append(f"Different addresses: '{address_1}' vs '{address_2}'")
@@ -771,18 +990,22 @@ def create_receipt_grouper_tools(
 
             # Check spatial layout
             if large_gaps:
-                issues.append(f"Large spatial gaps detected ({len(large_gaps)} gaps) - might be separate receipts")
+                issues.append(
+                    f"Large spatial gaps detected ({len(large_gaps)} gaps) - might be separate receipts"
+                )
                 coherence *= 0.8  # Penalize for spatial gaps
             if y_range > 0.5:
-                issues.append(f"Very large vertical spread ({y_range:.3f}) - lines might not belong together")
+                issues.append(
+                    f"Very large vertical spread ({y_range:.3f}) - lines might not belong together"
+                )
                 coherence *= 0.9
 
             makes_sense = (
-                coherence > 0.6 and
-                not has_duplicate_merchants and
-                not has_duplicate_addresses and
-                not has_duplicate_phones and
-                len(merged_lines) >= 3
+                coherence > 0.6
+                and not has_duplicate_merchants
+                and not has_duplicate_addresses
+                and not has_duplicate_phones
+                and len(merged_lines) >= 3
             )
 
             return {
@@ -790,7 +1013,9 @@ def create_receipt_grouper_tools(
                 "receipt_id_2": receipt_id_2,
                 "merged_line_ids": merged_line_ids,
                 "merged_line_count": len(merged_lines),
-                "merged_text": merged_text[:300] + "..." if len(merged_text) > 300 else merged_text,
+                "merged_text": (
+                    merged_text[:300] + "..." if len(merged_text) > 300 else merged_text
+                ),
                 "coherence_score": round(coherence, 3),
                 "has_merchant_name": has_merchant,
                 "has_address": has_address,
@@ -806,7 +1031,11 @@ def create_receipt_grouper_tools(
                 },
                 "makes_sense": makes_sense,
                 "issues": issues,
-                "recommendation": "Merge makes sense" if makes_sense else "Merge does NOT make sense - these appear to be different receipts",
+                "recommendation": (
+                    "Merge makes sense"
+                    if makes_sense
+                    else "Merge does NOT make sense - these appear to be different receipts"
+                ),
             }
 
         except Exception as e:
@@ -854,4 +1083,3 @@ def create_receipt_grouper_tools(
     ]
 
     return tools, state
-

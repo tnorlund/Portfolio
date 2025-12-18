@@ -53,9 +53,7 @@ def get_bucket_names(stack: str) -> Dict[str, str]:
     cdn_bucket = env.get("cdn_bucket_name")
 
     if not raw_bucket or not cdn_bucket:
-        raise ValueError(
-            f"Could not find bucket names in Pulumi {stack} stack outputs"
-        )
+        raise ValueError(f"Could not find bucket names in Pulumi {stack} stack outputs")
 
     logger.info(f"{stack.upper()} buckets: raw={raw_bucket}, cdn={cdn_bucket}")
     return {"raw": raw_bucket, "cdn": cdn_bucket}
@@ -90,9 +88,7 @@ def list_all_objects(
             for obj in page["Contents"]:
                 key = obj["Key"]
                 if extensions:
-                    if any(
-                        key.lower().endswith(ext.lower()) for ext in extensions
-                    ):
+                    if any(key.lower().endswith(ext.lower()) for ext in extensions):
                         keys.append(key)
                 else:
                     keys.append(key)
@@ -169,9 +165,7 @@ def copy_one_object(
             return key, True, None
 
         copy_source = {"Bucket": source_bucket, "Key": key}
-        s3_client.copy_object(
-            CopySource=copy_source, Bucket=dest_bucket, Key=key
-        )
+        s3_client.copy_object(CopySource=copy_source, Bucket=dest_bucket, Key=key)
         return key, True, None
     except Exception as e:
         return key, False, str(e)
@@ -200,17 +194,13 @@ def copy_objects(
         "errors": [],
     }
 
-    logger.info(
-        f"Processing {len(keys)} objects with {max_workers} workers..."
-    )
+    logger.info(f"Processing {len(keys)} objects with {max_workers} workers...")
 
     # Batch check for existing objects if skip_existing is enabled
     keys_to_copy = keys
     if skip_existing:
         logger.info("Checking which objects already exist in destination...")
-        existing = check_objects_batch(
-            s3_client, dest_bucket, keys, max_workers=20
-        )
+        existing = check_objects_batch(s3_client, dest_bucket, keys, max_workers=20)
         keys_to_copy = [k for k in keys if not existing.get(k, False)]
         stats["skipped"] = len(keys) - len(keys_to_copy)
         logger.info(
@@ -382,9 +372,7 @@ def main():
     mode = "DRY RUN" if args.dry_run else "LIVE COPY"
     logger.info(f"Mode: {mode}")
     if args.dry_run:
-        logger.info(
-            "No files will be copied. Use --no-dry-run to actually copy."
-        )
+        logger.info("No files will be copied. Use --no-dry-run to actually copy.")
 
     try:
         # Get bucket names
@@ -440,9 +428,7 @@ def main():
             logger.info(
                 f"  {'Would copy' if args.dry_run else 'Copied'}: {total_stats['raw']['copied']}"
             )
-            logger.info(
-                f"  Skipped (already exist): {total_stats['raw']['skipped']}"
-            )
+            logger.info(f"  Skipped (already exist): {total_stats['raw']['skipped']}")
             logger.info(f"  Failed: {total_stats['raw']['failed']}")
 
         if not args.skip_cdn:
@@ -451,9 +437,7 @@ def main():
             logger.info(
                 f"  {'Would copy' if args.dry_run else 'Copied'}: {total_stats['cdn']['copied']}"
             )
-            logger.info(
-                f"  Skipped (already exist): {total_stats['cdn']['skipped']}"
-            )
+            logger.info(f"  Skipped (already exist): {total_stats['cdn']['skipped']}")
             logger.info(f"  Failed: {total_stats['cdn']['failed']}")
 
         # Show errors if any
@@ -477,9 +461,7 @@ def main():
                 "\n✅ Dry run completed. Use --no-dry-run to actually copy files."
             )
         else:
-            total_failed = (
-                total_stats["raw"]["failed"] + total_stats["cdn"]["failed"]
-            )
+            total_failed = total_stats["raw"]["failed"] + total_stats["cdn"]["failed"]
             if total_failed > 0:
                 logger.error("\n❌ Copy completed with errors")
                 sys.exit(1)

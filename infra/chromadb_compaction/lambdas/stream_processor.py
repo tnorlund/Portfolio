@@ -59,9 +59,7 @@ logger = get_operation_logger(__name__)
 
 
 @trace_function(operation_name="stream_processor")
-@with_compaction_timeout_protection(
-    max_duration=LAMBDA_TIMEOUT_THRESHOLD_SECONDS
-)
+@with_compaction_timeout_protection(max_duration=LAMBDA_TIMEOUT_THRESHOLD_SECONDS)
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Process DynamoDB stream events for ChromaDB metadata synchronization.
@@ -156,14 +154,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         event_name_counts: Dict[str, int] = {}
         for record in records_to_process:
             event_name = record.get("eventName", "unknown")
-            event_name_counts[event_name] = (
-                event_name_counts.get(event_name, 0) + 1
-            )
+            event_name_counts[event_name] = event_name_counts.get(event_name, 0) + 1
 
         # Build messages from all stream records in batch
-        messages_to_send = build_messages_from_records(
-            records_to_process, metrics
-        )
+        messages_to_send = build_messages_from_records(records_to_process, metrics)
 
         # Calculate processing statistics
         messages_generated = len(messages_to_send)
@@ -181,20 +175,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         sent_count = 0
         if messages_to_send:
             sent_count = publish_messages(messages_to_send, metrics)
-            logger.info(
-                "Messages sent to compaction queues", message_count=sent_count
-            )
+            logger.info("Messages sent to compaction queues", message_count=sent_count)
 
         # Record processing duration
-        processing_duration = int(
-            (time.time() - start_time) * 1000
-        )  # milliseconds
+        processing_duration = int((time.time() - start_time) * 1000)  # milliseconds
 
         # Calculate success rate
         success_rate = (
-            (messages_generated / total_records * 100)
-            if total_records > 0
-            else 0
+            (messages_generated / total_records * 100) if total_records > 0 else 0
         )
 
         # Collect all metrics for batch EMF logging (cost-effective)
@@ -234,9 +222,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             queued_messages=sent_count,
         )
 
-        return format_response(
-            response.to_dict(), event, correlation_id=correlation_id
-        )
+        return format_response(response.to_dict(), event, correlation_id=correlation_id)
 
     except ValueError as e:
         # ValueError includes batch size validation errors

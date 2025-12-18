@@ -45,9 +45,7 @@ class MerchantResult:
     address: Optional[str] = None
     phone: Optional[str] = None
     confidence: float = 0.0
-    resolution_tier: Optional[str] = (
-        None  # "phone", "address", "place_id_finder"
-    )
+    resolution_tier: Optional[str] = None  # "phone", "address", "place_id_finder"
     source_image_id: Optional[str] = None  # For Tier 1, the source receipt
     source_receipt_id: Optional[int] = None
 
@@ -100,9 +98,7 @@ class MerchantResolver:
         phone = self._extract_phone(words)
         if phone:
             _log(f"Tier 1: Trying phone match for {phone}")
-            result = self._query_by_phone(
-                lines_client, phone, image_id, receipt_id
-            )
+            result = self._query_by_phone(lines_client, phone, image_id, receipt_id)
             if result.place_id:
                 _log(
                     f"Tier 1 SUCCESS: Found merchant via phone: "
@@ -114,9 +110,7 @@ class MerchantResolver:
         address = self._extract_address(words)
         if address:
             _log(f"Tier 1: Trying address match for {address[:50]}...")
-            result = self._query_by_address(
-                lines_client, address, image_id, receipt_id
-            )
+            result = self._query_by_address(lines_client, address, image_id, receipt_id)
             if result.place_id:
                 _log(
                     f"Tier 1 SUCCESS: Found merchant via address: "
@@ -233,8 +227,7 @@ class MerchantResolver:
                         # Skip current receipt
                         if (
                             metadata.get("image_id") == current_image_id
-                            and metadata.get("receipt_id")
-                            == current_receipt_id
+                            and metadata.get("receipt_id") == current_receipt_id
                         ):
                             continue
 
@@ -299,8 +292,7 @@ class MerchantResolver:
                         # Skip current receipt
                         if (
                             metadata.get("image_id") == current_image_id
-                            and metadata.get("receipt_id")
-                            == current_receipt_id
+                            and metadata.get("receipt_id") == current_receipt_id
                         ):
                             continue
 
@@ -414,8 +406,7 @@ class MerchantResolver:
                     merchant_name=match.place_name,
                     address=match.place_address,
                     phone=match.place_phone,
-                    confidence=match.confidence
-                    / 100.0,  # Convert 0-100 to 0-1
+                    confidence=match.confidence / 100.0,  # Convert 0-100 to 0-1
                     resolution_tier="place_id_finder",
                 )
 

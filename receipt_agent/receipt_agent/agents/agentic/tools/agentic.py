@@ -51,9 +51,7 @@ def _build_line_id(image_id: str, receipt_id: int, line_id: int) -> str:
     return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
 
 
-def _build_word_id(
-    image_id: str, receipt_id: int, line_id: int, word_id: int
-) -> str:
+def _build_word_id(image_id: str, receipt_id: int, line_id: int, word_id: int) -> str:
     """Build ChromaDB document ID for a word."""
     return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
 
@@ -87,9 +85,7 @@ class FindSimilarToMyWordInput(BaseModel):
 class SearchLinesInput(BaseModel):
     """Input for search_lines tool."""
 
-    query: str = Field(
-        description="Text to search for (address, phone, merchant name)"
-    )
+    query: str = Field(description="Text to search for (address, phone, merchant name)")
     n_results: int = Field(
         default=10, ge=1, le=20, description="Number of results (max 20)"
     )
@@ -126,9 +122,7 @@ class GetPlaceIdInfoInput(BaseModel):
 class CompareWithReceiptInput(BaseModel):
     """Input for compare_with_receipt tool."""
 
-    other_image_id: str = Field(
-        description="Image ID of receipt to compare with"
-    )
+    other_image_id: str = Field(description="Image ID of receipt to compare with")
     other_receipt_id: int = Field(description="Receipt ID to compare with")
 
 
@@ -138,9 +132,7 @@ class SubmitDecisionInput(BaseModel):
     status: Literal["VALIDATED", "INVALID", "NEEDS_REVIEW"] = Field(
         description="Validation status: VALIDATED (correct), INVALID (wrong), NEEDS_REVIEW (uncertain)"
     )
-    confidence: float = Field(
-        ge=0.0, le=1.0, description="Confidence score 0.0 to 1.0"
-    )
+    confidence: float = Field(ge=0.0, le=1.0, description="Confidence score 0.0 to 1.0")
     reasoning: str = Field(description="Brief explanation of the decision")
     evidence: list[str] = Field(
         default_factory=list,
@@ -198,9 +190,7 @@ def ensure_chroma_state(
         return chroma_client, embed_fn
 
     # Try to lazy-load if bucket is available
-    chromadb_bucket = state.get("chromadb_bucket") or os.environ.get(
-        "CHROMADB_BUCKET"
-    )
+    chromadb_bucket = state.get("chromadb_bucket") or os.environ.get("CHROMADB_BUCKET")
     if not chromadb_bucket:
         raise RuntimeError(
             "ChromaDB client and embedding function are not available and "
@@ -210,14 +200,10 @@ def ensure_chroma_state(
         )
 
     try:
-        logger.info(
-            "Lazy-loading ChromaDB (dual collections) and embeddings..."
-        )
+        logger.info("Lazy-loading ChromaDB (dual collections) and embeddings...")
         chroma_client, embed_fn = load_dual_chroma_from_s3(
             chromadb_bucket=chromadb_bucket,
-            base_chroma_path=os.environ.get(
-                "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"
-            ),
+            base_chroma_path=os.environ.get("RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"),
             verify_integrity=False,
         )
         # Cache in state for subsequent calls
@@ -405,9 +391,7 @@ def create_agentic_tools(
                         "validation_status": metadata.validation_status,
                     }
                 else:
-                    ctx.metadata = {
-                        "error": "No metadata found for this receipt"
-                    }
+                    ctx.metadata = {"error": "No metadata found for this receipt"}
             except Exception as e:
                 logger.exception("Error loading metadata")
                 ctx.metadata = {"error": str(e)}
@@ -417,9 +401,7 @@ def create_agentic_tools(
     # ========== SIMILARITY SEARCH TOOLS (using MY embeddings) ==========
 
     @tool(args_schema=FindSimilarToMyLineInput)
-    def find_similar_to_my_line(
-        line_id: int, n_results: int = 10
-    ) -> list[dict]:
+    def find_similar_to_my_line(line_id: int, n_results: int = 10) -> list[dict]:
         """
         Find lines on OTHER receipts similar to one of YOUR lines.
 
@@ -463,9 +445,7 @@ def create_agentic_tools(
                 if result.get("embeddings") and len(result["embeddings"]) > 0:
                     query_embedding = result["embeddings"][0]
                 else:
-                    return [
-                        {"error": f"No embedding found for line {line_id}"}
-                    ]
+                    return [{"error": f"No embedding found for line {line_id}"}]
             except Exception as e:
                 logger.exception(
                     "Error getting embedding for line_id=%s doc_id=%s",
@@ -575,9 +555,7 @@ def create_agentic_tools(
                     query_embedding = result["embeddings"][0]
                 else:
                     return [
-                        {
-                            "error": f"No embedding found for word {line_id}/{word_id}"
-                        }
+                        {"error": f"No embedding found for word {line_id}/{word_id}"}
                     ]
             except Exception as e:
                 logger.exception(
@@ -670,9 +648,7 @@ def create_agentic_tools(
             # Build where clause
             where_clause = None
             if merchant_filter:
-                where_clause = {
-                    "merchant_name": {"$eq": merchant_filter.strip()}
-                }
+                where_clause = {"merchant_name": {"$eq": merchant_filter.strip()}}
 
             results = chroma_client.query(
                 collection_name="lines",
@@ -834,30 +810,20 @@ def create_agentic_tools(
 
             for meta in metadatas:
                 if meta.place_id:
-                    place_ids[meta.place_id] = (
-                        place_ids.get(meta.place_id, 0) + 1
-                    )
+                    place_ids[meta.place_id] = place_ids.get(meta.place_id, 0) + 1
                 if meta.address:
-                    addresses[meta.address] = (
-                        addresses.get(meta.address, 0) + 1
-                    )
+                    addresses[meta.address] = addresses.get(meta.address, 0) + 1
                 if meta.phone_number:
-                    phones[meta.phone_number] = (
-                        phones.get(meta.phone_number, 0) + 1
-                    )
+                    phones[meta.phone_number] = phones.get(meta.phone_number, 0) + 1
 
             total = len(metadatas)
 
             # Find most common
             most_common_place_id = (
-                max(place_ids.items(), key=lambda x: x[1])[0]
-                if place_ids
-                else None
+                max(place_ids.items(), key=lambda x: x[1])[0] if place_ids else None
             )
             most_common_address = (
-                max(addresses.items(), key=lambda x: x[1])[0]
-                if addresses
-                else None
+                max(addresses.items(), key=lambda x: x[1])[0] if addresses else None
             )
             most_common_phone = (
                 max(phones.items(), key=lambda x: x[1])[0] if phones else None
@@ -890,9 +856,7 @@ def create_agentic_tools(
                 "all_addresses": dict(
                     sorted(addresses.items(), key=lambda x: -x[1])[:3]
                 ),
-                "all_phones": dict(
-                    sorted(phones.items(), key=lambda x: -x[1])[:3]
-                ),
+                "all_phones": dict(sorted(phones.items(), key=lambda x: -x[1])[:3]),
             }
 
         except Exception as e:
@@ -960,9 +924,7 @@ def create_agentic_tools(
 
             # Query results are nested in lists
             metadatas = (
-                results.get("metadatas", [[]])[0]
-                if results.get("metadatas")
-                else []
+                results.get("metadatas", [[]])[0] if results.get("metadatas") else []
             )
 
             if not metadatas:
@@ -1000,9 +962,7 @@ def create_agentic_tools(
     # ========== COMPARISON TOOL ==========
 
     @tool(args_schema=CompareWithReceiptInput)
-    def compare_with_receipt(
-        other_image_id: str, other_receipt_id: int
-    ) -> dict:
+    def compare_with_receipt(other_image_id: str, other_receipt_id: int) -> dict:
         """
         Compare your receipt with another specific receipt.
 
@@ -1051,9 +1011,7 @@ def create_agentic_tools(
 
             # Compare
             differences = []
-            same_merchant = (
-                my_metadata.merchant_name == other_metadata.merchant_name
-            )
+            same_merchant = my_metadata.merchant_name == other_metadata.merchant_name
             if not same_merchant:
                 differences.append(
                     f"Merchant: '{my_metadata.merchant_name}' vs '{other_metadata.merchant_name}'"
@@ -1071,9 +1029,7 @@ def create_agentic_tools(
                     f"Address: '{my_metadata.address}' vs '{other_metadata.address}'"
                 )
 
-            same_phone = (
-                my_metadata.phone_number == other_metadata.phone_number
-            )
+            same_phone = my_metadata.phone_number == other_metadata.phone_number
             if not same_phone:
                 differences.append(
                     f"Phone: '{my_metadata.phone_number}' vs '{other_metadata.phone_number}'"
@@ -1126,11 +1082,7 @@ def create_agentic_tools(
             if phone and hasattr(places_api, "search_by_phone"):
                 result = places_api.search_by_phone(phone)
 
-            if (
-                not result
-                and address
-                and hasattr(places_api, "search_by_address")
-            ):
+            if not result and address and hasattr(places_api, "search_by_address"):
                 result = places_api.search_by_address(address)
 
             if not result and hasattr(places_api, "search_by_text"):
@@ -1253,9 +1205,7 @@ def create_agentic_tools(
                     "count": len(businesses),
                     "businesses": businesses,
                     "place_ids": [
-                        b.get("place_id")
-                        for b in businesses
-                        if isinstance(b, dict)
+                        b.get("place_id") for b in businesses if isinstance(b, dict)
                     ],
                     "message": f"Found {len(businesses)} business(es) at address",
                 }

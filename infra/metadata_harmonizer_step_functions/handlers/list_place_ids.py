@@ -107,9 +107,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             except OperationError as e:
                 # If validation fails on a batch (malformed place_id), log and skip
                 # This can happen if some records have invalid place_id types
-                logger.warning(
-                    "Validation error in batch (skipping): %s", str(e)[:200]
-                )
+                logger.warning("Validation error in batch (skipping): %s", str(e)[:200])
                 # If we have a last_evaluated_key, we can try to continue
                 # Otherwise, we've hit the end or can't continue
                 if last_evaluated_key is None:

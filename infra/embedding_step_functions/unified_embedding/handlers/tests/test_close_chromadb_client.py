@@ -44,9 +44,7 @@ os.environ["PYTEST_RUNNING"] = "1"
 sys.modules["utils"] = MagicMock()
 sys.modules["utils.logging"] = MagicMock()
 mock_logger = MagicMock()
-sys.modules["utils.logging"].get_operation_logger = MagicMock(
-    return_value=mock_logger
-)
+sys.modules["utils.logging"].get_operation_logger = MagicMock(return_value=mock_logger)
 sys.modules["utils.logging"].get_logger = MagicMock(return_value=mock_logger)
 
 # Mock receipt_dynamo (it's not needed for testing close_chromadb_client)
@@ -134,9 +132,7 @@ def test_close_chromadb_client_releases_file_locks(
     client = None  # Clear reference
 
     # Wait a moment for file handles to be released
-    time.sleep(
-        0.6
-    )  # Slightly longer than the 0.5s delay in close_chromadb_client
+    time.sleep(0.6)  # Slightly longer than the 0.5s delay in close_chromadb_client
 
     # Test 1: Copy SQLite file to another location (this will fail if file is locked)
     copy_dir = tempfile.mkdtemp(prefix="chromadb_copy_")
@@ -144,9 +140,7 @@ def test_close_chromadb_client_releases_file_locks(
         copied_file = Path(copy_dir) / "chroma.sqlite3"
         shutil.copy2(sqlite_file, copied_file)
         assert copied_file.exists(), "Should be able to copy SQLite file"
-        assert (
-            copied_file.stat().st_size > 0
-        ), "Copied file should have content"
+        assert copied_file.stat().st_size > 0, "Copied file should have content"
     finally:
         shutil.rmtree(copy_dir, ignore_errors=True)
 
@@ -154,9 +148,7 @@ def test_close_chromadb_client_releases_file_locks(
     copy_dir = tempfile.mkdtemp(prefix="chromadb_copy_dir_")
     try:
         shutil.copytree(temp_chromadb_dir, copy_dir, dirs_exist_ok=True)
-        assert Path(
-            copy_dir
-        ).exists(), "Should be able to copy entire directory"
+        assert Path(copy_dir).exists(), "Should be able to copy entire directory"
         assert Path(
             copy_dir / "chroma.sqlite3"
         ).exists(), "SQLite file should be copied"
@@ -167,9 +159,7 @@ def test_close_chromadb_client_releases_file_locks(
     # This verifies files are not locked
     new_client = chromadb.PersistentClient(path=temp_chromadb_dir)
     new_collection = new_client.get_collection("test_collection")
-    assert (
-        new_collection.count() == 3
-    ), "New client should be able to read data"
+    assert new_collection.count() == 3, "New client should be able to read data"
 
     # Cleanup
     close_chromadb_client(new_client, collection_name="test_collection")
@@ -201,9 +191,7 @@ def test_close_chromadb_client_with_multiple_collections(temp_chromadb_dir):
         shutil.copytree(temp_chromadb_dir, copy_dir, dirs_exist_ok=True)
         assert Path(
             copy_dir
-        ).exists(), (
-            "Should be able to copy directory with multiple collections"
-        )
+        ).exists(), "Should be able to copy directory with multiple collections"
     finally:
         shutil.rmtree(copy_dir, ignore_errors=True)
 
@@ -251,12 +239,8 @@ def test_close_chromadb_client_allows_file_operations_after_close(
                 tar.extractall(extract_dir)
 
             # Verify SQLite file was extracted
-            extracted_sqlite = (
-                Path(extract_dir) / "chromadb" / "chroma.sqlite3"
-            )
-            assert (
-                extracted_sqlite.exists()
-            ), "SQLite file should be in tarball"
+            extracted_sqlite = Path(extract_dir) / "chromadb" / "chroma.sqlite3"
+            assert extracted_sqlite.exists(), "SQLite file should be in tarball"
         finally:
             shutil.rmtree(extract_dir, ignore_errors=True)
     finally:

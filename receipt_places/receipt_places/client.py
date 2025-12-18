@@ -2,23 +2,34 @@
 Google Places API client with automatic DynamoDB caching.
 
 This module provides a clean interface to the Google Places API
-with built-in caching to minimize API costs.
+with built-in caching to minimize API costs. All results are typed
+via Pydantic models with data quality validation.
 """
 
 import logging
 import re
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import requests  # type: ignore[import-untyped]  # types-requests in dev dependencies
 from tenacity import (
+    RetryError,
     retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
 
-from receipt_places.cache import CacheManager, SearchType
+from receipt_places.cache import CacheManager
 from receipt_places.config import PlacesConfig, get_config
+from receipt_places.parsers import (
+    APIError,
+    ParseError,
+    parse_place_autocomplete_response,
+    parse_place_candidates_response,
+    parse_place_details_response,
+    parse_place_search_response,
+)
+from receipt_places.types import Place
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +37,7 @@ logger = logging.getLogger(__name__)
 class PlacesAPIError(Exception):
     """Exception raised for Places API errors."""
 
-    def __init__(self, message: str, status: Optional[str] = None):
+    def __init__(self, message: str, status: str | None = None):
         super().__init__(message)
         self.status = status
 
@@ -62,9 +73,9 @@ class PlacesClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        config: Optional[PlacesConfig] = None,
-        cache_manager: Optional[CacheManager] = None,
+        api_key: str | None = None,
+        config: PlacesConfig | None = None,
+        cache_manager: CacheManager | None = None,
     ):
         """
         Initialize the Places client.
@@ -96,44 +107,97 @@ class PlacesClient:
             "enabled" if self._config.cache_enabled else "disabled",
         )
 
-    @retry(
-        retry=retry_if_exception_type(requests.exceptions.Timeout),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-    )
     def _make_request(
         self,
         endpoint: str,
         params: dict[str, Any],
     ) -> dict[str, Any]:
-        """Make an HTTP request to the Places API."""
+        """
+        Make an HTTP request to the Places API with configurable retries.
+
+        Retries on:
+        - Timeout exceptions
+        - 429 Too Many Requests (rate limiting)
+        - 5xx Server errors
+
+        Respects the max_retries configuration setting.
+        """
+
+        def should_retry(exc: Exception) -> bool:
+            """Determine if an exception warrants a retry."""
+            if isinstance(exc, requests.exceptions.Timeout):
+                return True
+            if (
+                isinstance(exc, requests.exceptions.HTTPError)
+                and exc.response is not None
+            ):
+                # Retry on 429 (rate limit) and 5xx errors
+                status_code = exc.response.status_code
+                return status_code == 429 or status_code >= 500
+            return False
+
         url = f"{self.BASE_URL}/{endpoint}"
         params["key"] = self._api_key
 
-        response = requests.get(url, params=params, timeout=self._timeout)
-        response.raise_for_status()
+        # Build retry decorator with config-based max attempts
+        retry_decorator = retry(
+            retry=retry_if_exception_type(
+                (
+                    requests.exceptions.Timeout,
+                    requests.exceptions.RequestException,
+                )
+            ),
+            stop=stop_after_attempt(self._config.max_retries),
+            wait=wait_exponential(multiplier=1, min=1, max=10),
+        )
 
-        data = cast(dict[str, Any], response.json())
-        status = data.get("status", "UNKNOWN")
+        @retry_decorator
+        def _do_request() -> dict[str, Any]:
+            try:
+                response = requests.get(
+                    url, params=params, timeout=self._timeout
+                )
+                response.raise_for_status()
+            except requests.exceptions.HTTPError as e:
+                # Check if this is a transient error worth retrying
+                if not should_retry(e):
+                    # Not a transient error, don't retry
+                    logger.error(
+                        "HTTP error (non-transient): %s",
+                        e.response.status_code if e.response else "unknown",
+                    )
+                    raise
+                # Transient error, let tenacity handle the retry
+                raise
 
-        if status not in ("OK", "ZERO_RESULTS"):
-            error_msg = data.get("error_message", f"API returned status: {status}")
-            logger.warning("Places API error: %s (status=%s)", error_msg, status)
+            data = cast(dict[str, Any], response.json())
+            status = data.get("status", "UNKNOWN")
 
-        return data
+            if status not in ("OK", "ZERO_RESULTS"):
+                error_msg = data.get(
+                    "error_message", f"API returned status: {status}"
+                )
+                logger.warning(
+                    "Places API error: %s (status=%s)", error_msg, status
+                )
 
-    def search_by_phone(self, phone_number: str) -> Optional[dict[str, Any]]:
+            return data
+
+        return _do_request()
+
+    def search_by_phone(self, phone_number: str) -> Place | None:
         """
         Search for a place by phone number.
 
         This method checks the DynamoDB cache first, only making
-        an API call on cache miss.
+        an API call on cache miss. Returns a typed Place object with
+        guaranteed fields: place_id, name, location, types.
 
         Args:
             phone_number: Phone number to search for
 
         Returns:
-            Place details dict if found, None otherwise
+            Typed Place object if found, None otherwise
         """
         if not phone_number:
             logger.debug("Empty phone number, skipping search")
@@ -146,10 +210,22 @@ class PlacesClient:
             logger.debug("Phone number too short: %s", phone_number)
             return None
 
+        # Expected fields from findplacefromtext phone search
+        expected_fields = {"place_id", "name", "types", "business_status"}
+
         # Check cache first
-        cached = self._cache.get("PHONE", digits)
-        if cached and cached.get("place_id"):
-            return cached
+        cached_dict = self._cache.get("PHONE", digits)
+        if cached_dict and cached_dict.get("result"):
+            try:
+                cached_place = parse_place_details_response(
+                    cached_dict, expected_fields=expected_fields
+                )
+                return cached_place
+            except (APIError, ParseError) as e:
+                logger.warning(
+                    "Failed to parse cached phone search result: %s", e
+                )
+                # Fall through to API call
 
         # Make API call
         logger.info("🔍 Places API: search_by_phone(%s)", phone_number)
@@ -172,55 +248,63 @@ class PlacesClient:
                 },
             )
 
-            if data.get("status") == "OK" and data.get("candidates"):
-                place_id = data["candidates"][0]["place_id"]
-
-                # Get full details
-                details = self.get_place_details(place_id)
-                if details:
-                    # Cache the result
-                    self._cache.put("PHONE", digits, place_id, details)
-                    return details
+            # Parse the findplacefromtext response
+            try:
+                place = parse_place_candidates_response(
+                    data, expected_fields=expected_fields
+                )
+                if place:
+                    # Get full details
+                    details = self.get_place_details(place.place_id)
+                    if details:
+                        # Cache the full details response
+                        details_response = {
+                            "status": "OK",
+                            "result": details.model_dump(),
+                        }
+                        self._cache.put(
+                            "PHONE", digits, place.place_id, details_response
+                        )
+                        return details
+            except (APIError, ParseError) as e:
+                logger.warning("Error parsing phone search response: %s", e)
 
             # Try text search as fallback
             text_result = self.search_by_text(phone_number)
-            if text_result and text_result.get("place_id"):
+            if text_result and text_result.place_id:
                 # Get full details and cache
-                details = self.get_place_details(text_result["place_id"])
+                details = self.get_place_details(text_result.place_id)
                 if details:
-                    self._cache.put("PHONE", digits, details["place_id"], details)
+                    self._cache.put(
+                        "PHONE", digits, text_result.place_id, data
+                    )
                     return details
 
-            # Cache the negative result to prevent repeated API calls
-            self._cache.put(
-                "PHONE",
-                digits,
-                "NO_RESULTS",
-                {"status": "NO_RESULTS", "message": "No results found"},
-            )
+            # No result found - don't cache negative results
             return None
 
-        except requests.exceptions.RequestException as e:
+        except (requests.exceptions.RequestException, RetryError) as e:
             logger.error("Error searching by phone: %s", e)
             return None
 
     def search_by_address(
         self,
         address: str,
-        receipt_words: Optional[list[Any]] = None,
-    ) -> Optional[dict[str, Any]]:
+        receipt_words: list[Any] | None = None,
+    ) -> Place | None:
         """
         Search for a place by address.
 
         This method checks the DynamoDB cache first, only making
-        an API call on cache miss.
+        an API call on cache miss. Returns a typed Place object with
+        guaranteed fields: place_id, name, location, types.
 
         Args:
             address: Address to search for
             receipt_words: Optional list of words from receipt for context
 
         Returns:
-            Place details dict if found, None otherwise
+            Typed Place object if found, None otherwise
         """
         if not address or not address.strip():
             logger.debug("Empty address, skipping search")
@@ -228,10 +312,22 @@ class PlacesClient:
 
         address = address.strip()
 
+        # Expected fields from findplacefromtext address search
+        expected_fields = {"place_id", "name", "types", "geometry"}
+
         # Check cache first
-        cached = self._cache.get("ADDRESS", address)
-        if cached and cached.get("place_id"):
-            return cached
+        cached_dict = self._cache.get("ADDRESS", address)
+        if cached_dict and cached_dict.get("result"):
+            try:
+                cached_place = parse_place_details_response(
+                    cached_dict, expected_fields=expected_fields
+                )
+                return cached_place
+            except (APIError, ParseError) as e:
+                logger.warning(
+                    "Failed to parse cached address search result: %s", e
+                )
+                # Fall through to API call
 
         # Make API call
         logger.info("🔍 Places API: search_by_address(%s)", address[:50])
@@ -243,7 +339,9 @@ class PlacesClient:
                 business_name = self._extract_business_name(receipt_words)
                 if business_name:
                     search_input = f"{business_name} {address}"
-                    logger.debug("Using business name in search: %s", business_name)
+                    logger.debug(
+                        "Using business name in search: %s", business_name
+                    )
 
             data = self._make_request(
                 "findplacefromtext/json",
@@ -254,36 +352,53 @@ class PlacesClient:
                 },
             )
 
-            if data.get("status") == "OK" and data.get("candidates"):
-                place = data["candidates"][0]
+            try:
+                place = parse_place_candidates_response(
+                    data, expected_fields=expected_fields
+                )
+                if place:
+                    # Skip route-level results
+                    if place.types == ["route"]:
+                        logger.info(
+                            "Skipping route-level result for: %s", address[:50]
+                        )
+                        return None
 
-                # Skip route-level results
-                if place.get("types") == ["route"]:
-                    logger.info("Skipping route-level result for: %s", address[:50])
-                    return None
-
-                # Get full details
-                details = self.get_place_details(place["place_id"])
-                if details:
-                    self._cache.put("ADDRESS", address, place["place_id"], details)
-                    return details
+                    # Get full details
+                    details = self.get_place_details(place.place_id)
+                    if details:
+                        # Cache the full details response
+                        details_response = {
+                            "status": "OK",
+                            "result": details.model_dump(),
+                        }
+                        self._cache.put(
+                            "ADDRESS",
+                            address,
+                            place.place_id,
+                            details_response,
+                        )
+                        return details
+            except (APIError, ParseError) as e:
+                logger.warning("Error parsing address search response: %s", e)
 
             return None
 
-        except requests.exceptions.RequestException as e:
+        except (requests.exceptions.RequestException, RetryError) as e:
             logger.error("Error searching by address: %s", e)
             return None
 
     def search_by_text(
         self,
         query: str,
-        lat: Optional[float] = None,
-        lng: Optional[float] = None,
-    ) -> Optional[dict[str, Any]]:
+        lat: float | None = None,
+        lng: float | None = None,
+    ) -> Place | None:
         """
         Search for a place using free-form text.
 
         NOTE: Text searches are NOT cached due to query variability.
+        Returns a typed Place object with guaranteed fields: place_id, name.
 
         Args:
             query: Search query
@@ -291,12 +406,14 @@ class PlacesClient:
             lng: Optional longitude for location bias
 
         Returns:
-            Place details dict if found, None otherwise
+            Typed Place object if found, None otherwise
         """
         if not query:
             return None
 
-        logger.info("🔍 Places API: search_by_text(%s) [NOT CACHED]", query[:50])
+        logger.info(
+            "🔍 Places API: search_by_text(%s) [NOT CACHED]", query[:50]
+        )
 
         try:
             params: dict[str, Any] = {
@@ -310,12 +427,16 @@ class PlacesClient:
 
             data = self._make_request("textsearch/json", params)
 
-            if data.get("status") == "OK" and data.get("results"):
-                return cast(dict[str, Any], data["results"][0])
+            try:
+                places = parse_place_search_response(
+                    data, expected_fields={"place_id", "name"}
+                )
+                return places[0] if places else None
+            except (APIError, ParseError) as e:
+                logger.warning("Error parsing text search response: %s", e)
+                return None
 
-            return None
-
-        except requests.exceptions.RequestException as e:
+        except (requests.exceptions.RequestException, RetryError) as e:
             logger.error("Error in text search: %s", e)
             return None
 
@@ -324,10 +445,12 @@ class PlacesClient:
         lat: float,
         lng: float,
         radius: int = 100,
-        keyword: Optional[str] = None,
-    ) -> list[dict[str, Any]]:
+        keyword: str | None = None,
+    ) -> list[Place]:
         """
         Search for places near a location.
+
+        Returns a list of typed Place objects.
 
         Args:
             lat: Latitude
@@ -336,11 +459,13 @@ class PlacesClient:
             keyword: Optional keyword filter
 
         Returns:
-            List of nearby places
+            List of nearby Place objects
         """
         logger.info(
             "🔍 Places API: search_nearby(%.4f, %.4f, r=%d)",
-            lat, lng, radius,
+            lat,
+            lng,
+            radius,
         )
 
         try:
@@ -354,27 +479,31 @@ class PlacesClient:
 
             data = self._make_request("nearbysearch/json", params)
 
-            if data.get("status") == "OK":
-                return cast(list[dict[str, Any]], data.get("results", []))
+            try:
+                return parse_place_search_response(
+                    data, expected_fields={"place_id", "name"}
+                )
+            except (APIError, ParseError) as e:
+                logger.warning("Error parsing nearby search response: %s", e)
+                return []
 
-            return []
-
-        except requests.exceptions.RequestException as e:
+        except (requests.exceptions.RequestException, RetryError) as e:
             logger.error("Error in nearby search: %s", e)
             return []
 
-    def get_place_details(self, place_id: str) -> Optional[dict[str, Any]]:
+    def get_place_details(self, place_id: str) -> Place | None:
         """
         Get detailed information about a place.
 
         This method does NOT use caching since place_id lookups
-        are already efficient and details may change.
+        are already efficient and details may change. Returns a typed
+        Place object with comprehensive field validation.
 
         Args:
             place_id: Google Places place_id
 
         Returns:
-            Place details dict if found, None otherwise
+            Typed Place object if found, None otherwise
         """
         if not place_id:
             return None
@@ -392,12 +521,13 @@ class PlacesClient:
                 "geometry",
                 "opening_hours",
                 "rating",
-                "price_level",
                 "types",
                 "business_status",
                 "vicinity",
                 "user_ratings_total",
             ]
+
+            expected_fields = set(fields)
 
             data = self._make_request(
                 "details/json",
@@ -407,27 +537,33 @@ class PlacesClient:
                 },
             )
 
-            if data.get("status") == "OK":
-                return data.get("result")
+            try:
+                place = parse_place_details_response(
+                    data, expected_fields=expected_fields
+                )
+                return place
+            except (APIError, ParseError) as e:
+                logger.error("Error parsing place details response: %s", e)
+                return None
 
-            return None
-
-        except requests.exceptions.RequestException as e:
+        except (requests.exceptions.RequestException, RetryError) as e:
             logger.error("Error getting place details: %s", e)
             return None
 
-    def autocomplete_address(self, input_text: str) -> Optional[dict[str, Any]]:
+    def autocomplete_address(self, input_text: str) -> list[dict[str, Any]]:
         """
         Get address predictions using Places Autocomplete.
+
+        Returns parsed predictions with at least 'description' and 'place_id' fields.
 
         Args:
             input_text: Partial address text
 
         Returns:
-            Best prediction if found, None otherwise
+            List of prediction dicts with 'description', 'place_id', and 'types'
         """
         if not input_text:
-            return None
+            return []
 
         try:
             data = self._make_request(
@@ -438,16 +574,17 @@ class PlacesClient:
                 },
             )
 
-            if data.get("status") == "OK" and data.get("predictions"):
-                return cast(dict[str, Any], data["predictions"][0])
+            try:
+                return parse_place_autocomplete_response(data)
+            except (APIError, ParseError) as e:
+                logger.warning("Error parsing autocomplete response: %s", e)
+                return []
 
-            return None
-
-        except requests.exceptions.RequestException as e:
+        except (requests.exceptions.RequestException, RetryError) as e:
             logger.error("Error in autocomplete: %s", e)
-            return None
+            return []
 
-    def _extract_business_name(self, receipt_words: list[Any]) -> Optional[str]:
+    def _extract_business_name(self, receipt_words: list[Any]) -> str | None:
         """Extract potential business name from receipt words."""
         for word in receipt_words[:10]:
             text = ""
@@ -482,8 +619,7 @@ class PlacesClient:
         ]
 
         return any(
-            re.match(pattern, address.strip())
-            for pattern in area_patterns
+            re.match(pattern, address.strip()) for pattern in area_patterns
         )
 
     @property
@@ -494,4 +630,3 @@ class PlacesClient:
     def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         return self._cache.get_stats()
-

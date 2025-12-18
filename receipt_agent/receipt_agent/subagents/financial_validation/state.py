@@ -18,17 +18,11 @@ class FinancialValidationState(BaseModel):
 
     # Receipt data
     receipt_text: str = Field(description="Full receipt text")
-    labels: list[dict] = Field(
-        default_factory=list, description="Current labels"
-    )
-    words: list[dict] = Field(
-        default_factory=list, description="Receipt words"
-    )
+    labels: list[dict] = Field(default_factory=list, description="Current labels")
+    words: list[dict] = Field(default_factory=list, description="Receipt words")
 
     # Analysis results
-    currency: Optional[str] = Field(
-        default=None, description="Detected currency"
-    )
+    currency: Optional[str] = Field(default=None, description="Detected currency")
     financial_issues: list[dict] = Field(
         default_factory=list, description="Financial validation issues found"
     )
@@ -41,6 +35,3 @@ class FinancialValidationState(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
-
-
-

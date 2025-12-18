@@ -66,12 +66,7 @@ def load_receipt_image(
             print(f"✅ Loaded receipt raw image: {receipt.raw_s3_key}")
 
     # CDN fallback if we didn't prefer it first
-    if (
-        img is None
-        and not prefer_cdn
-        and receipt.cdn_s3_bucket
-        and receipt.cdn_s3_key
-    ):
+    if img is None and not prefer_cdn and receipt.cdn_s3_bucket and receipt.cdn_s3_key:
         img = get_image_from_s3(receipt.cdn_s3_bucket, receipt.cdn_s3_key)
         if img:
             print("✅ Loaded receipt image from CDN")
@@ -82,9 +77,7 @@ def load_receipt_image(
     return img
 
 
-def line_corners_image(
-    line: ReceiptLine, w: int, h: int
-) -> List[Tuple[float, float]]:
+def line_corners_image(line: ReceiptLine, w: int, h: int) -> List[Tuple[float, float]]:
     return [
         (line.top_left["x"] * w, (1.0 - line.top_left["y"]) * h),
         (line.top_right["x"] * w, (1.0 - line.top_right["y"]) * h),
@@ -93,9 +86,7 @@ def line_corners_image(
     ]
 
 
-def draw_lines(
-    img: PIL_Image.Image, lines: List[ReceiptLine], color: str = "#FF0000"
-):
+def draw_lines(img: PIL_Image.Image, lines: List[ReceiptLine], color: str = "#FF0000"):
     draw = ImageDraw.Draw(img)
     w, h = img.size
     font = None
@@ -117,12 +108,8 @@ def main():
         description="Draw receipt-level OCR lines on raw image."
     )
     ap.add_argument("--image-id", required=True, help="Image ID")
-    ap.add_argument(
-        "--receipt-id", type=int, default=1, help="Receipt ID (default: 1)"
-    )
-    ap.add_argument(
-        "--output", required=True, type=Path, help="Output image path"
-    )
+    ap.add_argument("--receipt-id", type=int, default=1, help="Receipt ID (default: 1)")
+    ap.add_argument("--output", required=True, type=Path, help="Output image path")
     ap.add_argument(
         "--prefer-cdn",
         action="store_true",
@@ -135,18 +122,12 @@ def main():
     table_name = env.get("table_name")
     if not table_name:
         raise ValueError("DYNAMODB_TABLE_NAME not set")
-    raw_bucket = (
-        args.raw_bucket or env.get("raw_bucket") or env.get("raw_bucket_name")
-    )
+    raw_bucket = args.raw_bucket or env.get("raw_bucket") or env.get("raw_bucket_name")
 
     client = DynamoClient(table_name)
     receipt = client.get_receipt(args.image_id, args.receipt_id)
-    lines = client.list_receipt_lines_from_receipt(
-        args.image_id, args.receipt_id
-    )
-    print(
-        f"Found {len(lines)} receipt-level lines for receipt {args.receipt_id}"
-    )
+    lines = client.list_receipt_lines_from_receipt(args.image_id, args.receipt_id)
+    print(f"Found {len(lines)} receipt-level lines for receipt {args.receipt_id}")
 
     img = load_receipt_image(
         receipt, raw_bucket_override=raw_bucket, prefer_cdn=args.prefer_cdn

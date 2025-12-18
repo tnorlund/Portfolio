@@ -92,9 +92,7 @@ class TestMessageStructure:
                 "image_id": "test-image-123",
                 "receipt_id": 1,
             },
-            changes={
-                "canonical_merchant_name": FieldChange(old="Old", new="New")
-            },
+            changes={"canonical_merchant_name": FieldChange(old="Old", new="New")},
             event_name="MODIFY",
             collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
             source="dynamodb_stream",
@@ -124,9 +122,7 @@ class TestMessageStructure:
                 "word_id": 10,
                 "label": "TOTAL",
             },
-            changes={
-                "validation_status": FieldChange(old="PENDING", new="VALID")
-            },
+            changes={"validation_status": FieldChange(old="PENDING", new="VALID")},
             event_name="MODIFY",
             collections=[ChromaDBCollection.WORDS],
             source="dynamodb_stream",

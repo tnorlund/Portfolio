@@ -89,9 +89,7 @@ def main():
             files_fixed += 1
             total_fixes += fixes
 
-    print(
-        f"\nTotal: Fixed {total_fixes} import references in {files_fixed} files"
-    )
+    print(f"\nTotal: Fixed {total_fixes} import references in {files_fixed} files")
 
 
 if __name__ == "__main__":

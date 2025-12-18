@@ -172,9 +172,7 @@ class TestAWSServiceIntegration:
         assert len(list_response.get("Contents", [])) == 1
         assert list_response["Contents"][0]["Key"] == test_key
 
-    def test_end_to_end_pipeline_with_mocks(
-        self, integration_test_environment
-    ):
+    def test_end_to_end_pipeline_with_mocks(self, integration_test_environment):
         """Test complete pipeline using comprehensive mocks."""
         # This test uses the integration_test_environment fixture
         # which provides all AWS services mocked with moto
@@ -267,9 +265,7 @@ class TestAWSServiceErrorHandling:
                 assert False, "Expected exception for non-existent table"
             except Exception as e:
                 # Should be a table not found error
-                assert "ResourceNotFoundException" in str(e) or "Table" in str(
-                    e
-                )
+                assert "ResourceNotFoundException" in str(e) or "Table" in str(e)
 
     @mock_aws
     def test_s3_bucket_not_found_error(self):

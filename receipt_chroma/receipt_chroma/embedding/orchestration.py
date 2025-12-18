@@ -440,12 +440,8 @@ def create_embeddings_and_compaction_run(
                 metadata_only=True,
             )
 
-            delta_line_client.upsert_vectors(
-                collection_name="lines", **line_payload
-            )
-            delta_word_client.upsert_vectors(
-                collection_name="words", **word_payload
-            )
+            delta_line_client.upsert_vectors(collection_name="lines", **line_payload)
+            delta_word_client.upsert_vectors(collection_name="words", **word_payload)
 
             # Close delta clients before upload (critical for file locking)
             delta_line_client.close()
@@ -463,9 +459,7 @@ def create_embeddings_and_compaction_run(
                 s3_client=s3_client,
             )
             if lines_upload.get("status") != "uploaded":
-                raise RuntimeError(
-                    f"Failed to upload lines delta: {lines_upload}"
-                )
+                raise RuntimeError(f"Failed to upload lines delta: {lines_upload}")
 
             words_upload = upload_delta_tarball(
                 local_delta_dir=delta_words_dir,
@@ -475,9 +469,7 @@ def create_embeddings_and_compaction_run(
                 s3_client=s3_client,
             )
             if words_upload.get("status") != "uploaded":
-                raise RuntimeError(
-                    f"Failed to upload words delta: {words_upload}"
-                )
+                raise RuntimeError(f"Failed to upload words delta: {words_upload}")
 
             logger.info(
                 "Uploaded deltas to S3: lines=%s, words=%s",

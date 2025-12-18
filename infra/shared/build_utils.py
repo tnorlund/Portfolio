@@ -166,9 +166,7 @@ def default_resource_options(
     aliases: Optional[Sequence[pulumi.Alias]] = None,
 ) -> ResourceOptions:
     """Small helper to keep ResourceOptions consistent."""
-    return ResourceOptions(
-        parent=parent, depends_on=depends_on, aliases=aliases
-    )
+    return ResourceOptions(parent=parent, depends_on=depends_on, aliases=aliases)
 
 
 def resolve_build_config(
@@ -196,9 +194,7 @@ def resolve_build_config(
         sync_mode_cfg = cfg.get_bool("sync-mode")
         if sync_mode_cfg is not None:
             sync_mode = sync_mode_cfg
-        elif ci_default_sync and (
-            os.getenv("CI") or os.getenv("GITHUB_ACTIONS")
-        ):
+        elif ci_default_sync and (os.getenv("CI") or os.getenv("GITHUB_ACTIONS")):
             sync_mode = True
         else:
             sync_mode = False

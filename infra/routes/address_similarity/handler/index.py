@@ -43,9 +43,7 @@ def handler(event, _context):
 
     try:
         # Download cached JSON from S3
-        logger.info(
-            "Fetching cache from S3: %s/%s", S3_CACHE_BUCKET, CACHE_KEY
-        )
+        logger.info("Fetching cache from S3: %s/%s", S3_CACHE_BUCKET, CACHE_KEY)
         response = s3_client.get_object(Bucket=S3_CACHE_BUCKET, Key=CACHE_KEY)
         cache_data = json.loads(response["Body"].read().decode("utf-8"))
 

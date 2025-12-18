@@ -107,9 +107,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             # Have the LLM pick which receipts to combine.
             selector = ReceiptCombinationSelector(client)
             target_id = receipt_ids[0]
-            selection = selector.choose(
-                image_id=image_id, target_receipt_id=target_id
-            )
+            selection = selector.choose(image_id=image_id, target_receipt_id=target_id)
             chosen_receipts = selection.get("choice") or []
             if not chosen_receipts:
                 return {

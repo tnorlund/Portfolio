@@ -37,9 +37,7 @@ class TestProcessor:
         )
 
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         client.upsert(
             collection_name="lines",
@@ -62,9 +60,7 @@ class TestProcessor:
             receipt_id=1,
             event_name="MODIFY",
             changes={
-                "merchant_name": FieldChange(
-                    old="Old Merchant", new="New Merchant"
-                )
+                "merchant_name": FieldChange(old="Old Merchant", new="New Merchant")
             },
             collections=(ChromaDBCollection.LINES,),
         )
@@ -109,9 +105,7 @@ class TestProcessor:
     ):
         """Test processing only label updates."""
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         client.upsert(
             collection_name="words",
@@ -136,9 +130,7 @@ class TestProcessor:
             word_id=1,
             label="TOTAL",
             event_name="MODIFY",
-            changes={
-                "validation_status": FieldChange(old="PENDING", new="VALID")
-            },
+            changes={"validation_status": FieldChange(old="PENDING", new="VALID")},
         )
 
         # Process updates
@@ -202,9 +194,7 @@ class TestProcessor:
                 s3_client.upload_file(local_path, bucket_name, s3_key)
 
         # Create main snapshot
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
         client.upsert(
             collection_name="lines",
             ids=[
@@ -226,9 +216,7 @@ class TestProcessor:
             receipt_id=1,
             event_name="MODIFY",
             changes={
-                "merchant_name": FieldChange(
-                    old="Old Merchant", new="New Merchant"
-                )
+                "merchant_name": FieldChange(old="Old Merchant", new="New Merchant")
             },
             collections=(ChromaDBCollection.LINES,),
         )
@@ -279,9 +267,7 @@ class TestProcessor:
         self, temp_chromadb_dir, mock_logger
     ):
         """Test processing with errors in some messages."""
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         client.upsert(
             collection_name="lines",
@@ -342,9 +328,7 @@ class TestProcessor:
         self, temp_chromadb_dir, mock_logger
     ):
         """Test processing with no messages."""
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         client.upsert(
             collection_name="lines",
@@ -373,9 +357,7 @@ class TestProcessor:
         self, temp_chromadb_dir, mock_logger
     ):
         """Test that CollectionUpdateResult can be serialized to dict."""
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         client.upsert(
             collection_name="lines",
@@ -474,9 +456,7 @@ class TestProcessor:
                 s3_client.upload_file(local_path, bucket_name, s3_key)
 
         # Create empty snapshot
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
         client.upsert(
             collection_name="words",
             ids=["IMAGE#placeholder#RECEIPT#00001#LINE#00001#WORD#00001"],
@@ -495,9 +475,7 @@ class TestProcessor:
             word_id=1,
             label="TOTAL",
             event_name="MODIFY",
-            changes={
-                "validation_status": FieldChange(old="PENDING", new="VALID")
-            },
+            changes={"validation_status": FieldChange(old="PENDING", new="VALID")},
         )
 
         # Metadata update for the receipt
@@ -506,9 +484,7 @@ class TestProcessor:
             receipt_id=1,
             event_name="MODIFY",
             changes={
-                "merchant_name": FieldChange(
-                    old="Initial", new="Updated Merchant"
-                )
+                "merchant_name": FieldChange(old="Initial", new="Updated Merchant")
             },
             collections=(ChromaDBCollection.WORDS,),
         )

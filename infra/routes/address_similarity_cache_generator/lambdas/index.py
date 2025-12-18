@@ -188,9 +188,7 @@ def handler(_event, _context):
         dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME)
 
         # Download ChromaDB snapshot from S3
-        logger.info(
-            "Downloading ChromaDB snapshot from S3: %s/lines", CHROMADB_BUCKET
-        )
+        logger.info("Downloading ChromaDB snapshot from S3: %s/lines", CHROMADB_BUCKET)
         download_result = download_snapshot_atomic(
             bucket=CHROMADB_BUCKET,
             collection="lines",
@@ -202,9 +200,7 @@ def handler(_event, _context):
             logger.error("Failed to download snapshot: %s", download_result)
             return {
                 "statusCode": 500,
-                "body": json.dumps(
-                    {"error": "Failed to download ChromaDB snapshot"}
-                ),
+                "body": json.dumps({"error": "Failed to download ChromaDB snapshot"}),
             }
 
         logger.info(
@@ -348,9 +344,7 @@ def handler(_event, _context):
         # Filter words to only those in non-URL lines
         non_url_line_ids = {line.line_id for line in address_context_lines}
         address_context_words = [
-            word
-            for word in address_context_words
-            if word.line_id in non_url_line_ids
+            word for word in address_context_words if word.line_id in non_url_line_ids
         ]
 
         # Filter labels to only those in the selected group
@@ -422,10 +416,7 @@ def handler(_event, _context):
             try:
                 # Handle both 1D arrays (single embedding) and 2D arrays
                 # (list of embeddings)
-                if (
-                    hasattr(embeddings_raw, "shape")
-                    and len(embeddings_raw.shape) == 1
-                ):
+                if hasattr(embeddings_raw, "shape") and len(embeddings_raw.shape) == 1:
                     # Single embedding array, wrap in list
                     embeddings = [embeddings_raw]
                 else:
@@ -434,23 +425,17 @@ def handler(_event, _context):
             except Exception:
                 embeddings = []
         else:
-            embeddings = (
-                embeddings_raw if isinstance(embeddings_raw, list) else []
-            )
+            embeddings = embeddings_raw if isinstance(embeddings_raw, list) else []
 
         if (
             len(embeddings) == 0
             or embeddings[0] is None
             or (hasattr(embeddings[0], "size") and embeddings[0].size == 0)
         ):
-            logger.error(
-                "Line embedding not found in ChromaDB for ID: %s", line_id
-            )
+            logger.error("Line embedding not found in ChromaDB for ID: %s", line_id)
             return {
                 "statusCode": 500,
-                "body": json.dumps(
-                    {"error": "Line embedding not found in ChromaDB"}
-                ),
+                "body": json.dumps({"error": "Line embedding not found in ChromaDB"}),
             }
 
         query_embedding = embeddings[0]
@@ -527,9 +512,7 @@ def handler(_event, _context):
                     continue
 
                 # Group address labels by line_id and find consecutive groups
-                similar_address_line_ids = {
-                    label.line_id for label in similar_labels
-                }
+                similar_address_line_ids = {label.line_id for label in similar_labels}
 
                 # Find consecutive groups of address lines
                 sorted_similar_line_ids = sorted(similar_address_line_ids)
@@ -551,9 +534,7 @@ def handler(_event, _context):
                 # This handles cases where an address appears twice on a receipt
                 if similar_address_groups:
                     # Use the largest group, or first if all same size
-                    selected_similar_group = max(
-                        similar_address_groups, key=len
-                    )
+                    selected_similar_group = max(similar_address_groups, key=len)
                     logger.debug(
                         "Selected address group for similar receipt: line_ids=%s (from %d groups)",
                         selected_similar_group,
@@ -580,9 +561,7 @@ def handler(_event, _context):
                     if word.line_id in selected_similar_group
                 ]
                 # Filter words to only those in non-URL lines
-                non_url_line_ids = {
-                    line.line_id for line in similar_address_lines
-                }
+                non_url_line_ids = {line.line_id for line in similar_address_lines}
                 similar_address_words = [
                     word
                     for word in similar_address_words
@@ -597,19 +576,13 @@ def handler(_event, _context):
                 ]
 
                 # Calculate bounding box for similar address lines
-                similar_bbox = calculate_bounding_box_for_lines(
-                    similar_address_lines
-                )
+                similar_bbox = calculate_bounding_box_for_lines(similar_address_lines)
 
                 similar_receipts.append(
                     {
                         "receipt": dict(similar_receipt.receipt),
-                        "lines": [
-                            dict(line) for line in similar_address_lines
-                        ],
-                        "words": [
-                            dict(word) for word in similar_address_words
-                        ],
+                        "lines": [dict(line) for line in similar_address_lines],
+                        "words": [dict(word) for word in similar_address_words],
                         "labels": [dict(label) for label in similar_labels],
                         "similarity_distance": float(distance),
                         "bbox": similar_bbox,
@@ -654,10 +627,7 @@ def handler(_event, _context):
         )
 
         logger.info(
-            (
-                "Cache generation complete: original_receipt_id=%s, "
-                "similar_count=%d"
-            ),
+            ("Cache generation complete: original_receipt_id=%s, " "similar_count=%d"),
             selected_label.receipt_id,
             len(similar_receipts),
         )
@@ -692,9 +662,5 @@ def handler(_event, _context):
         try:
             shutil.rmtree(temp_dir)
             logger.info("Cleaned up temporary directory: %s", temp_dir)
-        except (
-            Exception
-        ) as cleanup_error:  # pylint: disable=broad-exception-caught
-            logger.warning(
-                "Failed to cleanup temp directory: %s", cleanup_error
-            )
+        except Exception as cleanup_error:  # pylint: disable=broad-exception-caught
+            logger.warning("Failed to cleanup temp directory: %s", cleanup_error)

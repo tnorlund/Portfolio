@@ -23,9 +23,7 @@ def label_to_dict(lb: Any) -> dict:
         "timestamp_added": getattr(lb, "timestamp_added", None),
         "validation_status": getattr(lb, "validation_status", None),
         "label_proposed_by": getattr(lb, "label_proposed_by", None),
-        "label_consolidated_from": getattr(
-            lb, "label_consolidated_from", None
-        ),
+        "label_consolidated_from": getattr(lb, "label_consolidated_from", None),
     }
 
 
@@ -104,10 +102,7 @@ def extract_pricing_table_from_words(words: list[dict]) -> dict:
             current_band = [xc]
     if current_band:
         col_bands.append(current_band)
-    columns = [
-        {"col": i, "x_center": sum(b) / len(b)}
-        for i, b in enumerate(col_bands)
-    ]
+    columns = [{"col": i, "x_center": sum(b) / len(b)} for i, b in enumerate(col_bands)]
 
     # Assign columns
     def assign_col(xc: float) -> int:
@@ -162,6 +157,3 @@ def extract_pricing_table_from_words(words: list[dict]) -> dict:
         "total_rows": len(structured_rows),
         "total_columns": len(columns),
     }
-
-
-

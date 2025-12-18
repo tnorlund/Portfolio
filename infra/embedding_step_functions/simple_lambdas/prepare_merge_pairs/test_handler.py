@@ -28,8 +28,7 @@ class TestNWayMerge:
 
         # Create 25 intermediates
         intermediates = [
-            {"intermediate_key": f"intermediate/batch/chunk-{i}/"}
-            for i in range(25)
+            {"intermediate_key": f"intermediate/batch/chunk-{i}/"} for i in range(25)
         ]
 
         event = {
@@ -68,8 +67,7 @@ class TestNWayMerge:
         importlib.reload(handler)
 
         intermediates = [
-            {"intermediate_key": f"intermediate/batch/chunk-{i}/"}
-            for i in range(20)
+            {"intermediate_key": f"intermediate/batch/chunk-{i}/"} for i in range(20)
         ]
 
         event = {
@@ -143,8 +141,7 @@ class TestNWayMerge:
         importlib.reload(handler)
 
         intermediates = [
-            {"intermediate_key": f"intermediate/batch/chunk-{i}/"}
-            for i in range(10)
+            {"intermediate_key": f"intermediate/batch/chunk-{i}/"} for i in range(10)
         ]
 
         event = {
@@ -220,8 +217,7 @@ class TestNWayMerge:
         importlib.reload(handler)
 
         intermediates = [
-            {"intermediate_key": f"intermediate/batch/chunk-{i}/"}
-            for i in range(4)
+            {"intermediate_key": f"intermediate/batch/chunk-{i}/"} for i in range(4)
         ]
 
         event = {
@@ -251,8 +247,7 @@ class TestNWayMerge:
         importlib.reload(handler)
 
         intermediates = [
-            {"intermediate_key": f"intermediate/batch/chunk-{i}/"}
-            for i in range(25)
+            {"intermediate_key": f"intermediate/batch/chunk-{i}/"} for i in range(25)
         ]
 
         event = {
@@ -283,8 +278,7 @@ class TestNWayMerge:
         importlib.reload(handler)
 
         intermediates = [
-            {"intermediate_key": f"intermediate/batch/chunk-{i}/"}
-            for i in range(5)
+            {"intermediate_key": f"intermediate/batch/chunk-{i}/"} for i in range(5)
         ]
 
         event = {
@@ -299,7 +293,9 @@ class TestNWayMerge:
         result = handler.handle(event, None)
 
         # Should pass through poll_results keys
-        assert result["poll_results_s3_key"] == "poll_results/test-batch/poll_results.json"
+        assert (
+            result["poll_results_s3_key"] == "poll_results/test-batch/poll_results.json"
+        )
         assert result["poll_results_s3_bucket"] == "test-bucket"
 
 
@@ -316,8 +312,7 @@ class TestNWayMergeEdgeCases:
         importlib.reload(handler)
 
         intermediates = [
-            {"intermediate_key": f"intermediate/batch/chunk-{i}/"}
-            for i in range(10)
+            {"intermediate_key": f"intermediate/batch/chunk-{i}/"} for i in range(10)
         ]
 
         event = {

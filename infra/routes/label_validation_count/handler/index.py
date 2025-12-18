@@ -101,9 +101,7 @@ def get_cached_label_counts():
         logger.info("Fetching cached label counts from DynamoDB")
         dynamo_client = get_dynamo_client()
         cached_entries, _ = dynamo_client.list_label_count_caches()
-        logger.info(
-            "Retrieved %d cached entries from DynamoDB", len(cached_entries)
-        )
+        logger.info("Retrieved %d cached entries from DynamoDB", len(cached_entries))
 
         # Convert to dictionary for quick lookup
         cached_by_label = {entry.label: entry for entry in cached_entries}
@@ -116,12 +114,8 @@ def get_cached_label_counts():
                 cached_entry = cached_by_label[label]
 
                 # Check cache age
-                last_updated = datetime.fromisoformat(
-                    cached_entry.last_updated
-                )
-                age_minutes = (
-                    datetime.now() - last_updated
-                ).total_seconds() / 60
+                last_updated = datetime.fromisoformat(cached_entry.last_updated)
+                age_minutes = (datetime.now() - last_updated).total_seconds() / 60
 
                 # Check if entry has valid TTL
                 ttl_status = "No TTL"
@@ -131,16 +125,13 @@ def get_cached_label_counts():
                             cached_entry.time_to_live - current_time
                         ) / 60
                         ttl_status = (
-                            f"Valid (expires in "
-                            f"{minutes_until_expiry:.1f} min)"
+                            f"Valid (expires in " f"{minutes_until_expiry:.1f} min)"
                         )
                     else:
                         minutes_since_expiry = (
                             current_time - cached_entry.time_to_live
                         ) / 60
-                        ttl_status = (
-                            f"EXPIRED ({minutes_since_expiry:.1f} min ago)"
-                        )
+                        ttl_status = f"EXPIRED ({minutes_since_expiry:.1f} min ago)"
 
                 cached_counts[label] = {
                     "VALID": cached_entry.valid_count,
@@ -202,9 +193,7 @@ def handler(event, _):
             logger.info("All label counts retrieved from cache")
 
         # Order the by the key in alphabetical order
-        core_label_counts = dict(
-            sorted(core_label_counts.items(), key=lambda x: x[0])
-        )
+        core_label_counts = dict(sorted(core_label_counts.items(), key=lambda x: x[0]))
         return {
             "statusCode": 200,
             "body": json.dumps(core_label_counts),

@@ -116,20 +116,14 @@ def send_batch_to_queue(  # pylint: disable=too-many-locals
 
         for j, (message_dict, _) in enumerate(batch):
             entity_type = message_dict.get("entity_type", "UNKNOWN")
-            entity_data = cast(
-                dict[str, object], message_dict.get("entity_data", {})
-            )
+            entity_data = cast(dict[str, object], message_dict.get("entity_data", {}))
 
             if entity_type == "COMPACTION_RUN":
                 image_id = entity_data.get("image_id") or "unknown"
-                message_group_id = (
-                    f"COMPACTION_RUN:{image_id}:{collection.value}"
-                )
+                message_group_id = f"COMPACTION_RUN:{image_id}:{collection.value}"
             elif entity_type in {"RECEIPT_METADATA", "RECEIPT_WORD_LABEL"}:
                 image_id = entity_data.get("image_id") or "unknown"
-                message_group_id = (
-                    f"COMPACTION_RUN:{image_id}:{collection.value}"
-                )
+                message_group_id = f"COMPACTION_RUN:{image_id}:{collection.value}"
             else:
                 group_key = (
                     entity_data.get("run_id")
@@ -137,9 +131,7 @@ def send_batch_to_queue(  # pylint: disable=too-many-locals
                     or entity_data.get("image_id")
                     or "default"
                 )
-                message_group_id = (
-                    f"{entity_type}:{group_key}:{collection.value}"
-                )
+                message_group_id = f"{entity_type}:{group_key}:{collection.value}"
 
             entries.append(
                 {
@@ -152,9 +144,7 @@ def send_batch_to_queue(  # pylint: disable=too-many-locals
                             "DataType": "String",
                         },
                         "entity_type": {
-                            "StringValue": str(
-                                message_dict.get("entity_type")
-                            ),
+                            "StringValue": str(message_dict.get("entity_type")),
                             "DataType": "String",
                         },
                         "event_name": {
@@ -170,15 +160,11 @@ def send_batch_to_queue(  # pylint: disable=too-many-locals
             )
 
         try:
-            response = sqs.send_message_batch(
-                QueueUrl=queue_url, Entries=entries
-            )
+            response = sqs.send_message_batch(QueueUrl=queue_url, Entries=entries)
             successful = len(response.get("Successful", []))
             sent_count += successful
 
-            logger.info(
-                "Sent %s messages to %s queue", successful, collection.value
-            )
+            logger.info("Sent %s messages to %s queue", successful, collection.value)
 
             if metrics:
                 metrics.count(

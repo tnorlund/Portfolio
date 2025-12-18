@@ -230,9 +230,7 @@ def main():
             for error in stats["errors"][:10]:  # Show first 10 errors
                 logger.warning(f"  - {error}")
             if len(stats["errors"]) > 10:
-                logger.warning(
-                    f"  ... and {len(stats['errors']) - 10} more errors"
-                )
+                logger.warning(f"  ... and {len(stats['errors']) - 10} more errors")
 
         if stats["failed"] > 0:
             logger.error("\n❌ Export completed with errors")

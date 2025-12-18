@@ -135,9 +135,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if "intermediate_key" in item:
                 valid_intermediates.append(item)
             else:
-                logger.warning(
-                    "Skipping item without intermediate_key: %s", item
-                )
+                logger.warning("Skipping item without intermediate_key: %s", item)
 
     logger.info(
         "Filtered intermediates: original_count=%d, valid_count=%d",

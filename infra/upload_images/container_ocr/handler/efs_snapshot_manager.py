@@ -36,9 +36,7 @@ class UploadEFSSnapshotManager:
 
         # EFS mount path (from Lambda environment)
         self.efs_root = os.environ.get("CHROMA_ROOT", "/tmp/chroma")
-        self.efs_snapshots_dir = os.path.join(
-            self.efs_root, "snapshots", collection
-        )
+        self.efs_snapshots_dir = os.path.join(self.efs_root, "snapshots", collection)
 
         # S3 configuration
         self.bucket = os.environ["CHROMADB_BUCKET"]
@@ -55,22 +53,16 @@ class UploadEFSSnapshotManager:
         # Test EFS access
         try:
             # Check if EFS mount point exists
-            self.logger.info(
-                f"Checking if EFS mount point exists: {self.efs_root}"
-            )
+            self.logger.info(f"Checking if EFS mount point exists: {self.efs_root}")
             if os.path.exists(self.efs_root):
                 self.logger.info(f"EFS mount point exists: {self.efs_root}")
 
                 # Try to list directory
                 try:
                     contents = os.listdir(self.efs_root)
-                    self.logger.info(
-                        f"EFS root directory contents: {contents}"
-                    )
+                    self.logger.info(f"EFS root directory contents: {contents}")
                 except Exception as e:
-                    self.logger.error(
-                        f"Failed to list EFS root directory: {e}"
-                    )
+                    self.logger.error(f"Failed to list EFS root directory: {e}")
                     raise
 
                 # Try to create test file
@@ -84,9 +76,7 @@ class UploadEFSSnapshotManager:
                     self.logger.error(f"EFS write test failed: {e}")
                     raise
             else:
-                self.logger.error(
-                    f"EFS mount point does not exist: {self.efs_root}"
-                )
+                self.logger.error(f"EFS mount point does not exist: {self.efs_root}")
 
             # Ensure EFS directories exist
             self.logger.info(
@@ -113,9 +103,7 @@ class UploadEFSSnapshotManager:
         """Get the latest snapshot version from S3."""
         try:
             pointer_key = f"{self.collection}/snapshot/latest-pointer.txt"
-            response = self.s3_client.get_object(
-                Bucket=self.bucket, Key=pointer_key
-            )
+            response = self.s3_client.get_object(Bucket=self.bucket, Key=pointer_key)
             return response["Body"].read().decode().strip()
         except ClientError as e:
             if e.response["Error"]["Code"] == "NoSuchKey":
@@ -146,9 +134,7 @@ class UploadEFSSnapshotManager:
         efs_snapshot_path = os.path.join(self.efs_snapshots_dir, version)
 
         # Check if snapshot already exists on EFS
-        if os.path.exists(efs_snapshot_path) and os.path.isdir(
-            efs_snapshot_path
-        ):
+        if os.path.exists(efs_snapshot_path) and os.path.isdir(efs_snapshot_path):
             self.logger.info(
                 f"Snapshot {version} already exists on EFS",
                 collection=self.collection,
@@ -239,9 +225,7 @@ class UploadEFSSnapshotManager:
         )
 
         copy_start_time = time.time()
-        shutil.copytree(
-            efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True
-        )
+        shutil.copytree(efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True)
         copy_time_ms = (time.time() - copy_start_time) * 1000
 
         self.logger.info(
@@ -270,9 +254,7 @@ class UploadEFSSnapshotManager:
         # Get latest version from S3
         latest_version = self.get_latest_s3_version()
         if not latest_version:
-            self.logger.warning(
-                f"No latest version found for {self.collection}"
-            )
+            self.logger.warning(f"No latest version found for {self.collection}")
             return None
 
         # Ensure snapshot is on EFS

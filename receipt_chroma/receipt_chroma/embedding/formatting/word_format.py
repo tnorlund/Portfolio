@@ -114,14 +114,14 @@ def format_word_context_embedding_input(
             break
 
     # Pad left with <EDGE> tags if needed (one per missing position)
-    left_padded = (
-        ["<EDGE>"] * max(0, context_size - len(left_words)) + left_words
-    )[-context_size:]
+    left_padded = (["<EDGE>"] * max(0, context_size - len(left_words)) + left_words)[
+        -context_size:
+    ]
 
     # Pad right with <EDGE> tags if needed (one per missing position)
-    right_padded = (
-        right_words + ["<EDGE>"] * max(0, context_size - len(right_words))
-    )[:context_size]
+    right_padded = (right_words + ["<EDGE>"] * max(0, context_size - len(right_words)))[
+        :context_size
+    ]
 
     # Simple format: left_words word right_words
     return " ".join(left_padded + [target_word.text] + right_padded)
@@ -159,16 +159,14 @@ def parse_left_right_from_formatted(
 
     if len(tokens) < expected_length:
         # Not enough tokens - pad with <EDGE>
-        tokens = (
-            ["<EDGE>"] * context_size + tokens + ["<EDGE>"] * context_size
-        )[:expected_length]
+        tokens = (["<EDGE>"] * context_size + tokens + ["<EDGE>"] * context_size)[
+            :expected_length
+        ]
     elif len(tokens) > expected_length:
         # Too many tokens - take first context_size, middle word,
         # last context_size
         tokens = (
-            tokens[:context_size]
-            + [tokens[len(tokens) // 2]]
-            + tokens[-context_size:]
+            tokens[:context_size] + [tokens[len(tokens) // 2]] + tokens[-context_size:]
         )
 
     # Extract left context (first context_size tokens)

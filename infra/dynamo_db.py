@@ -54,9 +54,7 @@ dynamodb_table = aws.dynamodb.Table(
     ),
     stream_enabled=True,
     stream_view_type="NEW_AND_OLD_IMAGES",
-    point_in_time_recovery=aws.dynamodb.TablePointInTimeRecoveryArgs(
-        enabled=True
-    ),
+    point_in_time_recovery=aws.dynamodb.TablePointInTimeRecoveryArgs(enabled=True),
     global_secondary_indexes=[
         aws.dynamodb.TableGlobalSecondaryIndexArgs(
             name="GSI1",

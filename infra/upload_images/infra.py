@@ -39,11 +39,7 @@ ollama_api_key = config.require_secret("OLLAMA_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 
 code = AssetArchive(
-    {
-        "lambda.py": FileAsset(
-            os.path.join(os.path.dirname(__file__), "lambda.py")
-        )
-    }
+    {"lambda.py": FileAsset(os.path.join(os.path.dirname(__file__), "lambda.py"))}
 )
 stack = pulumi.get_stack()
 
@@ -243,16 +239,12 @@ class UploadImages(ComponentResource):
             code=AssetArchive(
                 {
                     "upload_receipt.py": FileAsset(
-                        os.path.join(
-                            os.path.dirname(__file__), "upload_receipt.py"
-                        )
+                        os.path.join(os.path.dirname(__file__), "upload_receipt.py")
                     )
                 }
             ),
             architectures=["arm64"],
-            layers=[
-                upload_layer.arn
-            ],  # receipt-upload includes receipt-dynamo
+            layers=[upload_layer.arn],  # receipt-upload includes receipt-dynamo
             tags={"environment": stack},
             environment=FunctionEnvironmentArgs(
                 variables={
@@ -352,9 +344,7 @@ class UploadImages(ComponentResource):
                                         args[5] + "/*",  # artifacts_bucket
                                     ]
                                     + (
-                                        [f"arn:aws:s3:::{args[6]}/*"]
-                                        if args[6]
-                                        else []
+                                        [f"arn:aws:s3:::{args[6]}/*"] if args[6] else []
                                     ),
                                 },
                             ]
@@ -531,9 +521,7 @@ class UploadImages(ComponentResource):
             enabled=True,
             opts=ResourceOptions(
                 parent=self,
-                import_=(
-                    existing_mapping_uuid if existing_mapping_uuid else None
-                ),
+                import_=(existing_mapping_uuid if existing_mapping_uuid else None),
             ),
         )
 
@@ -619,14 +607,8 @@ class UploadImages(ComponentResource):
                                     "s3:PutObject",
                                     "s3:HeadObject",
                                 ],
-                                "Resource": [
-                                    args[1] + "/*"
-                                ]  # artifacts_bucket
-                                + (
-                                    [f"arn:aws:s3:::{args[2]}/*"]
-                                    if args[2]
-                                    else []
-                                ),
+                                "Resource": [args[1] + "/*"]  # artifacts_bucket
+                                + ([f"arn:aws:s3:::{args[2]}/*"] if args[2] else []),
                             },
                         ]
                         + (
@@ -742,9 +724,7 @@ class UploadImages(ComponentResource):
 
         log_group = aws.cloudwatch.LogGroup(
             f"{name}-api-gw-log-group",
-            name=api.id.apply(
-                lambda id: f"API-Gateway-Execution-Logs_{id}_default"
-            ),
+            name=api.id.apply(lambda id: f"API-Gateway-Execution-Logs_{id}_default"),
             retention_in_days=14,
             opts=ResourceOptions(parent=self),
         )

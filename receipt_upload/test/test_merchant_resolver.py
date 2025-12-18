@@ -122,9 +122,7 @@ class TestMerchantResolverTier1Phone:
         # Should not find a match (current receipt skipped)
         assert result.place_id is None
 
-    def test_no_phone_extracted_proceeds_to_address(
-        self, resolver, mock_lines_client
-    ):
+    def test_no_phone_extracted_proceeds_to_address(self, resolver, mock_lines_client):
         """Test that missing phone proceeds to address tier."""
         words = [MagicMock(spec=ReceiptWord, extracted_data={})]
         lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store")]
@@ -267,9 +265,7 @@ class TestMerchantResolverTier2PlaceIdFinder:
             resolution_tier="place_id_finder",
         )
 
-        with patch.object(
-            resolver, "_run_place_id_finder", return_value=tier2_result
-        ):
+        with patch.object(resolver, "_run_place_id_finder", return_value=tier2_result):
             result = resolver.resolve(
                 lines_client=mock_lines_client,
                 lines=lines,
@@ -340,9 +336,7 @@ class TestMerchantResolverHelpers:
 
     def test_extract_phone_returns_none_when_missing(self, resolver):
         """Test phone extraction returns None when no phone."""
-        words = [
-            MagicMock(extracted_data={"type": "address", "value": "123 Main"})
-        ]
+        words = [MagicMock(extracted_data={"type": "address", "value": "123 Main"})]
 
         phone = resolver._extract_phone(words)
         assert phone is None
@@ -401,18 +395,14 @@ class TestMerchantResolverErrorHandling:
         """Create mock ChromaClient."""
         return MagicMock()
 
-    def test_chroma_query_error_is_handled(
-        self, mock_dynamo_client, mock_lines_client
-    ):
+    def test_chroma_query_error_is_handled(self, mock_dynamo_client, mock_lines_client):
         """Test that ChromaDB query errors are handled gracefully."""
         resolver = MerchantResolver(
             dynamo_client=mock_dynamo_client,
             places_client=None,
         )
 
-        words = [
-            MagicMock(extracted_data={"type": "phone", "value": "5551234567"})
-        ]
+        words = [MagicMock(extracted_data={"type": "phone", "value": "5551234567"})]
         lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store")]
 
         # Mock ChromaDB to raise exception
@@ -438,9 +428,7 @@ class TestMerchantResolverErrorHandling:
             places_client=None,
         )
 
-        words = [
-            MagicMock(extracted_data={"type": "phone", "value": "5551234567"})
-        ]
+        words = [MagicMock(extracted_data={"type": "phone", "value": "5551234567"})]
         lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store")]
 
         # Mock ChromaDB to return a match
@@ -480,9 +468,7 @@ class TestMerchantResolverErrorHandling:
             places_client=None,
         )
 
-        words = [
-            MagicMock(extracted_data={"type": "phone", "value": "5551234567"})
-        ]
+        words = [MagicMock(extracted_data={"type": "phone", "value": "5551234567"})]
         lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store")]
 
         mock_lines_client.query.return_value = {
@@ -493,9 +479,7 @@ class TestMerchantResolverErrorHandling:
         for invalid_id in ["", "null", "NO_RESULTS", "INVALID"]:
             mock_metadata = MagicMock()
             mock_metadata.place_id = invalid_id
-            mock_dynamo_client.get_receipt_metadata.return_value = (
-                mock_metadata
-            )
+            mock_dynamo_client.get_receipt_metadata.return_value = mock_metadata
 
             result = resolver.resolve(
                 lines_client=mock_lines_client,

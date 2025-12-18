@@ -42,14 +42,10 @@ class NoiseDetectionConfig:
     )
 
     # Separators: | / \ ~ _ = + * & %
-    separator_patterns: List[str] = field(
-        default_factory=lambda: [r"^[|/\\~_=+*&%]$"]
-    )
+    separator_patterns: List[str] = field(default_factory=lambda: [r"^[|/\\~_=+*&%]$"])
 
     # Non-alphanumeric strings
-    artifact_patterns: List[str] = field(
-        default_factory=lambda: [r"^[^\w\s]+$"]
-    )
+    artifact_patterns: List[str] = field(default_factory=lambda: [r"^[^\w\s]+$"])
 
     # Minimum meaningful length
     min_word_length: int = 2
@@ -62,9 +58,7 @@ class NoiseDetectionConfig:
 DEFAULT_NOISE_CONFIG = NoiseDetectionConfig()
 
 
-def is_noise_text(
-    text: str, config: Optional[NoiseDetectionConfig] = None
-) -> bool:
+def is_noise_text(text: str, config: Optional[NoiseDetectionConfig] = None) -> bool:
     """
     Determine if text (word or line) is noise based on configurable patterns.
 
@@ -235,11 +229,7 @@ def download_image_from_s3(
     base_dir.mkdir(parents=True, exist_ok=True)
 
     # Build filename with optional unique suffix
-    filename = (
-        f"{image_id}-{unique_suffix}.png"
-        if unique_suffix
-        else f"{image_id}.png"
-    )
+    filename = f"{image_id}-{unique_suffix}.png" if unique_suffix else f"{image_id}.png"
     image_path = base_dir / filename
 
     with open(image_path, "wb") as f:
@@ -248,9 +238,7 @@ def download_image_from_s3(
     return image_path
 
 
-def upload_jpeg_to_s3(
-    image: PIL_Image.Image, s3_bucket: str, s3_key: str
-) -> None:
+def upload_jpeg_to_s3(image: PIL_Image.Image, s3_bucket: str, s3_key: str) -> None:
     """
     Upload an image to S3.
     """
@@ -266,9 +254,7 @@ def upload_jpeg_to_s3(
         )
 
 
-def upload_png_to_s3(
-    image: PIL_Image.Image, s3_bucket: str, s3_key: str
-) -> None:
+def upload_png_to_s3(image: PIL_Image.Image, s3_bucket: str, s3_key: str) -> None:
     """
     Upload a PNG image to S3.
     """
@@ -292,9 +278,7 @@ def upload_webp_to_s3(
     """
     s3_client = client("s3")
     with BytesIO() as buffer:
-        image.convert("RGB").save(
-            buffer, format="WEBP", quality=quality, method=6
-        )
+        image.convert("RGB").save(buffer, format="WEBP", quality=quality, method=6)
         buffer.seek(0)
         s3_client.put_object(
             Bucket=s3_bucket,
@@ -574,9 +558,7 @@ def get_ocr_routing_decision(
     Get an OCR routing decision from the DynamoDB table.
     """
     dynamo_client = DynamoClient(dynamo_table_name)
-    return dynamo_client.get_ocr_routing_decision(
-        image_id=image_id, job_id=job_id
-    )
+    return dynamo_client.get_ocr_routing_decision(image_id=image_id, job_id=job_id)
 
 
 def image_ocr_to_receipt_ocr(

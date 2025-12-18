@@ -193,8 +193,7 @@ class LabelValidationAgentStepFunction(ComponentResource):
             f"{name}-lambda-basic-exec",
             role=lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/"
-                "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
@@ -259,9 +258,7 @@ class LabelValidationAgentStepFunction(ComponentResource):
         RolePolicy(
             f"{name}-lambda-s3-policy",
             role=lambda_role.id,
-            policy=Output.all(
-                self.batch_bucket.arn, chromadb_bucket_arn
-            ).apply(
+            policy=Output.all(self.batch_bucket.arn, chromadb_bucket_arn).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -401,9 +398,7 @@ class LabelValidationAgentStepFunction(ComponentResource):
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get(
-                    "langchain_project"
-                )
+                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get("langchain_project")
                 or "label-validation-agent",
             },
         }
@@ -689,9 +684,7 @@ class LabelValidationAgentStepFunction(ComponentResource):
                                         "BackoffRate": 2.0,
                                     },
                                     {
-                                        "ErrorEquals": [
-                                            "OllamaRateLimitError"
-                                        ],
+                                        "ErrorEquals": ["OllamaRateLimitError"],
                                         "IntervalSeconds": 30,
                                         "MaxAttempts": 5,
                                         "BackoffRate": 1.5,
@@ -712,9 +705,7 @@ class LabelValidationAgentStepFunction(ComponentResource):
                             },
                         },
                     },
-                    "ResultSelector": {
-                        "batch_count.$": "States.ArrayLength($)"
-                    },
+                    "ResultSelector": {"batch_count.$": "States.ArrayLength($)"},
                     "ResultPath": "$.process_results",
                     "Catch": [
                         {

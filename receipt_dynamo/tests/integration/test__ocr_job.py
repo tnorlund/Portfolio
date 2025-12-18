@@ -87,9 +87,7 @@ def _batch_ocr_jobs() -> List[OCRJob]:
                     OCRStatus.FAILED,
                 ][i % 3],
                 job_type=(
-                    OCRJobType.FIRST_PASS
-                    if i % 2 == 0
-                    else OCRJobType.REFINEMENT
+                    OCRJobType.FIRST_PASS if i % 2 == 0 else OCRJobType.REFINEMENT
                 ),
                 receipt_id=i + 1 if i % 2 == 0 else None,
             )
@@ -278,9 +276,7 @@ def test_add_ocr_job_validation_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,error_match", ADD_BATCH_VALIDATION_SCENARIOS
-)
+@pytest.mark.parametrize("invalid_input,error_match", ADD_BATCH_VALIDATION_SCENARIOS)
 def test_add_ocr_jobs_validation_errors(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_input: Any,
@@ -342,9 +338,7 @@ def test_add_ocr_job_duplicate_raises(
     client = DynamoClient(dynamodb_table)
     client.add_ocr_job(sample_ocr_job)
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="ocr_job already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="ocr_job already exists"):
         client.add_ocr_job(sample_ocr_job)
 
 
@@ -590,17 +584,13 @@ def test_list_ocr_jobs_with_pagination(
     assert last_key1 is not None
 
     # Get second page
-    page2, last_key2 = client.list_ocr_jobs(
-        limit=15, last_evaluated_key=last_key1
-    )
+    page2, last_key2 = client.list_ocr_jobs(limit=15, last_evaluated_key=last_key1)
     assert len(page2) <= 15  # May be fewer items on second page
 
     # Get remaining items if there are more
     all_retrieved = page1 + page2
     if last_key2 is not None:
-        page3, last_key3 = client.list_ocr_jobs(
-            limit=15, last_evaluated_key=last_key2
-        )
+        page3, last_key3 = client.list_ocr_jobs(limit=15, last_evaluated_key=last_key2)
         all_retrieved.extend(page3)
 
     # Verify we got all our items
@@ -642,9 +632,7 @@ def test_get_ocr_jobs_by_status_success(
 
     pending_test_jobs = [j for j in pending_jobs if j.job_id in test_job_ids]
     failed_test_jobs = [j for j in failed_jobs if j.job_id in test_job_ids]
-    completed_test_jobs = [
-        j for j in completed_jobs if j.job_id in test_job_ids
-    ]
+    completed_test_jobs = [j for j in completed_jobs if j.job_id in test_job_ids]
 
     assert len(pending_test_jobs) == 3
     assert len(failed_test_jobs) == 3
@@ -652,9 +640,7 @@ def test_get_ocr_jobs_by_status_success(
 
     assert all(j.status == OCRStatus.PENDING.value for j in pending_test_jobs)
     assert all(j.status == OCRStatus.FAILED.value for j in failed_test_jobs)
-    assert all(
-        j.status == OCRStatus.COMPLETED.value for j in completed_test_jobs
-    )
+    assert all(j.status == OCRStatus.COMPLETED.value for j in completed_test_jobs)
 
 
 @pytest.mark.integration
@@ -680,9 +666,7 @@ def test_get_ocr_jobs_by_status_with_pagination(
         client.add_ocr_job(job)
 
     # Get first page
-    page1, last_key1 = client.get_ocr_jobs_by_status(
-        OCRStatus.PENDING, limit=8
-    )
+    page1, last_key1 = client.get_ocr_jobs_by_status(OCRStatus.PENDING, limit=8)
     assert len(page1) >= 8  # At least 8
     assert last_key1 is not None
 
@@ -795,9 +779,7 @@ def test_ocr_job_status_transitions(
     client.update_ocr_job(sample_ocr_job)
 
     # Verify
-    retrieved = client.get_ocr_job(
-        sample_ocr_job.image_id, sample_ocr_job.job_id
-    )
+    retrieved = client.get_ocr_job(sample_ocr_job.image_id, sample_ocr_job.job_id)
     assert retrieved.status == OCRStatus.COMPLETED.value
 
     # Transition to FAILED
@@ -806,9 +788,7 @@ def test_ocr_job_status_transitions(
     client.update_ocr_job(sample_ocr_job)
 
     # Verify final state
-    retrieved = client.get_ocr_job(
-        sample_ocr_job.image_id, sample_ocr_job.job_id
-    )
+    retrieved = client.get_ocr_job(sample_ocr_job.image_id, sample_ocr_job.job_id)
     assert retrieved.status == OCRStatus.FAILED.value
     assert retrieved.updated_at == datetime(2025, 5, 1, 14, 0, 0)
 
@@ -847,9 +827,7 @@ def test_ocr_job_different_job_types(
     client.add_ocr_job(refinement_job)
 
     # Retrieve and verify
-    retrieved_first = client.get_ocr_job(
-        first_pass_job.image_id, first_pass_job.job_id
-    )
+    retrieved_first = client.get_ocr_job(first_pass_job.image_id, first_pass_job.job_id)
     retrieved_refinement = client.get_ocr_job(
         refinement_job.image_id, refinement_job.job_id
     )

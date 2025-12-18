@@ -189,9 +189,7 @@ def create_label_validation_graph(
                 load_secrets as load_pulumi_secrets,
             )
 
-            pulumi_secrets = load_pulumi_secrets("dev") or load_pulumi_secrets(
-                "prod"
-            )
+            pulumi_secrets = load_pulumi_secrets("dev") or load_pulumi_secrets("prod")
             if pulumi_secrets:
                 api_key = (
                     pulumi_secrets.get("portfolio:OLLAMA_API_KEY")
@@ -214,17 +212,13 @@ def create_label_validation_graph(
     # GPT-OSS requires 'reasoning' to be 'low', 'medium', or 'high'
     # LangChain ChatOllama supports 'reasoning' parameter (not 'think')
     # Default to 'medium' for balanced performance
-    reasoning_level = (
-        "medium" if "gpt-oss" in settings.ollama_model.lower() else None
-    )
+    reasoning_level = "medium" if "gpt-oss" in settings.ollama_model.lower() else None
 
     llm_kwargs = {
         "base_url": settings.ollama_base_url,
         "model": settings.ollama_model,
         "client_kwargs": {
-            "headers": (
-                {"Authorization": f"Bearer {api_key}"} if api_key else {}
-            ),
+            "headers": ({"Authorization": f"Bearer {api_key}"} if api_key else {}),
             "timeout": 120,
         },
         "temperature": 0.0,
@@ -244,9 +238,7 @@ def create_label_validation_graph(
         # Check message size to prevent 400 errors
         # Estimate token count (rough: 1 token ≈ 4 characters)
         total_chars = sum(
-            len(str(msg.content))
-            for msg in messages
-            if hasattr(msg, "content")
+            len(str(msg.content)) for msg in messages if hasattr(msg, "content")
         )
         estimated_tokens = total_chars // 4
 
@@ -303,16 +295,12 @@ def create_label_validation_graph(
                 return {"messages": [error_message]}
 
             # For other errors, re-raise to let LangGraph handle retries
-            logger.error(
-                f"LLM invocation error: {error_type}: {error_str[:500]}"
-            )
+            logger.error(f"LLM invocation error: {error_type}: {error_str[:500]}")
             raise
 
         # Log and track tool calls
         if hasattr(response, "tool_calls") and response.tool_calls:
-            tool_names = [
-                tc.get("name", "unknown") for tc in response.tool_calls
-            ]
+            tool_names = [tc.get("name", "unknown") for tc in response.tool_calls]
             logger.info(f"Agent tool calls: {tool_names}")
             # Track unique tools used
             for tool_name in tool_names:
@@ -341,8 +329,7 @@ def create_label_validation_graph(
                 if last_message.tool_calls:
                     # Check if submit_decision is in the tool calls
                     tool_names = [
-                        tc.get("name")
-                        for tc in (last_message.tool_calls or [])
+                        tc.get("name") for tc in (last_message.tool_calls or [])
                     ]
                     if "submit_decision" in tool_names:
                         # submit_decision was called - will be processed by tool node
@@ -351,9 +338,7 @@ def create_label_validation_graph(
                     return "tools"
 
         # No tool calls and no decision - end (shouldn't happen with good prompts)
-        logger.warning(
-            "No decision submitted and no tool calls - ending workflow"
-        )
+        logger.warning("No decision submitted and no tool calls - ending workflow")
         return "end"
 
     # Build the graph
@@ -512,16 +497,12 @@ async def run_label_validation(
                                 if w.word_id
                                 == word_id  # Specific word_id identifies which word on this line
                             )
-                            target_word_obj = words_in_target_line[
-                                target_word_index
-                            ]
+                            target_word_obj = words_in_target_line[target_word_index]
                             # Count how many times this word text appears before our target word ON THIS LINE
                             # This ensures we mark the correct instance if the word appears multiple times on the same line
                             target_word_occurrence = sum(
                                 1
-                                for w in words_in_target_line[
-                                    :target_word_index
-                                ]
+                                for w in words_in_target_line[:target_word_index]
                                 if w.text == target_word_obj.text
                             )
                         except StopIteration:
@@ -552,18 +533,14 @@ async def run_label_validation(
                                 or not line_text[word_start - 1].isalnum()
                             ) and (
                                 word_start + len(word_text) >= len(line_text)
-                                or not line_text[
-                                    word_start + len(word_text)
-                                ].isalnum()
+                                or not line_text[word_start + len(word_text)].isalnum()
                             ):
                                 if occurrence_count == target_word_occurrence:
                                     # This is our target word instance - mark it
                                     line_text = (
                                         line_text[:word_start]
                                         + f"[{word_text}]"
-                                        + line_text[
-                                            word_start + len(word_text) :
-                                        ]
+                                        + line_text[word_start + len(word_text) :]
                                     )
                                     break
                                 occurrence_count += 1
@@ -602,9 +579,7 @@ async def run_label_validation(
                         "formatted_address": metadata.formatted_address
                         or getattr(metadata, "address", None),
                         "place_id": metadata.place_id,
-                        "phone_number": getattr(
-                            metadata, "phone_number", None
-                        ),
+                        "phone_number": getattr(metadata, "phone_number", None),
                         "website": getattr(metadata, "website", None),
                     }
             except Exception:
@@ -629,12 +604,12 @@ async def run_label_validation(
                 f"- **Line text**: `{word_context_data['line_text']}`\n"
             )
         if word_context_data.get("surrounding_words"):
-            word_context_text += f"- **Surrounding words**: `{word_context_data['surrounding_words']}`\n"
+            word_context_text += (
+                f"- **Surrounding words**: `{word_context_data['surrounding_words']}`\n"
+            )
         if word_context_data.get("surrounding_lines"):
             word_context_text += f"- **Full receipt context** (target line marked with brackets):\n  ```\n"
-            word_context_text += "\n  ".join(
-                word_context_data["surrounding_lines"]
-            )
+            word_context_text += "\n  ".join(word_context_data["surrounding_lines"])
             word_context_text += "\n  ```\n"
         if word_context_data.get("receipt_metadata"):
             meta = word_context_data["receipt_metadata"]
@@ -643,13 +618,15 @@ async def run_label_validation(
     # Format merchant metadata for prompt
     merchant_metadata_text = ""
     if merchant_metadata_data:
-        merchant_metadata_text = (
-            "\n### Merchant Metadata (Already Fetched)\n\n"
-        )
+        merchant_metadata_text = "\n### Merchant Metadata (Already Fetched)\n\n"
         if merchant_metadata_data.get("merchant_name"):
-            merchant_metadata_text += f"- **Merchant name**: {merchant_metadata_data['merchant_name']}\n"
+            merchant_metadata_text += (
+                f"- **Merchant name**: {merchant_metadata_data['merchant_name']}\n"
+            )
         if merchant_metadata_data.get("formatted_address"):
-            merchant_metadata_text += f"- **Address**: {merchant_metadata_data['formatted_address']}\n"
+            merchant_metadata_text += (
+                f"- **Address**: {merchant_metadata_data['formatted_address']}\n"
+            )
         if merchant_metadata_data.get("phone_number"):
             merchant_metadata_text += (
                 f"- **Phone**: {merchant_metadata_data['phone_number']}\n"
@@ -661,8 +638,7 @@ async def run_label_validation(
 
     # Build CORE_LABELS definitions text
     core_labels_text = "\n".join(
-        f"- **{label}**: {definition}"
-        for label, definition in CORE_LABELS.items()
+        f"- **{label}**: {definition}" for label, definition in CORE_LABELS.items()
     )
 
     # Highlight the specific label being validated
@@ -749,9 +725,7 @@ All valid label types:
                     {
                         "type": msg.__class__.__name__,
                         "content": (
-                            msg.content
-                            if hasattr(msg, "content")
-                            else str(msg)
+                            msg.content if hasattr(msg, "content") else str(msg)
                         ),
                         "tool_calls": (
                             [tc.get("name") for tc in (msg.tool_calls or [])]

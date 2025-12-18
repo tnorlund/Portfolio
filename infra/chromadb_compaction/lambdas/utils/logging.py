@@ -118,9 +118,7 @@ class OperationLogger:
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
-                op_name = (
-                    operation_name or f"{func.__module__}.{func.__name__}"
-                )
+                op_name = operation_name or f"{func.__module__}.{func.__name__}"
                 with self.operation_timer(op_name):
                     return func(*args, **kwargs)
 
@@ -145,16 +143,12 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         handler = logging.StreamHandler()
 
         # Use structured JSON logging if enabled
-        if (
-            os.environ.get("ENABLE_STRUCTURED_LOGGING", "true").lower()
-            == "true"
-        ):
+        if os.environ.get("ENABLE_STRUCTURED_LOGGING", "true").lower() == "true":
             formatter = StructuredFormatter()
         else:
             # Fallback to simple format
             formatter = logging.Formatter(
-                "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - "
-                "%(message)s",
+                "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - " "%(message)s",
                 datefmt="%Y-%m-%d %H:%M:%S",
             )
 

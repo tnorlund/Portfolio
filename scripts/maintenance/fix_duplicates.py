@@ -25,18 +25,14 @@ def fix_duplicates(filepath: Path) -> int:
     if duplicates_removed > 0:
         with open(filepath, "w") as f:
             f.writelines(new_lines)
-        print(
-            f"Fixed {filepath.name}: removed {duplicates_removed} duplicate lines"
-        )
+        print(f"Fixed {filepath.name}: removed {duplicates_removed} duplicate lines")
 
     return duplicates_removed
 
 
 def main():
     """Fix duplicates in all Python files"""
-    data_dir = Path(
-        "/Users/tnorlund/GitHub/example/receipt_dynamo/receipt_dynamo/data"
-    )
+    data_dir = Path("/Users/tnorlund/GitHub/example/receipt_dynamo/receipt_dynamo/data")
 
     total_fixed = 0
 

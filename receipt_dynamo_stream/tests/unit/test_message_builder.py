@@ -203,10 +203,7 @@ def test_build_compaction_run_messages_success() -> None:
     # Verify entity data
     for msg in messages:
         assert msg.entity_data["run_id"] == "run-abc"
-        assert (
-            msg.entity_data["image_id"]
-            == "550e8400-e29b-41d4-a716-446655440000"
-        )
+        assert msg.entity_data["image_id"] == "550e8400-e29b-41d4-a716-446655440000"
         assert msg.entity_data["receipt_id"] == 1
 
 

@@ -90,9 +90,7 @@ class DockerImageComponent(ComponentResource):
         # Get content hash for versioning
         handler_dir = Path(__file__).parent.parent / "unified_embedding"
         image_tag = self.get_handler_content_hash(handler_dir)
-        pulumi.log.info(
-            f"Using content-based tag for embedding image: {image_tag}"
-        )
+        pulumi.log.info(f"Using content-based tag for embedding image: {image_tag}")
 
         # Use CodeBuildDockerImage for AWS-based builds
         # Note: Lambda functions will be created separately by LambdaFunctionsComponent

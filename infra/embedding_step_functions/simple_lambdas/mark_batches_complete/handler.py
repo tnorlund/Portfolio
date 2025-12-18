@@ -137,9 +137,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return {
                 "batches_marked": 0,
                 "batch_ids": [],
-                "skipped_batches": (
-                    len(skipped_batches) if skipped_batches else 0
-                ),
+                "skipped_batches": (len(skipped_batches) if skipped_batches else 0),
             }
 
         logger.info(
@@ -154,9 +152,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         try:
             # Get all batch summaries in one call
-            batch_summaries = dynamo_client.get_batch_summaries_by_batch_ids(
-                batch_ids
-            )
+            batch_summaries = dynamo_client.get_batch_summaries_by_batch_ids(batch_ids)
 
             # Update status for all summaries
             for batch_summary in batch_summaries:
@@ -221,7 +217,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     marked_count += 1
                     logger.info("Marked batch as complete: %s", batch_id)
                 except Exception as e2:
-                    error_msg = f"Failed to mark batch {batch_id} as complete: {str(e2)[:100]}"
+                    error_msg = (
+                        f"Failed to mark batch {batch_id} as complete: {str(e2)[:100]}"
+                    )
                     errors.append(error_msg)
                     logger.error(
                         "Error marking batch as complete: %s - %s",
@@ -237,9 +235,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 len(batch_ids),
             )
         else:
-            logger.info(
-                "Successfully marked all %d batches as complete", marked_count
-            )
+            logger.info("Successfully marked all %d batches as complete", marked_count)
 
         return {
             "batches_marked": marked_count,
@@ -248,9 +244,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(
-            "Unexpected error marking batches as complete: %s", str(e)
-        )
+        logger.error("Unexpected error marking batches as complete: %s", str(e))
         return {
             "statusCode": 500,
             "error": str(e),

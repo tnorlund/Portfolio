@@ -56,9 +56,7 @@ def main():
             message_contexts.append((message, image_id, job_id))
 
             # Grab the OCR Job from the DynamoDB table
-            ocr_job = dynamo_client.get_ocr_job(
-                image_id=image_id, job_id=job_id
-            )
+            ocr_job = dynamo_client.get_ocr_job(image_id=image_id, job_id=job_id)
             image_s3_key = ocr_job.s3_key
             image_s3_bucket = ocr_job.s3_bucket
 
@@ -119,9 +117,7 @@ def main():
                 f"job {job_id}\ns3_bucket {image_s3_bucket}\n"
                 f"s3_key {ocr_json_file_s3_key}"
             )
-            ocr_job = dynamo_client.get_ocr_job(
-                image_id=image_id, job_id=job_id
-            )
+            ocr_job = dynamo_client.get_ocr_job(image_id=image_id, job_id=job_id)
             ocr_job.updated_at = datetime.now(timezone.utc)
             ocr_job.status = OCRStatus.COMPLETED.value
             dynamo_client.update_ocr_job(ocr_job)

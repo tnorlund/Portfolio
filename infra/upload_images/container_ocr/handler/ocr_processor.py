@@ -82,9 +82,7 @@ class OCRProcessor:
 
             # Handle refinement jobs differently
             if ocr_job.job_type == OCRJobType.REFINEMENT.value:
-                return self._process_refinement_job(
-                    ocr_job, ocr_routing_decision
-                )
+                return self._process_refinement_job(ocr_job, ocr_routing_decision)
 
             # Download and parse OCR JSON
             ocr_json_path = download_file_from_s3(
@@ -100,9 +98,7 @@ class OCRProcessor:
                 ocr_json, image_id
             )
 
-            ocr_data = OCRData(
-                lines=ocr_lines, words=ocr_words, letters=ocr_letters
-            )
+            ocr_data = OCRData(lines=ocr_lines, words=ocr_words, letters=ocr_letters)
 
             # Download image
             raw_image_path = download_image_from_s3(
@@ -122,16 +118,12 @@ class OCRProcessor:
                 "error": str(e),
             }
 
-    def _process_refinement_job(
-        self, ocr_job, ocr_routing_decision
-    ) -> Dict[str, Any]:
+    def _process_refinement_job(self, ocr_job, ocr_routing_decision) -> Dict[str, Any]:
         """Process a refinement OCR job."""
         logger.info(f"Refining receipt {ocr_job.image_id}")
 
         if ocr_job.receipt_id is None:
-            logger.error(
-                f"Receipt ID is None for refinement job {ocr_job.job_id}"
-            )
+            logger.error(f"Receipt ID is None for refinement job {ocr_job.job_id}")
             return {"success": False, "error": "Receipt ID is None"}
 
         # Download and parse OCR JSON
@@ -148,13 +140,11 @@ class OCRProcessor:
             ocr_json, ocr_job.image_id
         )
 
-        receipt_lines, receipt_words, receipt_letters = (
-            image_ocr_to_receipt_ocr(
-                lines=ocr_lines,
-                words=ocr_words,
-                letters=ocr_letters,
-                receipt_id=ocr_job.receipt_id,
-            )
+        receipt_lines, receipt_words, receipt_letters = image_ocr_to_receipt_ocr(
+            lines=ocr_lines,
+            words=ocr_words,
+            letters=ocr_letters,
+            receipt_id=ocr_job.receipt_id,
         )
 
         from receipt_upload.receipt_processing.receipt import refine_receipt

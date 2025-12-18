@@ -192,14 +192,9 @@ def build_line_entities(
             - (
                 (corners_img_px["bottom_left"][1] - crop_min_y) / crop_h
             ),  # bottom in OCR
-            "width": (
-                corners_img_px["top_right"][0] - corners_img_px["top_left"][0]
-            )
+            "width": (corners_img_px["top_right"][0] - corners_img_px["top_left"][0])
             / crop_w,
-            "height": (
-                corners_img_px["top_left"][1]
-                - corners_img_px["bottom_left"][1]
-            )
+            "height": (corners_img_px["top_left"][1] - corners_img_px["bottom_left"][1])
             / crop_h,
         }
         entities.append(

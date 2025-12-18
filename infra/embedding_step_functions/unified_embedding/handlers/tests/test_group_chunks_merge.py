@@ -52,9 +52,7 @@ def test_group_chunks_merge_uses_poll_results_data():
         ),  # None!
     }
 
-    assert (
-        old_approach["poll_results_s3_key"] is None
-    ), "Old approach would fail"
+    assert old_approach["poll_results_s3_key"] is None, "Old approach would fail"
 
     # NEW (fixed) approach - gets from poll_results_data
     new_approach = {
@@ -64,9 +62,7 @@ def test_group_chunks_merge_uses_poll_results_data():
         "group_size": 10,
         "poll_results": sample_input["poll_results"],
         # This works because poll_results_data always has these keys
-        "poll_results_s3_key": sample_input["poll_results_data"][
-            "poll_results_s3_key"
-        ],
+        "poll_results_s3_key": sample_input["poll_results_data"]["poll_results_s3_key"],
         "poll_results_s3_bucket": sample_input["poll_results_data"][
             "poll_results_s3_bucket"
         ],
@@ -104,9 +100,7 @@ def test_jsonpath_expressions():
     # Old (broken) path
     old_path = jsonpath_ng.parse("$.chunked_data.poll_results_s3_key")
     old_matches = [match.value for match in old_path.find(sample_data)]
-    assert (
-        len(old_matches) == 0
-    ), "Old path should return empty (key doesn't exist)"
+    assert len(old_matches) == 0, "Old path should return empty (key doesn't exist)"
 
     # New (fixed) path
     new_path = jsonpath_ng.parse("$.poll_results_data.poll_results_s3_key")

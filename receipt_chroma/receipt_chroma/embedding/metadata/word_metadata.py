@@ -108,13 +108,11 @@ def enrich_word_metadata_with_labels(
     """
     # Determine label status
     if any(
-        lbl.validation_status == ValidationStatus.VALID.value
-        for lbl in word_labels
+        lbl.validation_status == ValidationStatus.VALID.value for lbl in word_labels
     ):
         label_status = "validated"
     elif any(
-        lbl.validation_status == ValidationStatus.PENDING.value
-        for lbl in word_labels
+        lbl.validation_status == ValidationStatus.PENDING.value for lbl in word_labels
     ):
         label_status = "auto_suggested"
     else:

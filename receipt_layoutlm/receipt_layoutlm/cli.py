@@ -12,18 +12,12 @@ def main() -> None:
 
     train_p = sub.add_parser("train", help="Train LayoutLM on DynamoDB data")
     train_p.add_argument("--job-name", required=True)
-    train_p.add_argument(
-        "--dynamo-table", default=os.getenv("DYNAMO_TABLE_NAME")
-    )
-    train_p.add_argument(
-        "--region", default=os.getenv("AWS_REGION", "us-east-1")
-    )
+    train_p.add_argument("--dynamo-table", default=os.getenv("DYNAMO_TABLE_NAME"))
+    train_p.add_argument("--region", default=os.getenv("AWS_REGION", "us-east-1"))
     train_p.add_argument("--epochs", type=int, default=10)
     train_p.add_argument("--batch-size", type=int, default=8)
     train_p.add_argument("--lr", type=float, default=5e-5)
-    train_p.add_argument(
-        "--pretrained", default="microsoft/layoutlm-base-uncased"
-    )
+    train_p.add_argument("--pretrained", default="microsoft/layoutlm-base-uncased")
     train_p.add_argument(
         "--warmup-ratio",
         type=float,
@@ -104,9 +98,7 @@ def main() -> None:
     train_p.add_argument(
         "--dataset-snapshot-save",
         default=None,
-        help=(
-            "Directory/URI to save the tokenized dataset after preprocessing."
-        ),
+        help=("Directory/URI to save the tokenized dataset after preprocessing."),
     )
     train_p.add_argument(
         "--output-s3-path",
@@ -119,12 +111,8 @@ def main() -> None:
     )
 
     infer_p = sub.add_parser("infer", help="Run LayoutLM inference")
-    infer_p.add_argument(
-        "--dynamo-table", default=os.getenv("DYNAMO_TABLE_NAME")
-    )
-    infer_p.add_argument(
-        "--region", default=os.getenv("AWS_REGION", "us-east-1")
-    )
+    infer_p.add_argument("--dynamo-table", default=os.getenv("DYNAMO_TABLE_NAME"))
+    infer_p.add_argument("--region", default=os.getenv("AWS_REGION", "us-east-1"))
     infer_p.add_argument("--image-id", required=True)
     infer_p.add_argument("--receipt-id", type=int, required=True)
     infer_p.add_argument(
@@ -140,18 +128,14 @@ def main() -> None:
     infer_p.add_argument(
         "--auto-bucket-env",
         default="layoutlm_training_bucket",
-        help=(
-            "Env var containing S3 bucket name; will auto-resolve latest run if set"
-        ),
+        help=("Env var containing S3 bucket name; will auto-resolve latest run if set"),
     )
 
     args = parser.parse_args()
 
     if args.cmd == "train":
         if not args.dynamo_table:
-            raise SystemExit(
-                "--dynamo-table or DYNAMO_TABLE_NAME env is required"
-            )
+            raise SystemExit("--dynamo-table or DYNAMO_TABLE_NAME env is required")
 
         data_cfg = DataConfig(
             dynamo_table_name=args.dynamo_table,
@@ -170,18 +154,14 @@ def main() -> None:
         if args.early_stopping_patience is not None:
             train_cfg.early_stopping_patience = args.early_stopping_patience
         if args.gradient_accumulation_steps is not None:
-            train_cfg.gradient_accumulation_steps = (
-                args.gradient_accumulation_steps
-            )
+            train_cfg.gradient_accumulation_steps = args.gradient_accumulation_steps
 
         # Optional O:entity ratio for downsampling all-O lines (training only)
         if args.o_entity_ratio is not None:
             os.environ["LAYOUTLM_O_TO_ENTITY_RATIO"] = str(args.o_entity_ratio)
 
         # Optional label whitelist
-        data_cfg.allowed_labels = (
-            args.allowed_label if args.allowed_label else None
-        )
+        data_cfg.allowed_labels = args.allowed_label if args.allowed_label else None
 
         data_cfg.merge_amounts = bool(args.merge_amounts)
         # Set environment variables for label merging
@@ -197,9 +177,7 @@ def main() -> None:
         print(job_id)
     elif args.cmd == "infer":
         if not args.dynamo_table:
-            raise SystemExit(
-                "--dynamo-table or DYNAMO_TABLE_NAME env is required"
-            )
+            raise SystemExit("--dynamo-table or DYNAMO_TABLE_NAME env is required")
         from receipt_dynamo import DynamoClient
 
         dyn = DynamoClient(table_name=args.dynamo_table, region=args.region)

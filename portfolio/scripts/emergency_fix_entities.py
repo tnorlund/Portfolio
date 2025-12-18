@@ -39,10 +39,10 @@ class EmergencyFixer:
     def __init__(self, dynamo_table_name: str, dry_run: bool = True):
         self.table_name = dynamo_table_name
         self.dry_run = dry_run
-        self.dynamo_resource = boto3.resource('dynamodb')
+        self.dynamo_resource = boto3.resource("dynamodb")
         self.table = self.dynamo_resource.Table(dynamo_table_name)
         self.dynamo_client = DynamoClient(dynamo_table_name)
-        
+
         self.stats = {
             "images_scanned": 0,
             "receipts_scanned": 0,
@@ -54,53 +54,51 @@ class EmergencyFixer:
     def scan_and_fix_all(self):
         """Scan and fix all entities."""
         logger.info("Starting emergency entity fix...")
-        
+
         # First, ensure all Images have TYPE field
         self.ensure_image_type_fields()
-        
+
         # Then, ensure all Receipts have TYPE field
         self.ensure_receipt_type_fields()
-        
+
         # Print summary
         self.print_summary()
 
     def ensure_image_type_fields(self):
         """Ensure all Image entities have TYPE field."""
         logger.info("Checking Image entities for TYPE field...")
-        
+
         # Scan for all Image entities
         scan_kwargs = {
-            'FilterExpression': Key('PK').begins_with('IMAGE#') & Key('SK').begins_with('IMAGE#')
+            "FilterExpression": Key("PK").begins_with("IMAGE#")
+            & Key("SK").begins_with("IMAGE#")
         }
-        
+
         done = False
         start_key = None
-        
+
         while not done:
             if start_key:
-                scan_kwargs['ExclusiveStartKey'] = start_key
-                
+                scan_kwargs["ExclusiveStartKey"] = start_key
+
             response = self.table.scan(**scan_kwargs)
-            items = response.get('Items', [])
-            
+            items = response.get("Items", [])
+
             for item in items:
                 self.stats["images_scanned"] += 1
-                
+
                 # Check if TYPE field exists
-                if 'TYPE' not in item:
+                if "TYPE" not in item:
                     logger.warning(f"Image missing TYPE: {item['PK']}")
-                    
+
                     if not self.dry_run:
                         try:
                             # Add TYPE field
                             self.table.update_item(
-                                Key={
-                                    'PK': item['PK'],
-                                    'SK': item['SK']
-                                },
-                                UpdateExpression='SET #type = :type',
-                                ExpressionAttributeNames={'#type': 'TYPE'},
-                                ExpressionAttributeValues={':type': 'IMAGE'}
+                                Key={"PK": item["PK"], "SK": item["SK"]},
+                                UpdateExpression="SET #type = :type",
+                                ExpressionAttributeNames={"#type": "TYPE"},
+                                ExpressionAttributeValues={":type": "IMAGE"},
                             )
                             self.stats["images_fixed"] += 1
                             logger.info(f"Added TYPE to Image: {item['PK']}")
@@ -109,57 +107,59 @@ class EmergencyFixer:
                             logger.error(f"Failed to fix Image {item['PK']}: {e}")
                     else:
                         self.stats["images_fixed"] += 1
-            
-            start_key = response.get('LastEvaluatedKey', None)
+
+            start_key = response.get("LastEvaluatedKey", None)
             done = start_key is None
 
     def ensure_receipt_type_fields(self):
         """Ensure all Receipt entities have TYPE field."""
         logger.info("Checking Receipt entities for TYPE field...")
-        
+
         # Scan for all Receipt entities
         scan_kwargs = {
-            'FilterExpression': Key('PK').begins_with('IMAGE#') & Key('SK').begins_with('RECEIPT#')
+            "FilterExpression": Key("PK").begins_with("IMAGE#")
+            & Key("SK").begins_with("RECEIPT#")
         }
-        
+
         done = False
         start_key = None
-        
+
         while not done:
             if start_key:
-                scan_kwargs['ExclusiveStartKey'] = start_key
-                
+                scan_kwargs["ExclusiveStartKey"] = start_key
+
             response = self.table.scan(**scan_kwargs)
-            items = response.get('Items', [])
-            
+            items = response.get("Items", [])
+
             for item in items:
                 self.stats["receipts_scanned"] += 1
-                
+
                 # Check if TYPE field exists
-                if 'TYPE' not in item:
+                if "TYPE" not in item:
                     logger.warning(f"Receipt missing TYPE: {item['PK']}, {item['SK']}")
-                    
+
                     if not self.dry_run:
                         try:
                             # Add TYPE field
                             self.table.update_item(
-                                Key={
-                                    'PK': item['PK'],
-                                    'SK': item['SK']
-                                },
-                                UpdateExpression='SET #type = :type',
-                                ExpressionAttributeNames={'#type': 'TYPE'},
-                                ExpressionAttributeValues={':type': 'RECEIPT'}
+                                Key={"PK": item["PK"], "SK": item["SK"]},
+                                UpdateExpression="SET #type = :type",
+                                ExpressionAttributeNames={"#type": "TYPE"},
+                                ExpressionAttributeValues={":type": "RECEIPT"},
                             )
                             self.stats["receipts_fixed"] += 1
-                            logger.info(f"Added TYPE to Receipt: {item['PK']}, {item['SK']}")
+                            logger.info(
+                                f"Added TYPE to Receipt: {item['PK']}, {item['SK']}"
+                            )
                         except Exception as e:
                             self.stats["errors"] += 1
-                            logger.error(f"Failed to fix Receipt {item['PK']}, {item['SK']}: {e}")
+                            logger.error(
+                                f"Failed to fix Receipt {item['PK']}, {item['SK']}: {e}"
+                            )
                     else:
                         self.stats["receipts_fixed"] += 1
-            
-            start_key = response.get('LastEvaluatedKey', None)
+
+            start_key = response.get("LastEvaluatedKey", None)
             done = start_key is None
 
     def print_summary(self):
@@ -169,7 +169,7 @@ class EmergencyFixer:
         logger.info("=" * 50)
         logger.info(f"Images scanned: {self.stats['images_scanned']}")
         logger.info(f"Receipts scanned: {self.stats['receipts_scanned']}")
-        
+
         if not self.dry_run:
             logger.info(f"Images fixed: {self.stats['images_fixed']}")
             logger.info(f"Receipts fixed: {self.stats['receipts_fixed']}")
@@ -196,39 +196,39 @@ def main():
         action="store_true",
         help="Actually fix the entities (default is dry run)",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Get configuration from Pulumi
     from pulumi import automation as auto
-    
+
     # Set up the stack
     stack_name = f"tnorlund/portfolio/{args.stack}"
     work_dir = os.path.join(parent_dir, "infra")
-    
+
     logger.info(f"Using stack: {stack_name}")
-    
+
     # Create a stack reference to get outputs
     stack = auto.create_or_select_stack(
         stack_name=stack_name,
         work_dir=work_dir,
     )
-    
+
     # Get the outputs
     outputs = stack.outputs()
-    
+
     # Extract configuration
     dynamo_table_name = outputs["dynamodb_table_name"].value
-    
+
     logger.info(f"DynamoDB table: {dynamo_table_name}")
     logger.info(f"Mode: {'LIVE UPDATE' if args.no_dry_run else 'DRY RUN'}")
-    
+
     # Create and run fixer
     fixer = EmergencyFixer(
         dynamo_table_name=dynamo_table_name,
         dry_run=not args.no_dry_run,
     )
-    
+
     fixer.scan_and_fix_all()
 
 

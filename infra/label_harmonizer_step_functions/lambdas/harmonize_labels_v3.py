@@ -76,9 +76,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 s3 = boto3.client("s3")
 
 
-def download_chromadb_snapshot(
-    bucket: str, collection: str, cache_path: str
-) -> str:
+def download_chromadb_snapshot(bucket: str, collection: str, cache_path: str) -> str:
     """
     Download ChromaDB snapshot from S3 if not cached.
 
@@ -90,9 +88,7 @@ def download_chromadb_snapshot(
         logger.info(f"ChromaDB already cached at {cache_path}")
         return cache_path
 
-    logger.info(
-        f"Downloading ChromaDB snapshot from s3://{bucket}/{collection}/"
-    )
+    logger.info(f"Downloading ChromaDB snapshot from s3://{bucket}/{collection}/")
 
     # Get latest pointer
     pointer_key = f"{collection}/snapshot/latest-pointer.txt"
@@ -157,9 +153,7 @@ async def process_receipt_batch(
     # Apply fixes if not dry run
     update_result = None
     if not dry_run:
-        logger.info(
-            "Applying fixes (dry_run=False, min_confidence=%s)", min_confidence
-        )
+        logger.info("Applying fixes (dry_run=False, min_confidence=%s)", min_confidence)
         update_result = await harmonizer.apply_fixes(
             results=results,
             dry_run=False,
@@ -225,9 +219,7 @@ async def handler_async(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     receipts = event.get("receipts", [])
 
     # Lambda-specific env vars
-    batch_bucket = event.get("batch_bucket") or os.environ.get(
-        "BATCH_BUCKET", ""
-    )
+    batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET", "")
     chromadb_bucket = os.environ.get("CHROMADB_BUCKET", "")
 
     # Set LangSmith project
@@ -266,11 +258,7 @@ async def handler_async(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info(f"Settings loaded: table={settings.dynamo_table_name}")
 
         dynamo = create_dynamo_client(settings=settings)
-        chroma = (
-            create_chroma_client(settings=settings)
-            if chromadb_bucket
-            else None
-        )
+        chroma = create_chroma_client(settings=settings) if chromadb_bucket else None
         embed_fn = create_embed_fn(settings=settings)
 
         # Create LLM
@@ -318,9 +306,7 @@ async def handler_async(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 Body=json.dumps(result, indent=2, default=str).encode("utf-8"),
                 ContentType="application/json",
             )
-            logger.info(
-                f"Results uploaded to s3://{batch_bucket}/{results_key}"
-            )
+            logger.info(f"Results uploaded to s3://{batch_bucket}/{results_key}")
 
         # Emit EMF metrics
         processing_time = time.time() - start_time

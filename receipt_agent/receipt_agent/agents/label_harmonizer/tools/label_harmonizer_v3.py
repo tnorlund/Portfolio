@@ -189,9 +189,7 @@ class LabelHarmonizerV3:
                 model=settings.ollama_model,
                 client_kwargs={
                     "headers": (
-                        {"Authorization": f"Bearer {api_key}"}
-                        if api_key
-                        else {}
+                        {"Authorization": f"Bearer {api_key}"} if api_key else {}
                     ),
                     "timeout": 120,
                 },
@@ -227,13 +225,11 @@ class LabelHarmonizerV3:
                 create_label_harmonizer_graph,
             )
 
-            self._agent_graph, self._agent_state_holder = (
-                create_label_harmonizer_graph(
-                    dynamo_client=self.dynamo,
-                    chroma_client=self.chroma,
-                    embed_fn=self.embed_fn,
-                    settings=self.settings,
-                )
+            self._agent_graph, self._agent_state_holder = create_label_harmonizer_graph(
+                dynamo_client=self.dynamo,
+                chroma_client=self.chroma,
+                embed_fn=self.embed_fn,
+                settings=self.settings,
             )
 
         # Run agent
@@ -274,9 +270,7 @@ class LabelHarmonizerV3:
         results = []
         for i, (image_id, receipt_id) in enumerate(receipt_keys):
             if (i + 1) % 10 == 0:
-                logger.info(
-                    f"Processed {i + 1}/{len(receipt_keys)} receipts..."
-                )
+                logger.info(f"Processed {i + 1}/{len(receipt_keys)} receipts...")
 
             try:
                 result = await self.harmonize_receipt(
@@ -286,9 +280,7 @@ class LabelHarmonizerV3:
                 )
                 results.append(result)
             except Exception as e:
-                logger.exception(
-                    f"Failed to harmonize {image_id}#{receipt_id}: {e}"
-                )
+                logger.exception(f"Failed to harmonize {image_id}#{receipt_id}: {e}")
                 results.append(
                     ReceiptLabelResult(
                         image_id=image_id,
@@ -398,8 +390,7 @@ class LabelHarmonizerV3:
                     for label in all_existing_labels:
                         # Current label is one that's VALID or most recent
                         if (
-                            label.validation_status
-                            == ValidationStatus.VALID.value
+                            label.validation_status == ValidationStatus.VALID.value
                             or current_label is None
                         ):
                             current_label = label
@@ -407,18 +398,12 @@ class LabelHarmonizerV3:
                     # Determine if we should add or update
                     if existing_label:
                         # Same label type exists - UPDATE it
-                        existing_label.validation_status = (
-                            new_validation_status
-                        )
+                        existing_label.validation_status = new_validation_status
                         existing_label.reasoning = (
-                            reasoning
-                            if reasoning
-                            else existing_label.reasoning
+                            reasoning if reasoning else existing_label.reasoning
                         )
                         # Update timestamp to reflect this change
-                        existing_label.timestamp_added = (
-                            datetime.utcnow().isoformat()
-                        )
+                        existing_label.timestamp_added = datetime.utcnow().isoformat()
 
                         self.dynamo.update_receipt_word_label(existing_label)
                         update_result.total_updated += 1
@@ -427,9 +412,7 @@ class LabelHarmonizerV3:
                             f"{image_id[:8]}...#{receipt_id}#{line_id}#{word_id}"
                         )
 
-                    elif (
-                        current_label and current_label.label != new_label_type
-                    ):
+                    elif current_label and current_label.label != new_label_type:
                         # Different label type - ADD new label, preserve old one
                         # Mark old label as consolidated if it was VALID
                         if (
@@ -440,9 +423,7 @@ class LabelHarmonizerV3:
                             current_label.validation_status = (
                                 ValidationStatus.INVALID.value
                             )
-                            self.dynamo.update_receipt_word_label(
-                                current_label
-                            )
+                            self.dynamo.update_receipt_word_label(current_label)
 
                         # Create new label with consolidation info
                         new_label = ReceiptWordLabel(
@@ -504,9 +485,7 @@ class LabelHarmonizerV3:
 
         return update_result
 
-    def print_summary(
-        self, results: Optional[List[ReceiptLabelResult]] = None
-    ) -> None:
+    def print_summary(self, results: Optional[List[ReceiptLabelResult]] = None) -> None:
         """Print a human-readable summary of harmonization results."""
         if results is None:
             results = self._last_results
@@ -532,9 +511,7 @@ class LabelHarmonizerV3:
         print()
 
         # Show some examples
-        successful = [
-            r for r in results if r.labels_updated > 0 and not r.errors
-        ]
+        successful = [r for r in results if r.labels_updated > 0 and not r.errors]
         if successful:
             print("Sample harmonization results:")
             for r in successful[:5]:
@@ -554,8 +531,6 @@ class LabelHarmonizerV3:
         if errors:
             print(f"Errors ({len(errors)}):")
             for r in errors[:3]:
-                print(
-                    f"  ⛔ {r.image_id[:8]}...#{r.receipt_id}: {r.errors[0][:50]}"
-                )
+                print(f"  ⛔ {r.image_id[:8]}...#{r.receipt_id}: {r.errors[0][:50]}")
             if len(errors) > 3:
                 print(f"  ... and {len(errors) - 3} more")

@@ -70,9 +70,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 s3 = boto3.client("s3")
 
 
-def download_chromadb_snapshot(
-    bucket: str, collection: str, cache_path: str
-) -> str:
+def download_chromadb_snapshot(bucket: str, collection: str, cache_path: str) -> str:
     """
     Download ChromaDB snapshot from S3 if not cached.
 
@@ -84,9 +82,7 @@ def download_chromadb_snapshot(
         logger.info(f"ChromaDB already cached at {cache_path}")
         return cache_path
 
-    logger.info(
-        f"Downloading ChromaDB snapshot from s3://{bucket}/{collection}/"
-    )
+    logger.info(f"Downloading ChromaDB snapshot from s3://{bucket}/{collection}/")
 
     # Get latest pointer
     pointer_key = f"{collection}/snapshot/latest-pointer.txt"
@@ -165,9 +161,7 @@ async def process_merchant_group(
         label_type,
     )
 
-    results = await harmonizer.harmonize_receipts(
-        receipt_keys, dry_run=dry_run
-    )
+    results = await harmonizer.harmonize_receipts(receipt_keys, dry_run=dry_run)
 
     labels_processed = sum(r.total_labels for r in results)
     outliers_found = sum(r.labels_failed for r in results)
@@ -254,9 +248,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     )  # Minimum confidence for apply_fixes
 
     # Lambda-specific env vars
-    batch_bucket = event.get("batch_bucket") or os.environ.get(
-        "BATCH_BUCKET", ""
-    )
+    batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET", "")
     chromadb_bucket = os.environ.get("CHROMADB_BUCKET", "")
 
     # Set LangSmith project from Step Function input (defaults to env var if not provided)
@@ -358,9 +350,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
 
         # Download labels from S3
-        logger.info(
-            f"Downloading labels from s3://{batch_bucket}/{batch_file}"
-        )
+        logger.info(f"Downloading labels from s3://{batch_bucket}/{batch_file}")
         response = s3.get_object(Bucket=batch_bucket, Key=batch_file)
         ndjson_content = response["Body"].read().decode("utf-8")
 
@@ -389,10 +379,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Upload results
         safe_name = (
-            merchant_name.lower()
-            .replace(" ", "-")
-            .replace("/", "-")
-            .replace("'", "")
+            merchant_name.lower().replace(" ", "-").replace("/", "-").replace("'", "")
         )
         results_key = f"results/{execution_id}/{label_type}/{safe_name}.json"
 

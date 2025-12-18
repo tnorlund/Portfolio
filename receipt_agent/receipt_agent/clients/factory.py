@@ -123,9 +123,7 @@ def create_chroma_client(
                             **kwargs,
                         )
                     else:
-                        raise ValueError(
-                            f"Unknown collection: {collection_name}"
-                        )
+                        raise ValueError(f"Unknown collection: {collection_name}")
 
                 def get(self, collection_name, **kwargs):
                     """Route get based on collection_name."""
@@ -140,9 +138,7 @@ def create_chroma_client(
                             **kwargs,
                         )
                     else:
-                        raise ValueError(
-                            f"Unknown collection: {collection_name}"
-                        )
+                        raise ValueError(f"Unknown collection: {collection_name}")
 
                 def list_collections(self):
                     """Return both collections."""
@@ -161,9 +157,7 @@ def create_chroma_client(
                             **kwargs,
                         )
                     else:
-                        raise ValueError(
-                            f"Unknown collection: {collection_name}"
-                        )
+                        raise ValueError(f"Unknown collection: {collection_name}")
 
                 def __enter__(self):
                     if hasattr(self.lines_client, "__enter__"):
@@ -354,9 +348,7 @@ def create_embed_fn(
         return embed_fn
 
     except ImportError as e:
-        logger.error(
-            "Failed to import openai. Install with: pip install openai"
-        )
+        logger.error("Failed to import openai. Install with: pip install openai")
         raise ImportError("openai package required for embeddings") from e
 
 

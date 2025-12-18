@@ -84,9 +84,7 @@ def build_full_address_from_words(words: Iterable[object]) -> str:
     if candidates:
         unique = [v.strip() for v in candidates if v.strip()]
         # Deduplicate while preserving order by length (desc)
-        unique_sorted = sorted(
-            list(dict.fromkeys(unique)), key=len, reverse=True
-        )
+        unique_sorted = sorted(list(dict.fromkeys(unique)), key=len, reverse=True)
 
         # Prefer combining a street-containing part (has number) with a
         # city/state/zip part
@@ -105,9 +103,7 @@ def build_full_address_from_words(words: Iterable[object]) -> str:
                 break
 
         if street_idx is not None and place_idx is not None:
-            combined = (
-                f"{unique_sorted[street_idx]} {unique_sorted[place_idx]}"
-            )
+            combined = f"{unique_sorted[street_idx]} {unique_sorted[place_idx]}"
             return normalize_address(combined)
 
         # Fallback: try joining top two candidates if available
@@ -150,9 +146,7 @@ def normalize_url(text: Optional[str]) -> str:
         return ""
     # Ensure we have a scheme to parse reliably
     tmp = raw if re.match(r"^[a-z]+://", raw, re.I) else f"http://{raw}"
-    m = re.match(
-        r"^(?P<scheme>[a-z]+)://(?P<host>[^/]+)(?P<path>/.*)?$", tmp, re.I
-    )
+    m = re.match(r"^(?P<scheme>[a-z]+)://(?P<host>[^/]+)(?P<path>/.*)?$", tmp, re.I)
     if not m:
         return ""
     host = m.group("host").lower()

@@ -44,9 +44,7 @@ from receipt_upload.geometry.transformations import (  # noqa: E402
 )
 
 
-def _warp_point(
-    coeffs: Sequence[float], x: float, y: float
-) -> Tuple[float, float]:
+def _warp_point(coeffs: Sequence[float], x: float, y: float) -> Tuple[float, float]:
     """
     Apply perspective transform (receipt space -> image space).
     coeffs: [a, b, c, d, e, f, g, h]
@@ -216,9 +214,7 @@ def _format_combined_text_warped(
     (cx, cy), (rw, rh), angle = min_area_rect(all_pts)
     src_corners = reorder_box_points(box_points((cx, cy), (rw, rh), angle))
     dst = [(0, 0), (rw - 1, 0), (rw - 1, rh - 1), (0, rh - 1)]
-    pil_coeffs = find_perspective_coeffs(
-        src_points=src_corners, dst_points=dst
-    )
+    pil_coeffs = find_perspective_coeffs(src_points=src_corners, dst_points=dst)
     src_to_dst = invert_warp(*pil_coeffs)
 
     warped_entries = []
@@ -295,9 +291,7 @@ def _format_id_range(ids: Sequence[int]) -> str:
     unique_ids = sorted(set(ids))
     if len(unique_ids) == 1:
         return f"{unique_ids[0]}:"
-    is_consecutive = all(
-        (b - a) == 1 for a, b in zip(unique_ids, unique_ids[1:])
-    )
+    is_consecutive = all((b - a) == 1 for a, b in zip(unique_ids, unique_ids[1:]))
     if is_consecutive:
         return f"{unique_ids[0]}-{unique_ids[-1]}:"
     return f"{','.join(str(i) for i in unique_ids)}:"
@@ -368,9 +362,7 @@ def _format_receipt_text_image_space(
     - Group visually contiguous lines
     - Prefix each row with its line-id range
     """
-    warped = _warp_lines_to_image_space(
-        receipt, lines, image_width, image_height
-    )
+    warped = _warp_lines_to_image_space(receipt, lines, image_width, image_height)
     if warped:
         return _format_grouped_warped_lines(warped), warped
 
@@ -409,8 +401,7 @@ def _format_combined_warped_lines(
     for row in grouped_rows:
         row_sorted = sorted(row, key=lambda l: (l["centroid_x"], l["line_id"]))
         row_text = " ".join(
-            f"[r{ln['receipt_id']} l{ln['line_id']}] {ln['text']}"
-            for ln in row_sorted
+            f"[r{ln['receipt_id']} l{ln['line_id']}] {ln['text']}" for ln in row_sorted
         )
         rendered_rows.append(f"- {row_text}")
 
@@ -441,9 +432,7 @@ def _format_combined_text_ocr(
 
     rendered_rows = []
     for row in grouped_rows:
-        row_sorted = sorted(
-            row, key=lambda l: (l.calculate_centroid()[0], l.line_id)
-        )
+        row_sorted = sorted(row, key=lambda l: (l.calculate_centroid()[0], l.line_id))
         row_text = " ".join(
             f"[r{ln.receipt_id} l{ln.line_id}] {ln.text}" for ln in row_sorted
         )
@@ -457,27 +446,21 @@ class ReceiptCombinationSelector:
     Build candidate combinations and ask an LLM to choose the best one.
     """
 
-    def __init__(
-        self, dynamo: DynamoClient, llm_client: Any | None = None
-    ) -> None:
+    def __init__(self, dynamo: DynamoClient, llm_client: Any | None = None) -> None:
         self.dynamo = dynamo
         # Hydrate env from Pulumi if available (local convenience)
         try:
             stack = os.environ.get("PULUMI_STACK", "dev")
             env = load_env(stack, working_dir="infra")
             secrets = load_secrets(stack, working_dir="infra")
-            table = env.get("dynamodb_table_name") or env.get(
-                "receipts_table_name"
-            )
+            table = env.get("dynamodb_table_name") or env.get("receipts_table_name")
             if table:
                 os.environ.setdefault("DYNAMODB_TABLE_NAME", table)
             ollama_key = secrets.get("OLLAMA_API_KEY") or secrets.get(
                 "portfolio:OLLAMA_API_KEY"
             )
             if ollama_key:
-                os.environ.setdefault(
-                    "RECEIPT_AGENT_OLLAMA_API_KEY", ollama_key
-                )
+                os.environ.setdefault("RECEIPT_AGENT_OLLAMA_API_KEY", ollama_key)
             langchain_key = secrets.get("LANGCHAIN_API_KEY") or secrets.get(
                 "portfolio:LANGCHAIN_API_KEY"
             )
@@ -509,9 +492,7 @@ class ReceiptCombinationSelector:
         """Create pairwise candidates: (target, other) for all other receipts."""
         image = self.dynamo.get_image(image_id)
         receipts = self.dynamo.get_receipts_from_image(image_id)
-        target = next(
-            (r for r in receipts if r.receipt_id == target_receipt_id), None
-        )
+        target = next((r for r in receipts if r.receipt_id == target_receipt_id), None)
         if not target:
             raise ValueError(
                 f"Target receipt {target_receipt_id} not found for {image_id}"
@@ -539,9 +520,7 @@ class ReceiptCombinationSelector:
             )
             if not text_combined:
                 # Fallback to simple OCR ordering
-                text_combined = _format_combined_text_ocr(
-                    lines_target, lines_other
-                )
+                text_combined = _format_combined_text_ocr(lines_target, lines_other)
             candidates.append(
                 {
                     "combo": [target.receipt_id, other.receipt_id],
@@ -627,9 +606,7 @@ class ReceiptCombinationSelector:
                 },
             },
         )
-        raw_answer = (
-            result.content if hasattr(result, "content") else str(result)
-        )
+        raw_answer = result.content if hasattr(result, "content") else str(result)
 
         choice = None
         try:

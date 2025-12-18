@@ -75,9 +75,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                     break
 
             # Break if limit reached or no more pages
-            if (
-                limit and len(receipts) >= limit
-            ) or last_evaluated_key is None:
+            if (limit and len(receipts) >= limit) or last_evaluated_key is None:
                 break
 
     except Exception as e:

@@ -156,8 +156,7 @@ def map_labels(
     mapped = []
     # Precompute centroids
     centroids = [
-        (w.get("word_id"), centroid(w["transformed_coords"]))
-        for w in words_transformed
+        (w.get("word_id"), centroid(w["transformed_coords"])) for w in words_transformed
     ]
     for lbl in labels:
         target_cid = None
@@ -194,9 +193,7 @@ def map_labels(
     return mapped
 
 
-def render_overlay(
-    img_path: Path, entities: List[Dict], out_path: Path
-) -> None:
+def render_overlay(img_path: Path, entities: List[Dict], out_path: Path) -> None:
     img = Image.open(img_path).convert("RGB")
     draw = ImageDraw.Draw(img)
     colors = [
@@ -333,9 +330,7 @@ def main():
             for rid_str, corners_str in args.target_corners:
                 rid = int(rid_str)
                 corners = parse_corners_str(corners_str)
-                min_x, min_y, cw, ch = corners_to_crop_box(
-                    corners, image_w, image_h
-                )
+                min_x, min_y, cw, ch = corners_to_crop_box(corners, image_w, image_h)
                 target_specs[rid] = {
                     "min_x": min_x,
                     "min_y": min_y,
@@ -371,22 +366,16 @@ def main():
         affine = spec.get("affine")
         # Transform lines/words
         lines_tx = [
-            transform_entity(
-                l, min_x, min_y, cw, ch, image_w, image_h, affine=affine
-            )
+            transform_entity(l, min_x, min_y, cw, ch, image_w, image_h, affine=affine)
             for l in lines_orig
         ]
         words_tx = [
-            transform_entity(
-                w, min_x, min_y, cw, ch, image_w, image_h, affine=affine
-            )
+            transform_entity(w, min_x, min_y, cw, ch, image_w, image_h, affine=affine)
             for w in words_orig
         ]
 
         # Map labels to nearest transformed word
-        labels_mapped = map_labels(
-            labels_orig, words_tx, tol=args.label_match_tol
-        )
+        labels_mapped = map_labels(labels_orig, words_tx, tol=args.label_match_tol)
 
         out_json = {
             "receipt_id": rid,

@@ -95,9 +95,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Check each receipt for unlabeled words
         for image_id, receipt_id in receipt_keys:
             if max_receipts and receipts_processed >= max_receipts:
-                logger.info(
-                    f"Reached max_receipts limit ({max_receipts}), stopping"
-                )
+                logger.info(f"Reached max_receipts limit ({max_receipts}), stopping")
                 break
 
             receipts_checked += 1
@@ -120,17 +118,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     continue  # Skip receipts with no meaningful words
 
                 # Get existing labels
-                existing_labels, _ = (
-                    dynamo.list_receipt_word_labels_for_receipt(
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                    )
+                existing_labels, _ = dynamo.list_receipt_word_labels_for_receipt(
+                    image_id=image_id,
+                    receipt_id=receipt_id,
                 )
 
                 # Find unlabeled words
-                labeled_word_keys = {
-                    (l.line_id, l.word_id) for l in existing_labels
-                }
+                labeled_word_keys = {(l.line_id, l.word_id) for l in existing_labels}
                 unlabeled_words = [
                     {
                         "word_id": w.word_id,
@@ -148,9 +142,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         image_id=image_id,
                         receipt_id=receipt_id,
                     )
-                    merchant_name = (
-                        metadata.merchant_name if metadata else None
-                    )
+                    merchant_name = metadata.merchant_name if metadata else None
 
                     receipts.append(
                         {
@@ -165,9 +157,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     receipts_processed += 1
 
             except Exception as e:
-                logger.warning(
-                    f"Error checking receipt {image_id}#{receipt_id}: {e}"
-                )
+                logger.warning(f"Error checking receipt {image_id}#{receipt_id}: {e}")
                 continue
 
     except Exception as e:
@@ -197,9 +187,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         file_key = f"{s3_prefix}batch{batch_idx + 1}.ndjson"
 
         # Convert to NDJSON
-        ndjson_content = "\n".join(
-            json.dumps(receipt) for receipt in batch_receipts
-        )
+        ndjson_content = "\n".join(json.dumps(receipt) for receipt in batch_receipts)
 
         # Upload to S3
         try:

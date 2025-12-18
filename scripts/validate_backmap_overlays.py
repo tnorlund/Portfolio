@@ -51,9 +51,7 @@ def load_original_image(
     img = None
     if prefer_cdn and image_entity.cdn_s3_bucket and image_entity.cdn_s3_key:
         try:
-            img = get_image_from_s3(
-                image_entity.cdn_s3_bucket, image_entity.cdn_s3_key
-            )
+            img = get_image_from_s3(image_entity.cdn_s3_bucket, image_entity.cdn_s3_key)
             print(f"Loaded CDN {image_entity.cdn_s3_key}")
         except Exception:
             img = None
@@ -71,23 +69,17 @@ def load_original_image(
         and image_entity.cdn_s3_key
     ):
         try:
-            img = get_image_from_s3(
-                image_entity.cdn_s3_bucket, image_entity.cdn_s3_key
-            )
+            img = get_image_from_s3(image_entity.cdn_s3_bucket, image_entity.cdn_s3_key)
             print("Loaded CDN fallback")
         except Exception:
             img = None
     if img is None:
-        img = PIL_Image.new(
-            "RGB", (image_entity.width, image_entity.height), "white"
-        )
+        img = PIL_Image.new("RGB", (image_entity.width, image_entity.height), "white")
         print("Using blank image")
     return img
 
 
-def perspective_coeffs_dst_to_src(
-    obox: dict, w_out: int, h_out: int
-) -> List[float]:
+def perspective_coeffs_dst_to_src(obox: dict, w_out: int, h_out: int) -> List[float]:
     q = obox["pixel_quad"]
     src = [
         (q["top_left"]["x"], q["top_left"]["y"]),
@@ -95,18 +87,10 @@ def perspective_coeffs_dst_to_src(
         (q["bottom_right"]["x"], q["bottom_right"]["y"]),
         (q["bottom_left"]["x"], q["bottom_left"]["y"]),
     ]
-    top_len = (
-        (src[0][0] - src[1][0]) ** 2 + (src[0][1] - src[1][1]) ** 2
-    ) ** 0.5
-    bottom_len = (
-        (src[3][0] - src[2][0]) ** 2 + (src[3][1] - src[2][1]) ** 2
-    ) ** 0.5
-    left_len = (
-        (src[0][0] - src[3][0]) ** 2 + (src[0][1] - src[3][1]) ** 2
-    ) ** 0.5
-    right_len = (
-        (src[1][0] - src[2][0]) ** 2 + (src[1][1] - src[2][1]) ** 2
-    ) ** 0.5
+    top_len = ((src[0][0] - src[1][0]) ** 2 + (src[0][1] - src[1][1]) ** 2) ** 0.5
+    bottom_len = ((src[3][0] - src[2][0]) ** 2 + (src[3][1] - src[2][1]) ** 2) ** 0.5
+    left_len = ((src[0][0] - src[3][0]) ** 2 + (src[0][1] - src[3][1]) ** 2) ** 0.5
+    right_len = ((src[1][0] - src[2][0]) ** 2 + (src[1][1] - src[2][1]) ** 2) ** 0.5
     w_calc = max(1, int(round(max(top_len, bottom_len))))
     h_calc = max(1, int(round(max(left_len, right_len))))
     w_out = max(w_out, w_calc)
@@ -152,9 +136,7 @@ def overlay_payloads(
     obox = split["left_obox"] if side == "left" else split["right_obox"]
     w_out = payload["receipt"]["width"]
     h_out = payload["receipt"]["height"]
-    coeffs_dst_to_src, w_out, h_out = perspective_coeffs_dst_to_src(
-        obox, w_out, h_out
-    )
+    coeffs_dst_to_src, w_out, h_out = perspective_coeffs_dst_to_src(obox, w_out, h_out)
 
     # Build receipt<->image transforms from original receipt corners
     W_img, H_img = original.size
@@ -263,9 +245,7 @@ def overlay_payloads(
     ]
     draw.polygon(quad_img, outline="#0000FF", width=3)
 
-    quad_rec_px = [
-        apply_coeffs_pt(p, coeffs_img_to_receipt_px) for p in quad_img
-    ]
+    quad_rec_px = [apply_coeffs_pt(p, coeffs_img_to_receipt_px) for p in quad_img]
     receipt_draw.polygon(quad_rec_px, outline="#0000FF", width=3)
 
     out_image_path.parent.mkdir(parents=True, exist_ok=True)

@@ -79,9 +79,7 @@ def produce_embedding_delta(
         # Use context manager for auto-cleanup
         temp_dir = tempfile.mkdtemp()
         delta_dir = f"{temp_dir}/chroma_delta_{uuid.uuid4().hex}"
-        os.makedirs(
-            delta_dir, exist_ok=True
-        )  # CRITICAL: Must create the directory!
+        os.makedirs(delta_dir, exist_ok=True)  # CRITICAL: Must create the directory!
         cleanup_temp = True
 
     try:
@@ -90,9 +88,7 @@ def produce_embedding_delta(
 
         # Create ChromaDB client in delta mode
         if database_name:
-            logger.info(
-                "Creating ChromaDB client for database '%s'", database_name
-            )
+            logger.info("Creating ChromaDB client for database '%s'", database_name)
             logger.info("Persist directory: %s", delta_dir)
             chroma = ChromaClient(
                 persist_directory=delta_dir,
@@ -124,9 +120,7 @@ def produce_embedding_delta(
             documents=documents,
             metadatas=metadatas,
         )
-        logger.info(
-            "Successfully upserted vectors to collection '%s'", collection_name
-        )
+        logger.info("Successfully upserted vectors to collection '%s'", collection_name)
 
         # Upload to S3 using the specified prefix
         try:
@@ -169,9 +163,7 @@ def produce_embedding_delta(
                 # IDs
                 message_group_id = f"{collection_name}:{batch_id or 'default'}"
                 batch_or_uuid = batch_id or uuid.uuid4().hex
-                message_dedup_id = (
-                    f"{collection_name}:{batch_or_uuid}:{s3_key}"
-                )
+                message_dedup_id = f"{collection_name}:{batch_or_uuid}:{s3_key}"
 
                 sqs.send_message(
                     QueueUrl=sqs_queue_url,
@@ -206,9 +198,7 @@ def produce_embedding_delta(
         result = {
             "status": "success",
             "delta_key": s3_key,
-            "delta_id": (
-                s3_key.split("/")[-2] if s3_key else str(uuid.uuid4().hex)
-            ),
+            "delta_id": (s3_key.split("/")[-2] if s3_key else str(uuid.uuid4().hex)),
             "item_count": len(ids),
             "embedding_count": len(ids),
             "vectors_uploaded": len(ids),  # Keep for backward compatibility
@@ -217,9 +207,7 @@ def produce_embedding_delta(
         }
 
         if compress:
-            result["compression_ratio"] = (
-                0.8  # Mock compression ratio for tests
-            )
+            result["compression_ratio"] = 0.8  # Mock compression ratio for tests
 
         return result
 
@@ -240,9 +228,7 @@ def produce_embedding_delta(
 
             try:
                 shutil.rmtree(temp_dir)
-                logger.debug(
-                    "Cleaned up temporary delta directory: %s", temp_dir
-                )
+                logger.debug("Cleaned up temporary delta directory: %s", temp_dir)
             except Exception as cleanup_error:
                 logger.warning(
                     "Failed to cleanup temporary directory %s: %s",

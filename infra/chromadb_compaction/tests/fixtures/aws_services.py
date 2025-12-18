@@ -27,15 +27,11 @@ def mock_sqs_queues():
         sqs = boto3.client("sqs", region_name="us-east-1")
 
         # Create lines queue
-        lines_response = sqs.create_queue(
-            QueueName="chromadb-lines-compaction-queue"
-        )
+        lines_response = sqs.create_queue(QueueName="chromadb-lines-compaction-queue")
         lines_queue_url = lines_response["QueueUrl"]
 
         # Create words queue
-        words_response = sqs.create_queue(
-            QueueName="chromadb-words-compaction-queue"
-        )
+        words_response = sqs.create_queue(QueueName="chromadb-words-compaction-queue")
         words_queue_url = words_response["QueueUrl"]
 
         yield {
@@ -142,12 +138,8 @@ def mock_s3_bucket():
         s3.create_bucket(Bucket=bucket_name)
 
         # Create basic directory structure
-        s3.put_object(
-            Bucket=bucket_name, Key="lines/snapshot/latest/", Body=""
-        )
-        s3.put_object(
-            Bucket=bucket_name, Key="words/snapshot/latest/", Body=""
-        )
+        s3.put_object(Bucket=bucket_name, Key="lines/snapshot/latest/", Body="")
+        s3.put_object(Bucket=bucket_name, Key="words/snapshot/latest/", Body="")
 
         yield bucket_name
 

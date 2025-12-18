@@ -243,9 +243,7 @@ class PlaceIdFinder:
         Returns:
             Total number of receipts without place_id
         """
-        logger.info(
-            "Loading receipt metadata without place_id from DynamoDB..."
-        )
+        logger.info("Loading receipt metadata without place_id from DynamoDB...")
 
         self._receipts_without_place_id = []
         total = 0
@@ -332,9 +330,7 @@ class PlaceIdFinder:
                     if place_data and place_data.get("place_id"):
                         match.place_id = place_data.get("place_id")
                         match.place_name = place_data.get("name")
-                        match.place_address = place_data.get(
-                            "formatted_address"
-                        )
+                        match.place_address = place_data.get("formatted_address")
                         match.place_phone = place_data.get(
                             "formatted_phone_number"
                         ) or place_data.get("international_phone_number")
@@ -357,20 +353,14 @@ class PlaceIdFinder:
         # Strategy 2: Try address geocoding
         if receipt.address and not match.found:
             # Validate address has some content
-            if (
-                len(receipt.address.strip()) >= 10
-            ):  # Address should have some content
+            if len(receipt.address.strip()) >= 10:  # Address should have some content
                 try:
-                    logger.debug(
-                        f"Searching by address: {receipt.address[:50]}"
-                    )
+                    logger.debug(f"Searching by address: {receipt.address[:50]}")
                     place_data = self.places.search_by_address(receipt.address)
                     if place_data and place_data.get("place_id"):
                         match.place_id = place_data.get("place_id")
                         match.place_name = place_data.get("name")
-                        match.place_address = place_data.get(
-                            "formatted_address"
-                        )
+                        match.place_address = place_data.get("formatted_address")
                         match.place_phone = place_data.get(
                             "formatted_phone_number"
                         ) or place_data.get("international_phone_number")
@@ -392,20 +382,14 @@ class PlaceIdFinder:
         # Strategy 3: Try text search with merchant name
         if receipt.merchant_name and not match.found:
             # Validate merchant name has some content
-            if (
-                len(receipt.merchant_name.strip()) >= 3
-            ):  # Name should have some content
+            if len(receipt.merchant_name.strip()) >= 3:  # Name should have some content
                 try:
                     logger.debug(f"Searching by text: {receipt.merchant_name}")
-                    place_data = self.places.search_by_text(
-                        receipt.merchant_name
-                    )
+                    place_data = self.places.search_by_text(receipt.merchant_name)
                     if place_data and place_data.get("place_id"):
                         match.place_id = place_data.get("place_id")
                         match.place_name = place_data.get("name")
-                        match.place_address = place_data.get(
-                            "formatted_address"
-                        )
+                        match.place_address = place_data.get("formatted_address")
                         match.place_phone = place_data.get(
                             "formatted_phone_number"
                         ) or place_data.get("international_phone_number")
@@ -422,9 +406,7 @@ class PlaceIdFinder:
                     if not match.error:  # Don't overwrite previous error
                         match.error = f"Text search error: {str(e)}"
             else:
-                logger.debug(
-                    f"Merchant name too short: {receipt.merchant_name}"
-                )
+                logger.debug(f"Merchant name too short: {receipt.merchant_name}")
 
         # No match found - this is a normal outcome, not an error
         match.found = False
@@ -468,9 +450,7 @@ class PlaceIdFinder:
         # Check name match
         if receipt.merchant_name and place_data.get("name"):
             total_fields += 1
-            if self._names_match(
-                receipt.merchant_name, place_data.get("name")
-            ):
+            if self._names_match(receipt.merchant_name, place_data.get("name")):
                 matches += 1
 
         # Check address match
@@ -492,9 +472,7 @@ class PlaceIdFinder:
         # Boost confidence based on field matches
         if total_fields > 0:
             match_ratio = matches / total_fields
-            confidence = base_confidence + (
-                match_ratio * 20
-            )  # Up to +20 points
+            confidence = base_confidence + (match_ratio * 20)  # Up to +20 points
         else:
             confidence = base_confidence
 
@@ -512,9 +490,7 @@ class PlaceIdFinder:
         # Check if one contains the other (handles abbreviations)
         return n1 in n2 or n2 in n1 or n1 == n2
 
-    def _addresses_match(
-        self, addr1: Optional[str], addr2: Optional[str]
-    ) -> bool:
+    def _addresses_match(self, addr1: Optional[str], addr2: Optional[str]) -> bool:
         """Check if two addresses are similar."""
         if not addr1 or not addr2:
             return False
@@ -534,9 +510,7 @@ class PlaceIdFinder:
         # Check if streets match (allowing for minor variations)
         return street1 in street2 or street2 in street1 or street1 == street2
 
-    def _phones_match(
-        self, phone1: Optional[str], phone2: Optional[str]
-    ) -> bool:
+    def _phones_match(self, phone1: Optional[str], phone2: Optional[str]) -> bool:
         """Check if two phone numbers match (digits only)."""
         if not phone1 or not phone2:
             return False
@@ -582,9 +556,7 @@ class PlaceIdFinder:
         # Process each receipt
         for i, receipt in enumerate(receipts_to_process):
             if (i + 1) % 10 == 0:
-                logger.info(
-                    f"Processed {i + 1}/{len(receipts_to_process)} receipts..."
-                )
+                logger.info(f"Processed {i + 1}/{len(receipts_to_process)} receipts...")
 
             match = self._search_places_for_receipt(receipt)
             result.matches.append(match)
@@ -643,14 +615,12 @@ class PlaceIdFinder:
                 create_place_id_finder_graph,
             )
 
-            self._agent_graph, self._agent_state_holder = (
-                create_place_id_finder_graph(
-                    dynamo_client=self.dynamo,
-                    chroma_client=self.chroma,
-                    embed_fn=self.embed_fn,
-                    places_api=self.places,
-                    settings=self.settings,
-                )
+            self._agent_graph, self._agent_state_holder = create_place_id_finder_graph(
+                dynamo_client=self.dynamo,
+                chroma_client=self.chroma,
+                embed_fn=self.embed_fn,
+                places_api=self.places,
+                settings=self.settings,
             )
 
         result = FinderResult()
@@ -668,9 +638,7 @@ class PlaceIdFinder:
         # Process each receipt with agent
         for i, receipt in enumerate(receipts_to_process):
             if (i + 1) % 5 == 0:
-                logger.info(
-                    f"Processed {i + 1}/{len(receipts_to_process)} receipts..."
-                )
+                logger.info(f"Processed {i + 1}/{len(receipts_to_process)} receipts...")
 
             # Retry logic for server errors
             max_retries = 3
@@ -769,15 +737,13 @@ class PlaceIdFinder:
                 # Check if receipt has no searchable data
                 has_phone = bool(
                     receipt.phone
-                    and len("".join(c for c in receipt.phone if c.isdigit()))
-                    >= 10
+                    and len("".join(c for c in receipt.phone if c.isdigit())) >= 10
                 )
                 has_address = bool(
                     receipt.address and len(receipt.address.strip()) >= 10
                 )
                 has_name = bool(
-                    receipt.merchant_name
-                    and len(receipt.merchant_name.strip()) >= 3
+                    receipt.merchant_name and len(receipt.merchant_name.strip()) >= 3
                 )
 
                 if not (has_phone or has_address or has_name):
@@ -789,9 +755,7 @@ class PlaceIdFinder:
                     match.error = str(last_error)
                 elif agent_result:
                     # Agent completed but found no match - normal "not found" outcome
-                    match.not_found_reason = agent_result.get(
-                        "reasoning", "no_match"
-                    )
+                    match.not_found_reason = agent_result.get("reasoning", "no_match")
                 else:
                     # No result and no error - should not happen, but treat as not found
                     match.not_found_reason = "no_match"
@@ -871,9 +835,7 @@ class PlaceIdFinder:
 
             matches_to_update.append(match)
 
-        result.total_processed = len(matches_to_update) + len(
-            matches_needing_review
-        )
+        result.total_processed = len(matches_to_update) + len(matches_needing_review)
 
         if dry_run:
             logger.info(
@@ -904,9 +866,7 @@ class PlaceIdFinder:
                         f"needs_review=True ({match.error})"
                     )
                 if len(matches_needing_review) > 5:
-                    logger.info(
-                        f"  ... and {len(matches_needing_review) - 5} more"
-                    )
+                    logger.info(f"  ... and {len(matches_needing_review) - 5} more")
 
             result.total_updated = len(matches_to_update)
             return result
@@ -967,9 +927,7 @@ class PlaceIdFinder:
                         if "phone" in search_lower:
                             validated_by = ValidationMethod.PHONE_LOOKUP.value
                         elif "address" in search_lower:
-                            validated_by = (
-                                ValidationMethod.ADDRESS_LOOKUP.value
-                            )
+                            validated_by = ValidationMethod.ADDRESS_LOOKUP.value
                         else:
                             validated_by = ValidationMethod.TEXT_SEARCH.value
                     else:
@@ -979,9 +937,7 @@ class PlaceIdFinder:
                     merchant_name = (
                         match.place_name or match.receipt.merchant_name or ""
                     )
-                    address = (
-                        match.place_address or match.receipt.address or ""
-                    )
+                    address = match.place_address or match.receipt.address or ""
                     phone = match.place_phone or match.receipt.phone or ""
 
                     # Create new ReceiptMetadata
@@ -1019,10 +975,7 @@ class PlaceIdFinder:
 
                 # Always update other fields from Google Places
                 # CRITICAL: Never use an address as a merchant name
-                if (
-                    match.place_name
-                    and metadata.merchant_name != match.place_name
-                ):
+                if match.place_name and metadata.merchant_name != match.place_name:
                     # Validate that place_name is NOT an address
                     import re
 
@@ -1059,23 +1012,13 @@ class PlaceIdFinder:
                         )
                     else:
                         metadata.merchant_name = match.place_name
-                        updated_fields.append(
-                            f"merchant_name={match.place_name}"
-                        )
+                        updated_fields.append(f"merchant_name={match.place_name}")
 
-                if (
-                    match.place_address
-                    and metadata.address != match.place_address
-                ):
+                if match.place_address and metadata.address != match.place_address:
                     metadata.address = match.place_address
-                    updated_fields.append(
-                        f"address={match.place_address[:30]}..."
-                    )
+                    updated_fields.append(f"address={match.place_address[:30]}...")
 
-                if (
-                    match.place_phone
-                    and metadata.phone_number != match.place_phone
-                ):
+                if match.place_phone and metadata.phone_number != match.place_phone:
                     metadata.phone_number = match.place_phone
                     updated_fields.append(f"phone_number={match.place_phone}")
 
@@ -1166,9 +1109,7 @@ class PlaceIdFinder:
                         MerchantValidationStatus,
                     )
 
-                    metadata.validation_status = (
-                        MerchantValidationStatus.UNSURE.value
-                    )
+                    metadata.validation_status = MerchantValidationStatus.UNSURE.value
                     metadata.reasoning = (
                         match.error
                         or "No searchable data available for place_id lookup"
@@ -1212,9 +1153,7 @@ class PlaceIdFinder:
         print("=" * 70)
         print(f"Total receipts without place_id: {report.total_processed}")
         # Calculate percentages safely (guard against division by zero)
-        safe_denominator = (
-            report.total_processed if report.total_processed > 0 else 1
-        )
+        safe_denominator = report.total_processed if report.total_processed > 0 else 1
         found_percentage = (
             (report.total_found / safe_denominator * 100)
             if report.total_processed > 0
@@ -1226,12 +1165,8 @@ class PlaceIdFinder:
             else 0.0
         )
 
-        print(
-            f"  ✅ Found place_id: {report.total_found} ({found_percentage:.1f}%)"
-        )
-        print(
-            f"  ❌ Not found: {report.total_not_found} ({not_found_percentage:.1f}%)"
-        )
+        print(f"  ✅ Found place_id: {report.total_found} ({found_percentage:.1f}%)")
+        print(f"  ❌ Not found: {report.total_not_found} ({not_found_percentage:.1f}%)")
         if report.total_errors > 0:
             print(f"  ⚠️  Errors: {report.total_errors}")
         print()
@@ -1304,11 +1239,7 @@ class PlaceIdFinder:
                     data_info.append("address")
                 if has_name:
                     data_info.append("name")
-                data_str = (
-                    ", ".join(data_info) if data_info else "no searchable data"
-                )
-                print(
-                    f"  ⚠️  {merchant[:30]:30} ({data_str}) - {error_msg[:40]}"
-                )
+                data_str = ", ".join(data_info) if data_info else "no searchable data"
+                print(f"  ⚠️  {merchant[:30]:30} ({data_str}) - {error_msg[:40]}")
             if len(errors) > 5:
                 print(f"  ... and {len(errors) - 5} more")

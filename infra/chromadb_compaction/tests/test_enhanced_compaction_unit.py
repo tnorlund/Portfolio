@@ -101,9 +101,7 @@ class TestCoreCompactionLogic:
                 embedding_status="PENDING",
             ),
         ]
-        mock_dynamo_client.list_receipt_lines_from_receipt.return_value = (
-            mock_lines
-        )
+        mock_dynamo_client.list_receipt_lines_from_receipt.return_value = mock_lines
 
         # Setup mock collection
         mock_collection = MagicMock()
@@ -163,9 +161,7 @@ class TestCoreCompactionLogic:
         # Mock successful record retrieval
         mock_collection.get.return_value = {
             "ids": ["IMAGE#test123#RECEIPT#00456#LINE#00001#WORD#00001"],
-            "metadatas": [
-                {"existing_field": "value", "label_old_field": "old_value"}
-            ],
+            "metadatas": [{"existing_field": "value", "label_old_field": "old_value"}],
         }
 
         changes = {
@@ -217,21 +213,15 @@ class TestCoreCompactionLogic:
         messages = [
             {
                 "body": '{"entity_type": "RECEIPT_METADATA"}',
-                "messageAttributes": {
-                    "source": {"stringValue": "dynamodb_stream"}
-                },
+                "messageAttributes": {"source": {"stringValue": "dynamodb_stream"}},
             },
             {
                 "body": '{"entity_type": "RECEIPT_WORD_LABEL"}',
-                "messageAttributes": {
-                    "source": {"stringValue": "dynamodb_stream"}
-                },
+                "messageAttributes": {"source": {"stringValue": "dynamodb_stream"}},
             },
             {
                 "body": '{"delta_file": "some_delta.json"}',
-                "messageAttributes": {
-                    "source": {"stringValue": "delta_processor"}
-                },
+                "messageAttributes": {"source": {"stringValue": "delta_processor"}},
             },
             {"body": '{"unknown": "message"}', "messageAttributes": {}},
         ]
@@ -313,9 +303,7 @@ class TestDataclassIntegration:
         result = response.to_dict()
         assert result["statusCode"] == 200
         assert result["message"] == "Success"
-        assert (
-            "processed_messages" not in result
-        )  # Optional fields not included
+        assert "processed_messages" not in result  # Optional fields not included
 
         # Test with optional fields
         response_with_optional = LambdaResponse(

@@ -73,14 +73,10 @@ class ChromaOrchestrator(pulumi.ComponentResource):
             architectures=["arm64"],
             timeout=180,
             vpc_config=aws.lambda_.FunctionVpcConfigArgs(
-                security_group_ids=(
-                    [security_group_id] if security_group_id else None
-                ),
+                security_group_ids=([security_group_id] if security_group_id else None),
                 subnet_ids=subnets if subnets else None,
             ),
-            opts=ResourceOptions(
-                parent=self, depends_on=[wait_basic, wait_vpc]
-            ),
+            opts=ResourceOptions(parent=self, depends_on=[wait_basic, wait_vpc]),
         )
 
         # Allow the wait Lambda to discover ECS tasks/IPs
@@ -141,9 +137,7 @@ class ChromaOrchestrator(pulumi.ComponentResource):
                                 "lambda:InvokeFunction",
                             ],
                             "Resource": [
-                                arn
-                                for arn in [args[2], args[3], args[5]]
-                                if arn
+                                arn for arn in [args[2], args[3], args[5]] if arn
                             ],
                         },
                         # EC2 permissions for NAT instance start/stop/describe (resource must be "*")

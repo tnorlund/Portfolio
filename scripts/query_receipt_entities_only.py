@@ -61,9 +61,7 @@ for i, receipt in enumerate(receipts):
 
     # Extract receipt number from SK
     sk = receipt.get("SK", "")
-    if (
-        sk.startswith("RECEIPT#") and "#" not in sk[8:]
-    ):  # Only top-level receipts
+    if sk.startswith("RECEIPT#") and "#" not in sk[8:]:  # Only top-level receipts
         receipt_num = sk.replace("RECEIPT#", "")
         print(f"  Receipt Number: {receipt_num}")
 
@@ -95,8 +93,7 @@ print("\n=== Checking for Alternative PK Patterns ===")
 print("\nScanning for items with PK starting with 'RECEIPT#'...")
 try:
     response = prod_table.scan(
-        FilterExpression=Key("PK").begins_with("RECEIPT#")
-        & Key("TYPE").eq("RECEIPT"),
+        FilterExpression=Key("PK").begins_with("RECEIPT#") & Key("TYPE").eq("RECEIPT"),
         Limit=5,
     )
     items = response.get("Items", [])

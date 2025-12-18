@@ -293,8 +293,7 @@ async def run_label_harmonizer_agent(
         from receipt_dynamo.entities import ReceiptLine
 
         receipt_lines = [
-            ReceiptLine(**line) if isinstance(line, dict) else line
-            for line in lines
+            ReceiptLine(**line) if isinstance(line, dict) else line for line in lines
         ]
         receipt_text = format_receipt_text_receipt_space(receipt_lines)
     except Exception as e:
@@ -316,9 +315,7 @@ async def run_label_harmonizer_agent(
     # Load receipt metadata for context and tools
     receipt_metadata = None
     try:
-        receipt_metadata = dynamo_client.get_receipt_metadata(
-            image_id, receipt_id
-        )
+        receipt_metadata = dynamo_client.get_receipt_metadata(image_id, receipt_id)
     except Exception as e:
         logger.debug("Could not load receipt metadata: %s", e)
 
@@ -391,13 +388,9 @@ async def run_label_harmonizer_agent(
                 "line_count": len(lines_data),
                 "workflow": "label_harmonizer_v3",
                 "merchant_name": (
-                    receipt_metadata.merchant_name
-                    if receipt_metadata
-                    else None
+                    receipt_metadata.merchant_name if receipt_metadata else None
                 ),
-                "place_id": (
-                    receipt_metadata.place_id if receipt_metadata else None
-                ),
+                "place_id": (receipt_metadata.place_id if receipt_metadata else None),
             }
 
         await graph.ainvoke(initial_state, config=config)

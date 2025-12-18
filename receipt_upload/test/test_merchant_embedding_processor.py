@@ -295,9 +295,7 @@ class TestMerchantResolvingEmbeddingProcessor:
                 "receipt_upload.merchant_resolution.embedding_processor.MerchantResolver"
             ) as MockResolver:
                 mock_resolver = MagicMock()
-                mock_resolver.resolve.side_effect = Exception(
-                    "Resolution failed"
-                )
+                mock_resolver.resolve.side_effect = Exception("Resolution failed")
                 MockResolver.return_value = mock_resolver
 
                 processor = MerchantResolvingEmbeddingProcessor(
@@ -387,9 +385,7 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
         mock_metadata.place_id = None
         mock_dynamo_client.get_receipt_metadata.return_value = mock_metadata
 
-        with patch(
-            "receipt_upload.merchant_resolution.embedding_processor.boto3"
-        ):
+        with patch("receipt_upload.merchant_resolution.embedding_processor.boto3"):
             processor = MerchantResolvingEmbeddingProcessor(
                 table_name="test-table",
                 chromadb_bucket="test-bucket",
@@ -425,9 +421,7 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
         mock_metadata.place_id = None
         mock_dynamo_client.get_receipt_metadata.return_value = mock_metadata
 
-        with patch(
-            "receipt_upload.merchant_resolution.embedding_processor.boto3"
-        ):
+        with patch("receipt_upload.merchant_resolution.embedding_processor.boto3"):
             processor = MerchantResolvingEmbeddingProcessor(
                 table_name="test-table",
                 chromadb_bucket="test-bucket",
@@ -459,9 +453,7 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
         """Test handling when no existing metadata found."""
         mock_dynamo_client.get_receipt_metadata.return_value = None
 
-        with patch(
-            "receipt_upload.merchant_resolution.embedding_processor.boto3"
-        ):
+        with patch("receipt_upload.merchant_resolution.embedding_processor.boto3"):
             processor = MerchantResolvingEmbeddingProcessor(
                 table_name="test-table",
                 chromadb_bucket="test-bucket",
@@ -491,9 +483,7 @@ class TestMerchantResolvingEmbeddingProcessorInit:
         with patch(
             "receipt_upload.merchant_resolution.embedding_processor.DynamoClient"
         ):
-            with patch(
-                "receipt_upload.merchant_resolution.embedding_processor.boto3"
-            ):
+            with patch("receipt_upload.merchant_resolution.embedding_processor.boto3"):
                 # Patch the actual import location for PlacesClient
                 with patch("receipt_places.PlacesClient") as MockPlaces:
                     mock_places = MagicMock()
@@ -513,9 +503,7 @@ class TestMerchantResolvingEmbeddingProcessorInit:
         with patch(
             "receipt_upload.merchant_resolution.embedding_processor.DynamoClient"
         ):
-            with patch(
-                "receipt_upload.merchant_resolution.embedding_processor.boto3"
-            ):
+            with patch("receipt_upload.merchant_resolution.embedding_processor.boto3"):
                 processor = MerchantResolvingEmbeddingProcessor(
                     table_name="test-table",
                     chromadb_bucket="test-bucket",
@@ -534,9 +522,7 @@ class TestMerchantResolvingEmbeddingProcessorInit:
         with patch(
             "receipt_upload.merchant_resolution.embedding_processor.DynamoClient"
         ):
-            with patch(
-                "receipt_upload.merchant_resolution.embedding_processor.boto3"
-            ):
+            with patch("receipt_upload.merchant_resolution.embedding_processor.boto3"):
                 MerchantResolvingEmbeddingProcessor(
                     table_name="test-table",
                     chromadb_bucket="test-bucket",

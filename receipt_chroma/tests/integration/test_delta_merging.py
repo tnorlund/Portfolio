@@ -102,9 +102,7 @@ class TestDeltaMerging:
             # Client is properly closed and resources released here
 
             # Create tarball from delta directory (after client is closed)
-            with tempfile.NamedTemporaryFile(
-                suffix=".tar.gz", delete=False
-            ) as tf:
+            with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tf:
                 tarball_path = tf.name
             with tarfile.open(tarball_path, "w:gz") as tar:
                 tar.add(delta_dir, arcname=".")
@@ -146,9 +144,7 @@ class TestDeltaMerging:
                 )
 
                 # Verify merge results
-                assert (
-                    total_merged == 1
-                ), f"Expected 1 delta merged, got {total_merged}"
+                assert total_merged == 1, f"Expected 1 delta merged, got {total_merged}"
                 assert len(per_run_results) == 1
                 assert per_run_results[0]["run_id"] == "run-123"
                 assert per_run_results[0]["merged_count"] == 1
@@ -158,14 +154,8 @@ class TestDeltaMerging:
                 all_data = collection.get(include=["metadatas"])
 
                 assert len(all_data["ids"]) == 2  # Original + delta
-                assert (
-                    "IMAGE#delta-id#RECEIPT#00001#LINE#00001"
-                    in all_data["ids"]
-                )
-                assert (
-                    "IMAGE#snapshot-id#RECEIPT#00001#LINE#00001"
-                    in all_data["ids"]
-                )
+                assert "IMAGE#delta-id#RECEIPT#00001#LINE#00001" in all_data["ids"]
+                assert "IMAGE#snapshot-id#RECEIPT#00001#LINE#00001" in all_data["ids"]
 
         finally:
             # Cleanup
@@ -223,9 +213,7 @@ class TestDeltaMerging:
             ) as snapshot_client:
                 snapshot_client.upsert(
                     collection_name="words",
-                    ids=[
-                        "IMAGE#snapshot-id#RECEIPT#00001#LINE#00001#WORD#00001"
-                    ],
+                    ids=["IMAGE#snapshot-id#RECEIPT#00001#LINE#00001#WORD#00001"],
                     embeddings=[[0.1] * 1536],
                     metadatas=[{"text": "Snapshot"}],
                 )
@@ -319,13 +307,9 @@ class TestDeltaMerging:
                     for root, _, files in os.walk(delta_dir):
                         for file in files:
                             local_path = os.path.join(root, file)
-                            relative_path = os.path.relpath(
-                                local_path, delta_dir
-                            )
+                            relative_path = os.path.relpath(local_path, delta_dir)
                             s3_key = f"{delta_prefix}/{relative_path}"
-                            s3_client.upload_file(
-                                local_path, bucket_name, s3_key
-                            )
+                            s3_client.upload_file(local_path, bucket_name, s3_key)
                             upload_count += 1
 
                     # Verify files were actually uploaded

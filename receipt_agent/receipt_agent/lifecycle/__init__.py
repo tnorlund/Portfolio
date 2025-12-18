@@ -38,4 +38,3 @@ __all__ = [
     "check_compaction_status",
     "export_receipt_ndjson",
 ]
-

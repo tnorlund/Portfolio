@@ -109,9 +109,7 @@ def test_image_init_invalid_id():
 
 @pytest.mark.unit
 def test_image_init_invalid_width_and_height():
-    with pytest.raises(
-        ValueError, match="width and height must be positive integers"
-    ):
+    with pytest.raises(ValueError, match="width and height must be positive integers"):
         Image(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             0,
@@ -121,9 +119,7 @@ def test_image_init_invalid_width_and_height():
             "key",
             sha256="abc123",
         )
-    with pytest.raises(
-        ValueError, match="width and height must be positive integers"
-    ):
+    with pytest.raises(ValueError, match="width and height must be positive integers"):
         Image(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             10,
@@ -133,9 +129,7 @@ def test_image_init_invalid_width_and_height():
             "key",
             sha256="abc123",
         )
-    with pytest.raises(
-        ValueError, match="width and height must be positive integers"
-    ):
+    with pytest.raises(ValueError, match="width and height must be positive integers"):
         Image(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             -10,
@@ -145,9 +139,7 @@ def test_image_init_invalid_width_and_height():
             "key",
             sha256="abc123",
         )
-    with pytest.raises(
-        ValueError, match="width and height must be positive integers"
-    ):
+    with pytest.raises(ValueError, match="width and height must be positive integers"):
         Image(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             10,
@@ -653,13 +645,10 @@ def test_item_to_image(
         == example_image_no_cdn_bucket
     ), "Should convert item to Image object without cdn_s3_bucket"
     assert (
-        item_to_image(example_image_no_cdn_key.to_item())
-        == example_image_no_cdn_key
+        item_to_image(example_image_no_cdn_key.to_item()) == example_image_no_cdn_key
     ), "Should convert item to Image object without cdn_s3_key"
     # Case: missing required key
-    with pytest.raises(
-        ValueError, match="^Invalid item format\nmissing keys: ."
-    ):
+    with pytest.raises(ValueError, match="^Invalid item format\nmissing keys: ."):
         item_to_image(
             {
                 "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},

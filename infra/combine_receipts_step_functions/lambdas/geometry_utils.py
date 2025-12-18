@@ -88,8 +88,7 @@ def calculate_min_area_rect(
     bounds = {
         "top_left": {
             "x": src_corners_ordered[0][0],
-            "y": image_height
-            - src_corners_ordered[0][1],  # Convert back to OCR space
+            "y": image_height - src_corners_ordered[0][1],  # Convert back to OCR space
         },
         "top_right": {
             "x": src_corners_ordered[1][0],
@@ -193,9 +192,7 @@ def transform_point_to_warped_space(
         dst_points=src_corners,
     )
     if len(backward_coeffs) != 8:
-        raise ValueError(
-            f"Expected 8 warp coefficients, got {len(backward_coeffs)}"
-        )
+        raise ValueError(f"Expected 8 warp coefficients, got {len(backward_coeffs)}")
     a, b, c, d, e, f, g, h = backward_coeffs
 
     # Invert to get forward transform (src -> dst)

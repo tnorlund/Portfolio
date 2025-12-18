@@ -12,14 +12,11 @@ CORE_LABELS: dict[str, str] = {
     # ── Merchant & store info ───────────────────────────────────
     "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
     "STORE_HOURS": "Printed business hours or opening times for the merchant.",
-    "PHONE_NUMBER": "Telephone number printed on the receipt "
-    "(store's main line).",
-    "WEBSITE": "Web or email address printed on the receipt "
-    "(e.g., sprouts.com).",
+    "PHONE_NUMBER": "Telephone number printed on the receipt " "(store's main line).",
+    "WEBSITE": "Web or email address printed on the receipt " "(e.g., sprouts.com).",
     "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
     # ── Location / address ──────────────────────────────────────
-    "ADDRESS_LINE": "Full address line (street + city etc.) printed on "
-    "the receipt.",
+    "ADDRESS_LINE": "Full address line (street + city etc.) printed on " "the receipt.",
     # If you later break it down, add:
     # "ADDRESS_NUMBER": "Street/building number.",
     # "STREET_NAME":    "Street name.",
@@ -29,11 +26,9 @@ CORE_LABELS: dict[str, str] = {
     # ── Transaction info ───────────────────────────────────────
     "DATE": "Calendar date of the transaction.",
     "TIME": "Time of the transaction.",
-    "PAYMENT_METHOD": "Payment instrument summary "
-    "(e.g., VISA ••••1234, CASH).",
+    "PAYMENT_METHOD": "Payment instrument summary " "(e.g., VISA ••••1234, CASH).",
     "COUPON": "Coupon code or description that reduces price.",
-    "DISCOUNT": "Any non-coupon discount line item "
-    "(e.g., 10% member discount).",
+    "DISCOUNT": "Any non-coupon discount line item " "(e.g., 10% member discount).",
     # ── Line-item fields ───────────────────────────────────────
     "PRODUCT_NAME": "Descriptive text of a purchased product (item name).",
     "QUANTITY": "Numeric count or weight of the item (e.g., 2, 1.31 lb).",
@@ -253,21 +248,19 @@ def load_datasets(
     allowed: Optional[set[str]] = None
     if allowed_labels_env:
         allowed = {
-            s.strip().upper()
-            for s in allowed_labels_env.split(",")
-            if s.strip()
+            s.strip().upper() for s in allowed_labels_env.split(",") if s.strip()
         }
         # Only keep labels that are in core set or special merged labels ('AMOUNT', 'ADDRESS')
-        allowed = {l for l in allowed if l in _CORE_SET or l == "AMOUNT" or l == "ADDRESS"}
+        allowed = {
+            l for l in allowed if l in _CORE_SET or l == "AMOUNT" or l == "ADDRESS"
+        }
 
     merge_amounts = os.getenv("LAYOUTLM_MERGE_AMOUNTS", "0") == "1"
     merge_date_time = os.getenv("LAYOUTLM_MERGE_DATE_TIME", "0") == "1"
     merge_address_phone = os.getenv("LAYOUTLM_MERGE_ADDRESS_PHONE", "0") == "1"
 
     # Group by line so each example is a sequence of tokens
-    seq_map: Dict[
-        Tuple[str, int, int], List[Tuple[int, str, List[int], str]]
-    ] = {}
+    seq_map: Dict[Tuple[str, int, int], List[Tuple[int, str, List[int], str]]] = {}
     # Track receipt key per line for receipt-level splitting
     line_to_receipt: Dict[Tuple[str, int, int], Tuple[str, int]] = {}
     for w in words:
@@ -283,9 +276,7 @@ def load_datasets(
         max_x, max_y = image_extents.get(w.image_id, (1.0, 1.0))
         x0, y0, x1, y1 = _box_from_word(w)
         norm_box = _normalize_box_from_extents(x0, y0, x1, y1, max_x, max_y)
-        seq_map.setdefault(line_key, []).append(
-            (w.word_id, w.text, norm_box, label)
-        )
+        seq_map.setdefault(line_key, []).append((w.word_id, w.text, norm_box, label))
         line_to_receipt[line_key] = (w.image_id, w.receipt_id)
 
     examples: List[LineExample] = []
@@ -328,9 +319,7 @@ def load_datasets(
     train_indices = [
         i for i, ex in enumerate(examples) if ex.receipt_key in train_receipts
     ]
-    val_indices = [
-        i for i, ex in enumerate(examples) if ex.receipt_key in val_receipts
-    ]
+    val_indices = [i for i, ex in enumerate(examples) if ex.receipt_key in val_receipts]
     # Downsample all-O lines in training to reach target O:entity token ratio
     # Only affects training; validation remains untouched
     # Compute token counts over candidate train set

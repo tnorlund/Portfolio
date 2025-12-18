@@ -260,9 +260,7 @@ class MerchantHarmonizerV3:
                         self._place_id_groups[receipt.place_id] = PlaceIdGroup(
                             place_id=receipt.place_id
                         )
-                    self._place_id_groups[receipt.place_id].receipts.append(
-                        receipt
-                    )
+                    self._place_id_groups[receipt.place_id].receipts.append(receipt)
                 else:
                     self._no_place_id_receipts.append(receipt)
 
@@ -330,12 +328,10 @@ class MerchantHarmonizerV3:
                 metadatas = []
                 last_key = None
                 while True:
-                    batch, last_key = (
-                        self.dynamo.list_receipt_metadatas_with_place_id(
-                            place_id=base_place_id,
-                            limit=1000,
-                            last_evaluated_key=last_key,
-                        )
+                    batch, last_key = self.dynamo.list_receipt_metadatas_with_place_id(
+                        place_id=base_place_id,
+                        limit=1000,
+                        last_evaluated_key=last_key,
                     )
                     metadatas.extend(batch)
                     if not last_key:
@@ -356,9 +352,7 @@ class MerchantHarmonizerV3:
                         self._place_id_groups[receipt.place_id] = PlaceIdGroup(
                             place_id=receipt.place_id
                         )
-                    self._place_id_groups[receipt.place_id].receipts.append(
-                        receipt
-                    )
+                    self._place_id_groups[receipt.place_id].receipts.append(receipt)
                     total += 1
 
             # Mark groups as consistent or inconsistent
@@ -403,11 +397,7 @@ class MerchantHarmonizerV3:
                     phones.add(digits[-10:])
 
         # Consistent if at most one unique value per field
-        return (
-            len(merchant_names) <= 1
-            and len(addresses) <= 1
-            and len(phones) <= 1
-        )
+        return len(merchant_names) <= 1 and len(addresses) <= 1 and len(phones) <= 1
 
     async def harmonize_all(
         self,
@@ -434,12 +424,10 @@ class MerchantHarmonizerV3:
         if self._agent_graph is None:
             from receipt_agent.agents.harmonizer import create_harmonizer_graph
 
-            self._agent_graph, self._agent_state_holder = (
-                create_harmonizer_graph(
-                    dynamo_client=self.dynamo,
-                    places_api=self.places,
-                    settings=self.settings,
-                )
+            self._agent_graph, self._agent_state_holder = create_harmonizer_graph(
+                dynamo_client=self.dynamo,
+                places_api=self.places,
+                settings=self.settings,
             )
 
         # Filter groups to process
@@ -455,17 +443,14 @@ class MerchantHarmonizerV3:
             groups_to_process = groups_to_process[:limit]
 
         logger.info(
-            f"Processing {len(groups_to_process)} "
-            "inconsistent groups with agent..."
+            f"Processing {len(groups_to_process)} " "inconsistent groups with agent..."
         )
 
         # Process each group with the agent
         results: list[dict] = []
         for i, group in enumerate(groups_to_process):
             if (i + 1) % 5 == 0:
-                logger.info(
-                    f"Processed {i + 1}/{len(groups_to_process)} groups..."
-                )
+                logger.info(f"Processed {i + 1}/{len(groups_to_process)} groups...")
 
             # Convert receipts to dict format for agent
             receipts_data = [
@@ -531,9 +516,7 @@ class MerchantHarmonizerV3:
         ]
 
         high_confidence = [
-            r
-            for r in results
-            if r.get("confidence", 0) >= 0.8 and "error" not in r
+            r for r in results if r.get("confidence", 0) >= 0.8 and "error" not in r
         ]
         medium_confidence = [
             r
@@ -541,15 +524,11 @@ class MerchantHarmonizerV3:
             if 0.5 <= r.get("confidence", 0) < 0.8 and "error" not in r
         ]
         low_confidence = [
-            r
-            for r in results
-            if r.get("confidence", 0) < 0.5 and "error" not in r
+            r for r in results if r.get("confidence", 0) < 0.5 and "error" not in r
         ]
         errors = [r for r in results if "error" in r]
 
-        total_updates_needed = sum(
-            r.get("receipts_needing_update", 0) for r in results
-        )
+        total_updates_needed = sum(r.get("receipts_needing_update", 0) for r in results)
 
         report = {
             "summary": {
@@ -631,9 +610,7 @@ class MerchantHarmonizerV3:
                         "canonical_merchant_name": agent_result.get(
                             "canonical_merchant_name"
                         ),
-                        "canonical_address": agent_result.get(
-                            "canonical_address"
-                        ),
+                        "canonical_address": agent_result.get("canonical_address"),
                         "canonical_phone": agent_result.get("canonical_phone"),
                         "changes": update["changes"],
                         "confidence": confidence,
@@ -644,9 +621,7 @@ class MerchantHarmonizerV3:
         result.total_processed = len(updates_to_apply)
 
         if dry_run:
-            logger.info(
-                f"[DRY RUN] Would update {len(updates_to_apply)} receipts"
-            )
+            logger.info(f"[DRY RUN] Would update {len(updates_to_apply)} receipts")
             for update in updates_to_apply[:10]:
                 logger.info(
                     f"  {update['image_id'][:8]}...#{update['receipt_id']}: "
@@ -683,8 +658,7 @@ class MerchantHarmonizerV3:
                 updated_fields = []
                 if (
                     update["canonical_merchant_name"]
-                    and metadata.merchant_name
-                    != update["canonical_merchant_name"]
+                    and metadata.merchant_name != update["canonical_merchant_name"]
                 ):
                     metadata.merchant_name = update["canonical_merchant_name"]
                     updated_fields.append("merchant_name")
@@ -716,8 +690,7 @@ class MerchantHarmonizerV3:
 
             except Exception as e:
                 logger.exception(
-                    f"Failed to update {update['image_id']}#"
-                    f"{update['receipt_id']}"
+                    f"Failed to update {update['image_id']}#" f"{update['receipt_id']}"
                 )
                 result.total_failed += 1
                 result.errors.append(
@@ -757,8 +730,7 @@ class MerchantHarmonizerV3:
 
         print(f"Place ID groups: {summary.get('total_groups', 0)}")
         print(
-            f"  Consistent: {summary.get('consistent_groups', 0)} "
-            "(no action needed)"
+            f"  Consistent: {summary.get('consistent_groups', 0)} " "(no action needed)"
         )
         print(
             f"  Inconsistent: {summary.get('inconsistent_groups', 0)} "
@@ -827,9 +799,7 @@ class MerchantHarmonizerV3:
 
     def get_inconsistent_groups(self) -> list[PlaceIdGroup]:
         """Get all inconsistent place_id groups."""
-        return [
-            g for g in self._place_id_groups.values() if not g.is_consistent
-        ]
+        return [g for g in self._place_id_groups.values() if not g.is_consistent]
 
     def get_group(self, place_id: str) -> Optional[PlaceIdGroup]:
         """Get a specific place_id group."""

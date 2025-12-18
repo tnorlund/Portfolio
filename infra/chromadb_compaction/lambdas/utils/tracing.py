@@ -24,8 +24,7 @@ class XRayTracer:
     def __init__(self):
         """Initialize X-Ray tracer."""
         self.enabled = (
-            XRAY_AVAILABLE
-            and os.environ.get("ENABLE_XRAY", "false").lower() == "true"
+            XRAY_AVAILABLE and os.environ.get("ENABLE_XRAY", "false").lower() == "true"
         )
         self.logger = get_operation_logger(__name__)
 
@@ -35,9 +34,7 @@ class XRayTracer:
                 patch_all()
                 self.logger.info("X-Ray tracing enabled and AWS SDKs patched")
             except Exception as e:
-                self.logger.error(
-                    "Failed to initialize X-Ray tracing", error=str(e)
-                )
+                self.logger.error("Failed to initialize X-Ray tracing", error=str(e))
                 self.enabled = False
 
     @contextmanager
@@ -199,13 +196,9 @@ class XRayTracer:
 
             if current:
                 current.put_annotation(key, str(value))
-                self.logger.debug(
-                    "Added X-Ray annotation", key=key, value=value
-                )
+                self.logger.debug("Added X-Ray annotation", key=key, value=value)
         except Exception as e:
-            self.logger.error(
-                "Failed to add X-Ray annotation", key=key, error=str(e)
-            )
+            self.logger.error("Failed to add X-Ray annotation", key=key, error=str(e))
 
     def add_metadata(self, key: str, value: Any, namespace: str = "local"):
         """Add metadata to current segment/subsegment.
@@ -240,9 +233,7 @@ class XRayTracer:
                     value_type=type(value).__name__,
                 )
         except Exception as e:
-            self.logger.error(
-                "Failed to add X-Ray metadata", key=key, error=str(e)
-            )
+            self.logger.error("Failed to add X-Ray metadata", key=key, error=str(e))
 
     def set_user(self, user_id: str):
         """Set user ID for current segment.
@@ -259,9 +250,7 @@ class XRayTracer:
                 current.set_user(user_id)
                 self.logger.debug("Set X-Ray user", user_id=user_id)
         except Exception as e:
-            self.logger.error(
-                "Failed to set X-Ray user", user_id=user_id, error=str(e)
-            )
+            self.logger.error("Failed to set X-Ray user", user_id=user_id, error=str(e))
 
     def capture_aws_operation(self, service: str, operation: str):
         """Create subsegment for AWS service operations.

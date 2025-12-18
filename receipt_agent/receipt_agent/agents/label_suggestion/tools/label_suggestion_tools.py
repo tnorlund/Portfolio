@@ -23,11 +23,13 @@ logger = logging.getLogger(__name__)
 # Receipt Context - Injected at runtime
 # =====================================================================
 
+
 @dataclass
 class ReceiptContext:
     """Context for the receipt being processed.
     Injected into tools at runtime.
     """
+
     image_id: str
     receipt_id: int
     merchant_name: Optional[str] = None
@@ -52,21 +54,23 @@ def _build_word_id(
 # Tool Input Schemas
 # =====================================================================
 
+
 class SearchLabelCandidatesInput(BaseModel):
     """Input for search_label_candidates tool."""
+
     word_id: int = Field(description="Word ID to find label candidates for")
     line_id: int = Field(description="Line ID containing the word")
     n_results: int = Field(
         default=50,
         ge=10,
         le=100,
-        description="Number of ChromaDB results to fetch "
-        "(more = better statistics)",
+        description="Number of ChromaDB results to fetch " "(more = better statistics)",
     )
 
 
 class SubmitLabelSuggestionsInput(BaseModel):
     """Input for submit_label_suggestions tool."""
+
     suggestions: list[dict] = Field(
         description=(
             "List of label suggestions. Each dict should have: "
@@ -78,6 +82,7 @@ class SubmitLabelSuggestionsInput(BaseModel):
 # =====================================================================
 # Tool Factory
 # =====================================================================
+
 
 def create_label_suggestion_tools(
     dynamo_client: Any,
@@ -119,22 +124,17 @@ def create_label_suggestion_tools(
                 receipt_id=ctx.receipt_id,
             )
             meaningful_words = [
-                w for w in all_words
-                if not getattr(w, "is_noise", False)
+                w for w in all_words if not getattr(w, "is_noise", False)
             ]
 
             # Get existing labels
-            existing_labels, _ = (
-                dynamo_client.list_receipt_word_labels_for_receipt(
-                    image_id=ctx.image_id,
-                    receipt_id=ctx.receipt_id,
-                )
+            existing_labels, _ = dynamo_client.list_receipt_word_labels_for_receipt(
+                image_id=ctx.image_id,
+                receipt_id=ctx.receipt_id,
             )
 
             # Find unlabeled words
-            labeled_word_keys = {
-                (l.line_id, l.word_id) for l in existing_labels
-            }
+            labeled_word_keys = {(l.line_id, l.word_id) for l in existing_labels}
             unlabeled_words = [
                 {
                     "word_id": w.word_id,
@@ -216,18 +216,14 @@ def create_label_suggestion_tools(
 
             # Get all receipt words for context (needed for embedding format)
             dynamo_list_start = time.time()
-            all_words_in_receipt = (
-                dynamo_client.list_receipt_words_from_receipt(
-                    image_id=ctx.image_id,
-                    receipt_id=ctx.receipt_id,
-                )
+            all_words_in_receipt = dynamo_client.list_receipt_words_from_receipt(
+                image_id=ctx.image_id,
+                receipt_id=ctx.receipt_id,
             )
             dynamo_list_time = time.time() - dynamo_list_start
 
             if not all_words_in_receipt:
-                return {
-                    "error": f"No words found for receipt {ctx.receipt_id}"
-                }
+                return {"error": f"No words found for receipt {ctx.receipt_id}"}
 
             # Build word ID for ChromaDB lookup
             chroma_id = _build_word_id(
@@ -255,20 +251,14 @@ def create_label_suggestion_tools(
 
                 if results and results.get("ids") and results["ids"]:
                     embeddings = results.get("embeddings")
-                    if (
-                        embeddings
-                        and len(embeddings) > 0
-                        and embeddings[0] is not None
-                    ):
+                    if embeddings and len(embeddings) > 0 and embeddings[0] is not None:
                         target_embedding = embeddings[0]
                         # Convert to list if numpy array
-                        if hasattr(target_embedding, 'tolist'):
+                        if hasattr(target_embedding, "tolist"):
                             target_embedding = target_embedding.tolist()
                         elif not isinstance(target_embedding, list):
                             target_embedding = list(target_embedding)
-                        logger.debug(
-                            f"Using stored embedding for word '{word.text}'"
-                        )
+                        logger.debug(f"Using stored embedding for word '{word.text}'")
             except Exception as e:
                 logger.debug(f"Could not get stored embedding: {e}")
             finally:
@@ -298,14 +288,13 @@ def create_label_suggestion_tools(
                 if not target_embedding:
                     return {
                         "error": (
-                            f"Failed to generate embedding for word "
-                            f"'{word.text}'"
+                            f"Failed to generate embedding for word " f"'{word.text}'"
                         )
                     }
 
                 # Ensure it's a list
                 if not isinstance(target_embedding, list):
-                    if hasattr(target_embedding, 'tolist'):
+                    if hasattr(target_embedding, "tolist"):
                         target_embedding = target_embedding.tolist()
                     else:
                         target_embedding = list(target_embedding)
@@ -433,17 +422,17 @@ def create_label_suggestion_tools(
                         }
 
                     label_candidates[label_type]["count"] += 1
-                    label_candidates[label_type]["similarities"].append(
-                        similarity
-                    )
+                    label_candidates[label_type]["similarities"].append(similarity)
 
                     # Keep up to 3 examples
                     if len(label_candidates[label_type]["examples"]) < 3:
-                        label_candidates[label_type]["examples"].append({
-                            "word": doc,
-                            "similarity": round(similarity, 3),
-                            "merchant": meta.get("merchant_name", "Unknown"),
-                        })
+                        label_candidates[label_type]["examples"].append(
+                            {
+                                "word": doc,
+                                "similarity": round(similarity, 3),
+                                "merchant": meta.get("merchant_name", "Unknown"),
+                            }
+                        )
 
             # Calculate confidence scores for each candidate
             scored_candidates = []
@@ -463,15 +452,17 @@ def create_label_suggestion_tools(
                 similarity_score = avg_sim  # Already 0-1
                 confidence = (similarity_score * 0.7) + (count_score * 0.3)
 
-                scored_candidates.append({
-                    "label_type": label_type,
-                    "confidence": round(confidence, 3),
-                    "match_count": count,
-                    "avg_similarity": round(avg_sim, 3),
-                    "min_similarity": round(min(data["similarities"]), 3),
-                    "max_similarity": round(max(data["similarities"]), 3),
-                    "examples": data["examples"],
-                })
+                scored_candidates.append(
+                    {
+                        "label_type": label_type,
+                        "confidence": round(confidence, 3),
+                        "match_count": count,
+                        "avg_similarity": round(avg_sim, 3),
+                        "min_similarity": round(min(data["similarities"]), 3),
+                        "max_similarity": round(max(data["similarities"]), 3),
+                        "examples": data["examples"],
+                    }
+                )
 
             # Sort by confidence
             scored_candidates.sort(key=lambda x: x["confidence"], reverse=True)
@@ -485,21 +476,19 @@ def create_label_suggestion_tools(
             # If we found similar words but none have valid_labels,
             # that's useful info
             if total_results > 0 and words_with_valid_labels == 0:
-                    logger.info(
-                        f"  Note: Found {total_results} similar words "
-                        f"in ChromaDB, but none have VALID labels yet. "
-                        f"This word will be skipped until similar words "
-                        f"are validated."
-                    )
+                logger.info(
+                    f"  Note: Found {total_results} similar words "
+                    f"in ChromaDB, but none have VALID labels yet. "
+                    f"This word will be skipped until similar words "
+                    f"are validated."
+                )
 
             return {
                 "word_text": word.text,
                 "word_id": word_id,
                 "line_id": line_id,
                 "candidates": scored_candidates,
-                "top_candidate": (
-                    scored_candidates[0] if scored_candidates else None
-                ),
+                "top_candidate": (scored_candidates[0] if scored_candidates else None),
                 "should_use_merchant_filter": use_merchant_filter,
                 "total_matches": len([d for d in documents if d]),
                 "words_with_valid_labels": words_with_valid_labels,
@@ -590,18 +579,22 @@ def create_label_suggestion_tools(
 
                     # Save to DynamoDB
                     dynamo_client.create_receipt_word_label(label)
-                    created_labels.append({
-                        "word_id": word_id,
-                        "line_id": line_id,
-                        "label_type": label_type,
-                        "confidence": confidence,
-                    })
+                    created_labels.append(
+                        {
+                            "word_id": word_id,
+                            "line_id": line_id,
+                            "label_type": label_type,
+                            "confidence": confidence,
+                        }
+                    )
 
                 except Exception as e:
-                    errors.append({
-                        "suggestion": suggestion,
-                        "error": str(e),
-                    })
+                    errors.append(
+                        {
+                            "suggestion": suggestion,
+                            "error": str(e),
+                        }
+                    )
 
             return {
                 "status": "success",

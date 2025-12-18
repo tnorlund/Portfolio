@@ -118,9 +118,7 @@ class NoiseDetectionAnalyzer:
             "word_analysis": word_analysis,
         }
 
-    def export_from_dynamo(
-        self, table_name: str, limit: int = 10
-    ) -> List[str]:
+    def export_from_dynamo(self, table_name: str, limit: int = 10) -> List[str]:
         """Export sample receipts from DynamoDB."""
         print(f"Exporting receipts from DynamoDB table: {table_name}")
 
@@ -130,9 +128,7 @@ class NoiseDetectionAnalyzer:
 
         # Get recent images
         # Note: This is a simplified query - adjust based on your data model
-        images = dynamo_client.query(
-            pk_value="IMAGE", sk_prefix="IMAGE#", limit=limit
-        )
+        images = dynamo_client.query(pk_value="IMAGE", sk_prefix="IMAGE#", limit=limit)
 
         exported_files = []
         for i, item in enumerate(images):
@@ -154,9 +150,7 @@ class NoiseDetectionAnalyzer:
         detailed_results = []
 
         for i, file_path in enumerate(file_paths):
-            print(
-                f"Processing {i+1}/{len(file_paths)}: {Path(file_path).name}"
-            )
+            print(f"Processing {i+1}/{len(file_paths)}: {Path(file_path).name}")
 
             with open(file_path, "r") as f:
                 data = json.load(f)
@@ -181,28 +175,20 @@ class NoiseDetectionAnalyzer:
 
         # Header
         report.append("# Noise Detection Analysis Report")
-        report.append(
-            f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        )
+        report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
         # Overall Statistics
         report.append("## Overall Statistics")
-        report.append(
-            f"- Total Receipts Analyzed: {self.stats['total_receipts']}"
-        )
+        report.append(f"- Total Receipts Analyzed: {self.stats['total_receipts']}")
         report.append(f"- Total Words: {self.stats['total_words']:,}")
         report.append(f"- Noise Words: {self.stats['noise_words']:,}")
-        report.append(
-            f"- Meaningful Words: {self.stats['meaningful_words']:,}"
-        )
+        report.append(f"- Meaningful Words: {self.stats['meaningful_words']:,}")
 
         if self.stats["total_words"] > 0:
             noise_percentage = (
                 self.stats["noise_words"] / self.stats["total_words"]
             ) * 100
-            report.append(
-                f"- Overall Noise Percentage: {noise_percentage:.2f}%\n"
-            )
+            report.append(f"- Overall Noise Percentage: {noise_percentage:.2f}%\n")
 
         # Cost Savings Estimate
         report.append("## Estimated Cost Savings")
@@ -236,13 +222,9 @@ class NoiseDetectionAnalyzer:
                 f"\n### Monthly Projection (at {daily_receipts} receipts/day):"
             )
             report.append(f"- Monthly Receipts: {monthly_receipts:,}")
-            report.append(
-                f"- Noise Words Filtered: {monthly_noise_words:,.0f}"
-            )
+            report.append(f"- Noise Words Filtered: {monthly_noise_words:,.0f}")
             report.append(f"- Monthly Savings: ${monthly_cost_saved:.2f}")
-            report.append(
-                f"- Annual Savings: ${monthly_cost_saved * 12:.2f}\n"
-            )
+            report.append(f"- Annual Savings: ${monthly_cost_saved * 12:.2f}\n")
 
         # By Merchant Type
         report.append("## Analysis by Merchant Type")
@@ -283,9 +265,7 @@ class NoiseDetectionAnalyzer:
         with open(self.output_dir / "noise_detection_report.md", "w") as f:
             f.write(report_text)
 
-        print(
-            f"\nReport saved to: {self.output_dir / 'noise_detection_report.md'}"
-        )
+        print(f"\nReport saved to: {self.output_dir / 'noise_detection_report.md'}")
 
         # Also save raw statistics
         with open(self.output_dir / "statistics.json", "w") as f:
@@ -296,9 +276,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Test noise detection on real receipt data"
     )
-    parser.add_argument(
-        "--table-name", help="DynamoDB table name to export from"
-    )
+    parser.add_argument("--table-name", help="DynamoDB table name to export from")
     parser.add_argument(
         "--local-data", help="Directory with already exported JSON files"
     )

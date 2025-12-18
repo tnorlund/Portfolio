@@ -7,9 +7,7 @@ from pathlib import Path
 import boto3
 from botocore.exceptions import ClientError
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("entrypoint")
 
 
@@ -52,9 +50,7 @@ def download_prefix(bucket: str, prefix: str, dest: str) -> None:
 
 
 def main() -> int:
-    bucket = os.environ.get("CHROMADB_BUCKET") or os.environ.get(
-        "VECTORS_BUCKET"
-    )
+    bucket = os.environ.get("CHROMADB_BUCKET") or os.environ.get("VECTORS_BUCKET")
     if not bucket:
         logger.error("CHROMADB_BUCKET or VECTORS_BUCKET must be set")
         return 1

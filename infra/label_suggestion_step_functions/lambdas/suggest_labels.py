@@ -27,9 +27,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 s3 = boto3.client("s3")
 
 
-def download_chromadb_snapshot(
-    bucket: str, collection: str, cache_path: str
-) -> str:
+def download_chromadb_snapshot(bucket: str, collection: str, cache_path: str) -> str:
     """
     Download ChromaDB snapshot from S3 if not cached.
 
@@ -41,9 +39,7 @@ def download_chromadb_snapshot(
         logger.info(f"ChromaDB already cached at {cache_path}")
         return cache_path
 
-    logger.info(
-        f"Downloading ChromaDB snapshot from s3://{bucket}/{collection}/"
-    )
+    logger.info(f"Downloading ChromaDB snapshot from s3://{bucket}/{collection}/")
 
     # Get latest pointer
     pointer_key = f"{collection}/snapshot/latest-pointer.txt"
@@ -112,12 +108,8 @@ async def process_batch(
     )
 
     # Get configurable limits from environment
-    receipt_delay_seconds = float(
-        os.environ.get("RECEIPT_DELAY_SECONDS", "0.5")
-    )
-    max_llm_calls_per_receipt = int(
-        os.environ.get("MAX_LLM_CALLS_PER_RECEIPT", "10")
-    )
+    receipt_delay_seconds = float(os.environ.get("RECEIPT_DELAY_SECONDS", "0.5"))
+    max_llm_calls_per_receipt = int(os.environ.get("MAX_LLM_CALLS_PER_RECEIPT", "10"))
 
     # Initialize metrics
     receipts_processed = 0
@@ -159,12 +151,8 @@ async def process_batch(
             receipts_processed += 1
             total_suggestions += result.get("suggestions_count", 0)
             total_llm_calls += result.get("llm_calls", 0)
-            total_skipped_no_candidates += result.get(
-                "skipped_no_candidates", 0
-            )
-            total_skipped_low_confidence += result.get(
-                "skipped_low_confidence", 0
-            )
+            total_skipped_no_candidates += result.get("skipped_no_candidates", 0)
+            total_skipped_low_confidence += result.get("skipped_low_confidence", 0)
             total_unlabeled_words += result.get("unlabeled_words_count", 0)
 
             logger.info(
@@ -222,9 +210,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     execution_id = event.get("execution_id", "unknown")
     batch_index = event.get("batch_index")  # Required: index into manifest
     manifest_s3_key = event.get("manifest_s3_key")  # Required: manifest key
-    batch_bucket = event.get("batch_bucket") or os.environ.get(
-        "BATCH_BUCKET", ""
-    )
+    batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET", "")
     dry_run = event.get("dry_run", True)
     chromadb_bucket = os.environ.get("CHROMADB_BUCKET", "")
 
@@ -299,14 +285,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
             logger.info("LLM initialized for ambiguous cases")
         else:
-            logger.warning(
-                "No Ollama API key - will use ChromaDB only (no LLM calls)"
-            )
+            logger.warning("No Ollama API key - will use ChromaDB only (no LLM calls)")
 
         # Download receipts from S3
-        logger.info(
-            f"Downloading receipts from s3://{batch_bucket}/{batch_file}"
-        )
+        logger.info(f"Downloading receipts from s3://{batch_bucket}/{batch_file}")
         response = s3.get_object(Bucket=batch_bucket, Key=batch_file)
 
         # Parse NDJSON (streaming)

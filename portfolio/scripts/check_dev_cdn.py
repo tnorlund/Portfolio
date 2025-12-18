@@ -23,10 +23,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 def main():
     """Check DEV configuration."""
     work_dir = os.path.join(parent_dir, "infra")
-    
+
     logger.info("Getting DEV configuration...")
     dev_stack = auto.create_or_select_stack(
         stack_name="tnorlund/portfolio/dev",
@@ -34,7 +35,7 @@ def main():
     )
     dev_outputs = dev_stack.outputs()
     dev_table = dev_outputs["dynamodb_table_name"].value
-    
+
     try:
         cdn_bucket = dev_outputs["cdn_bucket_name"].value
         logger.info(f"DEV table: {dev_table}")
@@ -42,6 +43,7 @@ def main():
     except KeyError:
         logger.info(f"DEV table: {dev_table}")
         logger.info("DEV CDN bucket: Not configured")
+
 
 if __name__ == "__main__":
     main()

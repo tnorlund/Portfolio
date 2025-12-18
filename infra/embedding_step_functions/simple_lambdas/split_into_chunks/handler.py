@@ -23,9 +23,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Configuration with dynamic chunk sizing
-DEFAULT_CHUNK_SIZE = (
-    25  # Default for backward compatibility (increased from 10)
-)
+DEFAULT_CHUNK_SIZE = 25  # Default for backward compatibility (increased from 10)
 CHUNK_SIZE_WORDS = int(
     os.environ.get("CHUNK_SIZE_WORDS", "15")
 )  # Increased from 5 for faster final merge
@@ -56,14 +54,10 @@ def get_chunk_size(delta_results: List[Dict[str, Any]]) -> int:
         Optimal chunk size for this batch
     """
     # Check if this batch contains word embeddings
-    has_words = any(
-        d.get("collection") == "receipt_words" for d in delta_results
-    )
+    has_words = any(d.get("collection") == "receipt_words" for d in delta_results)
 
     # Check if this batch contains line embeddings
-    has_lines = any(
-        d.get("collection") == "receipt_lines" for d in delta_results
-    )
+    has_lines = any(d.get("collection") == "receipt_lines" for d in delta_results)
 
     # Mixed batch - use smaller chunk size to be safe
     if has_words and has_lines:
@@ -87,9 +81,7 @@ def get_chunk_size(delta_results: List[Dict[str, Any]]) -> int:
         return CHUNK_SIZE_LINES
 
     # Unknown or legacy batch - use default
-    logger.info(
-        "Unknown batch type, using default chunk size: %d", DEFAULT_CHUNK_SIZE
-    )
+    logger.info("Unknown batch type, using default chunk size: %d", DEFAULT_CHUNK_SIZE)
     return DEFAULT_CHUNK_SIZE
 
 
@@ -151,9 +143,7 @@ def _load_chunks_from_s3(event: Dict[str, Any]) -> Dict[str, Any]:
             tmp_file_path = tmp_file.name
 
         try:
-            s3_client.download_file(
-                chunks_s3_bucket, chunks_s3_key, tmp_file_path
-            )
+            s3_client.download_file(chunks_s3_bucket, chunks_s3_key, tmp_file_path)
             with open(tmp_file_path, "r", encoding="utf-8") as f:
                 chunks = json.load(f)
             total_chunks = len(chunks)
@@ -290,12 +280,8 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
         # Each delta result can be ~1-3KB (includes delta_key, batch_id, embedding_count, etc.)
         # Each chunk adds ~500 bytes overhead (chunk_index, batch_id, operation)
         estimated_chunks = (len(valid_deltas) + chunk_size - 1) // chunk_size
-        estimated_size_per_delta = (
-            2500  # ~2.5KB per delta result (conservative)
-        )
-        estimated_size_per_chunk_overhead = (
-            500  # ~500 bytes per chunk overhead
-        )
+        estimated_size_per_delta = 2500  # ~2.5KB per delta result (conservative)
+        estimated_size_per_chunk_overhead = 500  # ~500 bytes per chunk overhead
         estimated_total_size = (
             len(valid_deltas) * estimated_size_per_delta
             + estimated_chunks * estimated_size_per_chunk_overhead
@@ -308,8 +294,7 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
         # Single chunk (<=chunk_size deltas) should be safe, but multiple chunks = use S3
         use_s3_early = (
             estimated_total_size > MAX_PAYLOAD_SIZE
-            or estimated_chunks
-            > 1  # More than 1 chunk = ALWAYS use S3 to be safe
+            or estimated_chunks > 1  # More than 1 chunk = ALWAYS use S3 to be safe
             or len(valid_deltas)
             > chunk_size  # More deltas than fit in one chunk = use S3
         )
@@ -335,9 +320,7 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
             chunks.append(chunk)
 
             # Log chunk details for debugging
-            collections = set(
-                d.get("collection", "unknown") for d in chunk_deltas
-            )
+            collections = set(d.get("collection", "unknown") for d in chunk_deltas)
             logger.info(
                 "Chunk %d: %d deltas, collections: %s",
                 chunk["chunk_index"],
@@ -345,9 +328,7 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
                 collections,
             )
 
-        logger.info(
-            "Created %d chunks from %d deltas", len(chunks), len(valid_deltas)
-        )
+        logger.info("Created %d chunks from %d deltas", len(chunks), len(valid_deltas))
 
         # Check actual payload size (double-check even if we estimated)
         response_payload = json.dumps(
@@ -376,9 +357,7 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
             # Get S3 bucket from environment
             bucket = os.environ.get("CHROMADB_BUCKET")
             if not bucket:
-                raise ValueError(
-                    "CHROMADB_BUCKET environment variable not set"
-                )
+                raise ValueError("CHROMADB_BUCKET environment variable not set")
 
             # Upload chunks to S3
             chunks_s3_key = f"chunks/{batch_id}/chunks.json"
@@ -421,9 +400,7 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
             }
         else:
             # Response is small enough, return chunks directly
-            logger.info(
-                "Response payload within limit, returning chunks directly"
-            )
+            logger.info("Response payload within limit, returning chunks directly")
             return {
                 "batch_id": batch_id,
                 "chunks": chunks,

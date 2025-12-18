@@ -34,18 +34,14 @@ def fix_invalid_from_e(filepath: Path) -> int:
     if changes > 0:
         with open(filepath, "w") as f:
             f.write("\n".join(new_lines))
-        print(
-            f"Fixed {filepath.name}: removed {changes} invalid 'from e' references"
-        )
+        print(f"Fixed {filepath.name}: removed {changes} invalid 'from e' references")
 
     return changes
 
 
 def main():
     """Fix all invalid 'from e' references"""
-    data_dir = Path(
-        "/Users/tnorlund/GitHub/example/receipt_dynamo/receipt_dynamo/data"
-    )
+    data_dir = Path("/Users/tnorlund/GitHub/example/receipt_dynamo/receipt_dynamo/data")
 
     total_fixed = 0
 

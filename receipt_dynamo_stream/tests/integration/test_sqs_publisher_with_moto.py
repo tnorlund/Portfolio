@@ -161,9 +161,7 @@ def test_compaction_run_sends_one_per_collection(
     assert body["entity_data"]["run_id"] == "run-123"
 
 
-def test_batches_above_ten_messages(
-    moto_sqs: Any, fifo_queues: dict[str, str]
-) -> None:
+def test_batches_above_ten_messages(moto_sqs: Any, fifo_queues: dict[str, str]) -> None:
     msgs = [
         StreamMessage(
             entity_type="RECEIPT_METADATA",

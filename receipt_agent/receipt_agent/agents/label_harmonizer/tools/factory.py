@@ -130,9 +130,7 @@ def create_label_harmonizer_tools(
             # Get last 10 lines (usually contain totals)
             sorted_line_ids = sorted(line_texts.keys())
             preview_line_ids = (
-                sorted_line_ids[-10:]
-                if len(sorted_line_ids) > 10
-                else sorted_line_ids
+                sorted_line_ids[-10:] if len(sorted_line_ids) > 10 else sorted_line_ids
             )
 
             return {
@@ -140,8 +138,7 @@ def create_label_harmonizer_tools(
                 "total_lines": len(lines_by_id),
                 "has_table_structure": table_structure is not None,
                 "line_preview_last_10": {
-                    str(line_id): line_texts[line_id]
-                    for line_id in preview_line_ids
+                    str(line_id): line_texts[line_id] for line_id in preview_line_ids
                 },
                 "note": "Showing last 10 lines (where financial totals typically appear)",
             }
@@ -180,13 +177,9 @@ def create_label_harmonizer_tools(
                         0,
                     )
                     context_words = line_words[
-                        max(0, word_idx - 3) : min(
-                            len(line_words), word_idx + 4
-                        )
+                        max(0, word_idx - 3) : min(len(line_words), word_idx + 4)
                     ]
-                    line_context = " ".join(
-                        [w.get("text", "") for w in context_words]
-                    )
+                    line_context = " ".join([w.get("text", "") for w in context_words])
 
                     numeric_candidates.append(
                         {
@@ -199,9 +192,7 @@ def create_label_harmonizer_tools(
                     )
 
             # Sort by value and limit to top 20 candidates to prevent context overflow
-            numeric_candidates.sort(
-                key=lambda x: x["numeric_value"], reverse=True
-            )
+            numeric_candidates.sort(key=lambda x: x["numeric_value"], reverse=True)
             top_candidates = numeric_candidates[:20]
 
             return {
@@ -369,10 +360,7 @@ def create_label_harmonizer_tools(
             tolerance = 0.01
 
             # Test 1: GRAND_TOTAL = SUBTOTAL + TAX
-            if (
-                "GRAND_TOTAL" in values_by_type
-                and "SUBTOTAL" in values_by_type
-            ):
+            if "GRAND_TOTAL" in values_by_type and "SUBTOTAL" in values_by_type:
                 # Values are already coerced to float when stored
                 grand_total = values_by_type["GRAND_TOTAL"][0]
                 subtotal = values_by_type["SUBTOTAL"][0]
@@ -398,9 +386,7 @@ def create_label_harmonizer_tools(
             state["verification_results"] = verification_results
 
             tests_passed = sum(
-                1
-                for result in verification_results
-                if result.get("passes", False)
+                1 for result in verification_results if result.get("passes", False)
             )
             total_tests = len(verification_results)
 
@@ -556,11 +542,7 @@ def create_label_harmonizer_tools(
                 centroid_y = ln.calculate_centroid()[1]
                 if merged_rows:
                     prev_ln = merged_rows[-1]["last_line"]
-                    if (
-                        prev_ln.bottom_left["y"]
-                        < centroid_y
-                        < prev_ln.top_left["y"]
-                    ):
+                    if prev_ln.bottom_left["y"] < centroid_y < prev_ln.top_left["y"]:
                         merged_rows[-1]["lines"].append(ln)
                         merged_rows[-1]["text_parts"].append(ln.text or "")
                         merged_rows[-1]["last_line"] = ln
@@ -577,24 +559,16 @@ def create_label_harmonizer_tools(
             for row in merged_rows:
                 ids = [l.line_id for l in row["lines"]]
                 id_label = (
-                    f"{min(ids)}-{max(ids)}"
-                    if len(set(ids)) > 1
-                    else str(ids[0])
+                    f"{min(ids)}-{max(ids)}" if len(set(ids)) > 1 else str(ids[0])
                 )
-                row_text = " ".join(
-                    [t for t in row["text_parts"] if t]
-                ).strip()
+                row_text = " ".join([t for t in row["text_parts"] if t]).strip()
                 formatted_rows.append(f"{id_label}: {row_text}")
 
             receipt_text = "\n".join(formatted_rows)
         except Exception as e:
-            logger.info(
-                "LH3 tool get_receipt_text: fallback formatting: %s", e
-            )
+            logger.info("LH3 tool get_receipt_text: fallback formatting: %s", e)
             receipt_text = "\n".join(
-                f"{l.get('line_id', '')}: {l.get('text', '')}"
-                for l in lines
-                if l
+                f"{l.get('line_id', '')}: {l.get('text', '')}" for l in lines if l
             )
 
         if not (receipt_text or "").strip():
@@ -646,19 +620,15 @@ def create_label_harmonizer_tools(
                     extra = page or []
                     # If there are more pages, fetch them too
                     while lek:
-                        page, lek = (
-                            dynamo.list_receipt_word_labels_for_receipt(
-                                image_id=image_id,
-                                receipt_id=rec_id,
-                                last_evaluated_key=lek,
-                            )
+                        page, lek = dynamo.list_receipt_word_labels_for_receipt(
+                            image_id=image_id,
+                            receipt_id=rec_id,
+                            last_evaluated_key=lek,
                         )
                         extra.extend(page or [])
                     receipt_data = state.get("receipt")
                     if isinstance(receipt_data, dict):
-                        receipt_data["labels"] = [
-                            label_to_dict(lb) for lb in extra
-                        ]
+                        receipt_data["labels"] = [label_to_dict(lb) for lb in extra]
                         labels = receipt_data.get("labels", [])
                     else:
                         labels = receipt.get("labels", [])
@@ -716,19 +686,13 @@ def create_label_harmonizer_tools(
             bl = ln.get("bottom_left") or {}
             br = ln.get("bottom_right") or {}
             return (
-                tl.get("y", 0)
-                + tr.get("y", 0)
-                + bl.get("y", 0)
-                + br.get("y", 0)
+                tl.get("y", 0) + tr.get("y", 0) + bl.get("y", 0) + br.get("y", 0)
             ) / 4
 
         summary = [
-            {"line_id": ln.get("line_id"), "text": ln.get("text", "")}
-            for ln in lines
+            {"line_id": ln.get("line_id"), "text": ln.get("text", "")} for ln in lines
         ]
-        summary_sorted = sorted(
-            summary, key=lambda ln: centroid_y(ln), reverse=True
-        )
+        summary_sorted = sorted(summary, key=lambda ln: centroid_y(ln), reverse=True)
         return {
             "lines": summary_sorted,
             "note": "y=0 is bottom; sorted top-to-bottom by decreasing y",
@@ -801,9 +765,7 @@ def create_label_harmonizer_tools(
         """
         financial_subagent = state.get("financial_subagent_graph")
         if financial_subagent is None:
-            logger.warning(
-                "Financial sub-agent graph not available, using fallback"
-            )
+            logger.warning("Financial sub-agent graph not available, using fallback")
             return _simple_financial_fallback()
 
         receipt = state.get("receipt")
@@ -814,12 +776,8 @@ def create_label_harmonizer_tools(
         # Get retry configuration from environment or use defaults
         import os
 
-        max_retries = int(
-            os.environ.get("FINANCIAL_SUBAGENT_MAX_RETRIES", "3")
-        )
-        base_delay = float(
-            os.environ.get("FINANCIAL_SUBAGENT_BASE_DELAY", "2.0")
-        )
+        max_retries = int(os.environ.get("FINANCIAL_SUBAGENT_MAX_RETRIES", "3"))
+        base_delay = float(os.environ.get("FINANCIAL_SUBAGENT_BASE_DELAY", "2.0"))
 
         for attempt in range(max_retries):
             try:
@@ -845,12 +803,8 @@ def create_label_harmonizer_tools(
 
                 # Extract result from the financial context stored in state
                 financial_context = state.get("financial_context", {})
-                if financial_context and financial_context.get(
-                    "financial_candidates"
-                ):
-                    candidates = financial_context.get(
-                        "financial_candidates", {}
-                    )
+                if financial_context and financial_context.get("financial_candidates"):
+                    candidates = financial_context.get("financial_candidates", {})
                     logger.info(
                         f"Financial sub-agent succeeded: found {len(candidates)} types"
                     )
@@ -861,9 +815,9 @@ def create_label_harmonizer_tools(
                         list(candidates.keys()),
                         financial_context.get("currency"),
                         financial_context.get("confidence"),
-                        financial_context.get(
-                            "mathematical_validation", {}
-                        ).get("all_valid"),
+                        financial_context.get("mathematical_validation", {}).get(
+                            "all_valid"
+                        ),
                     )
 
                     # Log each financial type with values
@@ -978,9 +932,7 @@ def create_label_harmonizer_tools(
     # ========== SIMILARITY SEARCH TOOL ==========
 
     @tool
-    def search_similar_labels(
-        word_text: str, label_type: Optional[str] = None
-    ) -> dict:
+    def search_similar_labels(word_text: str, label_type: Optional[str] = None) -> dict:
         """
         Search ChromaDB for similar words with labels, with merchant context.
 
@@ -1029,9 +981,7 @@ def create_label_harmonizer_tools(
                         if results.get("distances")
                         else 1.0
                     )
-                    similarity = (
-                        1.0 - distance
-                    )  # Convert distance to similarity
+                    similarity = 1.0 - distance  # Convert distance to similarity
 
                     word_label = metadata.get("label")
                     if label_type and word_label != label_type:
@@ -1057,11 +1007,9 @@ def create_label_harmonizer_tools(
             if current_merchant or current_place_id:
                 for result in similar_words:
                     result["same_merchant"] = (
-                        current_merchant
-                        and result.get("merchant") == current_merchant
+                        current_merchant and result.get("merchant") == current_merchant
                     ) or (
-                        current_place_id
-                        and result.get("place_id") == current_place_id
+                        current_place_id and result.get("place_id") == current_place_id
                     )
 
             return {
@@ -1174,9 +1122,7 @@ def create_label_harmonizer_tools(
 
     # ========== COLUMN ANALYZER (LINE-RANGE) ==========
 
-    def _analyze_line_block_columns_impl(
-        line_id_start: int, line_id_end: int
-    ) -> dict:
+    def _analyze_line_block_columns_impl(line_id_start: int, line_id_end: int) -> dict:
         receipt = state.get("receipt")
         if not receipt or not isinstance(receipt, dict):
             return {"error": "No receipt data loaded"}
@@ -1216,12 +1162,7 @@ def create_label_harmonizer_tools(
             left_x = (tl.get("x", 0) + bl.get("x", 0)) / 2
             right_x = (tr.get("x", 0) + br.get("x", 0)) / 2
             cx = (left_x + right_x) / 2
-            cy = (
-                tl.get("y", 0)
-                + tr.get("y", 0)
-                + bl.get("y", 0)
-                + br.get("y", 0)
-            ) / 4
+            cy = (tl.get("y", 0) + tr.get("y", 0) + bl.get("y", 0) + br.get("y", 0)) / 4
             prepared.append(
                 {
                     "line_id": ln.get("line_id"),
@@ -1258,9 +1199,7 @@ def create_label_harmonizer_tools(
             bands.append(current)
         # Sort columns by x_center (left to right)
         column_x_centers = sorted([sum(b) / len(b) for b in bands])
-        columns = [
-            {"col": i, "x_center": xc} for i, xc in enumerate(column_x_centers)
-        ]
+        columns = [{"col": i, "x_center": xc} for i, xc in enumerate(column_x_centers)]
 
         def assign_col(xc: float) -> int:
             best, dist = 0, float("inf")
@@ -1353,9 +1292,7 @@ def create_label_harmonizer_tools(
 
             # Detect quantity keywords
             quantity_keywords = ["qty", "quantity", "count", "x", "#"]
-            has_quantity_keywords = any(
-                kw in all_text for kw in quantity_keywords
-            )
+            has_quantity_keywords = any(kw in all_text for kw in quantity_keywords)
 
             # Detect price keywords
             price_keywords = ["price", "cost", "each", "unit"]
@@ -1363,9 +1300,7 @@ def create_label_harmonizer_tools(
 
             # Detect product/description keywords
             product_keywords = ["item", "product", "description", "name"]
-            has_product_keywords = any(
-                kw in all_text for kw in product_keywords
-            )
+            has_product_keywords = any(kw in all_text for kw in product_keywords)
 
             hints = []
             if has_totals_keywords:
@@ -1402,9 +1337,7 @@ def create_label_harmonizer_tools(
         return result
 
     @tool
-    def analyze_line_block_columns(
-        line_id_start: int, line_id_end: int
-    ) -> dict:
+    def analyze_line_block_columns(line_id_start: int, line_id_end: int) -> dict:
         """
         Given an inclusive line_id range, infer column positions and assign lines.
 
@@ -1529,16 +1462,11 @@ def create_label_harmonizer_tools(
 
         # Maintain history of summaries in state
         history_raw = state.get("column_analysis_history")
-        history: list[dict] = (
-            history_raw if isinstance(history_raw, list) else []
-        )
+        history: list[dict] = history_raw if isinstance(history_raw, list) else []
 
         def _same_range(entry: dict) -> bool:
             lr = entry.get("line_range", {}) if isinstance(entry, dict) else {}
-            return (
-                lr.get("start") == line_id_start
-                and lr.get("end") == line_id_end
-            )
+            return lr.get("start") == line_id_start and lr.get("end") == line_id_end
 
         # Replace any existing entry for the same line range
         history = [h for h in history if not _same_range(h)]
@@ -1584,9 +1512,7 @@ def create_label_harmonizer_tools(
 
         words = receipt.get("words", [])
         labels = receipt.get("labels", [])
-        col_analysis = (
-            state.get("column_analysis") if use_column_analysis else None
-        )
+        col_analysis = state.get("column_analysis") if use_column_analysis else None
 
         def in_range(line_id: int) -> bool:
             if line_id_start is None or line_id_end is None:
@@ -1597,8 +1523,7 @@ def create_label_harmonizer_tools(
         scoped_labels = [
             lb
             for lb in labels
-            if lb.get("label") == label_type
-            and in_range(lb.get("line_id", -1))
+            if lb.get("label") == label_type and in_range(lb.get("line_id", -1))
         ]
 
         return {

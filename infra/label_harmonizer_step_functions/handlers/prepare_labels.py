@@ -53,9 +53,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     max_merchants: Optional[int] = event.get("max_merchants")
     table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
-    logger.info(
-        f"Preparing labels for {label_type}, execution_id={execution_id}"
-    )
+    logger.info(f"Preparing labels for {label_type}, execution_id={execution_id}")
 
     dynamo = DynamoClient(table_name)
 
@@ -72,12 +70,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Handle pagination - get_receipt_word_labels_by_label returns a tuple
         last_evaluated_key = None
         while True:
-            labels_batch, last_evaluated_key = (
-                dynamo.get_receipt_word_labels_by_label(
-                    label_type,
-                    limit=1000,
-                    last_evaluated_key=last_evaluated_key,
-                )
+            labels_batch, last_evaluated_key = dynamo.get_receipt_word_labels_by_label(
+                label_type,
+                limit=1000,
+                last_evaluated_key=last_evaluated_key,
             )
 
             for label in labels_batch:
@@ -96,9 +92,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             metadata.merchant_name if metadata else "Unknown"
                         )
                     except Exception as e:
-                        logger.warning(
-                            f"Failed to get metadata for {cache_key}: {e}"
-                        )
+                        logger.warning(f"Failed to get metadata for {cache_key}: {e}")
                         metadata_cache[cache_key] = "Unknown"
 
                 merchant_name = metadata_cache[cache_key]
@@ -137,8 +131,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         "line_id": label.line_id,
                         "word_id": label.word_id,
                         "label": label.label,
-                        "validation_status": label.validation_status
-                        or "PENDING",
+                        "validation_status": label.validation_status or "PENDING",
                         "word_text": word_text,
                         "merchant_name": merchant_name,
                     }
@@ -203,14 +196,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 batch_labels = labels[start_idx:end_idx]
 
                 # Create batch-specific filename
-                file_key = (
-                    f"{s3_prefix}{safe_name}-batch{batch_idx + 1}.ndjson"
-                )
+                file_key = f"{s3_prefix}{safe_name}-batch{batch_idx + 1}.ndjson"
 
                 # Convert to NDJSON
-                ndjson_content = "\n".join(
-                    json.dumps(label) for label in batch_labels
-                )
+                ndjson_content = "\n".join(json.dumps(label) for label in batch_labels)
 
                 # Upload to S3
                 try:

@@ -81,9 +81,7 @@ def test_get_chromadb_relevant_changes_both_none() -> None:
 def test_get_chromadb_relevant_changes_old_none() -> None:
     """Test when old entity is None (INSERT case)."""
     new_entity = _make_metadata(merchant_name="New Merchant")
-    changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", None, new_entity
-    )
+    changes = get_chromadb_relevant_changes("RECEIPT_METADATA", None, new_entity)
 
     # All relevant fields should be detected as changes
     assert "merchant_name" in changes
@@ -94,9 +92,7 @@ def test_get_chromadb_relevant_changes_old_none() -> None:
 def test_get_chromadb_relevant_changes_new_none() -> None:
     """Test when new entity is None (REMOVE case)."""
     old_entity = _make_metadata(merchant_name="Old Merchant")
-    changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", old_entity, None
-    )
+    changes = get_chromadb_relevant_changes("RECEIPT_METADATA", old_entity, None)
 
     # All relevant fields should be detected as changes
     assert "merchant_name" in changes
@@ -108,9 +104,7 @@ def test_get_chromadb_relevant_changes_no_changes() -> None:
     """Test when entities are identical."""
     entity1 = _make_metadata()
     entity2 = _make_metadata()
-    changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", entity1, entity2
-    )
+    changes = get_chromadb_relevant_changes("RECEIPT_METADATA", entity1, entity2)
     assert changes == {}
 
 
@@ -127,9 +121,7 @@ def test_get_chromadb_relevant_changes_multiple_fields() -> None:
         merchant_category="CAFE",
     )
 
-    changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", old_entity, new_entity
-    )
+    changes = get_chromadb_relevant_changes("RECEIPT_METADATA", old_entity, new_entity)
 
     assert len(changes) == 3
     assert changes["merchant_name"].old == "Old Merchant"
@@ -183,9 +175,7 @@ def test_get_chromadb_relevant_changes_empty_to_value() -> None:
     old_entity = _make_metadata(canonical_merchant_name="")
     new_entity = _make_metadata(canonical_merchant_name="New Canonical")
 
-    changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", old_entity, new_entity
-    )
+    changes = get_chromadb_relevant_changes("RECEIPT_METADATA", old_entity, new_entity)
 
     assert "canonical_merchant_name" in changes
     assert changes["canonical_merchant_name"].old == ""
@@ -197,9 +187,7 @@ def test_get_chromadb_relevant_changes_value_to_empty() -> None:
     old_entity = _make_metadata(canonical_merchant_name="Old Canonical")
     new_entity = _make_metadata(canonical_merchant_name="")
 
-    changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", old_entity, new_entity
-    )
+    changes = get_chromadb_relevant_changes("RECEIPT_METADATA", old_entity, new_entity)
 
     assert "canonical_merchant_name" in changes
     assert changes["canonical_merchant_name"].old == "Old Canonical"
@@ -209,16 +197,10 @@ def test_get_chromadb_relevant_changes_value_to_empty() -> None:
 def test_get_chromadb_relevant_changes_irrelevant_fields_ignored() -> None:
     """Test that non-relevant field changes are ignored."""
     # These entities differ in timestamp, which is not a relevant field
-    old_entity = _make_metadata(
-        timestamp=datetime.fromisoformat("2024-01-01T00:00:00")
-    )
-    new_entity = _make_metadata(
-        timestamp=datetime.fromisoformat("2024-01-02T00:00:00")
-    )
+    old_entity = _make_metadata(timestamp=datetime.fromisoformat("2024-01-01T00:00:00"))
+    new_entity = _make_metadata(timestamp=datetime.fromisoformat("2024-01-02T00:00:00"))
 
-    changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", old_entity, new_entity
-    )
+    changes = get_chromadb_relevant_changes("RECEIPT_METADATA", old_entity, new_entity)
 
     # timestamp is not in CHROMADB_RELEVANT_FIELDS
     assert changes == {}
@@ -229,9 +211,7 @@ def test_get_chromadb_relevant_changes_field_change_immutability() -> None:
     old_entity = _make_metadata(merchant_name="Old")
     new_entity = _make_metadata(merchant_name="New")
 
-    changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", old_entity, new_entity
-    )
+    changes = get_chromadb_relevant_changes("RECEIPT_METADATA", old_entity, new_entity)
 
     field_change = changes["merchant_name"]
     with pytest.raises(dataclasses.FrozenInstanceError):

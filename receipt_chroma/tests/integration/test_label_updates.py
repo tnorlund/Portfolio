@@ -12,14 +12,10 @@ from tests.helpers.factories import create_label_message, create_mock_logger
 class TestLabelUpdates:
     """Test label update processing with real ChromaDB operations."""
 
-    def test_apply_label_updates_modify_event(
-        self, temp_chromadb_dir, mock_logger
-    ):
+    def test_apply_label_updates_modify_event(self, temp_chromadb_dir, mock_logger):
         """Test applying MODIFY label updates to ChromaDB."""
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Add initial data to words collection
         client.upsert(
@@ -84,14 +80,10 @@ class TestLabelUpdates:
 
         client.close()
 
-    def test_apply_label_updates_remove_event(
-        self, temp_chromadb_dir, mock_logger
-    ):
+    def test_apply_label_updates_remove_event(self, temp_chromadb_dir, mock_logger):
         """Test applying REMOVE label updates to ChromaDB."""
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Add initial data with label metadata
         client.upsert(
@@ -152,14 +144,10 @@ class TestLabelUpdates:
 
         client.close()
 
-    def test_apply_label_updates_multiple_words(
-        self, temp_chromadb_dir, mock_logger
-    ):
+    def test_apply_label_updates_multiple_words(self, temp_chromadb_dir, mock_logger):
         """Test applying label updates to multiple words."""
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Add initial data for multiple words
         client.upsert(
@@ -195,9 +183,7 @@ class TestLabelUpdates:
             word_id=1,
             label="TOTAL",
             event_name="MODIFY",
-            changes={
-                "validation_status": FieldChange(old="PENDING", new="VALID")
-            },
+            changes={"validation_status": FieldChange(old="PENDING", new="VALID")},
         )
 
         update_msg_2 = create_label_message(
@@ -207,9 +193,7 @@ class TestLabelUpdates:
             word_id=2,
             label="AMOUNT",
             event_name="MODIFY",
-            changes={
-                "validation_status": FieldChange(old="PENDING", new="VALID")
-            },
+            changes={"validation_status": FieldChange(old="PENDING", new="VALID")},
         )
 
         # Apply label updates
@@ -239,9 +223,7 @@ class TestLabelUpdates:
     ):
         """Test label updates using record snapshot data."""
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Add initial data
         client.upsert(
@@ -288,9 +270,7 @@ class TestLabelUpdates:
     ):
         """Test handling when collection doesn't exist."""
         # Create an empty ChromaDB client
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Create label update message
         update_msg = create_label_message(
@@ -320,9 +300,7 @@ class TestLabelUpdates:
     ):
         """Test error handling when label update fails."""
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Add initial data
         client.upsert(
@@ -364,13 +342,9 @@ class TestLabelUpdates:
 
         client.close()
 
-    def test_apply_label_updates_no_messages(
-        self, temp_chromadb_dir, mock_logger
-    ):
+    def test_apply_label_updates_no_messages(self, temp_chromadb_dir, mock_logger):
         """Test applying label updates with no messages."""
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Create words collection
         client.upsert(
@@ -398,9 +372,7 @@ class TestLabelUpdates:
     ):
         """Test that ChromaDB ID is constructed correctly with zero-padding."""
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Add initial data
         client.upsert(
@@ -431,8 +403,7 @@ class TestLabelUpdates:
         # Verify ChromaDB ID was constructed correctly
         assert len(results) == 1
         assert (
-            results[0].chromadb_id
-            == "IMAGE#img-99#RECEIPT#00123#LINE#00456#WORD#00789"
+            results[0].chromadb_id == "IMAGE#img-99#RECEIPT#00123#LINE#00456#WORD#00789"
         )
 
         client.close()

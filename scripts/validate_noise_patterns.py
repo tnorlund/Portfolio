@@ -209,9 +209,7 @@ SAMPLE_RECEIPTS = {
 }
 
 
-def test_word(
-    word: str, config: NoiseDetectionConfig = None
-) -> Tuple[str, bool, str]:
+def test_word(word: str, config: NoiseDetectionConfig = None) -> Tuple[str, bool, str]:
     """Test a single word and return result with explanation."""
     is_noise = is_noise_text(word, config)
 
@@ -306,9 +304,7 @@ def interactive_mode():
             elif user_input.startswith("receipt "):
                 receipt_type = user_input[8:].lower()
                 if receipt_type in SAMPLE_RECEIPTS:
-                    test_receipt_sample(
-                        receipt_type, SAMPLE_RECEIPTS[receipt_type]
-                    )
+                    test_receipt_sample(receipt_type, SAMPLE_RECEIPTS[receipt_type])
                 else:
                     print(
                         f"Unknown receipt type. Choose from: {', '.join(SAMPLE_RECEIPTS.keys())}"
@@ -358,9 +354,7 @@ def interactive_mode():
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Validate noise detection patterns"
-    )
+    parser = argparse.ArgumentParser(description="Validate noise detection patterns")
     parser.add_argument("--word", help="Test a specific word")
     parser.add_argument("--file", help="Test words from a file (one per line)")
     parser.add_argument(

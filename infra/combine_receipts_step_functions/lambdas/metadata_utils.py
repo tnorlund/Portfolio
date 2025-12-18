@@ -36,11 +36,7 @@ def get_best_receipt_metadata(
     for receipt_id in receipt_ids:
         try:
             metadata = client.get_receipt_metadata(image_id, receipt_id)
-            if (
-                metadata
-                and metadata.merchant_name
-                and metadata.merchant_name.strip()
-            ):
+            if metadata and metadata.merchant_name and metadata.merchant_name.strip():
                 metadatas.append(metadata)
         except Exception as e:  # pylint: disable=broad-except
             logger.error(
@@ -72,9 +68,7 @@ def get_best_receipt_metadata(
             score += 2
         return score
 
-    metadatas.sort(
-        key=lambda m: (score_metadata(m), m.timestamp), reverse=True
-    )
+    metadatas.sort(key=lambda m: (score_metadata(m), m.timestamp), reverse=True)
     return metadatas[0]
 
 

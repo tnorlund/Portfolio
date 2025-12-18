@@ -91,9 +91,7 @@ class TestEdgeDetection:
         assert boundary is not None
         assert "slope" in boundary
         assert "intercept" in boundary
-        assert boundary["slope"] == pytest.approx(
-            1.0
-        )  # 45-degree line has slope 1
+        assert boundary["slope"] == pytest.approx(1.0)  # 45-degree line has slope 1
         assert boundary["intercept"] == pytest.approx(0.0)
 
     @pytest.mark.unit
@@ -223,9 +221,7 @@ class TestHullOperations:
             }
         ]
 
-        result = refine_hull_extremes_with_hull_edge_alignment(
-            hull, (0, 5), (10, 5), 0
-        )
+        result = refine_hull_extremes_with_hull_edge_alignment(hull, (0, 5), (10, 5), 0)
 
         assert "leftSegment" in result
         assert "rightSegment" in result
@@ -309,9 +305,7 @@ class TestGeometryUtils:
         result = theil_sen(points)
 
         # Vertical lines have undefined slope in Theil-Sen
-        assert result["slope"] == pytest.approx(
-            0.0
-        )  # Median of no valid slopes
+        assert result["slope"] == pytest.approx(0.0)  # Median of no valid slopes
 
     @pytest.mark.unit
     def test_theil_sen_negative_slope(self):
@@ -388,6 +382,4 @@ class TestTransformations:
 
         angle = compute_final_receipt_tilt(lines, hull, centroid, 15)
         # The function refines the angle, so it might not be exactly 15
-        assert isinstance(
-            angle, (int, float)
-        )  # Just verify it returns a number
+        assert isinstance(angle, (int, float))  # Just verify it returns a number

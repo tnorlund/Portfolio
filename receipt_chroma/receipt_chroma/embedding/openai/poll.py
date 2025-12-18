@@ -17,9 +17,7 @@ from receipt_dynamo.entities import BatchSummary
 logger = logging.getLogger(__name__)
 
 
-def get_openai_batch_status(
-    openai_batch_id: str, openai_client: OpenAI
-) -> str:
+def get_openai_batch_status(openai_batch_id: str, openai_client: OpenAI) -> str:
     """
     Retrieve the status of an OpenAI embedding batch job.
 
@@ -100,9 +98,7 @@ def download_openai_batch_result(
             logger.error("Failed to parse result line: %s", e)
             continue
 
-    logger.info(
-        "Downloaded %d results from batch %s", len(results), openai_batch_id
-    )
+    logger.info("Downloaded %d results from batch %s", len(results), openai_batch_id)
     return results
 
 

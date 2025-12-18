@@ -153,9 +153,7 @@ class TestEnhancedCompactionIntegration:
         msg = StreamMessage(
             entity_type="RECEIPT_METADATA",
             entity_data={"image_id": test_image_id, "receipt_id": 1},
-            changes={
-                "merchant_name": {"old": "Old Merchant", "new": "New Merchant"}
-            },
+            changes={"merchant_name": {"old": "Old Merchant", "new": "New Merchant"}},
             event_name="MODIFY",
             collections=(ChromaDBCollection.LINES,),
             timestamp=datetime.now().isoformat(),
@@ -241,9 +239,7 @@ class TestEnhancedCompactionIntegration:
         mock_metrics = MagicMock()
 
         # Mock process_collection to avoid actual processing
-        with patch(
-            "enhanced_compaction_handler.process_collection"
-        ) as mock_process:
+        with patch("enhanced_compaction_handler.process_collection") as mock_process:
             mock_process.return_value = {
                 "status": "success",
                 "failed_message_ids": [],
@@ -308,9 +304,7 @@ class TestEnhancedCompactionIntegration:
             "arn:aws:lambda:us-east-1:123456789012:function:test-function"
         )
         context.aws_request_id = "test-request-id"
-        context.get_remaining_time_in_millis.return_value = (
-            900000  # 15 minutes
-        )
+        context.get_remaining_time_in_millis.return_value = 900000  # 15 minutes
 
         # Mock download/upload
         mock_download.return_value = {"status": "success", "version": "v1"}
@@ -450,9 +444,7 @@ class TestEnhancedCompactionIntegration:
         mock_metrics = MagicMock()
 
         # Mock process_collection for both collections
-        with patch(
-            "enhanced_compaction_handler.process_collection"
-        ) as mock_process:
+        with patch("enhanced_compaction_handler.process_collection") as mock_process:
             mock_process.return_value = {
                 "status": "success",
                 "failed_message_ids": [],

@@ -55,11 +55,7 @@ def resolve_batch_info(
     batch_index = event.get("batch_index")
     pending_batches = event.get("pending_batches")
 
-    if (
-        manifest_s3_key
-        and manifest_s3_bucket is not None
-        and batch_index is not None
-    ):
+    if manifest_s3_key and manifest_s3_bucket is not None and batch_index is not None:
         logger.info(
             "Loading batch info from S3 manifest",
             manifest_s3_key=manifest_s3_key,
@@ -72,9 +68,7 @@ def resolve_batch_info(
         os.close(fd)
 
         try:
-            s3_client.download_file(
-                manifest_s3_bucket, manifest_s3_key, tmp_file_path
-            )
+            s3_client.download_file(manifest_s3_bucket, manifest_s3_key, tmp_file_path)
             with open(tmp_file_path, "r", encoding="utf-8") as manifest_file:
                 manifest = json.load(manifest_file)
 
@@ -85,9 +79,7 @@ def resolve_batch_info(
 
             batches = manifest.get("batches", [])
             if not isinstance(batches, list):
-                raise TypeError(
-                    "Invalid manifest format: 'batches' must be a list"
-                )
+                raise TypeError("Invalid manifest format: 'batches' must be a list")
 
             max_idx = len(batches) - 1 if batches else "N/A (empty list)"
             if batch_index < 0 or batch_index >= len(batches):

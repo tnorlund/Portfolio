@@ -76,9 +76,7 @@ class LambdaLayer(ComponentResource):
         description: Optional[str] = None,
         needs_pillow: bool = False,
         sync_mode: Optional[bool] = None,
-        package_extras: Optional[
-            str
-        ] = None,  # e.g., extras for optional dependencies
+        package_extras: Optional[str] = None,  # e.g., extras for optional dependencies
         opts: Optional[pulumi.ResourceOptions] = None,
     ):
         super().__init__(f"lambda-layer:{name}", name, {}, opts)
@@ -93,9 +91,7 @@ class LambdaLayer(ComponentResource):
         else:
             self.python_versions = list(python_versions)
 
-        self.description = (
-            description or f"Automatically built Lambda layer for {name}"
-        )
+        self.description = description or f"Automatically built Lambda layer for {name}"
         self.needs_pillow = needs_pillow
         self.package_extras = package_extras
         self.opts = opts
@@ -123,13 +119,9 @@ class LambdaLayer(ComponentResource):
                 f"🔄 Building layer '{self.name}' in SYNC mode (will wait for completion)"
             )
         else:
-            pulumi.log.info(
-                f"⚡ Layer '{self.name}' in ASYNC mode (fast pulumi up)"
-            )
+            pulumi.log.info(f"⚡ Layer '{self.name}' in ASYNC mode (fast pulumi up)")
             if self.force_rebuild:
-                pulumi.log.info(
-                    "   🔨 Force rebuild enabled - will trigger build"
-                )
+                pulumi.log.info("   🔨 Force rebuild enabled - will trigger build")
             else:
                 pulumi.log.info(
                     f"   📦 Hash: {package_hash[:12]}... - will build only if changed"
@@ -142,9 +134,7 @@ class LambdaLayer(ComponentResource):
         package_path = os.path.join(PROJECT_DIR, self.package_dir)
 
         if not os.path.exists(package_path):
-            raise ValueError(
-                f"Package directory {package_path} does not exist"
-            )
+            raise ValueError(f"Package directory {package_path} does not exist")
 
         required_files = ["pyproject.toml"]
         missing_files = [
@@ -158,9 +148,7 @@ class LambdaLayer(ComponentResource):
                 f"{', '.join(missing_files)}"
             )
 
-        python_files = glob.glob(
-            os.path.join(package_path, "**/*.py"), recursive=True
-        )
+        python_files = glob.glob(os.path.join(package_path, "**/*.py"), recursive=True)
         if not python_files:
             raise ValueError(
                 f"Package directory {package_path} contains no Python files"
@@ -424,9 +412,7 @@ echo "🎉 Parallel function updates completed!"'''
         """Set up the fast build process with CodePipeline and per-version CodeBuild projects."""
 
         # Create S3 bucket for artifacts - let Pulumi auto-generate unique name
-        build_bucket, _bucket_versioning = make_artifact_bucket(
-            self.name, parent=self
-        )
+        build_bucket, _bucket_versioning = make_artifact_bucket(self.name, parent=self)
 
         # Upload source command (runs on create and update, triggers on package_hash)
         upload_cmd = command.local.Command(
@@ -457,16 +443,12 @@ echo "🎉 Parallel function updates completed!"'''
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codebuild.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         },
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codepipeline.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codepipeline.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         },
                     ],
@@ -583,9 +565,7 @@ echo "🎉 Parallel function updates completed!"'''
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codepipeline.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codepipeline.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -646,9 +626,7 @@ echo "🎉 Parallel function updates completed!"'''
         RolePolicy(
             f"{self.name}-pipeline-codebuild-policy",
             role=pipeline_role.id,
-            policy=Output.all(
-                config.region, get_caller_identity().account_id
-            ).apply(
+            policy=Output.all(config.region, get_caller_identity().account_id).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -759,9 +737,7 @@ echo "🎉 Parallel function updates completed!"'''
             )
             commands.append("rm -rf merged/python && mkdir -p merged/python")
             for idx, v in enumerate(self.python_versions):
-                commands.append(
-                    f'echo "Merging flattened artifacts for Python {v}..."'
-                )
+                commands.append(f'echo "Merging flattened artifacts for Python {v}..."')
                 if idx == 0:
                     # Primary artifact in root workspace - already flattened to python/*
                     commands.append("cp -r python/* merged/python/")
@@ -799,9 +775,7 @@ echo "🎉 Parallel function updates completed!"'''
                 "[ \"$ZIP_SIZE\" -gt 0 ] || { echo 'ERROR: layer.zip is empty'; exit 1; }"
             )
             # Check if zip size exceeds Lambda limits
-            commands.append(
-                "MAX_SIZE=$((250 * 1024 * 1024))  # 250MB in bytes"
-            )
+            commands.append("MAX_SIZE=$((250 * 1024 * 1024))  # 250MB in bytes")
             commands.append(
                 'if [ "$ZIP_SIZE" -gt "$MAX_SIZE" ]; then '
                 'echo "WARNING: Layer size exceeds Lambda limit (250MB)"; '
@@ -813,9 +787,7 @@ echo "🎉 Parallel function updates completed!"'''
                 "aws s3 cp layer.zip s3://$BUCKET_NAME/${PACKAGE_NAME}/combined/layer.zip"
             )
             # Step 4: Publish the merged layer from S3
-            commands.append(
-                'echo "Publishing merged layer from S3 to Lambda..."'
-            )
+            commands.append('echo "Publishing merged layer from S3 to Lambda..."')
             commands.append(
                 "NEW_LAYER_ARN=$(aws lambda publish-layer-version "
                 '--layer-name "$LAYER_NAME" '
@@ -956,8 +928,7 @@ echo "🎉 Parallel function updates completed!"'''
                             provider="CodeBuild",
                             version="1",
                             input_artifacts=[
-                                f"py{v.replace('.', '')}"
-                                for v in self.python_versions
+                                f"py{v.replace('.', '')}" for v in self.python_versions
                             ],
                             run_order=1,
                             configuration={
@@ -971,9 +942,7 @@ echo "🎉 Parallel function updates completed!"'''
             opts=pulumi.ResourceOptions(
                 parent=self,
                 depends_on=(
-                    [_bucket_versioning]
-                    if _bucket_versioning is not None
-                    else None
+                    [_bucket_versioning] if _bucket_versioning is not None else None
                 ),
             ),
         )
@@ -1265,9 +1234,7 @@ echo "build/$BUILD_ID"
 echo "⚡ Continuing with fast pulumi up (not waiting for completion)"
 """
 
-    def _generate_initial_build_script(
-        self, bucket: str, project_name: str
-    ) -> str:
+    def _generate_initial_build_script(self, bucket: str, project_name: str) -> str:
         """Generate script to ensure initial layer exists."""
         return f"""#!/bin/bash
 set -e

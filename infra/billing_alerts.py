@@ -27,9 +27,7 @@ class BillingAlerts(ComponentResource):
             tags: Additional tags to apply to resources
             opts: Pulumi resource options
         """
-        super().__init__(
-            "custom:infrastructure:BillingAlerts", name, None, opts
-        )
+        super().__init__("custom:infrastructure:BillingAlerts", name, None, opts)
 
         self.name = name
         self.sns_topic_arn = sns_topic_arn

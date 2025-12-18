@@ -78,9 +78,7 @@ class BaseTool(ABC):
                     )
                     raise
 
-        raise RuntimeError(
-            f"Unexpected error in tool {self.name}"
-        ) from last_error
+        raise RuntimeError(f"Unexpected error in tool {self.name}") from last_error
 
 
 def create_tool_with_retry(
@@ -122,6 +120,3 @@ def create_tool_with_retry(
         ) from last_error
 
     return wrapped
-
-
-

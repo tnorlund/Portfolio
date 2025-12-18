@@ -173,8 +173,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
             f"{name}-lambda-basic-exec",
             role=lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/"
-                "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
@@ -237,9 +236,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
 
         # S3 access policy (batch bucket + ChromaDB bucket if provided)
         if chromadb_bucket_arn:
-            s3_policy = Output.all(
-                self.batch_bucket.arn, chromadb_bucket_arn
-            ).apply(
+            s3_policy = Output.all(self.batch_bucket.arn, chromadb_bucket_arn).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -371,9 +368,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get(
-                    "langchain_project"
-                )
+                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get("langchain_project")
                 or "metadata-harmonizer",
             },
         }
@@ -771,9 +766,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
                                         "BackoffRate": 2.0,
                                     },
                                     {
-                                        "ErrorEquals": [
-                                            "OllamaRateLimitError"
-                                        ],
+                                        "ErrorEquals": ["OllamaRateLimitError"],
                                         "IntervalSeconds": 30,
                                         "MaxAttempts": 5,
                                         "BackoffRate": 1.5,

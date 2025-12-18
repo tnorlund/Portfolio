@@ -100,9 +100,7 @@ def flush_langsmith_traces():
                     error_str[:200],  # Truncate long error messages
                 )
             else:
-                logger.warning(
-                    "Failed to flush LangSmith traces: %s", error_str
-                )
+                logger.warning("Failed to flush LangSmith traces: %s", error_str)
 
 
 s3 = boto3.client("s3")
@@ -181,9 +179,7 @@ async def process_place_id_batch(
             base_place_ids.add(place_id_input)
 
     # Load only receipts for the place_ids in this batch (much more efficient)
-    total_receipts = harmonizer.load_receipts_for_place_ids(
-        list(base_place_ids)
-    )
+    total_receipts = harmonizer.load_receipts_for_place_ids(list(base_place_ids))
     logger.info(
         f"Loaded {total_receipts} receipts from DynamoDB for {len(base_place_ids)} place_id(s)"
     )
@@ -293,9 +289,7 @@ async def process_place_id_batch(
                 groups_to_process.append(group)
 
     if not groups_to_process:
-        logger.info(
-            f"No groups found to process for {len(place_ids)} place_ids"
-        )
+        logger.info(f"No groups found to process for {len(place_ids)} place_ids")
         return {
             "status": "skipped",
             "place_ids": place_ids,
@@ -381,9 +375,7 @@ async def process_place_id_batch(
             # Track successful call
             llm_calls_successful += estimated_llm_calls
 
-            receipts_needing_update = agent_result.get(
-                "receipts_needing_update", 0
-            )
+            receipts_needing_update = agent_result.get("receipts_needing_update", 0)
             receipts_updated += receipts_needing_update
 
             # Store full agent result (including updates) for later use
@@ -408,9 +400,7 @@ async def process_place_id_batch(
 
         except Exception as e:
             error_str = str(e)
-            logger.exception(
-                f"Error processing place_id {group.place_id}: {e}"
-            )
+            logger.exception(f"Error processing place_id {group.place_id}: {e}")
 
             # Track failed LLM call
             llm_calls_failed += 1
@@ -433,10 +423,7 @@ async def process_place_id_batch(
                 server_errors += 1
 
             # Track timeout errors
-            if (
-                "timeout" in error_str.lower()
-                or "timed out" in error_str.lower()
-            ):
+            if "timeout" in error_str.lower() or "timed out" in error_str.lower():
                 timeout_errors += 1
 
             results.append(
@@ -456,9 +443,7 @@ async def process_place_id_batch(
 
         # Apply updates directly from agent results
         for result in results:
-            if result.get("error") or not result.get(
-                "receipts_needing_update"
-            ):
+            if result.get("error") or not result.get("receipts_needing_update"):
                 continue
 
             canonical_merchant_name = result.get("canonical_merchant_name")
@@ -503,9 +488,7 @@ async def process_place_id_batch(
                             and metadata.canonical_merchant_name
                             != canonical_merchant_name
                         ):
-                            metadata.canonical_merchant_name = (
-                                canonical_merchant_name
-                            )
+                            metadata.canonical_merchant_name = canonical_merchant_name
                             updated_fields.append("canonical_merchant_name")
 
                         sanitized_address = sanitize_canonical_address(
@@ -520,8 +503,7 @@ async def process_place_id_batch(
 
                         if (
                             canonical_phone
-                            and metadata.canonical_phone_number
-                            != canonical_phone
+                            and metadata.canonical_phone_number != canonical_phone
                         ):
                             metadata.canonical_phone_number = canonical_phone
                             updated_fields.append("canonical_phone_number")
@@ -535,9 +517,7 @@ async def process_place_id_batch(
                             )
 
                     except Exception as e:
-                        logger.error(
-                            f"Failed to update {image_id}#{receipt_id}: {e}"
-                        )
+                        logger.error(f"Failed to update {image_id}#{receipt_id}: {e}")
                         updates_failed += 1
             else:
                 # Fallback: apply to all receipts in the group
@@ -570,8 +550,7 @@ async def process_place_id_batch(
                         updated_fields = []
                         if (
                             canonical_merchant_name
-                            and metadata.merchant_name
-                            != canonical_merchant_name
+                            and metadata.merchant_name != canonical_merchant_name
                         ):
                             metadata.merchant_name = canonical_merchant_name
                             updated_fields.append("merchant_name")
@@ -579,17 +558,11 @@ async def process_place_id_batch(
                         sanitized_address = sanitize_canonical_address(
                             canonical_address, metadata.address
                         )
-                        if (
-                            sanitized_address
-                            and metadata.address != sanitized_address
-                        ):
+                        if sanitized_address and metadata.address != sanitized_address:
                             metadata.address = sanitized_address
                             updated_fields.append("address")
 
-                        if (
-                            canonical_phone
-                            and metadata.phone_number != canonical_phone
-                        ):
+                        if canonical_phone and metadata.phone_number != canonical_phone:
                             metadata.phone_number = canonical_phone
                             updated_fields.append("phone_number")
 
@@ -607,9 +580,7 @@ async def process_place_id_batch(
                         )
                         updates_failed += 1
 
-        logger.info(
-            f"Applied {updates_applied} updates, {updates_failed} failed"
-        )
+        logger.info(f"Applied {updates_applied} updates, {updates_failed} failed")
     else:
         logger.info(f"[DRY RUN] Would apply {receipts_updated} updates")
 
@@ -638,9 +609,7 @@ async def process_place_id_batch(
                 "place_ids": place_ids,
                 "groups_processed": len(groups_to_process),
                 "total_receipts": total_receipts_in_batch,
-                "receipts_updated": (
-                    receipts_updated if dry_run else updates_applied
-                ),
+                "receipts_updated": (receipts_updated if dry_run else updates_applied),
                 "receipts_failed": updates_failed if not dry_run else 0,
                 "dry_run": dry_run,
                 "results": cleaned_results,
@@ -649,9 +618,7 @@ async def process_place_id_batch(
             s3.put_object(
                 Bucket=batch_bucket,
                 Key=results_key,
-                Body=json.dumps(results_data, indent=2, default=str).encode(
-                    "utf-8"
-                ),
+                Body=json.dumps(results_data, indent=2, default=str).encode("utf-8"),
                 ContentType="application/json",
             )
 
@@ -673,9 +640,7 @@ async def process_place_id_batch(
         "results_summary": {
             "total_groups": len(cleaned_results),
             "groups_with_updates": sum(
-                1
-                for r in cleaned_results
-                if r.get("receipts_needing_update", 0) > 0
+                1 for r in cleaned_results if r.get("receipts_needing_update", 0) > 0
             ),
         },
         # API usage metrics (matching label-validation-agent)
@@ -723,9 +688,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
     place_ids = event.get("place_ids", [])
     dry_run = event.get("dry_run", True)
-    batch_bucket = event.get("batch_bucket") or os.environ.get(
-        "BATCH_BUCKET", ""
-    )
+    batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET", "")
     max_receipts_per_batch = event.get("max_receipts_per_batch", 20)
 
     logger.info(
@@ -744,9 +707,9 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         }
 
     # Create clients
-    table_name = os.environ.get(
-        "RECEIPT_AGENT_DYNAMO_TABLE_NAME"
-    ) or os.environ.get("DYNAMODB_TABLE_NAME")
+    table_name = os.environ.get("RECEIPT_AGENT_DYNAMO_TABLE_NAME") or os.environ.get(
+        "DYNAMODB_TABLE_NAME"
+    )
     if not table_name:
         raise ValueError(_MISSING_TABLE_NAME_ERROR)
 
@@ -768,9 +731,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 "receipt_places not available, skipping Google Places validation"
             )
     else:
-        logger.info(
-            "GOOGLE_PLACES_API_KEY not set, skipping Google Places validation"
-        )
+        logger.info("GOOGLE_PLACES_API_KEY not set, skipping Google Places validation")
 
     # Process batch
     try:
@@ -808,9 +769,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 "BatchFailed": 0,
                 # API usage metrics (matching label-validation-agent)
                 "LLMCallsTotal": api_metrics.get("llm_calls_total", 0),
-                "LLMCallsSuccessful": api_metrics.get(
-                    "llm_calls_successful", 0
-                ),
+                "LLMCallsSuccessful": api_metrics.get("llm_calls_successful", 0),
                 "LLMCallsFailed": api_metrics.get("llm_calls_failed", 0),
                 "RateLimitErrors": api_metrics.get("rate_limit_errors", 0),
                 "ServerErrors": api_metrics.get("server_errors", 0),

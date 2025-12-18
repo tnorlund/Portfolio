@@ -192,15 +192,11 @@ def load_image(image_entity, raw_bucket: Optional[str]) -> PIL_Image.Image:
         if img:
             print(f"✅ Loaded image from raw bucket: {raw_key}")
     if img is None and image_entity.cdn_s3_bucket and image_entity.cdn_s3_key:
-        img = get_image_from_s3(
-            image_entity.cdn_s3_bucket, image_entity.cdn_s3_key
-        )
+        img = get_image_from_s3(image_entity.cdn_s3_bucket, image_entity.cdn_s3_key)
         if img:
             print("✅ Loaded image from CDN")
     if img is None:
-        img = PIL_Image.new(
-            "RGB", (image_entity.width, image_entity.height), "white"
-        )
+        img = PIL_Image.new("RGB", (image_entity.width, image_entity.height), "white")
         print("⚠️  Using blank white image fallback")
     return img
 
@@ -255,9 +251,7 @@ def draw_cluster_overlay(
         img = base_image.copy()
         draw = ImageDraw.Draw(img)
         draw.polygon(bounds["box_4_ordered"], outline=color, width=4)
-        draw.text(
-            (cx + 4, cy + 4), f"cluster {cluster_id}", fill=color, font=font
-        )
+        draw.text((cx + 4, cy + 4), f"cluster {cluster_id}", fill=color, font=font)
         # optional: also draw individual line polygons
         for line in lines:
             corners_img = get_line_corners_image_coords(line, img_w, img_h)
@@ -311,9 +305,7 @@ def main():
     print(f"Clusters: { {k: len(v) for k, v in cluster_dict.items()} }")
 
     base_image = load_image(image_entity, args.raw_bucket)
-    draw_cluster_overlay(
-        base_image, cluster_dict, output_dir, prefix=args.image_id
-    )
+    draw_cluster_overlay(base_image, cluster_dict, output_dir, prefix=args.image_id)
 
     summary_path = output_dir / f"{args.image_id}_clusters.json"
     with open(summary_path, "w", encoding="utf-8") as f:

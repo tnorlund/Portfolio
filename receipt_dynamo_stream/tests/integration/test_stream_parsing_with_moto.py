@@ -97,9 +97,7 @@ def test_parse_stream_record_for_metadata_insert_and_modify(
     dynamodb.put_item(TableName=table_name, Item=metadata.to_item())
 
     records = _get_stream_records(dynamodb, streams, table_name)
-    insert_record = next(
-        rec for rec in records if rec["eventName"] == "INSERT"
-    )
+    insert_record = next(rec for rec in records if rec["eventName"] == "INSERT")
 
     parsed_insert = parse_stream_record(insert_record)
     assert parsed_insert is not None
@@ -118,9 +116,7 @@ def test_parse_stream_record_for_metadata_insert_and_modify(
     )
 
     updated_records = _get_stream_records(dynamodb, streams, table_name)
-    modify_record = next(
-        rec for rec in updated_records if rec["eventName"] == "MODIFY"
-    )
+    modify_record = next(rec for rec in updated_records if rec["eventName"] == "MODIFY")
 
     parsed_modify = parse_stream_record(modify_record)
     assert parsed_modify is not None
@@ -151,9 +147,7 @@ def test_parse_word_label_remove_event(
     )
 
     records = _get_stream_records(dynamodb, streams, table_name)
-    remove_record = next(
-        rec for rec in records if rec["eventName"] == "REMOVE"
-    )
+    remove_record = next(rec for rec in records if rec["eventName"] == "REMOVE")
 
     parsed = parse_stream_record(remove_record)
     assert parsed is not None

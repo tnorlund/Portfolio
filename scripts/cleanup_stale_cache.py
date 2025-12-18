@@ -36,9 +36,7 @@ def main():
 
     if items:
         print("\nThis will delete ALL existing cache entries.")
-        print(
-            "The cache updater Lambda will repopulate them with correct TTL values."
-        )
+        print("The cache updater Lambda will repopulate them with correct TTL values.")
 
         if "--force" not in sys.argv:
             print("\nTo proceed, run with --force flag:")
@@ -65,17 +63,13 @@ def main():
             print(f"Error deleting item {sk}: {e}")
 
     print(f"\nSuccessfully deleted {deleted_count} stale cache entries.")
-    print(
-        "The cache updater Lambda will repopulate the cache within 5 minutes."
-    )
+    print("The cache updater Lambda will repopulate the cache within 5 minutes.")
     print("\nNext steps:")
     print("1. Wait ~5 minutes for the cache updater Lambda to run")
     print(
         "2. Run debug_label_cache_simple.py again to verify new entries use 'TimeToLive'"
     )
-    print(
-        "3. Test the API to confirm it's using cached values (should be fast)"
-    )
+    print("3. Test the API to confirm it's using cached values (should be fast)")
 
 
 if __name__ == "__main__":

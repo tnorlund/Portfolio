@@ -145,9 +145,7 @@ def fix_method_names_in_file(file_path):
 
 def main():
     # Get all test files in the integration directory
-    test_dir = Path(
-        "/Users/tnorlund/GitHub/issue-121/receipt_dynamo/tests/integration"
-    )
+    test_dir = Path("/Users/tnorlund/GitHub/issue-121/receipt_dynamo/tests/integration")
     test_files = list(test_dir.glob("test_*.py"))
 
     fixed_count = 0
@@ -155,9 +153,7 @@ def main():
         if fix_method_names_in_file(test_file):
             fixed_count += 1
 
-    print(
-        f"\nFixed {fixed_count} files out of {len(test_files)} total test files."
-    )
+    print(f"\nFixed {fixed_count} files out of {len(test_files)} total test files.")
 
 
 if __name__ == "__main__":

@@ -17,9 +17,7 @@ def lambda_handler(event, _context):
             body = resp.read().decode("utf-8", errors="ignore")
             return {
                 "statusCode": resp.status,
-                "body": json.dumps(
-                    {"ok": True, "payload": body, "input": event}
-                ),
+                "body": json.dumps({"ok": True, "payload": body, "input": event}),
             }
     except Exception as e:
         return {

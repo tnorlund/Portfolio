@@ -31,9 +31,7 @@ def test_layoutlm_inference_predict_receipt_from_dynamo():
     table_name = outputs.get("dynamodb_table_name")
     bucket_name = outputs.get("layoutlm_training_bucket")
     if not table_name or not bucket_name:
-        pytest.skip(
-            "Required Pulumi outputs missing (table or training bucket)"
-        )
+        pytest.skip("Required Pulumi outputs missing (table or training bucket)")
 
     dynamo = DynamoClient(table_name)
 
@@ -54,9 +52,7 @@ def test_layoutlm_inference_predict_receipt_from_dynamo():
 
     model_s3_uri: Optional[str] = None
     if boto3 and run_root_prefix:
-        s3 = boto3.client(
-            "s3", region_name=outputs.get("aws_region", "us-east-1")
-        )
+        s3 = boto3.client("s3", region_name=outputs.get("aws_region", "us-east-1"))
         # Prefer best/ if present
         try:
             s3.head_object(
@@ -66,22 +62,17 @@ def test_layoutlm_inference_predict_receipt_from_dynamo():
             model_s3_uri = f"s3://{bucket_for_job}/{run_root_prefix}best/"
         except Exception:
             # Fallback: pick latest checkpoint containing model.safetensors
-            resp = s3.list_objects_v2(
-                Bucket=bucket_for_job, Prefix=run_root_prefix
-            )
+            resp = s3.list_objects_v2(Bucket=bucket_for_job, Prefix=run_root_prefix)
             contents = resp.get("Contents", []) or []
             cands = [
                 o
                 for o in contents
-                if o["Key"].endswith("model.safetensors")
-                and "checkpoint-" in o["Key"]
+                if o["Key"].endswith("model.safetensors") and "checkpoint-" in o["Key"]
             ]
             if cands:
                 latest = max(cands, key=lambda o: o["LastModified"])  # type: ignore
                 model_s3_uri = (
-                    f"s3://{bucket_for_job}/"
-                    + latest["Key"].rsplit("/", 1)[0]
-                    + "/"
+                    f"s3://{bucket_for_job}/" + latest["Key"].rsplit("/", 1)[0] + "/"
                 )
 
     infer = LayoutLMInference(
@@ -127,9 +118,7 @@ def test_layoutlm_inference_predict_receipt_from_dynamo():
     assert result.meta.get("model_dir")
 
     # Compare predictions to ground-truth labels when available
-    details = dynamo.get_receipt_details(
-        image_id=image_id, receipt_id=receipt_id
-    )
+    details = dynamo.get_receipt_details(image_id=image_id, receipt_id=receipt_id)
 
     # Build label lookup by (line_id, word_id) -> label
     label_by_word: Dict[Tuple[int, int], str] = {}
@@ -151,12 +140,7 @@ def test_layoutlm_inference_predict_receipt_from_dynamo():
     matches = 0
     for lp in result.lines:
         # Basic shape checks
-        assert (
-            len(lp.tokens)
-            == len(lp.boxes)
-            == len(lp.labels)
-            == len(lp.confidences)
-        )
+        assert len(lp.tokens) == len(lp.boxes) == len(lp.labels) == len(lp.confidences)
         for c in lp.confidences:
             assert 0.0 <= c <= 1.0
         ordered_words = words_by_line.get(lp.line_id, [])

@@ -31,9 +31,7 @@ def handler(event, _):
         last_evaluated_key = None
         if "lastEvaluatedKey" in query_params:
             try:
-                last_evaluated_key = json.loads(
-                    query_params["lastEvaluatedKey"]
-                )
+                last_evaluated_key = json.loads(query_params["lastEvaluatedKey"])
             except json.JSONDecodeError:
                 logger.error("Error decoding lastEvaluatedKey; ignoring it.")
                 last_evaluated_key = None
@@ -71,8 +69,7 @@ def handler(event, _):
                 limit=photo_limit,
                 last_evaluated_key=(
                     last_evaluated_key.get("photo")
-                    if last_evaluated_key
-                    and isinstance(last_evaluated_key, dict)
+                    if last_evaluated_key and isinstance(last_evaluated_key, dict)
                     else None
                 ),
             )
@@ -83,8 +80,7 @@ def handler(event, _):
                 limit=scan_limit,
                 last_evaluated_key=(
                     last_evaluated_key.get("scan")
-                    if last_evaluated_key
-                    and isinstance(last_evaluated_key, dict)
+                    if last_evaluated_key and isinstance(last_evaluated_key, dict)
                     else None
                 ),
             )

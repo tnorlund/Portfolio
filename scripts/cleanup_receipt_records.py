@@ -47,9 +47,7 @@ def delete_receipt_and_children(
     lines = client.list_receipt_lines_from_receipt(image_id, receipt_id) or []
     words = client.list_receipt_words_from_receipt(image_id, receipt_id) or []
     try:
-        labels, _ = client.list_receipt_word_labels_for_receipt(
-            image_id, receipt_id
-        )
+        labels, _ = client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
     except Exception:
         labels = []
     try:

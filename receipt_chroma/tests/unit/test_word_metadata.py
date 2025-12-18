@@ -106,20 +106,14 @@ class TestCreateWordMetadata:
     def test_metadata_with_label_status(self):
         """Test metadata with label status."""
         word = MockReceiptWord("img1", "rec1", "line1", "word1", "hello")
-        metadata = create_word_metadata(
-            word, "left", "right", label_status="validated"
-        )
+        metadata = create_word_metadata(word, "left", "right", label_status="validated")
         assert metadata["label_status"] == "validated"
 
     def test_metadata_coordinates(self):
         """Test metadata includes coordinates."""
-        word = MockReceiptWord(
-            "img1", "rec1", "line1", "word1", "hello", x=0.1, y=0.2
-        )
+        word = MockReceiptWord("img1", "rec1", "line1", "word1", "hello", x=0.1, y=0.2)
         metadata = create_word_metadata(word, "left", "right")
-        assert (
-            abs(metadata["x"] - 0.15) < 0.001
-        )  # x + width/2 (allow float precision)
+        assert abs(metadata["x"] - 0.15) < 0.001  # x + width/2 (allow float precision)
         assert (
             abs(metadata["y"] - 0.225) < 0.001
         )  # y + height/2 (allow float precision)
@@ -210,9 +204,7 @@ class TestEnrichWordMetadataWithAnchors:
 
     def test_enrich_with_phone_anchor_single(self):
         """Test enriching with phone anchor (single word)."""
-        word = MockReceiptWord(
-            "img1", "rec1", "line1", "word1", "123-456-7890"
-        )
+        word = MockReceiptWord("img1", "rec1", "line1", "word1", "123-456-7890")
         word.extracted_data = {"type": "phone", "value": "123-456-7890"}
         metadata = {"text": "hello"}
         enriched = enrich_word_metadata_with_anchors(metadata, word)

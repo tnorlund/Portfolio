@@ -16,9 +16,7 @@ from typing import Any, Dict, Optional
 from receipt_dynamo import DynamoClient
 
 
-def monitor_active_training(
-    table_name: str, output_file: str = None
-) -> Dict[str, Any]:
+def monitor_active_training(table_name: str, output_file: str = None) -> Dict[str, Any]:
     """Get status of currently running training job.
 
     Args:
@@ -42,9 +40,7 @@ def monitor_active_training(
         metrics = dynamo.list_job_metrics(job.job_id)
         logs = dynamo.list_job_logs(job.job_id, limit=20)
 
-        latest_metric = (
-            max(metrics, key=lambda m: m.epoch or 0) if metrics else None
-        )
+        latest_metric = max(metrics, key=lambda m: m.epoch or 0) if metrics else None
 
         # Extract key hyperparameters
         config = job.job_config or {}
@@ -62,9 +58,7 @@ def monitor_active_training(
         # Calculate training progress
         total_epochs = hyperparams.get("epochs", 0)
         current_epoch = latest_metric.epoch if latest_metric else 0
-        progress_pct = (
-            (current_epoch / total_epochs * 100) if total_epochs > 0 else 0.0
-        )
+        progress_pct = (current_epoch / total_epochs * 100) if total_epochs > 0 else 0.0
 
         # Analyze F1 trend
         epoch_metrics = sorted(metrics, key=lambda m: m.epoch or 0)
@@ -93,9 +87,7 @@ def monitor_active_training(
             "latest_metrics": {
                 "epoch": latest_metric.epoch if latest_metric else None,
                 "f1": latest_metric.value if latest_metric else None,
-                "timestamp": (
-                    latest_metric.timestamp if latest_metric else None
-                ),
+                "timestamp": (latest_metric.timestamp if latest_metric else None),
             },
             "f1_trend": f1_trend,
             "all_epochs": [

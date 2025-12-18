@@ -57,14 +57,10 @@ def _process_single(payload: Dict[str, Any]):
     dynamo = DynamoClient(dynamo_table)
     lines = dynamo.list_receipt_lines_from_receipt(image_id, receipt_id)
     words = dynamo.list_receipt_words_from_receipt(image_id, receipt_id)
-    word_labels, _ = dynamo.list_receipt_word_labels_for_receipt(
-        image_id, receipt_id
-    )
+    word_labels, _ = dynamo.list_receipt_word_labels_for_receipt(image_id, receipt_id)
 
     # Common embedding configuration
-    embedding_model = os.environ.get(
-        "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
-    )
+    embedding_model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     api_key = os.environ.get("OPENAI_API_KEY")
 
     line_embeddings = embed_texts(
@@ -77,9 +73,7 @@ def _process_single(payload: Dict[str, Any]):
         LineEmbeddingRecord(line=ln, embedding=emb)
         for ln, emb in zip(lines, line_embeddings)
     ]
-    line_payload = build_line_payload(
-        line_records, lines, words, merchant_name=None
-    )
+    line_payload = build_line_payload(line_records, lines, words, merchant_name=None)
 
     word_embeddings = embed_texts(
         client=None,

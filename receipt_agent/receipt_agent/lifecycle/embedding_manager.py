@@ -82,13 +82,9 @@ def create_embeddings_and_compaction_run(
 
     # Fetch data from DynamoDB if not provided
     if receipt_lines is None:
-        receipt_lines = client.list_receipt_lines_from_receipt(
-            image_id, receipt_id
-        )
+        receipt_lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
     if receipt_words is None:
-        receipt_words = client.list_receipt_words_from_receipt(
-            image_id, receipt_id
-        )
+        receipt_words = client.list_receipt_words_from_receipt(image_id, receipt_id)
     if receipt_word_labels is None:
         receipt_word_labels, _ = client.list_receipt_word_labels_for_receipt(
             image_id, receipt_id

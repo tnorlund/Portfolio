@@ -159,9 +159,7 @@ class ChromaClient:
             self._embedding_function = None
         elif metadata_only:
             # embedding_functions is always available (imported module)
-            self._embedding_function = (
-                embedding_functions.DefaultEmbeddingFunction()
-            )
+            self._embedding_function = embedding_functions.DefaultEmbeddingFunction()
         else:
             # embedding_functions is always available (imported module)
             api_key = (
@@ -169,11 +167,9 @@ class ChromaClient:
                 or os.environ.get("CHROMA_OPENAI_API_KEY")
                 or "placeholder"
             )
-            self._embedding_function = (
-                embedding_functions.OpenAIEmbeddingFunction(
-                    api_key=api_key,
-                    model_name="text-embedding-3-small",
-                )
+            self._embedding_function = embedding_functions.OpenAIEmbeddingFunction(
+                api_key=api_key,
+                model_name="text-embedding-3-small",
             )
 
         # Create persist directory if needed (lines 145-156)
@@ -219,9 +215,7 @@ class ChromaClient:
                     http_kwargs["port"] = port
 
                 self._client = chromadb.HttpClient(**http_kwargs)
-                logger.debug(
-                    "Created HTTP ChromaDB client for %s", self._http_url
-                )
+                logger.debug("Created HTTP ChromaDB client for %s", self._http_url)
 
             elif self.use_persistent_client and self.persist_directory:
                 # Ensure directory exists
@@ -328,14 +322,10 @@ class ChromaClient:
                     if hasattr(internal_client, "close"):
                         try:
                             internal_client.close()
-                        except (
-                            Exception
-                        ) as e:  # pylint: disable=broad-exception-caught
+                        except Exception as e:  # pylint: disable=broad-exception-caught
                             # Catch all exceptions during cleanup to ensure
                             # we don't fail silently
-                            logger.debug(
-                                "Error closing internal client: %s", e
-                            )
+                            logger.debug("Error closing internal client: %s", e)
 
                 # Clear the client reference
                 self._client = None
@@ -355,9 +345,7 @@ class ChromaClient:
             # uploading to S3
             # Issue #5868: SQLite files can remain locked even after client
             # is "closed"
-            time.sleep(
-                0.5
-            )  # Increased from 0.1s to 0.5s for more reliable unlocking
+            time.sleep(0.5)  # Increased from 0.1s to 0.5s for more reliable unlocking
 
             self._closed = True
             logger.debug("ChromaDB client closed successfully")
@@ -365,9 +353,7 @@ class ChromaClient:
         except Exception as e:  # pylint: disable=broad-exception-caught
             # Catch all exceptions during cleanup to ensure client is
             # marked as closed even if cleanup fails
-            logger.warning(
-                "Error closing ChromaDB client (non-critical): %s", e
-            )
+            logger.warning("Error closing ChromaDB client (non-critical): %s", e)
             # Mark as closed even if there was an error
             self._closed = True
 
@@ -395,18 +381,12 @@ class ChromaClient:
             try:
                 # Try to get existing collection
                 if self.mode == "read":
-                    self._collections[name] = self.client.get_collection(
-                        name=name
-                    )
+                    self._collections[name] = self.client.get_collection(name=name)
                 else:
                     get_args: Dict[str, Any] = {"name": name}
                     if self._embedding_function:
-                        get_args["embedding_function"] = (
-                            self._embedding_function
-                        )
-                    self._collections[name] = self.client.get_collection(
-                        **get_args
-                    )
+                        get_args["embedding_function"] = self._embedding_function
+                    self._collections[name] = self.client.get_collection(**get_args)
 
                 logger.debug("Retrieved existing collection: %s", name)
 
@@ -415,13 +395,10 @@ class ChromaClient:
                     # Create new collection
                     create_args = {
                         "name": name,
-                        "metadata": metadata
-                        or {"description": f"Collection: {name}"},
+                        "metadata": metadata or {"description": f"Collection: {name}"},
                     }
                     if self._embedding_function:
-                        create_args["embedding_function"] = (
-                            self._embedding_function
-                        )
+                        create_args["embedding_function"] = self._embedding_function
 
                     self._collections[name] = self.client.create_collection(
                         **create_args
@@ -460,9 +437,7 @@ class ChromaClient:
             metadatas: Optional list of metadata dictionaries
         """
         self._assert_writeable()
-        collection = self.get_collection(
-            collection_name, create_if_missing=True
-        )
+        collection = self.get_collection(collection_name, create_if_missing=True)
 
         upsert_args: Dict[str, Any] = {"ids": ids}
         if embeddings is not None:
@@ -526,9 +501,7 @@ class ChromaClient:
                 )
             query_args["query_texts"] = query_texts
         else:
-            raise ValueError(
-                "Either query_embeddings or query_texts must be provided"
-            )
+            raise ValueError("Either query_embeddings or query_texts must be provided")
 
         result = collection.query(**query_args)
         return result  # type: ignore[no-any-return]
@@ -577,9 +550,7 @@ class ChromaClient:
 
         if ids is not None:
             collection.delete(ids=ids)
-            logger.debug(
-                "Deleted %d items from %s by IDs", len(ids), collection_name
-            )
+            logger.debug("Deleted %d items from %s by IDs", len(ids), collection_name)
         elif where is not None:
             collection.delete(where=where)
             logger.debug("Deleted items from %s by filter", collection_name)
@@ -663,9 +634,7 @@ class ChromaClient:
             RuntimeError: If not in delta mode or no files to upload
         """
         if self.mode != "delta":
-            raise RuntimeError(
-                "persist_and_upload_delta requires mode='delta'"
-            )
+            raise RuntimeError("persist_and_upload_delta requires mode='delta'")
 
         if not self.persist_directory:
             raise RuntimeError("persist_directory required for delta uploads")

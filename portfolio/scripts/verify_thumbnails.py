@@ -21,12 +21,15 @@ DYNAMO_TABLE_NAME = "ReceiptsTable-dc5be22"
 client = DynamoClient(DYNAMO_TABLE_NAME)
 
 # Get specific images we just processed
-image_ids = ["0a345fdd-ecc3-4577-b3d3-869140451f43", "53500759-d95a-4225-911e-18f5cc45d09a"]
+image_ids = [
+    "0a345fdd-ecc3-4577-b3d3-869140451f43",
+    "53500759-d95a-4225-911e-18f5cc45d09a",
+]
 
 for image_id in image_ids:
     print(f"\n--- Verifying Image {image_id} ---")
     image = client.get_image(image_id)
-    
+
     # Check thumbnail fields
     print(f"Original: {image.cdn_s3_key}")
     print(f"\nThumbnail sizes:")

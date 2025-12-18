@@ -10,9 +10,7 @@ from receipt_chroma.data.chroma_client import ChromaClient
 class DualChromaClient:
     """Minimal dual client wrapper for lines/words collections."""
 
-    def __init__(
-        self, lines: ChromaClient, words: ChromaClient, logger: Any
-    ) -> None:
+    def __init__(self, lines: ChromaClient, words: ChromaClient, logger: Any) -> None:
         self.lines = lines
         self.words = words
         self.logger = logger

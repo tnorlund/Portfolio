@@ -165,8 +165,7 @@ class CombineReceiptsStepFunction(ComponentResource):
             f"{name}-lambda-basic-exec",
             role=lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/"
-                "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
@@ -412,9 +411,7 @@ class CombineReceiptsStepFunction(ComponentResource):
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get(
-                    "langchain_project"
-                )
+                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get("langchain_project")
                 or "combine-receipts",
                 "PULUMI_STACK": stack,
                 **(

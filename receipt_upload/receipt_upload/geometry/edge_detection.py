@@ -35,10 +35,7 @@ def compute_edge(
         idx = min(bins - 1, int(y_mid * bins))
         current = bin_pts[idx]
         if current is None or (
-            pick == "left"
-            and x < current[0]
-            or pick == "right"
-            and x > current[0]
+            pick == "left" and x < current[0] or pick == "right" and x > current[0]
         ):
             bin_pts[idx] = (x, y_mid)
 
@@ -117,9 +114,7 @@ def compute_final_receipt_tilt(
     if not lines or len(hull) < 3:
         return avg_angle
 
-    edges = find_line_edges_at_secondary_extremes(
-        lines, hull, centroid, avg_angle
-    )
+    edges = find_line_edges_at_secondary_extremes(lines, hull, centroid, avg_angle)
     a_top = _consistent_angle_from_points(edges["topEdge"])
     a_bottom = _consistent_angle_from_points(edges["bottomEdge"])
 
@@ -220,12 +215,8 @@ def refine_hull_extremes_with_hull_edge_alignment(
         prev_point = hull[prev_index]
         next_point = hull[next_index]
 
-        edge1_angle = atan2(
-            extreme[1] - prev_point[1], extreme[0] - prev_point[0]
-        )
-        edge2_angle = atan2(
-            next_point[1] - extreme[1], next_point[0] - extreme[0]
-        )
+        edge1_angle = atan2(extreme[1] - prev_point[1], extreme[0] - prev_point[0])
+        edge2_angle = atan2(next_point[1] - extreme[1], next_point[0] - extreme[0])
 
         line_angle = atan2(dy, dx)
 
@@ -235,11 +226,7 @@ def refine_hull_extremes_with_hull_edge_alignment(
 
         target_alignment = abs(cos(line_angle - target_rad))
 
-        return (
-            boundary_score * 0.3
-            + hull_edge_alignment * 0.6
-            + target_alignment * 0.1
-        )
+        return boundary_score * 0.3 + hull_edge_alignment * 0.6 + target_alignment * 0.1
 
     def find_neighbor(
         extreme: Tuple[float, float], is_left: bool
@@ -320,9 +307,7 @@ def create_horizontal_boundary_line_from_points(
     if len(edge_points) < 2:
         # Not enough points, return a horizontal line at the average y
         avg_y = (
-            sum(p[1] for p in edge_points) / len(edge_points)
-            if edge_points
-            else 0.0
+            sum(p[1] for p in edge_points) / len(edge_points) if edge_points else 0.0
         )
         return {
             "isVertical": False,
@@ -460,9 +445,7 @@ def _find_line_intersection(
             denom = 1 - line1["slope"] * line2["slope"]
             if abs(denom) < 1e-9:
                 return fallback_centroid if fallback_centroid else (0.5, 0.5)
-            x = (
-                line1["slope"] * line2["intercept"] + line1["intercept"]
-            ) / denom
+            x = (line1["slope"] * line2["intercept"] + line1["intercept"]) / denom
             y = line2["slope"] * x + line2["intercept"]
 
     elif not line1_inverted and line2_inverted:
@@ -478,9 +461,7 @@ def _find_line_intersection(
             denom = 1 - line2["slope"] * line1["slope"]
             if abs(denom) < 1e-9:
                 return fallback_centroid if fallback_centroid else (0.5, 0.5)
-            x = (
-                line2["slope"] * line1["intercept"] + line2["intercept"]
-            ) / denom
+            x = (line2["slope"] * line1["intercept"] + line2["intercept"]) / denom
             y = line1["slope"] * x + line1["intercept"]
 
     else:
@@ -509,12 +490,8 @@ def compute_receipt_box_from_boundaries(
 ) -> List[Tuple[float, float]]:
     """Compute final receipt quadrilateral from four boundary lines."""
 
-    top_left = _find_line_intersection(
-        top_boundary, left_boundary, fallback_centroid
-    )
-    top_right = _find_line_intersection(
-        top_boundary, right_boundary, fallback_centroid
-    )
+    top_left = _find_line_intersection(top_boundary, left_boundary, fallback_centroid)
+    top_right = _find_line_intersection(top_boundary, right_boundary, fallback_centroid)
     bottom_left = _find_line_intersection(
         bottom_boundary, left_boundary, fallback_centroid
     )
@@ -535,9 +512,7 @@ def compute_receipt_box_from_refined_segments(
     if not lines or len(hull) < 3:
         return []
 
-    edges = find_line_edges_at_secondary_extremes(
-        lines, hull, centroid, final_angle
-    )
+    edges = find_line_edges_at_secondary_extremes(lines, hull, centroid, final_angle)
 
     if len(edges["topEdge"]) < 2 or len(edges["bottomEdge"]) < 2:
         cx, cy = centroid
@@ -548,9 +523,7 @@ def compute_receipt_box_from_refined_segments(
             (cx - 0.1, cy - 0.1),
         ]
 
-    top_boundary = create_boundary_line_from_theil_sen(
-        theil_sen(edges["topEdge"])
-    )
+    top_boundary = create_boundary_line_from_theil_sen(theil_sen(edges["topEdge"]))
     bottom_boundary = create_boundary_line_from_theil_sen(
         theil_sen(edges["bottomEdge"])
     )

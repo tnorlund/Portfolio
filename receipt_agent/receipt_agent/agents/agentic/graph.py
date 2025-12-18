@@ -157,9 +157,7 @@ def create_agentic_validation_graph(
         base_url=settings.ollama_base_url,
         model=settings.ollama_model,
         client_kwargs={
-            "headers": (
-                {"Authorization": f"Bearer {api_key}"} if api_key else {}
-            ),
+            "headers": ({"Authorization": f"Bearer {api_key}"} if api_key else {}),
             "timeout": 120,
         },
         temperature=0.0,

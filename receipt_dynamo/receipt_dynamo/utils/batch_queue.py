@@ -144,9 +144,7 @@ class BatchQueue:
         """Context manager entry."""
         return self
 
-    def __exit__(
-        self, exc_type: Any, exc_val: Any, exc_tb: Any
-    ) -> Literal[False]:
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Literal[False]:
         """Context manager exit - ensure all items are flushed."""
         self.stop()
         return False

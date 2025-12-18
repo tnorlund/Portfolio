@@ -51,9 +51,7 @@ class TestFormatWordContextEmbeddingInput:
     def test_format_single_word(self):
         """Test formatting a single word (at edge)."""
         word = MockReceiptWord("img1", "rec1", "line1", "word1", "hello")
-        result = format_word_context_embedding_input(
-            word, [word], context_size=2
-        )
+        result = format_word_context_embedding_input(word, [word], context_size=2)
         # Should have <EDGE> tags for missing context
         assert "<EDGE>" in result
         assert "hello" in result
@@ -64,20 +62,12 @@ class TestFormatWordContextEmbeddingInput:
     def test_format_with_neighbors(self):
         """Test formatting with left and right neighbors."""
         words = [
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word1", "left", x=0.1, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word2", "target", x=0.5, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word3", "right", x=0.9, y=0.5
-            ),
+            MockReceiptWord("img1", "rec1", "line1", "word1", "left", x=0.1, y=0.5),
+            MockReceiptWord("img1", "rec1", "line1", "word2", "target", x=0.5, y=0.5),
+            MockReceiptWord("img1", "rec1", "line1", "word3", "right", x=0.9, y=0.5),
         ]
         target = words[1]
-        result = format_word_context_embedding_input(
-            target, words, context_size=2
-        )
+        result = format_word_context_embedding_input(target, words, context_size=2)
         # Format should be: "<EDGE> left target right <EDGE>" or similar
         assert "target" in result
         assert "left" in result
@@ -85,12 +75,8 @@ class TestFormatWordContextEmbeddingInput:
 
     def test_format_edge_word(self):
         """Test formatting word at edge (no neighbors)."""
-        word = MockReceiptWord(
-            "img1", "rec1", "line1", "word1", "hello", x=0.1, y=0.5
-        )
-        result = format_word_context_embedding_input(
-            word, [word], context_size=2
-        )
+        word = MockReceiptWord("img1", "rec1", "line1", "word1", "hello", x=0.1, y=0.5)
+        result = format_word_context_embedding_input(word, [word], context_size=2)
         # Should have multiple <EDGE> tags
         assert "<EDGE>" in result
         assert "hello" in result
@@ -100,26 +86,14 @@ class TestFormatWordContextEmbeddingInput:
     def test_format_with_multiple_context(self):
         """Test formatting with context_size=2 (multiple words)."""
         words = [
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w1", "item1", x=0.1, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w2", "item2", x=0.3, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w3", "target", x=0.5, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w4", "item4", x=0.7, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w5", "item5", x=0.9, y=0.5
-            ),
+            MockReceiptWord("img1", "rec1", "line1", "w1", "item1", x=0.1, y=0.5),
+            MockReceiptWord("img1", "rec1", "line1", "w2", "item2", x=0.3, y=0.5),
+            MockReceiptWord("img1", "rec1", "line1", "w3", "target", x=0.5, y=0.5),
+            MockReceiptWord("img1", "rec1", "line1", "w4", "item4", x=0.7, y=0.5),
+            MockReceiptWord("img1", "rec1", "line1", "w5", "item5", x=0.9, y=0.5),
         ]
         target = words[2]
-        result = format_word_context_embedding_input(
-            target, words, context_size=2
-        )
+        result = format_word_context_embedding_input(target, words, context_size=2)
         # Should have 2 words on each side: "item1 item2 target item4 item5"
         assert "target" in result
         assert "item1" in result
@@ -135,20 +109,12 @@ class TestGetWordNeighbors:
     def test_get_neighbors_single(self):
         """Test getting single left and right neighbor."""
         words = [
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word1", "left", x=0.1, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word2", "target", x=0.5, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word3", "right", x=0.9, y=0.5
-            ),
+            MockReceiptWord("img1", "rec1", "line1", "word1", "left", x=0.1, y=0.5),
+            MockReceiptWord("img1", "rec1", "line1", "word2", "target", x=0.5, y=0.5),
+            MockReceiptWord("img1", "rec1", "line1", "word3", "right", x=0.9, y=0.5),
         ]
         target = words[1]
-        left_words, right_words = get_word_neighbors(
-            target, words, context_size=1
-        )
+        left_words, right_words = get_word_neighbors(target, words, context_size=1)
         assert len(left_words) == 1
         assert len(right_words) == 1
         assert left_words[0] == "left"
@@ -157,26 +123,14 @@ class TestGetWordNeighbors:
     def test_get_neighbors_multiple(self):
         """Test getting multiple neighbors with context_size=2."""
         words = [
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w1", "left1", x=0.1, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w2", "left2", x=0.3, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w3", "target", x=0.5, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w4", "right1", x=0.7, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w5", "right2", x=0.9, y=0.5
-            ),
+            MockReceiptWord("img1", "rec1", "line1", "w1", "left1", x=0.1, y=0.5),
+            MockReceiptWord("img1", "rec1", "line1", "w2", "left2", x=0.3, y=0.5),
+            MockReceiptWord("img1", "rec1", "line1", "w3", "target", x=0.5, y=0.5),
+            MockReceiptWord("img1", "rec1", "line1", "w4", "right1", x=0.7, y=0.5),
+            MockReceiptWord("img1", "rec1", "line1", "w5", "right2", x=0.9, y=0.5),
         ]
         target = words[2]
-        left_words, right_words = get_word_neighbors(
-            target, words, context_size=2
-        )
+        left_words, right_words = get_word_neighbors(target, words, context_size=2)
         assert len(left_words) == 2
         assert len(right_words) == 2
         assert "left1" in left_words
@@ -186,12 +140,8 @@ class TestGetWordNeighbors:
 
     def test_get_neighbors_edge(self):
         """Test getting neighbors for word at edge."""
-        word = MockReceiptWord(
-            "img1", "rec1", "line1", "word1", "hello", x=0.1, y=0.5
-        )
-        left_words, right_words = get_word_neighbors(
-            word, [word], context_size=2
-        )
+        word = MockReceiptWord("img1", "rec1", "line1", "word1", "hello", x=0.1, y=0.5)
+        left_words, right_words = get_word_neighbors(word, [word], context_size=2)
         # Should return empty lists (no neighbors found)
         assert len(left_words) == 0
         assert len(right_words) == 0
@@ -199,20 +149,12 @@ class TestGetWordNeighbors:
     def test_get_neighbors_different_lines(self):
         """Neighbors across lines with horizontal alignment."""
         words = [
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word1", "left", x=0.1, y=0.8
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line2", "word2", "target", x=0.5, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line3", "word3", "right", x=0.9, y=0.2
-            ),
+            MockReceiptWord("img1", "rec1", "line1", "word1", "left", x=0.1, y=0.8),
+            MockReceiptWord("img1", "rec1", "line2", "word2", "target", x=0.5, y=0.5),
+            MockReceiptWord("img1", "rec1", "line3", "word3", "right", x=0.9, y=0.2),
         ]
         target = words[1]
-        left_words, right_words = get_word_neighbors(
-            target, words, context_size=2
-        )
+        left_words, right_words = get_word_neighbors(target, words, context_size=2)
         # Neighbors selected by horizontal position, regardless of line
         assert len(left_words) > 0
         assert len(right_words) > 0
@@ -275,9 +217,7 @@ class TestGetWordNeighbors:
             ),
         ]
         target = words[2]  # "target" at x=0.5
-        left_words, right_words = get_word_neighbors(
-            target, words, context_size=2
-        )
+        left_words, right_words = get_word_neighbors(target, words, context_size=2)
         # Should find neighbors on same line even if far apart
         assert len(left_words) == 2
         assert len(right_words) == 2
@@ -322,9 +262,7 @@ class TestGetWordNeighbors:
             ),
         ]
         target = words[1]  # "target" at x=0.5
-        left_words, right_words = get_word_neighbors(
-            target, words, context_size=2
-        )
+        left_words, right_words = get_word_neighbors(target, words, context_size=2)
         # Should find words from other lines based on horizontal position
         assert len(left_words) == 1
         assert len(right_words) == 1
@@ -368,9 +306,7 @@ class TestGetWordNeighbors:
             ),
         ]
         target = words[1]  # "target" at x=0.5, middle of list
-        left_words, right_words = get_word_neighbors(
-            target, words, context_size=2
-        )
+        left_words, right_words = get_word_neighbors(target, words, context_size=2)
         # When x is identical, stable sort preserves original order.
         # "above" (idx 0) before "target" (idx 1); "below" (idx 2) after.
         assert len(left_words) > 0
@@ -386,9 +322,7 @@ class TestParseLeftRightFromFormatted:
     def test_parse_valid_format(self):
         """Test parsing valid formatted string with context."""
         fmt = "left1 left2 word right1 right2"
-        left_words, right_words = parse_left_right_from_formatted(
-            fmt, context_size=2
-        )
+        left_words, right_words = parse_left_right_from_formatted(fmt, context_size=2)
         assert len(left_words) == 2
         assert len(right_words) == 2
         assert "left1" in left_words
@@ -399,9 +333,7 @@ class TestParseLeftRightFromFormatted:
     def test_parse_with_edge(self):
         """Test parsing with edge markers."""
         fmt = "<EDGE> left word right <EDGE>"
-        left_words, right_words = parse_left_right_from_formatted(
-            fmt, context_size=2
-        )
+        left_words, right_words = parse_left_right_from_formatted(fmt, context_size=2)
         assert len(left_words) == 2
         assert len(right_words) == 2
         assert "<EDGE>" in left_words
@@ -412,9 +344,7 @@ class TestParseLeftRightFromFormatted:
     def test_parse_all_edges(self):
         """Test parsing word at edge with all <EDGE> tags."""
         fmt = "<EDGE> <EDGE> word <EDGE> <EDGE>"
-        left_words, right_words = parse_left_right_from_formatted(
-            fmt, context_size=2
-        )
+        left_words, right_words = parse_left_right_from_formatted(fmt, context_size=2)
         assert len(left_words) == 2
         assert len(right_words) == 2
         assert all(w == "<EDGE>" for w in left_words)

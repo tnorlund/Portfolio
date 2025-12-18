@@ -6,9 +6,7 @@ from pathlib import Path
 def _list_dir(path: Path, limit: int = 20):
     try:
         entries = []
-        for p in sorted(path.iterdir(), key=lambda x: x.name, reverse=True)[
-            :limit
-        ]:
+        for p in sorted(path.iterdir(), key=lambda x: x.name, reverse=True)[:limit]:
             try:
                 stat = p.stat()
                 entries.append(

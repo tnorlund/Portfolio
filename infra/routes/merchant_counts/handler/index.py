@@ -13,10 +13,8 @@ dynamo_client = DynamoClient(dynamodb_table_name)
 
 
 def fetch_merchant_counts():
-    receipt_metadatas, last_evaluated_key = (
-        dynamo_client.list_receipt_metadatas(
-            limit=1000,
-        )
+    receipt_metadatas, last_evaluated_key = dynamo_client.list_receipt_metadatas(
+        limit=1000,
     )
     while last_evaluated_key is not None:
         next_receipt_metadatas, last_evaluated_key = (
@@ -65,9 +63,7 @@ def handler(event, _):
                 "body": json.dumps(sorted_merchant_counts),
             }
         except Exception as e:
-            logger.error(
-                "Error fetching merchant counts: %s", e, exc_info=True
-            )
+            logger.error("Error fetching merchant counts: %s", e, exc_info=True)
             return {
                 "statusCode": 500,
                 "headers": {

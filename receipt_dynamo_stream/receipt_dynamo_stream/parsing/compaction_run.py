@@ -13,9 +13,7 @@ def is_compaction_run(pk: str, sk: str) -> bool:
     return pk.startswith("IMAGE#") and "#COMPACTION_RUN#" in sk
 
 
-def parse_compaction_run(
-    new_image: Dict[str, Any], pk: str, sk: str
-) -> Dict[str, Any]:
+def parse_compaction_run(new_image: Dict[str, Any], pk: str, sk: str) -> Dict[str, Any]:
     """
     Parse NewImage into a CompactionRun using shared parser.
 
@@ -30,15 +28,11 @@ def parse_compaction_run(
 
     receipt_token = sk.split("#")[1] if "#" in sk else ""
     try:
-        receipt_id = int(
-            receipt_token.replace("RECEIPT", "").replace("#", "") or 0
-        )
+        receipt_id = int(receipt_token.replace("RECEIPT", "").replace("#", "") or 0)
     except (TypeError, ValueError):
         receipt_id = int(new_image.get("receipt_id", {}).get("N", 0))
         if receipt_id == 0:
-            raise ValueError(
-                f"Could not parse receipt_id from SK: {sk} or new_image"
-            )
+            raise ValueError(f"Could not parse receipt_id from SK: {sk} or new_image")
 
     lines_delta_prefix = new_image.get("lines_delta_prefix", {}).get("S")
     words_delta_prefix = new_image.get("words_delta_prefix", {}).get("S")

@@ -54,9 +54,7 @@ lambda_role_policy_attachment = aws.iam.RolePolicyAttachment(
 aws.iam.RolePolicyAttachment(
     f"api_{ROUTE_NAME}_lambda_basic_execution",
     role=lambda_role.name,
-    policy_arn=(
-        "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
-    ),
+    policy_arn=("arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"),
 )
 
 images_lambda = aws.lambda_.Function(

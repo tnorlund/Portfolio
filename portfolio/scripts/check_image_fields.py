@@ -32,7 +32,7 @@ for i, image in enumerate(images):
     print(f"\n--- Image {i+1} ---")
     print(f"Image ID: {image.image_id}")
     print(f"Width: {image.width}, Height: {image.height}")
-    
+
     # Check thumbnail fields
     item = image.to_item()
     thumbnail_fields = {
@@ -46,7 +46,7 @@ for i, image in enumerate(images):
         "cdn_medium_webp_s3_key": item.get("cdn_medium_webp_s3_key"),
         "cdn_medium_avif_s3_key": item.get("cdn_medium_avif_s3_key"),
     }
-    
+
     print("\nThumbnail fields:")
     for field, value in thumbnail_fields.items():
         if value:

@@ -32,9 +32,7 @@ class TestMetadataUpdates:
         )
 
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Add initial data to lines collection
         client.upsert(
@@ -58,9 +56,7 @@ class TestMetadataUpdates:
             receipt_id=1,
             event_name="MODIFY",
             changes={
-                "merchant_name": FieldChange(
-                    old="Old Merchant", new="New Merchant"
-                )
+                "merchant_name": FieldChange(old="Old Merchant", new="New Merchant")
             },
             collections=(ChromaDBCollection.LINES,),
         )
@@ -90,12 +86,8 @@ class TestMetadataUpdates:
             ]
         )
 
-        assert (
-            embeddings_data["metadatas"][0]["merchant_name"] == "New Merchant"
-        )
-        assert (
-            embeddings_data["metadatas"][1]["merchant_name"] == "New Merchant"
-        )
+        assert embeddings_data["metadatas"][0]["merchant_name"] == "New Merchant"
+        assert embeddings_data["metadatas"][1]["merchant_name"] == "New Merchant"
 
         client.close()
 
@@ -112,9 +104,7 @@ class TestMetadataUpdates:
         )
 
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Add initial data to lines collection
         client.upsert(
@@ -150,9 +140,7 @@ class TestMetadataUpdates:
 
         # Verify results
         assert len(results) == 1
-        assert (
-            results[0].updated_count == 2
-        )  # Removed metadata from 2 embeddings
+        assert results[0].updated_count == 2  # Removed metadata from 2 embeddings
         assert results[0].image_id == test_image_id
         assert results[0].receipt_id == 1
         assert results[0].error is None
@@ -189,9 +177,7 @@ class TestMetadataUpdates:
         )
 
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Add initial data to words collection
         client.upsert(
@@ -215,9 +201,7 @@ class TestMetadataUpdates:
             receipt_id=1,
             event_name="MODIFY",
             changes={
-                "merchant_name": FieldChange(
-                    old="Old Merchant", new="Updated Merchant"
-                )
+                "merchant_name": FieldChange(old="Old Merchant", new="Updated Merchant")
             },
             collections=(ChromaDBCollection.WORDS,),
         )
@@ -245,14 +229,8 @@ class TestMetadataUpdates:
             ]
         )
 
-        assert (
-            embeddings_data["metadatas"][0]["merchant_name"]
-            == "Updated Merchant"
-        )
-        assert (
-            embeddings_data["metadatas"][1]["merchant_name"]
-            == "Updated Merchant"
-        )
+        assert embeddings_data["metadatas"][0]["merchant_name"] == "Updated Merchant"
+        assert embeddings_data["metadatas"][1]["merchant_name"] == "Updated Merchant"
 
         client.close()
 
@@ -272,9 +250,7 @@ class TestMetadataUpdates:
         )
 
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Add initial data for two receipts
         client.upsert(
@@ -298,9 +274,7 @@ class TestMetadataUpdates:
             receipt_id=1,
             event_name="MODIFY",
             changes={
-                "merchant_name": FieldChange(
-                    old="Merchant A", new="New Merchant A"
-                )
+                "merchant_name": FieldChange(old="Merchant A", new="New Merchant A")
             },
             collections=(ChromaDBCollection.LINES,),
         )
@@ -310,9 +284,7 @@ class TestMetadataUpdates:
             receipt_id=2,
             event_name="MODIFY",
             changes={
-                "merchant_name": FieldChange(
-                    old="Merchant B", new="New Merchant B"
-                )
+                "merchant_name": FieldChange(old="Merchant B", new="New Merchant B")
             },
             collections=(ChromaDBCollection.LINES,),
         )
@@ -341,14 +313,8 @@ class TestMetadataUpdates:
             ]
         )
 
-        assert (
-            embeddings_data["metadatas"][0]["merchant_name"]
-            == "New Merchant A"
-        )
-        assert (
-            embeddings_data["metadatas"][1]["merchant_name"]
-            == "New Merchant B"
-        )
+        assert embeddings_data["metadatas"][0]["merchant_name"] == "New Merchant A"
+        assert embeddings_data["metadatas"][1]["merchant_name"] == "New Merchant B"
 
         client.close()
 
@@ -357,9 +323,7 @@ class TestMetadataUpdates:
     ):
         """Test handling when collection doesn't exist."""
         # Create an empty ChromaDB client
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Create metadata update message
         update_msg = create_metadata_message(
@@ -386,9 +350,7 @@ class TestMetadataUpdates:
     ):
         """Test error handling when metadata update fails."""
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Add initial data
         client.upsert(
@@ -429,13 +391,9 @@ class TestMetadataUpdates:
 
         client.close()
 
-    def test_apply_metadata_updates_no_messages(
-        self, temp_chromadb_dir, mock_logger
-    ):
+    def test_apply_metadata_updates_no_messages(self, temp_chromadb_dir, mock_logger):
         """Test applying metadata updates with no messages."""
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
+        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         # Create lines collection
         client.upsert(

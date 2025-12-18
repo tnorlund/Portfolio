@@ -27,9 +27,7 @@ class TestImportSmoke:
 
             # Verify core functions exist
             assert hasattr(enhanced_compaction_handler, "process_sqs_messages")
-            assert hasattr(
-                enhanced_compaction_handler, "process_stream_messages"
-            )
+            assert hasattr(enhanced_compaction_handler, "process_stream_messages")
 
         except ImportError as e:
             pytest.fail(f"Failed to import enhanced_compaction_handler: {e}")
@@ -129,9 +127,7 @@ class TestBasicFunctionality:
             f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#"
             f"LINE#{line_id:05d}#WORD#{word_id:05d}"
         )
-        expected_word = (
-            "IMAGE#test_image_123#RECEIPT#00456#LINE#00007#WORD#00089"
-        )
+        expected_word = "IMAGE#test_image_123#RECEIPT#00456#LINE#00007#WORD#00089"
         assert word_pattern == expected_word
 
     def test_relevant_field_constants(self):

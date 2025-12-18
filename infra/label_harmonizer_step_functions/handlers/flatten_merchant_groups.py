@@ -39,9 +39,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     }
     """
     execution_id = event.get("execution_id", "unknown")
-    batch_bucket = event.get("batch_bucket") or os.environ.get(
-        "BATCH_BUCKET", ""
-    )
+    batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET", "")
     prepare_results = event.get("prepare_results", [])
 
     logger.info(

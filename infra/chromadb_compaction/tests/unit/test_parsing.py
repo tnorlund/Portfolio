@@ -136,9 +136,7 @@ class TestParseStreamRecord:
         assert result.new_entity is None
         assert isinstance(result.old_entity, ReceiptWordLabel)
         assert result.old_entity.label == old_entity.label
-        assert (
-            result.old_entity.validation_status == old_entity.validation_status
-        )
+        assert result.old_entity.validation_status == old_entity.validation_status
 
     def test_parse_non_image_pk(self):
         """Test that non-IMAGE PKs are ignored."""
@@ -237,9 +235,7 @@ class TestCompactionRunParsing:
 
         new_image = compaction_run.to_item()
         pk = "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff"
-        sk = (
-            "RECEIPT#00001#COMPACTION_RUN#550e8400-e29b-41d4-a716-446655440001"
-        )
+        sk = "RECEIPT#00001#COMPACTION_RUN#550e8400-e29b-41d4-a716-446655440001"
 
         parsed = _parse_compaction_run(new_image, pk, sk)
 

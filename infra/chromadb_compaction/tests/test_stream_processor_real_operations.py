@@ -132,9 +132,7 @@ class TestStreamProcessorRealOperations:
         processor_mock.build_messages_from_records = MagicMock(return_value=[])
         processor_mock.publish_messages = MagicMock(return_value=0)
         processor_mock.parse_stream_record = MagicMock()
-        processor_mock.get_chromadb_relevant_changes = MagicMock(
-            return_value=[]
-        )
+        processor_mock.get_chromadb_relevant_changes = MagicMock(return_value=[])
         processor_mock.detect_entity_type = MagicMock()
         processor_mock.parse_entity = MagicMock()
         processor_mock.is_compaction_run = MagicMock(return_value=False)
@@ -284,9 +282,7 @@ class TestStreamProcessorRealOperations:
         processor_mock.build_messages_from_records = MagicMock(return_value=[])
         processor_mock.publish_messages = MagicMock(return_value=0)
         processor_mock.parse_stream_record = MagicMock()
-        processor_mock.get_chromadb_relevant_changes = MagicMock(
-            return_value=[]
-        )
+        processor_mock.get_chromadb_relevant_changes = MagicMock(return_value=[])
         processor_mock.detect_entity_type = MagicMock()
         processor_mock.parse_entity = MagicMock()
         processor_mock.is_compaction_run = MagicMock(return_value=False)
@@ -377,14 +373,8 @@ class TestStreamProcessorRealOperations:
 
         assert lines_body["entity_type"] == "RECEIPT_METADATA"
         assert words_body["entity_type"] == "RECEIPT_METADATA"
-        assert (
-            lines_body["entity_data"]["canonical_merchant_name"]
-            == "Target Store"
-        )
-        assert (
-            words_body["entity_data"]["canonical_merchant_name"]
-            == "Target Store"
-        )
+        assert lines_body["entity_data"]["canonical_merchant_name"] == "Target Store"
+        assert words_body["entity_data"]["canonical_merchant_name"] == "Target Store"
 
 
 if __name__ == "__main__":

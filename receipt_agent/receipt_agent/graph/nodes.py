@@ -30,7 +30,9 @@ def _build_chromadb_line_id(image_id: str, receipt_id: int, line_id: int) -> str
     return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
 
 
-def _build_chromadb_word_id(image_id: str, receipt_id: int, line_id: int, word_id: int) -> str:
+def _build_chromadb_word_id(
+    image_id: str, receipt_id: int, line_id: int, word_id: int
+) -> str:
     """Build ChromaDB document ID for a word."""
     return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
 
@@ -46,9 +48,7 @@ async def load_metadata(
     This is the entry node that fetches the current state of the
     receipt we're validating. Also verifies embeddings exist in ChromaDB.
     """
-    logger.info(
-        f"Loading metadata for {state.image_id}#{state.receipt_id}"
-    )
+    logger.info(f"Loading metadata for {state.image_id}#{state.receipt_id}")
 
     updates: dict[str, Any] = {"current_step": "load_metadata"}
 
@@ -60,17 +60,17 @@ async def load_metadata(
         )
 
         if metadata:
-            updates.update({
-                "current_merchant_name": metadata.merchant_name,
-                "current_place_id": metadata.place_id,
-                "current_address": metadata.address,
-                "current_phone": metadata.phone_number,
-                "current_validation_status": metadata.validation_status,
-            })
-        else:
-            logger.warning(
-                f"No metadata found for {state.image_id}#{state.receipt_id}"
+            updates.update(
+                {
+                    "current_merchant_name": metadata.merchant_name,
+                    "current_place_id": metadata.place_id,
+                    "current_address": metadata.address,
+                    "current_phone": metadata.phone_number,
+                    "current_validation_status": metadata.validation_status,
+                }
             )
+        else:
+            logger.warning(f"No metadata found for {state.image_id}#{state.receipt_id}")
 
         # Get receipt context (lines, words, etc.)
         receipt_details = dynamo_client.get_receipt_details(
@@ -92,7 +92,9 @@ async def load_metadata(
             try:
                 # Build ChromaDB IDs for all lines
                 line_ids = [
-                    _build_chromadb_line_id(state.image_id, state.receipt_id, line.line_id)
+                    _build_chromadb_line_id(
+                        state.image_id, state.receipt_id, line.line_id
+                    )
                     for line in lines
                 ]
 
@@ -117,7 +119,9 @@ async def load_metadata(
                         f"Found {len(found_line_ids)}/{len(line_ids)} line embeddings in ChromaDB"
                     )
                 else:
-                    logger.warning(f"No line embeddings found in ChromaDB for {state.image_id}#{state.receipt_id}")
+                    logger.warning(
+                        f"No line embeddings found in ChromaDB for {state.image_id}#{state.receipt_id}"
+                    )
             except Exception as e:
                 logger.warning(f"Could not verify line embeddings: {e}")
 
@@ -125,7 +129,9 @@ async def load_metadata(
             try:
                 # Build ChromaDB IDs for all words
                 word_ids = [
-                    _build_chromadb_word_id(state.image_id, state.receipt_id, word.line_id, word.word_id)
+                    _build_chromadb_word_id(
+                        state.image_id, state.receipt_id, word.line_id, word.word_id
+                    )
                     for word in words
                 ]
 
@@ -134,7 +140,7 @@ async def load_metadata(
                 found_word_count = 0
 
                 for i in range(0, len(word_ids), batch_size):
-                    batch_ids = word_ids[i:i+batch_size]
+                    batch_ids = word_ids[i : i + batch_size]
                     word_results = chroma_client.get(
                         collection_name="words",
                         ids=batch_ids,
@@ -207,7 +213,11 @@ async def load_metadata(
             if receipt_context.word_embeddings_available:
                 embedding_status.append("word embeddings available")
 
-        embedding_info = f" ({', '.join(embedding_status)})" if embedding_status else " (no embeddings found in ChromaDB)"
+        embedding_info = (
+            f" ({', '.join(embedding_status)})"
+            if embedding_status
+            else " (no embeddings found in ChromaDB)"
+        )
 
         initial_message = HumanMessage(
             content=f"""Validate the merchant metadata for receipt {state.image_id}#{state.receipt_id}{embedding_info}.
@@ -241,9 +251,7 @@ async def search_similar_receipts(
     This node uses the receipt's address, phone, and merchant name
     to find similar receipts that can help validate the metadata.
     """
-    logger.info(
-        f"Searching similar receipts for {state.image_id}#{state.receipt_id}"
-    )
+    logger.info(f"Searching similar receipts for {state.image_id}#{state.receipt_id}")
 
     updates: dict[str, Any] = {"current_step": "search_similar"}
     chroma_line_results: list[ChromaSearchResult] = []
@@ -296,7 +304,9 @@ async def search_similar_receipts(
                 distances = results.get("distances", [[]])[0]
 
                 matches_found = 0
-                for doc_id, doc, meta, dist in zip(ids, documents, metadatas, distances):
+                for doc_id, doc, meta, dist in zip(
+                    ids, documents, metadatas, distances
+                ):
                     similarity = max(0.0, 1.0 - (dist / 2))
 
                     # Skip if same receipt
@@ -323,9 +333,12 @@ async def search_similar_receipts(
                         neighbor_merchant = meta.get("merchant_name")
                         if neighbor_merchant:
                             existing = next(
-                                (c for c in merchant_candidates
-                                 if c.merchant_name == neighbor_merchant),
-                                None
+                                (
+                                    c
+                                    for c in merchant_candidates
+                                    if c.merchant_name == neighbor_merchant
+                                ),
+                                None,
                             )
                             if existing:
                                 existing.confidence_score = max(
@@ -375,12 +388,14 @@ async def search_similar_receipts(
                 f"Top merchant candidates: {', '.join(c.merchant_name for c in merchant_candidates[:3])}"
             )
 
-        updates.update({
-            "chroma_line_results": chroma_line_results,
-            "merchant_candidates": merchant_candidates,
-            "verification_steps": state.verification_steps + verification_steps,
-            "messages": [AIMessage(content=" ".join(summary_parts))],
-        })
+        updates.update(
+            {
+                "chroma_line_results": chroma_line_results,
+                "merchant_candidates": merchant_candidates,
+                "verification_steps": state.verification_steps + verification_steps,
+                "messages": [AIMessage(content=" ".join(summary_parts))],
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error in similarity search: {e}")
@@ -399,9 +414,7 @@ async def verify_consistency(
     This node checks if the place_id, address, and phone are
     consistent with other receipts from the same merchant.
     """
-    logger.info(
-        f"Verifying consistency for merchant: {state.current_merchant_name}"
-    )
+    logger.info(f"Verifying consistency for merchant: {state.current_merchant_name}")
 
     updates: dict[str, Any] = {"current_step": "verify_consistency"}
     verification_steps: list[VerificationStep] = []
@@ -415,7 +428,9 @@ async def verify_consistency(
                 passed=False,
             )
             verification_steps.append(step)
-            updates["verification_steps"] = state.verification_steps + verification_steps
+            updates["verification_steps"] = (
+                state.verification_steps + verification_steps
+            )
             return updates
 
         # Get other receipts from same merchant
@@ -432,7 +447,9 @@ async def verify_consistency(
                 passed=None,  # Inconclusive
             )
             verification_steps.append(step)
-            updates["verification_steps"] = state.verification_steps + verification_steps
+            updates["verification_steps"] = (
+                state.verification_steps + verification_steps
+            )
             return updates
 
         # Aggregate and check consistency
@@ -442,10 +459,7 @@ async def verify_consistency(
 
         for meta in metadatas:
             # Skip the receipt we're validating
-            if (
-                meta.image_id == state.image_id
-                and meta.receipt_id == state.receipt_id
-            ):
+            if meta.image_id == state.image_id and meta.receipt_id == state.receipt_id:
                 continue
 
             if meta.place_id:
@@ -531,8 +545,7 @@ async def verify_consistency(
             # Normalize for comparison
             current_digits = "".join(c for c in state.current_phone if c.isdigit())
             matched = any(
-                current_digits in "".join(c for c in p if c.isdigit())
-                for p in phones
+                current_digits in "".join(c for c in p if c.isdigit()) for p in phones
             )
             if matched:
                 step_phone.answer = "Yes, phone matches other receipts"
@@ -557,12 +570,16 @@ async def verify_consistency(
         # Add summary message
         passed_steps = sum(1 for s in verification_steps if s.passed is True)
         total_checks = len(verification_steps)
-        summary = f"Consistency check: {passed_steps}/{total_checks} verifications passed."
+        summary = (
+            f"Consistency check: {passed_steps}/{total_checks} verifications passed."
+        )
 
-        updates.update({
-            "verification_steps": state.verification_steps + verification_steps,
-            "messages": [AIMessage(content=summary)],
-        })
+        updates.update(
+            {
+                "verification_steps": state.verification_steps + verification_steps,
+                "messages": [AIMessage(content=summary)],
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error in consistency verification: {e}")
@@ -665,9 +682,9 @@ async def check_google_places(
                     source="google_places",
                     matched_fields=["name"],
                 )
-                updates["merchant_candidates"] = (
-                    state.merchant_candidates + [places_candidate]
-                )
+                updates["merchant_candidates"] = state.merchant_candidates + [
+                    places_candidate
+                ]
             else:
                 step.answer = (
                     f"Mismatch: Google shows '{places_name}' "
@@ -691,10 +708,14 @@ async def check_google_places(
 
         verification_steps.append(step)
 
-        updates.update({
-            "verification_steps": state.verification_steps + verification_steps,
-            "messages": [AIMessage(content=step.answer or "Google Places check complete")],
-        })
+        updates.update(
+            {
+                "verification_steps": state.verification_steps + verification_steps,
+                "messages": [
+                    AIMessage(content=step.answer or "Google Places check complete")
+                ],
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error checking Google Places: {e}")
@@ -713,9 +734,7 @@ async def make_decision(
     This node uses an LLM to synthesize all the verification steps
     and evidence to make a final decision about the metadata validity.
     """
-    logger.info(
-        f"Making validation decision for {state.image_id}#{state.receipt_id}"
-    )
+    logger.info(f"Making validation decision for {state.image_id}#{state.receipt_id}")
 
     updates: dict[str, Any] = {
         "current_step": "decision",
@@ -741,9 +760,7 @@ async def make_decision(
             confidence = 0.0
 
         # Boost confidence if we have strong evidence
-        high_confidence_evidence = [
-            e for e in all_evidence if e.confidence > 0.8
-        ]
+        high_confidence_evidence = [e for e in all_evidence if e.confidence > 0.8]
         if high_confidence_evidence:
             confidence = min(1.0, confidence + 0.1)
 
@@ -758,10 +775,12 @@ async def make_decision(
             status = ValidationStatus.PENDING
 
         # Build reasoning using LLM
-        evidence_summary = "\n".join([
-            f"- {step.step_name}: {step.answer} (passed: {step.passed})"
-            for step in state.verification_steps
-        ])
+        evidence_summary = "\n".join(
+            [
+                f"- {step.step_name}: {step.answer} (passed: {step.passed})"
+                for step in state.verification_steps
+            ]
+        )
 
         # Get LLM reasoning
         reasoning_prompt = f"""Based on the following verification steps, provide a brief explanation for why the receipt metadata is being marked as {status.value}:
@@ -783,7 +802,9 @@ Provide a 2-3 sentence explanation:"""
         reasoning = ""
         try:
             response = await llm.ainvoke(reasoning_prompt)
-            reasoning = response.content if hasattr(response, "content") else str(response)
+            reasoning = (
+                response.content if hasattr(response, "content") else str(response)
+            )
         except Exception as e:
             logger.warning(f"LLM reasoning failed: {e}")
             reasoning = (
@@ -840,14 +861,16 @@ Provide a 2-3 sentence explanation:"""
             recommendations=recommendations,
         )
 
-        updates.update({
-            "result": result,
-            "messages": [
-                AIMessage(
-                    content=f"Validation complete: {status.value} (confidence: {confidence:.2f})\n{reasoning}"
-                )
-            ],
-        })
+        updates.update(
+            {
+                "result": result,
+                "messages": [
+                    AIMessage(
+                        content=f"Validation complete: {status.value} (confidence: {confidence:.2f})\n{reasoning}"
+                    )
+                ],
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error making decision: {e}")
@@ -859,4 +882,3 @@ Provide a 2-3 sentence explanation:"""
         )
 
     return updates
-

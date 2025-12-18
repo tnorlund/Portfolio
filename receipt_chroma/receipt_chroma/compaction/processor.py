@@ -47,15 +47,9 @@ def process_collection_updates(
         CollectionUpdateResult with counts and per-message results
     """
     # Categorize messages by entity type
-    metadata_msgs = [
-        m for m in stream_messages if m.entity_type == "RECEIPT_METADATA"
-    ]
-    label_msgs = [
-        m for m in stream_messages if m.entity_type == "RECEIPT_WORD_LABEL"
-    ]
-    delta_msgs = [
-        m for m in stream_messages if m.entity_type == "COMPACTION_RUN"
-    ]
+    metadata_msgs = [m for m in stream_messages if m.entity_type == "RECEIPT_METADATA"]
+    label_msgs = [m for m in stream_messages if m.entity_type == "RECEIPT_WORD_LABEL"]
+    delta_msgs = [m for m in stream_messages if m.entity_type == "COMPACTION_RUN"]
 
     logger.info(
         "Categorized stream messages",
@@ -128,9 +122,7 @@ def process_collection_updates(
     )
 
     if label_results:
-        total_labels = sum(
-            r.updated_count for r in label_results if r.error is None
-        )
+        total_labels = sum(r.updated_count for r in label_results if r.error is None)
         logger.info(
             "Applied label updates",
             collection=collection.value,

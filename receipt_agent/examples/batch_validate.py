@@ -23,9 +23,7 @@ from pathlib import Path
 # Add parent to path for local development
 sys.path.insert(
     0,
-    os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    ),
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
 )
 
 from receipt_agent.api import MetadataValidatorAgent
@@ -56,9 +54,7 @@ def setup_environment():
     snapshot_base_dir = os.path.join(repo_root, ".chroma_snapshots")
     lines_snapshot_dir = os.path.join(snapshot_base_dir, "lines")
     words_snapshot_dir = os.path.join(snapshot_base_dir, "words")
-    local_chroma = os.path.join(
-        repo_root, ".chromadb_local", "words"
-    )  # Old local path
+    local_chroma = os.path.join(repo_root, ".chromadb_local", "words")  # Old local path
 
     # Prefer local snapshot directories (downloaded from S3)
     chroma_dirs_set = False
@@ -79,20 +75,14 @@ def setup_environment():
         try:
             from receipt_chroma import ChromaClient
 
-            with ChromaClient(
-                persist_directory=local_chroma, mode="read"
-            ) as client:
+            with ChromaClient(persist_directory=local_chroma, mode="read") as client:
                 collections = client.list_collections()
                 has_lines = "lines" in collections
                 has_words = "words" in collections
 
                 if has_lines and has_words:
-                    os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = (
-                        local_chroma
-                    )
-                    os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = (
-                        local_chroma
-                    )
+                    os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = local_chroma
+                    os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = local_chroma
                     print(f"✅ ChromaDB local (old format): {local_chroma}")
                     print(f"   Collections: {', '.join(collections)}")
                     chroma_dirs_set = True
@@ -116,9 +106,7 @@ def setup_environment():
         )
 
         if bucket_name:
-            print(
-                f"📥 Downloading ChromaDB snapshots from S3 bucket: {bucket_name}"
-            )
+            print(f"📥 Downloading ChromaDB snapshots from S3 bucket: {bucket_name}")
             print(
                 "   (Downloading 'lines' and 'words' collections to separate directories...)"
             )
@@ -151,9 +139,7 @@ def setup_environment():
                         if os.path.exists(lines_snapshot_dir):
                             shutil.rmtree(lines_snapshot_dir)
                         shutil.copytree(lines_temp, lines_snapshot_dir)
-                        print(
-                            f"   Copied lines collection to {lines_snapshot_dir}"
-                        )
+                        print(f"   Copied lines collection to {lines_snapshot_dir}")
                     else:
                         print(
                             f"⚠️  Lines download failed: {lines_result.get('error', 'unknown error')}"
@@ -175,9 +161,7 @@ def setup_environment():
                         if os.path.exists(words_snapshot_dir):
                             shutil.rmtree(words_snapshot_dir)
                         shutil.copytree(words_temp, words_snapshot_dir)
-                        print(
-                            f"   Copied words collection to {words_snapshot_dir}"
-                        )
+                        print(f"   Copied words collection to {words_snapshot_dir}")
                     else:
                         print(
                             f"⚠️  Words download failed: {words_result.get('error', 'unknown error')}"
@@ -196,27 +180,23 @@ def setup_environment():
                                 persist_directory=lines_snapshot_dir,
                                 mode="read",
                             ) as lines_client:
-                                lines_collections = (
-                                    lines_client.list_collections()
-                                )
+                                lines_collections = lines_client.list_collections()
                             with ChromaClient(
                                 persist_directory=words_snapshot_dir,
                                 mode="read",
                             ) as words_client:
-                                words_collections = (
-                                    words_client.list_collections()
-                                )
+                                words_collections = words_client.list_collections()
 
                             if (
                                 "lines" in lines_collections
                                 and "words" in words_collections
                             ):
-                                os.environ[
-                                    "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"
-                                ] = lines_snapshot_dir
-                                os.environ[
-                                    "RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
-                                ] = words_snapshot_dir
+                                os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = (
+                                    lines_snapshot_dir
+                                )
+                                os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = (
+                                    words_snapshot_dir
+                                )
                                 print(f"✅ ChromaDB snapshots ready:")
                                 print(
                                     f"   Lines: {lines_snapshot_dir} (Collections: {', '.join(lines_collections)})"
@@ -245,13 +225,9 @@ def setup_environment():
                             os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = (
                                 f"http://{chroma_host}:8000"
                             )
-                            print(
-                                f"✅ ChromaDB URL: http://{chroma_host}:8000"
-                            )
+                            print(f"✅ ChromaDB URL: http://{chroma_host}:8000")
                         else:
-                            print(
-                                "⚠️  ChromaDB not available - will fail if needed"
-                            )
+                            print("⚠️  ChromaDB not available - will fail if needed")
                 finally:
                     shutil.rmtree(lines_temp, ignore_errors=True)
                     shutil.rmtree(words_temp, ignore_errors=True)
@@ -315,9 +291,7 @@ def setup_environment():
         print("⚠️  Ollama API key not found")
 
     # Set receipt_places table name too
-    os.environ["RECEIPT_PLACES_TABLE_NAME"] = env.get(
-        "dynamodb_table_name", "receipts"
-    )
+    os.environ["RECEIPT_PLACES_TABLE_NAME"] = env.get("dynamodb_table_name", "receipts")
 
     print(f"\n📊 DynamoDB Table: {env.get('dynamodb_table_name', 'receipts')}")
 
@@ -363,9 +337,7 @@ async def main(
         sys.exit(1)
 
     # Initialize DynamoDB client
-    dynamo = DynamoClient(
-        table_name=env.get("dynamodb_table_name", "receipts")
-    )
+    dynamo = DynamoClient(table_name=env.get("dynamodb_table_name", "receipts"))
 
     # Create ChromaDB client using factory (handles separate lines/words directories)
     chroma_client = None

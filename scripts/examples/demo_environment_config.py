@@ -83,9 +83,7 @@ def demo_environment_config():
         print(f"   Environment tag: {config.auto_tag['environment']}")
 
         # Show table naming
-        table_name = AIUsageEnvironmentConfig.get_table_name(
-            "AIUsageMetrics", env
-        )
+        table_name = AIUsageEnvironmentConfig.get_table_name("AIUsageMetrics", env)
         print(f"   Full table name: {table_name}")
 
 
@@ -137,9 +135,7 @@ def demo_ai_usage_tracker():
 
     # Test 2: Explicit environment
     print("\n2. Tracker with explicit environment:")
-    tracker = AIUsageTracker.create_for_environment(
-        environment=Environment.PRODUCTION
-    )
+    tracker = AIUsageTracker.create_for_environment(environment=Environment.PRODUCTION)
     print(f"   Environment: {tracker.environment_config.environment.value}")
     print(f"   Table name: {tracker.table_name}")
     print(f"   Require context: {tracker.environment_config.require_context}")
@@ -194,9 +190,7 @@ def demo_context_manager_basic():
     with ai_usage_context(
         "receipt_processing", job_id="job-456", user_request="analyze receipts"
     ) as tracker:
-        print(
-            f"   Operation type: {tracker.current_context['operation_type']}"
-        )
+        print(f"   Operation type: {tracker.current_context['operation_type']}")
         print(f"   Job ID: {tracker.current_context.get('job_id')}")
         print(f"   Context includes: {list(tracker.current_context.keys())}")
 
@@ -222,17 +216,13 @@ def demo_nested_contexts():
     """Demonstrate nested context managers."""
     print("\n3. Nested contexts for complex workflows:")
 
-    with ai_usage_context(
-        "parent_workflow", workflow_id="wf-123"
-    ) as parent_tracker:
+    with ai_usage_context("parent_workflow", workflow_id="wf-123") as parent_tracker:
         print(
             f"   Parent operation: {parent_tracker.current_context['operation_type']}"
         )
 
         # Nested context inherits parent
-        with ai_usage_context(
-            "child_task", task_id="task-456"
-        ) as child_tracker:
+        with ai_usage_context("child_task", task_id="task-456") as child_tracker:
             context = child_tracker.current_context
             print(f"   Child operation: {context['operation_type']}")
             print(f"   Parent reference: {context.get('parent_operation')}")
@@ -250,9 +240,7 @@ def demo_context_with_environment():
         os.environ["ENVIRONMENT"] = env_name
 
         with ai_usage_context(f"{env_name}_operation") as tracker:
-            print(
-                f"\n   Environment: {tracker.environment_config.environment.value}"
-            )
+            print(f"\n   Environment: {tracker.environment_config.environment.value}")
             print(f"   Table: {tracker.table_name}")
             print(
                 f"   Auto-tags: {tracker.environment_config.auto_tag.get('environment')}"

@@ -77,21 +77,16 @@ class CollectionUpdateResult:
     @property
     def total_metadata_updated(self) -> int:
         """Total number of metadata updates (excluding errors)."""
-        return sum(
-            r.updated_count for r in self.metadata_updates if r.error is None
-        )
+        return sum(r.updated_count for r in self.metadata_updates if r.error is None)
 
     @property
     def total_labels_updated(self) -> int:
         """Total number of label updates (excluding errors)."""
-        return sum(
-            r.updated_count for r in self.label_updates if r.error is None
-        )
+        return sum(r.updated_count for r in self.label_updates if r.error is None)
 
     @property
     def has_errors(self) -> bool:
         """Whether any updates had errors."""
         return any(
-            r.error is not None
-            for r in (self.metadata_updates + self.label_updates)
+            r.error is not None for r in (self.metadata_updates + self.label_updates)
         )
