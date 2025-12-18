@@ -17,6 +17,7 @@ Each phase includes:
 
 import logging
 import random
+import threading
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Optional
@@ -42,6 +43,11 @@ class RolloutConfig:
     max_error_rate: float = 0.01  # 1% error rate triggers rollback
     max_latency_p99_ms: float = 2000  # 2s p99 latency triggers rollback
     min_dual_write_success: float = 0.99  # 99% success rate required
+
+    # Critical rollback thresholds
+    critical_error_rate: float = 0.05  # 5% error rate triggers immediate rollback
+    critical_latency_ms: float = 5000  # 5s p99 latency triggers immediate rollback
+    critical_dual_write_success: float = 0.95  # 95% success rate for critical rollback
 
     # Phase transition requirements
     observations_required: int = 100  # Minimum records before advancing phase
@@ -136,6 +142,7 @@ class RolloutManager:
         self.current_phase = initial_phase
         self.phase_metrics: Dict[RolloutPhase, HealthMetrics] = {}
         self.rollback_triggered = False
+        self._random_lock = threading.Lock()
 
     def should_use_v1_api(self) -> bool:
         """
@@ -147,8 +154,9 @@ class RolloutManager:
             logger.warning("Rollout paused due to rollback trigger")
             return False
 
-        # Random decision based on configured percentage
-        return random.random() < (self.config.v1_traffic_percentage / 100.0)
+        # Thread-safe random decision based on configured percentage
+        with self._random_lock:
+            return random.random() < (self.config.v1_traffic_percentage / 100.0)
 
     def advance_phase(self, new_phase: RolloutPhase) -> bool:
         """
@@ -214,28 +222,29 @@ class RolloutManager:
             True if rollback needed
         """
         # Severe error rate
-        if metrics.error_rate > 0.05:  # 5% is critical
+        if metrics.error_rate > self.config.critical_error_rate:
             logger.error(
                 f"ROLLBACK TRIGGERED: Error rate {metrics.error_rate:.2%} "
-                "exceeds 5% threshold"
+                f"exceeds {self.config.critical_error_rate:.2%} threshold"
             )
             self.rollback_triggered = True
             return True
 
         # Severe latency spike
-        if metrics.latency_p99_ms > 5000:  # 5s is critical
+        if metrics.latency_p99_ms > self.config.critical_latency_ms:
             logger.error(
                 f"ROLLBACK TRIGGERED: p99 latency {metrics.latency_p99_ms:.0f}ms "
-                "exceeds 5s threshold"
+                f"exceeds {self.config.critical_latency_ms:.0f}ms threshold"
             )
             self.rollback_triggered = True
             return True
 
         # Dual-write failure
-        if metrics.dual_write_success_rate < 0.95:  # 95% is critical
+        if metrics.dual_write_success_rate < self.config.critical_dual_write_success:
             logger.error(
                 f"ROLLBACK TRIGGERED: Dual-write success "
-                f"{metrics.dual_write_success_rate:.2%} below 95% threshold"
+                f"{metrics.dual_write_success_rate:.2%} below "
+                f"{self.config.critical_dual_write_success:.2%} threshold"
             )
             self.rollback_triggered = True
             return True
@@ -272,13 +281,16 @@ class RolloutManager:
 
 # Global rollout manager instance
 _rollout_manager: Optional[RolloutManager] = None
+_rollout_lock = threading.Lock()
 
 
 def get_rollout_manager() -> RolloutManager:
-    """Get or create global rollout manager."""
+    """Get or create global rollout manager (thread-safe)."""
     global _rollout_manager
     if _rollout_manager is None:
-        _rollout_manager = RolloutManager()
+        with _rollout_lock:
+            if _rollout_manager is None:
+                _rollout_manager = RolloutManager()
     return _rollout_manager
 
 

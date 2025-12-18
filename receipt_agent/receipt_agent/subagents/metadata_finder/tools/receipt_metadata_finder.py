@@ -84,7 +84,10 @@ import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
+
+if TYPE_CHECKING:
+    from receipt_dynamo.entities import ReceiptMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -967,7 +970,7 @@ class ReceiptMetadataFinder:
         return result
 
     async def _create_receipt_place_from_match(
-        self, match: MetadataMatch, metadata: "ReceiptMetadata"
+        self, match: MetadataMatch, metadata: ReceiptMetadata
     ) -> None:
         """
         Create a ReceiptPlace entity from matched metadata and API data.

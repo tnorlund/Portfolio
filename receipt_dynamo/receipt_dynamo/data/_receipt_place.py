@@ -9,8 +9,10 @@ This module provides CRUD operations and GSI queries for managing ReceiptPlace
 records in DynamoDB.
 """
 
-from typing import TYPE_CHECKING, List, Optional, Tuple
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
+from boto3.dynamodb.types import TypeDeserializer
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
@@ -30,11 +32,27 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 from receipt_dynamo.entities import ReceiptPlace
 
-if TYPE_CHECKING:
-    pass
-
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
+
+# Type deserializer for converting DynamoDB JSON format to Python types
+_deserializer = TypeDeserializer()
+
+
+def _deserialize_item(dynamo_item: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Deserialize a DynamoDB item from low-level client format to Python types.
+
+    The low-level boto3 client returns items in DynamoDB JSON format
+    (e.g., {"S": "value"}, {"N": "123"}). This function converts to native Python types.
+
+    Args:
+        dynamo_item: Item in DynamoDB JSON format from low-level client
+
+    Returns:
+        Item with native Python types suitable for entity instantiation
+    """
+    return {k: _deserializer.deserialize(v) for k, v in dynamo_item.items()}
 
 
 class _ReceiptPlace(FlattenedStandardMixin):
@@ -271,7 +289,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}#PLACE",
             entity_class=ReceiptPlace,
-            converter_func=lambda item: ReceiptPlace(**item),
+            converter_func=lambda item: ReceiptPlace(**_deserialize_item(item)),
         )
 
         if result is None:
@@ -373,11 +391,16 @@ class _ReceiptPlace(FlattenedStandardMixin):
             batch_items = response["Responses"].get(self.table_name, [])
             results.extend(batch_items)
             unprocessed = response.get("UnprocessedKeys", {})
+            retry_count = 0
             while unprocessed.get(self.table_name):
+                # Exponential backoff: 2^retry_count seconds, max 32 seconds
+                wait_time = min(2 ** retry_count, 32)
+                time.sleep(wait_time)
                 response = self._client.batch_get_item(RequestItems=unprocessed)
                 batch_items = response["Responses"].get(self.table_name, [])
                 results.extend(batch_items)
                 unprocessed = response.get("UnprocessedKeys", {})
+                retry_count += 1
         return [ReceiptPlace(**result) for result in results]
 
     @handle_dynamodb_errors("list_receipt_places")

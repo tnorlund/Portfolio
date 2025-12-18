@@ -24,7 +24,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -103,8 +103,8 @@ class PlaceCluster(SerializationMixin):
     distinct_locations: int = 0
 
     # === Timestamps ===
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # === Metadata ===
     source: str = ""  # inference, manual, merge, etc.
@@ -113,7 +113,7 @@ class PlaceCluster(SerializationMixin):
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
         # Validate cluster_id is UUID
-        assert_valid_uuid(self.cluster_id, "cluster_id")
+        assert_valid_uuid(self.cluster_id)
 
         # Normalize cluster type
         if self.cluster_type not in {t.value for t in ClusterType}:
@@ -207,10 +207,12 @@ class PlaceCluster(SerializationMixin):
             self.canonical_types = other.canonical_types
             self.canonical_address = other.canonical_address
             self.canonical_phone = other.canonical_phone
+            self.canonical_phone_intl = other.canonical_phone_intl
             self.canonical_website = other.canonical_website
+            self.canonical_maps_url = other.canonical_maps_url
             self.confidence = other.confidence
 
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def __repr__(self) -> str:
         """Return string representation."""

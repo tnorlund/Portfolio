@@ -21,10 +21,10 @@ Differences from ReceiptMetadata:
 
 from __future__ import annotations
 
-import os
+import re
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
@@ -35,6 +35,8 @@ from receipt_dynamo.entities.util import (
     validate_positive_int,
 )
 from receipt_dynamo.utils.geospatial import calculate_geohash
+
+logger = __import__("logging").getLogger(__name__)
 
 # Validation thresholds (inherit from ReceiptMetadata for consistency)
 MIN_PHONE_DIGITS = 7
@@ -146,7 +148,7 @@ class ReceiptPlace(SerializationMixin):
     reasoning: str = ""
 
     # === Timestamps ===
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     places_api_version: str = "v1"
 
     def __post_init__(self) -> None:
@@ -159,15 +161,15 @@ class ReceiptPlace(SerializationMixin):
         if self.validated_by:
             self.validated_by = normalize_enum(self.validated_by, ValidationMethod)
 
-        # Ensure lists are unique
+        # Ensure lists are unique (preserve order)
         if self.merchant_types:
-            self.merchant_types = list(set(self.merchant_types))
+            self.merchant_types = list(dict.fromkeys(self.merchant_types))
         if self.matched_fields:
-            self.matched_fields = list(set(self.matched_fields))
+            self.matched_fields = list(dict.fromkeys(self.matched_fields))
         if self.hours_summary:
-            self.hours_summary = list(set(self.hours_summary))
+            self.hours_summary = list(dict.fromkeys(self.hours_summary))
         if self.photo_references:
-            self.photo_references = list(set(self.photo_references))
+            self.photo_references = list(dict.fromkeys(self.photo_references))
 
         # Validate confidence score
         if not (0.0 <= self.confidence <= 1.0):
@@ -201,8 +203,7 @@ class ReceiptPlace(SerializationMixin):
                     )
                 except ValueError as e:
                     # Only warn, don't fail - geohash is optional
-                    import logging
-                    logging.warning(
+                    logger.warning(
                         f"Failed to calculate geohash for {self.place_id}: {e}"
                     )
 
@@ -217,7 +218,10 @@ class ReceiptPlace(SerializationMixin):
     @property
     def gsi1_key(self) -> dict[str, dict[str, str]]:
         """Get GSI1 key (query by merchant name)."""
-        normalized_name = self.merchant_name.upper().replace(" ", "_")
+        # Normalize name: uppercase, replace special chars with underscore, collapse whitespace
+        normalized_name = self.merchant_name.upper()
+        normalized_name = re.sub(r"[^A-Z0-9]+", "_", normalized_name)
+        normalized_name = normalized_name.strip("_")
         return {
             "GSI1PK": {"S": f"MERCHANT#{normalized_name}"},
             "GSI1SK": {

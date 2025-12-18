@@ -27,7 +27,7 @@ Migration Strategy:
 import asyncio
 import logging
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 
@@ -46,11 +46,7 @@ class BackfillStats:
     total_created: int = 0
     total_skipped: int = 0
     total_failed: int = 0
-    errors: List[str] = None
-
-    def __post_init__(self):
-        if self.errors is None:
-            self.errors = []
+    errors: List[str] = field(default_factory=list)
 
 
 class ReceiptPlaceBackfiller:
@@ -224,6 +220,7 @@ class ReceiptPlaceBackfiller:
                     )
 
                 processed += 1
+                self.stats.total_processed += 1
 
                 # Log progress periodically
                 if processed % self.batch_size == 0:
@@ -422,7 +419,6 @@ class ReceiptPlaceBackfiller:
             self.stats.errors.append(
                 f"{metadata.image_id}#{metadata.receipt_id}: {e!s}"
             )
-            raise
 
     def print_summary(self) -> None:
         """Print backfill operation summary."""

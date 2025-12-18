@@ -23,12 +23,19 @@ from receipt_places.types import (
     PlusCode,
     Viewport,
 )
-from receipt_places.types_v1 import PlaceV1
+from receipt_places.types_v1 import (
+    Location,
+    OpeningHours as V1OpeningHours,
+    OpeningHoursPeriod as V1OpeningHoursPeriod,
+    PlaceV1,
+    PlusCode as V1PlusCode,
+    Viewport as V1Viewport,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def adapt_v1_location_to_legacy(location: Optional["receipt_places.types_v1.Location"]) -> Optional[LatLng]:
+def adapt_v1_location_to_legacy(location: Optional[Location]) -> Optional[LatLng]:
     """Convert v1 Location to legacy LatLng format.
 
     Args:
@@ -43,7 +50,7 @@ def adapt_v1_location_to_legacy(location: Optional["receipt_places.types_v1.Loca
     return LatLng(lat=location.latitude, lng=location.longitude)
 
 
-def adapt_v1_viewport_to_legacy(viewport: Optional["receipt_places.types_v1.Viewport"]) -> Optional[Viewport]:
+def adapt_v1_viewport_to_legacy(viewport: Optional[V1Viewport]) -> Optional[Viewport]:
     """Convert v1 Viewport to legacy Viewport format.
 
     Args:
@@ -62,8 +69,8 @@ def adapt_v1_viewport_to_legacy(viewport: Optional["receipt_places.types_v1.View
 
 
 def adapt_v1_geometry_to_legacy(
-    location: Optional["receipt_places.types_v1.Location"],
-    viewport: Optional["receipt_places.types_v1.Viewport"],
+    location: Optional[Location],
+    viewport: Optional[V1Viewport],
 ) -> Optional[Geometry]:
     """Convert v1 Location and Viewport to legacy Geometry format.
 
@@ -84,7 +91,7 @@ def adapt_v1_geometry_to_legacy(
 
 
 def adapt_v1_plus_code_to_legacy(
-    plus_code: Optional["receipt_places.types_v1.PlusCode"],
+    plus_code: Optional[V1PlusCode],
 ) -> Optional[PlusCode]:
     """Convert v1 PlusCode to legacy PlusCode format.
 
@@ -104,7 +111,7 @@ def adapt_v1_plus_code_to_legacy(
 
 
 def adapt_v1_opening_hours_to_legacy(
-    opening_hours: Optional["receipt_places.types_v1.OpeningHours"],
+    opening_hours: Optional[V1OpeningHours],
 ) -> Optional[OpeningHours]:
     """Convert v1 OpeningHours to legacy OpeningHours format.
 
@@ -176,17 +183,19 @@ def adapt_v1_to_legacy(place_v1: PlaceV1) -> Place:
     # Extract place_id from the resource name if id is not directly available
     place_id = place_v1.id
     if not place_id:
-        logger.warning("Place v1 has no id field, adapting may fail")
-        place_id = None
+        raise ValueError("Place v1 has no id field - critical field missing")
 
     # Extract merchant name from display_name
     name = None
     if place_v1.display_name:
         name = place_v1.display_name.text
     elif place_v1.name:
-        # Fallback to resource name if display_name not available
-        # Resource name format: places/{place_id}
-        name = None
+        # Fallback: use resource name if display_name not available
+        # Resource name format: "places/{place_id}" - extract the last segment
+        name = place_v1.name.split("/")[-1] if "/" in place_v1.name else place_v1.name
+
+    if not name:
+        raise ValueError("Place v1 has no name field - cannot resolve merchant name")
 
     # Adapt geometry
     geometry = adapt_v1_geometry_to_legacy(place_v1.location, place_v1.viewport)

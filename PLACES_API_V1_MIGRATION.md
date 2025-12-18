@@ -107,7 +107,7 @@ confidence: float                  # 0.0-1.0
 ```
 
 **DynamoDB Schema:**
-```
+```text
 PK: IMAGE#{image_id}
 SK: RECEIPT#{receipt_id:05d}#PLACE
 

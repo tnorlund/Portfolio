@@ -11,6 +11,7 @@ until PlaceCluster is activated. The query methods exist in _receipt_place.py bu
 are not yet called.
 """
 
+from math import cos, radians
 from typing import Optional, Tuple
 
 

@@ -9,9 +9,10 @@ Provides utilities for:
 """
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MetricsSnapshot:
     """Snapshot of system metrics at a point in time."""
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Dual-write metrics
     metadata_writes: int = 0
@@ -114,7 +115,7 @@ class MetricsCollector:
         if not success:
             self.current_snapshot.api_errors += 1
 
-        # Track latency percentiles
+        # Track latency moving average
         key = f"latency_{api_version}"
         if key not in self.current_snapshot.api_latency_ms:
             self.current_snapshot.api_latency_ms[key] = latency_ms
@@ -236,13 +237,16 @@ class MetricsCollector:
 
 # Global metrics collector instance
 _metrics_collector: Optional[MetricsCollector] = None
+_metrics_lock = threading.Lock()
 
 
 def get_metrics_collector() -> MetricsCollector:
-    """Get or create global metrics collector."""
+    """Get or create global metrics collector (thread-safe)."""
     global _metrics_collector
     if _metrics_collector is None:
-        _metrics_collector = MetricsCollector()
+        with _metrics_lock:
+            if _metrics_collector is None:
+                _metrics_collector = MetricsCollector()
     return _metrics_collector
 
 

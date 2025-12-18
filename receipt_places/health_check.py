@@ -8,9 +8,8 @@ Provides health checks for:
 - Overall system health
 """
 
-import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -22,11 +21,7 @@ class HealthCheckResult:
     status: str  # "healthy", "degraded", "unhealthy"
     message: str
     details: Dict[str, Any]
-    errors: list = None
-
-    def __post_init__(self):
-        if self.errors is None:
-            self.errors = []
+    errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dict for JSON serialization."""
@@ -68,7 +63,7 @@ class PlacesAPIHealthChecker:
         self.dynamo = dynamo_client
         self.cache = cache_manager
 
-    async def check_all(self) -> HealthCheckResult:
+    def check_all(self) -> HealthCheckResult:
         """
         Run all health checks.
 
@@ -81,7 +76,7 @@ class PlacesAPIHealthChecker:
 
         # Check Places API
         try:
-            results["places_api"] = await self.check_places_api()
+            results["places_api"] = self.check_places_api()
             if results["places_api"].status != "healthy":
                 unhealthy_count += 1
                 errors.extend(results["places_api"].errors)
@@ -98,7 +93,7 @@ class PlacesAPIHealthChecker:
 
         # Check DynamoDB
         try:
-            results["dynamodb"] = await self.check_dynamodb()
+            results["dynamodb"] = self.check_dynamodb()
             if results["dynamodb"].status != "healthy":
                 unhealthy_count += 1
                 errors.extend(results["dynamodb"].errors)
@@ -116,7 +111,7 @@ class PlacesAPIHealthChecker:
         # Check cache
         if self.cache:
             try:
-                results["cache"] = await self.check_cache()
+                results["cache"] = self.check_cache()
                 if results["cache"].status != "healthy":
                     unhealthy_count += 1
                     errors.extend(results["cache"].errors)
@@ -149,7 +144,7 @@ class PlacesAPIHealthChecker:
             errors=errors,
         )
 
-    async def check_places_api(self) -> HealthCheckResult:
+    def check_places_api(self) -> HealthCheckResult:
         """Check Places API connectivity."""
         if not self.places:
             return HealthCheckResult(
@@ -164,7 +159,7 @@ class PlacesAPIHealthChecker:
             # Using a well-known location (Google Sydney office)
             test_place_id = "ChIJ68p4rXBCFzMRKx_QBcT3WYQ"
 
-            result = await self.places.get_place_details(test_place_id)
+            result = self.places.get_place_details(test_place_id)
 
             if result:
                 return HealthCheckResult(
@@ -206,7 +201,7 @@ class PlacesAPIHealthChecker:
                 errors=[str(e)],
             )
 
-    async def check_dynamodb(self) -> HealthCheckResult:
+    def check_dynamodb(self) -> HealthCheckResult:
         """Check DynamoDB connectivity and ReceiptPlace operations."""
         if not self.dynamo:
             return HealthCheckResult(
@@ -218,7 +213,10 @@ class PlacesAPIHealthChecker:
 
         try:
             # Check table exists and is accessible
-            table_status = self.dynamo._client.describe_table(
+            # Use public method to get table description
+            import boto3
+            client = boto3.client("dynamodb")
+            table_status = client.describe_table(
                 TableName=self.dynamo.table_name
             )
 
@@ -243,7 +241,7 @@ class PlacesAPIHealthChecker:
                 errors=[str(e)],
             )
 
-    async def check_cache(self) -> HealthCheckResult:
+    def check_cache(self) -> HealthCheckResult:
         """Check cache functionality."""
         if not self.cache:
             return HealthCheckResult(
@@ -275,7 +273,7 @@ class PlacesAPIHealthChecker:
                 errors=[str(e)],
             )
 
-    async def check_dual_write_status(self) -> Dict[str, Any]:
+    def check_dual_write_status(self) -> Dict[str, Any]:
         """
         Check dual-write status and success rates.
 

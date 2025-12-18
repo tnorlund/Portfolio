@@ -276,18 +276,17 @@ class PlacesClientV1:
         digits = self._extract_digits(phone_number)
 
         # Try cache first
-        expected_fields = {"id", "displayName", "types", "businessStatus"}
-        cached_result = self._try_cached_phone_result(digits, expected_fields)
+        cached_result = self._try_cached_phone_result(digits)
         if cached_result:
             return cached_result
 
         # Try API search
-        api_result = self._try_phone_api_search(phone_number, digits, expected_fields)
+        api_result = self._try_phone_api_search(phone_number, digits)
         if api_result:
             return api_result
 
         # Fallback to text search
-        return self._try_text_search_fallback(phone_number, digits)
+        return self._try_text_search_fallback(phone_number)
 
     def _extract_digits(self, phone_number: str) -> str:
         """Extract only digits from phone number."""
@@ -307,7 +306,7 @@ class PlacesClientV1:
         return True
 
     def _try_cached_phone_result(
-        self, digits: str, expected_fields: set[str]
+        self, digits: str
     ) -> Optional[Place]:
         """Try to retrieve and parse cached phone search result."""
         cached_dict = self._cache.get("PHONE", digits)
@@ -326,7 +325,7 @@ class PlacesClientV1:
             return None
 
     def _try_phone_api_search(
-        self, phone_number: str, digits: str, expected_fields: set[str]
+        self, phone_number: str, digits: str
     ) -> Optional[Place]:
         """Make API call for phone search, fetch details, and cache result."""
         logger.info("📱 Places API v1: search_by_phone(%s)", phone_number)
@@ -391,7 +390,7 @@ class PlacesClientV1:
             return f"+1{digits}"
 
     def _try_text_search_fallback(
-        self, phone_number: str, digits: str
+        self, phone_number: str
     ) -> Optional[Place]:
         """Fallback to text search if phone search fails."""
         logger.info("📝 Falling back to text search for phone: %s", phone_number)
@@ -449,13 +448,12 @@ class PlacesClientV1:
         cache_key = self._normalize_address_key(address)
 
         # Try cache first
-        expected_fields = {"id", "displayName", "formattedAddress"}
-        cached_result = self._try_cached_address_result(cache_key, expected_fields)
+        cached_result = self._try_cached_address_result(cache_key)
         if cached_result:
             return cached_result
 
         # Try API search
-        api_result = self._try_address_api_search(address, cache_key, expected_fields)
+        api_result = self._try_address_api_search(address, cache_key)
         return api_result
 
     def _normalize_address_key(self, address: str) -> str:
@@ -467,7 +465,7 @@ class PlacesClientV1:
         return normalized
 
     def _try_cached_address_result(
-        self, cache_key: str, expected_fields: set[str]
+        self, cache_key: str
     ) -> Optional[Place]:
         """Try to retrieve cached address search result."""
         cached_dict = self._cache.get("ADDRESS", cache_key)
@@ -485,7 +483,7 @@ class PlacesClientV1:
             return None
 
     def _try_address_api_search(
-        self, address: str, cache_key: str, expected_fields: set[str]
+        self, address: str, cache_key: str
     ) -> Optional[Place]:
         """Make API call for address search and cache result."""
         logger.info("📍 Places API v1: search_by_address(%s)", address)

@@ -13,7 +13,6 @@ Usage:
     python scripts/verify_deployment_readiness.py [--verbose]
 """
 
-import asyncio
 import logging
 import sys
 from typing import List, Optional
@@ -29,8 +28,7 @@ logger = logging.getLogger(__name__)
 class DeploymentVerifier:
     """Verifies deployment readiness for v1 migration."""
 
-    def __init__(self, verbose: bool = False):
-        self.verbose = verbose
+    def __init__(self):
         self.checks_passed = 0
         self.checks_failed = 0
         self.warnings = []
@@ -52,7 +50,7 @@ class DeploymentVerifier:
         self.warnings.append(message)
         logger.warning(f"  ⚠ {message}")
 
-    async def verify_all(self) -> bool:
+    def verify_all(self) -> bool:
         """
         Run all verification checks.
 
@@ -65,23 +63,23 @@ class DeploymentVerifier:
 
         # Check feature flag configuration
         logger.info("\n1. Feature Flag Configuration")
-        await self._check_feature_flags()
+        self._check_feature_flags()
 
         # Check API clients
         logger.info("\n2. API Client Configuration")
-        await self._check_api_clients()
+        self._check_api_clients()
 
         # Check DynamoDB
         logger.info("\n3. DynamoDB Setup")
-        await self._check_dynamodb()
+        self._check_dynamodb()
 
         # Check dependencies
         logger.info("\n4. Python Dependencies")
-        await self._check_dependencies()
+        self._check_dependencies()
 
         # Check documentation
         logger.info("\n5. Documentation")
-        await self._check_documentation()
+        self._check_documentation()
 
         # Print summary
         logger.info("\n" + "=" * 70)
@@ -101,7 +99,7 @@ class DeploymentVerifier:
             logger.error("\n✗ NOT READY FOR DEPLOYMENT")
             return False
 
-    async def _check_feature_flags(self):
+    def _check_feature_flags(self):
         """Check feature flag configuration."""
         try:
             from receipt_places.config import PlacesConfig
@@ -131,7 +129,7 @@ class DeploymentVerifier:
                 str(e)
             )
 
-    async def _check_api_clients(self):
+    def _check_api_clients(self):
         """Check API client implementations."""
         checks = [
             ("types_v1.py", "receipt_places.types_v1", "PlaceV1"),
@@ -148,7 +146,7 @@ class DeploymentVerifier:
             except Exception as e:
                 self._log_check(f"{name} exists", False, str(e))
 
-    async def _check_dynamodb(self):
+    def _check_dynamodb(self):
         """Check DynamoDB setup."""
         checks = [
             ("ReceiptPlace entity", "receipt_dynamo.entities", "ReceiptPlace"),
@@ -164,7 +162,7 @@ class DeploymentVerifier:
             except Exception as e:
                 self._log_check(f"{name}", False, str(e))
 
-    async def _check_dependencies(self):
+    def _check_dependencies(self):
         """Check required Python dependencies."""
         dependencies = [
             ("pydantic", "Pydantic for data validation"),
@@ -176,12 +174,15 @@ class DeploymentVerifier:
             try:
                 __import__(package)
                 self._log_check(f"{package}", True, description)
-            except ImportError:
-                self._log_warning(
-                    f"{package} not installed (required for {description})"
+            except ImportError as e:
+                # Mark as failed check rather than just warning
+                self._log_check(
+                    f"{package}",
+                    False,
+                    f"not installed (required for {description}): {e!s}"
                 )
 
-    async def _check_documentation(self):
+    def _check_documentation(self):
         """Check documentation exists."""
         import os
 
@@ -197,27 +198,22 @@ class DeploymentVerifier:
             self._log_check(f"{description}", exists, filepath if not exists else "")
 
 
-async def main() -> int:
+def main() -> int:
     """Main entry point."""
     import argparse
 
     parser = argparse.ArgumentParser(
         description="Verify deployment readiness for Places API v1 migration"
     )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Verbose output"
-    )
 
-    args = parser.parse_args()
+    parser.parse_args()
 
-    verifier = DeploymentVerifier(verbose=args.verbose)
-    ready = await verifier.verify_all()
+    verifier = DeploymentVerifier()
+    ready = verifier.verify_all()
 
     return 0 if ready else 1
 
 
 if __name__ == "__main__":
-    exit_code = asyncio.run(main())
+    exit_code = main()
     sys.exit(exit_code)
