@@ -119,18 +119,11 @@ class ReceiptWordLabelSpatialAnalysis:
             try:
                 datetime.fromisoformat(self.timestamp_added)
             except ValueError as e:
-                raise ValueError(
-                    "timestamp_added string must be in ISO format"
-                ) from e
+                raise ValueError("timestamp_added string must be in ISO format") from e
         else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
-        if (
-            not isinstance(self.analysis_version, str)
-            or not self.analysis_version
-        ):
+        if not isinstance(self.analysis_version, str) or not self.analysis_version:
             raise ValueError("analysis_version must be a non-empty string")
 
     @property

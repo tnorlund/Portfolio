@@ -329,9 +329,7 @@ def test_update_images_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
+@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
 # pylint: disable=too-many-arguments
 def test_delete_image_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -638,9 +636,7 @@ def test_list_images_by_type_with_pagination(
         client.add_image(img)
 
     # Query with small limit to force pagination
-    results, last_evaluated_key = client.list_images_by_type(
-        ImageType.SCAN, limit=2
-    )
+    results, last_evaluated_key = client.list_images_by_type(ImageType.SCAN, limit=2)
 
     # Should get 2 results and a pagination key
     assert len(results) == 2
@@ -718,10 +714,7 @@ def test_get_image_details_complete(
     retrieved_decision = details.ocr_routing_decisions[0]
     assert retrieved_decision.image_id == sample_routing_decision.image_id
     assert retrieved_decision.job_id == sample_routing_decision.job_id
-    assert (
-        retrieved_decision.receipt_count
-        == sample_routing_decision.receipt_count
-    )
+    assert retrieved_decision.receipt_count == sample_routing_decision.receipt_count
     assert retrieved_decision.status == sample_routing_decision.status
 
 
@@ -743,13 +736,9 @@ def test_get_image_details_multiple_receipt_metadatas(
             place_id=f"place_{i}",
             merchant_name=f"Merchant {chr(65 + i - 1)}",  # A,B,C
             matched_fields=(
-                ["name"]
-                if i == 2
-                else ["name", "address" if i == 1 else "phone"]
+                ["name"] if i == 2 else ["name", "address" if i == 1 else "phone"]
             ),
-            validated_by=["NEARBY_LOOKUP", "TEXT_SEARCH", "PHONE_LOOKUP"][
-                i - 1
-            ],
+            validated_by=["NEARBY_LOOKUP", "TEXT_SEARCH", "PHONE_LOOKUP"][i - 1],
             timestamp=datetime(2025, 1, 1, i - 1, 0, 0),
         )
         client.add_receipt_metadata(metadata)
@@ -762,9 +751,7 @@ def test_get_image_details_multiple_receipt_metadatas(
     assert len(details.receipt_metadatas) == 3
 
     # Sort for consistent comparison
-    sorted_metadatas = sorted(
-        details.receipt_metadatas, key=lambda x: x.receipt_id
-    )
+    sorted_metadatas = sorted(details.receipt_metadatas, key=lambda x: x.receipt_id)
 
     for i, metadata in enumerate(sorted_metadatas):
         assert metadata.receipt_id == i + 1
@@ -841,9 +828,7 @@ def test_get_image_details_multiple_receipt_word_labels(
     assert len(details.receipt_word_labels) == 3
 
     # Sort for consistent comparison
-    sorted_labels = sorted(
-        details.receipt_word_labels, key=lambda x: x.line_id
-    )
+    sorted_labels = sorted(details.receipt_word_labels, key=lambda x: x.line_id)
 
     for i, label in enumerate(sorted_labels):
         assert label.image_id == labels[i].image_id

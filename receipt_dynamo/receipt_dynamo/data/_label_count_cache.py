@@ -47,9 +47,7 @@ class _LabelCountCache(FlattenedStandardMixin):
                 "items must be a list of LabelCountCache objects.f"
             )
         request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=item.to_item())
-            )
+            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=item.to_item()))
             for item in items
         ]
         self._batch_write_with_retry(request_items)

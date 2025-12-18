@@ -87,9 +87,7 @@ def _batch_receipt_metadatas() -> List[ReceiptMetadata]:
                 phone_number=f"+123456{i:04d}",
                 validation_status="VALID" if i % 2 == 0 else "PENDING",
                 matched_fields=["name", "address"] if i % 3 == 0 else ["name"],
-                validated_by=["NEARBY_LOOKUP", "TEXT_SEARCH", "PHONE_LOOKUP"][
-                    i % 3
-                ],
+                validated_by=["NEARBY_LOOKUP", "TEXT_SEARCH", "PHONE_LOOKUP"][i % 3],
                 timestamp=base_time,
                 reasoning=f"Test metadata {i}",
             )
@@ -278,9 +276,7 @@ def test_add_receipt_metadata_validation_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,error_match", UPDATE_BATCH_VALIDATION_SCENARIOS
-)
+@pytest.mark.parametrize("invalid_input,error_match", UPDATE_BATCH_VALIDATION_SCENARIOS)
 def test_update_receipt_metadatas_validation_errors(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_input: Any,
@@ -424,9 +420,7 @@ def test_update_receipt_metadata_success(
     client.add_receipt_metadata(sample_receipt_metadata)
 
     # Update it with new values
-    sample_receipt_metadata.reasoning = (
-        "Updated reasoning with higher confidence"
-    )
+    sample_receipt_metadata.reasoning = "Updated reasoning with higher confidence"
     sample_receipt_metadata.matched_fields = ["name", "address", "phone"]
     sample_receipt_metadata.merchant_category = "Updated Category"
 
@@ -457,13 +451,9 @@ def test_update_receipt_metadatas_batch(
 
     # Update both with new reasoning
     sample_receipt_metadata.reasoning = "Updated reasoning for first metadata"
-    another_receipt_metadata.reasoning = (
-        "Updated reasoning for second metadata"
-    )
+    another_receipt_metadata.reasoning = "Updated reasoning for second metadata"
 
-    client.update_receipt_metadatas(
-        [sample_receipt_metadata, another_receipt_metadata]
-    )
+    client.update_receipt_metadatas([sample_receipt_metadata, another_receipt_metadata])
 
     # Verify both updates
     retrieved1 = client.get_receipt_metadata(
@@ -643,9 +633,7 @@ def test_get_receipt_metadatas_by_merchant_success(
         client.add_receipt_metadata(metadata)
 
     # Query by merchant name
-    retrieved, last_key = client.get_receipt_metadatas_by_merchant(
-        merchant_name
-    )
+    retrieved, last_key = client.get_receipt_metadatas_by_merchant(merchant_name)
 
     assert len(retrieved) == 3
     assert all(m.merchant_name == merchant_name for m in retrieved)
@@ -673,12 +661,8 @@ def test_get_receipt_metadatas_by_merchant_case_insensitive(
     client.add_receipt_metadata(metadata)
 
     # Query with different case
-    retrieved1, _ = client.get_receipt_metadatas_by_merchant(
-        "mixed case merchant"
-    )
-    retrieved2, _ = client.get_receipt_metadatas_by_merchant(
-        "MIXED CASE MERCHANT"
-    )
+    retrieved1, _ = client.get_receipt_metadatas_by_merchant("mixed case merchant")
+    retrieved2, _ = client.get_receipt_metadatas_by_merchant("MIXED CASE MERCHANT")
 
     assert len(retrieved1) == 1
     assert len(retrieved2) == 1
@@ -836,9 +820,7 @@ def test_get_receipt_metadatas_by_indices_validation(
         client.get_receipt_metadatas_by_indices("not-a-list")  # type: ignore
 
     # Test non-tuple items
-    with pytest.raises(
-        EntityValidationError, match="indices must be a list of tuples"
-    ):
+    with pytest.raises(EntityValidationError, match="indices must be a list of tuples"):
         client.get_receipt_metadatas_by_indices([("valid", 1), "not-a-tuple"])  # type: ignore
 
     # Test invalid tuple types
@@ -849,9 +831,7 @@ def test_get_receipt_metadatas_by_indices_validation(
         client.get_receipt_metadatas_by_indices([(123, 1)])  # type: ignore
 
     # Test invalid receipt_id
-    with pytest.raises(
-        EntityValidationError, match="receipt_id must be positive"
-    ):
+    with pytest.raises(EntityValidationError, match="receipt_id must be positive"):
         client.get_receipt_metadatas_by_indices([("valid-id", 0)])
 
 

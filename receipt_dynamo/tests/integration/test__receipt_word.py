@@ -133,9 +133,7 @@ def test_add_receipt_word_client_errors(
     """Test that add_receipt_word handles various ClientError scenarios correctly."""
     with patch.object(client._client, "put_item") as mock_put:
         mock_put.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
+            error_response={"Error": {"Code": error_code, "Message": "Test error"}},
             operation_name="PutItem",
         )
 
@@ -158,9 +156,7 @@ def test_update_receipt_word_client_errors(
     """Test that update_receipt_word handles various ClientError scenarios correctly."""
     with patch.object(client._client, "put_item") as mock_put:
         mock_put.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
+            error_response={"Error": {"Code": error_code, "Message": "Test error"}},
             operation_name="PutItem",
         )
 
@@ -183,9 +179,7 @@ def test_delete_receipt_word_client_errors(
     """Test that delete_receipt_word handles various ClientError scenarios correctly."""
     with patch.object(client._client, "delete_item") as mock_delete:
         mock_delete.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
+            error_response={"Error": {"Code": error_code, "Message": "Test error"}},
             operation_name="DeleteItem",
         )
 
@@ -206,9 +200,7 @@ def test_get_receipt_word_client_errors(
     """Test that get_receipt_word handles various ClientError scenarios correctly."""
     with patch.object(client._client, "get_item") as mock_get:
         mock_get.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
+            error_response={"Error": {"Code": error_code, "Message": "Test error"}},
             operation_name="GetItem",
         )
 
@@ -235,9 +227,7 @@ def test_add_receipt_words_client_errors(
     """Test that add_receipt_words handles various ClientError scenarios correctly."""
     with patch.object(client._client, "transact_write_items") as mock_transact:
         mock_transact.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
+            error_response={"Error": {"Code": error_code, "Message": "Test error"}},
             operation_name="TransactWriteItems",
         )
 
@@ -260,9 +250,7 @@ def test_update_receipt_words_client_errors(
     """Test that update_receipt_words handles various ClientError scenarios correctly."""
     with patch.object(client._client, "transact_write_items") as mock_transact:
         mock_transact.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
+            error_response={"Error": {"Code": error_code, "Message": "Test error"}},
             operation_name="TransactWriteItems",
         )
 
@@ -285,9 +273,7 @@ def test_delete_receipt_words_client_errors(
     """Test that delete_receipt_words handles various ClientError scenarios correctly."""
     with patch.object(client._client, "transact_write_items") as mock_transact:
         mock_transact.side_effect = ClientError(
-            error_response={
-                "Error": {"Code": error_code, "Message": "Test error"}
-            },
+            error_response={"Error": {"Code": error_code, "Message": "Test error"}},
             operation_name="TransactWriteItems",
         )
 
@@ -1039,9 +1025,7 @@ def test_list_receipt_words_by_embedding_status(client: DynamoClient):
     client.add_receipt_word(word_pending)
 
     # Query by embedding status
-    none_words = client.list_receipt_words_by_embedding_status(
-        EmbeddingStatus.NONE
-    )
+    none_words = client.list_receipt_words_by_embedding_status(EmbeddingStatus.NONE)
     pending_words = client.list_receipt_words_by_embedding_status(
         EmbeddingStatus.PENDING
     )

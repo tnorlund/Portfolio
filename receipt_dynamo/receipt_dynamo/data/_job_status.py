@@ -125,9 +125,7 @@ class _JobStatus(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_by_parent(
@@ -196,6 +194,4 @@ class _JobStatus(
             return job, statuses
 
         except ClientError as e:
-            raise EntityValidationError(
-                f"Error getting job with status: {e}"
-            ) from e
+            raise EntityValidationError(f"Error getting job with status: {e}") from e

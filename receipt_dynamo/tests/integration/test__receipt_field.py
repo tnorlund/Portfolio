@@ -212,9 +212,7 @@ def test_addReceiptFields_success(
                 }
             ],
             reasoning="This field appears to be the business name",
-            timestamp_added=datetime.fromisoformat(
-                "2024-03-20T12:00:00+00:00"
-            ),
+            timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         ),
         ReceiptField(
             field_type="ADDRESS",
@@ -228,9 +226,7 @@ def test_addReceiptFields_success(
                 }
             ],
             reasoning="This field appears to be the address",
-            timestamp_added=datetime.fromisoformat(
-                "2024-03-20T12:00:00+00:00"
-            ),
+            timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         ),
     ]
 
@@ -369,11 +365,7 @@ def test_addReceiptFields_unprocessed_items(
             {
                 "UnprocessedItems": {
                     dynamodb_table: [
-                        {
-                            "PutRequest": {
-                                "Item": sample_receipt_field.to_item()
-                            }
-                        }
+                        {"PutRequest": {"Item": sample_receipt_field.to_item()}}
                     ]
                 }
             },
@@ -408,9 +400,7 @@ def test_updateReceiptField_success(
         receipt_id=sample_receipt_field.receipt_id,
         words=sample_receipt_field.words,
         reasoning="Updated reasoning",
-        timestamp_added=datetime.fromisoformat(
-            sample_receipt_field.timestamp_added
-        ),
+        timestamp_added=datetime.fromisoformat(sample_receipt_field.timestamp_added),
     )
 
     # Act
@@ -588,9 +578,7 @@ def test_updateReceiptFields_success(
             receipt_id=second_field.receipt_id,
             words=second_field.words,
             reasoning="Updated reasoning 2",
-            timestamp_added=datetime.fromisoformat(
-                second_field.timestamp_added
-            ),
+            timestamp_added=datetime.fromisoformat(second_field.timestamp_added),
         ),
     ]
 
@@ -763,9 +751,7 @@ def test_updateReceiptFields_chunking(
                 }
             ],
             reasoning=f"Reasoning {i}",
-            timestamp_added=datetime.fromisoformat(
-                "2024-03-20T12:00:00+00:00"
-            ),
+            timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         )
         for i in range(1, 31)
     ]
@@ -1117,9 +1103,7 @@ def test_deleteReceiptFields_chunking(
                 }
             ],
             reasoning=f"Reasoning {i}",
-            timestamp_added=datetime.fromisoformat(
-                "2024-03-20T12:00:00+00:00"
-            ),
+            timestamp_added=datetime.fromisoformat("2024-03-20T12:00:00+00:00"),
         )
         for i in range(1, 31)
     ]

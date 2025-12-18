@@ -225,45 +225,29 @@ class TestValidateConfidenceRange:
     @pytest.mark.unit
     def test_validate_confidence_range_zero(self):
         """Test validation fails for zero confidence."""
-        with pytest.raises(
-            ValueError, match="confidence must be between 0 and 1"
-        ):
+        with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
             validate_confidence_range("confidence", 0.0)
-        with pytest.raises(
-            ValueError, match="confidence must be between 0 and 1"
-        ):
+        with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
             validate_confidence_range("confidence", 0)
 
     @pytest.mark.unit
     def test_validate_confidence_range_negative(self):
         """Test validation fails for negative confidence values."""
-        with pytest.raises(
-            ValueError, match="confidence must be between 0 and 1"
-        ):
+        with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
             validate_confidence_range("confidence", -0.1)
-        with pytest.raises(
-            ValueError, match="confidence must be between 0 and 1"
-        ):
+        with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
             validate_confidence_range("confidence", -1.0)
-        with pytest.raises(
-            ValueError, match="confidence must be between 0 and 1"
-        ):
+        with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
             validate_confidence_range("confidence", -5)
 
     @pytest.mark.unit
     def test_validate_confidence_range_greater_than_one(self):
         """Test validation fails for confidence values greater than 1."""
-        with pytest.raises(
-            ValueError, match="confidence must be between 0 and 1"
-        ):
+        with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
             validate_confidence_range("confidence", 1.1)
-        with pytest.raises(
-            ValueError, match="confidence must be between 0 and 1"
-        ):
+        with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
             validate_confidence_range("confidence", 2.0)
-        with pytest.raises(
-            ValueError, match="confidence must be between 0 and 1"
-        ):
+        with pytest.raises(ValueError, match="confidence must be between 0 and 1"):
             validate_confidence_range("confidence", 5)
 
     @pytest.mark.unit
@@ -281,13 +265,9 @@ class TestValidateConfidenceRange:
     @pytest.mark.unit
     def test_validate_confidence_range_custom_field_name(self):
         """Test validation uses custom field name in error messages."""
-        with pytest.raises(
-            ValueError, match="detection_confidence must be a float"
-        ):
+        with pytest.raises(ValueError, match="detection_confidence must be a float"):
             validate_confidence_range("detection_confidence", "invalid")
-        with pytest.raises(
-            ValueError, match="ocr_confidence must be between 0 and 1"
-        ):
+        with pytest.raises(ValueError, match="ocr_confidence must be between 0 and 1"):
             validate_confidence_range("ocr_confidence", 1.5)
 
     @pytest.mark.unit

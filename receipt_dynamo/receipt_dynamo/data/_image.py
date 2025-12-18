@@ -65,9 +65,7 @@ class _Image(FlattenedStandardMixin):
         self._validate_entity_list(images, Image, "images")
 
         request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=image.to_item())
-            )
+            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=image.to_item()))
             for image in images
         ]
         self._batch_write_with_retry(request_items)
@@ -121,9 +119,7 @@ class _Image(FlattenedStandardMixin):
             index_name=None,
             key_condition_expression="#pk = :pk_value",
             expression_attribute_names={"#pk": "PK"},
-            expression_attribute_values={
-                ":pk_value": {"S": f"IMAGE#{image_id}"}
-            },
+            expression_attribute_values={":pk_value": {"S": f"IMAGE#{image_id}"}},
             converter_func=lambda x: x,  # Return raw items
             limit=None,  # Get all items
             last_evaluated_key=None,
@@ -192,9 +188,7 @@ class _Image(FlattenedStandardMixin):
             index_name="GSI1",
             key_condition_expression="#pk = :pk_value",
             expression_attribute_names={"#pk": "GSI1PK"},
-            expression_attribute_values={
-                ":pk_value": {"S": f"IMAGE#{image_id}"}
-            },
+            expression_attribute_values={":pk_value": {"S": f"IMAGE#{image_id}"}},
             converter_func=lambda x: x,  # Return raw items
             limit=None,  # Get all items
             last_evaluated_key=None,
@@ -214,9 +208,7 @@ class _Image(FlattenedStandardMixin):
                 receipts.append(item_to_receipt(item))
 
         if image is None:
-            raise EntityNotFoundError(
-                f"Image with ID {image_id} not found in database"
-            )
+            raise EntityNotFoundError(f"Image with ID {image_id} not found in database")
 
         return image, lines, receipts
 
@@ -229,9 +221,7 @@ class _Image(FlattenedStandardMixin):
             (),
             {"key": {"PK": {"S": f"IMAGE#{image_id}"}, "SK": {"S": "IMAGE"}}},
         )()
-        self._delete_entity(
-            temp_image, condition_expression="attribute_exists(PK)"
-        )
+        self._delete_entity(temp_image, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("delete_images")
     def delete_images(self, images: list[Image]) -> None:
@@ -246,9 +236,7 @@ class _Image(FlattenedStandardMixin):
         last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[Image], Optional[Dict]]:
         """Lists images from the database via a global secondary index."""
-        return self._query_by_type(
-            "IMAGE", item_to_image, limit, last_evaluated_key
-        )
+        return self._query_by_type("IMAGE", item_to_image, limit, last_evaluated_key)
 
     @handle_dynamodb_errors("list_images_by_type")
     def list_images_by_type(
@@ -291,9 +279,7 @@ class _Image(FlattenedStandardMixin):
         if receipt_count is not None and (
             not isinstance(receipt_count, int) or receipt_count < 0
         ):
-            raise EntityValidationError(
-                "receipt_count must be a non-negative integer"
-            )
+            raise EntityValidationError("receipt_count must be a non-negative integer")
 
         # Build query based on whether receipt_count is specified
         if receipt_count is not None:
@@ -317,9 +303,7 @@ class _Image(FlattenedStandardMixin):
                 index_name="GSI3",
                 key_condition_expression="#t = :val",
                 expression_attribute_names={"#t": "GSI3PK"},
-                expression_attribute_values={
-                    ":val": {"S": f"IMAGE#{image_type}"}
-                },
+                expression_attribute_values={":val": {"S": f"IMAGE#{image_type}"}},
                 converter_func=item_to_image,
                 limit=limit,
                 last_evaluated_key=last_evaluated_key,

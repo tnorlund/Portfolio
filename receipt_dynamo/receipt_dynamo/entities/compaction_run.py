@@ -93,15 +93,9 @@ class CompactionRun(DynamoDBEntity):
         if self.words_state not in _COMPACTION_STATES:
             raise ValueError(f"invalid words_state: {self.words_state}")
 
-        if (
-            not isinstance(self.lines_delta_prefix, str)
-            or not self.lines_delta_prefix
-        ):
+        if not isinstance(self.lines_delta_prefix, str) or not self.lines_delta_prefix:
             raise ValueError("lines_delta_prefix must be a non-empty string")
-        if (
-            not isinstance(self.words_delta_prefix, str)
-            or not self.words_delta_prefix
-        ):
+        if not isinstance(self.words_delta_prefix, str) or not self.words_delta_prefix:
             raise ValueError("words_delta_prefix must be a non-empty string")
 
         # Normalize datetime fields to ISO strings in-place for consistency
@@ -119,9 +113,7 @@ class CompactionRun(DynamoDBEntity):
             if isinstance(val, datetime):
                 setattr(self, attr, val.isoformat())
             elif not isinstance(val, str):
-                raise ValueError(
-                    f"{attr} must be datetime, ISO-8601 string, or None"
-                )
+                raise ValueError(f"{attr} must be datetime, ISO-8601 string, or None")
 
         if (
             not isinstance(self.lines_merged_vectors, int)
@@ -140,9 +132,7 @@ class CompactionRun(DynamoDBEntity):
         # Align keys with receipt design: partition by image, sort by receipt/run
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#COMPACTION_RUN#{self.run_id}"
-            },
+            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#COMPACTION_RUN#{self.run_id}"},
         }
 
     def gsi1_key(self) -> Dict[str, Any]:

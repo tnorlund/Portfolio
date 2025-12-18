@@ -116,9 +116,7 @@ class TestLabelCountCacheBasicOperations:
         """Test successful addition of a label count cache with TTL."""
         client = DynamoClient(dynamodb_table)
         client.add_label_count_cache(example_label_count_cache_with_ttl)
-        result = client.get_label_count_cache(
-            example_label_count_cache_with_ttl.label
-        )
+        result = client.get_label_count_cache(example_label_count_cache_with_ttl.label)
         assert result == example_label_count_cache_with_ttl
 
     def test_get_label_count_cache_success(
@@ -234,9 +232,7 @@ class TestLabelCountCacheBatchOperations:
     ) -> None:
         """Test that adding an empty list raises OperationError."""
         client = DynamoClient(dynamodb_table)
-        with pytest.raises(
-            OperationError, match="Parameter validation failed"
-        ):
+        with pytest.raises(OperationError, match="Parameter validation failed"):
             client.add_label_count_caches([])
 
 
@@ -351,9 +347,7 @@ class TestLabelCountCacheValidation:
     ) -> None:
         """Test that adding None list raises EntityValidationError."""
         client = DynamoClient(dynamodb_table)
-        with pytest.raises(
-            EntityValidationError, match="items cannot be None"
-        ):
+        with pytest.raises(EntityValidationError, match="items cannot be None"):
             client.add_label_count_caches(None)  # type: ignore
 
     def test_add_label_count_caches_not_list_raises_error(

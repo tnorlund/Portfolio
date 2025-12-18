@@ -107,9 +107,7 @@ FIXED_UUIDS = [
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
+@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
 # pylint: disable=too-many-arguments
 def test_add_line_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -136,9 +134,7 @@ def test_add_line_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
+@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
 # pylint: disable=too-many-arguments
 def test_update_line_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -166,9 +162,7 @@ def test_update_line_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
+@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
 # pylint: disable=too-many-arguments
 def test_delete_line_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -196,9 +190,7 @@ def test_delete_line_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
+@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
 # pylint: disable=too-many-arguments
 def test_get_line_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -230,9 +222,7 @@ def test_get_line_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
+@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
 # pylint: disable=too-many-arguments
 def test_add_lines_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -250,9 +240,7 @@ def test_add_lines_client_errors(
     mock_transact = mocker.patch.object(
         client._client,
         "transact_write_items",
-        side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
-        ),
+        side_effect=ClientError({"Error": {"Code": error_code}}, "TransactWriteItems"),
     )
 
     with pytest.raises(expected_exception, match=error_match):
@@ -262,9 +250,7 @@ def test_add_lines_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
+@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
 # pylint: disable=too-many-arguments
 def test_update_lines_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -282,9 +268,7 @@ def test_update_lines_client_errors(
     mock_transact = mocker.patch.object(
         client._client,
         "transact_write_items",
-        side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
-        ),
+        side_effect=ClientError({"Error": {"Code": error_code}}, "TransactWriteItems"),
     )
 
     with pytest.raises(expected_exception, match=error_match):
@@ -294,9 +278,7 @@ def test_update_lines_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "error_code,expected_exception,error_match", ERROR_SCENARIOS
-)
+@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
 # pylint: disable=too-many-arguments
 def test_delete_lines_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -314,9 +296,7 @@ def test_delete_lines_client_errors(
     mock_transact = mocker.patch.object(
         client._client,
         "transact_write_items",
-        side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "TransactWriteItems"
-        ),
+        side_effect=ClientError({"Error": {"Code": error_code}}, "TransactWriteItems"),
     )
 
     with pytest.raises(expected_exception, match=error_match):
@@ -610,9 +590,7 @@ def test_update_line_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(
-        EntityNotFoundError, match="line not found during update_line"
-    ):
+    with pytest.raises(EntityNotFoundError, match="line not found during update_line"):
         client.update_line(sample_line)
 
     mock_put.assert_called_once()
@@ -638,9 +616,7 @@ def test_delete_line_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(
-        EntityNotFoundError, match="not found during delete_line"
-    ):
+    with pytest.raises(EntityNotFoundError, match="not found during delete_line"):
         client.delete_line(sample_line.image_id, sample_line.line_id)
 
     mock_delete.assert_called_once()
@@ -931,9 +907,7 @@ def test_list_lines_with_pagination(
     assert last_key is not None
 
     # Get next page
-    second_page, last_key = client.list_lines(
-        limit=3, last_evaluated_key=last_key
-    )
+    second_page, last_key = client.list_lines(limit=3, last_evaluated_key=last_key)
     assert len(second_page) >= 2
 
     # Ensure no duplicates between pages

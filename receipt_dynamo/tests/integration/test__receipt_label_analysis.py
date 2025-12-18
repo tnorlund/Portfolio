@@ -617,9 +617,7 @@ def test_updateReceiptLabelAnalyses_success(
                     "reasoning": "Updated reasoning",
                 }
             ],
-            timestamp_added=datetime.fromisoformat(
-                analyses[0].timestamp_added
-            ),
+            timestamp_added=datetime.fromisoformat(analyses[0].timestamp_added),
             version="1.0",
             overall_reasoning="Updated reasoning for the label analysis",
         ),
@@ -635,9 +633,7 @@ def test_updateReceiptLabelAnalyses_success(
                     "reasoning": "Updated address reasoning",
                 }
             ],
-            timestamp_added=datetime.fromisoformat(
-                analyses[1].timestamp_added
-            ),
+            timestamp_added=datetime.fromisoformat(analyses[1].timestamp_added),
             version="1.0",
             overall_reasoning="Updated reasoning for the address analysis",
         ),
@@ -1425,9 +1421,7 @@ def test_listReceiptLabelAnalyses_with_limit(
         client.add_receipt_label_analysis(analysis)
 
     # Act - get only 2 results
-    result_analyses, last_evaluated_key = client.list_receipt_label_analyses(
-        limit=2
-    )
+    result_analyses, last_evaluated_key = client.list_receipt_label_analyses(limit=2)
 
     # Assert
     assert len(result_analyses) == 2
@@ -1660,10 +1654,8 @@ def test_getReceiptLabelAnalysesByImage_with_limit(
         client.add_receipt_label_analysis(analysis)
 
     # Act - get only 2 results
-    result_analyses, last_evaluated_key = (
-        client.get_receipt_label_analyses_by_image(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3", limit=2
-        )
+    result_analyses, last_evaluated_key = client.get_receipt_label_analyses_by_image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3", limit=2
     )
 
     # Assert
@@ -1769,11 +1761,9 @@ def test_getReceiptLabelAnalysesByReceipt_success(
     client.add_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Act
-    analyses, last_evaluated_key = (
-        client.get_receipt_label_analyses_by_receipt(
-            sample_receipt_label_analysis.image_id,
-            sample_receipt_label_analysis.receipt_id,
-        )
+    analyses, last_evaluated_key = client.get_receipt_label_analyses_by_receipt(
+        sample_receipt_label_analysis.image_id,
+        sample_receipt_label_analysis.receipt_id,
     )
 
     # Assert

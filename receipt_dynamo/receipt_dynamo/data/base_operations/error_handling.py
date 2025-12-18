@@ -32,9 +32,7 @@ class ErrorMessageConfig:
 
     # Entity not found patterns for different operations
     ENTITY_NOT_FOUND_PATTERNS = {
-        "get_entity": (
-            "{entity_name} with {entity_name}={entity_id} not found"
-        ),
+        "get_entity": ("{entity_name} with {entity_name}={entity_id} not found"),
         "update_entity": (
             "Cannot update {entity_name} with {entity_name}={entity_id}: "
             "{entity_name} not found"
@@ -50,16 +48,10 @@ class ErrorMessageConfig:
             "word with image_id={image_id}, line_id={line_id}, "
             "word_id={word_id} not found"
         ),
-        "get_line": (
-            "line with image_id={image_id}, line_id={line_id} not found"
-        ),
+        "get_line": ("line with image_id={image_id}, line_id={line_id} not found"),
         # Batch/plural operations
-        "update_receipts": (
-            "Cannot update receipts: one or more receipts not found"
-        ),
-        "delete_receipts": (
-            "Cannot delete receipts: one or more receipts not found"
-        ),
+        "update_receipts": ("Cannot update receipts: one or more receipts not found"),
+        "delete_receipts": ("Cannot delete receipts: one or more receipts not found"),
         "update_entities": (
             "Cannot update {entity_name}: one or more {entity_name} not found"
         ),
@@ -118,9 +110,7 @@ class ErrorMessageConfig:
         "line": "line must be an instance of Line",
         "lines": "lines must be a list of Line instances",
         "receipt_line": "receipt_line must be an instance of ReceiptLine",
-        "receipt_lines": (
-            "receipt_lines must be a list of ReceiptLine instances"
-        ),
+        "receipt_lines": ("receipt_lines must be a list of ReceiptLine instances"),
         "letter": "letter must be an instance of Letter",
         "letters": "letters must be a list of Letter instances",
     }
@@ -151,21 +141,15 @@ class ErrorContextExtractor:
     """Extracts contextual information from DynamoDB ClientError exceptions."""
 
     @staticmethod
-    def extract_context(
-        error: ClientError, operation: str, **kwargs
-    ) -> Dict[str, Any]:
+    def extract_context(error: ClientError, operation: str, **kwargs) -> Dict[str, Any]:
         """Extract relevant context from a ClientError for debugging."""
         context = {
             "operation": operation,
-            "error_code": error.response.get("Error", {}).get(
-                "Code", "Unknown"
-            ),
+            "error_code": error.response.get("Error", {}).get("Code", "Unknown"),
             "error_message": error.response.get("Error", {}).get(
                 "Message", "Unknown error"
             ),
-            "request_id": error.response.get("ResponseMetadata", {}).get(
-                "RequestId"
-            ),
+            "request_id": error.response.get("ResponseMetadata", {}).get("RequestId"),
             "http_status": error.response.get("ResponseMetadata", {}).get(
                 "HTTPStatusCode"
             ),
@@ -198,9 +182,7 @@ class ErrorHandler:
         error_message = error.response.get("Error", {}).get("Message", "")
 
         # Extract context for debugging
-        self.context_extractor.extract_context(
-            error, operation, **context_kwargs
-        )
+        self.context_extractor.extract_context(error, operation, **context_kwargs)
 
         # Map AWS error codes to domain exceptions
         if error_code == "ConditionalCheckFailedException":
@@ -212,9 +194,7 @@ class ErrorHandler:
                 self._raise_not_found_error(operation, context_kwargs)
                 return
 
-            raise EntityValidationError(
-                f"Conditional check failed: {error_message}"
-            )
+            raise EntityValidationError(f"Conditional check failed: {error_message}")
 
         if error_code == "ValidationException":
             raise EntityValidationError(f"Validation error: {error_message}")
@@ -229,30 +209,23 @@ class ErrorHandler:
 
         if error_code in ["InternalServerError", "ServiceUnavailable"]:
             raise DynamoDBServerError(
-                f"DynamoDB server error during {operation}: "
-                f"{error_message}"
+                f"DynamoDB server error during {operation}: " f"{error_message}"
             )
 
         if error_code == "ResourceNotFoundException":
             raise OperationError(
-                f"DynamoDB resource not found during {operation}: "
-                f"{error_message}"
+                f"DynamoDB resource not found during {operation}: " f"{error_message}"
             )
 
         # Generic DynamoDB error
         raise DynamoDBError(
-            f"DynamoDB error during {operation}: {error_code} - "
-            f"{error_message}"
+            f"DynamoDB error during {operation}: {error_code} - " f"{error_message}"
         )
 
-    def _raise_not_found_error(
-        self, operation: str, context: Dict[str, Any]
-    ) -> None:
+    def _raise_not_found_error(self, operation: str, context: Dict[str, Any]) -> None:
         """Raise EntityNotFoundError with operation-specific message."""
         if operation in self.config.ENTITY_NOT_FOUND_PATTERNS:
-            message = self.config.ENTITY_NOT_FOUND_PATTERNS[operation].format(
-                **context
-            )
+            message = self.config.ENTITY_NOT_FOUND_PATTERNS[operation].format(**context)
         else:
             # Try to extract entity type from context for more
             # descriptive message
@@ -293,9 +266,7 @@ def handle_dynamodb_errors(operation_name: str):
                 return func(self, *args, **kwargs)
             except ClientError as e:
                 # Extract context from method parameters
-                context = _extract_operation_context(
-                    operation_name, args, kwargs
-                )
+                context = _extract_operation_context(operation_name, args, kwargs)
                 error_handler.handle_client_error(e, operation_name, **context)
                 return None
             except (
@@ -346,9 +317,7 @@ def _extract_operation_context(
                 if hasattr(entities[0], "receipt_id"):
                     context["receipt_ids"] = [e.receipt_id for e in entities]
                 if hasattr(entities[0], "image_id"):
-                    context["image_ids"] = list(
-                        set(e.image_id for e in entities)
-                    )
+                    context["image_ids"] = list(set(e.image_id for e in entities))
     else:
         # Single entity operations - also try to extract entity type
         if len(args) > 0 and hasattr(args[0], "__class__"):

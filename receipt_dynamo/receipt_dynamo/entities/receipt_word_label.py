@@ -56,9 +56,7 @@ class ReceiptWordLabel:
             raise ValueError("label must be a string")
         if not self.label:
             raise ValueError("label cannot be empty")
-        self.label = (
-            self.label.upper()
-        )  # Store labels in uppercase for consistency
+        self.label = self.label.upper()  # Store labels in uppercase for consistency
 
         if not isinstance(self.reasoning, str | None):
             raise ValueError("reasoning must be a string or None")
@@ -73,13 +71,9 @@ class ReceiptWordLabel:
             try:
                 datetime.fromisoformat(self.timestamp_added)
             except ValueError as e:
-                raise ValueError(
-                    "timestamp_added string must be in ISO format"
-                ) from e
+                raise ValueError("timestamp_added string must be in ISO format") from e
         else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
         # Always assign a valid enum value for validation_status
         status = self.validation_status or ValidationStatus.NONE.value
@@ -193,9 +187,7 @@ class ReceiptWordLabel:
             **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_WORD_LABEL"},
             "reasoning": (
-                {"S": self.reasoning}
-                if self.reasoning is not None
-                else {"NULL": True}
+                {"S": self.reasoning} if self.reasoning is not None else {"NULL": True}
             ),
             "timestamp_added": {"S": self.timestamp_added},
             "validation_status": {"S": self.validation_status},
@@ -355,9 +347,7 @@ def item_to_receipt_word_label(item: Dict[str, Any]) -> ReceiptWordLabel:
         line_id = int(sk_parts[3])
         word_id = int(sk_parts[5])
         label = sk_parts[7]
-        reasoning = (
-            item["reasoning"]["S"] if "S" in item["reasoning"] else None
-        )
+        reasoning = item["reasoning"]["S"] if "S" in item["reasoning"] else None
         timestamp_added = item["timestamp_added"]["S"]
         validation_status = None
         if "validation_status" in item:
@@ -395,6 +385,4 @@ def item_to_receipt_word_label(item: Dict[str, Any]) -> ReceiptWordLabel:
             label_proposed_by=label_proposed_by,
         )
     except Exception as e:
-        raise ValueError(
-            f"Error converting item to ReceiptWordLabel: {e}"
-        ) from e
+        raise ValueError(f"Error converting item to ReceiptWordLabel: {e}") from e

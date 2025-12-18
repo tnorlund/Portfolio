@@ -199,9 +199,7 @@ class QueueService:
             Exception: When the queue job is not found
         """
         # TODO: Implement get_queue_job in data layer
-        raise NotImplementedError(
-            "get_queue_job is not implemented in the data layer"
-        )
+        raise NotImplementedError("get_queue_job is not implemented in the data layer")
 
     def update_queue_job(self, queue_job: QueueJob) -> None:
         """
@@ -270,9 +268,7 @@ class QueueService:
             A tuple containing a list of QueueJob objects and the last
             evaluated key
         """
-        return self.dynamo_client.find_queues_for_job(
-            job_id, limit, last_evaluated_key
-        )
+        return self.dynamo_client.find_queues_for_job(job_id, limit, last_evaluated_key)
 
     def get_next_job(self, queue_id: str) -> Optional[QueueJob]:
         """
@@ -323,9 +319,7 @@ class QueueService:
 
         return next_job
 
-    def mark_job_completed(
-        self, queue_id: str, job_id: str, success: bool
-    ) -> None:
+    def mark_job_completed(self, queue_id: str, job_id: str, success: bool) -> None:
         """
         Mark a job in a queue as completed.
 
@@ -342,9 +336,7 @@ class QueueService:
         # queue_job.status = "succeeded" if success else "failed"
         # queue_job.completed_at = datetime.now()
         # self.update_queue_job(queue_job)
-        raise NotImplementedError(
-            "Status tracking not implemented in QueueJob entity"
-        )
+        raise NotImplementedError("Status tracking not implemented in QueueJob entity")
 
     def release_job(self, queue_id: str, job_id: str) -> None:
         """
@@ -363,6 +355,4 @@ class QueueService:
         # queue_job.claimed_at = None
         # queue_job.claimed_by = None
         # self.update_queue_job(queue_job)
-        raise NotImplementedError(
-            "Status tracking not implemented in QueueJob entity"
-        )
+        raise NotImplementedError("Status tracking not implemented in QueueJob entity")

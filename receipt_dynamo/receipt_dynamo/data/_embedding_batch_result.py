@@ -32,9 +32,7 @@ class _EmbeddingBatchResult(
     """DynamoDB accessor for EmbeddingBatchResult items."""
 
     @handle_dynamodb_errors("add_embedding_batch_result")
-    def add_embedding_batch_result(
-        self, embedding_batch_result: EmbeddingBatchResult
-    ):
+    def add_embedding_batch_result(self, embedding_batch_result: EmbeddingBatchResult):
         """
         Adds an EmbeddingBatchResult to the database.
 
@@ -71,9 +69,7 @@ class _EmbeddingBatchResult(
             "embedding_batch_results",
         )
         request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=result.to_item())
-            )
+            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=result.to_item()))
             for result in embedding_batch_results
         ]
         self._batch_write_with_retry(request_items)
@@ -108,8 +104,7 @@ class _EmbeddingBatchResult(
         """
         if embedding_batch_results is None:
             raise EntityValidationError(
-                "EmbeddingBatchResults parameter is required and cannot be "
-                "None."
+                "EmbeddingBatchResults parameter is required and cannot be " "None."
             )
         if not isinstance(embedding_batch_results, list):
             raise EntityValidationError(
@@ -117,8 +112,7 @@ class _EmbeddingBatchResult(
                 "EmbeddingBatchResult instances."
             )
         if not all(
-            isinstance(r, EmbeddingBatchResult)
-            for r in embedding_batch_results
+            isinstance(r, EmbeddingBatchResult) for r in embedding_batch_results
         ):
             raise EntityValidationError(
                 "All embedding batch results must be instances of "
@@ -204,17 +198,11 @@ class _EmbeddingBatchResult(
         assert_valid_uuid(batch_id)
         self._validate_image_id(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+            raise EntityValidationError("receipt_id must be a positive integer")
         if not isinstance(line_id, int) or line_id < 0:
-            raise EntityValidationError(
-                "line_id must be zero or positive integer"
-            )
+            raise EntityValidationError("line_id must be zero or positive integer")
         if not isinstance(word_id, int) or word_id < 0:
-            raise EntityValidationError(
-                "word_id must be zero or positive integer"
-            )
+            raise EntityValidationError("word_id must be zero or positive integer")
 
         result = self._get_entity(
             primary_key=f"BATCH#{batch_id}",
@@ -269,8 +257,7 @@ class _EmbeddingBatchResult(
             raise EntityValidationError("Status must be a non-empty string")
         if status not in [s.value for s in EmbeddingStatus]:
             raise EntityValidationError(
-                "Status must be one of: "
-                + ", ".join(s.value for s in EmbeddingStatus)
+                "Status must be one of: " + ", ".join(s.value for s in EmbeddingStatus)
             )
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise EntityValidationError("Limit must be a positive integer.")
@@ -297,9 +284,7 @@ class _EmbeddingBatchResult(
         """
         self._validate_image_id(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer."
-            )
+            raise EntityValidationError("receipt_id must be a positive integer.")
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise EntityValidationError("Limit must be a positive integer.")
         template_embedding_batch_result = EmbeddingBatchResult(

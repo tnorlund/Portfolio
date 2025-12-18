@@ -34,10 +34,7 @@ def example_receipt_letter():
 @pytest.mark.unit
 def test_receipt_letter_init_valid(example_receipt_letter):
     assert example_receipt_letter.receipt_id == 1
-    assert (
-        example_receipt_letter.image_id
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert example_receipt_letter.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert example_receipt_letter.line_id == 3
     assert example_receipt_letter.word_id == 4
     assert example_receipt_letter.letter_id == 5
@@ -592,9 +589,7 @@ def test_receipt_letter_init_invalid_bottom_left():
 @pytest.mark.unit
 def test_receipt_letter_init_invalid_angles():
     """ReceiptLetter raises a ValueError if the angles are not floats"""
-    with pytest.raises(
-        ValueError, match="angle_degrees must be float or int, got"
-    ):
+    with pytest.raises(ValueError, match="angle_degrees must be float or int, got"):
         ReceiptLetter(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -616,9 +611,7 @@ def test_receipt_letter_init_invalid_angles():
             angle_radians=0.0872665,
             confidence=0.98,
         )
-    with pytest.raises(
-        ValueError, match="angle_radians must be float or int, got"
-    ):
+    with pytest.raises(ValueError, match="angle_radians must be float or int, got"):
         ReceiptLetter(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -645,9 +638,7 @@ def test_receipt_letter_init_invalid_angles():
 @pytest.mark.unit
 def test_receipt_letter_init_invalid_confidence():
     """ValueError if the confidence is not a float or between 0 and 1"""
-    with pytest.raises(
-        ValueError, match="confidence must be float or int, got"
-    ):
+    with pytest.raises(ValueError, match="confidence must be float or int, got"):
         ReceiptLetter(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -681,9 +672,7 @@ def test_receipt_letter_init_invalid_confidence():
         confidence=1,
     )
     assert receipt.confidence == 1
-    with pytest.raises(
-        ValueError, match="confidence must be between 0 and 1, got"
-    ):
+    with pytest.raises(ValueError, match="confidence must be between 0 and 1, got"):
         ReceiptLetter(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -791,10 +780,7 @@ def test_iter(example_receipt_letter):
     }
     assert set(receipt_letter_dict.keys()) == expected_keys
     assert receipt_letter_dict["receipt_id"] == 1
-    assert (
-        receipt_letter_dict["image_id"]
-        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert receipt_letter_dict["image_id"] == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     assert receipt_letter_dict["line_id"] == 3
     assert receipt_letter_dict["word_id"] == 4
     assert receipt_letter_dict["letter_id"] == 5
@@ -858,9 +844,7 @@ def test_item_to_word(example_receipt_letter):
         item_to_receipt_letter(
             {
                 "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-                "SK": {
-                    "S": "RECEIPT#00001#LINE#00003#WORD#00004#LETTER#00005"
-                },
+                "SK": {"S": "RECEIPT#00001#LINE#00003#WORD#00004#LETTER#00005"},
                 "TYPE": {"S": "RECEIPT_LETTER"},
                 "text": {"N": "1"},
                 "bounding_box": {

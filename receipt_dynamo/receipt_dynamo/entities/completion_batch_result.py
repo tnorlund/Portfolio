@@ -57,8 +57,7 @@ class CompletionBatchResult:
             s.value for s in BatchStatus
         ]:
             raise ValueError(
-                "status must be one of: "
-                + ", ".join(s.value for s in BatchStatus)
+                "status must be one of: " + ", ".join(s.value for s in BatchStatus)
             )
         if isinstance(self.status, BatchStatus):
             status_str = self.status.value
@@ -107,9 +106,7 @@ class CompletionBatchResult:
     @property
     def gsi3_key(self) -> Dict[str, Any]:
         return {
-            "GSI3PK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}"
-            },
+            "GSI3PK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}"},
             "GSI3SK": {"S": f"BATCH#{self.batch_id}#STATUS#{self.status}"},
         }
 
@@ -231,6 +228,4 @@ def item_to_completion_batch_result(
             validated_at=validated_at,
         )
     except Exception as e:
-        raise ValueError(
-            f"Error converting item to CompletionBatchResult: {e}"
-        ) from e
+        raise ValueError(f"Error converting item to CompletionBatchResult: {e}") from e
