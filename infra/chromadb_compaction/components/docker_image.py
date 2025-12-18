@@ -9,8 +9,9 @@ from typing import Any, Dict, Optional
 import pulumi
 
 # Import the CodeBuildDockerImage component
-# sys.path is set by chromadb_compaction/__init__.py to include infra/
-from components.codebuild_docker_image import CodeBuildDockerImage
+# sys.path is set by chromadb_compaction/__init__.py to include Portfolio root
+# so "from infra." imports work correctly
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
 from pulumi import ComponentResource, Output, ResourceOptions
 from pulumi_aws.ecr import (
     LifecyclePolicy,
