@@ -521,6 +521,14 @@ def create_label_evaluator_graph(
                     if decision not in ("VALID", "INVALID", "NEEDS_REVIEW"):
                         decision = "NEEDS_REVIEW"
 
+                    # Validate suggested_label is from CORE_LABELS (or None)
+                    if suggested_label and suggested_label not in CORE_LABELS:
+                        logger.warning(
+                            f"LLM suggested label '{suggested_label}' not in CORE_LABELS, "
+                            f"ignoring suggestion"
+                        )
+                        suggested_label = None
+
                     review_result = ReviewResult(
                         issue=issue,
                         decision=decision,
