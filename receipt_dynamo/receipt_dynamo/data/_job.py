@@ -106,9 +106,7 @@ class _Job(
         self._validate_entity_list(jobs, Job, "jobs")
 
         request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=job.to_item())
-            )
+            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=job.to_item()))
             for job in jobs
         ]
         self._batch_write_with_retry(request_items)
@@ -214,9 +212,7 @@ class _Job(
         )
 
         if result is None:
-            raise EntityNotFoundError(
-                f"Job with job id {job_id} does not exist"
-            )
+            raise EntityNotFoundError(f"Job with job id {job_id} does not exist")
 
         return result
 
@@ -324,23 +320,17 @@ class _Job(
             "interrupted",
         ]
         if not isinstance(status, str) or status.lower() not in valid_statuses:
-            raise EntityValidationError(
-                f"status must be one of {valid_statuses}"
-            )
+            raise EntityValidationError(f"status must be one of {valid_statuses}")
 
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI1
             if not all(
-                k in last_evaluated_key
-                for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
+                k in last_evaluated_key for k in ["PK", "SK", "GSI1PK", "GSI1SK"]
             ):
                 raise EntityValidationError(
-                    "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK"
-                    " keys"
+                    "LastEvaluatedKey must contain PK, SK, GSI1PK, and GSI1SK" " keys"
                 )
 
         return self._query_entities(
@@ -388,17 +378,13 @@ class _Job(
 
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             # Validate the LastEvaluatedKey structure specific to GSI2
             if not all(
-                k in last_evaluated_key
-                for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
+                k in last_evaluated_key for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
             ):
                 raise EntityValidationError(
-                    "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK"
-                    " keys"
+                    "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK" " keys"
                 )
 
         return self._query_entities(

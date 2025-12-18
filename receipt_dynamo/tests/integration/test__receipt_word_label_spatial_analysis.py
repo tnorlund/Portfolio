@@ -296,9 +296,7 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
         client = DynamoClient(dynamodb_table)
 
         with pytest.raises(EntityNotFoundError, match="not found"):
-            client.update_receipt_word_label_spatial_analysis(
-                sample_spatial_analysis
-            )
+            client.update_receipt_word_label_spatial_analysis(sample_spatial_analysis)
 
     def test_delete_spatial_analysis_success(
         self,
@@ -319,9 +317,7 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
         assert result is not None
 
         # Delete it
-        client.delete_receipt_word_label_spatial_analysis(
-            sample_spatial_analysis
-        )
+        client.delete_receipt_word_label_spatial_analysis(sample_spatial_analysis)
 
         # Verify it's gone
         with pytest.raises(EntityNotFoundError):
@@ -416,9 +412,7 @@ class TestReceiptWordLabelSpatialAnalysisBatchOperations:
             assert result is not None
 
         # Delete them
-        client.delete_receipt_word_label_spatial_analyses(
-            batch_spatial_analyses
-        )
+        client.delete_receipt_word_label_spatial_analyses(batch_spatial_analyses)
 
         # Verify they're gone
         for analysis in batch_spatial_analyses:
@@ -577,8 +571,8 @@ class TestReceiptWordLabelSpatialAnalysisQueryOperations:
         client.add_receipt_word_label_spatial_analyses(batch_spatial_analyses)
 
         # Get first page
-        first_results, first_key = (
-            client.list_receipt_word_label_spatial_analyses(limit=2)
+        first_results, first_key = client.list_receipt_word_label_spatial_analyses(
+            limit=2
         )
         assert len(first_results) == 2
         assert first_key is not None
@@ -594,8 +588,7 @@ class TestReceiptWordLabelSpatialAnalysisQueryOperations:
         assert len(all_results) == 5
 
         result_keys = {
-            (r.image_id, r.receipt_id, r.line_id, r.word_id)
-            for r in all_results
+            (r.image_id, r.receipt_id, r.line_id, r.word_id) for r in all_results
         }
         expected_keys = {
             (a.image_id, a.receipt_id, a.line_id, a.word_id)
@@ -643,9 +636,7 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
         client = DynamoClient(dynamodb_table)
 
         # Test None parameters
-        with pytest.raises(
-            EntityValidationError, match="image_id cannot be None"
-        ):
+        with pytest.raises(EntityValidationError, match="image_id cannot be None"):
             client.get_receipt_word_label_spatial_analysis(
                 image_id=None,  # type: ignore
                 receipt_id=1,
@@ -653,9 +644,7 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
                 word_id=1,
             )
 
-        with pytest.raises(
-            EntityValidationError, match="receipt_id cannot be None"
-        ):
+        with pytest.raises(EntityValidationError, match="receipt_id cannot be None"):
             client.get_receipt_word_label_spatial_analysis(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 receipt_id=None,  # type: ignore
@@ -664,9 +653,7 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
             )
 
         # Test wrong types
-        with pytest.raises(
-            EntityValidationError, match="image_id must be a string"
-        ):
+        with pytest.raises(EntityValidationError, match="image_id must be a string"):
             client.get_receipt_word_label_spatial_analysis(
                 image_id=123,  # type: ignore
                 receipt_id=1,
@@ -685,9 +672,7 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
             )
 
         # Test negative values
-        with pytest.raises(
-            EntityValidationError, match="receipt_id must be positive"
-        ):
+        with pytest.raises(EntityValidationError, match="receipt_id must be positive"):
             client.get_receipt_word_label_spatial_analysis(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 receipt_id=-1,
@@ -695,9 +680,7 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
                 word_id=1,
             )
 
-        with pytest.raises(
-            EntityValidationError, match="line_id must be positive"
-        ):
+        with pytest.raises(EntityValidationError, match="line_id must be positive"):
             client.get_receipt_word_label_spatial_analysis(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 receipt_id=1,
@@ -723,18 +706,14 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
             client.get_spatial_analyses_by_label(label=None)  # type: ignore
 
         # Test invalid limit
-        with pytest.raises(
-            EntityValidationError, match="limit must be an integer"
-        ):
+        with pytest.raises(EntityValidationError, match="limit must be an integer"):
             client.list_spatial_analyses_for_receipt(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 receipt_id=1,
                 limit="10",  # type: ignore
             )
 
-        with pytest.raises(
-            EntityValidationError, match="limit must be greater than 0"
-        ):
+        with pytest.raises(EntityValidationError, match="limit must be greater than 0"):
             client.list_spatial_analyses_for_receipt(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 receipt_id=1,
@@ -774,9 +753,7 @@ class TestReceiptWordLabelSpatialAnalysisAddErrorHandling:
             ),
         ):
             with pytest.raises(expected_exception, match=error_match):
-                client.add_receipt_word_label_spatial_analysis(
-                    sample_spatial_analysis
-                )
+                client.add_receipt_word_label_spatial_analysis(sample_spatial_analysis)
 
 
 @pytest.mark.parametrize(

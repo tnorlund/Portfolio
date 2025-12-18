@@ -51,9 +51,7 @@ class QueueJob:
             # Keep as string
             pass
         else:
-            raise ValueError(
-                "enqueued_at must be a datetime object or a string"
-            )
+            raise ValueError("enqueued_at must be a datetime object or a string")
 
         valid_priorities = ["low", "medium", "high", "critical"]
         if (

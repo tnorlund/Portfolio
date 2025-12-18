@@ -150,9 +150,7 @@ def test_job_init_invalid_created_at():
 @pytest.mark.unit
 def test_job_init_invalid_created_by():
     """Test the Job constructor with invalid created_by."""
-    with pytest.raises(
-        ValueError, match="created_by must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="created_by must be a non-empty string"):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
@@ -164,9 +162,7 @@ def test_job_init_invalid_created_by():
             {"model": "layoutlm"},
         )
 
-    with pytest.raises(
-        ValueError, match="created_by must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="created_by must be a non-empty string"):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",
@@ -335,9 +331,7 @@ def test_job_storage_invalid_types():
         )
 
     # storage values must be strings
-    with pytest.raises(
-        ValueError, match="storage keys and values must be strings"
-    ):
+    with pytest.raises(ValueError, match="storage keys and values must be strings"):
         Job(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "Training Job",

@@ -5,7 +5,6 @@ Uses pydantic-settings for environment variable management.
 """
 
 from functools import lru_cache
-from typing import Optional
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -65,7 +64,7 @@ class PlacesConfig(BaseSettings):
     )
 
     # Endpoint override (for testing)
-    endpoint_url: Optional[str] = Field(
+    endpoint_url: str | None = Field(
         default=None,
         description="Override DynamoDB endpoint URL (for local testing)",
     )
@@ -75,4 +74,3 @@ class PlacesConfig(BaseSettings):
 def get_config() -> PlacesConfig:
     """Get cached configuration instance."""
     return PlacesConfig()
-

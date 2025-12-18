@@ -55,15 +55,11 @@ class ValidationMessageGenerator:
         """Generate a 'required parameter' error message."""
         return self.generate_message("required", param_name)
 
-    def generate_type_mismatch_message(
-        self, param_name: str, class_name: str
-    ) -> str:
+    def generate_type_mismatch_message(self, param_name: str, class_name: str) -> str:
         """Generate a 'type mismatch' error message."""
         return self.generate_message("type_mismatch", param_name, class_name)
 
-    def generate_list_required_message(
-        self, param_name: str, class_name: str
-    ) -> str:
+    def generate_list_required_message(self, param_name: str, class_name: str) -> str:
         """Generate a 'list required' error message."""
         return self.generate_message("list_required", param_name, class_name)
 
@@ -71,9 +67,7 @@ class ValidationMessageGenerator:
         self, param_name: str, class_name: str
     ) -> str:
         """Generate a 'list type mismatch' error message."""
-        return self.generate_message(
-            "list_type_mismatch", param_name, class_name
-        )
+        return self.generate_message("list_type_mismatch", param_name, class_name)
 
     def _generate_required_message(
         self, param_name: str, _class_name: Optional[str] = None
@@ -84,13 +78,9 @@ class ValidationMessageGenerator:
             return self.config.REQUIRED_PARAM_MESSAGES[param_name]
 
         # Default pattern
-        return self.config.PARAM_VALIDATION["required"].format(
-            param=param_name
-        )
+        return self.config.PARAM_VALIDATION["required"].format(param=param_name)
 
-    def _generate_type_mismatch_message(
-        self, param_name: str, class_name: str
-    ) -> str:
+    def _generate_type_mismatch_message(self, param_name: str, class_name: str) -> str:
         """Internal method for generating type mismatch messages."""
         # Check for special cases first
         key = (
@@ -106,9 +96,7 @@ class ValidationMessageGenerator:
             param=param_name, class_name=class_name
         )
 
-    def _generate_list_required_message(
-        self, param_name: str, class_name: str
-    ) -> str:
+    def _generate_list_required_message(self, param_name: str, class_name: str) -> str:
         """Internal method for generating list required messages."""
         # Check for special cases first
         if param_name in self.config.LIST_REQUIRED_MESSAGES:
@@ -145,8 +133,8 @@ class EntityValidator:
 
     def __init__(self, config: ErrorMessageConfig) -> None:
         self.config: ErrorMessageConfig = config
-        self.message_generator: ValidationMessageGenerator = (
-            ValidationMessageGenerator(config)
+        self.message_generator: ValidationMessageGenerator = ValidationMessageGenerator(
+            config
         )
         # Dictionary-based validation rules for better maintainability
         self._validation_rules: Dict[
@@ -236,9 +224,7 @@ class EntityValidator:
         """Validate that entity is not None."""
         if context["entity"] is None:
             raise ValueError(
-                self.message_generator.generate_required_message(
-                    context["param_name"]
-                )
+                self.message_generator.generate_required_message(context["param_name"])
             )
 
     def _validate_instance_type(self, context: Dict[str, Any]) -> None:
@@ -281,16 +267,12 @@ class EntityValidator:
                     )
                 )
 
-    def transform_validation_message(
-        self, message: str, operation: str
-    ) -> str:
+    def transform_validation_message(self, message: str, operation: str) -> str:
         """Transform validation messages for backward compatibility using
         dictionary-based patterns."""
         # Define transformation rules using dictionary lookup for better
         # maintainability
-        transformation_rules: Dict[
-            str, Dict[str, Union[List[str], Dict[str, str]]]
-        ] = {
+        transformation_rules: Dict[str, Dict[str, Union[List[str], Dict[str, str]]]] = {
             # Operations that expect "were" (remove "given")
             "remove_given": {
                 "pattern_match": [],

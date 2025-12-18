@@ -133,9 +133,7 @@ class _JobDependency(
 
         return self._query_entities(
             index_name=None,
-            key_condition_expression=(
-                "PK = :pk AND begins_with(SK, :sk_prefix)"
-            ),
+            key_condition_expression=("PK = :pk AND begins_with(SK, :sk_prefix)"),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": f"JOB#{dependent_job_id}"},
@@ -180,9 +178,7 @@ class _JobDependency(
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": "DEPENDENCY"},
-                ":sk_prefix": {
-                    "S": f"DEPENDED_BY#{dependency_job_id}#DEPENDENT#"
-                },
+                ":sk_prefix": {"S": f"DEPENDED_BY#{dependency_job_id}#DEPENDENT#"},
             },
             converter_func=item_to_job_dependency,
             limit=limit,
@@ -237,9 +233,7 @@ class _JobDependency(
                         DeleteRequest=DeleteRequestTypeDef(
                             Key={
                                 "PK": {"S": f"JOB#{dep.dependent_job_id}"},
-                                "SK": {
-                                    "S": f"DEPENDS_ON#{dep.dependency_job_id}"
-                                },
+                                "SK": {"S": f"DEPENDS_ON#{dep.dependency_job_id}"},
                             }
                         )
                     )

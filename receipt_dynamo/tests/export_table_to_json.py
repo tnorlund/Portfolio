@@ -45,9 +45,7 @@ if __name__ == "__main__":
         Bucket=image.raw_s3_bucket,
         Prefix=f"raw/{image.image_id}",
     )
-    gpt_objects = [
-        obj for obj in response.get("Contents", []) if "GPT" in obj["Key"]
-    ]
+    gpt_objects = [obj for obj in response.get("Contents", []) if "GPT" in obj["Key"]]
     for obj in gpt_objects:
         obj_response = s3.get_object(
             Bucket=image.raw_s3_bucket,
@@ -90,9 +88,7 @@ if __name__ == "__main__":
         print(
             f"Downloading raw receipt file from {receipt.raw_s3_bucket}/{receipt.raw_s3_key} to {receipt_local_path}"
         )
-        s3.download_file(
-            receipt.raw_s3_bucket, receipt.raw_s3_key, receipt_local_path
-        )
+        s3.download_file(receipt.raw_s3_bucket, receipt.raw_s3_key, receipt_local_path)
     # -------------------------------------------------------------------------
 
     with open(os.path.join(json_dir, f"{IMAGE_ID}_RESULTS.json"), "w") as f:
@@ -148,12 +144,8 @@ if __name__ == "__main__":
                     }
                     for word in receipt_words
                 ],
-                "receipt_letters": [
-                    dict(letter) for letter in receipt_letters
-                ],
-                "receipt_word_labels": [
-                    dict(label) for label in receipt_word_labels
-                ],
+                "receipt_letters": [dict(letter) for letter in receipt_letters],
+                "receipt_word_labels": [dict(label) for label in receipt_word_labels],
             },
             f,
             indent=4,

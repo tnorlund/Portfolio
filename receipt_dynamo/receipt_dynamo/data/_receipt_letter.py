@@ -81,9 +81,7 @@ class _ReceiptLetter(
         self._add_entity(receipt_letter)
 
     @handle_dynamodb_errors("add_receipt_letters")
-    def add_receipt_letters(
-        self, receipt_letters: list[ReceiptLetter]
-    ) -> None:
+    def add_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
         """
         Adds multiple ReceiptLetters to DynamoDB in batches.
 
@@ -135,9 +133,7 @@ class _ReceiptLetter(
         self._update_entity(receipt_letter)
 
     @handle_dynamodb_errors("update_receipt_letters")
-    def update_receipt_letters(
-        self, receipt_letters: list[ReceiptLetter]
-    ) -> None:
+    def update_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
         """
         Updates multiple ReceiptLetters in the database.
 
@@ -161,9 +157,7 @@ class _ReceiptLetter(
                     f"receipt_letters[{i}] must be an instance of "
                     f"ReceiptLetter, got {type(receipt_letter).__name__}"
                 )
-        self._update_entities(
-            receipt_letters, ReceiptLetter, "receipt_letters"
-        )
+        self._update_entities(receipt_letters, ReceiptLetter, "receipt_letters")
 
     @handle_dynamodb_errors("delete_receipt_letter")
     def delete_receipt_letter(
@@ -227,9 +221,7 @@ class _ReceiptLetter(
         )
 
     @handle_dynamodb_errors("delete_receipt_letters")
-    def delete_receipt_letters(
-        self, receipt_letters: list[ReceiptLetter]
-    ) -> None:
+    def delete_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
         """
         Deletes multiple ReceiptLetters in batch.
 
@@ -296,9 +288,7 @@ class _ReceiptLetter(
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer")
         if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+            raise EntityValidationError("receipt_id must be a positive integer")
         if image_id is None:
             raise EntityValidationError("image_id cannot be None")
         self._validate_image_id(image_id)
@@ -333,9 +323,7 @@ class _ReceiptLetter(
         )
 
         if result is None:
-            raise EntityNotFoundError(
-                f"ReceiptLetter with ID {letter_id} not found"
-            )
+            raise EntityNotFoundError(f"ReceiptLetter with ID {letter_id} not found")
 
         return result
 
@@ -369,9 +357,7 @@ class _ReceiptLetter(
             raise EntityValidationError("limit must be an integer or None.")
         if limit is not None and limit <= 0:
             raise EntityValidationError("Parameter validation failed")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
+        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
@@ -415,13 +401,9 @@ class _ReceiptLetter(
         if receipt_id is None:
             raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+            raise EntityValidationError("receipt_id must be a positive integer")
         if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+            raise EntityValidationError("receipt_id must be a positive integer")
         if image_id is None:
             raise EntityValidationError("image_id cannot be None")
         self._validate_image_id(image_id)
@@ -440,9 +422,7 @@ class _ReceiptLetter(
 
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression=(
-                "PK = :pkVal AND begins_with(SK, :skPrefix)"
-            ),
+            key_condition_expression=("PK = :pkVal AND begins_with(SK, :skPrefix)"),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pkVal": {"S": f"IMAGE#{image_id}"},

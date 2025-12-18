@@ -100,9 +100,7 @@ def test_label_metadata_deserialization_invalid_date_format():
         "schema_version": {"N": "1"},
         "last_updated": {"S": "not-a-date"},
     }
-    with pytest.raises(
-        ValueError, match="Error converting item to LabelMetadata"
-    ):
+    with pytest.raises(ValueError, match="Error converting item to LabelMetadata"):
         item_to_label_metadata(item)
 
 

@@ -172,9 +172,7 @@ def test_compaction_lock_invalid_owner_type(bad_value):
 @pytest.mark.unit
 @pytest.mark.parametrize("bad_value", [123, None])
 def test_compaction_lock_invalid_expires_type(bad_value):
-    with pytest.raises(
-        ValueError, match="expires must be datetime or ISO-8601 string"
-    ):
+    with pytest.raises(ValueError, match="expires must be datetime or ISO-8601 string"):
         CompactionLock(
             lock_id="test-lock",
             owner=str(uuid4()),

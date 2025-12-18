@@ -29,6 +29,7 @@ jobs:
       receipt_dynamo_changed: ${{ steps.changes.outputs.receipt_dynamo }}
       receipt_dynamo_stream_changed: ${{ steps.changes.outputs.receipt_dynamo_stream }}
       receipt_chroma_changed: ${{ steps.changes.outputs.receipt_chroma }}
+      receipt_places_changed: ${{ steps.changes.outputs.receipt_places }}
       portfolio_changed: ${{ steps.changes.outputs.portfolio }}
       infra_changed: ${{ steps.changes.outputs.infra }}
       workflows_changed: ${{ steps.changes.outputs.workflows }}
@@ -54,6 +55,10 @@ jobs:
               - 'pytest*.ini'
             receipt_chroma:
               - 'receipt_chroma/**'
+              - 'conftest.py'
+              - 'pytest*.ini'
+            receipt_places:
+              - 'receipt_places/**'
               - 'conftest.py'
               - 'pytest*.ini'
             infra:
@@ -105,9 +110,9 @@ jobs:
         run: |
           # Check formatting but don't block (we have auto-format on PRs)
           echo "Checking Python formatting..."
-          black --check --line-length=79 receipt_dynamo receipt_dynamo_stream receipt_chroma receipt_upload infra || echo "::warning::Some files need black formatting"
+          black --check --line-length=79 receipt_dynamo receipt_dynamo_stream receipt_chroma receipt_places receipt_upload infra || echo "::warning::Some files need black formatting"
           # isort configuration is in .isort.cfg
-          isort --check-only receipt_dynamo receipt_dynamo_stream receipt_chroma receipt_upload infra || echo "::warning::Some imports need isort formatting"
+          isort --check-only receipt_dynamo receipt_dynamo_stream receipt_chroma receipt_places receipt_upload infra || echo "::warning::Some imports need isort formatting"
 
       - name: Set up Node.js
         if: steps.changes.outputs.portfolio == 'true'
@@ -135,11 +140,12 @@ jobs:
       needs.fast-checks.outputs.receipt_dynamo_changed == 'true' ||
       needs.fast-checks.outputs.receipt_dynamo_stream_changed == 'true' ||
       needs.fast-checks.outputs.receipt_chroma_changed == 'true' ||
+      needs.fast-checks.outputs.receipt_places_changed == 'true' ||
       needs.fast-checks.outputs.workflows_changed == 'true' ||
       github.event_name == 'schedule'
     strategy:
       matrix:
-        package: [receipt_dynamo, receipt_dynamo_stream, receipt_chroma]
+        package: [receipt_dynamo, receipt_dynamo_stream, receipt_chroma, receipt_places]
     steps:
       - uses: actions/checkout@v6
 
@@ -234,6 +240,19 @@ jobs:
               "pytest>=8.3.0,<10.0.0" "pytest-mock>=3.14.0,<4.0.0" "pytest-cov>=6.1.0,<7.0.0" \
               "pytest-xdist>=3.6.0,<4.0.0" "pytest-timeout>=2.1.0,<3.0.0" "moto>=5.1.0,<6.0.0" \
               --disable-pip-version-check
+          elif [[ "${{ matrix.package }}" == "receipt_places" ]]; then
+            echo "Installing receipt_places with local receipt_dynamo dependency..."
+            # Install receipt_dynamo first so the dependency is satisfied locally
+            python3 -m pip install --force-reinstall -e "receipt_dynamo" --disable-pip-version-check
+            # Install receipt_places without dependencies to avoid PyPI resolution
+            python3 -m pip install --force-reinstall --no-deps -e "receipt_places" --disable-pip-version-check
+            # Install all runtime and test dependencies manually
+            python3 -m pip install "pydantic>=2.0.0" "pydantic-settings>=2.0.0" "structlog>=24.0.0" \
+              "boto3>=1.34.0" "requests>=2.31.0" "tenacity>=8.2.0" \
+              "pytest>=8.3.0,<10.0.0" "pytest-mock>=3.14.0,<4.0.0" "pytest-cov>=6.1.0,<7.0.0" \
+              "pytest-xdist>=3.6.0,<4.0.0" "pytest-timeout>=2.1.0,<3.0.0" "moto>=5.1.0,<6.0.0" \
+              "responses>=0.24.0" \
+              --disable-pip-version-check
           else
             # receipt_dynamo package - just install it directly
             echo "Installing ${{ matrix.package }} from PR source..."
@@ -258,6 +277,7 @@ jobs:
           (matrix.package == 'receipt_dynamo' && needs.fast-checks.outputs.receipt_dynamo_changed == 'true') ||
           (matrix.package == 'receipt_dynamo_stream' && needs.fast-checks.outputs.receipt_dynamo_stream_changed == 'true') ||
           (matrix.package == 'receipt_chroma' && needs.fast-checks.outputs.receipt_chroma_changed == 'true') ||
+          (matrix.package == 'receipt_places' && needs.fast-checks.outputs.receipt_places_changed == 'true') ||
           needs.fast-checks.outputs.workflows_changed == 'true' ||
           github.event_name == 'schedule'
         env:
@@ -319,6 +339,20 @@ jobs:
               --durations=10 \
               --dist=loadfile \
               --cov-append \
+              --cov \
+              --cov-report=term-missing \
+              --cov-report=xml
+          elif [[ "${{ matrix.package }}" == "receipt_places" ]]; then
+            # receipt_places: Run unit tests only (no integration tier)
+            echo "🚀 Running receipt_places unit tests with optimized timeout..."
+            python -m pytest tests \
+              -n auto \
+              --timeout=30 \
+              --tb=short \
+              --maxfail=5 \
+              --durations=10 \
+              --dist=loadfile \
+              -m "unit" \
               --cov \
               --cov-report=term-missing \
               --cov-report=xml

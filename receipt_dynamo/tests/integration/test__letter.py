@@ -143,9 +143,7 @@ class TestLetterBasicOperations:
         dynamodb_client.add_letter(example_letter)
 
         # Act & Assert
-        with pytest.raises(
-            EntityAlreadyExistsError, match="letter already exists"
-        ):
+        with pytest.raises(EntityAlreadyExistsError, match="letter already exists"):
             dynamodb_client.add_letter(example_letter)
 
     def test_get_letter_success(
@@ -226,9 +224,7 @@ class TestLetterBasicOperations:
                 example_letter.letter_id,
             )
 
-    def test_delete_letter_not_found(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_delete_letter_not_found(self, dynamodb_client: DynamoClient) -> None:
         """Test delete non-existent letter raises EntityNotFoundError."""
         with pytest.raises(EntityNotFoundError, match="not found"):
             dynamodb_client.delete_letter(
@@ -285,9 +281,7 @@ class TestLetterBatchOperations:
             )
             assert retrieved == letter
 
-    def test_delete_letters_success(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_delete_letters_success(self, dynamodb_client: DynamoClient) -> None:
         """Test successful batch deletion of letters."""
         # Arrange
         letters = [
@@ -309,9 +303,7 @@ class TestLetterBatchOperations:
                     letter.letter_id,
                 )
 
-    def test_delete_letters_from_word(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_delete_letters_from_word(self, dynamodb_client: DynamoClient) -> None:
         """Test deleting all letters from a specific word."""
         # Arrange - add letters to multiple words
         word1_letters = [
@@ -363,9 +355,7 @@ class TestLetterBatchOperations:
             )
             assert retrieved == letter
 
-    def test_update_letters_success(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_update_letters_success(self, dynamodb_client: DynamoClient) -> None:
         """Test successful batch update of letters."""
         # Arrange
         letters = [
@@ -399,9 +389,7 @@ class TestLetterBatchOperations:
 class TestLetterAdvancedOperations:
     """Test advanced letter operations."""
 
-    def test_get_letters_by_keys_success(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_get_letters_by_keys_success(self, dynamodb_client: DynamoClient) -> None:
         """Test successful retrieval of letters by keys."""
         # Arrange
         letters = [
@@ -418,9 +406,7 @@ class TestLetterAdvancedOperations:
         assert len(retrieved_letters) == 2
         assert set(l.letter_id for l in retrieved_letters) == {1, 2}
 
-    def test_get_letters_invalid_keys(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_get_letters_invalid_keys(self, dynamodb_client: DynamoClient) -> None:
         """Test that get_letters validates key structure."""
         # Test missing PK
         with pytest.raises(
@@ -431,9 +417,7 @@ class TestLetterAdvancedOperations:
             )
 
         # Test wrong PK prefix
-        with pytest.raises(
-            EntityValidationError, match="PK must start with 'IMAGE#'"
-        ):
+        with pytest.raises(EntityValidationError, match="PK must start with 'IMAGE#'"):
             dynamodb_client.get_letters(
                 [
                     {
@@ -444,9 +428,7 @@ class TestLetterAdvancedOperations:
             )
 
         # Test SK missing LETTER
-        with pytest.raises(
-            EntityValidationError, match="SK must contain 'LETTER'"
-        ):
+        with pytest.raises(EntityValidationError, match="SK must contain 'LETTER'"):
             dynamodb_client.get_letters(
                 [
                     {
@@ -489,9 +471,7 @@ class TestLetterListOperations:
         assert set(l.letter_id for l in retrieved_letters) == {1, 2}
         assert last_key is None
 
-    def test_list_letters_with_pagination(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_list_letters_with_pagination(self, dynamodb_client: DynamoClient) -> None:
         """Test listing letters with pagination."""
         # Arrange - add 10 letters
         letters = []
@@ -524,9 +504,7 @@ class TestLetterListOperations:
         """Test listing letters from a specific word."""
         # Arrange - add letters to different words
         word1_letter1 = Letter(**CORRECT_LETTER_PARAMS)
-        word1_letter2 = Letter(
-            **{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}
-        )
+        word1_letter2 = Letter(**{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"})
         word2_letter = Letter(
             **{
                 **CORRECT_LETTER_PARAMS,
@@ -536,9 +514,7 @@ class TestLetterListOperations:
             }
         )
 
-        dynamodb_client.add_letters(
-            [word1_letter1, word1_letter2, word2_letter]
-        )
+        dynamodb_client.add_letters([word1_letter1, word1_letter2, word2_letter])
 
         # Act
         word1_letters = dynamodb_client.list_letters_from_word(
@@ -551,9 +527,7 @@ class TestLetterListOperations:
         assert word1_letter2 in word1_letters
         assert word2_letter not in word1_letters
 
-    def test_list_letters_from_word_empty(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_list_letters_from_word_empty(self, dynamodb_client: DynamoClient) -> None:
         """Test listing letters from a word with no letters."""
         letters = dynamodb_client.list_letters_from_word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1
@@ -570,9 +544,7 @@ class TestLetterListOperations:
 class TestLetterValidation:
     """Test validation for letter operations."""
 
-    def test_add_letter_none_raises_error(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_add_letter_none_raises_error(self, dynamodb_client: DynamoClient) -> None:
         """Test that adding None raises OperationError."""
         with pytest.raises(OperationError, match="letter cannot be None"):
             dynamodb_client.add_letter(None)  # type: ignore
@@ -586,9 +558,7 @@ class TestLetterValidation:
         ):
             dynamodb_client.add_letter("not-a-letter")  # type: ignore
 
-    def test_add_letters_none_raises_error(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_add_letters_none_raises_error(self, dynamodb_client: DynamoClient) -> None:
         """Test that adding None list raises OperationError."""
         with pytest.raises(OperationError, match="letters cannot be None"):
             dynamodb_client.add_letters(None)  # type: ignore
@@ -616,18 +586,14 @@ class TestLetterValidation:
         self, dynamodb_client: DynamoClient
     ) -> None:
         """Test that invalid UUID raises OperationError."""
-        with pytest.raises(
-            OperationError, match="uuid must be a valid UUIDv4"
-        ):
+        with pytest.raises(OperationError, match="uuid must be a valid UUIDv4"):
             dynamodb_client.get_letter("invalid-uuid", 1, 1, 1)
 
     def test_delete_letter_invalid_uuid_raises_error(
         self, dynamodb_client: DynamoClient
     ) -> None:
         """Test that delete with invalid UUID raises OperationError."""
-        with pytest.raises(
-            OperationError, match="uuid must be a valid UUIDv4"
-        ):
+        with pytest.raises(OperationError, match="uuid must be a valid UUIDv4"):
             dynamodb_client.delete_letter("invalid-uuid", 1, 1, 1)
 
     def test_update_letter_validation_errors(
@@ -737,9 +703,7 @@ class TestLetterErrorHandling:
 
         # Act & Assert
         with pytest.raises(expected_exception, match=expected_message):
-            dynamodb_client.get_letter(
-                "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1
-            )
+            dynamodb_client.get_letter("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1, 1)
 
     @pytest.mark.parametrize(
         "error_code,expected_exception,expected_message",
@@ -915,9 +879,7 @@ class TestLetterSpecialCases:
         retrieved_chars = {l.text for l in retrieved}
         assert retrieved_chars == set(special_chars)
 
-    def test_letter_with_unicode_text(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_letter_with_unicode_text(self, dynamodb_client: DynamoClient) -> None:
         """Test handling letters with unicode characters."""
         # Arrange
         unicode_chars = ["α", "β", "γ", "中", "文", "😀", "🚀"]
@@ -941,9 +903,7 @@ class TestLetterSpecialCases:
             )
             assert retrieved.text == letter.text
 
-    def test_letter_boundary_values(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_letter_boundary_values(self, dynamodb_client: DynamoClient) -> None:
         """Test letters with boundary values for numeric fields."""
         # Test with very small confidence (must be > 0)
         letter_params = CORRECT_LETTER_PARAMS.copy()

@@ -96,9 +96,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
         if isinstance(self.timestamp_added, datetime):
             self.timestamp_added = self.timestamp_added.isoformat()
         elif not isinstance(self.timestamp_added, str):
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
         if self.raw_s3_bucket and not isinstance(self.raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
@@ -150,9 +148,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
         """
         return {
             "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
-            },
+            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
         }
 
     def to_item(self) -> Dict[str, Any]:
@@ -197,9 +193,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             },
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
             "cdn_s3_bucket": (
-                {"S": self.cdn_s3_bucket}
-                if self.cdn_s3_bucket
-                else {"NULL": True}
+                {"S": self.cdn_s3_bucket} if self.cdn_s3_bucket else {"NULL": True}
             ),
             **self.cdn_fields_to_dynamodb_item(),
         }
@@ -322,12 +316,10 @@ def item_to_receipt(item: Dict[str, Any]) -> Receipt:
             raw_s3_bucket=item["raw_s3_bucket"]["S"],
             raw_s3_key=item["raw_s3_key"]["S"],
             top_left={
-                key: float(value["N"])
-                for key, value in item["top_left"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_left"]["M"].items()
             },
             top_right={
-                key: float(value["N"])
-                for key, value in item["top_right"]["M"].items()
+                key: float(value["N"]) for key, value in item["top_right"]["M"].items()
             },
             bottom_left={
                 key: float(value["N"])
@@ -354,18 +346,12 @@ def item_to_receipt(item: Dict[str, Any]) -> Receipt:
             ),
             cdn_webp_s3_key=(
                 item["cdn_webp_s3_key"]["S"]
-                if (
-                    "cdn_webp_s3_key" in item
-                    and "S" in item["cdn_webp_s3_key"]
-                )
+                if ("cdn_webp_s3_key" in item and "S" in item["cdn_webp_s3_key"])
                 else None
             ),
             cdn_avif_s3_key=(
                 item["cdn_avif_s3_key"]["S"]
-                if (
-                    "cdn_avif_s3_key" in item
-                    and "S" in item["cdn_avif_s3_key"]
-                )
+                if ("cdn_avif_s3_key" in item and "S" in item["cdn_avif_s3_key"])
                 else None
             ),
             # Thumbnail versions
@@ -390,8 +376,7 @@ def item_to_receipt(item: Dict[str, Any]) -> Receipt:
             # Small versions
             cdn_small_s3_key=(
                 item["cdn_small_s3_key"]["S"]
-                if "cdn_small_s3_key" in item
-                and "S" in item["cdn_small_s3_key"]
+                if "cdn_small_s3_key" in item and "S" in item["cdn_small_s3_key"]
                 else None
             ),
             cdn_small_webp_s3_key=(
@@ -409,8 +394,7 @@ def item_to_receipt(item: Dict[str, Any]) -> Receipt:
             # Medium versions
             cdn_medium_s3_key=(
                 item["cdn_medium_s3_key"]["S"]
-                if "cdn_medium_s3_key" in item
-                and "S" in item["cdn_medium_s3_key"]
+                if "cdn_medium_s3_key" in item and "S" in item["cdn_medium_s3_key"]
                 else None
             ),
             cdn_medium_webp_s3_key=(
