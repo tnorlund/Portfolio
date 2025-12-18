@@ -40,8 +40,10 @@ from receipt_agent.agents.label_evaluator.graph import (
     run_label_evaluator_sync,
 )
 from receipt_agent.agents.label_evaluator.helpers import (
+    SimilarWordResult,
     assemble_visual_lines,
     build_review_context,
+    build_word_chroma_id,
     build_word_contexts,
     check_missing_label_in_cluster,
     check_position_anomaly,
@@ -50,6 +52,8 @@ from receipt_agent.agents.label_evaluator.helpers import (
     compute_merchant_patterns,
     evaluate_word_contexts,
     format_receipt_text,
+    format_similar_words_for_prompt,
+    query_similar_validated_words,
 )
 from receipt_agent.agents.label_evaluator.state import (
     EvaluationIssue,
@@ -76,6 +80,7 @@ __all__ = [
     "OtherReceiptData",
     "ReviewContext",
     "ReviewResult",
+    "SimilarWordResult",
     # Helper functions (for testing and extension)
     "build_word_contexts",
     "assemble_visual_lines",
@@ -87,4 +92,8 @@ __all__ = [
     "check_missing_label_in_cluster",
     "build_review_context",
     "format_receipt_text",
+    # ChromaDB similarity search
+    "build_word_chroma_id",
+    "query_similar_validated_words",
+    "format_similar_words_for_prompt",
 ]

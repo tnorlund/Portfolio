@@ -50,6 +50,8 @@ from receipt_agent.agents.label_evaluator.helpers import (
     build_word_contexts,
     compute_merchant_patterns,
     evaluate_word_contexts,
+    format_similar_words_for_prompt,
+    query_similar_validated_words,
 )
 from receipt_agent.agents.label_evaluator.state import (
     EvaluationIssue,
@@ -119,6 +121,16 @@ The word is marked with [brackets] in the receipt below:
 Line: "{visual_line_text}"
 Labels on this line: {visual_line_labels}
 
+## Similar Words from Database
+
+These are semantically similar words from other receipts with their validated labels:
+
+{similar_words}
+
+IMPORTANT: Use these examples to understand what labels are typically assigned to similar text.
+If the similar words show that text like "{word_text}" typically has NO label or a DIFFERENT label,
+that's strong evidence the current label may be wrong.
+
 ## Label History
 
 {label_history}
@@ -130,8 +142,9 @@ Decide if the current label is correct:
 - **VALID**: The label IS correct despite the flag (false positive from evaluator)
   - Example: "CHARGE" labeled PAYMENT_METHOD is valid if it's part of "CREDIT CARD CHARGE"
 
-- **INVALID**: The label IS wrong - provide the correct label
+- **INVALID**: The label IS wrong - provide the correct label from CORE_LABELS, or null if no label applies
   - Example: "Sprouts" in product area should be PRODUCT_NAME, not MERCHANT_NAME
+  - Example: "Tip:" is a descriptor, not a value - it should have no label (suggested_label: null)
 
 - **NEEDS_REVIEW**: Genuinely ambiguous, needs human review
 
@@ -151,6 +164,7 @@ def create_label_evaluator_graph(
     llm_provider: str = "anthropic",
     ollama_base_url: str = "https://ollama.com",
     ollama_api_key: Optional[str] = None,
+    chroma_client: Any = None,
 ) -> Any:
     """
     Create the label evaluator workflow graph.
@@ -163,12 +177,21 @@ def create_label_evaluator_graph(
         llm_provider: LLM provider to use ("anthropic" or "ollama")
         ollama_base_url: Base URL for Ollama Cloud API
         ollama_api_key: API key for Ollama Cloud (required if using ollama provider)
+        chroma_client: Optional ChromaDB client for similar word lookup. Words' existing
+                       embeddings are retrieved by ID, so no embed_fn is needed.
 
     Returns:
         Compiled LangGraph workflow
     """
-    # Store client in closure for node access
+    # Store clients in closure for node access
     _dynamo_client = dynamo_client
+    _chroma_client = chroma_client
+
+    # Log ChromaDB availability
+    if _chroma_client:
+        logger.info("ChromaDB client provided for similar word lookup")
+    else:
+        logger.info("ChromaDB not configured - similar word lookup will be skipped")
 
     # Initialize LLM for review (cheap model for cost efficiency)
     if llm is not None:
@@ -426,6 +449,26 @@ def create_label_evaluator_graph(
                     issue, state.visual_lines, merchant_name
                 )
 
+                # Query ChromaDB for similar validated words
+                similar_words_text = "ChromaDB not configured - no similar words available."
+                if _chroma_client:
+                    try:
+                        similar_words = query_similar_validated_words(
+                            word=issue.word,
+                            chroma_client=_chroma_client,
+                            n_results=10,
+                            min_similarity=0.6,
+                        )
+                        similar_words_text = format_similar_words_for_prompt(
+                            similar_words, max_examples=5
+                        )
+                        logger.debug(
+                            f"Found {len(similar_words)} similar words for '{issue.word.text}'"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Error querying similar words: {e}")
+                        similar_words_text = f"Error querying similar words: {e}"
+
                 # Format label history
                 if review_ctx.label_history:
                     history_text = "\n".join(
@@ -445,6 +488,7 @@ def create_label_evaluator_graph(
                     receipt_text=review_ctx.receipt_text,
                     visual_line_text=review_ctx.visual_line_text,
                     visual_line_labels=review_ctx.visual_line_labels,
+                    similar_words=similar_words_text,
                     label_history=history_text,
                 )
 
