@@ -199,46 +199,68 @@ class PlacesClient:
         Returns:
             Typed Place object if found, None otherwise
         """
+        # Validate input
+        if not self._is_valid_phone(phone_number):
+            return None
+
+        # Extract digits for cache key
+        digits = self._extract_digits(phone_number)
+
+        # Try cache first
+        expected_fields = {"place_id", "name", "types", "business_status"}
+        cached_result = self._try_cached_phone_result(digits, expected_fields)
+        if cached_result:
+            return cached_result
+
+        # Try API search
+        api_result = self._try_phone_api_search(phone_number, digits, expected_fields)
+        if api_result:
+            return api_result
+
+        # Fallback to text search
+        return self._try_text_search_fallback(phone_number, digits)
+
+    def _is_valid_phone(self, phone_number: str) -> bool:
+        """Check if phone number has valid format (non-empty, enough digits)."""
         if not phone_number:
             logger.debug("Empty phone number, skipping search")
-            return None
+            return False
 
-        # Normalize to digits only for cache lookup
         digits = "".join(c for c in phone_number if c.isdigit())
-
         if len(digits) < 7:
             logger.debug("Phone number too short: %s", phone_number)
+            return False
+
+        return True
+
+    def _extract_digits(self, phone_number: str) -> str:
+        """Extract only digits from phone number."""
+        return "".join(c for c in phone_number if c.isdigit())
+
+    def _try_cached_phone_result(
+        self, digits: str, expected_fields: set[str]
+    ) -> Place | None:
+        """Try to retrieve and parse cached phone search result."""
+        cached_dict = self._cache.get("PHONE", digits)
+        if not cached_dict or not cached_dict.get("result"):
             return None
 
-        # Expected fields from findplacefromtext phone search
-        expected_fields = {"place_id", "name", "types", "business_status"}
+        try:
+            return parse_place_details_response(
+                cached_dict, expected_fields=expected_fields
+            )
+        except (APIError, ParseError) as e:
+            logger.warning("Failed to parse cached phone search result: %s", e)
+            return None
 
-        # Check cache first
-        cached_dict = self._cache.get("PHONE", digits)
-        if cached_dict and cached_dict.get("result"):
-            try:
-                cached_place = parse_place_details_response(
-                    cached_dict, expected_fields=expected_fields
-                )
-                return cached_place
-            except (APIError, ParseError) as e:
-                logger.warning(
-                    "Failed to parse cached phone search result: %s", e
-                )
-                # Fall through to API call
-
-        # Make API call
+    def _try_phone_api_search(
+        self, phone_number: str, digits: str, expected_fields: set[str]
+    ) -> Place | None:
+        """Make API call for phone search, fetch details, and cache result."""
         logger.info("🔍 Places API: search_by_phone(%s)", phone_number)
 
-        # Format for API (E.164 format)
-        if len(digits) == 10:
-            api_phone = f"+1{digits}"  # Assume US
-        elif len(digits) == 11 and digits.startswith("1"):
-            api_phone = f"+{digits}"
-        else:
-            api_phone = f"+{digits}"
-
         try:
+            api_phone = self._format_phone_for_api(digits)
             data = self._make_request(
                 "findplacefromtext/json",
                 {
@@ -253,39 +275,56 @@ class PlacesClient:
                 place = parse_place_candidates_response(
                     data, expected_fields=expected_fields
                 )
-                if place:
-                    # Get full details
-                    details = self.get_place_details(place.place_id)
-                    if details:
-                        # Cache the full details response
-                        details_response = {
-                            "status": "OK",
-                            "result": details.model_dump(),
-                        }
-                        self._cache.put(
-                            "PHONE", digits, place.place_id, details_response
-                        )
-                        return details
+                if not place:
+                    return None
+
+                # Get full details
+                details = self.get_place_details(place.place_id)
+                if not details:
+                    return None
+
+                # Cache the full details response
+                details_response = {
+                    "status": "OK",
+                    "result": details.model_dump(),
+                }
+                self._cache.put(
+                    "PHONE", digits, place.place_id, details_response
+                )
+                return details
+
             except (APIError, ParseError) as e:
                 logger.warning("Error parsing phone search response: %s", e)
-
-            # Try text search as fallback
-            text_result = self.search_by_text(phone_number)
-            if text_result and text_result.place_id:
-                # Get full details and cache
-                details = self.get_place_details(text_result.place_id)
-                if details:
-                    self._cache.put(
-                        "PHONE", digits, text_result.place_id, data
-                    )
-                    return details
-
-            # No result found - don't cache negative results
-            return None
+                return None
 
         except (requests.exceptions.RequestException, RetryError) as e:
             logger.error("Error searching by phone: %s", e)
             return None
+
+    def _format_phone_for_api(self, digits: str) -> str:
+        """Format phone number to E.164 format for API."""
+        if len(digits) == 10:
+            return f"+1{digits}"  # Assume US
+        return f"+{digits}"
+
+    def _try_text_search_fallback(self, phone_number: str, digits: str) -> Place | None:
+        """Fallback to text search if phone search fails."""
+        text_result = self.search_by_text(phone_number)
+        if not text_result or not text_result.place_id:
+            return None
+
+        # Get full details and cache
+        details = self.get_place_details(text_result.place_id)
+        if not details:
+            return None
+
+        # Cache with phone digits as key
+        details_response = {
+            "status": "OK",
+            "result": details.model_dump(),
+        }
+        self._cache.put("PHONE", digits, text_result.place_id, details_response)
+        return details
 
     def search_by_address(
         self,
@@ -416,9 +455,13 @@ class PlacesClient:
         )
 
         try:
+            fields = (
+                "place_id,formatted_address,name,formatted_phone_number,"
+                "types,business_status"
+            )
             params: dict[str, Any] = {
                 "query": query,
-                "fields": "place_id,formatted_address,name,formatted_phone_number,types,business_status",
+                "fields": fields,
             }
 
             if lat is not None and lng is not None:

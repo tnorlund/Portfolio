@@ -29,13 +29,9 @@ logger = logging.getLogger(__name__)
 class ParseError(Exception):
     """Base error for response parsing failures."""
 
-    pass
-
 
 class APIError(ParseError):
     """Raised when the API returns an error status."""
-
-    pass
 
 
 def _check_api_status(status: str, error_message: str | None = None) -> None:
@@ -203,14 +199,14 @@ def parse_place_search_response(
         try:
             place = Place.model_validate(result_dict)
         except ValidationError as e:
-            logger.warning(f"Failed to parse result #{i}: {e}, skipping")
+            logger.warning("Failed to parse result #%s: %s, skipping", i, e)
             continue
 
         # Run data quality gates
         try:
             validate_place_complete(place, expected_fields=expected_fields)
         except PlacesValidationError as e:
-            logger.warning(f"Result #{i} validation failed: {e}, skipping")
+            logger.warning("Result #%s validation failed: %s, skipping", i, e)
             continue
 
         places.append(place)
@@ -267,7 +263,7 @@ def parse_place_autocomplete_response(
                     }
                 )
         except ValidationError as e:
-            logger.warning(f"Prediction #{i} validation failed: {e}, skipping")
+            logger.warning("Prediction #%s validation failed: %s, skipping", i, e)
             continue
 
     return predictions

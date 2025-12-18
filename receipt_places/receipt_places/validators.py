@@ -17,19 +17,13 @@ logger = logging.getLogger(__name__)
 class PlacesValidationError(ValueError):
     """Base error for Places data validation failures."""
 
-    pass
-
 
 class MissingExpectedFieldsError(PlacesValidationError):
     """Raised when expected fields from field mask are missing."""
 
-    pass
-
 
 class DataQualityError(PlacesValidationError):
     """Raised when data values fail sanity checks."""
-
-    pass
 
 
 def validate_place_expected_fields(
@@ -74,7 +68,7 @@ def validate_place_sanity(place: Place) -> None:
     errors = []
 
     # Rating sanity
-    if place.rating is not None and not (0.0 <= place.rating <= 5.0):
+    if place.rating is not None and not 0.0 <= place.rating <= 5.0:
         errors.append(f"rating {place.rating} is outside [0.0, 5.0] range")
 
     # User ratings count sanity
@@ -86,11 +80,11 @@ def validate_place_sanity(place: Place) -> None:
     # Geospatial sanity
     if place.geometry and place.geometry.location:
         loc = place.geometry.location
-        if not (-90.0 <= loc.latitude <= 90.0):
+        if not -90.0 <= loc.latitude <= 90.0:
             errors.append(
                 f"latitude {loc.latitude} is outside [-90, 90] range"
             )
-        if not (-180.0 <= loc.longitude <= 180.0):
+        if not -180.0 <= loc.longitude <= 180.0:
             errors.append(
                 f"longitude {loc.longitude} is outside [-180, 180] range"
             )

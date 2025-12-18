@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from receipt_dynamo import DynamoClient, PlacesCache
-from receipt_dynamo.data.shared_exceptions import OperationError
+from receipt_dynamo.data.shared_exceptions import OperationError, ReceiptDynamoError
 from receipt_places.config import PlacesConfig, get_config
 
 logger = logging.getLogger(__name__)
@@ -135,58 +135,27 @@ class CacheManager:
         Returns:
             Cached response dict if found and valid, None otherwise
         """
-        if not self._config.cache_enabled:
-            logger.debug("Cache disabled, skipping lookup")
-            return None
-
-        if not search_value or not search_value.strip():
-            logger.debug("Empty search value, skipping cache lookup")
+        # Skip cache if not enabled or invalid input
+        if not self._should_use_cache(search_value):
             return None
 
         try:
-            # Get from DynamoDB
-            cache_item = self._client.get_places_cache(
-                search_type, search_value
-            )
-
+            # Try to retrieve cache item
+            cache_item = self._try_get_cache_item(search_type, search_value)
             if cache_item is None:
-                logger.info(
-                    "❌ CACHE MISS: %s - %s",
-                    search_type,
-                    search_value[:50],
-                )
                 return None
 
-            # Check TTL
-            if cache_item.time_to_live and int(cache_item.time_to_live) < int(
-                time.time()
-            ):
-                logger.info(
-                    "⏰ CACHE EXPIRED: %s - %s",
-                    search_type,
-                    search_value[:50],
-                )
+            # Validate cache: TTL and response status
+            if not self._is_cache_valid(cache_item, search_type, search_value):
                 return None
 
-            # Check for invalid cached responses (Issue #2 - no results sentinel)
-            status = cache_item.places_response.get("status")
-            if status in ("NO_RESULTS", "INVALID"):
-                logger.info(
-                    "⚠️ CACHE HIT (invalid): %s - %s (status=%s)",
-                    search_type,
-                    search_value[:50],
-                    status,
-                )
-                return None
-
+            # Cache is valid - log hit and increment counter
             logger.info(
                 "✅ CACHE HIT: %s - %s (queries=%s)",
                 search_type,
                 search_value[:50],
                 cache_item.query_count,
             )
-
-            # Increment query count asynchronously (fire and forget)
             self._increment_query_count(cache_item)
 
             return cache_item.places_response
@@ -194,9 +163,65 @@ class CacheManager:
         except OperationError as e:
             logger.error("DynamoDB error during cache lookup: %s", e)
             return None
-        except Exception as e:
-            logger.error("Unexpected error during cache lookup: %s", e)
+        except ReceiptDynamoError as e:
+            logger.error("Unexpected DynamoDB error during cache lookup: %s", e)
             return None
+
+    def _should_use_cache(self, search_value: str) -> bool:
+        """Check if cache should be used for this request."""
+        if not self._config.cache_enabled:
+            logger.debug("Cache disabled, skipping lookup")
+            return False
+
+        if not search_value or not search_value.strip():
+            logger.debug("Empty search value, skipping cache lookup")
+            return False
+
+        return True
+
+    def _try_get_cache_item(
+        self, search_type: SearchType, search_value: str
+    ) -> Any:
+        """Try to retrieve cache item from DynamoDB."""
+        cache_item = self._client.get_places_cache(search_type, search_value)
+
+        if cache_item is None:
+            logger.info(
+                "❌ CACHE MISS: %s - %s",
+                search_type,
+                search_value[:50],
+            )
+            return None
+
+        return cache_item
+
+    def _is_cache_valid(
+        self, cache_item: Any, search_type: SearchType, search_value: str
+    ) -> bool:
+        """Check if cache item is valid (TTL and response status)."""
+        # Check TTL
+        if cache_item.time_to_live and int(cache_item.time_to_live) < int(
+            time.time()
+        ):
+            logger.info(
+                "⏰ CACHE EXPIRED: %s - %s",
+                search_type,
+                search_value[:50],
+            )
+            return False
+
+        # Check for invalid cached responses (Issue #2 - no results sentinel)
+        status = cache_item.places_response.get("status")
+        if status in ("NO_RESULTS", "INVALID"):
+            logger.info(
+                "⚠️ CACHE HIT (invalid): %s - %s (status=%s)",
+                search_type,
+                search_value[:50],
+                status,
+            )
+            return False
+
+        return True
 
     def put(
         self,
@@ -259,8 +284,8 @@ class CacheManager:
         except OperationError as e:
             logger.error("DynamoDB error during cache write: %s", e)
             return False
-        except Exception as e:
-            logger.error("Unexpected error during cache write: %s", e)
+        except ReceiptDynamoError as e:
+            logger.error("Unexpected DynamoDB error during cache write: %s", e)
             return False
 
     def _should_cache(
@@ -342,8 +367,8 @@ class CacheManager:
         except OperationError as e:
             logger.error("Error deleting cache entry: %s", e)
             return False
-        except Exception as e:
-            logger.error("Unexpected error deleting cache entry: %s", e)
+        except ReceiptDynamoError as e:
+            logger.error("Unexpected DynamoDB error deleting cache entry: %s", e)
             return False
 
     def get_by_place_id(self, place_id: str) -> dict[str, Any] | None:
@@ -360,8 +385,8 @@ class CacheManager:
         except OperationError as e:
             logger.error("Error querying by place_id: %s", e)
             return None
-        except Exception as e:
-            logger.error("Unexpected error querying by place_id: %s", e)
+        except ReceiptDynamoError as e:
+            logger.error("Unexpected DynamoDB error querying by place_id: %s", e)
             return None
 
     def get_stats(self) -> dict[str, Any]:
@@ -390,7 +415,7 @@ class CacheManager:
                 "cache_enabled": self._config.cache_enabled,
                 "ttl_days": self._config.cache_ttl_days,
             }
-        except Exception as e:
+        except ReceiptDynamoError as e:
             logger.warning("Error getting cache stats: %s", e)
             return {
                 "entries_by_type": {"ADDRESS": 0, "PHONE": 0, "URL": 0},

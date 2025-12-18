@@ -18,20 +18,48 @@ class LatLng(BaseModel):
     latitude: float = Field(..., alias="lat")
     longitude: float = Field(..., alias="lng")
 
-    class Config:
+    class Config:  # pylint: disable=too-few-public-methods
+        """Pydantic config: allows using both field names and aliases."""
+
         populate_by_name = True
 
     @field_validator("latitude")
     @classmethod
     def validate_latitude(cls, v: float) -> float:
-        if not (-90.0 <= v <= 90.0):
+        """Validate latitude is within valid geographic range.
+
+        Ensures latitude value is between -90.0 (South Pole) and 90.0 (North Pole).
+
+        Args:
+            v: Latitude value to validate
+
+        Returns:
+            Validated latitude value
+
+        Raises:
+            ValueError: If latitude is outside [-90.0, 90.0] range
+        """
+        if not -90.0 <= v <= 90.0:
             raise ValueError(f"latitude out of range: {v}")
         return v
 
     @field_validator("longitude")
     @classmethod
     def validate_longitude(cls, v: float) -> float:
-        if not (-180.0 <= v <= 180.0):
+        """Validate longitude is within valid geographic range.
+
+        Ensures longitude value is between -180.0 (West) and 180.0 (East).
+
+        Args:
+            v: Longitude value to validate
+
+        Returns:
+            Validated longitude value
+
+        Raises:
+            ValueError: If longitude is outside [-180.0, 180.0] range
+        """
+        if not -180.0 <= v <= 180.0:
             raise ValueError(f"longitude out of range: {v}")
         return v
 
@@ -64,7 +92,9 @@ class OpeningHours(BaseModel):
     periods: list[OpeningHoursPeriod] | None = None
     weekday_text: list[str] | None = Field(None, alias="weekday_text")
 
-    class Config:
+    class Config:  # pylint: disable=too-few-public-methods
+        """Pydantic config: allows using both field names and aliases."""
+
         populate_by_name = True
 
 
@@ -78,7 +108,9 @@ class Photo(BaseModel):
     photo_reference: str | None = Field(None, alias="photo_reference")
     width: int | None = None
 
-    class Config:
+    class Config:  # pylint: disable=too-few-public-methods
+        """Pydantic config: allows using both field names and aliases."""
+
         populate_by_name = True
 
 
@@ -88,7 +120,9 @@ class PlusCode(BaseModel):
     compound_code: str | None = Field(None, alias="compound_code")
     global_code: str | None = Field(None, alias="global_code")
 
-    class Config:
+    class Config:  # pylint: disable=too-few-public-methods
+        """Pydantic config: allows using both field names and aliases."""
+
         populate_by_name = True
 
 
@@ -138,21 +172,49 @@ class Place(BaseModel):
     opening_hours: OpeningHours | None = Field(None, alias="opening_hours")
     photos: list[Photo] | None = None
 
-    class Config:
+    class Config:  # pylint: disable=too-few-public-methods
+        """Pydantic config: allows using both field names and aliases."""
+
         populate_by_name = True
 
     @field_validator("rating")
     @classmethod
     def validate_rating(cls, v: float | None) -> float | None:
+        """Validate Google Places rating is within valid range.
+
+        Google Places ratings are on a scale of 0.0 to 5.0 stars.
+
+        Args:
+            v: Rating value to validate (None allowed)
+
+        Returns:
+            Validated rating value or None
+
+        Raises:
+            ValueError: If rating is not None and outside [0.0, 5.0] range
+        """
         if v is None:
             return v
-        if not (0.0 <= v <= 5.0):
+        if not 0.0 <= v <= 5.0:
             raise ValueError(f"rating out of range: {v}")
         return v
 
     @field_validator("user_ratings_total")
     @classmethod
     def validate_user_ratings_total(cls, v: int | None) -> int | None:
+        """Validate user ratings count is non-negative.
+
+        The total number of user ratings must be >= 0.
+
+        Args:
+            v: User ratings total to validate (None allowed)
+
+        Returns:
+            Validated user ratings total or None
+
+        Raises:
+            ValueError: If value is not None and is negative
+        """
         if v is None:
             return v
         if v < 0:
@@ -170,7 +232,9 @@ class Candidate(BaseModel):
     types: list[str] | None = None
     business_status: str | None = Field(None, alias="business_status")
 
-    class Config:
+    class Config:  # pylint: disable=too-few-public-methods
+        """Pydantic config: allows using both field names and aliases."""
+
         populate_by_name = True
 
 
@@ -185,7 +249,9 @@ class Prediction(BaseModel):
     )
     types: list[str] | None = None
 
-    class Config:
+    class Config:  # pylint: disable=too-few-public-methods
+        """Pydantic config: allows using both field names and aliases."""
+
         populate_by_name = True
 
 
@@ -197,7 +263,9 @@ class LegacyDetailsResponse(BaseModel):
     result: dict[str, Any] | None = None
     error_message: str | None = Field(None, alias="error_message")
 
-    class Config:
+    class Config:  # pylint: disable=too-few-public-methods
+        """Pydantic config: allows using both field names and aliases."""
+
         populate_by_name = True
 
 
@@ -208,7 +276,9 @@ class LegacyCandidatesResponse(BaseModel):
     candidates: list[dict[str, Any]] | None = None
     error_message: str | None = Field(None, alias="error_message")
 
-    class Config:
+    class Config:  # pylint: disable=too-few-public-methods
+        """Pydantic config: allows using both field names and aliases."""
+
         populate_by_name = True
 
 
@@ -220,7 +290,9 @@ class LegacySearchResponse(BaseModel):
     next_page_token: str | None = Field(None, alias="next_page_token")
     error_message: str | None = Field(None, alias="error_message")
 
-    class Config:
+    class Config:  # pylint: disable=too-few-public-methods
+        """Pydantic config: allows using both field names and aliases."""
+
         populate_by_name = True
 
 
@@ -231,5 +303,7 @@ class LegacyAutocompleteResponse(BaseModel):
     predictions: list[dict[str, Any]] | None = None
     error_message: str | None = Field(None, alias="error_message")
 
-    class Config:
+    class Config:  # pylint: disable=too-few-public-methods
+        """Pydantic config: allows using both field names and aliases."""
+
         populate_by_name = True
