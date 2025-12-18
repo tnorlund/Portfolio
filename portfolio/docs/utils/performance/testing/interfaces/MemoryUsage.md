@@ -6,7 +6,7 @@
 
 # Interface: MemoryUsage
 
-Defined in: [utils/performance/testing.ts:172](https://github.com/tnorlund/Portfolio/blob/50000763fb798871db62000ae80c54e70c7e7631/portfolio/utils/performance/testing.ts#L172)
+Defined in: [utils/performance/testing.ts:172](https://github.com/tnorlund/Portfolio/blob/65d4b4f50af4639b353d6ca171eba76ab531bed8/portfolio/utils/performance/testing.ts#L172)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [utils/performance/testing.ts:172](https://github.com/tnorlund/Portf
 
 > **jsHeapSizeLimit**: `number`
 
-Defined in: [utils/performance/testing.ts:175](https://github.com/tnorlund/Portfolio/blob/50000763fb798871db62000ae80c54e70c7e7631/portfolio/utils/performance/testing.ts#L175)
+Defined in: [utils/performance/testing.ts:175](https://github.com/tnorlund/Portfolio/blob/65d4b4f50af4639b353d6ca171eba76ab531bed8/portfolio/utils/performance/testing.ts#L175)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [utils/performance/testing.ts:175](https://github.com/tnorlund/Portf
 
 > **totalJSHeapSize**: `number`
 
-Defined in: [utils/performance/testing.ts:174](https://github.com/tnorlund/Portfolio/blob/50000763fb798871db62000ae80c54e70c7e7631/portfolio/utils/performance/testing.ts#L174)
+Defined in: [utils/performance/testing.ts:174](https://github.com/tnorlund/Portfolio/blob/65d4b4f50af4639b353d6ca171eba76ab531bed8/portfolio/utils/performance/testing.ts#L174)
 
 ***
 
@@ -30,4 +30,4 @@ Defined in: [utils/performance/testing.ts:174](https://github.com/tnorlund/Portf
 
 > **usedJSHeapSize**: `number`
 
-Defined in: [utils/performance/testing.ts:173](https://github.com/tnorlund/Portfolio/blob/50000763fb798871db62000ae80c54e70c7e7631/portfolio/utils/performance/testing.ts#L173)
+Defined in: [utils/performance/testing.ts:173](https://github.com/tnorlund/Portfolio/blob/65d4b4f50af4639b353d6ca171eba76ab531bed8/portfolio/utils/performance/testing.ts#L173)
