@@ -15,6 +15,15 @@ See README.md for detailed documentation and operational procedures.
 """
 
 import os
+import sys
+from pathlib import Path
+
+# Ensure infra/ directory is in sys.path so that modules can use
+# "from infra." imports. This is necessary because chromadb_compaction
+# can be imported as a top-level module, breaking the package hierarchy.
+_infra_dir = Path(__file__).parent.parent  # infra/
+if str(_infra_dir) not in sys.path:
+    sys.path.insert(0, str(_infra_dir))
 
 # Skip infrastructure imports when running tests
 # This allows Lambda function tests to run without Pulumi dependencies

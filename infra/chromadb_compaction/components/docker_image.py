@@ -3,19 +3,13 @@
 import hashlib
 import json
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pulumi
 
-# Add infra directory to path to handle imports correctly
-# This fixes import issues when chromadb_compaction is imported as a top-level package
-_infra_dir = Path(__file__).parent.parent.parent  # infra/
-if str(_infra_dir) not in sys.path:
-    sys.path.insert(0, str(_infra_dir))
-
 # Import the CodeBuildDockerImage component
+# sys.path is set by chromadb_compaction/__init__.py to include infra/
 from components.codebuild_docker_image import CodeBuildDockerImage
 from pulumi import ComponentResource, Output, ResourceOptions
 from pulumi_aws.ecr import (
