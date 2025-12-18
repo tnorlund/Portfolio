@@ -60,6 +60,34 @@ class VisualLine:
 
 
 @dataclass
+class GeometricRelationship:
+    """Geometric relationship between two label types on a receipt."""
+
+    # Angle in degrees (0-360) from label_a centroid to label_b centroid
+    # 0° = directly right, 90° = directly down, 180° = directly left, 270° = directly up
+    angle: float
+
+    # Euclidean distance between centroids (normalized 0-1 scale)
+    distance: float
+
+
+@dataclass
+class LabelPairGeometry:
+    """Statistics about geometric relationships between two label types."""
+
+    # List of observed (angle, distance) pairs from receipts
+    observations: List[GeometricRelationship] = field(default_factory=list)
+
+    # Mean angle and distance (for quick comparison)
+    mean_angle: Optional[float] = None
+    mean_distance: Optional[float] = None
+
+    # Standard deviations (for outlier detection)
+    std_angle: Optional[float] = None
+    std_distance: Optional[float] = None
+
+
+@dataclass
 class MerchantPatterns:
     """
     Patterns learned from other receipts of the same merchant.
@@ -92,6 +120,11 @@ class MerchantPatterns:
     # Example: {("SUBTOTAL", "GRAND_TOTAL"): (0.28, 0.15)} - SUBTOTAL at y=0.28, GRAND_TOTAL at y=0.15
     # Helps validate spatial ordering (GRAND_TOTAL should be below/after SUBTOTAL)
     value_pair_positions: Dict[tuple, tuple] = field(default_factory=dict)
+
+    # Geometric relationships between label pairs
+    # Example: {("ADDRESS_LINE", "UNIT_PRICE"): LabelPairGeometry(...)}
+    # Tracks angle and distance between label centroids across receipts
+    label_pair_geometry: Dict[tuple, LabelPairGeometry] = field(default_factory=dict)
 
 
 @dataclass

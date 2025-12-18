@@ -6,6 +6,7 @@ computing label patterns across receipts, and applying validation rules.
 """
 
 import logging
+import math
 import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -15,6 +16,8 @@ from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 from receipt_agent.agents.label_evaluator.state import (
     EvaluationIssue,
+    GeometricRelationship,
+    LabelPairGeometry,
     MerchantPatterns,
     OtherReceiptData,
     ReviewContext,
@@ -23,6 +26,75 @@ from receipt_agent.agents.label_evaluator.state import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Geometry helpers
+def _calculate_angle_degrees(
+    from_point: Tuple[float, float],
+    to_point: Tuple[float, float],
+) -> float:
+    """
+    Calculate angle in degrees from one point to another.
+
+    Args:
+        from_point: (x, y) starting point
+        to_point: (x, y) ending point
+
+    Returns:
+        Angle in degrees (0-360), where:
+        - 0° = directly right
+        - 90° = directly down
+        - 180° = directly left
+        - 270° = directly up
+    """
+    dx = to_point[0] - from_point[0]
+    dy = to_point[1] - from_point[1]
+
+    # Note: y increases downward (0=bottom, 1=top in receipt coords)
+    # atan2(dy, dx) gives angle with x=right as 0°
+    radians = math.atan2(dy, dx)
+    degrees = math.degrees(radians)
+
+    # Normalize to 0-360 range
+    if degrees < 0:
+        degrees += 360
+
+    return degrees
+
+
+def _calculate_distance(
+    point1: Tuple[float, float],
+    point2: Tuple[float, float],
+) -> float:
+    """
+    Calculate Euclidean distance between two points.
+
+    Args:
+        point1: (x, y) first point
+        point2: (x, y) second point
+
+    Returns:
+        Distance (in normalized 0-1 coordinate space, diagonal ≈ 1.41)
+    """
+    dx = point2[0] - point1[0]
+    dy = point2[1] - point1[1]
+    return math.sqrt(dx * dx + dy * dy)
+
+
+def _angle_difference(angle1: float, angle2: float) -> float:
+    """
+    Calculate shortest angular distance between two angles.
+
+    Args:
+        angle1, angle2: Angles in degrees (0-360)
+
+    Returns:
+        Shortest angular distance (0-180 degrees)
+    """
+    diff = abs(angle1 - angle2)
+    if diff > 180:
+        diff = 360 - diff
+    return diff
 
 
 def build_word_contexts(
@@ -285,6 +357,60 @@ def compute_merchant_patterns(
                     if y1 is not None and y2 is not None:
                         patterns.value_pair_positions[pair] = (y1, y2)
 
+        # Compute geometric relationships between label pairs
+        # Group words by label (using existing ReceiptWord objects)
+        words_by_label: Dict[str, List[ReceiptWord]] = defaultdict(list)
+        for key, label in current_labels.items():
+            word = word_by_id.get(key)
+            if word:
+                words_by_label[label.label].append(word)
+
+        # Calculate geometry for each label pair that exists in this receipt
+        unique_labels = list(words_by_label.keys())
+        for i, label_a in enumerate(unique_labels):
+            for label_b in unique_labels[i + 1 :]:
+                # Calculate centroids using word.calculate_centroid()
+                words_a = words_by_label[label_a]
+                words_b = words_by_label[label_b]
+
+                # Average centroids of all words with each label
+                x_coords_a = [w.calculate_centroid()[0] for w in words_a]
+                y_coords_a = [w.calculate_centroid()[1] for w in words_a]
+                centroid_a = (sum(x_coords_a) / len(x_coords_a), sum(y_coords_a) / len(y_coords_a))
+
+                x_coords_b = [w.calculate_centroid()[0] for w in words_b]
+                y_coords_b = [w.calculate_centroid()[1] for w in words_b]
+                centroid_b = (sum(x_coords_b) / len(x_coords_b), sum(y_coords_b) / len(y_coords_b))
+
+                # Calculate geometry
+                angle = _calculate_angle_degrees(centroid_a, centroid_b)
+                distance = _calculate_distance(centroid_a, centroid_b)
+
+                # Store in patterns
+                pair = tuple(sorted([label_a, label_b]))
+                if pair not in patterns.label_pair_geometry:
+                    patterns.label_pair_geometry[pair] = LabelPairGeometry()
+
+                patterns.label_pair_geometry[pair].observations.append(
+                    GeometricRelationship(angle=angle, distance=distance)
+                )
+
+    # Finalize geometry statistics
+    for pair, geometry in patterns.label_pair_geometry.items():
+        if geometry.observations:
+            angles = [obs.angle for obs in geometry.observations]
+            distances = [obs.distance for obs in geometry.observations]
+
+            geometry.mean_angle = statistics.mean(angles)
+            geometry.mean_distance = statistics.mean(distances)
+
+            if len(angles) >= 2:
+                geometry.std_angle = statistics.stdev(angles)
+                geometry.std_distance = statistics.stdev(distances)
+            else:
+                geometry.std_angle = 0.0
+                geometry.std_distance = 0.0
+
     return patterns
 
 
@@ -342,60 +468,109 @@ def check_position_anomaly(
     return None
 
 
-def check_same_line_conflict(
+def check_geometric_anomaly(
     ctx: WordContext,
+    all_contexts: List[WordContext],
+    patterns: Optional[MerchantPatterns],
+    angle_threshold_std: float = 2.0,
+    distance_threshold_std: float = 2.0,
 ) -> Optional[EvaluationIssue]:
     """
-    Check if a labeled word has conflicting labels on the same visual line.
+    Check if a labeled word has geometric anomalies relative to other labels.
 
-    Detects cases like MERCHANT_NAME appearing on the same line as PRODUCT_NAME,
-    which suggests one of them is mislabeled.
+    Compares the angle and distance between this label type and others against
+    learned patterns from the same merchant. Flags pairs where the geometry
+    significantly deviates from expected patterns.
+
+    Only flags issues if:
+    1. We have at least one other receipt from this merchant for comparison, OR
+    2. This is the first receipt from this merchant (establishes baseline)
 
     Args:
         ctx: WordContext to check
+        all_contexts: All WordContext objects on the receipt
+        patterns: MerchantPatterns from other receipts (may be None or have 1+ receipts)
+        angle_threshold_std: Number of std devs for angle anomaly detection
+        distance_threshold_std: Number of std devs for distance anomaly detection
 
     Returns:
-        EvaluationIssue if conflict detected, None otherwise
+        EvaluationIssue if geometric anomaly detected, None otherwise
     """
-    if ctx.current_label is None:
+    if ctx.current_label is None or patterns is None:
+        return None
+
+    # Skip if we have no patterns (first receipt with no comparisons)
+    if not patterns.label_pair_geometry:
         return None
 
     label = ctx.current_label.label
-    same_line_labels = [
-        c.current_label.label for c in ctx.same_line_words if c.current_label
-    ]
 
-    # MERCHANT_NAME should not appear on same line as PRODUCT_NAME
-    if label == "MERCHANT_NAME" and "PRODUCT_NAME" in same_line_labels:
-        return EvaluationIssue(
-            issue_type="same_line_conflict",
-            word=ctx.word,
-            current_label=label,
-            suggested_status="INVALID",
-            suggested_label="PRODUCT_NAME",
-            reasoning=(
-                f"'{ctx.word.text}' labeled {label} but on same visual line "
-                f"as PRODUCT_NAME words - likely part of product name"
-            ),
-            word_context=ctx,
-        )
+    # Find all other labels present on this receipt
+    other_labels = set()
+    for other_ctx in all_contexts:
+        if other_ctx is not ctx and other_ctx.current_label:
+            other_labels.add(other_ctx.current_label.label)
 
-    # ADDRESS_LINE words should generally be together, not mixed with other header labels
-    if label == "ADDRESS_LINE":
-        conflicting = [
-            lbl
-            for lbl in same_line_labels
-            if lbl in ("PRODUCT_NAME", "LINE_TOTAL", "QUANTITY", "UNIT_PRICE")
-        ]
-        if conflicting:
+    if not other_labels:
+        return None  # No other labels to compare against
+
+    # Check geometry for each label pair
+    for other_label in other_labels:
+        pair = tuple(sorted([label, other_label]))
+
+        # Check if we have learned geometry for this pair
+        if pair not in patterns.label_pair_geometry:
+            continue
+
+        geometry = patterns.label_pair_geometry[pair]
+        if geometry.mean_angle is None or geometry.mean_distance is None:
+            continue
+
+        # Calculate actual geometry on this receipt (using word centroids)
+        label_words = [c.word for c in all_contexts if c.current_label and c.current_label.label == label]
+        other_words = [c.word for c in all_contexts if c.current_label and c.current_label.label == other_label]
+
+        if not label_words or not other_words:
+            continue
+
+        # Calculate centroids using ReceiptWord.calculate_centroid()
+        x_coords_label = [w.calculate_centroid()[0] for w in label_words]
+        y_coords_label = [w.calculate_centroid()[1] for w in label_words]
+        centroid_label = (sum(x_coords_label) / len(x_coords_label), sum(y_coords_label) / len(y_coords_label))
+
+        x_coords_other = [w.calculate_centroid()[0] for w in other_words]
+        y_coords_other = [w.calculate_centroid()[1] for w in other_words]
+        centroid_other = (sum(x_coords_other) / len(x_coords_other), sum(y_coords_other) / len(y_coords_other))
+
+        actual_angle = _calculate_angle_degrees(centroid_label, centroid_other)
+        actual_distance = _calculate_distance(centroid_label, centroid_other)
+
+        # Check for angle anomaly
+        is_angle_anomaly = False
+        if geometry.std_angle and geometry.std_angle > 0:
+            angle_z_score = _angle_difference(actual_angle, geometry.mean_angle) / geometry.std_angle
+            if angle_z_score > angle_threshold_std:
+                is_angle_anomaly = True
+
+        # Check for distance anomaly
+        is_distance_anomaly = False
+        if geometry.std_distance and geometry.std_distance > 0:
+            distance_z_score = abs(actual_distance - geometry.mean_distance) / geometry.std_distance
+            if distance_z_score > distance_threshold_std:
+                is_distance_anomaly = True
+
+        # If both angle and distance are anomalies, flag it
+        if is_angle_anomaly and is_distance_anomaly:
             return EvaluationIssue(
-                issue_type="same_line_conflict",
+                issue_type="geometric_anomaly",
                 word=ctx.word,
                 current_label=label,
                 suggested_status="NEEDS_REVIEW",
                 reasoning=(
-                    f"'{ctx.word.text}' labeled {label} but on same visual line "
-                    f"as {', '.join(set(conflicting))} - unusual combination"
+                    f"'{ctx.word.text}' labeled {label} has unusual geometric relationship "
+                    f"with {other_label}. Expected angle {geometry.mean_angle:.0f}° "
+                    f"(actual {actual_angle:.0f}°), distance {geometry.mean_distance:.2f} "
+                    f"(actual {actual_distance:.2f}). This may indicate mislabeling."
                 ),
                 word_context=ctx,
             )
@@ -703,7 +878,8 @@ def evaluate_word_contexts(
                 issues.append(issue)
                 continue  # One issue per word
 
-            issue = check_same_line_conflict(ctx)
+            # Use geometric anomaly detection instead of simple same-line conflict
+            issue = check_geometric_anomaly(ctx, word_contexts, patterns)
             if issue:
                 issues.append(issue)
                 continue

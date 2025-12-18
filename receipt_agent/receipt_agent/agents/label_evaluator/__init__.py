@@ -26,7 +26,7 @@ Usage:
 
 The agent detects:
 - Position anomalies: Labels appearing in unexpected positions based on merchant patterns
-- Same-line conflicts: Incompatible labels on the same visual line (e.g., MERCHANT_NAME + PRODUCT_NAME)
+- Geometric anomalies: Label types with unusual angle/distance relationships compared to learned merchant patterns
 - Missing labels in clusters: Unlabeled words surrounded by consistently labeled words
 - Text-label conflicts: Same word text with different labels at different positions
 
@@ -45,9 +45,9 @@ from receipt_agent.agents.label_evaluator.helpers import (
     build_review_context,
     build_word_chroma_id,
     build_word_contexts,
+    check_geometric_anomaly,
     check_missing_label_in_cluster,
     check_position_anomaly,
-    check_same_line_conflict,
     check_text_label_conflict,
     compute_merchant_patterns,
     evaluate_word_contexts,
