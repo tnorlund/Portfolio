@@ -159,7 +159,7 @@ def _format_core_labels() -> str:
 
 def create_label_evaluator_graph(
     dynamo_client: Any,
-    llm_model: str = "claude-3-5-haiku-latest",
+    llm_model: Optional[str] = None,
     llm: Any = None,
     llm_provider: str = "anthropic",
     ollama_base_url: str = "https://ollama.com",
@@ -171,8 +171,9 @@ def create_label_evaluator_graph(
 
     Args:
         dynamo_client: DynamoDB client for fetching receipt data
-        llm_model: Model to use for LLM review (default: claude-3-5-haiku-latest for Anthropic,
-                   or e.g. "gpt-oss:20b-cloud" for Ollama Cloud)
+        llm_model: Model to use for LLM review. Defaults based on provider:
+                   - For Anthropic: "claude-3-5-haiku-latest"
+                   - For Ollama Cloud: "gpt-oss:20b-cloud"
         llm: Optional pre-configured LLM instance. If provided, ignores other LLM settings.
         llm_provider: LLM provider to use ("anthropic" or "ollama")
         ollama_base_url: Base URL for Ollama Cloud API
@@ -183,6 +184,12 @@ def create_label_evaluator_graph(
     Returns:
         Compiled LangGraph workflow
     """
+    # Set default model based on provider
+    if llm_model is None:
+        if llm_provider == "ollama":
+            llm_model = "gpt-oss:20b-cloud"
+        else:
+            llm_model = "claude-3-5-haiku-latest"
     # Store clients in closure for node access
     _dynamo_client = dynamo_client
     _chroma_client = chroma_client
