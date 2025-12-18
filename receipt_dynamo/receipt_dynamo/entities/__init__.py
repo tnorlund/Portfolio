@@ -101,6 +101,10 @@ from receipt_dynamo.entities.receipt_metadata import (  # noqa: F401
     ReceiptMetadata,
     item_to_receipt_metadata,
 )
+from receipt_dynamo.entities.place_cluster import (  # noqa: F401
+    ClusterType,
+    PlaceCluster,
+)
 from receipt_dynamo.entities.receipt_place import ReceiptPlace  # noqa: F401
 from receipt_dynamo.entities.receipt_section import (  # noqa: F401
     ReceiptSection,
@@ -170,6 +174,7 @@ __all__ = [
     "Line",
     "OCRJob",
     "OCRRoutingDecision",
+    "PlaceCluster",
     "PlacesCache",
     "Queue",
     "QueueJob",
@@ -243,4 +248,6 @@ __all__ = [
     # Additional exports from receipt_structure_analysis
     "ContentPattern",
     "SpatialPattern",
+    # Cluster types
+    "ClusterType",
 ]
