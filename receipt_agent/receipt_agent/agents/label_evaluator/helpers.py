@@ -861,16 +861,29 @@ def query_similar_validated_words(
             include=["embeddings"],
         )
 
-        if not get_result or not get_result.get("embeddings"):
+        if not get_result:
             logger.warning(f"Word not found in ChromaDB: {word_chroma_id}")
             return []
 
-        embeddings = get_result.get("embeddings", [])
-        if not embeddings or embeddings[0] is None or len(embeddings[0]) == 0:
+        embeddings = get_result.get("embeddings")
+        if embeddings is None or len(embeddings) == 0:
+            logger.warning(f"No embeddings found for word: {word_chroma_id}")
+            return []
+
+        if embeddings[0] is None:
             logger.warning(f"No embedding found for word: {word_chroma_id}")
             return []
 
-        query_embedding = list(embeddings[0])  # Convert numpy array to list
+        # Convert numpy array to list
+        try:
+            query_embedding = list(embeddings[0])
+        except (TypeError, ValueError):
+            logger.warning(f"Invalid embedding format for word: {word_chroma_id}")
+            return []
+
+        if not query_embedding:
+            logger.warning(f"Empty embedding found for word: {word_chroma_id}")
+            return []
 
         # Query ChromaDB words collection using the existing embedding
         results = chroma_client.query(
@@ -883,10 +896,10 @@ def query_similar_validated_words(
         if not results or not results.get("ids"):
             return []
 
-        ids = results.get("ids", [[]])[0]
-        documents = results.get("documents", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
-        distances = results.get("distances", [[]])[0]
+        ids = list(results.get("ids", [[]])[0])
+        documents = list(results.get("documents", [[]])[0])
+        metadatas = list(results.get("metadatas", [[]])[0])
+        distances = list(results.get("distances", [[]])[0])
 
         similar_words: List[SimilarWordResult] = []
 
@@ -895,8 +908,15 @@ def query_similar_validated_words(
             if doc_id == word_chroma_id:
                 continue
 
+            # Convert distance to Python float and compute similarity
+            try:
+                dist_float = float(dist)
+            except (TypeError, ValueError):
+                logger.debug(f"Invalid distance value: {dist}")
+                continue
+
             # Convert L2 distance to similarity (0.0-1.0)
-            similarity = max(0.0, 1.0 - (dist / 2))
+            similarity = max(0.0, 1.0 - (dist_float / 2))
 
             if similarity < min_similarity:
                 continue
@@ -932,7 +952,7 @@ def query_similar_validated_words(
         return similar_words[:n_results]
 
     except Exception as e:
-        logger.error(f"Error querying ChromaDB for similar words: {e}")
+        logger.error(f"Error querying ChromaDB for similar words: {e}", exc_info=True)
         return []
 
 
