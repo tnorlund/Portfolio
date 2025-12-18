@@ -7,7 +7,7 @@ and across receipts from the same merchant.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from receipt_dynamo.entities import ReceiptMetadata, ReceiptWord, ReceiptWordLabel
 
@@ -86,6 +86,17 @@ class LabelPairGeometry:
     std_angle: Optional[float] = None
     std_distance: Optional[float] = None
 
+    # Cartesian coordinate statistics (for improved anomaly detection)
+    # dx = distance * cos(angle), dy = distance * sin(angle)
+    mean_dx: Optional[float] = None
+    mean_dy: Optional[float] = None
+    std_dx: Optional[float] = None
+    std_dy: Optional[float] = None
+
+    # Cartesian distance-from-mean metrics (more robust than polar)
+    mean_deviation: Optional[float] = None  # Mean distance of observations from mean point
+    std_deviation: Optional[float] = None   # Std dev of those distances
+
 
 @dataclass
 class MerchantPatterns:
@@ -125,6 +136,15 @@ class MerchantPatterns:
     # Example: {("ADDRESS_LINE", "UNIT_PRICE"): LabelPairGeometry(...)}
     # Tracks angle and distance between label centroids across receipts
     label_pair_geometry: Dict[tuple, LabelPairGeometry] = field(default_factory=dict)
+
+    # All label pairs observed across receipts (for unexpected pair detection)
+    # This is a complete set, unlike label_pair_geometry which is limited to top 4
+    all_observed_pairs: Set[Tuple[str, str]] = field(default_factory=set)
+
+    # Label types that appear multiple times on the same line (tracked from training data)
+    # Example: {"PRODUCT_NAME"} if we see multiple products on the same line
+    # This helps distinguish between normal multiplicity and errors
+    labels_with_same_line_multiplicity: Set[str] = field(default_factory=set)
 
 
 @dataclass

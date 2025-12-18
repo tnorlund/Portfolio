@@ -10,7 +10,7 @@ import math
 import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
@@ -26,6 +26,54 @@ from receipt_agent.agents.label_evaluator.state import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Configuration for limiting label pair geometry computation
+MAX_LABEL_PAIRS = 4  # Only compute geometry for top 4 label type pairs
+
+# Semantic groupings of related labels for better pattern understanding
+LABEL_GROUPS = {
+    "header": {"MERCHANT_NAME", "STORE_HOURS", "PHONE_NUMBER", "WEBSITE", "LOYALTY_ID", "ADDRESS_LINE"},
+    "metadata": {"DATE", "TIME", "PAYMENT_METHOD"},
+    "line_items": {"PRODUCT_NAME", "QUANTITY", "UNIT_PRICE", "LINE_TOTAL"},
+    "discounts": {"COUPON", "DISCOUNT"},
+    "totals": {"SUBTOTAL", "TAX", "GRAND_TOTAL"},
+}
+
+# Map each label to its group
+LABEL_TO_GROUP: Dict[str, str] = {}
+for group_name, labels in LABEL_GROUPS.items():
+    for label in labels:
+        LABEL_TO_GROUP[label] = group_name
+
+# Priority within-group pairs (relationships within semantic groups)
+WITHIN_GROUP_PRIORITY_PAIRS = {
+    # Line item internal structure
+    ("PRODUCT_NAME", "UNIT_PRICE"),
+    ("UNIT_PRICE", "PRODUCT_NAME"),
+    ("QUANTITY", "LINE_TOTAL"),
+    ("LINE_TOTAL", "QUANTITY"),
+    ("PRODUCT_NAME", "QUANTITY"),
+    ("QUANTITY", "PRODUCT_NAME"),
+    # Totals section structure
+    ("SUBTOTAL", "TAX"),
+    ("TAX", "SUBTOTAL"),
+    ("TAX", "GRAND_TOTAL"),
+    ("GRAND_TOTAL", "TAX"),
+}
+
+# Priority cross-group pairs (relationships between different semantic groups)
+CROSS_GROUP_PRIORITY_PAIRS = {
+    # Line items to totals
+    ("LINE_TOTAL", "SUBTOTAL"),
+    ("SUBTOTAL", "LINE_TOTAL"),
+    ("LINE_TOTAL", "GRAND_TOTAL"),
+    ("GRAND_TOTAL", "LINE_TOTAL"),
+    # Discounts to totals
+    ("DISCOUNT", "SUBTOTAL"),
+    ("SUBTOTAL", "DISCOUNT"),
+    ("COUPON", "LINE_TOTAL"),
+    ("LINE_TOTAL", "COUPON"),
+}
 
 
 # Geometry helpers
@@ -235,6 +283,272 @@ def assemble_visual_lines(
     return visual_lines
 
 
+def _is_within_group_pair(pair: Tuple[str, str]) -> bool:
+    """Check if a pair is within the same semantic group."""
+    label1, label2 = pair
+    group1 = LABEL_TO_GROUP.get(label1)
+    group2 = LABEL_TO_GROUP.get(label2)
+    return group1 is not None and group1 == group2
+
+
+def _is_cross_group_pair(pair: Tuple[str, str]) -> bool:
+    """Check if a pair spans different semantic groups."""
+    label1, label2 = pair
+    group1 = LABEL_TO_GROUP.get(label1)
+    group2 = LABEL_TO_GROUP.get(label2)
+    return group1 is not None and group2 is not None and group1 != group2
+
+
+def _select_top_label_pairs(
+    all_pairs: Dict[Tuple[str, str], int],
+    max_pairs: int = MAX_LABEL_PAIRS,
+) -> Set[Tuple[str, str]]:
+    """
+    Select top label type pairs for geometry computation.
+
+    Intelligently selects pairs based on:
+    - Semantic importance (priority pairs within/across groups)
+    - Data frequency (how often pairs appear together)
+    - Diversity (mix within-group and cross-group patterns from actual data)
+
+    Approach:
+    1. Separate pairs into within-group and cross-group based on semantic groups
+    2. Prioritize important pairs that exist in the data
+    3. Fill slots with most frequent pairs, naturally balancing types
+    4. Let the data distribution determine the final mix
+
+    Args:
+        all_pairs: Dict mapping (label1, label2) to frequency count
+        max_pairs: Maximum number of pairs to select (default: 4)
+
+    Returns:
+        Set of selected label type pairs (sorted tuples)
+    """
+    selected = set()
+
+    # Separate all pairs into categories
+    within_group_pairs = []
+    cross_group_pairs = []
+    other_pairs = []
+
+    for pair in all_pairs.keys():
+        normalized = tuple(sorted(pair))
+        if _is_within_group_pair(pair):
+            within_group_pairs.append((normalized, all_pairs[pair]))
+        elif _is_cross_group_pair(pair):
+            cross_group_pairs.append((normalized, all_pairs[pair]))
+        else:
+            other_pairs.append((normalized, all_pairs[pair]))
+
+    # Sort by frequency (most common first)
+    within_group_pairs.sort(key=lambda x: -x[1])
+    cross_group_pairs.sort(key=lambda x: -x[1])
+    other_pairs.sort(key=lambda x: -x[1])
+
+    # Pass 1: Add priority pairs (these are important regardless of frequency)
+    for pair, freq in within_group_pairs:
+        if len(selected) >= max_pairs:
+            break
+        if pair in WITHIN_GROUP_PRIORITY_PAIRS and pair not in selected:
+            selected.add(pair)
+
+    for pair, freq in cross_group_pairs:
+        if len(selected) >= max_pairs:
+            break
+        if pair in CROSS_GROUP_PRIORITY_PAIRS and pair not in selected:
+            selected.add(pair)
+
+    # Pass 2: Fill remaining slots with most frequent pairs (any type)
+    # This naturally preserves the data's distribution
+    combined = sorted(
+        [(p, f) for p, f in within_group_pairs + cross_group_pairs + other_pairs
+         if p not in selected],
+        key=lambda x: -x[1]
+    )
+
+    for pair, freq in combined:
+        if len(selected) >= max_pairs:
+            break
+        if pair not in selected:
+            selected.add(pair)
+
+    # Categorize final selection and log
+    if selected:
+        within_group_count = sum(1 for p in selected if _is_within_group_pair(p))
+        cross_group_count = sum(1 for p in selected if _is_cross_group_pair(p))
+
+        pair_info = []
+        for p in sorted(selected):
+            if _is_within_group_pair(p):
+                pair_info.append(f"{p} [within-{LABEL_TO_GROUP.get(p[0])}]")
+            elif _is_cross_group_pair(p):
+                pair_info.append(
+                    f"{p} [cross: {LABEL_TO_GROUP.get(p[0])}↔{LABEL_TO_GROUP.get(p[1])}]"
+                )
+            else:
+                pair_info.append(f"{p} [ungrouped]")
+
+        logger.info(
+            f"Selected {len(selected)} label pairs for geometry computation "
+            f"({within_group_count} within-group, {cross_group_count} cross-group):"
+        )
+        for info in pair_info:
+            logger.info(f"  - {info}")
+
+    return selected
+
+
+def _convert_polar_to_cartesian(
+    angle_degrees: float,
+    distance: float,
+) -> Tuple[float, float]:
+    """
+    Convert polar coordinates (angle, distance) to Cartesian (dx, dy).
+
+    Args:
+        angle_degrees: Angle in degrees (0-360)
+        distance: Euclidean distance (0-1 normalized)
+
+    Returns:
+        Tuple of (dx, dy) in Cartesian space
+    """
+    angle_radians = math.radians(angle_degrees)
+    dx = distance * math.cos(angle_radians)
+    dy = distance * math.sin(angle_radians)
+    return (dx, dy)
+
+
+def _print_pattern_statistics(
+    patterns: MerchantPatterns,
+    merchant_name: str,
+) -> None:
+    """
+    Print detailed statistics for learned patterns.
+
+    Shows for each label pair:
+    - Number of observations
+    - Mean angle and distance with standard deviation
+    - Outlier detection ranges (±1.5 std dev)
+    - Pattern tightness assessment
+
+    Args:
+        patterns: The learned MerchantPatterns
+        merchant_name: Name of merchant for logging context
+    """
+    logger.info(f"\n{'='*80}")
+    logger.info(f"PATTERN STATISTICS FOR {merchant_name}")
+    logger.info(f"{'='*80}")
+    logger.info(f"Training data: {patterns.receipt_count} receipts")
+    logger.info(f"Label types observed: {len(patterns.label_positions)}")
+    logger.info(f"Label pairs with geometry: {len(patterns.label_pair_geometry)}\n")
+
+    if not patterns.label_pair_geometry:
+        logger.info("No geometric patterns to display.")
+        return
+
+    for pair in sorted(patterns.label_pair_geometry.keys()):
+        geometry = patterns.label_pair_geometry[pair]
+        obs_count = len(geometry.observations)
+
+        logger.info(f"\n{pair[0]} ↔ {pair[1]}:")
+        logger.info(f"  Observations: {obs_count}")
+
+        if geometry.mean_angle is not None:
+            mean_angle = geometry.mean_angle
+            std_angle = geometry.std_angle or 0.0
+            mean_distance = geometry.mean_distance or 0.0
+            std_distance = geometry.std_distance or 0.0
+
+            # Tightness assessment based on std dev
+            if std_angle < 10:
+                tightness = "VERY TIGHT"
+            elif std_angle < 20:
+                tightness = "TIGHT"
+            elif std_angle < 40:
+                tightness = "MODERATE"
+            else:
+                tightness = "LOOSE"
+
+            logger.info(f"  [POLAR COORDINATES]")
+            logger.info(f"  Angle: mean={mean_angle:.1f}°, std={std_angle:.1f}° [{tightness}]")
+            logger.info(
+                f"    Range (±1.5σ): {(mean_angle - 1.5 * std_angle) % 360:.1f}° "
+                f"to {(mean_angle + 1.5 * std_angle) % 360:.1f}°"
+            )
+
+            logger.info(f"  Distance: mean={mean_distance:.3f}, std={std_distance:.3f}")
+            logger.info(
+                f"    Range (±1.5σ): {max(0, mean_distance - 1.5 * std_distance):.3f} "
+                f"to {min(1.0, mean_distance + 1.5 * std_distance):.3f}"
+            )
+
+            # Convert observations to Cartesian coordinates for analysis
+            logger.info(f"\n  [CARTESIAN COORDINATES]")
+            cartesian_coords = [
+                _convert_polar_to_cartesian(obs.angle, obs.distance)
+                for obs in geometry.observations
+            ]
+
+            # Compute Cartesian statistics
+            dx_values = [coord[0] for coord in cartesian_coords]
+            dy_values = [coord[1] for coord in cartesian_coords]
+
+            mean_dx = statistics.mean(dx_values)
+            mean_dy = statistics.mean(dy_values)
+
+            if len(dx_values) >= 2:
+                std_dx = statistics.stdev(dx_values)
+                std_dy = statistics.stdev(dy_values)
+            else:
+                std_dx = 0.0
+                std_dy = 0.0
+
+            # Compute Cartesian tightness (distance from mean in 2D space)
+            mean_cartesian_distance = math.sqrt(mean_dx**2 + mean_dy**2)
+
+            # Compute distances of each observation from the mean
+            deviations = [
+                math.sqrt((dx - mean_dx)**2 + (dy - mean_dy)**2)
+                for dx, dy in cartesian_coords
+            ]
+            mean_deviation = statistics.mean(deviations)
+            if len(deviations) >= 2:
+                std_deviation = statistics.stdev(deviations)
+            else:
+                std_deviation = 0.0
+
+            # Cartesian tightness assessment
+            if std_deviation < 0.05:
+                cart_tightness = "VERY TIGHT"
+            elif std_deviation < 0.1:
+                cart_tightness = "TIGHT"
+            elif std_deviation < 0.2:
+                cart_tightness = "MODERATE"
+            else:
+                cart_tightness = "LOOSE"
+
+            logger.info(f"  dx: mean={mean_dx:+.3f}, std={std_dx:.3f}")
+            logger.info(f"  dy: mean={mean_dy:+.3f}, std={std_dy:.3f}")
+            logger.info(f"  Mean position: ({mean_dx:+.3f}, {mean_dy:+.3f}) [distance from origin: {mean_cartesian_distance:.3f}]")
+            logger.info(
+                f"  Deviation from mean: mean={mean_deviation:.3f}, std={std_deviation:.3f} [{cart_tightness}]"
+            )
+            logger.info(
+                f"    Outlier range (±1.5σ): {max(0, mean_deviation - 1.5 * std_deviation):.3f} "
+                f"to {mean_deviation + 1.5 * std_deviation:.3f}"
+            )
+
+            # Sample sizes assessment
+            if obs_count < 5:
+                logger.info(f"\n  ⚠️  WARNING: Only {obs_count} observations - pattern may be unreliable")
+            elif obs_count < 10:
+                logger.info(f"\n  ⚠️  Note: {obs_count} observations - limited confidence")
+            else:
+                logger.info(f"\n  ✓ Sufficient observations ({obs_count})")
+
+    logger.info(f"\n{'='*80}\n")
+
+
 def compute_merchant_patterns(
     other_receipt_data: List[OtherReceiptData],
     merchant_name: str,
@@ -264,6 +578,9 @@ def compute_merchant_patterns(
         value_pairs=defaultdict(int),
         value_pair_positions=defaultdict(lambda: (None, None)),
     )
+
+    # Track all label pairs for pair selection and unexpected pair detection
+    all_pair_frequencies: Dict[Tuple[str, str], int] = defaultdict(int)
 
     for receipt_data in other_receipt_data:
         words = receipt_data.words
@@ -318,11 +635,24 @@ def compute_merchant_patterns(
             labels_by_line[key[0]].append(label.label)
 
         for line_labels in labels_by_line.values():
+            # Track which labels appear multiple times on the same line
+            label_counts = defaultdict(int)
+            for label in line_labels:
+                label_counts[label] += 1
+
+            # Record labels that appear multiple times (multiplicity > 1)
+            for label, count in label_counts.items():
+                if count > 1:
+                    patterns.labels_with_same_line_multiplicity.add(label)
+
+            # Track unique label pairs on this line
             unique_labels = list(set(line_labels))
             for i, label_a in enumerate(unique_labels):
                 for label_b in unique_labels[i + 1 :]:
                     pair = tuple(sorted([label_a, label_b]))
                     patterns.same_line_pairs[pair] += 1
+                    all_pair_frequencies[pair] += 1
+                    patterns.all_observed_pairs.add(pair)
 
         # Track value pairs: when the same text has different labels
         # Group words by text to find duplicates
@@ -369,6 +699,10 @@ def compute_merchant_patterns(
         unique_labels = list(words_by_label.keys())
         for i, label_a in enumerate(unique_labels):
             for label_b in unique_labels[i + 1 :]:
+                pair = tuple(sorted([label_a, label_b]))
+                all_pair_frequencies[pair] += 1
+                patterns.all_observed_pairs.add(pair)
+
                 # Calculate centroids using word.calculate_centroid()
                 words_a = words_by_label[label_a]
                 words_b = words_by_label[label_b]
@@ -395,12 +729,13 @@ def compute_merchant_patterns(
                     GeometricRelationship(angle=angle, distance=distance)
                 )
 
-    # Finalize geometry statistics
+    # Finalize geometry statistics (both polar and Cartesian)
     for pair, geometry in patterns.label_pair_geometry.items():
         if geometry.observations:
             angles = [obs.angle for obs in geometry.observations]
             distances = [obs.distance for obs in geometry.observations]
 
+            # Polar statistics
             geometry.mean_angle = statistics.mean(angles)
             geometry.mean_distance = statistics.mean(distances)
 
@@ -410,6 +745,58 @@ def compute_merchant_patterns(
             else:
                 geometry.std_angle = 0.0
                 geometry.std_distance = 0.0
+
+            # Cartesian statistics - convert observations to (dx, dy) coordinates
+            cartesian_coords = [
+                _convert_polar_to_cartesian(obs.angle, obs.distance)
+                for obs in geometry.observations
+            ]
+
+            dx_values = [coord[0] for coord in cartesian_coords]
+            dy_values = [coord[1] for coord in cartesian_coords]
+
+            geometry.mean_dx = statistics.mean(dx_values)
+            geometry.mean_dy = statistics.mean(dy_values)
+
+            if len(dx_values) >= 2:
+                geometry.std_dx = statistics.stdev(dx_values)
+                geometry.std_dy = statistics.stdev(dy_values)
+            else:
+                geometry.std_dx = 0.0
+                geometry.std_dy = 0.0
+
+            # Compute distance-from-mean for each observation in Cartesian space
+            deviations = [
+                math.sqrt((dx - geometry.mean_dx)**2 + (dy - geometry.mean_dy)**2)
+                for dx, dy in cartesian_coords
+            ]
+            geometry.mean_deviation = statistics.mean(deviations)
+
+            if len(deviations) >= 2:
+                geometry.std_deviation = statistics.stdev(deviations)
+            else:
+                geometry.std_deviation = 0.0
+
+    # Select top 4 label pairs and remove geometry for non-selected pairs
+    if patterns.label_pair_geometry:
+        selected_pairs = _select_top_label_pairs(all_pair_frequencies)
+
+        # Remove geometry entries for non-selected pairs
+        pairs_to_remove = [
+            pair for pair in patterns.label_pair_geometry.keys()
+            if pair not in selected_pairs
+        ]
+        for pair in pairs_to_remove:
+            logger.debug(f"Removing geometry for non-selected pair: {pair}")
+            del patterns.label_pair_geometry[pair]
+
+        logger.info(
+            f"Kept {len(patterns.label_pair_geometry)} label pairs with geometry "
+            f"(removed {len(pairs_to_remove)})"
+        )
+
+    # Print detailed statistics for learned patterns
+    _print_pattern_statistics(patterns, merchant_name)
 
     return patterns
 
@@ -508,13 +895,34 @@ def check_unexpected_label_pair(
 
     # Check if any label pair is unexpected (never seen in training data)
     for other_label in other_labels:
+        # Special handling for self-comparisons (same label appearing multiple times)
+        if label == other_label:
+            # If this label type never appears multiple times in training data, flag it
+            if label not in patterns.labels_with_same_line_multiplicity:
+                # Only flag if we have good training data
+                if patterns.receipt_count >= 5:
+                    return EvaluationIssue(
+                        issue_type="unexpected_label_multiplicity",
+                        word=ctx.word,
+                        current_label=label,
+                        suggested_status="NEEDS_REVIEW",
+                        reasoning=(
+                            f"'{ctx.word.text}' labeled {label} appears multiple times on receipt, "
+                            f"but {label} never appears multiple times in {patterns.receipt_count} "
+                            f"training receipts for this merchant. This may indicate mislabeling."
+                        ),
+                        word_context=ctx,
+                    )
+            # Label appears multiple times in training data, so this is expected
+            continue
+
         pair = tuple(sorted([label, other_label]))
 
         # If this pair never appeared in training receipts, it's unexpected
-        if pair not in patterns.label_pair_geometry:
+        if pair not in patterns.all_observed_pairs:
             # But be permissive: only flag if we have good training data coverage
-            # (e.g., if we saw 50+ unique label pairs in training)
-            if len(patterns.label_pair_geometry) >= 20:
+            # (need confidence from multiple receipts)
+            if patterns.receipt_count >= 5:
                 return EvaluationIssue(
                     issue_type="unexpected_label_pair",
                     word=ctx.word,
@@ -531,30 +939,52 @@ def check_unexpected_label_pair(
     return None
 
 
+def _get_adaptive_threshold(geometry: "LabelPairGeometry") -> float:
+    """
+    Determine adaptive threshold based on pattern tightness.
+
+    Tighter patterns (lower std deviation) → stricter thresholds
+    Looser patterns (higher std deviation) → more lenient thresholds
+
+    Args:
+        geometry: The LabelPairGeometry to evaluate
+
+    Returns:
+        Threshold in standard deviations (1.5-2.5σ)
+    """
+    if geometry.std_deviation is None:
+        return 2.0  # Default
+
+    # Classify based on standard deviation
+    if geometry.std_deviation < 0.1:
+        return 1.5  # TIGHT pattern - be strict
+    elif geometry.std_deviation < 0.2:
+        return 2.0  # MODERATE pattern - balanced
+    else:
+        return 2.5  # LOOSE pattern - be lenient
+
+
 def check_geometric_anomaly(
     ctx: WordContext,
     all_contexts: List[WordContext],
     patterns: Optional[MerchantPatterns],
-    angle_threshold_std: float = 2.0,
-    distance_threshold_std: float = 2.0,
 ) -> Optional[EvaluationIssue]:
     """
     Check if a labeled word has geometric anomalies relative to other labels.
 
-    Compares the angle and distance between this label type and others against
-    learned patterns from the same merchant. Flags pairs where the geometry
-    significantly deviates from expected patterns.
+    Uses Cartesian coordinate space for robust anomaly detection that avoids
+    angle wrap-around issues. Compares the deviation from expected position
+    against learned patterns from the same merchant.
 
-    Only flags issues if:
-    1. We have at least one other receipt from this merchant for comparison, OR
-    2. This is the first receipt from this merchant (establishes baseline)
+    Uses adaptive thresholds based on pattern tightness:
+    - TIGHT patterns (std < 0.1): 1.5σ threshold
+    - MODERATE patterns (std 0.1-0.2): 2.0σ threshold
+    - LOOSE patterns (std > 0.2): 2.5σ threshold
 
     Args:
         ctx: WordContext to check
         all_contexts: All WordContext objects on the receipt
-        patterns: MerchantPatterns from other receipts (may be None or have 1+ receipts)
-        angle_threshold_std: Number of std devs for angle anomaly detection
-        distance_threshold_std: Number of std devs for distance anomaly detection
+        patterns: MerchantPatterns from other receipts (may be None)
 
     Returns:
         EvaluationIssue if geometric anomaly detected, None otherwise
@@ -586,8 +1016,12 @@ def check_geometric_anomaly(
             continue
 
         geometry = patterns.label_pair_geometry[pair]
-        if geometry.mean_angle is None or geometry.mean_distance is None:
+        # Skip if we don't have Cartesian statistics (shouldn't happen with new code)
+        if geometry.mean_dx is None or geometry.mean_dy is None or geometry.std_deviation is None:
             continue
+
+        # Get adaptive threshold based on pattern tightness
+        threshold_std = _get_adaptive_threshold(geometry)
 
         # Calculate actual geometry on this receipt (using word centroids)
         label_words = [c.word for c in all_contexts if c.current_label and c.current_label.label == label]
@@ -605,38 +1039,36 @@ def check_geometric_anomaly(
         y_coords_other = [w.calculate_centroid()[1] for w in other_words]
         centroid_other = (sum(x_coords_other) / len(x_coords_other), sum(y_coords_other) / len(y_coords_other))
 
+        # Calculate actual geometry
         actual_angle = _calculate_angle_degrees(centroid_label, centroid_other)
         actual_distance = _calculate_distance(centroid_label, centroid_other)
 
-        # Check for angle anomaly
-        is_angle_anomaly = False
-        if geometry.std_angle and geometry.std_angle > 0:
-            angle_z_score = _angle_difference(actual_angle, geometry.mean_angle) / geometry.std_angle
-            if angle_z_score > angle_threshold_std:
-                is_angle_anomaly = True
+        # Convert to Cartesian coordinates
+        actual_dx, actual_dy = _convert_polar_to_cartesian(actual_angle, actual_distance)
 
-        # Check for distance anomaly
-        is_distance_anomaly = False
-        if geometry.std_distance and geometry.std_distance > 0:
-            distance_z_score = abs(actual_distance - geometry.mean_distance) / geometry.std_distance
-            if distance_z_score > distance_threshold_std:
-                is_distance_anomaly = True
+        # Compute deviation from expected position in Cartesian space
+        deviation = math.sqrt(
+            (actual_dx - geometry.mean_dx)**2 + (actual_dy - geometry.mean_dy)**2
+        )
 
-        # If both angle and distance are anomalies, flag it
-        if is_angle_anomaly and is_distance_anomaly:
-            return EvaluationIssue(
-                issue_type="geometric_anomaly",
-                word=ctx.word,
-                current_label=label,
-                suggested_status="NEEDS_REVIEW",
-                reasoning=(
-                    f"'{ctx.word.text}' labeled {label} has unusual geometric relationship "
-                    f"with {other_label}. Expected angle {geometry.mean_angle:.0f}° "
-                    f"(actual {actual_angle:.0f}°), distance {geometry.mean_distance:.2f} "
-                    f"(actual {actual_distance:.2f}). This may indicate mislabeling."
-                ),
-                word_context=ctx,
-            )
+        # Check if deviation is anomalous
+        if geometry.std_deviation and geometry.std_deviation > 0:
+            deviation_z_score = deviation / geometry.std_deviation
+            if deviation_z_score > threshold_std:
+                return EvaluationIssue(
+                    issue_type="geometric_anomaly",
+                    word=ctx.word,
+                    current_label=label,
+                    suggested_status="NEEDS_REVIEW",
+                    reasoning=(
+                        f"'{ctx.word.text}' labeled {label} has unusual geometric relationship "
+                        f"with {other_label}. Expected position ({geometry.mean_dx:.2f}, {geometry.mean_dy:.2f}), "
+                        f"actual ({actual_dx:.2f}, {actual_dy:.2f}), deviation {deviation:.3f} "
+                        f"(adaptive threshold: {threshold_std}σ = {threshold_std * geometry.std_deviation:.3f}). "
+                        f"This may indicate mislabeling."
+                    ),
+                    word_context=ctx,
+                )
 
     return None
 

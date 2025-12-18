@@ -90,7 +90,8 @@ logger = logging.getLogger(__name__)
 
 # Maximum number of other receipts to fetch for pattern learning
 # Higher numbers give better statistical confidence for geometric anomaly detection
-MAX_OTHER_RECEIPTS = 100
+# Set to None to use all available receipts for a merchant
+MAX_OTHER_RECEIPTS = None
 
 # LLM Review Prompt
 LLM_REVIEW_PROMPT = """You are reviewing a flagged label issue on a receipt.
@@ -296,9 +297,11 @@ def create_label_evaluator_graph(
 
         try:
             # Query for other receipts with same merchant
+            # If MAX_OTHER_RECEIPTS is None, fetch all receipts
+            limit = MAX_OTHER_RECEIPTS + 1 if MAX_OTHER_RECEIPTS is not None else None
             other_metadatas, _ = _dynamo_client.get_receipt_metadatas_by_merchant(
                 merchant_name,
-                limit=MAX_OTHER_RECEIPTS + 1,  # +1 to account for current receipt
+                limit=limit,  # None means fetch all available
             )
 
             # Filter out current receipt
@@ -306,7 +309,11 @@ def create_label_evaluator_graph(
                 m
                 for m in other_metadatas
                 if not (m.image_id == state.image_id and m.receipt_id == state.receipt_id)
-            ][:MAX_OTHER_RECEIPTS]
+            ]
+
+            # Apply limit if MAX_OTHER_RECEIPTS is set
+            if MAX_OTHER_RECEIPTS is not None:
+                other_metadatas = other_metadatas[:MAX_OTHER_RECEIPTS]
 
             if not other_metadatas:
                 logger.info(f"No other receipts found for merchant '{merchant_name}'")
