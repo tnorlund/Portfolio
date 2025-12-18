@@ -178,6 +178,8 @@ def create_label_evaluator_graph(
     ollama_base_url: str = "https://ollama.com",
     ollama_api_key: Optional[str] = None,
     chroma_client: Any = None,
+    max_pair_patterns: int = 4,
+    max_relationship_dimension: int = 2,
 ) -> Any:
     """
     Create the label evaluator workflow graph.
@@ -193,6 +195,10 @@ def create_label_evaluator_graph(
         ollama_api_key: API key for Ollama Cloud (required if using ollama provider)
         chroma_client: Optional ChromaDB client for similar word lookup. Words' existing
                        embeddings are retrieved by ID, so no embed_fn is needed.
+        max_pair_patterns: Maximum label pairs/tuples to compute geometry for (default: 4)
+                           Higher = more comprehensive analysis but slower
+        max_relationship_dimension: Analyze n-label relationships (default: 2)
+                                   2=pairs, 3=triples, 4+=higher-order
 
     Returns:
         Compiled LangGraph workflow
@@ -203,9 +209,11 @@ def create_label_evaluator_graph(
             llm_model = "gpt-oss:20b-cloud"
         else:
             llm_model = "claude-3-5-haiku-latest"
-    # Store clients in closure for node access
+    # Store clients and configuration in closure for node access
     _dynamo_client = dynamo_client
     _chroma_client = chroma_client
+    _max_pair_patterns = max_pair_patterns
+    _max_relationship_dimension = max_relationship_dimension
 
     # Log ChromaDB availability
     if _chroma_client:
@@ -411,6 +419,8 @@ def create_label_evaluator_graph(
         patterns = compute_merchant_patterns(
             state.other_receipt_data,
             merchant_name,
+            max_pair_patterns=_max_pair_patterns,
+            max_relationship_dimension=_max_relationship_dimension,
         )
 
         if patterns:
