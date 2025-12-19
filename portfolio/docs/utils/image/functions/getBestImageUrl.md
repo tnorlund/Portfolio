@@ -8,7 +8,7 @@
 
 > **getBestImageUrl**(`image`, `formatSupport`): `string`
 
-Defined in: [utils/image.ts:79](https://github.com/tnorlund/Portfolio/blob/420498ede088a967ffb84241c17e528380eab1ee/portfolio/utils/image.ts#L79)
+Defined in: [utils/image.ts:79](https://github.com/tnorlund/Portfolio/blob/fac09913cfaf8a8bcbbdc6fd03caad2f593bf127/portfolio/utils/image.ts#L79)
 
 ## Parameters
 

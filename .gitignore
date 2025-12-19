@@ -251,3 +251,12 @@ infra/backups/
 .github/pr-reviews/reports/*-detailed-review.md
 .github/pr-reviews/reports/*-review-tracking.md
 logs/
+
+# Development scripts (local-only, not for version control)
+dev.*.py
+dev_*.py
+*_plan.md
+*_plan.html
+FUTURE_WORK.md
+*_MIGRATION.md
+Pr*.md
