@@ -101,10 +101,6 @@ from receipt_dynamo.entities.receipt_metadata import (
     ReceiptMetadata,
     item_to_receipt_metadata,
 )
-from receipt_dynamo.entities.place_cluster import (
-    ClusterType,
-    PlaceCluster,
-)
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_section import (
     ReceiptSection,
@@ -174,7 +170,6 @@ __all__ = [
     "Line",
     "OCRJob",
     "OCRRoutingDecision",
-    "PlaceCluster",
     "PlacesCache",
     "Queue",
     "QueueJob",
@@ -248,6 +243,4 @@ __all__ = [
     # Additional exports from receipt_structure_analysis
     "ContentPattern",
     "SpatialPattern",
-    # Cluster types
-    "ClusterType",
 ]

@@ -12,7 +12,6 @@ This entity replaces ReceiptMetadata with richer Place data while maintaining
 backward compatibility through gradual migration.
 
 Differences from ReceiptMetadata:
-- No canonical_* fields (moved to separate PlaceCluster entity)
 - Includes geographic coordinates for spatial clustering
 - Includes business status and operating hours
 - Includes ratings and review counts as quality signals
@@ -116,8 +115,7 @@ class ReceiptPlace(SerializationMixin):
     # === Location & Geometry ===
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    # Geohash is calculated but GSI4 not yet in Pulumi (deferred for PlaceCluster merchant
-    # deduplication). Kept here for future spatial queries when clustering is activated.
+    # Geohash calculated for spatial indexing (precision 6-7 ~1km)
     geohash: str = ""  # Precision 6-7 (~1km)
     viewport_ne_lat: Optional[float] = None
     viewport_ne_lng: Optional[float] = None
@@ -252,9 +250,7 @@ class ReceiptPlace(SerializationMixin):
         """
         Get GSI4 key (spatial queries via geohash).
 
-        Note: GSI4 is deferred in Pulumi (not yet created). The key structure
-        is defined here for future use when PlaceCluster merchant deduplication
-        is activated and spatial queries are needed.
+        Note: GSI4 key structure for spatial queries via geohash.
         """
         if not self.geohash:
             return {}

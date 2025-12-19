@@ -107,8 +107,6 @@ class _ReceiptPlace(FlattenedStandardMixin):
         Retrieves ReceiptPlace records by validation status (GSI3).
     get_receipt_places_by_geohash(...) -> Tuple[List[ReceiptPlace], dict | None]:
         Retrieves ReceiptPlace records by geohash for spatial queries (GSI4).
-        Deferred: GSI4 not yet in Pulumi. Ready to activate when PlaceCluster
-        merchant deduplication is needed.
     """
 
     @handle_dynamodb_errors("add_receipt_place")

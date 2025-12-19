@@ -4,11 +4,7 @@ Geospatial utility functions for DynamoDB queries.
 Provides helpers for geographic calculations including geohash encoding
 for spatial indexing and distance calculations.
 
-Note: These utilities are designed for future PlaceCluster merchant deduplication
-(finding receipts for the same merchant at nearby locations). Currently, geohash
-is calculated and stored in ReceiptPlace, but spatial queries (GSI4) are deferred
-until PlaceCluster is activated. The query methods exist in _receipt_place.py but
-are not yet called.
+Used by ReceiptPlace for spatial indexing and nearby location discovery.
 """
 
 from math import cos, radians
