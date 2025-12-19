@@ -26,8 +26,13 @@ class LabelCountCache:
             raise ValueError("invalid_count must be a non-negative integer")
         if not isinstance(self.pending_count, int) or self.pending_count < 0:
             raise ValueError("pending_count must be a non-negative integer")
-        if not isinstance(self.needs_review_count, int) or self.needs_review_count < 0:
-            raise ValueError("needs_review_count must be a non-negative integer")
+        if (
+            not isinstance(self.needs_review_count, int)
+            or self.needs_review_count < 0
+        ):
+            raise ValueError(
+                "needs_review_count must be a non-negative integer"
+            )
         if not isinstance(self.none_count, int) or self.none_count < 0:
             raise ValueError("none_count must be a non-negative integer")
         try:

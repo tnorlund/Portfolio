@@ -109,7 +109,9 @@ class InstanceService:
         """
         self.dynamo_client.update_instance(instance)
 
-    def update_instance_status(self, instance_id: str, status: str) -> Instance:
+    def update_instance_status(
+        self, instance_id: str, status: str
+    ) -> Instance:
         """
         Update the status of an instance.
 
@@ -227,7 +229,9 @@ class InstanceService:
             "list_instances_by_type is not implemented in the data layer"
         )
 
-    def find_idle_instances(self, limit: Optional[int] = None) -> List[Instance]:
+    def find_idle_instances(
+        self, limit: Optional[int] = None
+    ) -> List[Instance]:
         """
         Find instances that are idle (running but not processing jobs).
 
@@ -244,7 +248,9 @@ class InstanceService:
         idle_instances = []
         for instance in running_instances:
             # Get active jobs for this instance
-            active_jobs, _ = self.dynamo_client.list_instance_jobs(instance.instance_id)
+            active_jobs, _ = self.dynamo_client.list_instance_jobs(
+                instance.instance_id
+            )
 
             # If there are no active jobs, the instance is idle
             if not active_jobs:

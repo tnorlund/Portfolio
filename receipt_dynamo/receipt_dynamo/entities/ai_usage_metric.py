@@ -42,7 +42,9 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
     job_id: Optional[str] = None
     batch_id: Optional[str] = None
     github_pr: Optional[int] = None
-    environment: Optional[str] = None  # "production", "staging", "cicd", "development"
+    environment: Optional[str] = (
+        None  # "production", "staging", "cicd", "development"
+    )
     error: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = field(default_factory=dict)
     # Computed fields
@@ -57,8 +59,12 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
             self.request_id = str(uuid.uuid4())
 
         # Calculate total_tokens if not provided
-        if self.total_tokens is None and (self.input_tokens or self.output_tokens):
-            self.total_tokens = (self.input_tokens or 0) + (self.output_tokens or 0)
+        if self.total_tokens is None and (
+            self.input_tokens or self.output_tokens
+        ):
+            self.total_tokens = (self.input_tokens or 0) + (
+                self.output_tokens or 0
+            )
 
         # Ensure metadata is a dict
         if self.metadata is None:
@@ -125,10 +131,14 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
 
     def __repr__(self) -> str:
         tokens_str = (
-            f"{self.total_tokens} tokens" if self.total_tokens else "unknown tokens"
+            f"{self.total_tokens} tokens"
+            if self.total_tokens
+            else "unknown tokens"
         )
         cost_str = (
-            f"${self.cost_usd:.4f}" if self.cost_usd is not None else "unknown cost"
+            f"${self.cost_usd:.4f}"
+            if self.cost_usd is not None
+            else "unknown cost"
         )
         return (
             f"<AIUsageMetric {self.service}/{self.model} {self.operation} "
@@ -159,17 +169,25 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
 
         # Add optional fields only if they have values
         if self.input_tokens is not None:
-            custom_fields["input_tokens"] = self._serialize_value(self.input_tokens)
+            custom_fields["input_tokens"] = self._serialize_value(
+                self.input_tokens
+            )
         if self.output_tokens is not None:
-            custom_fields["output_tokens"] = self._serialize_value(self.output_tokens)
+            custom_fields["output_tokens"] = self._serialize_value(
+                self.output_tokens
+            )
         if self.total_tokens is not None:
-            custom_fields["total_tokens"] = self._serialize_value(self.total_tokens)
+            custom_fields["total_tokens"] = self._serialize_value(
+                self.total_tokens
+            )
         if self.cost_usd is not None:
             custom_fields["cost_usd"] = self._serialize_value(
                 self.cost_usd, serialize_decimal=True
             )
         if self.latency_ms is not None:
-            custom_fields["latency_ms"] = self._serialize_value(self.latency_ms)
+            custom_fields["latency_ms"] = self._serialize_value(
+                self.latency_ms
+            )
         if self.user_id is not None:
             custom_fields["user_id"] = self._serialize_value(self.user_id)
         if self.job_id is not None:
@@ -179,7 +197,9 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
         if self.github_pr is not None:
             custom_fields["github_pr"] = self._serialize_value(self.github_pr)
         if self.environment is not None:
-            custom_fields["environment"] = self._serialize_value(self.environment)
+            custom_fields["environment"] = self._serialize_value(
+                self.environment
+            )
         if self.error is not None:
             custom_fields["error"] = self._serialize_value(self.error)
         if self.metadata:
@@ -238,7 +258,9 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
             "input_tokens": EntityFactory.extract_int_field("input_tokens"),
             "output_tokens": EntityFactory.extract_int_field("output_tokens"),
             "total_tokens": EntityFactory.extract_int_field("total_tokens"),
-            "api_calls": EntityFactory.extract_int_field("api_calls", default=1),
+            "api_calls": EntityFactory.extract_int_field(
+                "api_calls", default=1
+            ),
             "cost_usd": EntityFactory.extract_float_field("cost_usd"),
             "latency_ms": EntityFactory.extract_int_field("latency_ms"),
             "user_id": EntityFactory.extract_string_field("user_id"),
@@ -283,7 +305,9 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
         expression_values = {
             ":pk": {"S": f"AI_USAGE#{service}"},
             ":start": {"S": f"DATE#{start_date}"},
-            ":end": {"S": f"DATE#{end_date}" if end_date else f"DATE#{start_date}"},
+            ":end": {
+                "S": f"DATE#{end_date}" if end_date else f"DATE#{start_date}"
+            },
         }
 
         response = dynamo_client.query(
@@ -293,10 +317,14 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
             ExpressionAttributeValues=expression_values,
         )
 
-        return [cls.from_dynamodb_item(item) for item in response.get("Items", [])]
+        return [
+            cls.from_dynamodb_item(item) for item in response.get("Items", [])
+        ]
 
     @classmethod
-    def get_total_cost_by_date(cls, dynamo_client, date: str) -> Dict[str, float]:
+    def get_total_cost_by_date(
+        cls, dynamo_client, date: str
+    ) -> Dict[str, float]:
         """Get total cost for all services on a specific date."""
         key_condition = "GSI2PK = :pk AND begins_with(GSI2SK, :date)"
         expression_values = {

@@ -2,16 +2,22 @@
 Tests for PlacesClient with mocked HTTP requests and DynamoDB.
 """
 
+import json
+from typing import Any
+from unittest.mock import MagicMock, patch
+
 import pytest
 import responses
+from responses import matchers
 
 from receipt_places.cache import CacheManager
-from receipt_places.client import PlacesClient
+from receipt_places.client import PlacesClient, PlacesAPIError
 from receipt_places.config import PlacesConfig
-from receipt_places.types import Place
 from tests.conftest import (
     SAMPLE_DETAILS_RESPONSE,
     SAMPLE_FIND_PLACE_RESPONSE,
+    SAMPLE_PLACE_DETAILS,
+    SAMPLE_TEXT_SEARCH_RESPONSE,
     add_places_api_mocks,
 )
 
@@ -44,9 +50,7 @@ class TestPlacesClientInit:
         )
 
         with pytest.raises(ValueError, match="API key required"):
-            PlacesClient(
-                api_key="", config=config, cache_manager=cache_manager
-            )
+            PlacesClient(api_key="", config=config, cache_manager=cache_manager)
 
 
 class TestSearchByPhone:
@@ -63,9 +67,8 @@ class TestSearchByPhone:
         result = places_client.search_by_phone("555-123-4567")
 
         assert result is not None
-        assert isinstance(result, Place)
-        assert result.place_id == "ChIJtest123"
-        assert result.name == "Test Business"
+        assert result["place_id"] == "ChIJtest123"
+        assert result["name"] == "Test Business"
 
         # Verify API was called
         assert len(responses.calls) >= 1
@@ -88,9 +91,7 @@ class TestSearchByPhone:
 
         assert result1 is not None
         assert result2 is not None
-        assert isinstance(result1, Place)
-        assert isinstance(result2, Place)
-        assert result2.place_id == result1.place_id
+        assert result2["place_id"] == result1["place_id"]
 
         # No additional API calls
         assert len(responses.calls) == first_call_count
@@ -148,8 +149,7 @@ class TestSearchByAddress:
         result = places_client.search_by_address("123 Test St, City, ST 12345")
 
         assert result is not None
-        assert isinstance(result, Place)
-        assert result.place_id == "ChIJtest123"
+        assert result["place_id"] == "ChIJtest123"
 
     @responses.activate
     def test_search_by_address_cache_hit(
@@ -160,15 +160,11 @@ class TestSearchByAddress:
         add_places_api_mocks(responses)
 
         # First call
-        result1 = places_client.search_by_address(
-            "123 Test St, City, ST 12345"
-        )
+        result1 = places_client.search_by_address("123 Test St, City, ST 12345")
         first_call_count = len(responses.calls)
 
         # Second call - should hit cache
-        result2 = places_client.search_by_address(
-            "123 Test St, City, ST 12345"
-        )
+        result2 = places_client.search_by_address("123 Test St, City, ST 12345")
 
         assert result1 is not None
         assert result2 is not None
@@ -197,12 +193,8 @@ class TestSearchByAddress:
                 "candidates": [
                     {
                         "place_id": "ChIJroute",
-                        "name": "Main Street",
                         "types": ["route"],
                         "formatted_address": "Main St",
-                        "geometry": {
-                            "location": {"lat": 40.7128, "lng": -74.0060},
-                        },
                     }
                 ],
             },
@@ -227,8 +219,7 @@ class TestSearchByText:
         result = places_client.search_by_text("Coffee Shop Seattle")
 
         assert result is not None
-        assert isinstance(result, Place)
-        assert result.place_id == "ChIJtest123"
+        assert result["place_id"] == "ChIJtest123"
 
     @responses.activate
     def test_search_by_text_with_location(
@@ -273,8 +264,7 @@ class TestSearchNearby:
         )
 
         assert len(results) > 0
-        assert isinstance(results[0], Place)
-        assert results[0].place_id == "ChIJtest123"
+        assert results[0]["place_id"] == "ChIJtest123"
 
     @responses.activate
     def test_search_nearby_with_keyword(
@@ -313,10 +303,9 @@ class TestGetPlaceDetails:
         result = places_client.get_place_details("ChIJtest123")
 
         assert result is not None
-        assert isinstance(result, Place)
-        assert result.place_id == "ChIJtest123"
-        assert result.name == "Test Business"
-        assert result.formatted_phone_number == "(555) 123-4567"
+        assert result["place_id"] == "ChIJtest123"
+        assert result["name"] == "Test Business"
+        assert result["formatted_phone_number"] == "(555) 123-4567"
 
     def test_get_place_details_empty(
         self,
@@ -338,20 +327,18 @@ class TestAutocomplete:
         """Test address autocomplete."""
         add_places_api_mocks(responses)
 
-        results = places_client.autocomplete_address("123 Test")
+        result = places_client.autocomplete_address("123 Test")
 
-        assert results is not None
-        assert len(results) > 0
-        assert isinstance(results[0], dict)
-        assert "description" in results[0]
+        assert result is not None
+        assert "description" in result
 
     def test_autocomplete_empty(
         self,
         places_client: PlacesClient,
     ) -> None:
-        """Test empty input returns empty list."""
+        """Test empty input returns None."""
         result = places_client.autocomplete_address("")
-        assert result == []
+        assert result is None
 
 
 class TestIsAreaSearch:
@@ -370,9 +357,7 @@ class TestIsAreaSearch:
         ]
 
         for address in area_searches:
-            assert places_client.is_area_search(
-                address
-            ), f"{address} should be area"
+            assert places_client.is_area_search(address), f"{address} should be area"
 
     def test_is_area_search_false(
         self,
@@ -386,9 +371,7 @@ class TestIsAreaSearch:
         ]
 
         for address in specific_addresses:
-            assert not places_client.is_area_search(
-                address
-            ), f"{address} not area"
+            assert not places_client.is_area_search(address), f"{address} not area"
 
 
 class TestCacheAccess:
@@ -472,3 +455,4 @@ class TestErrorHandling:
 
         result = places_client.search_by_phone("555-123-4567")
         assert result is None
+

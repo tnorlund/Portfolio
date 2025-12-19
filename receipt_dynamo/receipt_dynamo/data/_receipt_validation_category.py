@@ -72,7 +72,9 @@ class _ReceiptValidationCategory(
     """
 
     @handle_dynamodb_errors("add_receipt_validation_category")
-    def add_receipt_validation_category(self, category: ReceiptValidationCategory):
+    def add_receipt_validation_category(
+        self, category: ReceiptValidationCategory
+    ):
         """Adds a ReceiptValidationCategory to DynamoDB.
 
         Args:
@@ -106,17 +108,23 @@ class _ReceiptValidationCategory(
             ValueError: If the categories are None or not a list.
             Exception: If the categories cannot be added to DynamoDB.
         """
-        self._validate_entity_list(categories, ReceiptValidationCategory, "categories")
+        self._validate_entity_list(
+            categories, ReceiptValidationCategory, "categories"
+        )
 
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=category.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=category.to_item())
+            )
             for category in categories
         ]
 
         self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("update_receipt_validation_category")
-    def update_receipt_validation_category(self, category: ReceiptValidationCategory):
+    def update_receipt_validation_category(
+        self, category: ReceiptValidationCategory
+    ):
         """Updates an existing ReceiptValidationCategory in the database.
 
         Args:
@@ -131,7 +139,9 @@ class _ReceiptValidationCategory(
         self._validate_entity(category, ReceiptValidationCategory, "category")
         self._update_entity(
             category,
-            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("update_receipt_validation_categories")
@@ -148,10 +158,14 @@ class _ReceiptValidationCategory(
             ValueError: If the categories are None or not a list.
             Exception: If the categories cannot be updated in DynamoDB.
         """
-        self._update_entities(categories, ReceiptValidationCategory, "categories")
+        self._update_entities(
+            categories, ReceiptValidationCategory, "categories"
+        )
 
     @handle_dynamodb_errors("delete_receipt_validation_category")
-    def delete_receipt_validation_category(self, category: ReceiptValidationCategory):
+    def delete_receipt_validation_category(
+        self, category: ReceiptValidationCategory
+    ):
         """Deletes a single ReceiptValidationCategory.
 
         Args:
@@ -180,10 +194,14 @@ class _ReceiptValidationCategory(
             ValueError: If the categories are None or not a list.
             Exception: If the categories cannot be deleted from DynamoDB.
         """
-        self._validate_entity_list(categories, ReceiptValidationCategory, "categories")
+        self._validate_entity_list(
+            categories, ReceiptValidationCategory, "categories"
+        )
 
         request_items = [
-            WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=category.key))
+            WriteRequestTypeDef(
+                DeleteRequest=DeleteRequestTypeDef(Key=category.key)
+            )
             for category in categories
         ]
 
@@ -210,7 +228,8 @@ class _ReceiptValidationCategory(
         """
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                f"receipt_id must be an integer, got " f"{type(receipt_id).__name__}"
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise EntityValidationError(
@@ -270,7 +289,9 @@ class _ReceiptValidationCategory(
         """
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None"
             )
@@ -314,7 +335,9 @@ class _ReceiptValidationCategory(
             )
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None"
             )
@@ -323,7 +346,9 @@ class _ReceiptValidationCategory(
             index_name="GSI1",
             key_condition_expression="#gsi1pk = :pk",
             expression_attribute_names={"#gsi1pk": "GSI1PK"},
-            expression_attribute_values={":pk": {"S": f"VALIDATION_STATUS#{status}"}},
+            expression_attribute_values={
+                ":pk": {"S": f"VALIDATION_STATUS#{status}"}
+            },
             converter_func=item_to_receipt_validation_category,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -359,7 +384,8 @@ class _ReceiptValidationCategory(
         """
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                f"receipt_id must be an integer, got " f"{type(receipt_id).__name__}"
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise EntityValidationError(
@@ -367,7 +393,9 @@ class _ReceiptValidationCategory(
             )
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None"
             )
@@ -379,7 +407,9 @@ class _ReceiptValidationCategory(
 
         return self._query_entities(
             index_name=None,
-            key_condition_expression=("#pk = :pk AND begins_with(#sk, :sk_prefix)"),
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -387,7 +417,10 @@ class _ReceiptValidationCategory(
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {
-                    "S": (f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#" "CATEGORY#")
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
+                        "CATEGORY#"
+                    )
                 },
             },
             converter_func=item_to_receipt_validation_category,

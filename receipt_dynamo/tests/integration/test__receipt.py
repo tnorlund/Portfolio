@@ -193,7 +193,9 @@ ERROR_SCENARIOS = [
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 # pylint: disable=too-many-arguments
 def test_add_receipt_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -227,7 +229,9 @@ def test_add_receipt_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 # pylint: disable=too-many-arguments
 def test_update_receipt_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -263,7 +267,9 @@ def test_update_receipt_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 # pylint: disable=too-many-arguments
 def test_delete_receipt_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -299,7 +305,9 @@ def test_delete_receipt_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 # pylint: disable=too-many-arguments
 def test_get_receipt_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -340,7 +348,9 @@ def test_get_receipt_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 # pylint: disable=too-many-arguments
 def test_add_receipts_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -718,7 +728,9 @@ def test_add_receipt_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(EntityAlreadyExistsError, match="receipt already exists"):
+    with pytest.raises(
+        EntityAlreadyExistsError, match="receipt already exists"
+    ):
         client.add_receipt(sample_receipt)
     mock_put.assert_called_once()
 
@@ -855,8 +867,12 @@ def test_add_receipt_success(
     client.add_receipt(sample_receipt)
 
     # Verify the receipt in DynamoDB
-    retrieved = client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
-    assert retrieved == sample_receipt, "Stored and retrieved receipts should match."
+    retrieved = client.get_receipt(
+        sample_receipt.image_id, sample_receipt.receipt_id
+    )
+    assert (
+        retrieved == sample_receipt
+    ), "Stored and retrieved receipts should match."
 
 
 @pytest.mark.integration
@@ -871,7 +887,9 @@ def test_add_receipt_duplicate_raises(
     client = DynamoClient(dynamodb_table)
     client.add_receipt(sample_receipt)
 
-    with pytest.raises(EntityAlreadyExistsError, match="receipt already exists"):
+    with pytest.raises(
+        EntityAlreadyExistsError, match="receipt already exists"
+    ):
         client.add_receipt(sample_receipt)
 
 
@@ -888,7 +906,9 @@ def test_update_receipt_success(
     sample_receipt.raw_s3_key = "new/path"
     client.update_receipt(sample_receipt)
 
-    updated = client.get_receipt(sample_receipt.image_id, sample_receipt.receipt_id)
+    updated = client.get_receipt(
+        sample_receipt.image_id, sample_receipt.receipt_id
+    )
     assert updated.raw_s3_key == "new/path"
 
 
@@ -1091,7 +1111,9 @@ def test_get_receipt_details_success(
     assert r == sample_receipt
     assert len(words) == 1 and words[0] == sample_receipt_word
     assert len(letters) == 1 and letters[0] == sample_receipt_letter
-    assert lines == [], "No lines were added in this test, so expect an empty list."
+    assert (
+        lines == []
+    ), "No lines were added in this test, so expect an empty list."
 
 
 # -------------------------------------------------------------------
@@ -1119,7 +1141,9 @@ def test_list_receipts_no_limit(
     assert len(receipts) == 2
     assert sample_receipt in receipts
     assert r2 in receipts
-    assert lek is None, "Should have no pagination key if all items are fetched."
+    assert (
+        lek is None
+    ), "Should have no pagination key if all items are fetched."
 
 
 @pytest.mark.integration

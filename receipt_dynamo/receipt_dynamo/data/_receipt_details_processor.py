@@ -45,7 +45,9 @@ def process_receipt_details_query(
                 return _create_receipt_summary_page(summaries, item)
 
             # Process item based on type
-            result = _process_receipt_detail_item(item, summaries, current_summary)
+            result = _process_receipt_detail_item(
+                item, summaries, current_summary
+            )
             if result:
                 current_summary = result.get("summary")
                 if result.get("is_receipt"):
@@ -101,7 +103,8 @@ def _process_receipt_detail_item(
 def _item_belongs_to_receipt(item: Any, receipt: Any) -> bool:
     """Check if an item belongs to a specific receipt."""
     return bool(
-        item.image_id == receipt.image_id and item.receipt_id == receipt.receipt_id
+        item.image_id == receipt.image_id
+        and item.receipt_id == receipt.receipt_id
     )
 
 

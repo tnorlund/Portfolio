@@ -172,7 +172,9 @@ class BatchOperationsMixin:
         backoff = initial_backoff
 
         for attempt in range(max_retries + 1):
-            response = self._client.batch_write_item(RequestItems=request_items)
+            response = self._client.batch_write_item(
+                RequestItems=request_items
+            )
 
             unprocessed_items = response.get("UnprocessedItems", {})
             if not unprocessed_items:
@@ -225,7 +227,8 @@ class BatchOperationsMixin:
             List of entity batches
         """
         return [
-            entities[i : i + batch_size] for i in range(0, len(entities), batch_size)
+            entities[i : i + batch_size]
+            for i in range(0, len(entities), batch_size)
         ]
 
     @handle_dynamodb_errors("add_entities")
@@ -241,7 +244,9 @@ class BatchOperationsMixin:
             param_name: Parameter name for error messages
         """
         self._ensure_validator_initialized()
-        self._validator.validate_entity_list(entities, entity_class, param_name)
+        self._validator.validate_entity_list(
+            entities, entity_class, param_name
+        )
 
         # Split into batches and process
         batches = self._split_into_batches(entities)
@@ -268,7 +273,9 @@ class TransactionalOperationsMixin:
         table_name: str
         _client: "DynamoDBClient"
 
-    def _transact_write_items(self, transact_items: List[Dict[str, Any]]) -> None:
+    def _transact_write_items(
+        self, transact_items: List[Dict[str, Any]]
+    ) -> None:
         """
         Perform transactional write operation.
 
@@ -295,7 +302,9 @@ class TransactionalOperationsMixin:
                 "TableName": self.table_name,
                 "Key": entity.key,
                 "UpdateExpression": entity.update_expression,
-                "ExpressionAttributeValues": (entity.expression_attribute_values),
+                "ExpressionAttributeValues": (
+                    entity.expression_attribute_values
+                ),
                 "ConditionExpression": condition_expression,
             }
         }
@@ -376,7 +385,9 @@ class TransactionalOperationsMixin:
                 self._error_config = ErrorMessageConfig()
             self._validator = EntityValidator(self._error_config)
 
-        self._validator.validate_entity_list(entities, entity_type, entity_name)
+        self._validator.validate_entity_list(
+            entities, entity_type, entity_name
+        )
 
         # Build transactional items
         transact_items = []
@@ -396,7 +407,9 @@ class TransactionalOperationsMixin:
             else:
                 # For entities that use Update operations
                 transact_items.append(
-                    self._prepare_transact_update_item(entity, "attribute_exists(PK)")
+                    self._prepare_transact_update_item(
+                        entity, "attribute_exists(PK)"
+                    )
                 )
 
         # Use existing chunking method
@@ -416,7 +429,9 @@ class QueryByTypeMixin:
     if TYPE_CHECKING:
         table_name: str
         _client: "DynamoDBClient"
-        _query_entities: Callable[..., Tuple[List[Any], Optional[Dict[str, Any]]]]
+        _query_entities: Callable[
+            ..., Tuple[List[Any], Optional[Dict[str, Any]]]
+        ]
         _validate_entity: Callable[..., None]
 
     @handle_dynamodb_errors("query_by_type")
@@ -476,7 +491,9 @@ class QueryByParentMixin:
     if TYPE_CHECKING:
         table_name: str
         _client: "DynamoDBClient"
-        _query_entities: Callable[..., Tuple[List[Any], Optional[Dict[str, Any]]]]
+        _query_entities: Callable[
+            ..., Tuple[List[Any], Optional[Dict[str, Any]]]
+        ]
 
     @handle_dynamodb_errors("query_by_parent")
     def _query_by_parent(
@@ -534,7 +551,9 @@ class QueryByParentMixin:
 
         return self._query_entities(
             index_name=None,  # Query main table
-            key_condition_expression=("#pk = :pk AND begins_with(#sk, :sk_prefix)"),
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names=expr_names,
             expression_attribute_values=expr_values,
             converter_func=converter_func,
@@ -594,7 +613,9 @@ class CommonValidationMixin:
         if receipt_id is None:
             raise EntityValidationError(f"{param_name} cannot be None")
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise EntityValidationError(f"{param_name} must be a positive integer")
+            raise EntityValidationError(
+                f"{param_name} must be a positive integer"
+            )
 
     def _validate_pagination_key(
         self, last_evaluated_key: Optional[Dict[str, Any]]
@@ -612,7 +633,9 @@ class CommonValidationMixin:
 
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError(
+                    "last_evaluated_key must be a dictionary"
+                )
 
             # Validate required keys
             required_keys = {"PK", "SK"}

@@ -61,10 +61,14 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             self._error_config: ErrorMessageConfig = ErrorMessageConfig()
 
         if not hasattr(self, "_error_handler") or self._error_handler is None:
-            self._error_handler: ErrorHandler = ErrorHandler(self._error_config)
+            self._error_handler: ErrorHandler = ErrorHandler(
+                self._error_config
+            )
 
         if not hasattr(self, "_validator") or self._validator is None:
-            self._validator: EntityValidator = EntityValidator(self._error_config)
+            self._validator: EntityValidator = EntityValidator(
+                self._error_config
+            )
 
     def _handle_client_error(
         self,
@@ -125,7 +129,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         """
         self._ensure_initialized()
         assert self._validator is not None  # For type checker
-        self._validator.validate_entity_list(entities, entity_class, param_name)
+        self._validator.validate_entity_list(
+            entities, entity_class, param_name
+        )
 
     def _execute_put_item(
         self,
@@ -371,7 +377,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             query_params["IndexName"] = index_name
 
         if expression_attribute_names:
-            query_params["ExpressionAttributeNames"] = expression_attribute_names
+            query_params["ExpressionAttributeNames"] = (
+                expression_attribute_names
+            )
 
         if filter_expression:
             query_params["FilterExpression"] = filter_expression
@@ -383,12 +391,20 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         if limit is None:
             # If no limit, retrieve all items
             response = self._client.query(**query_params)
-            entities.extend([converter_func(item) for item in response["Items"]])
+            entities.extend(
+                [converter_func(item) for item in response["Items"]]
+            )
 
-            while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+            while (
+                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
+            ):
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
                 response = self._client.query(**query_params)
-                entities.extend([converter_func(item) for item in response["Items"]])
+                entities.extend(
+                    [converter_func(item) for item in response["Items"]]
+                )
             last_evaluated_key = None
         else:
             # If limit is provided, accumulate items until we reach the limit

@@ -72,7 +72,9 @@ class Job:
         if isinstance(self.created_at, datetime):
             self.created_at = self.created_at.isoformat()
         elif not isinstance(self.created_at, str):
-            raise ValueError("created_at must be a datetime object or a string")
+            raise ValueError(
+                "created_at must be a datetime object or a string"
+            )
 
         if not isinstance(self.created_by, str) or not self.created_by:
             raise ValueError("created_by must be a non-empty string")
@@ -108,7 +110,9 @@ class Job:
                 not isinstance(self.estimated_duration, int)
                 or self.estimated_duration <= 0
             ):
-                raise ValueError("estimated_duration must be a positive integer")
+                raise ValueError(
+                    "estimated_duration must be a positive integer"
+                )
 
         if self.tags is not None and not isinstance(self.tags, dict):
             raise ValueError("tags must be a dictionary")
@@ -253,11 +257,17 @@ class Job:
     # ----- S3 Storage helper methods -----
     def storage_bucket(self) -> Optional[str]:
         """Returns the S3 bucket associated with this job, if provided."""
-        return (self.storage or {}).get("bucket") if self.storage is not None else None
+        return (
+            (self.storage or {}).get("bucket")
+            if self.storage is not None
+            else None
+        )
 
     def storage_prefix(self, key: str) -> Optional[str]:
         """Returns a storage prefix by key (e.g., 'run_root_prefix', 'best_prefix')."""
-        return (self.storage or {}).get(key) if self.storage is not None else None
+        return (
+            (self.storage or {}).get(key) if self.storage is not None else None
+        )
 
     def s3_uri_for_prefix(self, key: str) -> Optional[str]:
         """Builds an s3:// URI for a named prefix if bucket and prefix are set."""

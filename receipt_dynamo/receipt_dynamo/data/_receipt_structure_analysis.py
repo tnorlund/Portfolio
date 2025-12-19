@@ -50,7 +50,9 @@ class _ReceiptStructureAnalysis(
     """
 
     @handle_dynamodb_errors("add_receipt_structure_analysis")
-    def add_receipt_structure_analysis(self, analysis: ReceiptStructureAnalysis):
+    def add_receipt_structure_analysis(
+        self, analysis: ReceiptStructureAnalysis
+    ):
         """Adds a ReceiptStructureAnalysis to DynamoDB.
 
         Args:
@@ -71,7 +73,9 @@ class _ReceiptStructureAnalysis(
         )
 
     @handle_dynamodb_errors("add_receipt_structure_analyses")
-    def add_receipt_structure_analyses(self, analyses: list[ReceiptStructureAnalysis]):
+    def add_receipt_structure_analyses(
+        self, analyses: list[ReceiptStructureAnalysis]
+    ):
         """Adds multiple ReceiptStructureAnalyses to DynamoDB in batches.
 
         Args:
@@ -82,16 +86,22 @@ class _ReceiptStructureAnalysis(
             ValueError: If the analyses are None or not a list.
             Exception: If the analyses cannot be added to DynamoDB.
         """
-        self._validate_entity_list(analyses, ReceiptStructureAnalysis, "analyses")
+        self._validate_entity_list(
+            analyses, ReceiptStructureAnalysis, "analyses"
+        )
 
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=analysis.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=analysis.to_item())
+            )
             for analysis in analyses
         ]
         self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("update_receipt_structure_analysis")
-    def update_receipt_structure_analysis(self, analysis: ReceiptStructureAnalysis):
+    def update_receipt_structure_analysis(
+        self, analysis: ReceiptStructureAnalysis
+    ):
         """Updates an existing ReceiptStructureAnalysis in the database.
 
         Args:
@@ -106,7 +116,9 @@ class _ReceiptStructureAnalysis(
         self._validate_entity(analysis, ReceiptStructureAnalysis, "analysis")
         self._update_entity(
             analysis,
-            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("update_receipt_structure_analyses")
@@ -123,16 +135,22 @@ class _ReceiptStructureAnalysis(
             ValueError: If the analyses are None or not a list.
             Exception: If the analyses cannot be updated in DynamoDB.
         """
-        self._validate_entity_list(analyses, ReceiptStructureAnalysis, "analyses")
+        self._validate_entity_list(
+            analyses, ReceiptStructureAnalysis, "analyses"
+        )
 
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=analysis.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=analysis.to_item())
+            )
             for analysis in analyses
         ]
         self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("delete_receipt_structure_analysis")
-    def delete_receipt_structure_analysis(self, analysis: ReceiptStructureAnalysis):
+    def delete_receipt_structure_analysis(
+        self, analysis: ReceiptStructureAnalysis
+    ):
         """Deletes a single ReceiptStructureAnalysis by IDs.
 
         Args:
@@ -161,7 +179,9 @@ class _ReceiptStructureAnalysis(
             ValueError: If the analyses are None or not a list.
             Exception: If the analyses cannot be deleted from DynamoDB.
         """
-        self._validate_entity_list(analyses, ReceiptStructureAnalysis, "analyses")
+        self._validate_entity_list(
+            analyses, ReceiptStructureAnalysis, "analyses"
+        )
 
         request_items = [
             WriteRequestTypeDef(
@@ -206,15 +226,24 @@ class _ReceiptStructureAnalysis(
         """
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                (f"receipt_id must be an integer, got" f" {type(receipt_id).__name__}")
+                (
+                    f"receipt_id must be an integer, got"
+                    f" {type(receipt_id).__name__}"
+                )
             )
         if not isinstance(image_id, str):
             raise EntityValidationError(
-                (f"image_id must be a string, got" f" {type(image_id).__name__}")
+                (
+                    f"image_id must be a string, got"
+                    f" {type(image_id).__name__}"
+                )
             )
         if version is not None and not isinstance(version, str):
             raise EntityValidationError(
-                ("version must be a string or None, got" f" {type(version).__name__}")
+                (
+                    "version must be a string or None, got"
+                    f" {type(version).__name__}"
+                )
             )
 
         self._validate_image_id(image_id)
@@ -223,7 +252,10 @@ class _ReceiptStructureAnalysis(
             # If version is provided, get the exact item
             result = self._get_entity(
                 primary_key=f"IMAGE#{image_id}",
-                sort_key=(f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE" f"#{version}"),
+                sort_key=(
+                    f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE"
+                    f"#{version}"
+                ),
                 entity_class=ReceiptStructureAnalysis,
                 converter_func=item_to_receipt_structure_analysis,
             )
@@ -238,14 +270,18 @@ class _ReceiptStructureAnalysis(
         # first one
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression=("#pk = :pk AND begins_with(#sk, :sk_prefix)"),
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
             },
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE"},
+                ":sk_prefix": {
+                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE"
+                },
             },
             converter_func=item_to_receipt_structure_analysis,
             limit=1,
@@ -285,7 +321,9 @@ class _ReceiptStructureAnalysis(
         """
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None"
             )
@@ -317,25 +355,35 @@ class _ReceiptStructureAnalysis(
         """
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                (f"receipt_id must be an integer, got" f" {type(receipt_id).__name__}")
+                (
+                    f"receipt_id must be an integer, got"
+                    f" {type(receipt_id).__name__}"
+                )
             )
         if not isinstance(image_id, str):
             raise EntityValidationError(
-                (f"image_id must be a string, got" f" {type(image_id).__name__}")
+                (
+                    f"image_id must be a string, got"
+                    f" {type(image_id).__name__}"
+                )
             )
 
         self._validate_image_id(image_id)
 
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression=("#pk = :pk AND begins_with(#sk, :sk_prefix)"),
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
             },
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#"},
+                ":sk_prefix": {
+                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#STRUCTURE#"
+                },
             },
             converter_func=item_to_receipt_structure_analysis,
         )

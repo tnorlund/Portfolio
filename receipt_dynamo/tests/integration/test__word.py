@@ -138,7 +138,9 @@ class TestWordBasicOperations:
         dynamodb_client.add_word(example_word)
 
         # Act & Assert
-        with pytest.raises(EntityAlreadyExistsError, match="word already exists"):
+        with pytest.raises(
+            EntityAlreadyExistsError, match="word already exists"
+        ):
             dynamodb_client.add_word(example_word)
 
     def test_get_word_success(
@@ -161,7 +163,9 @@ class TestWordBasicOperations:
     def test_get_word_not_found(self, dynamodb_client: DynamoClient) -> None:
         """Test get word raises EntityNotFoundError when not found."""
         with pytest.raises(EntityNotFoundError, match="not found"):
-            dynamodb_client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 999)
+            dynamodb_client.get_word(
+                "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 999
+            )
 
     def test_update_word_success(
         self, dynamodb_client: DynamoClient, example_word: Word
@@ -213,10 +217,14 @@ class TestWordBasicOperations:
                 example_word.word_id,
             )
 
-    def test_delete_word_not_found(self, dynamodb_client: DynamoClient) -> None:
+    def test_delete_word_not_found(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test delete non-existent word raises EntityNotFoundError."""
         with pytest.raises(EntityNotFoundError, match="not found"):
-            dynamodb_client.delete_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 999)
+            dynamodb_client.delete_word(
+                "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 999
+            )
 
 
 # =============================================================================
@@ -283,7 +291,9 @@ class TestWordBatchOperations:
             )
             assert retrieved.text == word.text
 
-    def test_delete_words_from_line(self, dynamodb_client: DynamoClient) -> None:
+    def test_delete_words_from_line(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test deleting all words from a specific line."""
         # Arrange - add words to multiple lines
         line1_words = [
@@ -298,12 +308,16 @@ class TestWordBatchOperations:
         dynamodb_client.add_words(line1_words + line2_words)
 
         # Act - delete only line 1 words
-        dynamodb_client.delete_words_from_line(CORRECT_WORD_PARAMS["image_id"], 1)
+        dynamodb_client.delete_words_from_line(
+            CORRECT_WORD_PARAMS["image_id"], 1
+        )
 
         # Assert - line 1 words deleted, line 2 words remain
         for word in line1_words:
             with pytest.raises(EntityNotFoundError):
-                dynamodb_client.get_word(word.image_id, word.line_id, word.word_id)
+                dynamodb_client.get_word(
+                    word.image_id, word.line_id, word.word_id
+                )
 
         for word in line2_words:
             retrieved = dynamodb_client.get_word(
@@ -321,7 +335,9 @@ class TestWordBatchOperations:
 class TestWordAdvancedOperations:
     """Test advanced word operations."""
 
-    def test_get_words_by_keys_success(self, dynamodb_client: DynamoClient) -> None:
+    def test_get_words_by_keys_success(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test successful retrieval of words by keys."""
         # Arrange
         words = [
@@ -338,10 +354,14 @@ class TestWordAdvancedOperations:
         assert len(retrieved_words) == 2
         assert set(w.word_id for w in retrieved_words) == {3, 4}
 
-    def test_get_words_invalid_keys(self, dynamodb_client: DynamoClient) -> None:
+    def test_get_words_invalid_keys(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test that get_words validates key structure."""
         # Test missing PK
-        with pytest.raises(ValueError, match="Keys must contain 'PK' and 'SK'"):
+        with pytest.raises(
+            ValueError, match="Keys must contain 'PK' and 'SK'"
+        ):
             dynamodb_client.get_words([{"SK": {"S": "LINE#00002#WORD#00003"}}])
 
         # Test wrong PK prefix
@@ -399,7 +419,9 @@ class TestWordListOperations:
         assert set(w.word_id for w in retrieved_words) == {3, 4}
         assert last_key is None
 
-    def test_list_words_with_pagination(self, dynamodb_client: DynamoClient) -> None:
+    def test_list_words_with_pagination(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test listing words with pagination."""
         # Arrange - add 10 words
         words = []
@@ -426,7 +448,9 @@ class TestWordListOperations:
         all_retrieved = page1 + page2
         assert len(all_retrieved) == 10
 
-    def test_list_words_from_line_success(self, dynamodb_client: DynamoClient) -> None:
+    def test_list_words_from_line_success(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test listing words from a specific line."""
         # Arrange - add words to different lines
         line2_words = [
@@ -456,7 +480,9 @@ class TestWordListOperations:
         line2_words.sort(key=lambda x: x.word_id)
         assert retrieved_words == line2_words
 
-    def test_list_words_from_line_empty(self, dynamodb_client: DynamoClient) -> None:
+    def test_list_words_from_line_empty(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test listing words from a line with no words."""
         words = dynamodb_client.list_words_from_line(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 999
@@ -473,7 +499,9 @@ class TestWordListOperations:
 class TestWordValidation:
     """Test validation for word operations."""
 
-    def test_add_word_none_raises_error(self, dynamodb_client: DynamoClient) -> None:
+    def test_add_word_none_raises_error(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test that adding None raises OperationError."""
         with pytest.raises(OperationError, match="word cannot be None"):
             dynamodb_client.add_word(None)  # type: ignore
@@ -482,10 +510,14 @@ class TestWordValidation:
         self, dynamodb_client: DynamoClient
     ) -> None:
         """Test that adding wrong type raises OperationError."""
-        with pytest.raises(OperationError, match="word must be an instance of Word"):
+        with pytest.raises(
+            OperationError, match="word must be an instance of Word"
+        ):
             dynamodb_client.add_word("not-a-word")  # type: ignore
 
-    def test_add_words_none_raises_error(self, dynamodb_client: DynamoClient) -> None:
+    def test_add_words_none_raises_error(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test that adding None list raises OperationError."""
         with pytest.raises(OperationError, match="words cannot be None"):
             dynamodb_client.add_words(None)  # type: ignore
@@ -511,14 +543,18 @@ class TestWordValidation:
         self, dynamodb_client: DynamoClient
     ) -> None:
         """Test that invalid UUID raises OperationError."""
-        with pytest.raises(OperationError, match="uuid must be a valid UUIDv4"):
+        with pytest.raises(
+            OperationError, match="uuid must be a valid UUIDv4"
+        ):
             dynamodb_client.get_word("invalid-uuid", 1, 1)
 
     def test_delete_word_invalid_uuid_raises_error(
         self, dynamodb_client: DynamoClient
     ) -> None:
         """Test that delete with invalid UUID raises OperationError."""
-        with pytest.raises(OperationError, match="uuid must be a valid UUIDv4"):
+        with pytest.raises(
+            OperationError, match="uuid must be a valid UUIDv4"
+        ):
             dynamodb_client.delete_word("invalid-uuid", 1, 1)
 
     def test_update_words_validation_errors(
@@ -612,7 +648,9 @@ class TestWordErrorHandling:
 
         # Act & Assert
         with pytest.raises(expected_exception, match=expected_message):
-            dynamodb_client.get_word("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1)
+            dynamodb_client.get_word(
+                "3f52804b-2fad-4e00-92c8-b593da3a8ed3", 1, 1
+            )
 
     @pytest.mark.parametrize(
         "error_code,expected_exception,expected_message",
@@ -665,7 +703,9 @@ class TestWordErrorHandling:
             ),
         )
 
-        with pytest.raises(EntityNotFoundError, match="one or more words not found"):
+        with pytest.raises(
+            EntityNotFoundError, match="one or more words not found"
+        ):
             dynamodb_client.update_words([example_word])
 
 
@@ -678,7 +718,9 @@ class TestWordErrorHandling:
 class TestWordSpecialCases:
     """Test special cases and edge cases for word operations."""
 
-    def test_word_with_special_characters(self, dynamodb_client: DynamoClient) -> None:
+    def test_word_with_special_characters(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test handling words with special characters."""
         # Arrange
         special_texts = [
@@ -705,7 +747,9 @@ class TestWordSpecialCases:
         retrieved_texts = {w.text for w in retrieved}
         assert retrieved_texts == set(special_texts)
 
-    def test_word_with_unicode_text(self, dynamodb_client: DynamoClient) -> None:
+    def test_word_with_unicode_text(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test handling words with unicode characters."""
         # Arrange
         unicode_texts = ["café", "naïve", "Zürich", "北京", "🌟", "αβγ"]
@@ -780,7 +824,9 @@ class TestWordSpecialCases:
         with pytest.raises(EntityNotFoundError):
             dynamodb_client.update_word(example_word)
 
-    def test_empty_and_long_text_values(self, dynamodb_client: DynamoClient) -> None:
+    def test_empty_and_long_text_values(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test words with empty and very long text values."""
         # Empty text (if allowed by entity validation)
         word_params = CORRECT_WORD_PARAMS.copy()

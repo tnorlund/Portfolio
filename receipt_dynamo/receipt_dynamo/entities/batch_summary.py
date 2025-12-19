@@ -38,7 +38,9 @@ class BatchSummary:
                 ) from e
         elif not isinstance(self.submitted_at, datetime):
             raise ValueError(
-                format_type_error("submitted_at", self.submitted_at, (datetime, str))
+                format_type_error(
+                    "submitted_at", self.submitted_at, (datetime, str)
+                )
             )
 
         self.status = normalize_enum(self.status, BatchStatus)
@@ -60,7 +62,9 @@ class BatchSummary:
     def gsi1_key(self) -> Dict[str, Any]:
         return {
             "GSI1PK": {"S": f"STATUS#{self.status}"},
-            "GSI1SK": {"S": f"BATCH_TYPE#{self.batch_type}#BATCH_ID#{self.batch_id}"},
+            "GSI1SK": {
+                "S": f"BATCH_TYPE#{self.batch_type}#BATCH_ID#{self.batch_id}"
+            },
         }
 
     def to_item(self) -> Dict[str, Any]:

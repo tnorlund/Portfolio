@@ -47,7 +47,9 @@ class _ReceiptLineItemAnalysis(
     """
 
     @handle_dynamodb_errors("add_receipt_line_item_analysis")
-    def add_receipt_line_item_analysis(self, analysis: ReceiptLineItemAnalysis):
+    def add_receipt_line_item_analysis(
+        self, analysis: ReceiptLineItemAnalysis
+    ):
         """Adds a ReceiptLineItemAnalysis to DynamoDB.
 
         Args:
@@ -61,14 +63,18 @@ class _ReceiptLineItemAnalysis(
             Exception: If the analysis cannot be added to DynamoDB.
         """
         self._validate_entity(analysis, ReceiptLineItemAnalysis, "analysis")
-        condition_expression = "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+        condition_expression = (
+            "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+        )
         self._add_entity(
             analysis,
             condition_expression=condition_expression,
         )
 
     @handle_dynamodb_errors("add_receipt_line_item_analyses")
-    def add_receipt_line_item_analyses(self, analyses: list[ReceiptLineItemAnalysis]):
+    def add_receipt_line_item_analyses(
+        self, analyses: list[ReceiptLineItemAnalysis]
+    ):
         """Adds multiple ReceiptLineItemAnalyses to DynamoDB in batches.
 
         Args:
@@ -79,16 +85,22 @@ class _ReceiptLineItemAnalysis(
             ValueError: If the analyses are None or not a list.
             Exception: If the analyses cannot be added to DynamoDB.
         """
-        self._validate_entity_list(analyses, ReceiptLineItemAnalysis, "analyses")
+        self._validate_entity_list(
+            analyses, ReceiptLineItemAnalysis, "analyses"
+        )
 
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=analysis.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=analysis.to_item())
+            )
             for analysis in analyses
         ]
         self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("update_receipt_line_item_analysis")
-    def update_receipt_line_item_analysis(self, analysis: ReceiptLineItemAnalysis):
+    def update_receipt_line_item_analysis(
+        self, analysis: ReceiptLineItemAnalysis
+    ):
         """Updates an existing ReceiptLineItemAnalysis in the database.
 
         Args:
@@ -122,16 +134,22 @@ class _ReceiptLineItemAnalysis(
             ValueError: If the analyses are None or not a list.
             Exception: If the analyses cannot be updated in DynamoDB.
         """
-        self._validate_entity_list(analyses, ReceiptLineItemAnalysis, "analyses")
+        self._validate_entity_list(
+            analyses, ReceiptLineItemAnalysis, "analyses"
+        )
 
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=analysis.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=analysis.to_item())
+            )
             for analysis in analyses
         ]
         self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("delete_receipt_line_item_analysis")
-    def delete_receipt_line_item_analysis(self, analysis: ReceiptLineItemAnalysis):
+    def delete_receipt_line_item_analysis(
+        self, analysis: ReceiptLineItemAnalysis
+    ):
         """Deletes a single ReceiptLineItemAnalysis.
 
         Args:
@@ -159,10 +177,14 @@ class _ReceiptLineItemAnalysis(
             ValueError: If the analyses are invalid.
             Exception: If the analyses cannot be deleted from DynamoDB.
         """
-        self._validate_entity_list(analyses, ReceiptLineItemAnalysis, "analyses")
+        self._validate_entity_list(
+            analyses, ReceiptLineItemAnalysis, "analyses"
+        )
 
         request_items = [
-            WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=analysis.key))
+            WriteRequestTypeDef(
+                DeleteRequest=DeleteRequestTypeDef(Key=analysis.key)
+            )
             for analysis in analyses
         ]
         self._batch_write_with_retry(request_items)
@@ -192,7 +214,8 @@ class _ReceiptLineItemAnalysis(
             )
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                "receipt_id must be an integer, got" f" {type(receipt_id).__name__}"
+                "receipt_id must be an integer, got"
+                f" {type(receipt_id).__name__}"
             )
         self._validate_image_id(image_id)
 
@@ -233,7 +256,9 @@ class _ReceiptLineItemAnalysis(
         """
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None.")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
@@ -269,7 +294,9 @@ class _ReceiptLineItemAnalysis(
 
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression=("#pk = :pk AND begins_with(#sk, :sk_prefix)"),
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={"#pk": "PK", "#sk": "SK"},
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},

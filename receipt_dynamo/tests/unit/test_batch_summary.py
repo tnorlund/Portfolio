@@ -195,7 +195,9 @@ def test_batch_summary_invalid_dynamodb_format():
         "result_file_id": {"S": "file-456"},
         "receipt_refs": {"L": []},
     }
-    with pytest.raises(ValueError, match="Error converting item to BatchSummary"):
+    with pytest.raises(
+        ValueError, match="Error converting item to BatchSummary"
+    ):
         item_to_batch_summary(item)
 
 

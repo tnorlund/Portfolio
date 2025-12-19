@@ -107,7 +107,9 @@ FIXED_UUIDS = [
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 # pylint: disable=too-many-arguments
 def test_add_receipt_letter_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -134,7 +136,9 @@ def test_add_receipt_letter_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 # pylint: disable=too-many-arguments
 def test_update_receipt_letter_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -162,7 +166,9 @@ def test_update_receipt_letter_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 # pylint: disable=too-many-arguments
 def test_delete_receipt_letter_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -196,7 +202,9 @@ def test_delete_receipt_letter_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 # pylint: disable=too-many-arguments
 def test_get_receipt_letter_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -234,7 +242,9 @@ def test_get_receipt_letter_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 # pylint: disable=too-many-arguments
 def test_add_receipt_letters_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -252,7 +262,9 @@ def test_add_receipt_letters_client_errors(
     mock_transact = mocker.patch.object(
         client._client,
         "transact_write_items",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "TransactWriteItems"),
+        side_effect=ClientError(
+            {"Error": {"Code": error_code}}, "TransactWriteItems"
+        ),
     )
 
     with pytest.raises(expected_exception, match=error_match):
@@ -282,7 +294,9 @@ def test_update_receipt_letters_client_errors(
     mock_transact = mocker.patch.object(
         client._client,
         "transact_write_items",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "TransactWriteItems"),
+        side_effect=ClientError(
+            {"Error": {"Code": error_code}}, "TransactWriteItems"
+        ),
     )
 
     with pytest.raises(expected_exception, match=error_match):
@@ -312,7 +326,9 @@ def test_delete_receipt_letters_client_errors(
     mock_transact = mocker.patch.object(
         client._client,
         "transact_write_items",
-        side_effect=ClientError({"Error": {"Code": error_code}}, "TransactWriteItems"),
+        side_effect=ClientError(
+            {"Error": {"Code": error_code}}, "TransactWriteItems"
+        ),
     )
 
     with pytest.raises(expected_exception, match=error_match):
@@ -551,7 +567,9 @@ def test_get_receipt_letter_parameter_validation(
     client = DynamoClient(dynamodb_table)
 
     with pytest.raises(expected_error, match=error_match):
-        client.get_receipt_letter(receipt_id, image_id, line_id, word_id, letter_id)
+        client.get_receipt_letter(
+            receipt_id, image_id, line_id, word_id, letter_id
+        )
 
 
 # -------------------------------------------------------------------
@@ -663,7 +681,9 @@ def test_list_receipt_letters_from_word_validation(
     client = DynamoClient(dynamodb_table)
 
     with pytest.raises(expected_error, match=error_match):
-        client.list_receipt_letters_from_word(receipt_id, image_id, line_id, word_id)
+        client.list_receipt_letters_from_word(
+            receipt_id, image_id, line_id, word_id
+        )
 
 
 # -------------------------------------------------------------------
@@ -672,7 +692,9 @@ def test_list_receipt_letters_from_word_validation(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 # pylint: disable=too-many-arguments
 def test_list_receipt_letters_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -698,7 +720,9 @@ def test_list_receipt_letters_client_errors(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 # pylint: disable=too-many-arguments
 def test_list_receipt_letters_from_word_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
@@ -747,7 +771,9 @@ def test_add_receipt_letter_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(EntityAlreadyExistsError, match="receipt_letter already exists"):
+    with pytest.raises(
+        EntityAlreadyExistsError, match="receipt_letter already exists"
+    ):
         client.add_receipt_letter(sample_receipt_letter)
 
     mock_put.assert_called_once()
@@ -906,7 +932,9 @@ def test_delete_receipt_letter_success(
     )
 
     # Verify
-    with pytest.raises(EntityNotFoundError, match="ReceiptLetter with.*not found"):
+    with pytest.raises(
+        EntityNotFoundError, match="ReceiptLetter with.*not found"
+    ):
         client.get_receipt_letter(
             sample_receipt_letter.receipt_id,
             sample_receipt_letter.image_id,

@@ -44,7 +44,9 @@ except ModuleNotFoundError:
         """Placeholder for ResilientDynamoClient when boto3 is unavailable."""
 
         def __init__(self, *_, **__):
-            raise ModuleNotFoundError("boto3 is required for ResilientDynamoClient")
+            raise ModuleNotFoundError(
+                "boto3 is required for ResilientDynamoClient"
+            )
 
 
 # Import data operations - requires boto3

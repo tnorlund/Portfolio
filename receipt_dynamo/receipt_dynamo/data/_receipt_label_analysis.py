@@ -60,7 +60,9 @@ class _ReceiptLabelAnalysis(
     """
 
     @handle_dynamodb_errors("add_receipt_label_analysis")
-    def add_receipt_label_analysis(self, receipt_label_analysis: ReceiptLabelAnalysis):
+    def add_receipt_label_analysis(
+        self, receipt_label_analysis: ReceiptLabelAnalysis
+    ):
         """Adds a receipt label analysis to the database
 
         Args:
@@ -99,7 +101,9 @@ class _ReceiptLabelAnalysis(
         )
 
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=analysis.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=analysis.to_item())
+            )
             for analysis in receipt_label_analyses
         ]
         self._batch_write_with_retry(request_items)
@@ -224,7 +228,8 @@ class _ReceiptLabelAnalysis(
 
         if version is not None and not isinstance(version, str):
             raise EntityValidationError(
-                "version must be a string or None, got " f"{type(version).__name__}"
+                "version must be a string or None, got "
+                f"{type(version).__name__}"
             )
 
         if version:
@@ -309,7 +314,9 @@ class _ReceiptLabelAnalysis(
         # Cannot use QueryByParentMixin here due to the need for filtering.
         results, _ = self._query_entities(
             index_name=None,
-            key_condition_expression=("#pk = :pk AND begins_with(#sk, :sk_prefix)"),
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -356,13 +363,17 @@ class _ReceiptLabelAnalysis(
 
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError(
+                    "last_evaluated_key must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         label_analyses = []
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
-            "KeyConditionExpression": ("#pk = :pk AND begins_with(#sk, :sk_prefix)"),
+            "KeyConditionExpression": (
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             "ExpressionAttributeNames": {
                 "#pk": "PK",
                 "#sk": "SK",
@@ -385,16 +396,26 @@ class _ReceiptLabelAnalysis(
 
         response = self._client.query(**query_params)
         label_analyses.extend(
-            [item_to_receipt_label_analysis(item) for item in response["Items"]]
+            [
+                item_to_receipt_label_analysis(item)
+                for item in response["Items"]
+            ]
         )
 
         if limit is None:
             # If no limit is provided, paginate until all items are retrieved
-            while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+            while (
+                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
+            ):
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
                 response = self._client.query(**query_params)
                 label_analyses.extend(
-                    [item_to_receipt_label_analysis(item) for item in response["Items"]]
+                    [
+                        item_to_receipt_label_analysis(item)
+                        for item in response["Items"]
+                    ]
                 )
             last_evaluated_key_result = None
         else:
@@ -429,9 +450,13 @@ class _ReceiptLabelAnalysis(
         self._validate_image_id(image_id)
 
         if not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be a positive integer")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
         if receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be a positive integer")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
 
         if limit is not None:
             if not isinstance(limit, int):
@@ -441,20 +466,26 @@ class _ReceiptLabelAnalysis(
 
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("last_evaluated_key must be a dictionary")
+                raise EntityValidationError(
+                    "last_evaluated_key must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         label_analyses = []
         query_params: QueryInputTypeDef = {
             "TableName": self.table_name,
-            "KeyConditionExpression": ("#pk = :pk AND begins_with(#sk, :sk_prefix)"),
+            "KeyConditionExpression": (
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             "ExpressionAttributeNames": {
                 "#pk": "PK",
                 "#sk": "SK",
             },
             "ExpressionAttributeValues": {
                 ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"},
+                ":sk_prefix": {
+                    "S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LABELS"
+                },
             },
         }
 
@@ -466,16 +497,26 @@ class _ReceiptLabelAnalysis(
 
         response = self._client.query(**query_params)
         label_analyses.extend(
-            [item_to_receipt_label_analysis(item) for item in response["Items"]]
+            [
+                item_to_receipt_label_analysis(item)
+                for item in response["Items"]
+            ]
         )
 
         if limit is None:
             # If no limit is provided, paginate until all items are retrieved
-            while "LastEvaluatedKey" in response and response["LastEvaluatedKey"]:
-                query_params["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+            while (
+                "LastEvaluatedKey" in response and response["LastEvaluatedKey"]
+            ):
+                query_params["ExclusiveStartKey"] = response[
+                    "LastEvaluatedKey"
+                ]
                 response = self._client.query(**query_params)
                 label_analyses.extend(
-                    [item_to_receipt_label_analysis(item) for item in response["Items"]]
+                    [
+                        item_to_receipt_label_analysis(item)
+                        for item in response["Items"]
+                    ]
                 )
             last_evaluated_key_result = None
         else:

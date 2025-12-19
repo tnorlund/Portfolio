@@ -92,7 +92,9 @@ class Word(
         self._validate_common_geometry_entity_fields()
 
         if self.extracted_data is not None:
-            assert_type("extracted_data", self.extracted_data, dict, ValueError)
+            assert_type(
+                "extracted_data", self.extracted_data, dict, ValueError
+            )
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -114,7 +116,9 @@ class Word(
         """
         return {
             "GSI2PK": {"S": f"IMAGE#{self.image_id}"},
-            "GSI2SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},
+            "GSI2SK": {
+                "S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
+            },
         }
 
     def to_item(self) -> Dict[str, Any]:
@@ -322,7 +326,11 @@ class Word(
             self.image_id,
             self.line_id,
             self.word_id,
-            (tuple(self.extracted_data.items()) if self.extracted_data else None),
+            (
+                tuple(self.extracted_data.items())
+                if self.extracted_data
+                else None
+            ),
         )
 
     def __hash__(self) -> int:
@@ -389,7 +397,9 @@ def item_to_word(item: Dict[str, Any]) -> Word:
     }
 
     # Handle optional extracted_data field
-    if "extracted_data" in item and not item.get("extracted_data", {}).get("NULL"):
+    if "extracted_data" in item and not item.get("extracted_data", {}).get(
+        "NULL"
+    ):
         custom_extractors["extracted_data"] = (
             EntityFactory.extract_optional_extracted_data
         )

@@ -208,7 +208,9 @@ def test_letter_init_invalid_text():
             angle_radians=0.0,
             confidence=0.5,
         )
-    with pytest.raises(ValueError, match=r"text must be exactly one character"):
+    with pytest.raises(
+        ValueError, match=r"text must be exactly one character"
+    ):
         Letter(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=1,
@@ -377,7 +379,9 @@ def test_letter_init_invalid_bottom_left(bad_point):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("bad_confidence", [-0.1, 0.0, 1.0001, 2, "high", None])
+@pytest.mark.parametrize(
+    "bad_confidence", [-0.1, 0.0, 1.0001, 2, "high", None]
+)
 def test_letter_init_invalid_confidence(bad_confidence):
     """Test constructor fails when confidence is not within (0, 1]."""
     with pytest.raises(ValueError):
@@ -401,7 +405,9 @@ def test_letter_init_invalid_confidence(bad_confidence):
 @pytest.mark.unit
 def test_letter_init_invalid_angles():
     """Constructor fails when angle_degrees and angle_radians are not valid."""
-    with pytest.raises(ValueError, match="angle_degrees must be float or int, got"):
+    with pytest.raises(
+        ValueError, match="angle_degrees must be float or int, got"
+    ):
         Letter(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=1,
@@ -417,7 +423,9 @@ def test_letter_init_invalid_angles():
             angle_radians=0.0,
             confidence=0.5,
         )
-    with pytest.raises(ValueError, match="angle_radians must be float or int, got"):
+    with pytest.raises(
+        ValueError, match="angle_radians must be float or int, got"
+    ):
         Letter(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             line_id=1,
@@ -546,8 +554,12 @@ def test_letter_translate(dx, dy):
     assert letter.top_left["x"] == pytest.approx(orig_top_left["x"] + dx)
     assert letter.top_left["y"] == pytest.approx(orig_top_left["y"] + dy)
 
-    assert letter.bottom_right["x"] == pytest.approx(orig_bottom_right["x"] + dx)
-    assert letter.bottom_right["y"] == pytest.approx(orig_bottom_right["y"] + dy)
+    assert letter.bottom_right["x"] == pytest.approx(
+        orig_bottom_right["x"] + dx
+    )
+    assert letter.bottom_right["y"] == pytest.approx(
+        orig_bottom_right["y"] + dy
+    )
 
     assert letter.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] + dx)
     assert letter.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] + dy)
@@ -589,8 +601,12 @@ def test_letter_scale(sx, sy):
     assert letter.top_right["y"] == pytest.approx(orig_top_right["y"] * sy)
     assert letter.top_left["x"] == pytest.approx(orig_top_left["x"] * sx)
     assert letter.top_left["y"] == pytest.approx(orig_top_left["y"] * sy)
-    assert letter.bottom_right["x"] == pytest.approx(orig_bottom_right["x"] * sx)
-    assert letter.bottom_right["y"] == pytest.approx(orig_bottom_right["y"] * sy)
+    assert letter.bottom_right["x"] == pytest.approx(
+        orig_bottom_right["x"] * sx
+    )
+    assert letter.bottom_right["y"] == pytest.approx(
+        orig_bottom_right["y"] * sy
+    )
     assert letter.bottom_left["x"] == pytest.approx(orig_bottom_left["x"] * sx)
     assert letter.bottom_left["y"] == pytest.approx(orig_bottom_left["y"] * sy)
 
@@ -598,7 +614,9 @@ def test_letter_scale(sx, sy):
     assert letter.bounding_box["x"] == pytest.approx(orig_bb["x"] * sx)
     assert letter.bounding_box["y"] == pytest.approx(orig_bb["y"] * sy)
     assert letter.bounding_box["width"] == pytest.approx(orig_bb["width"] * sx)
-    assert letter.bounding_box["height"] == pytest.approx(orig_bb["height"] * sy)
+    assert letter.bounding_box["height"] == pytest.approx(
+        orig_bb["height"] * sy
+    )
 
     # Angles should not change
     assert letter.angle_degrees == 0.0
@@ -690,8 +708,12 @@ def test_letter_rotate_limited_range(angle, use_radians, should_raise):
 
         # Verify the recalculated bounding box matches the expected bounding
         # box.
-        assert letter.bounding_box["x"] == pytest.approx(expected_bb["x"], rel=1e-6)
-        assert letter.bounding_box["y"] == pytest.approx(expected_bb["y"], rel=1e-6)
+        assert letter.bounding_box["x"] == pytest.approx(
+            expected_bb["x"], rel=1e-6
+        )
+        assert letter.bounding_box["y"] == pytest.approx(
+            expected_bb["y"], rel=1e-6
+        )
         assert letter.bounding_box["width"] == pytest.approx(
             expected_bb["width"], rel=1e-6
         )
@@ -711,12 +733,18 @@ def test_letter_rotate_limited_range(angle, use_radians, should_raise):
         # Verify that the angle accumulators have been updated correctly.
         if use_radians:
             expected_angle_radians = orig_angle_radians + angle
-            expected_angle_degrees = orig_angle_degrees + angle * 180.0 / math.pi
+            expected_angle_degrees = (
+                orig_angle_degrees + angle * 180.0 / math.pi
+            )
         else:
             expected_angle_degrees = orig_angle_degrees + angle
             expected_angle_radians = orig_angle_radians + math.radians(angle)
-        assert letter.angle_radians == pytest.approx(expected_angle_radians, abs=1e-9)
-        assert letter.angle_degrees == pytest.approx(expected_angle_degrees, abs=1e-9)
+        assert letter.angle_radians == pytest.approx(
+            expected_angle_radians, abs=1e-9
+        )
+        assert letter.angle_degrees == pytest.approx(
+            expected_angle_degrees, abs=1e-9
+        )
 
 
 @pytest.mark.unit
@@ -835,7 +863,9 @@ def test_letter_shear(shx, shy, pivot_x, pivot_y, expected_corners):
     assert letter.bounding_box["x"] == pytest.approx(expected_bb["x"])
     assert letter.bounding_box["y"] == pytest.approx(expected_bb["y"])
     assert letter.bounding_box["width"] == pytest.approx(expected_bb["width"])
-    assert letter.bounding_box["height"] == pytest.approx(expected_bb["height"])
+    assert letter.bounding_box["height"] == pytest.approx(
+        expected_bb["height"]
+    )
 
 
 @pytest.mark.unit
@@ -898,14 +928,20 @@ def test_letter_warp_affine():
     assert letter.top_right["y"] == pytest.approx(expected_top_right["y"])
     assert letter.bottom_left["x"] == pytest.approx(expected_bottom_left["x"])
     assert letter.bottom_left["y"] == pytest.approx(expected_bottom_left["y"])
-    assert letter.bottom_right["x"] == pytest.approx(expected_bottom_right["x"])
-    assert letter.bottom_right["y"] == pytest.approx(expected_bottom_right["y"])
+    assert letter.bottom_right["x"] == pytest.approx(
+        expected_bottom_right["x"]
+    )
+    assert letter.bottom_right["y"] == pytest.approx(
+        expected_bottom_right["y"]
+    )
 
     # Verify that the bounding_box has been recalculated correctly.
     assert letter.bounding_box["x"] == pytest.approx(expected_bb["x"])
     assert letter.bounding_box["y"] == pytest.approx(expected_bb["y"])
     assert letter.bounding_box["width"] == pytest.approx(expected_bb["width"])
-    assert letter.bounding_box["height"] == pytest.approx(expected_bb["height"])
+    assert letter.bounding_box["height"] == pytest.approx(
+        expected_bb["height"]
+    )
 
     # Verify that the angle has been updated correctly.
     # Here we expect 0 radians and 0 degrees since the top edge remains
@@ -978,20 +1014,40 @@ def test_letter_warp_affine_normalized_forward(example_letter):
     )
 
     # Verify that each corner is updated correctly.
-    assert example_letter.top_left["x"] == pytest.approx(expected_top_left["x"])
-    assert example_letter.top_left["y"] == pytest.approx(expected_top_left["y"])
-    assert example_letter.top_right["x"] == pytest.approx(expected_top_right["x"])
-    assert example_letter.top_right["y"] == pytest.approx(expected_top_right["y"])
-    assert example_letter.bottom_left["x"] == pytest.approx(expected_bottom_left["x"])
-    assert example_letter.bottom_left["y"] == pytest.approx(expected_bottom_left["y"])
-    assert example_letter.bottom_right["x"] == pytest.approx(expected_bottom_right["x"])
-    assert example_letter.bottom_right["y"] == pytest.approx(expected_bottom_right["y"])
+    assert example_letter.top_left["x"] == pytest.approx(
+        expected_top_left["x"]
+    )
+    assert example_letter.top_left["y"] == pytest.approx(
+        expected_top_left["y"]
+    )
+    assert example_letter.top_right["x"] == pytest.approx(
+        expected_top_right["x"]
+    )
+    assert example_letter.top_right["y"] == pytest.approx(
+        expected_top_right["y"]
+    )
+    assert example_letter.bottom_left["x"] == pytest.approx(
+        expected_bottom_left["x"]
+    )
+    assert example_letter.bottom_left["y"] == pytest.approx(
+        expected_bottom_left["y"]
+    )
+    assert example_letter.bottom_right["x"] == pytest.approx(
+        expected_bottom_right["x"]
+    )
+    assert example_letter.bottom_right["y"] == pytest.approx(
+        expected_bottom_right["y"]
+    )
 
     # Verify that the bounding box was recalculated correctly.
     assert example_letter.bounding_box["x"] == pytest.approx(expected_bb["x"])
     assert example_letter.bounding_box["y"] == pytest.approx(expected_bb["y"])
-    assert example_letter.bounding_box["width"] == pytest.approx(expected_bb["width"])
-    assert example_letter.bounding_box["height"] == pytest.approx(expected_bb["height"])
+    assert example_letter.bounding_box["width"] == pytest.approx(
+        expected_bb["width"]
+    )
+    assert example_letter.bounding_box["height"] == pytest.approx(
+        expected_bb["height"]
+    )
 
     # Verify that the angles remain unchanged.
     assert example_letter.angle_degrees == pytest.approx(0.0)
@@ -1063,28 +1119,52 @@ def test_letter_rotate_90_ccw_in_place(example_letter):
     expected_bottom_left = {"x": 22.0, "y": -9.0}
 
     # Verify the corners.
-    assert example_letter.top_left["x"] == pytest.approx(expected_top_left["x"])
-    assert example_letter.top_left["y"] == pytest.approx(expected_top_left["y"])
-    assert example_letter.top_right["x"] == pytest.approx(expected_top_right["x"])
-    assert example_letter.top_right["y"] == pytest.approx(expected_top_right["y"])
-    assert example_letter.bottom_right["x"] == pytest.approx(expected_bottom_right["x"])
-    assert example_letter.bottom_right["y"] == pytest.approx(expected_bottom_right["y"])
-    assert example_letter.bottom_left["x"] == pytest.approx(expected_bottom_left["x"])
-    assert example_letter.bottom_left["y"] == pytest.approx(expected_bottom_left["y"])
+    assert example_letter.top_left["x"] == pytest.approx(
+        expected_top_left["x"]
+    )
+    assert example_letter.top_left["y"] == pytest.approx(
+        expected_top_left["y"]
+    )
+    assert example_letter.top_right["x"] == pytest.approx(
+        expected_top_right["x"]
+    )
+    assert example_letter.top_right["y"] == pytest.approx(
+        expected_top_right["y"]
+    )
+    assert example_letter.bottom_right["x"] == pytest.approx(
+        expected_bottom_right["x"]
+    )
+    assert example_letter.bottom_right["y"] == pytest.approx(
+        expected_bottom_right["y"]
+    )
+    assert example_letter.bottom_left["x"] == pytest.approx(
+        expected_bottom_left["x"]
+    )
+    assert example_letter.bottom_left["y"] == pytest.approx(
+        expected_bottom_left["y"]
+    )
 
     # Expected bounding box.
     expected_bb = {"x": 20.0, "y": -14.0, "width": 2.0, "height": 5.0}
     assert example_letter.bounding_box["x"] == pytest.approx(expected_bb["x"])
     assert example_letter.bounding_box["y"] == pytest.approx(expected_bb["y"])
-    assert example_letter.bounding_box["width"] == pytest.approx(expected_bb["width"])
-    assert example_letter.bounding_box["height"] == pytest.approx(expected_bb["height"])
+    assert example_letter.bounding_box["width"] == pytest.approx(
+        expected_bb["width"]
+    )
+    assert example_letter.bounding_box["height"] == pytest.approx(
+        expected_bb["height"]
+    )
 
     # Expected angles after rotation.
     expected_angle_degrees = 91.0
     expected_angle_radians = 5.0 + math.pi / 2
 
-    assert example_letter.angle_degrees == pytest.approx(expected_angle_degrees)
-    assert example_letter.angle_radians == pytest.approx(expected_angle_radians)
+    assert example_letter.angle_degrees == pytest.approx(
+        expected_angle_degrees
+    )
+    assert example_letter.angle_radians == pytest.approx(
+        expected_angle_radians
+    )
 
 
 @pytest.mark.unit

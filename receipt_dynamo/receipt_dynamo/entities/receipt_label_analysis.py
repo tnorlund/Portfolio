@@ -61,7 +61,9 @@ class ReceiptLabelAnalysis:
         elif isinstance(self.timestamp_added, str):
             pass  # Already a string, no conversion needed
         else:
-            raise ValueError("timestamp_added must be a datetime object or a string")
+            raise ValueError(
+                "timestamp_added must be a datetime object or a string"
+            )
 
         # Initialize default metadata if not provided
         if self.metadata is None:
@@ -117,7 +119,9 @@ class ReceiptLabelAnalysis:
         """
         return {
             "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
+            "GSI2SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
         }
 
     def to_item(self) -> Dict[str, Any]:
@@ -157,7 +161,9 @@ class ReceiptLabelAnalysis:
             "metadata": {"S": json.dumps(self.metadata)},
         }
 
-    def _convert_bounding_box(self, bounding_box: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_bounding_box(
+        self, bounding_box: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Converts a bounding box dictionary to DynamoDB format.
 
         Args:
@@ -275,15 +281,30 @@ def item_to_receipt_label_analysis(
                     "label_type" in label_item["M"]
                     and "S" in label_item["M"]["label_type"]
                 ):
-                    label_dict["label_type"] = label_item["M"]["label_type"]["S"]
+                    label_dict["label_type"] = label_item["M"]["label_type"][
+                        "S"
+                    ]
 
-                if "line_id" in label_item["M"] and "N" in label_item["M"]["line_id"]:
-                    label_dict["line_id"] = int(label_item["M"]["line_id"]["N"])
+                if (
+                    "line_id" in label_item["M"]
+                    and "N" in label_item["M"]["line_id"]
+                ):
+                    label_dict["line_id"] = int(
+                        label_item["M"]["line_id"]["N"]
+                    )
 
-                if "word_id" in label_item["M"] and "N" in label_item["M"]["word_id"]:
-                    label_dict["word_id"] = int(label_item["M"]["word_id"]["N"])
+                if (
+                    "word_id" in label_item["M"]
+                    and "N" in label_item["M"]["word_id"]
+                ):
+                    label_dict["word_id"] = int(
+                        label_item["M"]["word_id"]["N"]
+                    )
 
-                if "text" in label_item["M"] and "S" in label_item["M"]["text"]:
+                if (
+                    "text" in label_item["M"]
+                    and "S" in label_item["M"]["text"]
+                ):
                     label_dict["text"] = label_item["M"]["text"]["S"]
 
                 if (
@@ -312,12 +333,16 @@ def item_to_receipt_label_analysis(
                                 "x" in bbox_item[corner]["M"]
                                 and "N" in bbox_item[corner]["M"]["x"]
                             ):
-                                point["x"] = float(bbox_item[corner]["M"]["x"]["N"])
+                                point["x"] = float(
+                                    bbox_item[corner]["M"]["x"]["N"]
+                                )
                             if (
                                 "y" in bbox_item[corner]["M"]
                                 and "N" in bbox_item[corner]["M"]["y"]
                             ):
-                                point["y"] = float(bbox_item[corner]["M"]["y"]["N"])
+                                point["y"] = float(
+                                    bbox_item[corner]["M"]["y"]["N"]
+                                )
 
                             if point:
                                 bbox[corner] = point
@@ -336,7 +361,9 @@ def item_to_receipt_label_analysis(
 
     # Extract version
     version = (
-        item["version"]["S"] if "version" in item and "S" in item["version"] else "1.0"
+        item["version"]["S"]
+        if "version" in item and "S" in item["version"]
+        else "1.0"
     )
 
     # Extract overall_reasoning

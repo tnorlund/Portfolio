@@ -89,3 +89,4 @@ class TestPlacesConfig:
         config2 = get_config()
 
         assert config1 is config2
+

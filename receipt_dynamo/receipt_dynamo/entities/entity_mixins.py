@@ -171,14 +171,18 @@ class SerializationMixin:
         if isinstance(value, dict):
             if not value:
                 return {"M": {}}
-            return {"M": {k: self._serialize_value(v) for k, v in value.items()}}
+            return {
+                "M": {k: self._serialize_value(v) for k, v in value.items()}
+            }
         if isinstance(value, set):
             if not value:
                 return {"L": []}
             # Convert to sorted list for consistency
             if all(isinstance(item, str) for item in value):
                 return {"SS": sorted(value)}
-            return {"L": [self._serialize_value(item) for item in sorted(value)]}
+            return {
+                "L": [self._serialize_value(item) for item in sorted(value)]
+            }
         # Fallback to string representation
         return {"S": str(value)}
 
@@ -218,7 +222,8 @@ class SerializationMixin:
             }
         if "L" in dynamo_value:
             return [
-                SerializationMixin._dynamo_to_python(item) for item in dynamo_value["L"]
+                SerializationMixin._dynamo_to_python(item)
+                for item in dynamo_value["L"]
             ]
         if "SS" in dynamo_value:
             return dynamo_value["SS"]
@@ -907,7 +912,8 @@ class GeometryMixin:
             # Check range: -90 to 90 degrees
             if angle < -90 or angle > 90:
                 raise ValueError(
-                    f"Angle {angle} degrees is outside the allowed range " f"[-90, 90]"
+                    f"Angle {angle} degrees is outside the allowed range "
+                    f"[-90, 90]"
                 )
             theta = math.radians(angle)
 
@@ -1084,7 +1090,9 @@ class GeometryMixin:
         # Calculate the scaled offsets based on bounding box and image
         # dimensions
         x_offset = c * (self.bounding_box["width"] / (src_width * dst_width))
-        y_offset = f * (self.bounding_box["height"] / (src_height * dst_height))
+        y_offset = f * (
+            self.bounding_box["height"] / (src_height * dst_height)
+        )
 
         # Apply the transformation to all corners
         self.top_left["x"] += x_offset
@@ -1100,7 +1108,9 @@ class GeometryMixin:
         self.bounding_box["x"] += x_offset
         self.bounding_box["y"] += y_offset
 
-    def rotate_90_ccw_in_place(self, old_width: float, old_height: float) -> None:
+    def rotate_90_ccw_in_place(
+        self, old_width: float, old_height: float
+    ) -> None:
         """
         Rotates the entity 90 degrees counter-clockwise in place.
 
@@ -1301,7 +1311,8 @@ class GeometryMixin:
             if abs(det) < 1e-12:
                 # Degenerate or singular.
                 raise ValueError(
-                    "Inverse perspective transform is singular for this " "corner."
+                    "Inverse perspective transform is singular for this "
+                    "corner."
                 )
 
             x_old_px = (b1 * a22 - b2 * a12) / det

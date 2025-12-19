@@ -184,7 +184,8 @@ class TestCompactionLockOperations:
         expired_lock = CompactionLock(
             lock_id=example_compaction_lock.lock_id,
             owner=str(uuid4()),  # Different owner
-            expires=datetime.now(timezone.utc) - timedelta(minutes=1),  # Expired
+            expires=datetime.now(timezone.utc)
+            - timedelta(minutes=1),  # Expired
             collection=example_compaction_lock.collection,
         )
         client.add_compaction_lock(expired_lock)
@@ -224,8 +225,12 @@ class TestCompactionLockOperations:
         client.add_compaction_lock(words_lock)
 
         # Both should be retrievable independently
-        lines_result = client.get_compaction_lock(lock_id, ChromaDBCollection.LINES)
-        words_result = client.get_compaction_lock(lock_id, ChromaDBCollection.WORDS)
+        lines_result = client.get_compaction_lock(
+            lock_id, ChromaDBCollection.LINES
+        )
+        words_result = client.get_compaction_lock(
+            lock_id, ChromaDBCollection.WORDS
+        )
 
         assert lines_result == lines_lock
         assert words_result == words_lock
@@ -340,7 +345,9 @@ class TestCompactionLockValidation:
     ) -> None:
         """Test that getting with empty lock_id raises error."""
         client = DynamoClient(dynamodb_table)
-        with pytest.raises(EntityValidationError, match="lock_id cannot be empty"):
+        with pytest.raises(
+            EntityValidationError, match="lock_id cannot be empty"
+        ):
             client.get_compaction_lock("", ChromaDBCollection.LINES)
 
     def test_delete_compaction_lock_empty_params_raises_error(
@@ -350,12 +357,20 @@ class TestCompactionLockValidation:
         client = DynamoClient(dynamodb_table)
 
         # Empty lock_id
-        with pytest.raises(EntityValidationError, match="lock_id cannot be empty"):
-            client.delete_compaction_lock("", str(uuid4()), ChromaDBCollection.LINES)
+        with pytest.raises(
+            EntityValidationError, match="lock_id cannot be empty"
+        ):
+            client.delete_compaction_lock(
+                "", str(uuid4()), ChromaDBCollection.LINES
+            )
 
         # Empty owner
-        with pytest.raises(EntityValidationError, match="owner cannot be empty"):
-            client.delete_compaction_lock("test-lock", "", ChromaDBCollection.LINES)
+        with pytest.raises(
+            EntityValidationError, match="owner cannot be empty"
+        ):
+            client.delete_compaction_lock(
+                "test-lock", "", ChromaDBCollection.LINES
+            )
 
 
 # -------------------------------------------------------------------
@@ -517,7 +532,9 @@ class TestCompactionLockCleanup:
         assert count == 2
 
         # Only active lock should remain
-        active_result = client.get_compaction_lock("active", ChromaDBCollection.LINES)
+        active_result = client.get_compaction_lock(
+            "active", ChromaDBCollection.LINES
+        )
         assert active_result is not None
 
         for expired in expired_locks:
@@ -559,7 +576,9 @@ ERROR_SCENARIOS = [
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 class TestCompactionLockErrorHandling:
     """Test error handling for CompactionLock operations."""
 
@@ -623,7 +642,9 @@ class TestCompactionLockErrorHandling:
             ),
         ):
             with pytest.raises(expected_exception, match=error_match):
-                client.get_compaction_lock("test-lock", ChromaDBCollection.LINES)
+                client.get_compaction_lock(
+                    "test-lock", ChromaDBCollection.LINES
+                )
 
     def test_delete_compaction_lock_client_errors(
         self,
@@ -709,7 +730,9 @@ class TestCompactionLockEdgeCases:
         )
 
         client.add_compaction_lock(hash_lock)
-        result = client.get_compaction_lock(hash_lock.lock_id, hash_lock.collection)
+        result = client.get_compaction_lock(
+            hash_lock.lock_id, hash_lock.collection
+        )
         assert result == hash_lock
         assert "#" in result.lock_id
 

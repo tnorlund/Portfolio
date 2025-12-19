@@ -68,12 +68,17 @@ class Instance:
         if isinstance(self.launched_at, datetime):
             self.launched_at = self.launched_at.isoformat()
         elif not isinstance(self.launched_at, str):
-            raise ValueError("launched_at must be a datetime object or a string")
+            raise ValueError(
+                "launched_at must be a datetime object or a string"
+            )
 
         if not isinstance(self.ip_address, str):
             raise ValueError("ip_address must be a string")
 
-        if not isinstance(self.availability_zone, str) or not self.availability_zone:
+        if (
+            not isinstance(self.availability_zone, str)
+            or not self.availability_zone
+        ):
             raise ValueError("availability_zone must be a non-empty string")
 
         if not isinstance(self.is_spot, bool):
@@ -84,7 +89,9 @@ class Instance:
             not isinstance(self.health_status, str)
             or self.health_status.lower() not in valid_health_statuses
         ):
-            raise ValueError(f"health_status must be one of {valid_health_statuses}")
+            raise ValueError(
+                f"health_status must be one of {valid_health_statuses}"
+            )
         self.health_status = self.health_status.lower()
 
     @property

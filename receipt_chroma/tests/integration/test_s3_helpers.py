@@ -195,52 +195,6 @@ class TestUploadSnapshotWithHash:
     @pytest.mark.parametrize(
         "s3_bucket", ["test-snapshot-bucket"], indirect=True
     )
-    def test_upload_snapshot_with_non_string_metadata(
-        self, s3_bucket, temp_dir
-    ):
-        """Test upload with non-string metadata values (integers, floats).
-
-        This test ensures that metadata values of various types are properly
-        converted to strings before being sent to S3, preventing the
-        'int object has no attribute encode' error that can occur when
-        boto3 tries to encode S3 metadata.
-        """
-        with mock_aws():
-            s3 = boto3.client("s3", region_name="us-east-1")
-            snapshot_path = Path(temp_dir) / "snapshot"
-            snapshot_path.mkdir()
-            (snapshot_path / "file1.txt").write_text("content1")
-            (snapshot_path / "file2.txt").write_text("content2")
-
-            # Use metadata with various non-string types
-            # This matches the actual Lambda use case:
-            # enhanced_compaction_handler.py lines 411-417
-            result = upload_snapshot_with_hash(
-                local_snapshot_path=str(snapshot_path),
-                bucket=s3_bucket,
-                snapshot_key="snapshots/test-snapshot",
-                metadata={
-                    "message_count": 42,  # INT
-                    "metadata_updates": 10,  # INT
-                    "label_updates": 5,  # INT
-                    "delta_merges": 3,  # INT
-                    "update_type": "batch_compaction",  # STRING
-                },
-            )
-
-            assert result["status"] == "uploaded"
-            assert result["file_count"] == 2
-
-            # Verify files were uploaded with metadata
-            objects = s3.list_objects_v2(
-                Bucket=s3_bucket, Prefix="snapshots/test-snapshot"
-            )
-            # At least 2 files + hash file = 3 objects
-            assert objects["KeyCount"] >= 3
-
-    @pytest.mark.parametrize(
-        "s3_bucket", ["test-snapshot-bucket"], indirect=True
-    )
     def test_upload_snapshot_clear_destination(self, s3_bucket, temp_dir):
         """Test upload with destination clearing."""
         with mock_aws():

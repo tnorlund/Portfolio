@@ -24,7 +24,9 @@ def example_validation_result():
         result_index=0,
         type="error",
         message="Total amount does not match sum of items",
-        reasoning=("The total ($45.99) does not equal the sum of line items ($42.99)"),
+        reasoning=(
+            "The total ($45.99) does not equal the sum of line items ($42.99)"
+        ),
         field="price",
         expected_value="42.99",
         actual_value="45.99",
@@ -40,12 +42,16 @@ def example_validation_result():
 def test_validation_result_init_valid(example_validation_result):
     """Test initialization with valid parameters"""
     assert example_validation_result.receipt_id == 1
-    assert example_validation_result.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert (
+        example_validation_result.image_id
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
     assert example_validation_result.field_name == "total_amount"
     assert example_validation_result.result_index == 0
     assert example_validation_result.type == "error"
     assert (
-        example_validation_result.message == "Total amount does not match sum of items"
+        example_validation_result.message
+        == "Total amount does not match sum of items"
     )
     assert (
         example_validation_result.reasoning
@@ -54,8 +60,13 @@ def test_validation_result_init_valid(example_validation_result):
     assert example_validation_result.field == "price"
     assert example_validation_result.expected_value == "42.99"
     assert example_validation_result.actual_value == "45.99"
-    assert example_validation_result.validation_timestamp == "2023-05-15T10:30:00"
-    assert example_validation_result.metadata["source_info"]["model"] == "validation-v1"
+    assert (
+        example_validation_result.validation_timestamp == "2023-05-15T10:30:00"
+    )
+    assert (
+        example_validation_result.metadata["source_info"]["model"]
+        == "validation-v1"
+    )
     assert example_validation_result.metadata["confidence"] == 0.92
 
 
@@ -322,7 +333,9 @@ def test_validation_result_init_invalid_field():
 @pytest.mark.unit
 def test_validation_result_init_invalid_expected_value():
     """Test initialization with invalid expected_value"""
-    with pytest.raises(ValueError, match="expected_value must be a string or None"):
+    with pytest.raises(
+        ValueError, match="expected_value must be a string or None"
+    ):
         ReceiptValidationResult(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -339,7 +352,9 @@ def test_validation_result_init_invalid_expected_value():
 @pytest.mark.unit
 def test_validation_result_init_invalid_actual_value():
     """Test initialization with invalid actual_value"""
-    with pytest.raises(ValueError, match="actual_value must be a string or None"):
+    with pytest.raises(
+        ValueError, match="actual_value must be a string or None"
+    ):
         ReceiptValidationResult(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -375,7 +390,9 @@ def test_validation_result_init_invalid_validation_timestamp():
 @pytest.mark.unit
 def test_validation_result_init_invalid_metadata():
     """Test initialization with invalid metadata"""
-    with pytest.raises(ValueError, match="metadata must be a dictionary or None"):
+    with pytest.raises(
+        ValueError, match="metadata must be a dictionary or None"
+    ):
         ReceiptValidationResult(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -395,7 +412,10 @@ def test_key(example_validation_result):
     assert example_validation_result.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {
-            "S": ("RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#" "total_amount#RESULT#0")
+            "S": (
+                "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#"
+                "total_amount#RESULT#0"
+            )
         },
     }
 
@@ -406,7 +426,10 @@ def test_gsi1_key(example_validation_result):
     assert example_validation_result.gsi1_key == {
         "GSI1PK": {"S": "ANALYSIS_TYPE"},
         "GSI1SK": {
-            "S": ("VALIDATION#2023-05-15T10:30:00#CATEGORY#" "total_amount#RESULT")
+            "S": (
+                "VALIDATION#2023-05-15T10:30:00#CATEGORY#"
+                "total_amount#RESULT"
+            )
         },
     }
 
@@ -433,7 +456,10 @@ def test_to_item(example_validation_result):
     # Check that the basic keys are present
     assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["SK"] == {
-        "S": ("RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#" "total_amount#RESULT#0")
+        "S": (
+            "RECEIPT#00001#ANALYSIS#VALIDATION#CATEGORY#"
+            "total_amount#RESULT#0"
+        )
     }
     assert item["GSI1PK"] == {"S": "ANALYSIS_TYPE"}
     assert item["GSI1SK"] == {
@@ -451,7 +477,10 @@ def test_to_item(example_validation_result):
     assert item["type"] == {"S": "error"}
     assert item["message"] == {"S": "Total amount does not match sum of items"}
     assert item["reasoning"] == {
-        "S": ("The total ($45.99) does not equal the sum of " "line items ($42.99)")
+        "S": (
+            "The total ($45.99) does not equal the sum of "
+            "line items ($42.99)"
+        )
     }
     assert item["validation_timestamp"] == {"S": "2023-05-15T10:30:00"}
 
@@ -508,7 +537,10 @@ def test_from_item(example_validation_result):
     assert result.field == example_validation_result.field
     assert result.expected_value == example_validation_result.expected_value
     assert result.actual_value == example_validation_result.actual_value
-    assert result.validation_timestamp == example_validation_result.validation_timestamp
+    assert (
+        result.validation_timestamp
+        == example_validation_result.validation_timestamp
+    )
     assert result.metadata == example_validation_result.metadata
 
 
@@ -581,5 +613,8 @@ def test_item_to_receipt_validation_result(example_validation_result):
     assert result.field == example_validation_result.field
     assert result.expected_value == example_validation_result.expected_value
     assert result.actual_value == example_validation_result.actual_value
-    assert result.validation_timestamp == example_validation_result.validation_timestamp
+    assert (
+        result.validation_timestamp
+        == example_validation_result.validation_timestamp
+    )
     assert result.metadata == example_validation_result.metadata

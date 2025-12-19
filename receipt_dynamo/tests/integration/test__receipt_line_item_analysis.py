@@ -94,7 +94,10 @@ def test_addReceiptLineItemAnalysis_success(
         == f"RECEIPT#{sample_receipt_line_item_analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
     )
     assert response["Item"]["TYPE"]["S"] == "RECEIPT_LINE_ITEM_ANALYSIS"
-    assert response["Item"]["version"]["S"] == sample_receipt_line_item_analysis.version
+    assert (
+        response["Item"]["version"]["S"]
+        == sample_receipt_line_item_analysis.version
+    )
 
 
 @pytest.mark.integration
@@ -109,7 +112,9 @@ def test_addReceiptLineItemAnalysis_duplicate_raises(
 
     # Act & Assert
     with pytest.raises(EntityAlreadyExistsError) as excinfo:
-        client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
+        client.add_receipt_line_item_analysis(
+            sample_receipt_line_item_analysis
+        )
     assert "already exists" in str(excinfo.value)
 
 
@@ -201,11 +206,15 @@ def test_addReceiptLineItemAnalysis_client_errors(
     # Act & Assert
     if error_code == "ConditionalCheckFailedException":
         with pytest.raises(EntityAlreadyExistsError) as excinfo:
-            client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
+            client.add_receipt_line_item_analysis(
+                sample_receipt_line_item_analysis
+            )
         assert expected_exception in str(excinfo.value)
     else:
         with pytest.raises(Exception) as excinfo:
-            client.add_receipt_line_item_analysis(sample_receipt_line_item_analysis)
+            client.add_receipt_line_item_analysis(
+                sample_receipt_line_item_analysis
+            )
         assert expected_exception in str(excinfo.value)
 
 
@@ -243,7 +252,9 @@ def test_addReceiptLineItemAnalyses_success(
             TableName=dynamodb_table,
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
-                "SK": {"S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
+                "SK": {
+                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
+                },
             },
         )
         assert "Item" in response
@@ -282,7 +293,9 @@ def test_addReceiptLineItemAnalyses_with_large_batch(
         response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
             Key={
-                "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
+                "PK": {
+                    "S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"
+                },
                 "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
             },
         )
@@ -425,7 +438,9 @@ def test_addReceiptLineItemAnalyses_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.add_receipt_line_item_analyses([sample_receipt_line_item_analysis])
+        client.add_receipt_line_item_analyses(
+            [sample_receipt_line_item_analysis]
+        )
     assert expected_error_message in str(excinfo.value)
 
 
@@ -565,11 +580,15 @@ def test_updateReceiptLineItemAnalysis_client_errors(
     # Act & Assert
     if error_code == "ConditionalCheckFailedException":
         with pytest.raises(EntityNotFoundError) as excinfo:
-            client.update_receipt_line_item_analysis(sample_receipt_line_item_analysis)
+            client.update_receipt_line_item_analysis(
+                sample_receipt_line_item_analysis
+            )
         assert expected_error in str(excinfo.value)
     else:
         with pytest.raises(Exception) as excinfo:
-            client.update_receipt_line_item_analysis(sample_receipt_line_item_analysis)
+            client.update_receipt_line_item_analysis(
+                sample_receipt_line_item_analysis
+            )
         assert expected_error in str(excinfo.value)
 
 
@@ -626,7 +645,9 @@ def test_updateReceiptLineItemAnalyses_success(
     )
 
     # Act
-    client.update_receipt_line_item_analyses([updated_analysis1, updated_analysis2])
+    client.update_receipt_line_item_analyses(
+        [updated_analysis1, updated_analysis2]
+    )
 
     # Assert
     # Verify the items were updated
@@ -635,7 +656,9 @@ def test_updateReceiptLineItemAnalyses_success(
             TableName=dynamodb_table,
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
-                "SK": {"S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
+                "SK": {
+                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
+                },
             },
         )
         assert "Item" in response
@@ -694,7 +717,9 @@ def test_updateReceiptLineItemAnalyses_with_large_batch(
         response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
             Key={
-                "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
+                "PK": {
+                    "S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"
+                },
                 "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
             },
         )
@@ -820,7 +845,9 @@ def test_updateReceiptLineItemAnalyses_client_errors(
             "CancellationReasons": cancellation_reasons,
         }
     else:
-        error_response = {"Error": {"Code": error_code, "Message": error_message}}
+        error_response = {
+            "Error": {"Code": error_code, "Message": error_message}
+        }
 
     mock_client.batch_write_item.side_effect = ClientError(
         error_response, "BatchWriteItem"
@@ -828,7 +855,9 @@ def test_updateReceiptLineItemAnalyses_client_errors(
 
     # Act & Assert
     with pytest.raises(expected_exception) as excinfo:
-        client.update_receipt_line_item_analyses([sample_receipt_line_item_analysis])
+        client.update_receipt_line_item_analyses(
+            [sample_receipt_line_item_analysis]
+        )
     assert expected_error in str(excinfo.value)
 
 
@@ -981,11 +1010,15 @@ def test_deleteReceiptLineItemAnalysis_client_errors(
     # Act & Assert
     if error_code == "ConditionalCheckFailedException":
         with pytest.raises(EntityNotFoundError) as excinfo:
-            client.delete_receipt_line_item_analysis(sample_receipt_line_item_analysis)
+            client.delete_receipt_line_item_analysis(
+                sample_receipt_line_item_analysis
+            )
         assert expected_error in str(excinfo.value)
     else:
         with pytest.raises(Exception) as excinfo:
-            client.delete_receipt_line_item_analysis(sample_receipt_line_item_analysis)
+            client.delete_receipt_line_item_analysis(
+                sample_receipt_line_item_analysis
+            )
         assert expected_error in str(excinfo.value)
 
 
@@ -1067,7 +1100,9 @@ def test_deleteReceiptLineItemAnalyses_success(
             TableName=dynamodb_table,
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
-                "SK": {"S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
+                "SK": {
+                    "S": f"RECEIPT#{analysis.receipt_id:05d}#ANALYSIS#LINE_ITEMS"
+                },
             },
         )
         assert "Item" in response
@@ -1082,7 +1117,9 @@ def test_deleteReceiptLineItemAnalyses_success(
             TableName=dynamodb_table,
             Key={
                 "PK": {"S": f"IMAGE#{analysis.image_id}"},
-                "SK": {"S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#LINE_ITEMS"},
+                "SK": {
+                    "S": f"RECEIPT#{analysis.receipt_id}#ANALYSIS#LINE_ITEMS"
+                },
             },
         )
         assert "Item" not in response
@@ -1120,7 +1157,9 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
         response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
             Key={
-                "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
+                "PK": {
+                    "S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"
+                },
                 "SK": {"S": f"RECEIPT#{receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
             },
         )
@@ -1134,7 +1173,9 @@ def test_deleteReceiptLineItemAnalyses_with_large_batch(
         response = boto3.client("dynamodb", region_name="us-east-1").get_item(
             TableName=dynamodb_table,
             Key={
-                "PK": {"S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"},
+                "PK": {
+                    "S": f"IMAGE#{sample_receipt_line_item_analysis.image_id}"
+                },
                 "SK": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#LINE_ITEMS"},
             },
         )
@@ -1228,7 +1269,9 @@ def test_deleteReceiptLineItemAnalyses_client_errors(
 
     # Act & Assert
     with pytest.raises(Exception) as excinfo:
-        client.delete_receipt_line_item_analyses([sample_receipt_line_item_analysis])
+        client.delete_receipt_line_item_analyses(
+            [sample_receipt_line_item_analysis]
+        )
     assert expected_error in str(excinfo.value)
 
 
@@ -1306,7 +1349,10 @@ def test_getReceiptLineItemAnalysis_success(
     assert isinstance(result, ReceiptLineItemAnalysis)
     assert result.image_id == sample_receipt_line_item_analysis.image_id
     assert result.receipt_id == sample_receipt_line_item_analysis.receipt_id
-    assert result.timestamp_added == sample_receipt_line_item_analysis.timestamp_added
+    assert (
+        result.timestamp_added
+        == sample_receipt_line_item_analysis.timestamp_added
+    )
     assert result.items == sample_receipt_line_item_analysis.items
     assert result.reasoning == sample_receipt_line_item_analysis.reasoning
     assert result.version == sample_receipt_line_item_analysis.version
@@ -1378,7 +1424,9 @@ def test_getReceiptLineItemAnalysis_invalid_parameters(
 
     # Act & Assert
     with pytest.raises(ValueError) as excinfo:
-        client.get_receipt_line_item_analysis(image_id=image_id, receipt_id=receipt_id)
+        client.get_receipt_line_item_analysis(
+            image_id=image_id, receipt_id=receipt_id
+        )
     assert expected_error in str(excinfo.value)
 
 
@@ -1619,7 +1667,9 @@ def test_listReceiptLineItemAnalyses_with_pagination(
     analyses = []
     for i in range(1, 11):
         # Ensure we create valid UUIDs by using incrementing hex values
-        uuid_suffix = format(i, "x").zfill(2)  # Convert i to hex, pad to 2 digits
+        uuid_suffix = format(i, "x").zfill(
+            2
+        )  # Convert i to hex, pad to 2 digits
         analysis = ReceiptLineItemAnalysis(
             image_id=f"{uuid_base}{uuid_suffix}",
             receipt_id=i,
@@ -1647,7 +1697,9 @@ def test_listReceiptLineItemAnalyses_with_pagination(
             "SK": {"S": f"RECEIPT#{i}#ANALYSIS#LINE_ITEMS"},
             "image_id": {"S": f"{uuid_base}{uuid_suffix}"},
             "receipt_id": {"N": str(i)},
-            "timestamp_added": {"S": sample_receipt_line_item_analysis.timestamp_added},
+            "timestamp_added": {
+                "S": sample_receipt_line_item_analysis.timestamp_added
+            },
             "items": {
                 "L": [{"M": {"description": {"S": "Test item"}}}]
             },  # Simplified items structure
@@ -1682,7 +1734,9 @@ def test_listReceiptLineItemAnalyses_with_pagination(
             "SK": {"S": f"RECEIPT#{i}#ANALYSIS#LINE_ITEMS"},
             "image_id": {"S": f"{uuid_base}{uuid_suffix}"},
             "receipt_id": {"N": str(i)},
-            "timestamp_added": {"S": sample_receipt_line_item_analysis.timestamp_added},
+            "timestamp_added": {
+                "S": sample_receipt_line_item_analysis.timestamp_added
+            },
             "items": {
                 "L": [{"M": {"description": {"S": "Test item"}}}]
             },  # Simplified items structure
@@ -1867,7 +1921,9 @@ def test_listReceiptLineItemAnalysesForImage_success(
     client.add_receipt_line_item_analyses(analyses)
 
     # Act
-    result = client.list_receipt_line_item_analyses_for_image(image_id=image_id)
+    result = client.list_receipt_line_item_analyses_for_image(
+        image_id=image_id
+    )
 
     # Assert
     assert result is not None

@@ -98,7 +98,9 @@ class ReceiptValidationCategory(SerializationMixin):
         """Return the GSI3 key for this item."""
         return {
             "GSI3PK": {"S": f"FIELD_STATUS#{self.field_name}#{self.status}"},
-            "GSI3SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
+            "GSI3SK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
         }
 
     def to_item(self) -> Dict[str, Any]:
@@ -141,7 +143,9 @@ class ReceiptValidationCategory(SerializationMixin):
         result_summary = SerializationMixin._dynamo_to_python(
             item.get("result_summary", {"M": {}})
         )
-        metadata = SerializationMixin._dynamo_to_python(item.get("metadata", {"M": {}}))
+        metadata = SerializationMixin._dynamo_to_python(
+            item.get("metadata", {"M": {}})
+        )
 
         # Create the ReceiptValidationCategory
         return cls(
@@ -255,11 +259,15 @@ def item_to_receipt_validation_category(
 
     # Get image_id safely
     image_id = (
-        item["PK"]["S"].split("#")[1] if len(item["PK"]["S"].split("#")) > 1 else None
+        item["PK"]["S"].split("#")[1]
+        if len(item["PK"]["S"].split("#")) > 1
+        else None
     )
     if image_id is None and "image_id" in item:
         image_id = (
-            item["image_id"]["S"] if "S" in item["image_id"] else item["image_id"]
+            item["image_id"]["S"]
+            if "S" in item["image_id"]
+            else item["image_id"]
         )
     if image_id is None:
         raise ValueError("Could not extract image_id from item")

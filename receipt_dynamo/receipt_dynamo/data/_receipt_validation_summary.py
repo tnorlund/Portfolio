@@ -62,7 +62,9 @@ class _ReceiptValidationSummary(
     """
 
     @handle_dynamodb_errors("add_receipt_validation_summary")
-    def add_receipt_validation_summary(self, summary: ReceiptValidationSummary):
+    def add_receipt_validation_summary(
+        self, summary: ReceiptValidationSummary
+    ):
         """Adds a ReceiptValidationSummary to DynamoDB.
 
         Args:
@@ -83,7 +85,9 @@ class _ReceiptValidationSummary(
         )
 
     @handle_dynamodb_errors("update_receipt_validation_summary")
-    def update_receipt_validation_summary(self, summary: ReceiptValidationSummary):
+    def update_receipt_validation_summary(
+        self, summary: ReceiptValidationSummary
+    ):
         """Updates an existing ReceiptValidationSummary in the database.
 
         Args:
@@ -98,7 +102,9 @@ class _ReceiptValidationSummary(
         self._validate_entity(summary, ReceiptValidationSummary, "summary")
         self._update_entity(
             summary,
-            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("update_receipt_validation_summaries")
@@ -115,17 +121,23 @@ class _ReceiptValidationSummary(
             ValueError: If the summaries are None or not a list.
             Exception: If the summaries cannot be updated in DynamoDB.
         """
-        self._validate_entity_list(summaries, ReceiptValidationSummary, "summaries")
+        self._validate_entity_list(
+            summaries, ReceiptValidationSummary, "summaries"
+        )
 
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=summary.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=summary.to_item())
+            )
             for summary in summaries
         ]
 
         self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("delete_receipt_validation_summary")
-    def delete_receipt_validation_summary(self, summary: ReceiptValidationSummary):
+    def delete_receipt_validation_summary(
+        self, summary: ReceiptValidationSummary
+    ):
         """Deletes a single ReceiptValidationSummary.
 
         Args:
@@ -161,7 +173,8 @@ class _ReceiptValidationSummary(
         """
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                f"receipt_id must be an integer, got " f"{type(receipt_id).__name__}"
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise EntityValidationError(
@@ -214,7 +227,9 @@ class _ReceiptValidationSummary(
         """
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None"
             )
@@ -258,7 +273,9 @@ class _ReceiptValidationSummary(
             )
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer or None")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None"
             )

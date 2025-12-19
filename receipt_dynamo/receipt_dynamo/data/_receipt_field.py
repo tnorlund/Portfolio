@@ -118,10 +118,14 @@ class _ReceiptField(
             If receipt_fields is invalid or if an error occurs during batch
             write.
         """
-        self._validate_entity_list(receipt_fields, ReceiptField, "receipt_fields")
+        self._validate_entity_list(
+            receipt_fields, ReceiptField, "receipt_fields"
+        )
 
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=field.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=field.to_item())
+            )
             for field in receipt_fields
         ]
         self._batch_write_with_retry(request_items)
@@ -145,7 +149,9 @@ class _ReceiptField(
         self._update_entity(receipt_field)
 
     @handle_dynamodb_errors("update_receipt_fields")
-    def update_receipt_fields(self, receipt_fields: list[ReceiptField]) -> None:
+    def update_receipt_fields(
+        self, receipt_fields: list[ReceiptField]
+    ) -> None:
         """
         Updates a list of receipt fields in the database using transactions.
 
@@ -159,7 +165,9 @@ class _ReceiptField(
         ValueError
             When given a bad parameter or if a field doesn't exist.
         """
-        self._validate_entity_list(receipt_fields, ReceiptField, "receipt_fields")
+        self._validate_entity_list(
+            receipt_fields, ReceiptField, "receipt_fields"
+        )
 
         transact_items = [
             TransactWriteItemTypeDef(
@@ -192,7 +200,9 @@ class _ReceiptField(
         self._delete_entity(receipt_field)
 
     @handle_dynamodb_errors("delete_receipt_fields")
-    def delete_receipt_fields(self, receipt_fields: list[ReceiptField]) -> None:
+    def delete_receipt_fields(
+        self, receipt_fields: list[ReceiptField]
+    ) -> None:
         """
         Deletes a list of receipt fields from the database using transactions.
 
@@ -206,7 +216,9 @@ class _ReceiptField(
         ValueError
             When a receipt field does not exist or if another error occurs.
         """
-        self._validate_entity_list(receipt_fields, ReceiptField, "receipt_fields")
+        self._validate_entity_list(
+            receipt_fields, ReceiptField, "receipt_fields"
+        )
 
         transact_items = [
             TransactWriteItemTypeDef(
@@ -250,9 +262,13 @@ class _ReceiptField(
             raise EntityValidationError("field_type cannot be None")
         self._validate_image_id(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise EntityValidationError("Receipt ID must be a positive integer.")
+            raise EntityValidationError(
+                "Receipt ID must be a positive integer."
+            )
         if not isinstance(field_type, str) or not field_type:
-            raise EntityValidationError("Field type must be a non-empty string.")
+            raise EntityValidationError(
+                "Field type must be a non-empty string."
+            )
 
         result = self._get_entity(
             primary_key=f"FIELD#{field_type.upper()}",
@@ -305,7 +321,9 @@ class _ReceiptField(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         # Use the QueryByTypeMixin for standardized GSITYPE queries
@@ -356,7 +374,9 @@ class _ReceiptField(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -408,14 +428,18 @@ class _ReceiptField(
             raise EntityValidationError("Image ID must be a string")
         self._validate_image_id(image_id)
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise EntityValidationError("Receipt ID must be a positive integer")
+            raise EntityValidationError(
+                "Receipt ID must be a positive integer"
+            )
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("Limit must be an integer")
         if limit is not None and limit <= 0:
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(

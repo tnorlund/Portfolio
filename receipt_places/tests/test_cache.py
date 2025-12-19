@@ -2,7 +2,13 @@
 Tests for CacheManager with moto-mocked DynamoDB.
 """
 
+import json
+import time
 from typing import Any
+from unittest.mock import patch
+
+import pytest
+from moto import mock_aws
 
 from receipt_places.cache import CacheManager
 from receipt_places.config import PlacesConfig
@@ -105,9 +111,7 @@ class TestCacheExclusions:
         }
 
         for address in area_searches:
-            result = cache_manager.put(
-                "ADDRESS", address, "ChIJarea", response
-            )
+            result = cache_manager.put("ADDRESS", address, "ChIJarea", response)
             # Should return False for area searches
             assert result is False, f"Should not cache area search: {address}"
 
@@ -123,9 +127,7 @@ class TestCacheExclusions:
             "formatted_address": "Main Street, City, ST",
         }
 
-        result = cache_manager.put(
-            "ADDRESS", address, "ChIJroute", route_response
-        )
+        result = cache_manager.put("ADDRESS", address, "ChIJroute", route_response)
         assert result is False
 
     def test_no_street_number_not_cached(
@@ -212,6 +214,7 @@ class TestCacheQueryCount:
     def test_query_count_incremented(
         self,
         cache_manager: CacheManager,
+        mock_dynamodb: Any,
     ) -> None:
         """Test that query count is incremented on cache hits."""
         phone = "5551234567"
@@ -225,9 +228,9 @@ class TestCacheQueryCount:
         for _ in range(3):
             cache_manager.get("PHONE", phone)
 
-        # Check query count in DynamoDB using the client from cache_manager
+        # Check query count in DynamoDB
         key = cache_manager._build_key("PHONE", phone)
-        item = cache_manager._client._client.get_item(
+        item = mock_dynamodb.get_item(
             TableName="test-receipts",
             Key=key,
         )
@@ -308,11 +311,7 @@ class TestCacheStats:
             "ADDRESS",
             "100 Main St",
             "ChIJ3",
-            {
-                "place_id": "ChIJ3",
-                "name": "C",
-                "formatted_address": "100 Main St",
-            },
+            {"place_id": "ChIJ3", "name": "C", "formatted_address": "100 Main St"},
         )
 
         stats = cache_manager.get_stats()
@@ -352,3 +351,4 @@ class TestCacheDisabled:
         # Get should return None
         cached = manager.get("PHONE", "5551234567")
         assert cached is None
+

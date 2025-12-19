@@ -47,7 +47,9 @@ def example_receipt_line_item_analysis():
         fees="0.00",
         discounts="0.00",
         tips="0.00",
-        word_labels={(1, 1): {"label": "item_description", "confidence": 0.95}},
+        word_labels={
+            (1, 1): {"label": "item_description", "confidence": 0.95}
+        },
         timestamp_updated="2021-01-02T00:00:00",
     )
 
@@ -80,10 +82,19 @@ def test_receipt_line_item_analysis_init_valid(
         == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
     )
     assert example_receipt_line_item_analysis.receipt_id == 1
-    assert example_receipt_line_item_analysis.timestamp_added == "2021-01-01T00:00:00"
-    assert example_receipt_line_item_analysis.timestamp_updated == "2021-01-02T00:00:00"
+    assert (
+        example_receipt_line_item_analysis.timestamp_added
+        == "2021-01-01T00:00:00"
+    )
+    assert (
+        example_receipt_line_item_analysis.timestamp_updated
+        == "2021-01-02T00:00:00"
+    )
     assert len(example_receipt_line_item_analysis.items) == 2
-    assert example_receipt_line_item_analysis.reasoning == "This is a test analysis"
+    assert (
+        example_receipt_line_item_analysis.reasoning
+        == "This is a test analysis"
+    )
     assert example_receipt_line_item_analysis.version == "1.0"
     assert example_receipt_line_item_analysis.subtotal == Decimal("22.97")
     assert example_receipt_line_item_analysis.tax == Decimal("2.30")
@@ -252,7 +263,9 @@ def test_receipt_line_item_analysis_init_invalid_version():
 @pytest.mark.unit
 def test_receipt_line_item_analysis_init_invalid_subtotal():
     """Test ReceiptLineItemAnalysis constructor with invalid subtotal."""
-    with pytest.raises(ValueError, match="subtotal must be a Decimal, string, or None"):
+    with pytest.raises(
+        ValueError, match="subtotal must be a Decimal, string, or None"
+    ):
         ReceiptLineItemAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -267,7 +280,9 @@ def test_receipt_line_item_analysis_init_invalid_subtotal():
 @pytest.mark.unit
 def test_receipt_line_item_analysis_init_invalid_tax():
     """Test ReceiptLineItemAnalysis constructor with invalid tax."""
-    with pytest.raises(ValueError, match="tax must be a Decimal, string, or None"):
+    with pytest.raises(
+        ValueError, match="tax must be a Decimal, string, or None"
+    ):
         ReceiptLineItemAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -308,7 +323,9 @@ def test_receipt_line_item_analysis_gsi2_key(
     """Test ReceiptLineItemAnalysis.gsi2_key() method."""
     expected = {
         "GSI2PK": {"S": "RECEIPT"},
-        "GSI2SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "GSI2SK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
     }
     assert example_receipt_line_item_analysis.gsi2_key() == expected
 
@@ -349,7 +366,10 @@ def test_receipt_line_item_analysis_to_item(
     # Check word_labels
     assert "word_labels" in item
     assert "1:1" in item["word_labels"]["M"]
-    assert item["word_labels"]["M"]["1:1"]["M"]["label"]["S"] == "item_description"
+    assert (
+        item["word_labels"]["M"]["1:1"]["M"]["label"]["S"]
+        == "item_description"
+    )
 
 
 @pytest.mark.unit
@@ -391,7 +411,9 @@ def test_receipt_line_item_analysis_metadata_methods(
     # Test add_processing_metric
     example_receipt_line_item_analysis.add_processing_metric("test_metric", 42)
     assert (
-        example_receipt_line_item_analysis.metadata["processing_metrics"]["test_metric"]
+        example_receipt_line_item_analysis.metadata["processing_metrics"][
+            "test_metric"
+        ]
         == 42
     )
 
@@ -399,7 +421,9 @@ def test_receipt_line_item_analysis_metadata_methods(
     example_receipt_line_item_analysis.add_history_event(
         "test_event", {"detail": "This is a test event"}
     )
-    latest_event = example_receipt_line_item_analysis.metadata["processing_history"][-1]
+    latest_event = example_receipt_line_item_analysis.metadata[
+        "processing_history"
+    ][-1]
     assert latest_event["event_type"] == "test_event"
     assert latest_event["detail"] == "This is a test event"
     assert "timestamp" in latest_event
@@ -423,13 +447,17 @@ def test_receipt_line_item_analysis_get_item_by_description(
     example_receipt_line_item_analysis,
 ):
     """Test get_item_by_description method."""
-    item = example_receipt_line_item_analysis.get_item_by_description("Test Item 1")
+    item = example_receipt_line_item_analysis.get_item_by_description(
+        "Test Item 1"
+    )
     assert item is not None
     assert item["description"] == "Test Item 1"
     assert item["quantity"]["amount"] == Decimal("1")
 
     # Test case insensitive
-    item = example_receipt_line_item_analysis.get_item_by_description("test item 1")
+    item = example_receipt_line_item_analysis.get_item_by_description(
+        "test item 1"
+    )
     assert item is not None
     assert item["description"] == "Test Item 1"
 
@@ -543,8 +571,13 @@ def test_itemToReceiptLineItemAnalysis(example_receipt_line_item_analysis):
     reconstructed = item_to_receipt_line_item_analysis(item)
 
     # Check equality
-    assert reconstructed.image_id == example_receipt_line_item_analysis.image_id
-    assert reconstructed.receipt_id == example_receipt_line_item_analysis.receipt_id
+    assert (
+        reconstructed.image_id == example_receipt_line_item_analysis.image_id
+    )
+    assert (
+        reconstructed.receipt_id
+        == example_receipt_line_item_analysis.receipt_id
+    )
     assert (
         reconstructed.timestamp_added
         == example_receipt_line_item_analysis.timestamp_added
@@ -554,14 +587,23 @@ def test_itemToReceiptLineItemAnalysis(example_receipt_line_item_analysis):
         == example_receipt_line_item_analysis.timestamp_updated
     )
     assert reconstructed.version == example_receipt_line_item_analysis.version
-    assert reconstructed.reasoning == example_receipt_line_item_analysis.reasoning
-    assert reconstructed.total_found == example_receipt_line_item_analysis.total_found
-    assert reconstructed.subtotal == example_receipt_line_item_analysis.subtotal
+    assert (
+        reconstructed.reasoning == example_receipt_line_item_analysis.reasoning
+    )
+    assert (
+        reconstructed.total_found
+        == example_receipt_line_item_analysis.total_found
+    )
+    assert (
+        reconstructed.subtotal == example_receipt_line_item_analysis.subtotal
+    )
     assert reconstructed.tax == example_receipt_line_item_analysis.tax
     assert reconstructed.total == example_receipt_line_item_analysis.total
 
     # Check items
-    assert len(reconstructed.items) == len(example_receipt_line_item_analysis.items)
+    assert len(reconstructed.items) == len(
+        example_receipt_line_item_analysis.items
+    )
     assert (
         reconstructed.items[0]["description"]
         == example_receipt_line_item_analysis.items[0]["description"]
