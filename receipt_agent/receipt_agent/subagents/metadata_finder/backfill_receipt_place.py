@@ -278,46 +278,44 @@ class ReceiptPlaceBackfiller:
                 self.stats.total_skipped += 1
                 return
 
-            # Extract data from v1 response
+            # Extract data from Place (adapted from v1)
             latitude = (
-                place_v1.location.latitude
-                if place_v1.location
+                place_v1.geometry.location.latitude
+                if place_v1.geometry and place_v1.geometry.location
                 else None
             )
             longitude = (
-                place_v1.location.longitude
-                if place_v1.location
+                place_v1.geometry.location.longitude
+                if place_v1.geometry and place_v1.geometry.location
                 else None
             )
             viewport_ne_lat = (
-                place_v1.viewport.high.latitude
-                if place_v1.viewport and place_v1.viewport.high
+                place_v1.geometry.viewport.northeast.latitude
+                if place_v1.geometry and place_v1.geometry.viewport and place_v1.geometry.viewport.northeast
                 else None
             )
             viewport_ne_lng = (
-                place_v1.viewport.high.longitude
-                if place_v1.viewport and place_v1.viewport.high
+                place_v1.geometry.viewport.northeast.longitude
+                if place_v1.geometry and place_v1.geometry.viewport and place_v1.geometry.viewport.northeast
                 else None
             )
             viewport_sw_lat = (
-                place_v1.viewport.low.latitude
-                if place_v1.viewport and place_v1.viewport.low
+                place_v1.geometry.viewport.southwest.latitude
+                if place_v1.geometry and place_v1.geometry.viewport and place_v1.geometry.viewport.southwest
                 else None
             )
             viewport_sw_lng = (
-                place_v1.viewport.low.longitude
-                if place_v1.viewport and place_v1.viewport.low
+                place_v1.geometry.viewport.southwest.longitude
+                if place_v1.geometry and place_v1.geometry.viewport and place_v1.geometry.viewport.southwest
                 else None
             )
 
-            # Extract hours data
+            # Extract hours data from adapted Place object
             hours_summary = []
             hours_data = {}
             if place_v1.opening_hours:
-                if place_v1.opening_hours.weekday_descriptions:
-                    hours_summary = (
-                        place_v1.opening_hours.weekday_descriptions
-                    )
+                if place_v1.opening_hours.weekday_text:
+                    hours_summary = place_v1.opening_hours.weekday_text
                 if place_v1.opening_hours.periods:
                     hours_data = {
                         "periods": [
@@ -326,17 +324,17 @@ class ReceiptPlaceBackfiller:
                         ]
                     }
 
-            # Extract photos
+            # Extract photos from adapted Place object
             photo_references = []
             if place_v1.photos:
-                photo_references = [p.name for p in place_v1.photos]
+                photo_references = [
+                    p.photo_reference for p in place_v1.photos
+                    if p.photo_reference
+                ]
 
-            # Extract plus code
+            # Extract plus code from adapted Place object
             plus_code = ""
-            if (
-                place_v1.plus_code
-                and place_v1.plus_code.global_code
-            ):
+            if place_v1.plus_code and place_v1.plus_code.global_code:
                 plus_code = place_v1.plus_code.global_code
 
             # Determine matched_fields from metadata
@@ -349,13 +347,23 @@ class ReceiptPlaceBackfiller:
                 matched_fields.append("phone")
             matched_fields.append("place_id")
 
-            # Create ReceiptPlace
+            # Create ReceiptPlace from adapted Place object
+            # Extract primary type from types list (first type is primary)
+            merchant_category = ""
+            if place_v1.types and len(place_v1.types) > 0:
+                merchant_category = place_v1.types[0]
+
+            # Build maps URL if not available
+            maps_url = ""
+            if latitude and longitude:
+                maps_url = f"https://www.google.com/maps/search/?api=1&query={latitude},{longitude}"
+
             receipt_place = ReceiptPlace(
                 image_id=metadata.image_id,
                 receipt_id=metadata.receipt_id,
                 place_id=metadata.place_id,
-                merchant_name=metadata.merchant_name or "",
-                merchant_category=place_v1.primary_type or "",
+                merchant_name=place_v1.name or metadata.merchant_name or "",
+                merchant_category=merchant_category,
                 merchant_types=place_v1.types or [],
                 formatted_address=place_v1.formatted_address or "",
                 short_address=place_v1.short_formatted_address or "",
@@ -370,8 +378,8 @@ class ReceiptPlaceBackfiller:
                 plus_code=plus_code,
                 phone_number=metadata.phone_number or "",
                 phone_intl=place_v1.international_phone_number or "",
-                website=place_v1.website_uri or "",
-                maps_url=place_v1.google_maps_uri or "",
+                website=place_v1.website or "",
+                maps_url=maps_url,
                 business_status=place_v1.business_status or "",
                 open_now=(
                     place_v1.opening_hours.open_now
