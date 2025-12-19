@@ -5,10 +5,21 @@ Provides helpers for geographic calculations including geohash encoding
 for spatial indexing and distance calculations.
 
 Used by ReceiptPlace for spatial indexing and nearby location discovery.
+
+IMPORTANT: This module requires the geohash2 library for correct GSI4 spatial queries.
+Install with: pip install geohash2
 """
 
 from math import cos, radians
 from typing import Optional, Tuple
+
+try:
+    import geohash2 as geohash
+except ImportError:
+    raise ImportError(
+        "geohash2 is required for ReceiptPlace spatial queries. "
+        "Install it with: pip install geohash2"
+    )
 
 
 def calculate_geohash(latitude: float, longitude: float, precision: int = 6) -> str:
@@ -57,53 +68,7 @@ def calculate_geohash(latitude: float, longitude: float, precision: int = 6) -> 
     if not 1 <= precision <= 12:
         raise ValueError(f"precision must be between 1 and 12, got {precision}")
 
-    try:
-        import geohash2 as geohash
-    except ImportError:
-        # Fallback implementation if geohash2 is not available
-        return _calculate_geohash_fallback(latitude, longitude, precision)
-
     return geohash.encode(latitude, longitude, precision)
-
-
-def _calculate_geohash_fallback(
-    latitude: float, longitude: float, precision: int = 6
-) -> str:
-    """
-    Fallback geohash calculation without external dependency.
-
-    This is a basic implementation that provides reasonable spatial grouping
-    for ~1km precision (precision=6). For finer precision, use geohash2 library.
-
-    Note: This simplified implementation may not perfectly match standard geohash.
-    For production use with spatial queries, install geohash2:
-        pip install geohash2
-
-    Args:
-        latitude: Latitude in decimal degrees
-        longitude: Longitude in decimal degrees
-        precision: Desired precision (1-12, though precision > 6 may not work well)
-
-    Returns:
-        A string representing the geohash
-    """
-    # Simple grid-based approach: round coordinates to grid cells
-    # Precision 6 uses 0.01 degree cells (approximately 1.1km at equator)
-    decimals = precision  # Rough approximation
-
-    lat_rounded = round(latitude, decimals)
-    lng_rounded = round(longitude, decimals)
-
-    # Format as geohash-like string
-    # Convert to positive coordinates and then to base36 for compactness
-    lat_offset = lat_rounded + 90  # 0-180
-    lng_offset = lng_rounded + 180  # 0-360
-
-    # Create a simple hash string
-    geohash_str = f"{lat_offset:08.4f}{lng_offset:09.4f}".replace(".", "").replace("-", "")
-
-    # Return first 'precision' characters to match expected behavior
-    return geohash_str[:precision]
 
 
 def nearby_geohashes(
@@ -137,15 +102,8 @@ def nearby_geohashes(
             results = dynamo.get_receipt_places_by_geohash(geohash)
         ```
     """
-    try:
-        import geohash2 as geohash
-        center_hash = geohash.encode(latitude, longitude, precision)
-        return geohash.neighbors(center_hash)
-    except ImportError:
-        # Fallback: return just the current cell
-        # For proper neighbor calculation, install geohash2
-        center_hash = _calculate_geohash_fallback(latitude, longitude, precision)
-        return [center_hash]
+    center_hash = geohash.encode(latitude, longitude, precision)
+    return geohash.neighbors(center_hash)
 
 
 def haversine_distance(

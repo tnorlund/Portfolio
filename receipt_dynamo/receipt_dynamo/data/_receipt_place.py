@@ -35,6 +35,10 @@ from receipt_dynamo.entities import ReceiptPlace
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
 
+# Maximum retry attempts for unprocessed items in batch operations
+# With exponential backoff (2^n seconds, max 32s), this allows up to ~13 minutes of retries
+MAX_BATCH_RETRIES = 10
+
 # Type deserializer for converting DynamoDB JSON format to Python types
 _deserializer = TypeDeserializer()
 
@@ -390,7 +394,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
             results.extend(batch_items)
             unprocessed = response.get("UnprocessedKeys", {})
             retry_count = 0
-            while unprocessed.get(self.table_name):
+            while unprocessed.get(self.table_name) and retry_count < MAX_BATCH_RETRIES:
                 # Exponential backoff: 2^retry_count seconds, max 32 seconds
                 wait_time = min(2 ** retry_count, 32)
                 time.sleep(wait_time)
@@ -399,6 +403,14 @@ class _ReceiptPlace(FlattenedStandardMixin):
                 results.extend(batch_items)
                 unprocessed = response.get("UnprocessedKeys", {})
                 retry_count += 1
+            # Log warning if max retries exceeded
+            if unprocessed.get(self.table_name):
+                logger = __import__("logging").getLogger(__name__)
+                logger.warning(
+                    f"Max batch retries ({MAX_BATCH_RETRIES}) exceeded for "
+                    f"get_receipt_places_by_ids. {len(unprocessed.get(self.table_name, []))} "
+                    "items remain unprocessed."
+                )
         return [ReceiptPlace(**result) for result in results]
 
     @handle_dynamodb_errors("list_receipt_places")
