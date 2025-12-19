@@ -24,6 +24,7 @@ classifiers = [
 dependencies = [
     "requests",
     "boto3",
+    "geohash2",
 ]
 keywords = ["dynamo", "dynamodb", "receipts", "aws", "database"]
 
