@@ -45,8 +45,17 @@ MIN_NAME_LENGTH = 2
 
 # Fields that are computed (GSI keys) and should not be passed to constructor
 COMPUTED_FIELDS = {
-    "PK", "SK", "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK",
-    "GSI3PK", "GSI3SK", "GSI4PK", "GSI4SK", "TYPE"
+    "PK",
+    "SK",
+    "GSI1PK",
+    "GSI1SK",
+    "GSI2PK",
+    "GSI2SK",
+    "GSI3PK",
+    "GSI3SK",
+    "GSI4PK",
+    "GSI4SK",
+    "TYPE",
 }
 
 
@@ -154,7 +163,9 @@ class ReceiptPlace(SerializationMixin):
     reasoning: str = ""
 
     # === Timestamps ===
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     places_api_version: str = "v1"
 
     def __post_init__(self) -> None:
@@ -165,7 +176,9 @@ class ReceiptPlace(SerializationMixin):
 
         # Normalize enum field
         if self.validated_by:
-            self.validated_by = normalize_enum(self.validated_by, ValidationMethod)
+            self.validated_by = normalize_enum(
+                self.validated_by, ValidationMethod
+            )
 
         # Ensure lists are unique (preserve order)
         if self.merchant_types:
@@ -179,7 +192,9 @@ class ReceiptPlace(SerializationMixin):
 
         # Validate confidence score
         if not (0.0 <= self.confidence <= 1.0):
-            raise ValueError(f"confidence must be between 0.0 and 1.0, got {self.confidence}")
+            raise ValueError(
+                f"confidence must be between 0.0 and 1.0, got {self.confidence}"
+            )
 
         # Validate merchant_name produces non-empty GSI1 key after normalization
         if not self.merchant_name:
@@ -338,25 +353,33 @@ class ReceiptPlace(SerializationMixin):
 
         # List fields (string sets) - filter out empty strings (DynamoDB SS rejects empty strings)
         merchant_types_filtered = [
-            s.strip() for s in self.merchant_types if isinstance(s, str) and s.strip()
+            s.strip()
+            for s in self.merchant_types
+            if isinstance(s, str) and s.strip()
         ]
         if merchant_types_filtered:
             item["merchant_types"] = {"SS": merchant_types_filtered}
 
         matched_fields_filtered = [
-            s.strip() for s in self.matched_fields if isinstance(s, str) and s.strip()
+            s.strip()
+            for s in self.matched_fields
+            if isinstance(s, str) and s.strip()
         ]
         if matched_fields_filtered:
             item["matched_fields"] = {"SS": matched_fields_filtered}
 
         hours_summary_filtered = [
-            s.strip() for s in self.hours_summary if isinstance(s, str) and s.strip()
+            s.strip()
+            for s in self.hours_summary
+            if isinstance(s, str) and s.strip()
         ]
         if hours_summary_filtered:
             item["hours_summary"] = {"SS": hours_summary_filtered}
 
         photo_references_filtered = [
-            s.strip() for s in self.photo_references if isinstance(s, str) and s.strip()
+            s.strip()
+            for s in self.photo_references
+            if isinstance(s, str) and s.strip()
         ]
         if photo_references_filtered:
             item["photo_references"] = {"SS": photo_references_filtered}
@@ -382,9 +405,13 @@ class ReceiptPlace(SerializationMixin):
         # Complex fields (JSON/Maps)
         if self.address_components:
             import json
-            item["address_components"] = {"S": json.dumps(self.address_components)}
+
+            item["address_components"] = {
+                "S": json.dumps(self.address_components)
+            }
         if self.hours_data:
             import json
+
             item["hours_data"] = {"S": json.dumps(self.hours_data)}
 
         return item
@@ -416,6 +443,7 @@ def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
     """
     import json
     from decimal import Decimal
+
     from boto3.dynamodb.types import TypeDeserializer
 
     # First, deserialize from DynamoDB JSON format to Python types
@@ -423,24 +451,38 @@ def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
     deserialized = {k: deserializer.deserialize(v) for k, v in item.items()}
 
     # Filter out computed fields
-    filtered_item = {k: v for k, v in deserialized.items() if k not in COMPUTED_FIELDS}
+    filtered_item = {
+        k: v for k, v in deserialized.items() if k not in COMPUTED_FIELDS
+    }
 
     # Parse complex fields that were JSON-serialized
-    if "address_components" in filtered_item and isinstance(filtered_item["address_components"], str):
+    if "address_components" in filtered_item and isinstance(
+        filtered_item["address_components"], str
+    ):
         try:
-            filtered_item["address_components"] = json.loads(filtered_item["address_components"])
+            filtered_item["address_components"] = json.loads(
+                filtered_item["address_components"]
+            )
         except (json.JSONDecodeError, TypeError):
             filtered_item["address_components"] = {}
 
-    if "hours_data" in filtered_item and isinstance(filtered_item["hours_data"], str):
+    if "hours_data" in filtered_item and isinstance(
+        filtered_item["hours_data"], str
+    ):
         try:
-            filtered_item["hours_data"] = json.loads(filtered_item["hours_data"])
+            filtered_item["hours_data"] = json.loads(
+                filtered_item["hours_data"]
+            )
         except (json.JSONDecodeError, TypeError):
             filtered_item["hours_data"] = {}
 
     # Parse timestamp if it's a string
-    if "timestamp" in filtered_item and isinstance(filtered_item["timestamp"], str):
-        filtered_item["timestamp"] = datetime.fromisoformat(filtered_item["timestamp"])
+    if "timestamp" in filtered_item and isinstance(
+        filtered_item["timestamp"], str
+    ):
+        filtered_item["timestamp"] = datetime.fromisoformat(
+            filtered_item["timestamp"]
+        )
 
     # Convert receipt_id: boto3 deserializes numbers as Decimal, need int
     if "receipt_id" in filtered_item:
@@ -453,12 +495,34 @@ def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
                 pass
 
     # Handle None values for string fields that should be empty strings
-    for attr_name in ["geohash", "merchant_category", "formatted_address", "short_address", "phone_number", "phone_intl", "website", "maps_url", "business_status", "plus_code", "validated_by", "reasoning", "places_api_version"]:
+    for attr_name in [
+        "geohash",
+        "merchant_category",
+        "formatted_address",
+        "short_address",
+        "phone_number",
+        "phone_intl",
+        "website",
+        "maps_url",
+        "business_status",
+        "plus_code",
+        "validated_by",
+        "reasoning",
+        "places_api_version",
+    ]:
         if attr_name in filtered_item and filtered_item[attr_name] is None:
             filtered_item[attr_name] = ""
 
     # Convert Decimal numbers to float for floating point fields
-    for attr_name in ["latitude", "longitude", "confidence", "viewport_ne_lat", "viewport_ne_lng", "viewport_sw_lat", "viewport_sw_lng"]:
+    for attr_name in [
+        "latitude",
+        "longitude",
+        "confidence",
+        "viewport_ne_lat",
+        "viewport_ne_lng",
+        "viewport_sw_lat",
+        "viewport_sw_lng",
+    ]:
         if attr_name in filtered_item:
             value = filtered_item[attr_name]
             if isinstance(value, (str, int, Decimal)):

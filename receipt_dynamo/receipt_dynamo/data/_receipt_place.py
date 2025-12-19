@@ -158,10 +158,14 @@ class _ReceiptPlace(FlattenedStandardMixin):
             If receipt_places is invalid or if an error occurs during batch
             write.
         """
-        self._validate_entity_list(receipt_places, ReceiptPlace, "receipt_places")
+        self._validate_entity_list(
+            receipt_places, ReceiptPlace, "receipt_places"
+        )
 
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=item.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=item.to_item())
+            )
             for item in receipt_places
         ]
         self._batch_write_with_retry(request_items)
@@ -184,11 +188,15 @@ class _ReceiptPlace(FlattenedStandardMixin):
         self._validate_entity(receipt_place, ReceiptPlace, "receipt_place")
         self._update_entity(
             receipt_place,
-            condition_expression=("attribute_exists(PK) and attribute_exists(SK)"),
+            condition_expression=(
+                "attribute_exists(PK) and attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("update_receipt_places")
-    def update_receipt_places(self, receipt_places: List[ReceiptPlace]) -> None:
+    def update_receipt_places(
+        self, receipt_places: List[ReceiptPlace]
+    ) -> None:
         """
         Updates multiple ReceiptPlace records in DynamoDB using transactions.
 
@@ -202,7 +210,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
         ValueError
             If receipt_places is invalid or if any record does not exist.
         """
-        self._validate_entity_list(receipt_places, ReceiptPlace, "receipt_places")
+        self._validate_entity_list(
+            receipt_places, ReceiptPlace, "receipt_places"
+        )
 
         transact_items = [
             TransactWriteItemTypeDef(
@@ -237,7 +247,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
         self._delete_entity(receipt_place)
 
     @handle_dynamodb_errors("delete_receipt_places")
-    def delete_receipt_places(self, receipt_places: List[ReceiptPlace]) -> None:
+    def delete_receipt_places(
+        self, receipt_places: List[ReceiptPlace]
+    ) -> None:
         """
         Deletes multiple ReceiptPlace records from DynamoDB.
 
@@ -251,7 +263,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
         ValueError
             If receipt_places is invalid or if any record does not exist.
         """
-        self._validate_entity_list(receipt_places, ReceiptPlace, "receipt_places")
+        self._validate_entity_list(
+            receipt_places, ReceiptPlace, "receipt_places"
+        )
 
         transact_items = [
             TransactWriteItemTypeDef(
@@ -268,7 +282,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
         self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("get_receipt_place")
-    def get_receipt_place(self, image_id: str, receipt_id: int) -> ReceiptPlace:
+    def get_receipt_place(
+        self, image_id: str, receipt_id: int
+    ) -> ReceiptPlace:
         """
         Retrieves a single ReceiptPlace record from DynamoDB.
 
@@ -336,7 +352,8 @@ class _ReceiptPlace(FlattenedStandardMixin):
         if not all(isinstance(index, tuple) for index in indices):
             raise EntityValidationError("indices must be a list of tuples")
         if not all(
-            isinstance(index[0], str) and isinstance(index[1], int) for index in indices
+            isinstance(index[0], str) and isinstance(index[1], int)
+            for index in indices
         ):
             raise EntityValidationError(
                 "indices must be a list of tuples of (image_id, receipt_id)"
@@ -399,11 +416,16 @@ class _ReceiptPlace(FlattenedStandardMixin):
             results.extend(batch_items)
             unprocessed = response.get("UnprocessedKeys", {})
             retry_count = 0
-            while unprocessed.get(self.table_name) and retry_count < MAX_BATCH_RETRIES:
+            while (
+                unprocessed.get(self.table_name)
+                and retry_count < MAX_BATCH_RETRIES
+            ):
                 # Exponential backoff: 2^retry_count seconds, max 32 seconds
-                wait_time = min(2 ** retry_count, 32)
+                wait_time = min(2**retry_count, 32)
                 time.sleep(wait_time)
-                response = self._client.batch_get_item(RequestItems=unprocessed)
+                response = self._client.batch_get_item(
+                    RequestItems=unprocessed
+                )
                 batch_items = response["Responses"].get(self.table_name, [])
                 results.extend(batch_items)
                 unprocessed = response.get("UnprocessedKeys", {})
@@ -450,8 +472,12 @@ class _ReceiptPlace(FlattenedStandardMixin):
         if limit is not None and limit <= 0:
             raise EntityValidationError("limit must be positive")
 
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
-            raise EntityValidationError("last_evaluated_key must be a dictionary")
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary"
+            )
 
         return self._query_by_type(
             entity_type="RECEIPT_PLACE",
@@ -496,7 +522,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
             raise EntityValidationError("merchant_name must be a string")
         # Use same normalization as entity gsi1_key: uppercase, replace special chars, strip underscores
         normalized_merchant_name = merchant_name.upper()
-        normalized_merchant_name = re.sub(r"[^A-Z0-9]+", "_", normalized_merchant_name)
+        normalized_merchant_name = re.sub(
+            r"[^A-Z0-9]+", "_", normalized_merchant_name
+        )
         normalized_merchant_name = normalized_merchant_name.strip("_")
         gsi1_pk = f"MERCHANT#{normalized_merchant_name}"
 
@@ -550,8 +578,12 @@ class _ReceiptPlace(FlattenedStandardMixin):
             raise EntityValidationError("limit must be an integer")
         if limit is not None and limit <= 0:
             raise EntityValidationError("limit must be positive")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
-            raise EntityValidationError("last_evaluated_key must be a dictionary")
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary"
+            )
 
         return self._query_entities(
             index_name="GSI2",
@@ -616,8 +648,12 @@ class _ReceiptPlace(FlattenedStandardMixin):
             raise EntityValidationError("limit must be an integer")
         if limit is not None and limit <= 0:
             raise EntityValidationError("limit must be positive")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
-            raise EntityValidationError("last_evaluated_key must be a dictionary")
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary"
+            )
 
         return self._query_entities(
             index_name="GSI3",
@@ -672,13 +708,19 @@ class _ReceiptPlace(FlattenedStandardMixin):
         if not isinstance(geohash, str):
             raise EntityValidationError("geohash must be a string")
         if len(geohash) < 6:
-            raise EntityValidationError("geohash must be at least 6 characters")
+            raise EntityValidationError(
+                "geohash must be at least 6 characters"
+            )
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer")
         if limit is not None and limit <= 0:
             raise EntityValidationError("limit must be positive")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
-            raise EntityValidationError("last_evaluated_key must be a dictionary")
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary"
+            )
 
         return self._query_entities(
             index_name="GSI4",
@@ -754,15 +796,21 @@ class _ReceiptPlace(FlattenedStandardMixin):
         if not isinstance(confidence, (int, float)):
             raise EntityValidationError("confidence must be a float")
         if confidence < 0.0 or confidence > 1.0:
-            raise EntityValidationError("confidence must be between 0.0 and 1.0")
+            raise EntityValidationError(
+                "confidence must be between 0.0 and 1.0"
+            )
         if above is not None and not isinstance(above, bool):
             raise EntityValidationError("above must be a boolean")
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("limit must be an integer")
         if limit is not None and limit <= 0:
             raise EntityValidationError("limit must be positive")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
-            raise EntityValidationError("last_evaluated_key must be a dictionary")
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary"
+            )
 
         # Format confidence to 4 decimal places for consistent sorting
         formatted_confidence = f"CONFIDENCE#{confidence:.4f}"

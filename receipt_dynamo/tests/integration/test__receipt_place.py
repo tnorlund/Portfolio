@@ -27,7 +27,6 @@ from receipt_dynamo.data.shared_exceptions import (
     OperationError,
 )
 
-
 # =============================================================================
 # TEST DATA AND FIXTURES
 # =============================================================================
@@ -132,7 +131,9 @@ def _batch_receipt_places() -> List[ReceiptPlace]:
 
 
 @pytest.mark.integration
-def test_add_receipt_place_success(sample_receipt_place, dynamodb_table: str) -> None:
+def test_add_receipt_place_success(
+    sample_receipt_place, dynamodb_table: str
+) -> None:
     """Tests adding a single ReceiptPlace successfully."""
     client = DynamoClient(dynamodb_table)
     # Should not raise
@@ -187,7 +188,9 @@ def test_update_receipt_place_success(
 
     # Update confidence
     sample_receipt_place.confidence = 0.95
-    sample_receipt_place.validation_status = MerchantValidationStatus.MATCHED.value
+    sample_receipt_place.validation_status = (
+        MerchantValidationStatus.MATCHED.value
+    )
     client.update_receipt_place(sample_receipt_place)
 
     retrieved = client.get_receipt_place(
@@ -213,7 +216,9 @@ def test_delete_receipt_place_success(
 
 
 @pytest.mark.integration
-def test_add_receipt_places_batch(batch_receipt_places, dynamodb_table: str) -> None:
+def test_add_receipt_places_batch(
+    batch_receipt_places, dynamodb_table: str
+) -> None:
     """Tests adding multiple ReceiptPlaces in batch."""
     client = DynamoClient(dynamodb_table)
     client.add_receipt_places(batch_receipt_places)
@@ -226,7 +231,9 @@ def test_add_receipt_places_batch(batch_receipt_places, dynamodb_table: str) -> 
 
 
 @pytest.mark.integration
-def test_list_receipt_places(batch_receipt_places, dynamodb_table: str) -> None:
+def test_list_receipt_places(
+    batch_receipt_places, dynamodb_table: str
+) -> None:
     """Tests listing ReceiptPlaces with pagination."""
     client = DynamoClient(dynamodb_table)
     client.add_receipt_places(batch_receipt_places)
@@ -236,7 +243,9 @@ def test_list_receipt_places(batch_receipt_places, dynamodb_table: str) -> None:
     assert next_key is not None  # More results available
 
     # Get next page
-    places2, _final_key = client.list_receipt_places(limit=10, last_evaluated_key=next_key)
+    places2, _final_key = client.list_receipt_places(
+        limit=10, last_evaluated_key=next_key
+    )
     assert len(places2) == 10
 
 
@@ -246,7 +255,9 @@ def test_list_receipt_places(batch_receipt_places, dynamodb_table: str) -> None:
 
 
 @pytest.mark.integration
-def test_get_receipt_places_by_merchant(batch_receipt_places, dynamodb_table: str) -> None:
+def test_get_receipt_places_by_merchant(
+    batch_receipt_places, dynamodb_table: str
+) -> None:
     """Tests querying ReceiptPlaces by merchant name (GSI1)."""
     client = DynamoClient(dynamodb_table)
     client.add_receipt_places(batch_receipt_places)
@@ -277,7 +288,9 @@ def test_list_receipt_places_with_place_id(
 
 
 @pytest.mark.integration
-def test_get_receipt_places_by_status(batch_receipt_places, dynamodb_table: str) -> None:
+def test_get_receipt_places_by_status(
+    batch_receipt_places, dynamodb_table: str
+) -> None:
     """Tests querying ReceiptPlaces by validation status (GSI3)."""
     client = DynamoClient(dynamodb_table)
     client.add_receipt_places(batch_receipt_places)
@@ -288,7 +301,8 @@ def test_get_receipt_places_by_status(batch_receipt_places, dynamodb_table: str)
 
     assert len(places) > 0
     assert all(
-        p.validation_status == MerchantValidationStatus.MATCHED.value for p in places
+        p.validation_status == MerchantValidationStatus.MATCHED.value
+        for p in places
     )
 
 
@@ -301,7 +315,9 @@ def test_get_receipt_places_by_confidence_above(
     client.add_receipt_places(batch_receipt_places)
 
     # Query for high confidence (>= 0.7)
-    places, _ = client.get_receipt_places_by_confidence(confidence=0.70, above=True)
+    places, _ = client.get_receipt_places_by_confidence(
+        confidence=0.70, above=True
+    )
 
     assert len(places) > 0
     assert all(p.confidence >= 0.70 for p in places)
@@ -316,7 +332,9 @@ def test_get_receipt_places_by_confidence_below(
     client.add_receipt_places(batch_receipt_places)
 
     # Query for low confidence (<= 0.6)
-    places, _ = client.get_receipt_places_by_confidence(confidence=0.60, above=False)
+    places, _ = client.get_receipt_places_by_confidence(
+        confidence=0.60, above=False
+    )
 
     assert len(places) > 0
     assert all(p.confidence <= 0.60 for p in places)
@@ -351,7 +369,9 @@ def test_get_receipt_places_by_confidence_boundary(
     client.add_receipt_places(places)
 
     # Test exact threshold
-    above_threshold, _ = client.get_receipt_places_by_confidence(confidence=0.5, above=True)
+    above_threshold, _ = client.get_receipt_places_by_confidence(
+        confidence=0.5, above=True
+    )
     below_threshold, _ = client.get_receipt_places_by_confidence(
         confidence=0.5, above=False
     )
@@ -389,7 +409,9 @@ def test_get_receipt_places_by_confidence_with_pagination(
 
 
 @pytest.mark.integration
-def test_get_receipt_places_by_geohash(batch_receipt_places, dynamodb_table: str) -> None:
+def test_get_receipt_places_by_geohash(
+    batch_receipt_places, dynamodb_table: str
+) -> None:
     """Tests spatial queries by geohash (GSI4)."""
     client = DynamoClient(dynamodb_table)
     client.add_receipt_places(batch_receipt_places)
@@ -416,7 +438,9 @@ def test_get_receipt_places_by_geohash(batch_receipt_places, dynamodb_table: str
         (1.5, "confidence must be between"),
     ],
 )
-def test_confidence_query_validation(confidence, expected_error, dynamodb_table: str):
+def test_confidence_query_validation(
+    confidence, expected_error, dynamodb_table: str
+):
     """Tests confidence query parameter validation."""
     client = DynamoClient(dynamodb_table)
 
@@ -442,7 +466,9 @@ def test_get_receipt_places_by_confidence_invalid_limit(
     client = DynamoClient(dynamodb_table)
 
     with pytest.raises(EntityValidationError):
-        client.get_receipt_places_by_confidence(confidence=0.5, limit=invalid_limit)
+        client.get_receipt_places_by_confidence(
+            confidence=0.5, limit=invalid_limit
+        )
 
 
 # =============================================================================
@@ -451,7 +477,9 @@ def test_get_receipt_places_by_confidence_invalid_limit(
 
 
 @pytest.mark.integration
-def test_update_receipt_places_batch(batch_receipt_places, dynamodb_table: str) -> None:
+def test_update_receipt_places_batch(
+    batch_receipt_places, dynamodb_table: str
+) -> None:
     """Tests batch updating ReceiptPlaces."""
     client = DynamoClient(dynamodb_table)
     client.add_receipt_places(batch_receipt_places)
@@ -470,7 +498,9 @@ def test_update_receipt_places_batch(batch_receipt_places, dynamodb_table: str) 
 
 
 @pytest.mark.integration
-def test_delete_receipt_places_batch(batch_receipt_places, dynamodb_table: str) -> None:
+def test_delete_receipt_places_batch(
+    batch_receipt_places, dynamodb_table: str
+) -> None:
     """Tests batch deleting ReceiptPlaces."""
     client = DynamoClient(dynamodb_table)
     client.add_receipt_places(batch_receipt_places[:5])
@@ -480,12 +510,15 @@ def test_delete_receipt_places_batch(batch_receipt_places, dynamodb_table: str) 
     # Verify first one is deleted
     with pytest.raises(EntityNotFoundError):
         client.get_receipt_place(
-            batch_receipt_places[0].image_id, batch_receipt_places[0].receipt_id
+            batch_receipt_places[0].image_id,
+            batch_receipt_places[0].receipt_id,
         )
 
 
 @pytest.mark.integration
-def test_get_receipt_places_by_indices(batch_receipt_places, dynamodb_table: str):
+def test_get_receipt_places_by_indices(
+    batch_receipt_places, dynamodb_table: str
+):
     """Tests batch getting ReceiptPlaces by indices."""
     client = DynamoClient(dynamodb_table)
     client.add_receipt_places(batch_receipt_places)
@@ -511,7 +544,9 @@ def test_add_invalid_receipt_place_type(dynamodb_table: str) -> None:
     """Tests that adding invalid entity type raises error."""
     client = DynamoClient(dynamodb_table)
 
-    with pytest.raises(OperationError, match="must be an instance of ReceiptPlace"):
+    with pytest.raises(
+        OperationError, match="must be an instance of ReceiptPlace"
+    ):
         client.add_receipt_place("not a receipt place")
 
 

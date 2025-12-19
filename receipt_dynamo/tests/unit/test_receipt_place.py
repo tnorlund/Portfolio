@@ -7,8 +7,8 @@ from receipt_dynamo.constants import (
     MerchantValidationStatus,
     ValidationMethod,
 )
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.data.shared_exceptions import EntityValidationError
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 
 
 @pytest.fixture
@@ -390,7 +390,9 @@ def test_gsi1_key_single_character_merchant():
 @pytest.mark.unit
 def test_merchant_name_all_special_characters_fails():
     """Test that merchant names with only special characters are rejected."""
-    with pytest.raises(ValueError, match="contains no alphanumeric characters"):
+    with pytest.raises(
+        ValueError, match="contains no alphanumeric characters"
+    ):
         ReceiptPlace(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -404,7 +406,9 @@ def test_merchant_name_all_special_characters_fails():
 @pytest.mark.unit
 def test_merchant_name_whitespace_only_fails():
     """Test that whitespace-only merchant names are rejected."""
-    with pytest.raises(ValueError, match="contains no alphanumeric characters"):
+    with pytest.raises(
+        ValueError, match="contains no alphanumeric characters"
+    ):
         ReceiptPlace(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
