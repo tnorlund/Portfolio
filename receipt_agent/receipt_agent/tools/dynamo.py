@@ -48,14 +48,13 @@ def get_receipt_metadata(
     _dynamo_client: Any = None,
 ) -> dict[str, Any]:
     """
-    Retrieve the current ReceiptMetadata from DynamoDB.
+    Retrieve the current ReceiptPlace from DynamoDB.
 
     Use this tool to get the current merchant information stored
     for a receipt, including:
     - merchant_name, address, phone_number
     - place_id (Google Places ID)
     - validation_status
-    - matched_fields and reasoning
 
     This is the starting point for validation - compare this against
     what you find in ChromaDB and Google Places.
@@ -65,38 +64,31 @@ def get_receipt_metadata(
 
     try:
         # Use receipt_dynamo client
-        metadata = _dynamo_client.get_receipt_metadata(
+        place = _dynamo_client.get_receipt_place(
             image_id=image_id,
             receipt_id=receipt_id,
         )
 
-        if metadata is None:
+        if place is None:
             return {
                 "found": False,
-                "message": f"No metadata found for {image_id}#{receipt_id}",
+                "message": f"No place found for {image_id}#{receipt_id}",
             }
 
         return {
             "found": True,
-            "image_id": metadata.image_id,
-            "receipt_id": metadata.receipt_id,
-            "merchant_name": metadata.merchant_name,
-            "place_id": metadata.place_id,
-            "address": metadata.address,
-            "phone_number": metadata.phone_number,
-            "merchant_category": metadata.merchant_category,
-            "matched_fields": metadata.matched_fields,
-            "validated_by": metadata.validated_by,
-            "validation_status": metadata.validation_status,
-            "reasoning": metadata.reasoning,
-            "canonical_merchant_name": metadata.canonical_merchant_name,
-            "canonical_place_id": metadata.canonical_place_id,
-            "canonical_address": metadata.canonical_address,
-            "canonical_phone_number": metadata.canonical_phone_number,
+            "image_id": place.image_id,
+            "receipt_id": place.receipt_id,
+            "merchant_name": place.merchant_name,
+            "place_id": place.place_id,
+            "address": place.formatted_address,
+            "phone_number": place.phone_number,
+            "merchant_category": getattr(place, "merchant_category", None),
+            "validation_status": place.validation_status,
         }
 
     except Exception as e:
-        logger.error(f"Error getting receipt metadata: {e}")
+        logger.error(f"Error getting receipt place: {e}")
         return {"error": str(e)}
 
 
@@ -215,12 +207,12 @@ def get_receipts_by_merchant(
 
     try:
         # Query using GSI on merchant name
-        metadatas, _ = _dynamo_client.get_receipt_metadatas_by_merchant(
+        places, _ = _dynamo_client.get_receipt_places_by_merchant(
             merchant_name=merchant_name,
             limit=limit,
         )
 
-        if not metadatas:
+        if not places:
             return {
                 "found": False,
                 "merchant_name": merchant_name,
@@ -234,26 +226,26 @@ def get_receipts_by_merchant(
         validation_statuses: dict[str, int] = {}
 
         receipts = []
-        for meta in metadatas:
+        for place in places:
             receipts.append({
-                "image_id": meta.image_id,
-                "receipt_id": meta.receipt_id,
-                "place_id": meta.place_id,
-                "validation_status": meta.validation_status,
+                "image_id": place.image_id,
+                "receipt_id": place.receipt_id,
+                "place_id": place.place_id,
+                "validation_status": place.validation_status,
             })
 
-            if meta.place_id:
-                place_ids[meta.place_id] = place_ids.get(meta.place_id, 0) + 1
+            if place.place_id:
+                place_ids[place.place_id] = place_ids.get(place.place_id, 0) + 1
 
-            if meta.address:
-                addresses[meta.address] = addresses.get(meta.address, 0) + 1
+            if place.formatted_address:
+                addresses[place.formatted_address] = addresses.get(place.formatted_address, 0) + 1
 
-            if meta.phone_number:
-                phones[meta.phone_number] = phones.get(meta.phone_number, 0) + 1
+            if place.phone_number:
+                phones[place.phone_number] = phones.get(place.phone_number, 0) + 1
 
-            if meta.validation_status:
-                validation_statuses[meta.validation_status] = (
-                    validation_statuses.get(meta.validation_status, 0) + 1
+            if place.validation_status:
+                validation_statuses[place.validation_status] = (
+                    validation_statuses.get(place.validation_status, 0) + 1
                 )
 
         # Identify canonical values (most common)

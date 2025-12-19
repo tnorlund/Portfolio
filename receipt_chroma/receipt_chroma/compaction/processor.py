@@ -5,7 +5,7 @@ from typing import Any, List, Optional
 
 from receipt_chroma.compaction.deltas import merge_compaction_deltas
 from receipt_chroma.compaction.labels import apply_label_updates
-from receipt_chroma.compaction.metadata import apply_metadata_updates
+from receipt_chroma.compaction.metadata import apply_place_updates
 from receipt_chroma.compaction.models import CollectionUpdateResult
 from receipt_chroma.data.chroma_client import ChromaClient
 
@@ -26,7 +26,7 @@ def process_collection_updates(
     This is the main entry point for processing compaction updates. It
     categorizes messages by type and applies them in the correct order:
     1. Delta merges (COMPACTION_RUN) - must be applied first
-    2. Metadata updates (RECEIPT_METADATA)
+    2. Place updates (RECEIPT_PLACE)
     3. Label updates (RECEIPT_WORD_LABEL)
 
     The caller is responsible for:
@@ -47,8 +47,8 @@ def process_collection_updates(
         CollectionUpdateResult with counts and per-message results
     """
     # Categorize messages by entity type
-    metadata_msgs = [
-        m for m in stream_messages if m.entity_type == "RECEIPT_METADATA"
+    place_msgs = [
+        m for m in stream_messages if m.entity_type == "RECEIPT_PLACE"
     ]
     label_msgs = [
         m for m in stream_messages if m.entity_type == "RECEIPT_WORD_LABEL"
@@ -61,13 +61,13 @@ def process_collection_updates(
         "Categorized stream messages",
         collection=collection.value,
         total_messages=len(stream_messages),
-        metadata_count=len(metadata_msgs),
+        place_count=len(place_msgs),
         label_count=len(label_msgs),
         delta_count=len(delta_msgs),
     )
 
-    # Apply updates in order: deltas first, then metadata, then labels
-    # This ensures new embeddings from deltas get proper metadata/labels
+    # Apply updates in order: deltas first, then place updates, then labels
+    # This ensures new embeddings from deltas get proper place data/labels
 
     # 1. Merge compaction deltas
     bucket = os.environ.get("CHROMADB_BUCKET", "")
@@ -96,10 +96,10 @@ def process_collection_updates(
             run_count=len(delta_results),
         )
 
-    # 2. Apply metadata updates
-    metadata_results = apply_metadata_updates(
+    # 2. Apply place updates
+    metadata_results = apply_place_updates(
         chroma_client=chroma_client,
-        metadata_messages=metadata_msgs,
+        place_messages=place_msgs,
         collection=collection,
         logger=logger,
         metrics=metrics,
@@ -111,7 +111,7 @@ def process_collection_updates(
             r.updated_count for r in metadata_results if r.error is None
         )
         logger.info(
-            "Applied metadata updates",
+            "Applied place updates",
             collection=collection.value,
             total_updated=total_metadata,
             message_count=len(metadata_results),

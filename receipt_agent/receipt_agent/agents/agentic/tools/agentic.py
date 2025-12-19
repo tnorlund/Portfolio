@@ -407,29 +407,7 @@ def create_agentic_tools(
                     }
             except Exception as e:
                 logger.debug("No receipt_place found: %s", e)
-
-            # Fallback to legacy receipt_metadata if no place found
-            if ctx.metadata is None:
-                try:
-                    metadata = dynamo_client.get_receipt_metadata(
-                        image_id=ctx.image_id,
-                        receipt_id=ctx.receipt_id,
-                    )
-                    if metadata:
-                        ctx.metadata = {
-                            "merchant_name": metadata.merchant_name,
-                            "place_id": metadata.place_id,
-                            "address": metadata.address,
-                            "phone": metadata.phone_number,
-                            "validation_status": metadata.validation_status,
-                        }
-                    else:
-                        ctx.metadata = {
-                            "error": "No metadata found for this receipt"
-                        }
-                except Exception as e:
-                    logger.exception("Error loading metadata")
-                    ctx.metadata = {"error": str(e)}
+                ctx.metadata = {"error": "No metadata found for this receipt"}
 
         return ctx.metadata
 
@@ -835,12 +813,12 @@ def create_agentic_tools(
         Use this to understand what the "correct" metadata should be.
         """
         try:
-            metadatas, _ = dynamo_client.get_receipt_metadatas_by_merchant(
+            places, _ = dynamo_client.get_receipt_places_by_merchant(
                 merchant_name=merchant_name,
                 limit=100,
             )
 
-            if not metadatas:
+            if not places:
                 return {
                     "error": f"No receipts found for merchant '{merchant_name}'",
                     "receipt_count": 0,
@@ -851,21 +829,21 @@ def create_agentic_tools(
             addresses = {}
             phones = {}
 
-            for meta in metadatas:
-                if meta.place_id:
-                    place_ids[meta.place_id] = (
-                        place_ids.get(meta.place_id, 0) + 1
+            for place in places:
+                if place.place_id:
+                    place_ids[place.place_id] = (
+                        place_ids.get(place.place_id, 0) + 1
                     )
-                if meta.address:
-                    addresses[meta.address] = (
-                        addresses.get(meta.address, 0) + 1
+                if place.formatted_address:
+                    addresses[place.formatted_address] = (
+                        addresses.get(place.formatted_address, 0) + 1
                     )
-                if meta.phone_number:
-                    phones[meta.phone_number] = (
-                        phones.get(meta.phone_number, 0) + 1
+                if place.phone_number:
+                    phones[place.phone_number] = (
+                        phones.get(place.phone_number, 0) + 1
                     )
 
-            total = len(metadatas)
+            total = len(places)
 
             # Find most common
             most_common_place_id = (
@@ -1039,31 +1017,23 @@ def create_agentic_tools(
             return {"error": "No receipt context set"}
 
         try:
-            # Ensure my_metadata is a proper entity with attribute access
-            # ctx.metadata may be None or a dict (from get_my_metadata)
-            if ctx.metadata is None or isinstance(ctx.metadata, dict):
-                # Fetch as proper entity for attribute access
-                my_metadata = dynamo_client.get_receipt_metadata(
-                    image_id=ctx.image_id,
-                    receipt_id=ctx.receipt_id,
-                )
-                # Cache the entity for subsequent accesses
-                ctx.metadata = my_metadata
-            else:
-                # Already a proper entity
-                my_metadata = ctx.metadata
+            # Get my receipt's place data
+            my_place = dynamo_client.get_receipt_place(
+                image_id=ctx.image_id,
+                receipt_id=ctx.receipt_id,
+            )
 
-            if not my_metadata:
+            if not my_place:
                 return {
-                    "error": f"Receipt {ctx.image_id}#{ctx.receipt_id} metadata not found"
+                    "error": f"Receipt {ctx.image_id}#{ctx.receipt_id} place not found"
                 }
 
-            # Get metadata for the other receipt
-            other_metadata = dynamo_client.get_receipt_metadata(
+            # Get place for the other receipt
+            other_place = dynamo_client.get_receipt_place(
                 image_id=other_image_id, receipt_id=other_receipt_id
             )
 
-            if not other_metadata:
+            if not other_place:
                 return {
                     "error": f"Receipt {other_image_id}#{other_receipt_id} not found"
                 }
@@ -1071,31 +1041,31 @@ def create_agentic_tools(
             # Compare
             differences = []
             same_merchant = (
-                my_metadata.merchant_name == other_metadata.merchant_name
+                my_place.merchant_name == other_place.merchant_name
             )
             if not same_merchant:
                 differences.append(
-                    f"Merchant: '{my_metadata.merchant_name}' vs '{other_metadata.merchant_name}'"
+                    f"Merchant: '{my_place.merchant_name}' vs '{other_place.merchant_name}'"
                 )
 
-            same_place_id = my_metadata.place_id == other_metadata.place_id
+            same_place_id = my_place.place_id == other_place.place_id
             if not same_place_id:
                 differences.append(
-                    f"Place ID: '{my_metadata.place_id}' vs '{other_metadata.place_id}'"
+                    f"Place ID: '{my_place.place_id}' vs '{other_place.place_id}'"
                 )
 
-            same_address = my_metadata.address == other_metadata.address
+            same_address = my_place.formatted_address == other_place.formatted_address
             if not same_address:
                 differences.append(
-                    f"Address: '{my_metadata.address}' vs '{other_metadata.address}'"
+                    f"Address: '{my_place.formatted_address}' vs '{other_place.formatted_address}'"
                 )
 
             same_phone = (
-                my_metadata.phone_number == other_metadata.phone_number
+                my_place.phone_number == other_place.phone_number
             )
             if not same_phone:
                 differences.append(
-                    f"Phone: '{my_metadata.phone_number}' vs '{other_metadata.phone_number}'"
+                    f"Phone: '{my_place.phone_number}' vs '{other_place.phone_number}'"
                 )
 
             return {

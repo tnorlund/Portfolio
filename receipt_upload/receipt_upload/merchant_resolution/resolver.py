@@ -338,9 +338,6 @@ class MerchantResolver:
         """
         Get place_id from DynamoDB for a receipt.
 
-        Tries receipt_place first (new entity), then falls back to
-        receipt_metadata (legacy entity).
-
         Args:
             image_id: Receipt's image_id
             receipt_id: Receipt's receipt_id
@@ -348,7 +345,6 @@ class MerchantResolver:
         Returns:
             place_id if found and valid, None otherwise
         """
-        # Try receipt_place first (new entity)
         try:
             place = self.dynamo.get_receipt_place(image_id, receipt_id)
             if place and place.place_id:
@@ -356,16 +352,6 @@ class MerchantResolver:
                     return place.place_id
         except Exception as e:
             _log(f"Error getting place_id from receipt_place: {e}")
-
-        # Fallback to legacy receipt_metadata
-        try:
-            metadata = self.dynamo.get_receipt_metadata(image_id, receipt_id)
-            if metadata and metadata.place_id:
-                # Skip invalid place_ids
-                if metadata.place_id not in INVALID_PLACE_IDS:
-                    return metadata.place_id
-        except Exception as e:
-            _log(f"Error getting place_id from receipt_metadata: {e}")
             logger.exception("DynamoDB lookup failed")
 
         return None

@@ -139,16 +139,8 @@ class MerchantResolvingEmbeddingProcessor:
         except Exception as e:
             _log(f"Could not fetch word labels: {e}")
 
-        # Get existing receipt metadata (legacy) and receipt place (new)
-        receipt_metadata = None
+        # Get existing receipt place for merchant context
         receipt_place = None
-        try:
-            receipt_metadata = self.dynamo.get_receipt_metadata(
-                image_id, receipt_id
-            )
-        except Exception as e:
-            _log(f"Could not fetch receipt metadata: {e}")
-
         try:
             receipt_place = self.dynamo.get_receipt_place(
                 image_id, receipt_id
@@ -162,12 +154,10 @@ class MerchantResolvingEmbeddingProcessor:
             f"({len(lines)} lines, {len(words)} words)"
         )
 
-        # Resolve merchant name (prefer receipt_place over legacy receipt_metadata)
+        # Resolve merchant name from receipt_place
         merchant_name = None
         if receipt_place and receipt_place.merchant_name:
             merchant_name = receipt_place.merchant_name
-        elif receipt_metadata and receipt_metadata.merchant_name:
-            merchant_name = receipt_metadata.merchant_name
 
         try:
             result = create_embeddings_and_compaction_run(
@@ -178,7 +168,6 @@ class MerchantResolvingEmbeddingProcessor:
                 chromadb_bucket=self.chromadb_bucket,
                 dynamo_client=self.dynamo,
                 s3_client=self.s3_client,
-                receipt_metadata=receipt_metadata,
                 receipt_place=receipt_place,
                 receipt_word_labels=word_labels,
                 merchant_name=merchant_name,
@@ -206,21 +195,14 @@ class MerchantResolvingEmbeddingProcessor:
                 receipt_id=receipt_id,
             )
 
-            # Step 3: Enrich receipt in DynamoDB if merchant found (dual-write)
+            # Step 3: Enrich receipt in DynamoDB if merchant found
             if merchant_result.place_id:
                 _log(
                     f"Enriching receipt with merchant: {merchant_result.merchant_name} "
                     f"(place_id={merchant_result.place_id}, "
                     f"tier={merchant_result.resolution_tier})"
                 )
-                # Update legacy receipt_metadata
-                self._enrich_receipt_metadata(
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    merchant_result=merchant_result,
-                    existing_metadata=receipt_metadata,
-                )
-                # Update new receipt_place
+                # Write to receipt_place
                 self._enrich_receipt_place(
                     image_id=image_id,
                     receipt_id=receipt_id,
@@ -251,67 +233,6 @@ class MerchantResolvingEmbeddingProcessor:
             "merchant_resolution_tier": merchant_result.resolution_tier,
             "merchant_confidence": merchant_result.confidence,
         }
-
-    def _enrich_receipt_metadata(
-        self,
-        image_id: str,
-        receipt_id: int,
-        merchant_result: MerchantResult,
-        existing_metadata: Optional[Any] = None,
-    ) -> None:
-        """
-        Update receipt metadata in DynamoDB with merchant information.
-
-        Args:
-            image_id: Receipt's image_id
-            receipt_id: Receipt's receipt_id
-            merchant_result: Resolved merchant information
-            existing_metadata: Optional pre-fetched metadata to avoid duplicate query
-        """
-        try:
-            # Use provided metadata or fetch if not available
-            metadata = existing_metadata or self.dynamo.get_receipt_metadata(
-                image_id, receipt_id
-            )
-
-            if metadata:
-                # Update with merchant info
-                updates = {}
-
-                if merchant_result.place_id:
-                    updates["place_id"] = merchant_result.place_id
-
-                if merchant_result.merchant_name:
-                    # Only update if current is empty or different
-                    if not metadata.merchant_name:
-                        updates["merchant_name"] = (
-                            merchant_result.merchant_name
-                        )
-
-                if merchant_result.address:
-                    if not metadata.address:
-                        updates["address"] = merchant_result.address
-
-                if merchant_result.phone:
-                    if not metadata.phone_number:
-                        updates["phone_number"] = merchant_result.phone
-
-                if updates:
-                    self.dynamo.update_receipt_metadata(
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                        **updates,
-                    )
-                    _log(
-                        f"Updated receipt metadata with: {list(updates.keys())}"
-                    )
-            else:
-                _log(f"No existing metadata for {image_id}#{receipt_id}")
-
-        except Exception as e:
-            _log(f"ERROR: Failed to enrich receipt metadata: {e}")
-            logger.exception("Metadata enrichment failed")
-            raise
 
     def _enrich_receipt_place(
         self,
