@@ -36,9 +36,7 @@ def validate_pagination_params(
 
     if last_evaluated_key is not None:
         if not isinstance(last_evaluated_key, dict):
-            raise EntityValidationError(
-                "LastEvaluatedKey must be a dictionary"
-            )
+            raise EntityValidationError("LastEvaluatedKey must be a dictionary")
         # Validate DynamoDB LastEvaluatedKey structure
         required_keys = {"PK", "SK"}
         if not required_keys.issubset(last_evaluated_key.keys()):
@@ -109,9 +107,7 @@ def build_query_params(
     return query_params
 
 
-def build_get_item_key(
-    primary_key: str, sort_key: str
-) -> Dict[str, Dict[str, str]]:
+def build_get_item_key(primary_key: str, sort_key: str) -> Dict[str, Dict[str, str]]:
     """
     Build a DynamoDB key for get_item operations.
 

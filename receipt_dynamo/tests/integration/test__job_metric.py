@@ -86,8 +86,7 @@ def sample_job_metric_later(sample_job, sample_job_metric):
         sample_job.job_id,
         sample_job_metric.metric_name,
         (
-            datetime.fromisoformat(sample_job_metric.timestamp)
-            + timedelta(hours=1)
+            datetime.fromisoformat(sample_job_metric.timestamp) + timedelta(hours=1)
         ).isoformat(),
         0.1,
         unit="dimensionless",
@@ -102,9 +101,7 @@ def sample_job_metric_later(sample_job, sample_job_metric):
 
 
 @pytest.mark.integration
-def test_addJobMetric_success(
-    job_metric_dynamo, sample_job, sample_job_metric
-):
+def test_addJobMetric_success(job_metric_dynamo, sample_job, sample_job_metric):
     """Test adding a job metric successfully"""
     # Add the job first
     job_metric_dynamo.add_job(sample_job)
@@ -113,9 +110,7 @@ def test_addJobMetric_success(
     job_metric_dynamo.add_job_metric(sample_job_metric)
 
     # Verify the job metric was added by retrieving it
-    metrics, _ = job_metric_dynamo.get_metrics_by_name(
-        sample_job_metric.metric_name
-    )
+    metrics, _ = job_metric_dynamo.get_metrics_by_name(sample_job_metric.metric_name)
 
     # Find the metric matching our job_id
     job_metrics = [m for m in metrics if m.job_id == sample_job.job_id]
@@ -202,9 +197,7 @@ def test_addJobMetric_raises_resource_not_found(
 
 
 @pytest.mark.integration
-def test_getJobMetric_success(
-    job_metric_dynamo, sample_job, sample_job_metric
-):
+def test_getJobMetric_success(job_metric_dynamo, sample_job, sample_job_metric):
     """Test getting a job metric successfully"""
     # Add the job first
     job_metric_dynamo.add_job(sample_job)
@@ -245,15 +238,11 @@ def test_getJobMetric_raises_value_error_metric_name_none(
         ValueError,
         match="Metric name is required and must be a non-empty string.",
     ):
-        job_metric_dynamo.get_job_metric(
-            sample_job.job_id, None, "2021-01-01T12:30:45"
-        )
+        job_metric_dynamo.get_job_metric(sample_job.job_id, None, "2021-01-01T12:30:45")
 
 
 @pytest.mark.integration
-def test_getJobMetric_raises_value_error_timestamp_none(
-    job_metric_dynamo, sample_job
-):
+def test_getJobMetric_raises_value_error_timestamp_none(job_metric_dynamo, sample_job):
     """Test that getJobMetric raises ValueError when timestamp is None"""
     with pytest.raises(
         ValueError,
@@ -263,15 +252,11 @@ def test_getJobMetric_raises_value_error_timestamp_none(
 
 
 @pytest.mark.integration
-def test_getJobMetric_raises_value_error_not_found(
-    job_metric_dynamo, sample_job
-):
+def test_getJobMetric_raises_value_error_not_found(job_metric_dynamo, sample_job):
     """
     Test that getJobMetric raises ValueError when the job metric does not exist
     """
-    with pytest.raises(
-        EntityNotFoundError, match="No job metric found with job ID.*"
-    ):
+    with pytest.raises(EntityNotFoundError, match="No job metric found with job ID.*"):
         job_metric_dynamo.get_job_metric(
             sample_job.job_id, "nonexistent", "2021-01-01T12:30:45"
         )
@@ -295,9 +280,7 @@ def test_listJobMetrics_success(
     job_metric_dynamo.add_job_metric(sample_job_metric_2)
 
     # List the job metrics
-    metrics, last_evaluated_key = job_metric_dynamo.list_job_metrics(
-        sample_job.job_id
-    )
+    metrics, last_evaluated_key = job_metric_dynamo.list_job_metrics(sample_job.job_id)
 
     # Verify
     assert len(metrics) == 2
@@ -357,9 +340,7 @@ def test_listJobMetrics_with_limit(
 
     # Verify
     assert len(metrics) == 1
-    assert (
-        last_evaluated_key is not None
-    )  # There should be a last evaluated key
+    assert last_evaluated_key is not None  # There should be a last evaluated key
 
 
 @pytest.mark.integration
@@ -402,9 +383,7 @@ def test_listJobMetrics_empty(job_metric_dynamo, sample_job):
     job_metric_dynamo.add_job(sample_job)
 
     # List the job metrics
-    metrics, last_evaluated_key = job_metric_dynamo.list_job_metrics(
-        sample_job.job_id
-    )
+    metrics, last_evaluated_key = job_metric_dynamo.list_job_metrics(sample_job.job_id)
 
     # Verify
     assert len(metrics) == 0
@@ -462,9 +441,7 @@ def test_getMetricsByName_with_limit(
     job_metric_dynamo.add_job_metric(sample_job_metric_later)
 
     # Get metrics by name with limit=1
-    metrics, last_evaluated_key = job_metric_dynamo.get_metrics_by_name(
-        "loss", limit=1
-    )
+    metrics, last_evaluated_key = job_metric_dynamo.get_metrics_by_name("loss", limit=1)
 
     # Verify
     assert len(metrics) == 1
@@ -472,9 +449,7 @@ def test_getMetricsByName_with_limit(
 
 
 @pytest.mark.integration
-def test_getMetricsByName_not_found(
-    job_metric_dynamo, sample_job, sample_job_metric
-):
+def test_getMetricsByName_not_found(job_metric_dynamo, sample_job, sample_job_metric):
     """Test getting metrics by name when none match"""
     # Add the job first
     job_metric_dynamo.add_job(sample_job)
@@ -483,9 +458,7 @@ def test_getMetricsByName_not_found(
     job_metric_dynamo.add_job_metric(sample_job_metric)  # loss
 
     # Get metrics by a non-existent name
-    metrics, last_evaluated_key = job_metric_dynamo.get_metrics_by_name(
-        "nonexistent"
-    )
+    metrics, last_evaluated_key = job_metric_dynamo.get_metrics_by_name("nonexistent")
 
     # Verify
     assert len(metrics) == 0
@@ -554,8 +527,8 @@ def test_getMetricsByNameAcrossJobs_success(
     job_metric_dynamo.add_job_metric(second_job_metric)  # Second job, loss
 
     # Get metrics by name across jobs
-    metrics, last_evaluated_key = (
-        job_metric_dynamo.get_metrics_by_name_across_jobs("loss")
+    metrics, last_evaluated_key = job_metric_dynamo.get_metrics_by_name_across_jobs(
+        "loss"
     )
 
     # Verify
@@ -563,9 +536,7 @@ def test_getMetricsByNameAcrossJobs_success(
     assert all(m.metric_name == "loss" for m in metrics)
 
     # Verify job grouping - first check original job metrics
-    original_job_metrics = [
-        m for m in metrics if m.job_id == sample_job.job_id
-    ]
+    original_job_metrics = [m for m in metrics if m.job_id == sample_job.job_id]
     assert len(original_job_metrics) == 2
 
     # Then check second job metrics
@@ -633,8 +604,8 @@ def test_getMetricsByNameAcrossJobs_with_limit(
     job_metric_dynamo.add_job_metric(second_job_metric)
 
     # Get metrics by name across jobs with limit=2
-    metrics, last_evaluated_key = (
-        job_metric_dynamo.get_metrics_by_name_across_jobs("loss", limit=2)
+    metrics, last_evaluated_key = job_metric_dynamo.get_metrics_by_name_across_jobs(
+        "loss", limit=2
     )
 
     # Verify
@@ -655,8 +626,8 @@ def test_getMetricsByNameAcrossJobs_not_found(
     job_metric_dynamo.add_job_metric(sample_job_metric)  # loss
 
     # Get metrics by a non-existent name
-    metrics, last_evaluated_key = (
-        job_metric_dynamo.get_metrics_by_name_across_jobs("nonexistent")
+    metrics, last_evaluated_key = job_metric_dynamo.get_metrics_by_name_across_jobs(
+        "nonexistent"
     )
 
     # Verify
@@ -708,9 +679,7 @@ def test_validate_last_evaluated_key_raises_value_error_invalid_format():
 
 
 @pytest.mark.integration
-def test_listJobMetrics_raises_client_error(
-    job_metric_dynamo, sample_job, mocker
-):
+def test_listJobMetrics_raises_client_error(job_metric_dynamo, sample_job, mocker):
     """
     Test that listJobMetrics raises an exception when a ClientError occurs
     """

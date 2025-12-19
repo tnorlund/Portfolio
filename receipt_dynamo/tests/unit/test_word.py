@@ -219,9 +219,7 @@ def test_word_init_invalid_bounding_box():
             5.0,
             0.90,
         )
-    with pytest.raises(
-        ValueError, match="bounding_box must contain the key 'x'"
-    ):
+    with pytest.raises(ValueError, match="bounding_box must contain the key 'x'"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -276,9 +274,7 @@ def test_word_init_invalid_corners():
 @pytest.mark.unit
 def test_word_init_invalid_angle():
     """Test that Word raises a ValueError if the angle is not a float"""
-    with pytest.raises(
-        ValueError, match="angle_degrees must be float or int, got"
-    ):
+    with pytest.raises(ValueError, match="angle_degrees must be float or int, got"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -293,9 +289,7 @@ def test_word_init_invalid_angle():
             5.0,
             0.90,
         )
-    with pytest.raises(
-        ValueError, match="angle_radians must be float or int, got"
-    ):
+    with pytest.raises(ValueError, match="angle_radians must be float or int, got"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -315,9 +309,7 @@ def test_word_init_invalid_angle():
 @pytest.mark.unit
 def test_word_init_invalid_confidence():
     """Test that Word raises a ValueError if the confidence is not a float"""
-    with pytest.raises(
-        ValueError, match="confidence must be float or int, got"
-    ):
+    with pytest.raises(ValueError, match="confidence must be float or int, got"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -347,9 +339,7 @@ def test_word_init_invalid_confidence():
         1,
     )
     assert word.confidence == 1.0
-    with pytest.raises(
-        ValueError, match="confidence must be between 0 and 1, got"
-    ):
+    with pytest.raises(ValueError, match="confidence must be between 0 and 1, got"):
         Word(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             2,
@@ -649,18 +639,10 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
 
         word.rotate(angle, 0, 0, use_radians=use_radians)
 
-        assert word.top_right["x"] == pytest.approx(
-            expected_top_right["x"], rel=1e-6
-        )
-        assert word.top_right["y"] == pytest.approx(
-            expected_top_right["y"], rel=1e-6
-        )
-        assert word.top_left["x"] == pytest.approx(
-            expected_top_left["x"], rel=1e-6
-        )
-        assert word.top_left["y"] == pytest.approx(
-            expected_top_left["y"], rel=1e-6
-        )
+        assert word.top_right["x"] == pytest.approx(expected_top_right["x"], rel=1e-6)
+        assert word.top_right["y"] == pytest.approx(expected_top_right["y"], rel=1e-6)
+        assert word.top_left["x"] == pytest.approx(expected_top_left["x"], rel=1e-6)
+        assert word.top_left["y"] == pytest.approx(expected_top_left["y"], rel=1e-6)
         assert word.bottom_right["x"] == pytest.approx(
             expected_bottom_right["x"], rel=1e-6
         )
@@ -693,12 +675,8 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
             "height": max(ys) - min(ys),
         }
 
-        assert word.bounding_box["x"] == pytest.approx(
-            expected_bb["x"], rel=1e-6
-        )
-        assert word.bounding_box["y"] == pytest.approx(
-            expected_bb["y"], rel=1e-6
-        )
+        assert word.bounding_box["x"] == pytest.approx(expected_bb["x"], rel=1e-6)
+        assert word.bounding_box["y"] == pytest.approx(expected_bb["y"], rel=1e-6)
         assert word.bounding_box["width"] == pytest.approx(
             expected_bb["width"], rel=1e-6
         )
@@ -708,18 +686,12 @@ def test_word_rotate_limited_range(angle, use_radians, should_raise):
 
         if use_radians:
             expected_angle_radians = orig_angle_radians + angle
-            expected_angle_degrees = orig_angle_degrees + (
-                angle * 180.0 / math.pi
-            )
+            expected_angle_degrees = orig_angle_degrees + (angle * 180.0 / math.pi)
         else:
             expected_angle_degrees = orig_angle_degrees + angle
             expected_angle_radians = orig_angle_radians + math.radians(angle)
-        assert word.angle_radians == pytest.approx(
-            expected_angle_radians, abs=1e-9
-        )
-        assert word.angle_degrees == pytest.approx(
-            expected_angle_degrees, abs=1e-9
-        )
+        assert word.angle_radians == pytest.approx(expected_angle_radians, abs=1e-9)
+        assert word.angle_degrees == pytest.approx(expected_angle_degrees, abs=1e-9)
 
 
 @pytest.mark.parametrize(

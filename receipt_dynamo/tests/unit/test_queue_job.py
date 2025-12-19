@@ -40,27 +40,21 @@ def test_queue_job_init_valid(example_queue_job):
 @pytest.mark.unit
 def test_queue_job_init_invalid_queue_name():
     """QueueJob constructor raises a ValueError with invalid queue_name."""
-    with pytest.raises(
-        ValueError, match="queue_name must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
         QueueJob(
             queue_name="",
             job_id="12345678-1234-5678-1234-567812345678",
             enqueued_at=datetime.now(),
         )
 
-    with pytest.raises(
-        ValueError, match="queue_name must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
         QueueJob(
             queue_name=None,
             job_id="12345678-1234-5678-1234-567812345678",
             enqueued_at=datetime.now(),
         )
 
-    with pytest.raises(
-        ValueError, match="queue_name must be a non-empty string"
-    ):
+    with pytest.raises(ValueError, match="queue_name must be a non-empty string"):
         QueueJob(
             queue_name=123,
             job_id="12345678-1234-5678-1234-567812345678",
@@ -79,14 +73,10 @@ def test_queue_job_init_invalid_job_id():
         )
 
     with pytest.raises(ValueError, match="uuid must be a string"):
-        QueueJob(
-            queue_name="test-queue", job_id=None, enqueued_at=datetime.now()
-        )
+        QueueJob(queue_name="test-queue", job_id=None, enqueued_at=datetime.now())
 
     with pytest.raises(ValueError, match="uuid must be a string"):
-        QueueJob(
-            queue_name="test-queue", job_id=123, enqueued_at=datetime.now()
-        )
+        QueueJob(queue_name="test-queue", job_id=123, enqueued_at=datetime.now())
 
 
 @pytest.mark.unit
@@ -134,9 +124,7 @@ def test_queue_job_init_invalid_priority():
 @pytest.mark.unit
 def test_queue_job_init_invalid_position():
     """QueueJob constructor raises a ValueError with invalid position."""
-    with pytest.raises(
-        ValueError, match="position must be a non-negative integer"
-    ):
+    with pytest.raises(ValueError, match="position must be a non-negative integer"):
         QueueJob(
             queue_name="test-queue",
             job_id="12345678-1234-4678-9234-567812345678",
@@ -144,9 +132,7 @@ def test_queue_job_init_invalid_position():
             position=-1,
         )
 
-    with pytest.raises(
-        ValueError, match="position must be a non-negative integer"
-    ):
+    with pytest.raises(ValueError, match="position must be a non-negative integer"):
         QueueJob(
             queue_name="test-queue",
             job_id="12345678-1234-4678-9234-567812345678",

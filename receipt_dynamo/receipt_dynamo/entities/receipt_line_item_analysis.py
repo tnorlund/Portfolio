@@ -79,9 +79,7 @@ class ReceiptLineItemAnalysis:
         elif isinstance(self.timestamp_added, str):
             pass  # Already a string
         else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+            raise ValueError("timestamp_added must be a datetime object or a string")
 
         # Store timestamp_updated if provided
         if self.timestamp_updated is not None:
@@ -190,9 +188,7 @@ class ReceiptLineItemAnalysis:
         """
         return {
             "GSI2PK": {"S": "RECEIPT"},
-            "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
-            },
+            "GSI2SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
         }
 
     def to_item(self) -> Dict[str, Any]:
@@ -336,13 +332,8 @@ class ReceiptLineItemAnalysis:
             if "unit_price" in price and price["unit_price"] is not None:
                 price_map["M"]["unit_price"] = {"S": str(price["unit_price"])}
 
-            if (
-                "extended_price" in price
-                and price["extended_price"] is not None
-            ):
-                price_map["M"]["extended_price"] = {
-                    "S": str(price["extended_price"])
-                }
+            if "extended_price" in price and price["extended_price"] is not None:
+                price_map["M"]["extended_price"] = {"S": str(price["extended_price"])}
 
             result["M"]["price"] = price_map
 
@@ -434,9 +425,7 @@ class ReceiptLineItemAnalysis:
                 A detailed explanation of how items were identified and
                 calculations performed.
         """
-        reasoning_parts = [
-            f"Analyzed {self.total_found} line items from the receipt."
-        ]
+        reasoning_parts = [f"Analyzed {self.total_found} line items from the receipt."]
 
         # Add financial summary
         financial_parts = []
@@ -454,9 +443,7 @@ class ReceiptLineItemAnalysis:
             financial_parts.append(f"Total: ${self.total}")
 
         if financial_parts:
-            reasoning_parts.append(
-                "Financial summary: " + ", ".join(financial_parts)
-            )
+            reasoning_parts.append("Financial summary: " + ", ".join(financial_parts))
 
         # Add discrepancies if any
         if self.discrepancies:
@@ -466,9 +453,7 @@ class ReceiptLineItemAnalysis:
 
         # Add item reasoning summary
         item_reasons = [
-            item.get("reasoning", "")
-            for item in self.items
-            if item.get("reasoning")
+            item.get("reasoning", "") for item in self.items if item.get("reasoning")
         ]
         if item_reasons:
             # Just include a summary count to avoid extremely long reasoning
@@ -480,9 +465,7 @@ class ReceiptLineItemAnalysis:
 
         return " ".join(reasoning_parts)
 
-    def get_item_by_description(
-        self, description: str
-    ) -> Optional[Dict[str, Any]]:
+    def get_item_by_description(self, description: str) -> Optional[Dict[str, Any]]:
         """
         Find a line item by its description.
 
@@ -622,10 +605,7 @@ def item_to_receipt_line_item_analysis(
         total_found = int(item["total_found"]["N"])
 
         # Convert items from DynamoDB format
-        items = [
-            _convert_dynamo_to_item(item_dict)
-            for item_dict in item["items"]["L"]
-        ]
+        items = [_convert_dynamo_to_item(item_dict) for item_dict in item["items"]["L"]]
 
         # Extract optional financial fields
         subtotal = item.get("subtotal", {}).get("S")
@@ -706,9 +686,7 @@ def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:
 
     # Extract line_ids
     if "line_ids" in item_map:
-        item["line_ids"] = [
-            int(line_id["N"]) for line_id in item_map["line_ids"]["L"]
-        ]
+        item["line_ids"] = [int(line_id["N"]) for line_id in item_map["line_ids"]["L"]]
 
     # Extract quantity
     if "quantity" in item_map:
@@ -730,9 +708,7 @@ def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:
             item["price"]["unit_price"] = Decimal(price_map["unit_price"]["S"])
 
         if "extended_price" in price_map:
-            item["price"]["extended_price"] = Decimal(
-                price_map["extended_price"]["S"]
-            )
+            item["price"]["extended_price"] = Decimal(price_map["extended_price"]["S"])
 
     # Extract metadata
     if "metadata" in item_map and "M" in item_map["metadata"]:

@@ -225,9 +225,7 @@ class _Word(FlattenedStandardMixin):
             while unprocessed.get(self.table_name, {}).get(
                 "Keys"
             ):  # type: ignore[call-overload]
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
+                response = self._client.batch_get_item(RequestItems=unprocessed)
                 batch_items = response["Responses"].get(self.table_name, [])
                 results.extend(batch_items)
                 unprocessed = response.get("UnprocessedKeys", {})
@@ -272,9 +270,7 @@ class _Word(FlattenedStandardMixin):
         # original query
         words, _ = self._query_entities(
             index_name=None,  # Main table query
-            key_condition_expression=(
-                "PK = :pkVal AND begins_with(SK, :skPrefix)"
-            ),
+            key_condition_expression=("PK = :pkVal AND begins_with(SK, :skPrefix)"),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pkVal": {"S": f"IMAGE#{image_id}"},

@@ -133,9 +133,7 @@ def test_addJob_raises_resource_not_found(job_dynamo, sample_job, mocker):
 
 
 @pytest.mark.integration
-def test_addJob_raises_provisioned_throughput_exceeded(
-    job_dynamo, sample_job, mocker
-):
+def test_addJob_raises_provisioned_throughput_exceeded(job_dynamo, sample_job, mocker):
     """
     Simulate a ProvisionedThroughputExceededException when adding a job.
     """
@@ -254,9 +252,7 @@ def test_addJobs_raises_value_error_jobs_not_list(job_dynamo):
 
 
 @pytest.mark.integration
-def test_addJobs_raises_value_error_jobs_not_list_of_jobs(
-    job_dynamo, sample_job
-):
+def test_addJobs_raises_value_error_jobs_not_list_of_jobs(job_dynamo, sample_job):
     """
     Test that addJobs raises ValueError when jobs is not a list of Job
     instances
@@ -346,9 +342,7 @@ def test_addJobs_raises_clienterror_validation_exception(
 
 
 @pytest.mark.integration
-def test_addJobs_raises_clienterror_access_denied(
-    job_dynamo, sample_job, mocker
-):
+def test_addJobs_raises_clienterror_access_denied(job_dynamo, sample_job, mocker):
     """
     Simulate an AccessDeniedException when adding jobs.
     """
@@ -485,9 +479,7 @@ def test_getJob_raises_value_error_job_not_found(job_dynamo):
     """Test that getJob raises EntityNotFoundError when job does not exist"""
     from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
-    with pytest.raises(
-        EntityNotFoundError, match="Job with job id .* does not exist"
-    ):
+    with pytest.raises(EntityNotFoundError, match="Job with job id .* does not exist"):
         job_dynamo.get_job(str(uuid.uuid4()))
 
 
@@ -579,16 +571,12 @@ def test_deleteJob_raises_value_error_job_not_instance(job_dynamo):
 def test_deleteJob_raises_conditional_check_failed(job_dynamo, sample_job):
     """Test that deleteJob raises ValueError when the job does not exist"""
     # Try to delete without adding first
-    with pytest.raises(
-        EntityNotFoundError, match="job not found during delete_job"
-    ):
+    with pytest.raises(EntityNotFoundError, match="job not found during delete_job"):
         job_dynamo.delete_job(sample_job)
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason="Implementation bug: _add_entity called with wrong signature"
-)
+@pytest.mark.skip(reason="Implementation bug: _add_entity called with wrong signature")
 def test_addJobStatus_success(job_dynamo, sample_job, sample_job_status):
     """Test adding a job status successfully"""
     # Add the job first
@@ -608,9 +596,7 @@ def test_addJobStatus_success(job_dynamo, sample_job, sample_job_status):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason="Implementation bug: _add_entity called with wrong signature"
-)
+@pytest.mark.skip(reason="Implementation bug: _add_entity called with wrong signature")
 def test_addJobStatus_raises_value_error_status_none(job_dynamo):
     """Test that addJobStatus raises ValueError when status is None"""
     with pytest.raises(OperationError, match="job_status cannot be None"):
@@ -618,9 +604,7 @@ def test_addJobStatus_raises_value_error_status_none(job_dynamo):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason="Implementation bug: _add_entity called with wrong signature"
-)
+@pytest.mark.skip(reason="Implementation bug: _add_entity called with wrong signature")
 def test_addJobStatus_raises_value_error_status_not_instance(job_dynamo):
     """
     Test that addJobStatus raises ValueError when status is not an instance
@@ -634,9 +618,7 @@ def test_addJobStatus_raises_value_error_status_not_instance(job_dynamo):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason="Depends on add_job_status which has implementation bug"
-)
+@pytest.mark.skip(reason="Depends on add_job_status which has implementation bug")
 def test_getJobWithStatus_success(job_dynamo, sample_job, sample_job_status):
     """Test getting a job with its status updates"""
     # Add the job
@@ -671,9 +653,7 @@ def test_getJobWithStatus_success(job_dynamo, sample_job, sample_job_status):
 
 
 @pytest.mark.integration
-def test_getLatestJobStatus_raises_value_error_no_status(
-    job_dynamo, sample_job
-):
+def test_getLatestJobStatus_raises_value_error_no_status(job_dynamo, sample_job):
     """
     Test that getLatestJobStatus raises ValueError when there are no status
     updates
@@ -717,9 +697,7 @@ def test_listJobs_with_limit(job_dynamo, sample_job):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason="Depends on add_job_status which has implementation bug"
-)
+@pytest.mark.skip(reason="Depends on add_job_status which has implementation bug")
 def test_listJobStatuses_success(job_dynamo, sample_job_status):
     """Test listJobStatuses successfully lists job statuses"""
     # Add the job status first
@@ -732,15 +710,11 @@ def test_listJobStatuses_success(job_dynamo, sample_job_status):
 
     # Verify
     assert len(job_statuses) >= 1
-    assert any(
-        status.job_id == sample_job_status.job_id for status in job_statuses
-    )
+    assert any(status.job_id == sample_job_status.job_id for status in job_statuses)
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason="Depends on add_job_status which has implementation bug"
-)
+@pytest.mark.skip(reason="Depends on add_job_status which has implementation bug")
 def test_listJobStatuses_with_limit(job_dynamo, sample_job_status):
     """Test listJobStatuses with a limit parameter"""
     # Add the job status first
@@ -831,9 +805,7 @@ def test_listJobs_raises_client_error_resource_not_found(job_dynamo, mocker):
 
 @pytest.mark.integration
 @pytest.mark.skip(reason="Job status related test - implementation has bugs")
-def test_listJobStatuses_raises_client_error_resource_not_found(
-    job_dynamo, mocker
-):
+def test_listJobStatuses_raises_client_error_resource_not_found(job_dynamo, mocker):
     """
     Test that listJobStatuses raises an exception when
     ResourceNotFoundException occurs
@@ -855,9 +827,7 @@ def test_listJobStatuses_raises_client_error_resource_not_found(
 
 @pytest.mark.integration
 @pytest.mark.skip(reason="Job status related test - implementation has bugs")
-def test_listJobStatuses_raises_client_error_internal_server_error(
-    job_dynamo, mocker
-):
+def test_listJobStatuses_raises_client_error_internal_server_error(job_dynamo, mocker):
     """
     Test that listJobStatuses raises an exception when InternalServerError
     occurs
@@ -952,9 +922,7 @@ def test_getJob_raises_client_error_resource_not_found(job_dynamo, mocker):
         }
     }
     mocked_error = ClientError(mocked_response, "GetItem")
-    mocker.patch.object(
-        job_dynamo._client, "get_item", side_effect=mocked_error
-    )
+    mocker.patch.object(job_dynamo._client, "get_item", side_effect=mocked_error)
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(Exception, match="Table not found"):
@@ -974,9 +942,7 @@ def test_getJob_raises_client_error_internal_server_error(job_dynamo, mocker):
         }
     }
     mocked_error = ClientError(mocked_response, "GetItem")
-    mocker.patch.object(
-        job_dynamo._client, "get_item", side_effect=mocked_error
-    )
+    mocker.patch.object(job_dynamo._client, "get_item", side_effect=mocked_error)
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(Exception, match="Internal server error"):
@@ -985,9 +951,7 @@ def test_getJob_raises_client_error_internal_server_error(job_dynamo, mocker):
 
 @pytest.mark.integration
 @pytest.mark.skip(reason="Job status related test - implementation has bugs")
-def test_getLatestJobStatus_raises_client_error_resource_not_found(
-    job_dynamo, mocker
-):
+def test_getLatestJobStatus_raises_client_error_resource_not_found(job_dynamo, mocker):
     """
     Test that getLatestJobStatus raises an exception when
     ResourceNotFoundException occurs

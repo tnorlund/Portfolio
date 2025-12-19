@@ -50,16 +50,12 @@ def test_load_env_empty_outputs(mocker):
     has no outputs.
     """
     mock_subprocess = mocker.patch("subprocess.run")
-    mock_subprocess.return_value.stdout = json.dumps(
-        {}
-    )  # Simulate empty stack output
+    mock_subprocess.return_value.stdout = json.dumps({})  # Simulate empty stack output
 
     result = load_env("dev")
 
     assert isinstance(result, dict)
-    assert (
-        result == {}
-    ), "Expected an empty dictionary when stack has no outputs"
+    assert result == {}, "Expected an empty dictionary when stack has no outputs"
 
 
 def test_load_env_nonexistent_stack(mocker):
@@ -80,9 +76,7 @@ def test_load_env_nonexistent_stack(mocker):
     result = load_env("dev")
 
     assert isinstance(result, dict)
-    assert (
-        result == {}
-    ), "Expected an empty dictionary when stack selection fails"
+    assert result == {}, "Expected an empty dictionary when stack selection fails"
 
 
 @pytest.mark.integration

@@ -327,7 +327,7 @@ def upload_snapshot_atomic(
             Key=pointer_key,
             Body=version_id.encode("utf-8"),
             ContentType="text/plain",
-            Metadata=metadata or {},
+            Metadata={k: str(v) for k, v in (metadata or {}).items()},
         )
 
         # Step 5: Background cleanup of old versions

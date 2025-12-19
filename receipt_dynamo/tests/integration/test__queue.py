@@ -117,9 +117,7 @@ def test_addQueue_raises_conditional_check_failed(queue_dynamo, sample_queue):
 
 
 @pytest.mark.integration
-def test_addQueue_raises_resource_not_found(
-    queue_dynamo, sample_queue, monkeypatch
-):
+def test_addQueue_raises_resource_not_found(queue_dynamo, sample_queue, monkeypatch):
     """
     Test that trying to add a queue to a non-existent table raises a
     ClientError.
@@ -217,17 +215,13 @@ def test_addQueues_handles_unprocessed_items(queue_dynamo, monkeypatch):
             call_count += 1
             # Return unprocessed items for the first queue
             unprocessed_item = {
-                queue_dynamo.table_name: [
-                    {"PutRequest": {"Item": queues[0].to_item()}}
-                ]
+                queue_dynamo.table_name: [{"PutRequest": {"Item": queues[0].to_item()}}]
             }
             return {"UnprocessedItems": unprocessed_item}
         # On subsequent calls, use the original method
         return original_batch_write(*args, **kwargs)
 
-    monkeypatch.setattr(
-        queue_dynamo._client, "batch_write_item", mock_batch_write
-    )
+    monkeypatch.setattr(queue_dynamo._client, "batch_write_item", mock_batch_write)
 
     # This should handle the unprocessed items
     queue_dynamo.add_queues(queues)
@@ -363,9 +357,7 @@ def test_getQueue_raises_value_error_empty(queue_dynamo):
 @pytest.mark.integration
 def test_getQueue_queue_not_found(queue_dynamo):
     """Test that trying to get a non-existent queue raises a ValueError."""
-    with pytest.raises(
-        EntityNotFoundError, match="Queue non-existent-queue not found"
-    ):
+    with pytest.raises(EntityNotFoundError, match="Queue non-existent-queue not found"):
         queue_dynamo.get_queue("non-existent-queue")
 
 
@@ -519,9 +511,7 @@ def test_addJobToQueue_queue_not_found(queue_dynamo, sample_queue_job):
 
 
 @pytest.mark.integration
-def test_removeJobFromQueue_success(
-    queue_dynamo, sample_queue, sample_queue_job
-):
+def test_removeJobFromQueue_success(queue_dynamo, sample_queue, sample_queue_job):
     """Test that removing a job from a queue is successful."""
     # Add the queue first
     queue_dynamo.add_queue(sample_queue)
@@ -687,9 +677,7 @@ def test_listJobsInQueue_queue_not_found(queue_dynamo, monkeypatch):
     monkeypatch.setattr(queue_dynamo.__class__, "get_queue", mock_get_queue)
 
     # Now test the listJobsInQueue function
-    with pytest.raises(
-        EntityNotFoundError, match="Queue non-existent-queue not found"
-    ):
+    with pytest.raises(EntityNotFoundError, match="Queue non-existent-queue not found"):
         queue_dynamo.list_jobs_in_queue("non-existent-queue")
 
 
@@ -831,9 +819,7 @@ def test_validate_last_evaluated_key_invalid_missing_key():
     # This is missing the SK key
     invalid_lek = {"PK": {"S": "QUEUE#test-queue"}}
 
-    with pytest.raises(
-        ValueError, match="LastEvaluatedKey must contain PK and SK"
-    ):
+    with pytest.raises(ValueError, match="LastEvaluatedKey must contain PK and SK"):
         validate_last_evaluated_key(invalid_lek)
 
 

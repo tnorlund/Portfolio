@@ -30,9 +30,7 @@ def test_receipt_word_init_valid(
 ):
     """Test that a ReceiptWord with valid arguments initializes correctly."""
     assert receipt_word_fixture.receipt_id == 1
-    assert receipt_word_fixture.image_id == (
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert receipt_word_fixture.image_id == ("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
     assert receipt_word_fixture.line_id == 3
     assert receipt_word_fixture.word_id == 4
     assert receipt_word_fixture.text == "Test"
@@ -311,9 +309,7 @@ def test_receipt_word_angle_validation():
 @pytest.mark.unit
 def test_receipt_word_init_invalid_confidence():
     """Test that confidence outside (0,1] raises ValueError."""
-    with pytest.raises(
-        ValueError, match="confidence must be float or int, got"
-    ):
+    with pytest.raises(ValueError, match="confidence must be float or int, got"):
         ReceiptWord(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -345,9 +341,7 @@ def test_receipt_word_init_invalid_confidence():
         confidence=1,
     )
     assert receipt.confidence == 1.0
-    with pytest.raises(
-        ValueError, match="confidence must be between 0 and 1, got"
-    ):
+    with pytest.raises(ValueError, match="confidence must be between 0 and 1, got"):
         ReceiptWord(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -584,9 +578,7 @@ def test_receipt_word_gsi3_key():
         confidence=0.95,
     )
     assert word.gsi3_key() == {
-        "GSI3PK": {
-            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
-        },
+        "GSI3PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
         "GSI3SK": {"S": "WORD"},
     }
 
@@ -678,9 +670,7 @@ def test_receipt_word_iter(receipt_word_fixture):
     }
     assert set(receipt_word_dict.keys()) == expected_keys
     assert receipt_word_dict["receipt_id"] == 1
-    assert receipt_word_dict["image_id"] == (
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
-    )
+    assert receipt_word_dict["image_id"] == ("3f52804b-2fad-4e00-92c8-b593da3a8ed3")
     assert receipt_word_dict["line_id"] == 3
     assert receipt_word_dict["word_id"] == 4
     assert receipt_word_dict["text"] == "Test"
@@ -735,10 +725,7 @@ def test_receipt_word_distance_and_angle(receipt_word_fixture):
 @pytest.mark.unit
 def test_item_to_receipt_word_round_trip(receipt_word_fixture):
     """Test that converting an item to ReceiptWord and back is consistent."""
-    assert (
-        item_to_receipt_word(receipt_word_fixture.to_item())
-        == receipt_word_fixture
-    )
+    assert item_to_receipt_word(receipt_word_fixture.to_item()) == receipt_word_fixture
     with pytest.raises(ValueError, match="^Item is missing required keys:"):
         item_to_receipt_word({})
     with pytest.raises(

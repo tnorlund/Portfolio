@@ -84,7 +84,10 @@ import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
+
+if TYPE_CHECKING:
+    from receipt_dynamo.entities import ReceiptMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -646,15 +649,19 @@ class ReceiptMetadataFinder:
         self,
         dry_run: bool = True,
         min_confidence: float = 50.0,
+        create_receipt_place: bool = True,
     ) -> UpdateResult:
         """
-        Apply metadata updates to DynamoDB.
+        Apply metadata updates to DynamoDB with optional dual-write to ReceiptPlace.
 
-        Updates any missing fields with found values.
+        Updates any missing fields with found values. If create_receipt_place is True,
+        also creates ReceiptPlace entities with rich data from Google Places API v1.
 
         Args:
             dry_run: If True, only report what would be updated
             min_confidence: Minimum confidence to apply fix (0-100)
+            create_receipt_place: If True, create ReceiptPlace entities alongside
+                ReceiptMetadata (dual-write during migration)
 
         Returns:
             UpdateResult with counts and any errors
@@ -696,6 +703,14 @@ class ReceiptMetadataFinder:
                     f"{len(matches_to_update)} receipts with metadata"
                 )
             )
+            if create_receipt_place:
+                logger.info(
+                    (
+                        "[DRY RUN] Would also create "
+                        f"{len(matches_to_update)} ReceiptPlace entities "
+                        "(dual-write)"
+                    )
+                )
             for match in matches_to_update[:10]:
                 fields = [
                     f"{f}={getattr(match, f, None) is not None}"
@@ -725,6 +740,8 @@ class ReceiptMetadataFinder:
                 f"{len(matches_to_update)} receipts..."
             )
         )
+        if create_receipt_place:
+            logger.info("Dual-write mode enabled: creating ReceiptPlace entities")
 
         for match in matches_to_update:
             try:
@@ -908,6 +925,23 @@ class ReceiptMetadataFinder:
                 else:
                     result.total_skipped += 1
 
+                # === DUAL-WRITE: Create ReceiptPlace if enabled and place_id found ===
+                if create_receipt_place and metadata.place_id:
+                    try:
+                        await self._create_receipt_place_from_match(
+                            match, metadata
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            (
+                                "Failed to create ReceiptPlace for "
+                                f"{match.receipt.image_id}#"
+                                f"{match.receipt.receipt_id}: {e!s}"
+                            )
+                        )
+                        # Don't fail the entire update if ReceiptPlace creation fails
+                        # The ReceiptMetadata update already succeeded
+
             except Exception as e:
                 logger.exception(
                     (
@@ -934,6 +968,182 @@ class ReceiptMetadataFinder:
         )
 
         return result
+
+    async def _create_receipt_place_from_match(
+        self, match: MetadataMatch, metadata: ReceiptMetadata
+    ) -> None:
+        """
+        Create a ReceiptPlace entity from matched metadata and API data.
+
+        Calls Google Places API v1 to get rich data (coordinates, hours, ratings,
+        business status) and creates a ReceiptPlace entity with this data.
+
+        Args:
+            match: MetadataMatch with found metadata
+            metadata: ReceiptMetadata that was just created/updated
+
+        Raises:
+            Exception: If places API fails or ReceiptPlace creation fails
+        """
+        from datetime import datetime, timezone
+
+        from receipt_dynamo.constants import (
+            MerchantValidationStatus,
+            ValidationMethod,
+        )
+        from receipt_dynamo.entities import ReceiptPlace
+
+        if not self.places:
+            logger.debug(
+                "Places API client not available, skipping ReceiptPlace creation"
+            )
+            return
+
+        if not metadata.place_id:
+            logger.debug("No place_id found, skipping ReceiptPlace creation")
+            return
+
+        try:
+            # Get rich place data from v1 API
+            logger.debug(
+                f"Fetching place details for {metadata.place_id} "
+                f"({match.merchant_name})"
+            )
+            place_v1 = await self.places.get_place_details(
+                metadata.place_id
+            )
+
+            if not place_v1:
+                logger.warning(
+                    f"v1 API returned no data for place_id {metadata.place_id}"
+                )
+                return
+
+            # Extract data from v1 API response
+            # Determine matched_fields based on what was found
+            matched_fields = [
+                FIELD_NAME_MAPPING.get(f, f) for f in match.fields_found
+            ]
+
+            # Map v1 response to ReceiptPlace fields
+            latitude = (
+                place_v1.location.latitude if place_v1.location else None
+            )
+            longitude = (
+                place_v1.location.longitude if place_v1.location else None
+            )
+            viewport_ne_lat = (
+                place_v1.viewport.high.latitude
+                if place_v1.viewport and place_v1.viewport.high
+                else None
+            )
+            viewport_ne_lng = (
+                place_v1.viewport.high.longitude
+                if place_v1.viewport and place_v1.viewport.high
+                else None
+            )
+            viewport_sw_lat = (
+                place_v1.viewport.low.latitude
+                if place_v1.viewport and place_v1.viewport.low
+                else None
+            )
+            viewport_sw_lng = (
+                place_v1.viewport.low.longitude
+                if place_v1.viewport and place_v1.viewport.low
+                else None
+            )
+
+            # Extract business hours data
+            hours_summary = []
+            hours_data = {}
+            if place_v1.opening_hours:
+                if place_v1.opening_hours.weekday_descriptions:
+                    hours_summary = place_v1.opening_hours.weekday_descriptions
+                if place_v1.opening_hours.periods:
+                    hours_data = {
+                        "periods": [
+                            {
+                                "open": p.open,
+                                "close": p.close,
+                            }
+                            for p in place_v1.opening_hours.periods
+                        ]
+                    }
+
+            # Extract photo references
+            photo_references = []
+            if place_v1.photos:
+                photo_references = [p.name for p in place_v1.photos]
+
+            # Extract plus code
+            plus_code = ""
+            if place_v1.plus_code and place_v1.plus_code.global_code:
+                plus_code = place_v1.plus_code.global_code
+
+            # Create ReceiptPlace entity with rich data
+            receipt_place = ReceiptPlace(
+                image_id=metadata.image_id,
+                receipt_id=metadata.receipt_id,
+                place_id=metadata.place_id,
+                merchant_name=metadata.merchant_name or "",
+                merchant_category=place_v1.primary_type or "",
+                merchant_types=place_v1.types or [],
+                formatted_address=place_v1.formatted_address or "",
+                short_address=place_v1.short_formatted_address or "",
+                address_components={},
+                latitude=latitude,
+                longitude=longitude,
+                geohash="",  # Auto-calculated in __post_init__
+                viewport_ne_lat=viewport_ne_lat,
+                viewport_ne_lng=viewport_ne_lng,
+                viewport_sw_lat=viewport_sw_lat,
+                viewport_sw_lng=viewport_sw_lng,
+                plus_code=plus_code,
+                phone_number=metadata.phone_number or "",
+                phone_intl=place_v1.international_phone_number or "",
+                website=place_v1.website_uri or "",
+                maps_url=place_v1.google_maps_uri or "",
+                business_status=place_v1.business_status or "",
+                open_now=place_v1.opening_hours.open_now
+                if place_v1.opening_hours
+                else None,
+                hours_summary=hours_summary,
+                hours_data=hours_data,
+                photo_references=photo_references,
+                matched_fields=matched_fields,
+                validated_by=ValidationMethod.INFERENCE.value,
+                validation_status=(
+                    MerchantValidationStatus.MATCHED.value
+                    if metadata.place_id
+                    else MerchantValidationStatus.UNSURE.value
+                ),
+                confidence=(
+                    match.confidence / 100.0
+                ),  # Convert from percentage to decimal
+                reasoning=(
+                    match.reasoning
+                    or "Created by receipt_metadata_finder with v1 API data"
+                ),
+                timestamp=datetime.now(timezone.utc),
+                places_api_version="v1",
+            )
+
+            # Write ReceiptPlace to DynamoDB
+            self.dynamo.add_receipt_place(receipt_place)
+
+            logger.debug(
+                f"Created ReceiptPlace for {match.receipt.image_id[:8]}..."
+                f"#{match.receipt.receipt_id} "
+                f"(place_id={metadata.place_id}, "
+                f"lat={latitude}, lng={longitude})"
+            )
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to create ReceiptPlace for "
+                f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e!s}"
+            )
+            raise
 
     def print_summary(self, report: Optional[FinderResult] = None) -> None:
         """Print a human-readable summary of the metadata finding report."""

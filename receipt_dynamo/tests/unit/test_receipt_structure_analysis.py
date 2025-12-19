@@ -82,17 +82,13 @@ def example_dynamo_item(example_receipt_section):
                 {
                     "M": {
                         "name": {"S": "header"},
-                        "line_ids": {
-                            "L": [{"N": "1"}, {"N": "2"}, {"N": "3"}]
-                        },
+                        "line_ids": {"L": [{"N": "1"}, {"N": "2"}, {"N": "3"}]},
                         "spatial_patterns": {
                             "L": [
                                 {
                                     "M": {
                                         "pattern_type": {"S": "alignment"},
-                                        "description": {
-                                            "S": "left-aligned text"
-                                        },
+                                        "description": {"S": "left-aligned text"},
                                         "metadata": {
                                             "M": {"confidence": {"S": "0.95"}}
                                         },
@@ -381,12 +377,8 @@ def test_receipt_section_init_valid(
     """Test valid initialization of ReceiptSection."""
     assert example_receipt_section.name == "header"
     assert example_receipt_section.line_ids == [1, 2, 3]
-    assert example_receipt_section.spatial_patterns == [
-        example_spatial_pattern
-    ]
-    assert example_receipt_section.content_patterns == [
-        example_content_pattern
-    ]
+    assert example_receipt_section.spatial_patterns == [example_spatial_pattern]
+    assert example_receipt_section.content_patterns == [example_content_pattern]
     assert example_receipt_section.reasoning == "Contains store name and logo"
     assert example_receipt_section.start_line == 1
     assert example_receipt_section.end_line == 3
@@ -452,9 +444,7 @@ def test_receipt_section_init_invalid_spatial_pattern_items():
     section = ReceiptSection(
         name="header",
         line_ids=[1, 2, 3],
-        spatial_patterns=[
-            {"pattern_type": "test", "description": "test pattern"}
-        ],
+        spatial_patterns=[{"pattern_type": "test", "description": "test pattern"}],
         content_patterns=[],
         reasoning="test",
     )
@@ -486,9 +476,7 @@ def test_receipt_section_init_invalid_content_pattern_items():
         name="header",
         line_ids=[1, 2, 3],
         spatial_patterns=[],
-        content_patterns=[
-            {"pattern_type": "test", "description": "test pattern"}
-        ],
+        content_patterns=[{"pattern_type": "test", "description": "test pattern"}],
         reasoning="test",
     )
     # Verify conversion happened correctly
@@ -587,9 +575,7 @@ def test_receipt_section_to_dict(
 
 
 @pytest.mark.unit
-def test_receipt_section_from_dict(
-    example_spatial_pattern, example_content_pattern
-):
+def test_receipt_section_from_dict(example_spatial_pattern, example_content_pattern):
     """Test creation from dictionary."""
     data = {
         "name": "header",
@@ -725,10 +711,7 @@ def test_receipt_structure_analysis_init_valid(
     assert example_receipt_structure_analysis.receipt_id == 123
     assert example_receipt_structure_analysis.image_id == "abc123"
     assert len(example_receipt_structure_analysis.sections) == 1
-    assert (
-        example_receipt_structure_analysis.sections[0]
-        == example_receipt_section
-    )
+    assert example_receipt_structure_analysis.sections[0] == example_receipt_section
     assert (
         example_receipt_structure_analysis.overall_reasoning
         == "Clear structure with distinct sections"
@@ -741,12 +724,8 @@ def test_receipt_structure_analysis_init_valid(
     assert example_receipt_structure_analysis.timestamp_updated == datetime(
         2023, 1, 2, 12, 0, 0
     )
-    assert example_receipt_structure_analysis.processing_metrics == {
-        "time_ms": 150
-    }
-    assert example_receipt_structure_analysis.source_info == {
-        "model": "test_model"
-    }
+    assert example_receipt_structure_analysis.processing_metrics == {"time_ms": 150}
+    assert example_receipt_structure_analysis.source_info == {"model": "test_model"}
     assert len(example_receipt_structure_analysis.processing_history) == 1
 
 
@@ -950,10 +929,7 @@ def test_receipt_structure_analysis_to_item(
     assert section_item["start_line"]["N"] == "1"
     assert section_item["end_line"]["N"] == "3"
     assert section_item["metadata"]["M"]["confidence"]["S"] == "0.9"
-    assert (
-        item["overall_reasoning"]["S"]
-        == "Clear structure with distinct sections"
-    )
+    assert item["overall_reasoning"]["S"] == "Clear structure with distinct sections"
     assert item["version"]["S"] == "1.0.0"
     assert item["metadata"]["M"]["source"]["S"] == "test"
     assert item["timestamp_added"]["S"] == "2023-01-01T12:00:00"
@@ -1029,14 +1005,10 @@ def test_receipt_structure_analysis_get_sections_with_pattern(
     example_receipt_structure_analysis, example_receipt_section
 ):
     """Test getting sections with pattern type."""
-    sections = example_receipt_structure_analysis.get_sections_with_pattern(
-        "alignment"
-    )
+    sections = example_receipt_structure_analysis.get_sections_with_pattern("alignment")
     assert sections == [example_receipt_section]
 
-    sections = example_receipt_structure_analysis.get_sections_with_pattern(
-        "format"
-    )
+    sections = example_receipt_structure_analysis.get_sections_with_pattern("format")
     assert sections == [example_receipt_section]
 
     # Pattern that doesn't exist
@@ -1131,10 +1103,7 @@ def test_receipt_structure_analysis_iter(
     assert attributes["receipt_id"] == 123
     assert attributes["image_id"] == "abc123"
     assert attributes["sections"] == [example_receipt_section]
-    assert (
-        attributes["overall_reasoning"]
-        == "Clear structure with distinct sections"
-    )
+    assert attributes["overall_reasoning"] == "Clear structure with distinct sections"
     assert attributes["version"] == "1.0.0"
     assert attributes["metadata"] == {"source": "test"}
     assert attributes["timestamp_added"] == datetime(2023, 1, 1, 12, 0, 0)
@@ -1172,9 +1141,7 @@ def test_receipt_structure_analysis_from_dynamo(
     assert analysis.receipt_id == 123
     assert analysis.image_id == "abc123"
     assert len(analysis.sections) == 1
-    assert (
-        analysis.overall_reasoning == "Clear structure with distinct sections"
-    )
+    assert analysis.overall_reasoning == "Clear structure with distinct sections"
 
 
 @pytest.mark.unit

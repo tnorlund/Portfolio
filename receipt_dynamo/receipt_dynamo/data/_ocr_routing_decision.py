@@ -32,15 +32,12 @@ if TYPE_CHECKING:
 
 class _OCRRoutingDecision(FlattenedStandardMixin):
     @handle_dynamodb_errors("add_ocr_routing_decision")
-    def add_ocr_routing_decision(
-        self, ocr_routing_decision: OCRRoutingDecision
-    ):
+    def add_ocr_routing_decision(self, ocr_routing_decision: OCRRoutingDecision):
         if ocr_routing_decision is None:
             raise EntityValidationError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
             raise EntityValidationError(
-                "ocr_routing_decision must be an instance of "
-                "OCRRoutingDecision"
+                "ocr_routing_decision must be an instance of " "OCRRoutingDecision"
             )
         self._add_entity(ocr_routing_decision)
 
@@ -62,23 +59,18 @@ class _OCRRoutingDecision(FlattenedStandardMixin):
             )
 
         request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=decision.to_item())
-            )
+            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=decision.to_item()))
             for decision in ocr_routing_decisions
         ]
         self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("update_ocr_routing_decision")
-    def update_ocr_routing_decision(
-        self, ocr_routing_decision: OCRRoutingDecision
-    ):
+    def update_ocr_routing_decision(self, ocr_routing_decision: OCRRoutingDecision):
         if ocr_routing_decision is None:
             raise EntityValidationError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
             raise EntityValidationError(
-                "ocr_routing_decision must be an instance of "
-                "OCRRoutingDecision"
+                "ocr_routing_decision must be an instance of " "OCRRoutingDecision"
             )
 
         self._update_entity(ocr_routing_decision)
@@ -106,15 +98,12 @@ class _OCRRoutingDecision(FlattenedStandardMixin):
         return result
 
     @handle_dynamodb_errors("delete_ocr_routing_decision")
-    def delete_ocr_routing_decision(
-        self, ocr_routing_decision: OCRRoutingDecision
-    ):
+    def delete_ocr_routing_decision(self, ocr_routing_decision: OCRRoutingDecision):
         if ocr_routing_decision is None:
             raise EntityValidationError("ocr_routing_decision cannot be None")
         if not isinstance(ocr_routing_decision, OCRRoutingDecision):
             raise EntityValidationError(
-                "ocr_routing_decision must be an instance of "
-                "OCRRoutingDecision"
+                "ocr_routing_decision must be an instance of " "OCRRoutingDecision"
             )
         self._delete_entity(ocr_routing_decision)
 
@@ -130,8 +119,7 @@ class _OCRRoutingDecision(FlattenedStandardMixin):
             for decision in ocr_routing_decisions
         ):
             raise EntityValidationError(
-                "All ocr_routing_decisions must be instances of "
-                "OCRRoutingDecision"
+                "All ocr_routing_decisions must be instances of " "OCRRoutingDecision"
             )
         transact_items = []
         for item in ocr_routing_decisions:

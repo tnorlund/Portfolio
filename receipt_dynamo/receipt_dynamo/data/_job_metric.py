@@ -25,8 +25,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise EntityValidationError(
-                f"LastEvaluatedKey[{key}] must be a dict containing "
-                "a key 'S'"
+                f"LastEvaluatedKey[{key}] must be a dict containing " "a key 'S'"
             )
 
 
@@ -135,9 +134,7 @@ class _JobMetric(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         # Build the expression attribute values based on whether
@@ -199,9 +196,7 @@ class _JobMetric(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
@@ -258,9 +253,7 @@ class _JobMetric(
             raise EntityValidationError("Limit must be greater than 0")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
             validate_last_evaluated_key(last_evaluated_key)
 
         return self._query_entities(
