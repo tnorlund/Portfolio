@@ -265,8 +265,8 @@ class ReceiptPlaceBackfiller:
             return
 
         try:
-            # Get rich place data from v1 API
-            place_v1 = await self.places.get_place_details(
+            # Get rich place data from v1 API (PlacesClient is synchronous)
+            place_v1 = self.places.get_place_details(
                 metadata.place_id
             )
 
