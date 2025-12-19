@@ -37,7 +37,9 @@ from receipt_dynamo.utils.geospatial import calculate_geohash
 
 logger = __import__("logging").getLogger(__name__)
 
-# Validation thresholds (inherit from ReceiptMetadata for consistency)
+# Validation thresholds (reserved for future field validation logic)
+# Currently ReceiptPlace relies on Google Places API validation, but these constants
+# are available if additional client-side validation is needed in the future
 MIN_PHONE_DIGITS = 7
 MIN_NAME_LENGTH = 2
 

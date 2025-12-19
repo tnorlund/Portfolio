@@ -35,7 +35,7 @@ def example_receipt_place():
         maps_url="https://www.google.com/maps/search/?api=1&query=47.6062,-122.3321",
         business_status="OPERATIONAL",
         open_now=True,
-        hours_summary=["Mon: 5:00 AM–9:00 PM", "Tue: 5:00 AM–9:00 PM"],
+        hours_summary=["Mon: 5:00 AM-9:00 PM", "Tue: 5:00 AM-9:00 PM"],
         hours_data={"periods": [{"open": {"day": 1}, "close": {"day": 1}}]},
         photo_references=["photo1", "photo2"],
         matched_fields=["name", "address", "phone"],

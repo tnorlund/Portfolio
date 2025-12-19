@@ -592,6 +592,17 @@ class _ReceiptPlace(FlattenedStandardMixin):
         ------
         ValueError
             If validation_status is invalid.
+
+        Performance Notes
+        -----------------
+        This query uses a FilterExpression to match status, which means DynamoDB
+        evaluates the status filter after the key condition. Items that don't match
+        the filter still consume read capacity. This is a known tradeoff of the GSI3
+        design where confidence is prioritized in the sort key for range queries.
+
+        For use cases where status queries are critical, consider restructuring GSI3SK
+        to put status before confidence, at the cost of less efficient confidence range
+        queries. This design prioritizes confidence-based quality control queries.
         """
         if not validation_status:
             raise EntityValidationError("validation_status cannot be empty")

@@ -51,7 +51,7 @@ CORRECT_RECEIPT_PLACE_PARAMS: Dict[str, Any] = {
     "phone_intl": "+1 206-555-0123",
     "website": "https://www.starbucks.com",
     "business_status": "OPERATIONAL",
-    "hours_summary": ["Mon: 5:00 AM–9:00 PM", "Tue: 5:00 AM–9:00 PM"],
+    "hours_summary": ["Mon: 5:00 AM-9:00 PM", "Tue: 5:00 AM-9:00 PM"],
     "photo_references": ["photo1", "photo2"],
     "matched_fields": ["name", "address", "phone"],
     "validated_by": ValidationMethod.INFERENCE.value,
@@ -236,7 +236,7 @@ def test_list_receipt_places(batch_receipt_places, dynamodb_table: str) -> None:
     assert next_key is not None  # More results available
 
     # Get next page
-    places2, final_key = client.list_receipt_places(limit=10, last_evaluated_key=next_key)
+    places2, _final_key = client.list_receipt_places(limit=10, last_evaluated_key=next_key)
     assert len(places2) == 10
 
 
@@ -509,7 +509,6 @@ def test_get_receipt_places_by_indices(batch_receipt_places, dynamodb_table: str
 @pytest.mark.integration
 def test_add_invalid_receipt_place_type(dynamodb_table: str) -> None:
     """Tests that adding invalid entity type raises error."""
-    from receipt_dynamo.data.shared_exceptions import OperationError
     client = DynamoClient(dynamodb_table)
 
     with pytest.raises(OperationError, match="must be an instance of ReceiptPlace"):
@@ -519,7 +518,6 @@ def test_add_invalid_receipt_place_type(dynamodb_table: str) -> None:
 @pytest.mark.integration
 def test_add_invalid_receipt_place_list(dynamodb_table: str) -> None:
     """Tests that adding invalid list raises error."""
-    from receipt_dynamo.data.shared_exceptions import OperationError
     client = DynamoClient(dynamodb_table)
 
     with pytest.raises(OperationError, match="must be a list"):
