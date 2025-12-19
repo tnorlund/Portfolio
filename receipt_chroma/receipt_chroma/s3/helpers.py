@@ -259,7 +259,9 @@ def upload_snapshot_with_hash(
             # Upload file
             extra_args = {}
             if metadata:
-                extra_args["Metadata"] = metadata
+                extra_args["Metadata"] = {
+                    k: str(v) for k, v in metadata.items()
+                }
 
             s3_client.upload_file(
                 str(file_path), bucket, s3_key, ExtraArgs=extra_args
@@ -277,7 +279,7 @@ def upload_snapshot_with_hash(
                 Key=hash_key,
                 Body=hash_content.encode("utf-8"),
                 ContentType="text/plain",
-                Metadata=metadata or {},
+                Metadata={k: str(v) for k, v in (metadata or {}).items()},
             )
 
         logger.info(
