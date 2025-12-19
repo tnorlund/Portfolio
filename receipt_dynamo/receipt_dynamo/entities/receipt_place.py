@@ -41,6 +41,12 @@ logger = __import__("logging").getLogger(__name__)
 MIN_PHONE_DIGITS = 7
 MIN_NAME_LENGTH = 2
 
+# Fields that are computed (GSI keys) and should not be passed to constructor
+COMPUTED_FIELDS = {
+    "PK", "SK", "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK",
+    "GSI3PK", "GSI3SK", "GSI4PK", "GSI4SK", "TYPE"
+}
+
 
 @dataclass(eq=True, unsafe_hash=False)
 class ReceiptPlace(SerializationMixin):
@@ -239,10 +245,14 @@ class ReceiptPlace(SerializationMixin):
 
     @property
     def gsi3_key(self) -> dict[str, dict[str, str]]:
-        """Get GSI3 key (query by validation status)."""
+        """Get GSI3 key (query by confidence and validation status)."""
+        # Format confidence to 4 decimal places for consistent sorting
+        confidence_str = f"{self.confidence:.4f}"
         return {
             "GSI3PK": {"S": "PLACE_VALIDATION"},
-            "GSI3SK": {"S": f"STATUS#{self.validation_status}#IMAGE#{self.image_id}"},
+            "GSI3SK": {
+                "S": f"CONFIDENCE#{confidence_str}#STATUS#{self.validation_status}#IMAGE#{self.image_id}"
+            },
         }
 
     @property
@@ -259,6 +269,97 @@ class ReceiptPlace(SerializationMixin):
             "GSI4SK": {"S": f"PLACE#{self.place_id}"},
         }
 
+    def to_item(self) -> Dict[str, Any]:
+        """
+        Serialize the ReceiptPlace object into DynamoDB item format.
+
+        Includes primary keys, GSI keys, and all location/merchant data with
+        appropriate DynamoDB type annotations (S for string, N for number, etc).
+
+        Returns:
+            Dict with DynamoDB formatted item ready for PutItem/UpdateItem
+        """
+        item = {
+            **self.key,
+            **self.gsi1_key,
+            **self.gsi2_key,
+            **self.gsi3_key,
+            "TYPE": {"S": "RECEIPT_PLACE"},
+            # Required identity fields
+            "image_id": {"S": self.image_id},
+            "receipt_id": {"N": str(self.receipt_id)},
+            "place_id": {"S": self.place_id},
+            "merchant_name": {"S": self.merchant_name},
+            "validation_status": {"S": self.validation_status},
+            "timestamp": {"S": self.timestamp.isoformat()},
+            "confidence": {"N": str(self.confidence)},
+        }
+
+        # Add GSI4 keys if geohash exists
+        if self.geohash:
+            item.update(self.gsi4_key)
+
+        # Optional string fields - include if non-empty, else NULL
+        for attr in (
+            "merchant_category",
+            "formatted_address",
+            "short_address",
+            "phone_number",
+            "phone_intl",
+            "website",
+            "maps_url",
+            "business_status",
+            "plus_code",
+            "validated_by",
+            "reasoning",
+            "places_api_version",
+            "geohash",
+        ):
+            value = getattr(self, attr, "")
+            if isinstance(value, str):
+                if value:
+                    item[attr] = {"S": value}
+                else:
+                    item[attr] = {"NULL": True}
+
+        # List fields (string sets)
+        if self.merchant_types:
+            item["merchant_types"] = {"SS": self.merchant_types}
+        if self.matched_fields:
+            item["matched_fields"] = {"SS": self.matched_fields}
+        if self.hours_summary:
+            item["hours_summary"] = {"SS": self.hours_summary}
+        if self.photo_references:
+            item["photo_references"] = {"SS": self.photo_references}
+
+        # Numeric fields (coordinates)
+        if self.latitude is not None:
+            item["latitude"] = {"N": str(self.latitude)}
+        if self.longitude is not None:
+            item["longitude"] = {"N": str(self.longitude)}
+        if self.viewport_ne_lat is not None:
+            item["viewport_ne_lat"] = {"N": str(self.viewport_ne_lat)}
+        if self.viewport_ne_lng is not None:
+            item["viewport_ne_lng"] = {"N": str(self.viewport_ne_lng)}
+        if self.viewport_sw_lat is not None:
+            item["viewport_sw_lat"] = {"N": str(self.viewport_sw_lat)}
+        if self.viewport_sw_lng is not None:
+            item["viewport_sw_lng"] = {"N": str(self.viewport_sw_lng)}
+
+        # Boolean field
+        if self.open_now is not None:
+            item["open_now"] = {"BOOL": self.open_now}
+
+        # Complex fields (JSON/Maps)
+        if self.address_components:
+            import json
+            item["address_components"] = {"S": json.dumps(self.address_components)}
+        if self.hours_data:
+            import json
+            item["hours_data"] = {"S": json.dumps(self.hours_data)}
+
+        return item
+
     def __repr__(self) -> str:
         """Return string representation."""
         return (
@@ -270,3 +371,71 @@ class ReceiptPlace(SerializationMixin):
             f"validation_status={self.validation_status}"
             f")"
         )
+
+
+def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
+    """
+    Create ReceiptPlace from DynamoDB item (low-level client format with type annotations).
+
+    Handles DynamoDB JSON format items like {'S': 'value'}, {'N': '123'}, etc.
+
+    Args:
+        item: Dict from DynamoDB in low-level client format
+
+    Returns:
+        ReceiptPlace instance
+    """
+    import json
+    from decimal import Decimal
+    from boto3.dynamodb.types import TypeDeserializer
+
+    # First, deserialize from DynamoDB JSON format to Python types
+    deserializer = TypeDeserializer()
+    deserialized = {k: deserializer.deserialize(v) for k, v in item.items()}
+
+    # Filter out computed fields
+    filtered_item = {k: v for k, v in deserialized.items() if k not in COMPUTED_FIELDS}
+
+    # Parse complex fields that were JSON-serialized
+    if "address_components" in filtered_item and isinstance(filtered_item["address_components"], str):
+        try:
+            filtered_item["address_components"] = json.loads(filtered_item["address_components"])
+        except (json.JSONDecodeError, TypeError):
+            filtered_item["address_components"] = {}
+
+    if "hours_data" in filtered_item and isinstance(filtered_item["hours_data"], str):
+        try:
+            filtered_item["hours_data"] = json.loads(filtered_item["hours_data"])
+        except (json.JSONDecodeError, TypeError):
+            filtered_item["hours_data"] = {}
+
+    # Parse timestamp if it's a string
+    if "timestamp" in filtered_item and isinstance(filtered_item["timestamp"], str):
+        filtered_item["timestamp"] = datetime.fromisoformat(filtered_item["timestamp"])
+
+    # Convert receipt_id: boto3 deserializes numbers as Decimal, need int
+    if "receipt_id" in filtered_item:
+        if isinstance(filtered_item["receipt_id"], Decimal):
+            filtered_item["receipt_id"] = int(filtered_item["receipt_id"])
+        elif isinstance(filtered_item["receipt_id"], str):
+            try:
+                filtered_item["receipt_id"] = int(filtered_item["receipt_id"])
+            except (ValueError, TypeError):
+                pass
+
+    # Handle None values for string fields that should be empty strings
+    for field in ["geohash", "merchant_category", "formatted_address", "short_address", "phone_number", "phone_intl", "website", "maps_url", "business_status", "plus_code", "validated_by", "reasoning", "places_api_version"]:
+        if field in filtered_item and filtered_item[field] is None:
+            filtered_item[field] = ""
+
+    # Convert Decimal numbers to float for floating point fields
+    for field in ["latitude", "longitude", "confidence", "viewport_ne_lat", "viewport_ne_lng", "viewport_sw_lat", "viewport_sw_lng"]:
+        if field in filtered_item:
+            value = filtered_item[field]
+            if isinstance(value, (str, int, Decimal)):
+                try:
+                    filtered_item[field] = float(value)
+                except (ValueError, TypeError):
+                    filtered_item.pop(field, None)
+
+    return ReceiptPlace(**filtered_item)

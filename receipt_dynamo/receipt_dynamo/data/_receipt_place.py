@@ -31,6 +31,7 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
 )
 from receipt_dynamo.entities import ReceiptPlace
+from receipt_dynamo.entities.receipt_place import item_to_receipt_place
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -70,7 +71,8 @@ class _ReceiptPlace(FlattenedStandardMixin):
     This class provides methods to interact with ReceiptPlace entities,
     supporting:
     - CRUD operations (add, update, delete, get)
-    - GSI queries by merchant name, place_id, validation status, and geohash
+    - GSI queries by merchant name, place_id, validation status, confidence, and geohash
+    - Confidence range queries for quality control and analytics
     - Spatial queries for nearby place detection
     - Batch operations for efficiency
 
@@ -109,6 +111,8 @@ class _ReceiptPlace(FlattenedStandardMixin):
         Retrieves ReceiptPlace records by place_id (GSI2).
     get_receipt_places_by_status(...) -> Tuple[List[ReceiptPlace], dict | None]:
         Retrieves ReceiptPlace records by validation status (GSI3).
+    get_receipt_places_by_confidence(...) -> Tuple[List[ReceiptPlace], dict | None]:
+        Retrieves ReceiptPlace records by confidence score (GSI3 range queries).
     get_receipt_places_by_geohash(...) -> Tuple[List[ReceiptPlace], dict | None]:
         Retrieves ReceiptPlace records by geohash for spatial queries (GSI4).
     """
@@ -291,7 +295,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}#PLACE",
             entity_class=ReceiptPlace,
-            converter_func=lambda item: ReceiptPlace(**_deserialize_item(item)),
+            converter_func=item_to_receipt_place,
         )
 
         if result is None:
@@ -411,7 +415,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
                     f"get_receipt_places_by_ids. {len(unprocessed.get(self.table_name, []))} "
                     "items remain unprocessed."
                 )
-        return [ReceiptPlace(**result) for result in results]
+        return [item_to_receipt_place(result) for result in results]
 
     @handle_dynamodb_errors("list_receipt_places")
     def list_receipt_places(
@@ -450,7 +454,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         return self._query_by_type(
             entity_type="RECEIPT_PLACE",
-            converter_func=lambda item: ReceiptPlace(**item),
+            converter_func=item_to_receipt_place,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )
@@ -497,7 +501,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
             key_condition_expression="#pk = :pk",
             expression_attribute_names={"#pk": "GSI1PK"},
             expression_attribute_values={":pk": {"S": gsi1_pk}},
-            converter_func=lambda item: ReceiptPlace(**item),
+            converter_func=item_to_receipt_place,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )
@@ -550,7 +554,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
             key_condition_expression="GSI2PK = :pk",
             expression_attribute_names=None,
             expression_attribute_values={":pk": {"S": f"PLACE#{place_id}"}},
-            converter_func=lambda item: ReceiptPlace(**item),
+            converter_func=item_to_receipt_place,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )
@@ -564,6 +568,10 @@ class _ReceiptPlace(FlattenedStandardMixin):
     ) -> Tuple[List[ReceiptPlace], dict | None]:
         """
         Retrieves ReceiptPlace records by validation status (GSI3).
+
+        Uses GSI3 to query places by validation status, with optional pagination.
+        Note: GSI3SK now includes confidence for range queries, so we query for all
+        confidence values and filter by status.
 
         Parameters
         ----------
@@ -598,13 +606,15 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         return self._query_entities(
             index_name="GSI3",
-            key_condition_expression="GSI3PK = :pk AND begins_with(GSI3SK, :sk)",
+            key_condition_expression="GSI3PK = :pk AND begins_with(GSI3SK, :sk_prefix)",
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": "PLACE_VALIDATION"},
-                ":sk": {"S": f"STATUS#{validation_status}"},
+                ":sk_prefix": {"S": "CONFIDENCE#"},
+                ":status_filter": {"S": f"#STATUS#{validation_status}"},
             },
-            converter_func=lambda item: ReceiptPlace(**item),
+            filter_expression="contains(GSI3SK, :status_filter)",
+            converter_func=item_to_receipt_place,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )
@@ -660,7 +670,103 @@ class _ReceiptPlace(FlattenedStandardMixin):
             key_condition_expression="GSI4PK = :pk",
             expression_attribute_names=None,
             expression_attribute_values={":pk": {"S": f"GEOHASH#{geohash}"}},
-            converter_func=lambda item: ReceiptPlace(**item),
+            converter_func=item_to_receipt_place,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )
+
+    @handle_dynamodb_errors("get_receipt_places_by_confidence")
+    def get_receipt_places_by_confidence(
+        self,
+        confidence: float,
+        above: bool = True,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
+    ) -> Tuple[List[ReceiptPlace], dict | None]:
+        """
+        Retrieves ReceiptPlace records by confidence score threshold.
+
+        Uses GSI3 to efficiently query places by confidence range, enabling
+        discovery of high-confidence matches (>= threshold) or low-confidence
+        matches (<= threshold) for quality control and analytics.
+
+        The GSI3SK is structured as:
+        CONFIDENCE#{confidence:.4f}#STATUS#{validation_status}#IMAGE#{image_id}
+
+        This allows range queries on the confidence prefix while maintaining
+        status and image_id for secondary sorting.
+
+        Parameters
+        ----------
+        confidence : float
+            The confidence score threshold (0.0-1.0).
+        above : bool, optional
+            If True, returns places with confidence >= threshold.
+            If False, returns places with confidence <= threshold.
+            Default is True.
+        limit : int, optional
+            Maximum number of records to retrieve.
+        last_evaluated_key : dict, optional
+            Pagination token from previous query.
+
+        Returns
+        -------
+        Tuple[List[ReceiptPlace], dict | None]
+            Tuple of (list of ReceiptPlace records, pagination token).
+            Pagination token is None if no more results.
+
+        Raises
+        ------
+        EntityValidationError
+            If confidence is invalid (not float, out of range 0.0-1.0).
+
+        Examples
+        --------
+        >>> # Get high-confidence matches (>= 0.8)
+        >>> places, next_key = client.get_receipt_places_by_confidence(
+        ...     confidence=0.8, above=True, limit=100
+        ... )
+        >>> assert all(p.confidence >= 0.8 for p in places)
+
+        >>> # Get low-confidence matches (<= 0.5) for review
+        >>> places, next_key = client.get_receipt_places_by_confidence(
+        ...     confidence=0.5, above=False
+        ... )
+        >>> assert all(p.confidence <= 0.5 for p in places)
+        """
+        if confidence is None:
+            raise EntityValidationError("confidence cannot be None")
+        if not isinstance(confidence, (int, float)):
+            raise EntityValidationError("confidence must be a float")
+        if confidence < 0.0 or confidence > 1.0:
+            raise EntityValidationError("confidence must be between 0.0 and 1.0")
+        if above is not None and not isinstance(above, bool):
+            raise EntityValidationError("above must be a boolean")
+        if limit is not None and not isinstance(limit, int):
+            raise EntityValidationError("limit must be an integer")
+        if limit is not None and limit <= 0:
+            raise EntityValidationError("limit must be positive")
+        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+            raise EntityValidationError("last_evaluated_key must be a dictionary")
+
+        # Format confidence to 4 decimal places for consistent sorting
+        formatted_confidence = f"CONFIDENCE#{confidence:.4f}"
+
+        # Build key condition expression based on direction
+        if above:
+            key_expr = "GSI3PK = :pk AND GSI3SK >= :sk"
+        else:
+            key_expr = "GSI3PK = :pk AND GSI3SK <= :sk"
+
+        return self._query_entities(
+            index_name="GSI3",
+            key_condition_expression=key_expr,
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": "PLACE_VALIDATION"},
+                ":sk": {"S": formatted_confidence},
+            },
+            converter_func=item_to_receipt_place,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )
