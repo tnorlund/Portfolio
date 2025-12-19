@@ -14,7 +14,7 @@ import argparse
 import asyncio
 import logging
 import sys
-from typing import Optional
+from typing import Any, Optional
 
 # Configure logging
 logging.basicConfig(
@@ -22,6 +22,18 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+class NullCacheManager:
+    """No-op cache manager to avoid DynamoDB dependency for backfill script."""
+
+    def get(self, search_type: Any, search_value: str) -> None:
+        """Always return None (no cache)."""
+        return None
+
+    def put(self, search_type: Any, search_value: str, place_data: Any) -> None:
+        """Do nothing (don't cache)."""
+        pass
 
 
 async def main(
@@ -51,7 +63,7 @@ async def main(
         from receipt_agent.subagents.metadata_finder.backfill_receipt_place import (
             ReceiptPlaceBackfiller,
         )
-        from receipt_dynamo import DynamoDBClient
+        from receipt_dynamo import DynamoClient
         from receipt_dynamo.data._pulumi import load_env, load_secrets
         from receipt_places.client import create_places_client
 
@@ -68,7 +80,8 @@ async def main(
         # Extract values from Pulumi outputs
         dynamodb_table_name = env.get("dynamodb_table_name")
         aws_region = env.get("aws_region", "us-east-1")
-        google_places_api_key = secrets.get("google_places_api_key")
+        # Try both key formats (with and without portfolio: prefix)
+        google_places_api_key = secrets.get("portfolio:GOOGLE_PLACES_API_KEY") or secrets.get("google_places_api_key")
 
         if not dynamodb_table_name:
             logger.error("dynamodb_table_name not found in Pulumi stack outputs")
@@ -81,15 +94,16 @@ async def main(
         logger.info("Initializing clients...")
 
         # Initialize DynamoDB client
-        dynamo = DynamoDBClient(
+        dynamo = DynamoClient(
             table_name=dynamodb_table_name,
             region=aws_region,
         )
         logger.info(f"✓ DynamoDB client initialized (table={dynamodb_table_name}, region={aws_region})")
 
-        # Initialize Places API client
+        # Initialize Places API client with no-op cache to avoid DynamoDB dependency
         places = create_places_client(
             api_key=google_places_api_key,
+            cache_manager=NullCacheManager(),  # Use no-op cache for backfill
         )
         logger.info(f"✓ Places API client initialized")
 
