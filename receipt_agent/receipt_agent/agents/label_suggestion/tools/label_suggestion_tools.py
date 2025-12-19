@@ -145,12 +145,12 @@ def create_label_suggestion_tools(
                 if (w.line_id, w.word_id) not in labeled_word_keys
             ]
 
-            # Get merchant metadata
-            metadata = dynamo_client.get_receipt_metadata(
+            # Get merchant place data
+            place = dynamo_client.get_receipt_place(
                 image_id=ctx.image_id,
                 receipt_id=ctx.receipt_id,
             )
-            merchant_name = metadata.merchant_name if metadata else None
+            merchant_name = place.merchant_name if place else None
 
             return {
                 "total_words": len(meaningful_words),

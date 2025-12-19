@@ -175,9 +175,9 @@ async def suggest_labels_for_receipt(
         embed_fn=embed_fn,
     )
 
-    # Get receipt metadata to determine merchant receipt count
-    metadata = dynamo_client.get_receipt_metadata(image_id, receipt_id)
-    merchant_name = metadata.merchant_name if metadata else None
+    # Get receipt place data to determine merchant receipt count
+    place = dynamo_client.get_receipt_place(image_id, receipt_id)
+    merchant_name = place.merchant_name if place else None
 
     # Count receipts for this merchant via ChromaDB query for unique IDs
     merchant_receipt_count = None

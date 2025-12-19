@@ -192,18 +192,18 @@ def create_label_validation_tools(
                             context_lines.append(f"    {line_text_item}")
                     surrounding_lines = context_lines
 
-            # Get receipt metadata
-            metadata = dynamo_client.get_receipt_metadata(
+            # Get receipt place data
+            place = dynamo_client.get_receipt_place(
                 image_id=ctx.image_id,
                 receipt_id=ctx.receipt_id,
             )
             receipt_metadata = None
-            if metadata:
+            if place:
                 receipt_metadata = {
-                    "merchant_name": metadata.merchant_name,
-                    "place_id": metadata.place_id,
-                    "address": metadata.address,
-                    "phone_number": metadata.phone_number,
+                    "merchant_name": place.merchant_name,
+                    "place_id": place.place_id,
+                    "address": place.formatted_address,
+                    "phone_number": place.phone_number,
                 }
 
             return {
@@ -239,19 +239,19 @@ def create_label_validation_tools(
             return {"error": "No word context set"}
 
         try:
-            metadata = dynamo_client.get_receipt_metadata(
+            place = dynamo_client.get_receipt_place(
                 image_id=ctx.image_id,
                 receipt_id=ctx.receipt_id,
             )
 
-            if not metadata:
-                return {"error": "No metadata found for this receipt"}
+            if not place:
+                return {"error": "No place data found for this receipt"}
 
             return {
-                "merchant_name": metadata.merchant_name,
-                "address": metadata.address,
-                "phone_number": metadata.phone_number,
-                "place_id": metadata.place_id,
+                "merchant_name": place.merchant_name,
+                "address": place.formatted_address,
+                "phone_number": place.phone_number,
+                "place_id": place.place_id,
                 "note": "This data comes from Google Places and is mostly accurate",
             }
 
@@ -556,24 +556,24 @@ def create_label_validation_tools(
 
                             similar_surrounding_lines = formatted_lines
 
-                        # Get receipt metadata for this similar word (initialized to None)
+                        # Get receipt place data for this similar word (initialized to None)
                         similar_receipt_metadata = None
                         try:
-                            similar_metadata = dynamo_client.get_receipt_metadata(
+                            similar_place = dynamo_client.get_receipt_place(
                                 image_id=similar_image_id,
                                 receipt_id=similar_receipt_id,
                             )
-                            if similar_metadata:
+                            if similar_place:
                                 similar_receipt_metadata = {
-                                    "merchant_name": similar_metadata.merchant_name,
-                                    "place_id": similar_metadata.place_id,
-                                    "formatted_address": getattr(similar_metadata, 'formatted_address', None) or getattr(similar_metadata, 'address', None),
-                                    "phone_number": getattr(similar_metadata, 'phone_number', None),
-                                    "website": getattr(similar_metadata, 'website', None),
+                                    "merchant_name": similar_place.merchant_name,
+                                    "place_id": similar_place.place_id,
+                                    "formatted_address": similar_place.formatted_address,
+                                    "phone_number": getattr(similar_place, 'phone_number', None),
+                                    "website": getattr(similar_place, 'website', None),
                                 }
                         except Exception as e:
-                            logger.debug(f"Could not fetch receipt metadata for similar word: {e}")
-                            # Continue without metadata - not critical
+                            logger.debug(f"Could not fetch receipt place for similar word: {e}")
+                            # Continue without place data - not critical
 
                         # Get audit trail for this similar word (all labels with reasoning)
                         similar_audit_trail = None

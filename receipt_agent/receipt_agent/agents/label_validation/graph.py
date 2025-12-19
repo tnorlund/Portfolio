@@ -582,30 +582,29 @@ async def run_label_validation(
                     formatted_lines.append(line_text)
                 surrounding_lines = formatted_lines
 
-            # Get receipt metadata (includes merchant metadata from Google Places)
+            # Get receipt place data (includes merchant metadata from Google Places)
             receipt_metadata = None
             merchant_metadata_data = {}
             try:
-                metadata = dynamo_client.get_receipt_metadata(
+                place = dynamo_client.get_receipt_place(
                     receipt_id=receipt_id,
                     image_id=image_id,
                 )
-                if metadata:
+                if place:
                     receipt_metadata = {
-                        "merchant_name": metadata.merchant_name,
-                        "place_id": metadata.place_id,
-                        "formatted_address": metadata.formatted_address,
+                        "merchant_name": place.merchant_name,
+                        "place_id": place.place_id,
+                        "formatted_address": place.formatted_address,
                     }
-                    # Merchant metadata is the same as receipt metadata (from Google Places)
+                    # Merchant metadata from Google Places
                     merchant_metadata_data = {
-                        "merchant_name": metadata.merchant_name,
-                        "formatted_address": metadata.formatted_address
-                        or getattr(metadata, "address", None),
-                        "place_id": metadata.place_id,
+                        "merchant_name": place.merchant_name,
+                        "formatted_address": place.formatted_address,
+                        "place_id": place.place_id,
                         "phone_number": getattr(
-                            metadata, "phone_number", None
+                            place, "phone_number", None
                         ),
-                        "website": getattr(metadata, "website", None),
+                        "website": getattr(place, "website", None),
                     }
             except Exception:
                 pass

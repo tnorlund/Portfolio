@@ -220,7 +220,7 @@ class PlaceIdFinder:
         Initialize the place ID finder.
 
         Args:
-            dynamo_client: DynamoDB client with list_receipt_metadatas() method
+            dynamo_client: DynamoDB client with list_receipt_places() method
             places_client: Google Places client (PlacesClient from receipt_places)
             chroma_client: Optional ChromaDB client for agent-based search
             embed_fn: Optional embedding function for agent-based search
@@ -251,22 +251,22 @@ class PlaceIdFinder:
         total = 0
 
         try:
-            # Get all receipt metadata (paginated)
-            metadatas = []
+            # Get all receipt places (paginated)
+            places = []
             last_key = None
             while True:
-                batch, last_key = self.dynamo.list_receipt_metadatas(
+                batch, last_key = self.dynamo.list_receipt_places(
                     limit=1000,
                     last_evaluated_key=last_key,
                 )
-                metadatas.extend(batch)
+                places.extend(batch)
                 if not last_key:
                     break
 
             # Filter to receipts without place_id
-            for meta in metadatas:
+            for place in places:
                 # Skip if place_id exists and is valid
-                if meta.place_id and meta.place_id not in (
+                if place.place_id and place.place_id not in (
                     "",
                     "null",
                     "NO_RESULTS",
@@ -275,12 +275,12 @@ class PlaceIdFinder:
                     continue
 
                 receipt = ReceiptRecord(
-                    image_id=meta.image_id,
-                    receipt_id=meta.receipt_id,
-                    merchant_name=meta.merchant_name,
-                    address=meta.address,
-                    phone=meta.phone_number,
-                    validation_status=getattr(meta, "validation_status", None),
+                    image_id=place.image_id,
+                    receipt_id=place.receipt_id,
+                    merchant_name=place.merchant_name,
+                    address=place.formatted_address,
+                    phone=place.phone_number,
+                    validation_status=getattr(place, "validation_status", None),
                 )
 
                 self._receipts_without_place_id.append(receipt)
@@ -288,7 +288,7 @@ class PlaceIdFinder:
 
             logger.info(
                 f"Loaded {total} receipts without place_id "
-                f"(out of {len(metadatas)} total receipts)"
+                f"(out of {len(places)} total receipts)"
             )
 
         except Exception:
@@ -918,14 +918,14 @@ class PlaceIdFinder:
 
         for match in matches_to_update:
             try:
-                # Try to get existing metadata
-                metadata = None
-                metadata_exists = False
+                # Try to get existing place data
+                place = None
+                place_exists = False
                 try:
-                    metadata = self.dynamo.get_receipt_metadata(
+                    place = self.dynamo.get_receipt_place(
                         match.receipt.image_id, match.receipt.receipt_id
                     )
-                    metadata_exists = True
+                    place_exists = True
                 except Exception as e:
                     # Check if it's a "not found" error
                     error_str = str(e)
@@ -935,45 +935,19 @@ class PlaceIdFinder:
                         or "EntityNotFoundError" in error_type
                         or "not found" in error_str.lower()
                     ):
-                        metadata_exists = False
+                        place_exists = False
                     else:
                         # Some other error - re-raise
                         raise
 
-                if not metadata_exists:
-                    # Create new metadata from Google Places data
+                if not place_exists:
+                    # Create new place from Google Places data
                     from datetime import datetime, timezone
 
                     from receipt_dynamo.constants import (
                         MerchantValidationStatus,
-                        ValidationMethod,
                     )
-                    from receipt_dynamo.entities import ReceiptMetadata
-
-                    # Determine matched fields based on search method
-                    matched_fields = []
-                    if match.search_method:
-                        search_lower = match.search_method.lower()
-                        if "phone" in search_lower:
-                            matched_fields.append("phone")
-                        if "address" in search_lower:
-                            matched_fields.append("address")
-                        if "text" in search_lower or "name" in search_lower:
-                            matched_fields.append("name")
-
-                    # Determine validated_by based on search method
-                    if match.search_method:
-                        search_lower = match.search_method.lower()
-                        if "phone" in search_lower:
-                            validated_by = ValidationMethod.PHONE_LOOKUP.value
-                        elif "address" in search_lower:
-                            validated_by = (
-                                ValidationMethod.ADDRESS_LOOKUP.value
-                            )
-                        else:
-                            validated_by = ValidationMethod.TEXT_SEARCH.value
-                    else:
-                        validated_by = ValidationMethod.TEXT_SEARCH.value
+                    from receipt_dynamo.entities import ReceiptPlace
 
                     # Use Google Places data (preferred) or fallback to receipt data
                     merchant_name = (
@@ -984,44 +958,38 @@ class PlaceIdFinder:
                     )
                     phone = match.place_phone or match.receipt.phone or ""
 
-                    # Create new ReceiptMetadata
-                    metadata = ReceiptMetadata(
+                    # Create new ReceiptPlace
+                    place = ReceiptPlace(
                         image_id=match.receipt.image_id,
                         receipt_id=match.receipt.receipt_id,
                         place_id=match.place_id,
                         merchant_name=merchant_name,
-                        merchant_category="",  # Could extract from Google Places types if available
-                        address=address,
+                        formatted_address=address,
                         phone_number=phone,
-                        matched_fields=(
-                            matched_fields if matched_fields else ["place_id"]
-                        ),
-                        validated_by=validated_by,
-                        timestamp=datetime.now(timezone.utc),
                         reasoning=f"Created by place_id_finder: {match.search_method or 'unknown method'}",
                         validation_status=MerchantValidationStatus.MATCHED.value,
                     )
 
                     # Create the record
-                    self.dynamo.add_receipt_metadata(metadata)
+                    self.dynamo.add_receipt_place(place)
                     result.total_updated += 1
 
                     logger.info(
-                        f"Created new metadata for {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}: "
+                        f"Created new place for {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}: "
                         f"place_id={match.place_id}, merchant_name={merchant_name[:30] if merchant_name else 'N/A'}"
                     )
                     continue
 
-                # Update existing metadata
+                # Update existing place
                 updated_fields = []
-                metadata.place_id = match.place_id
+                place.place_id = match.place_id
                 updated_fields.append(f"place_id={match.place_id}")
 
                 # Always update other fields from Google Places
                 # CRITICAL: Never use an address as a merchant name
                 if (
                     match.place_name
-                    and metadata.merchant_name != match.place_name
+                    and place.merchant_name != match.place_name
                 ):
                     # Validate that place_name is NOT an address
                     import re
@@ -1058,29 +1026,36 @@ class PlaceIdFinder:
                             f"'{match.place_name}' from Google Places looks like an address, not a merchant name"
                         )
                     else:
-                        metadata.merchant_name = match.place_name
+                        place.merchant_name = match.place_name
                         updated_fields.append(
                             f"merchant_name={match.place_name}"
                         )
 
                 if (
                     match.place_address
-                    and metadata.address != match.place_address
+                    and place.formatted_address != match.place_address
                 ):
-                    metadata.address = match.place_address
+                    place.formatted_address = match.place_address
                     updated_fields.append(
                         f"address={match.place_address[:30]}..."
                     )
 
                 if (
                     match.place_phone
-                    and metadata.phone_number != match.place_phone
+                    and place.phone_number != match.place_phone
                 ):
-                    metadata.phone_number = match.place_phone
+                    place.phone_number = match.place_phone
                     updated_fields.append(f"phone_number={match.place_phone}")
 
                 # Update the record
-                self.dynamo.update_receipt_metadata(metadata)
+                self.dynamo.update_receipt_place(
+                    image_id=place.image_id,
+                    receipt_id=place.receipt_id,
+                    place_id=place.place_id,
+                    merchant_name=place.merchant_name,
+                    formatted_address=place.formatted_address,
+                    phone_number=place.phone_number,
+                )
                 result.total_updated += 1
 
                 logger.debug(
@@ -1105,14 +1080,14 @@ class PlaceIdFinder:
 
             for match in matches_needing_review:
                 try:
-                    # Try to get existing metadata
-                    metadata = None
-                    metadata_exists = False
+                    # Try to get existing place data
+                    place = None
+                    place_exists = False
                     try:
-                        metadata = self.dynamo.get_receipt_metadata(
+                        place = self.dynamo.get_receipt_place(
                             match.receipt.image_id, match.receipt.receipt_id
                         )
-                        metadata_exists = True
+                        place_exists = True
                     except Exception as e:
                         # Check if it's a "not found" error
                         error_str = str(e)
@@ -1122,60 +1097,51 @@ class PlaceIdFinder:
                             or "EntityNotFoundError" in error_type
                             or "not found" in error_str.lower()
                         ):
-                            metadata_exists = False
+                            place_exists = False
                         else:
                             # Some other error - re-raise
                             raise
 
-                    if not metadata_exists:
-                        # Create minimal metadata marked as needing review
-                        from datetime import datetime, timezone
-
+                    if not place_exists:
+                        # Create minimal place marked as needing review
                         from receipt_dynamo.constants import (
                             MerchantValidationStatus,
-                            ValidationMethod,
                         )
-                        from receipt_dynamo.entities import ReceiptMetadata
+                        from receipt_dynamo.entities import ReceiptPlace
 
-                        metadata = ReceiptMetadata(
+                        place = ReceiptPlace(
                             image_id=match.receipt.image_id,
                             receipt_id=match.receipt.receipt_id,
                             place_id="",  # No place_id found
                             merchant_name=match.receipt.merchant_name or "",
-                            merchant_category="",
-                            address=match.receipt.address or "",
+                            formatted_address=match.receipt.address or "",
                             phone_number=match.receipt.phone or "",
-                            matched_fields=[],
-                            validated_by=ValidationMethod.TEXT_SEARCH.value,
-                            timestamp=datetime.now(timezone.utc),
                             reasoning=match.error
                             or "No searchable data available for place_id lookup",
                             validation_status=MerchantValidationStatus.UNSURE.value,
                         )
 
-                        self.dynamo.add_receipt_metadata(metadata)
+                        self.dynamo.add_receipt_place(place)
                         result.total_updated += 1
 
                         logger.info(
-                            f"Created metadata (needs review) for {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}"
+                            f"Created place (needs review) for {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}"
                         )
                         continue
 
-                    # Update existing metadata to mark as needing review
+                    # Update existing place to mark as needing review
                     from receipt_dynamo.constants import (
                         MerchantValidationStatus,
                     )
 
-                    metadata.validation_status = (
-                        MerchantValidationStatus.UNSURE.value
-                    )
-                    metadata.reasoning = (
-                        match.error
-                        or "No searchable data available for place_id lookup"
-                    )
-
                     # Update the record
-                    self.dynamo.update_receipt_metadata(metadata)
+                    self.dynamo.update_receipt_place(
+                        image_id=place.image_id,
+                        receipt_id=place.receipt_id,
+                        validation_status=MerchantValidationStatus.UNSURE.value,
+                        reasoning=match.error
+                        or "No searchable data available for place_id lookup",
+                    )
                     result.total_updated += 1
 
                     logger.debug(

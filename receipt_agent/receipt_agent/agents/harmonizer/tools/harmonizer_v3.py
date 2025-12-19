@@ -201,7 +201,7 @@ class MerchantHarmonizerV3:
         Initialize the harmonizer.
 
         Args:
-            dynamo_client: DynamoDB client with list_receipt_metadatas() method
+            dynamo_client: DynamoDB client with list_receipt_places() method
             places_client: Optional Google Places client for validation
             settings: Optional settings for the agent
         """
@@ -216,38 +216,38 @@ class MerchantHarmonizerV3:
 
     def load_all_receipts(self) -> int:
         """
-        Load all receipt metadata from DynamoDB and group by place_id.
+        Load all receipt place data from DynamoDB and group by place_id.
 
         Returns:
             Total number of receipts loaded
         """
-        logger.info("Loading all receipt metadata from DynamoDB...")
+        logger.info("Loading all receipt place data from DynamoDB...")
 
         self._place_id_groups = {}
         self._no_place_id_receipts = []
         total = 0
 
         try:
-            # Get all receipt metadata (paginated)
-            metadatas = []
+            # Get all receipt places (paginated)
+            places = []
             last_key = None
             while True:
-                batch, last_key = self.dynamo.list_receipt_metadatas(
+                batch, last_key = self.dynamo.list_receipt_places(
                     limit=1000,
                     last_evaluated_key=last_key,
                 )
-                metadatas.extend(batch)
+                places.extend(batch)
                 if not last_key:
                     break
 
-            for meta in metadatas:
+            for place in places:
                 receipt = ReceiptRecord(
-                    image_id=meta.image_id,
-                    receipt_id=meta.receipt_id,
-                    merchant_name=meta.merchant_name,
-                    place_id=meta.place_id,
-                    address=meta.address,
-                    phone=meta.phone_number,
+                    image_id=place.image_id,
+                    receipt_id=place.receipt_id,
+                    merchant_name=place.merchant_name,
+                    place_id=place.place_id,
+                    address=place.formatted_address,
+                    phone=place.phone_number,
                 )
 
                 if receipt.place_id and receipt.place_id not in (
@@ -327,29 +327,29 @@ class MerchantHarmonizerV3:
                         base_place_id = parts[0]
 
                 # Query receipts for this place_id using GSI2
-                metadatas = []
+                places = []
                 last_key = None
                 while True:
                     batch, last_key = (
-                        self.dynamo.list_receipt_metadatas_with_place_id(
+                        self.dynamo.list_receipt_places_with_place_id(
                             place_id=base_place_id,
                             limit=1000,
                             last_evaluated_key=last_key,
                         )
                     )
-                    metadatas.extend(batch)
+                    places.extend(batch)
                     if not last_key:
                         break
 
                 # Group receipts by place_id
-                for meta in metadatas:
+                for place in places:
                     receipt = ReceiptRecord(
-                        image_id=meta.image_id,
-                        receipt_id=meta.receipt_id,
-                        merchant_name=meta.merchant_name,
-                        place_id=meta.place_id,
-                        address=meta.address,
-                        phone=meta.phone_number,
+                        image_id=place.image_id,
+                        receipt_id=place.receipt_id,
+                        merchant_name=place.merchant_name,
+                        place_id=place.place_id,
+                        address=place.formatted_address,
+                        phone=place.phone_number,
                     )
 
                     if receipt.place_id not in self._place_id_groups:
@@ -596,8 +596,8 @@ class MerchantHarmonizerV3:
             dry_run: If True, only report what would be updated
             min_confidence: Minimum confidence fraction to apply fix
                 (0.0 to 1.0).
-                Note: This uses a 0-1 scale, unlike place_id_finder and
-                receipt_metadata_finder which use 0-100 scale.
+                Note: This uses a 0-1 scale, unlike place_id_finder
+                which uses 0-100 scale.
 
         Returns:
             UpdateResult with counts and errors
@@ -663,19 +663,19 @@ class MerchantHarmonizerV3:
 
         for update in updates_to_apply:
             try:
-                metadata = self.dynamo.get_receipt_metadata(
+                place = self.dynamo.get_receipt_place(
                     update["image_id"], update["receipt_id"]
                 )
 
-                if not metadata:
+                if not place:
                     logger.warning(
-                        f"Metadata not found for {update['image_id']}#"
+                        f"ReceiptPlace not found for {update['image_id']}#"
                         f"{update['receipt_id']}"
                     )
                     result.total_failed += 1
                     result.errors.append(
                         f"{update['image_id']}#{update['receipt_id']}: "
-                        "Metadata not found"
+                        "ReceiptPlace not found"
                     )
                     continue
 
@@ -683,28 +683,28 @@ class MerchantHarmonizerV3:
                 updated_fields = []
                 if (
                     update["canonical_merchant_name"]
-                    and metadata.merchant_name
+                    and place.merchant_name
                     != update["canonical_merchant_name"]
                 ):
-                    metadata.merchant_name = update["canonical_merchant_name"]
+                    place.merchant_name = update["canonical_merchant_name"]
                     updated_fields.append("merchant_name")
 
                 if (
                     update["canonical_address"]
-                    and metadata.address != update["canonical_address"]
+                    and place.formatted_address != update["canonical_address"]
                 ):
-                    metadata.address = update["canonical_address"]
-                    updated_fields.append("address")
+                    place.formatted_address = update["canonical_address"]
+                    updated_fields.append("formatted_address")
 
                 if (
                     update["canonical_phone"]
-                    and metadata.phone_number != update["canonical_phone"]
+                    and place.phone_number != update["canonical_phone"]
                 ):
-                    metadata.phone_number = update["canonical_phone"]
+                    place.phone_number = update["canonical_phone"]
                     updated_fields.append("phone_number")
 
                 if updated_fields:
-                    self.dynamo.update_receipt_metadata(metadata)
+                    self.dynamo.update_receipt_place(place)
                     result.total_updated += 1
                     logger.debug(
                         "Updated "

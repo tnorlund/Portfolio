@@ -313,14 +313,14 @@ async def run_label_harmonizer_agent(
             errors=["Receipt has no text after formatting"],
         )
 
-    # Load receipt metadata for context and tools
-    receipt_metadata = None
+    # Load receipt place data for context and tools
+    receipt_place = None
     try:
-        receipt_metadata = dynamo_client.get_receipt_metadata(
+        receipt_place = dynamo_client.get_receipt_place(
             image_id, receipt_id
         )
     except Exception as e:
-        logger.debug("Could not load receipt metadata: %s", e)
+        logger.debug("Could not load receipt place: %s", e)
 
     # Update state holder with receipt data (mutate existing dict to preserve reference used by tools)
     receipt_state = state_holder.get("receipt")
@@ -340,13 +340,13 @@ async def run_label_harmonizer_agent(
         }
     )
 
-    # Add receipt metadata to state if available
-    if receipt_metadata:
+    # Add receipt place data to state if available
+    if receipt_place:
         receipt_state["metadata"] = {
-            "merchant_name": getattr(receipt_metadata, "merchant_name", None),
-            "place_id": getattr(receipt_metadata, "place_id", None),
-            "address": getattr(receipt_metadata, "address", None),
-            "phone_number": getattr(receipt_metadata, "phone_number", None),
+            "merchant_name": getattr(receipt_place, "merchant_name", None),
+            "place_id": getattr(receipt_place, "place_id", None),
+            "address": getattr(receipt_place, "formatted_address", None),
+            "phone_number": getattr(receipt_place, "phone_number", None),
         }
 
     logger.info(
