@@ -23,29 +23,14 @@ from receipt_chroma.embedding.openai import (
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
-# Use absolute imports instead of relative imports to avoid
-# "attempted relative import beyond top-level package" errors
-# when handler.py is the Lambda entry point
-try:
-    # Try importing as if this is a package module
-    from embedding_ingest import (
-        deserialize_receipt_lines,
-        download_serialized_file,
-        query_receipt_lines,
-        set_pending_and_update_lines,
-        write_ndjson,
-    )
-    from utils.env_vars import get_required_env
-except ImportError:
-    # Fallback for when imports work differently
-    from ..embedding_ingest import (
-        deserialize_receipt_lines,
-        download_serialized_file,
-        query_receipt_lines,
-        set_pending_and_update_lines,
-        write_ndjson,
-    )
-    from ..utils.env_vars import get_required_env
+from ..embedding_ingest import (
+    deserialize_receipt_lines,
+    download_serialized_file,
+    query_receipt_lines,
+    set_pending_and_update_lines,
+    write_ndjson,
+)
+from ..utils.env_vars import get_required_env
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger

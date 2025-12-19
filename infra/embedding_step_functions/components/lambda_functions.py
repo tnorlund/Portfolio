@@ -642,10 +642,6 @@ class LambdaFunctionsComponent(ComponentResource):
                 "RECEIPT_AGENT_LANGCHAIN_PROJECT": portfolio_config.get(
                     "LANGCHAIN_PROJECT", "receipt-agent"
                 ),
-                # Configure receipt_agent to use Ollama Cloud for LLM
-                "RECEIPT_AGENT_LLM_PROVIDER": "ollama",
-                "OLLAMA_BASE_URL": "https://api.ollama.cloud",
-                "OLLAMA_MODEL": "llama2-uncensored:120b",
                 "ENABLE_XRAY": "true",
                 "ENABLE_METRICS": "true",
                 "LOG_LEVEL": "INFO",

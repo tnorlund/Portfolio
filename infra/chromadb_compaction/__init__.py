@@ -15,16 +15,6 @@ See README.md for detailed documentation and operational procedures.
 """
 
 import os
-import sys
-from pathlib import Path
-
-# Ensure parent of infra/ directory is in sys.path so that modules can use
-# "from infra." imports. This is necessary because chromadb_compaction
-# can be imported as a top-level module, breaking the package hierarchy.
-# We add the parent directory so that "from infra.shared.build_utils" works.
-_portfolio_root = Path(__file__).parent.parent.parent  # Portfolio/
-if str(_portfolio_root) not in sys.path:
-    sys.path.insert(0, str(_portfolio_root))
 
 # Skip infrastructure imports when running tests
 # This allows Lambda function tests to run without Pulumi dependencies
