@@ -373,6 +373,63 @@ def test_gsi1_key_special_character_handling():
 
 
 @pytest.mark.unit
+def test_gsi1_key_single_character_merchant():
+    """Test GSI1 key handles single alphanumeric character names."""
+    rp = ReceiptPlace(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=1,
+        place_id="place",
+        merchant_name="A",
+        validation_status=MerchantValidationStatus.MATCHED.value,
+        timestamp=datetime.now(timezone.utc),
+    )
+    gsi1 = rp.gsi1_key
+    assert gsi1["GSI1PK"]["S"] == "MERCHANT#A"
+
+
+@pytest.mark.unit
+def test_merchant_name_all_special_characters_fails():
+    """Test that merchant names with only special characters are rejected."""
+    with pytest.raises(ValueError, match="contains no alphanumeric characters"):
+        ReceiptPlace(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            receipt_id=1,
+            place_id="place",
+            merchant_name="@#$%!",
+            validation_status=MerchantValidationStatus.MATCHED.value,
+            timestamp=datetime.now(timezone.utc),
+        )
+
+
+@pytest.mark.unit
+def test_merchant_name_whitespace_only_fails():
+    """Test that whitespace-only merchant names are rejected."""
+    with pytest.raises(ValueError, match="contains no alphanumeric characters"):
+        ReceiptPlace(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            receipt_id=1,
+            place_id="place",
+            merchant_name="   ",
+            validation_status=MerchantValidationStatus.MATCHED.value,
+            timestamp=datetime.now(timezone.utc),
+        )
+
+
+@pytest.mark.unit
+def test_merchant_name_empty_fails():
+    """Test that empty merchant names are rejected."""
+    with pytest.raises(ValueError, match="merchant_name cannot be empty"):
+        ReceiptPlace(
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            receipt_id=1,
+            place_id="place",
+            merchant_name="",
+            validation_status=MerchantValidationStatus.MATCHED.value,
+            timestamp=datetime.now(timezone.utc),
+        )
+
+
+@pytest.mark.unit
 def test_gsi2_key_place_id(example_receipt_place):
     """Test GSI2 key generation by place_id."""
     rp = example_receipt_place

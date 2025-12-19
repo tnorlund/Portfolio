@@ -181,6 +181,18 @@ class ReceiptPlace(SerializationMixin):
         if not (0.0 <= self.confidence <= 1.0):
             raise ValueError(f"confidence must be between 0.0 and 1.0, got {self.confidence}")
 
+        # Validate merchant_name produces non-empty GSI1 key after normalization
+        if not self.merchant_name:
+            raise ValueError("merchant_name cannot be empty")
+        normalized_merchant = self.merchant_name.upper()
+        normalized_merchant = re.sub(r"[^A-Z0-9]+", "_", normalized_merchant)
+        normalized_merchant = normalized_merchant.strip("_")
+        if not normalized_merchant:
+            raise ValueError(
+                f"merchant_name '{self.merchant_name}' contains no alphanumeric "
+                "characters and would produce an invalid GSI1 key"
+            )
+
         # Validate coordinates if present
         if self.latitude is not None:
             if not (-90.0 <= self.latitude <= 90.0):
@@ -324,15 +336,30 @@ class ReceiptPlace(SerializationMixin):
                 else:
                     item[attr] = {"NULL": True}
 
-        # List fields (string sets)
-        if self.merchant_types:
-            item["merchant_types"] = {"SS": self.merchant_types}
-        if self.matched_fields:
-            item["matched_fields"] = {"SS": self.matched_fields}
-        if self.hours_summary:
-            item["hours_summary"] = {"SS": self.hours_summary}
-        if self.photo_references:
-            item["photo_references"] = {"SS": self.photo_references}
+        # List fields (string sets) - filter out empty strings (DynamoDB SS rejects empty strings)
+        merchant_types_filtered = [
+            s.strip() for s in self.merchant_types if isinstance(s, str) and s.strip()
+        ]
+        if merchant_types_filtered:
+            item["merchant_types"] = {"SS": merchant_types_filtered}
+
+        matched_fields_filtered = [
+            s.strip() for s in self.matched_fields if isinstance(s, str) and s.strip()
+        ]
+        if matched_fields_filtered:
+            item["matched_fields"] = {"SS": matched_fields_filtered}
+
+        hours_summary_filtered = [
+            s.strip() for s in self.hours_summary if isinstance(s, str) and s.strip()
+        ]
+        if hours_summary_filtered:
+            item["hours_summary"] = {"SS": hours_summary_filtered}
+
+        photo_references_filtered = [
+            s.strip() for s in self.photo_references if isinstance(s, str) and s.strip()
+        ]
+        if photo_references_filtered:
+            item["photo_references"] = {"SS": photo_references_filtered}
 
         # Numeric fields (coordinates)
         if self.latitude is not None:
@@ -426,18 +453,18 @@ def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
                 pass
 
     # Handle None values for string fields that should be empty strings
-    for field in ["geohash", "merchant_category", "formatted_address", "short_address", "phone_number", "phone_intl", "website", "maps_url", "business_status", "plus_code", "validated_by", "reasoning", "places_api_version"]:
-        if field in filtered_item and filtered_item[field] is None:
-            filtered_item[field] = ""
+    for attr_name in ["geohash", "merchant_category", "formatted_address", "short_address", "phone_number", "phone_intl", "website", "maps_url", "business_status", "plus_code", "validated_by", "reasoning", "places_api_version"]:
+        if attr_name in filtered_item and filtered_item[attr_name] is None:
+            filtered_item[attr_name] = ""
 
     # Convert Decimal numbers to float for floating point fields
-    for field in ["latitude", "longitude", "confidence", "viewport_ne_lat", "viewport_ne_lng", "viewport_sw_lat", "viewport_sw_lng"]:
-        if field in filtered_item:
-            value = filtered_item[field]
+    for attr_name in ["latitude", "longitude", "confidence", "viewport_ne_lat", "viewport_ne_lng", "viewport_sw_lat", "viewport_sw_lng"]:
+        if attr_name in filtered_item:
+            value = filtered_item[attr_name]
             if isinstance(value, (str, int, Decimal)):
                 try:
-                    filtered_item[field] = float(value)
+                    filtered_item[attr_name] = float(value)
                 except (ValueError, TypeError):
-                    filtered_item.pop(field, None)
+                    filtered_item.pop(attr_name, None)
 
     return ReceiptPlace(**filtered_item)

@@ -9,6 +9,7 @@ This module provides CRUD operations and GSI queries for managing ReceiptPlace
 records in DynamoDB.
 """
 
+import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -493,7 +494,10 @@ class _ReceiptPlace(FlattenedStandardMixin):
             raise EntityValidationError("merchant_name cannot be None")
         if not isinstance(merchant_name, str):
             raise EntityValidationError("merchant_name must be a string")
-        normalized_merchant_name = merchant_name.upper().replace(" ", "_")
+        # Use same normalization as entity gsi1_key: uppercase, replace special chars, strip underscores
+        normalized_merchant_name = merchant_name.upper()
+        normalized_merchant_name = re.sub(r"[^A-Z0-9]+", "_", normalized_merchant_name)
+        normalized_merchant_name = normalized_merchant_name.strip("_")
         gsi1_pk = f"MERCHANT#{normalized_merchant_name}"
 
         return self._query_entities(
