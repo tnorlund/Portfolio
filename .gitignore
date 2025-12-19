@@ -231,7 +231,12 @@ receipt_label/test_results/
 .venv_test/
 .venv_test_chromadb/
 .venv-test-py312/
+.venv_eval/
+.venv_312_label_eval/
+.venv_debug_metadata/
+.venv_profiling/
 venv_chromadb/
+venv_backfill/
 # Local ChromaDB databases
 chroma_words_local_words_specific/
 
@@ -245,3 +250,13 @@ infra/backups/
 .github/pr-reviews/data/*.json
 .github/pr-reviews/reports/*-detailed-review.md
 .github/pr-reviews/reports/*-review-tracking.md
+logs/
+
+# Development scripts (local-only, not for version control)
+dev.*.py
+dev_*.py
+*_plan.md
+*_plan.html
+FUTURE_WORK.md
+*_MIGRATION.md
+Pr*.md
