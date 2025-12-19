@@ -391,26 +391,45 @@ def create_agentic_tools(
             return {"error": "No receipt context set"}
 
         if ctx.metadata is None:
+            # Try receipt_place first (new entity)
             try:
-                metadata = dynamo_client.get_receipt_metadata(
+                place = dynamo_client.get_receipt_place(
                     image_id=ctx.image_id,
                     receipt_id=ctx.receipt_id,
                 )
-                if metadata:
+                if place:
                     ctx.metadata = {
-                        "merchant_name": metadata.merchant_name,
-                        "place_id": metadata.place_id,
-                        "address": metadata.address,
-                        "phone": metadata.phone_number,
-                        "validation_status": metadata.validation_status,
-                    }
-                else:
-                    ctx.metadata = {
-                        "error": "No metadata found for this receipt"
+                        "merchant_name": place.merchant_name,
+                        "place_id": place.place_id,
+                        "address": place.formatted_address,
+                        "phone": place.phone_number,
+                        "validation_status": place.validation_status,
                     }
             except Exception as e:
-                logger.exception("Error loading metadata")
-                ctx.metadata = {"error": str(e)}
+                logger.debug("No receipt_place found: %s", e)
+
+            # Fallback to legacy receipt_metadata if no place found
+            if ctx.metadata is None:
+                try:
+                    metadata = dynamo_client.get_receipt_metadata(
+                        image_id=ctx.image_id,
+                        receipt_id=ctx.receipt_id,
+                    )
+                    if metadata:
+                        ctx.metadata = {
+                            "merchant_name": metadata.merchant_name,
+                            "place_id": metadata.place_id,
+                            "address": metadata.address,
+                            "phone": metadata.phone_number,
+                            "validation_status": metadata.validation_status,
+                        }
+                    else:
+                        ctx.metadata = {
+                            "error": "No metadata found for this receipt"
+                        }
+                except Exception as e:
+                    logger.exception("Error loading metadata")
+                    ctx.metadata = {"error": str(e)}
 
         return ctx.metadata
 

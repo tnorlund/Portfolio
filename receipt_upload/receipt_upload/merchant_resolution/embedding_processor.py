@@ -139,8 +139,9 @@ class MerchantResolvingEmbeddingProcessor:
         except Exception as e:
             _log(f"Could not fetch word labels: {e}")
 
-        # Get existing receipt metadata
+        # Get existing receipt metadata (legacy) and receipt place (new)
         receipt_metadata = None
+        receipt_place = None
         try:
             receipt_metadata = self.dynamo.get_receipt_metadata(
                 image_id, receipt_id
@@ -148,11 +149,25 @@ class MerchantResolvingEmbeddingProcessor:
         except Exception as e:
             _log(f"Could not fetch receipt metadata: {e}")
 
+        try:
+            receipt_place = self.dynamo.get_receipt_place(
+                image_id, receipt_id
+            )
+        except Exception as e:
+            _log(f"Could not fetch receipt place: {e}")
+
         # Step 1: Generate embeddings and get merged snapshot+delta clients
         _log(
             f"Creating embeddings for {image_id}#{receipt_id} "
             f"({len(lines)} lines, {len(words)} words)"
         )
+
+        # Resolve merchant name (prefer receipt_place over legacy receipt_metadata)
+        merchant_name = None
+        if receipt_place and receipt_place.merchant_name:
+            merchant_name = receipt_place.merchant_name
+        elif receipt_metadata and receipt_metadata.merchant_name:
+            merchant_name = receipt_metadata.merchant_name
 
         try:
             result = create_embeddings_and_compaction_run(
@@ -164,12 +179,9 @@ class MerchantResolvingEmbeddingProcessor:
                 dynamo_client=self.dynamo,
                 s3_client=self.s3_client,
                 receipt_metadata=receipt_metadata,
+                receipt_place=receipt_place,
                 receipt_word_labels=word_labels,
-                merchant_name=(
-                    receipt_metadata.merchant_name
-                    if receipt_metadata
-                    else None
-                ),
+                merchant_name=merchant_name,
                 sqs_notify=True,  # Trigger async compaction
             )
         except Exception as e:
@@ -194,18 +206,26 @@ class MerchantResolvingEmbeddingProcessor:
                 receipt_id=receipt_id,
             )
 
-            # Step 3: Enrich receipt in DynamoDB if merchant found
+            # Step 3: Enrich receipt in DynamoDB if merchant found (dual-write)
             if merchant_result.place_id:
                 _log(
                     f"Enriching receipt with merchant: {merchant_result.merchant_name} "
                     f"(place_id={merchant_result.place_id}, "
                     f"tier={merchant_result.resolution_tier})"
                 )
+                # Update legacy receipt_metadata
                 self._enrich_receipt_metadata(
                     image_id=image_id,
                     receipt_id=receipt_id,
                     merchant_result=merchant_result,
                     existing_metadata=receipt_metadata,
+                )
+                # Update new receipt_place
+                self._enrich_receipt_place(
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    merchant_result=merchant_result,
+                    existing_place=receipt_place,
                 )
             else:
                 _log("No merchant found - receipt will not be enriched")
@@ -292,3 +312,79 @@ class MerchantResolvingEmbeddingProcessor:
             _log(f"ERROR: Failed to enrich receipt metadata: {e}")
             logger.exception("Metadata enrichment failed")
             raise
+
+    def _enrich_receipt_place(
+        self,
+        image_id: str,
+        receipt_id: int,
+        merchant_result: MerchantResult,
+        existing_place: Optional[Any] = None,
+    ) -> None:
+        """
+        Update receipt place in DynamoDB with merchant information.
+
+        Args:
+            image_id: Receipt's image_id
+            receipt_id: Receipt's receipt_id
+            merchant_result: Resolved merchant information
+            existing_place: Optional pre-fetched place to avoid duplicate query
+        """
+        try:
+            # Use provided place or fetch if not available
+            place = existing_place
+            if place is None:
+                try:
+                    place = self.dynamo.get_receipt_place(image_id, receipt_id)
+                except Exception:
+                    place = None
+
+            if place:
+                # Update existing place with merchant info
+                updates = {}
+
+                if merchant_result.place_id:
+                    updates["place_id"] = merchant_result.place_id
+
+                if merchant_result.merchant_name:
+                    if not place.merchant_name:
+                        updates["merchant_name"] = merchant_result.merchant_name
+
+                if merchant_result.address:
+                    if not place.formatted_address:
+                        updates["formatted_address"] = merchant_result.address
+
+                if merchant_result.phone:
+                    if not place.phone_number:
+                        updates["phone_number"] = merchant_result.phone
+
+                if updates:
+                    self.dynamo.update_receipt_place(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        **updates,
+                    )
+                    _log(
+                        f"Updated receipt place with: {list(updates.keys())}"
+                    )
+            else:
+                # Create new receipt place if none exists
+                if merchant_result.place_id:
+                    from receipt_dynamo.entities import ReceiptPlace
+
+                    new_place = ReceiptPlace(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        place_id=merchant_result.place_id,
+                        merchant_name=merchant_result.merchant_name or "",
+                        formatted_address=merchant_result.address or "",
+                        phone_number=merchant_result.phone or "",
+                    )
+                    self.dynamo.add_receipt_place(new_place)
+                    _log(
+                        f"Created new receipt place for {image_id}#{receipt_id}"
+                    )
+
+        except Exception as e:
+            _log(f"ERROR: Failed to enrich receipt place: {e}")
+            logger.exception("Place enrichment failed")
+            # Don't raise - this is a dual-write, metadata update may have succeeded

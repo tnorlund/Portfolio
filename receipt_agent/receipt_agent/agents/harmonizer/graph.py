@@ -877,34 +877,49 @@ def create_harmonizer_tools(
                     "verification_prompt": "Receipt has no text lines.",
                 }
 
-            # Use ReceiptMetadata when the Receipt entity lacks fields
+            # Try ReceiptPlace first (new entity), fallback to ReceiptMetadata
             current_metadata = {}
             try:
-                metadata = dynamo_client.get_receipt_metadata(
-                    image_id, receipt_id
-                )
-                if metadata:
+                place = dynamo_client.get_receipt_place(image_id, receipt_id)
+                if place:
                     current_metadata = {
-                        "merchant_name": metadata.merchant_name or "(not set)",
-                        "address": metadata.address or "(not set)",
-                        "phone": metadata.phone_number or "(not set)",
+                        "merchant_name": place.merchant_name or "(not set)",
+                        "address": place.formatted_address or "(not set)",
+                        "phone": place.phone_number or "(not set)",
                     }
-                else:
+            except Exception as e:
+                logger.debug(
+                    f"Could not fetch receipt_place for {image_id}#{receipt_id}: {e}"
+                )
+
+            # Fallback to legacy ReceiptMetadata if no place found
+            if not current_metadata:
+                try:
+                    metadata = dynamo_client.get_receipt_metadata(
+                        image_id, receipt_id
+                    )
+                    if metadata:
+                        current_metadata = {
+                            "merchant_name": metadata.merchant_name or "(not set)",
+                            "address": metadata.address or "(not set)",
+                            "phone": metadata.phone_number or "(not set)",
+                        }
+                    else:
+                        current_metadata = {
+                            "merchant_name": "(not available)",
+                            "address": "(not available)",
+                            "phone": "(not available)",
+                        }
+                except Exception as e:
+                    logger.debug(
+                        "Could not fetch metadata for "
+                        f"{image_id}#{receipt_id}: {e}"
+                    )
                     current_metadata = {
                         "merchant_name": "(not available)",
                         "address": "(not available)",
                         "phone": "(not available)",
                     }
-            except Exception as e:
-                logger.debug(
-                    "Could not fetch metadata for "
-                    f"{image_id}#{receipt_id}: {e}"
-                )
-                current_metadata = {
-                    "merchant_name": "(not available)",
-                    "address": "(not available)",
-                    "phone": "(not available)",
-                }
 
             try:
                 formatted_text = format_receipt_text_receipt_space(lines)

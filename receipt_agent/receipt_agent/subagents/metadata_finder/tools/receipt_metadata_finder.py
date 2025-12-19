@@ -352,6 +352,7 @@ class ReceiptMetadataFinder:
         """
         Load all receipt metadata from DynamoDB that have missing fields.
 
+        Checks both ReceiptPlace (new entity) and ReceiptMetadata (legacy).
         A receipt has missing metadata if ANY of these are missing:
         - place_id
         - merchant_name
@@ -367,10 +368,80 @@ class ReceiptMetadataFinder:
 
         self._receipts_with_missing_metadata = []
         total = 0
+        seen_receipts = set()  # Track (image_id, receipt_id) already processed
 
+        # First check ReceiptPlace (new entity) - these take precedence
         try:
-            # Paginate and filter in one pass to avoid accumulating
-            # all metadatas
+            last_key = None
+            while True:
+                batch, last_key = self.dynamo.list_receipt_places(
+                    limit=1000,
+                    last_evaluated_key=last_key,
+                )
+
+                for place in batch:
+                    receipt_key = (place.image_id, place.receipt_id)
+                    seen_receipts.add(receipt_key)
+
+                    # Check if any field is missing
+                    has_place_id = place.place_id and place.place_id not in (
+                        "",
+                        "null",
+                        "NO_RESULTS",
+                        "INVALID",
+                    )
+                    has_merchant_name = bool(
+                        place.merchant_name and place.merchant_name.strip()
+                    )
+                    has_address = bool(
+                        place.formatted_address
+                        and place.formatted_address.strip()
+                    )
+                    has_phone = bool(
+                        place.phone_number and place.phone_number.strip()
+                    )
+
+                    # If any field is missing, include it
+                    if not (
+                        has_place_id
+                        and has_merchant_name
+                        and has_address
+                        and has_phone
+                    ):
+                        receipt = ReceiptRecord(
+                            image_id=place.image_id,
+                            receipt_id=place.receipt_id,
+                            merchant_name=(
+                                place.merchant_name
+                                if has_merchant_name
+                                else None
+                            ),
+                            place_id=place.place_id if has_place_id else None,
+                            address=(
+                                place.formatted_address if has_address else None
+                            ),
+                            phone=place.phone_number if has_phone else None,
+                            validation_status=getattr(
+                                place, "validation_status", None
+                            ),
+                        )
+
+                        self._receipts_with_missing_metadata.append(receipt)
+                        total += 1
+
+                if not last_key:
+                    break
+
+            logger.info(
+                f"Checked ReceiptPlace: {len(seen_receipts)} receipts, "
+                f"{total} with missing metadata"
+            )
+
+        except Exception as e:
+            logger.warning(f"Could not load ReceiptPlace entities: {e}")
+
+        # Then check legacy ReceiptMetadata for receipts not in ReceiptPlace
+        try:
             last_key = None
             while True:
                 batch, last_key = self.dynamo.list_receipt_metadatas(
@@ -380,6 +451,13 @@ class ReceiptMetadataFinder:
 
                 # Filter to receipts with missing metadata within this batch
                 for meta in batch:
+                    receipt_key = (meta.image_id, meta.receipt_id)
+                    # Skip if already processed from ReceiptPlace
+                    if receipt_key in seen_receipts:
+                        continue
+
+                    seen_receipts.add(receipt_key)
+
                     # Check if any field is missing
                     has_place_id = meta.place_id and meta.place_id not in (
                         "",
@@ -424,7 +502,7 @@ class ReceiptMetadataFinder:
                 if not last_key:
                     break
 
-            logger.info(f"Loaded {total} receipts with missing metadata")
+            logger.info(f"Loaded {total} total receipts with missing metadata")
 
         except Exception:
             logger.exception("Failed to load receipts")

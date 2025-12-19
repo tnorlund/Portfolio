@@ -461,6 +461,446 @@ def remove_receipt_metadata(
     return len(matching_ids)
 
 
+def update_receipt_place(
+    collection: Any,
+    image_id: str,
+    receipt_id: int,
+    changes: Dict[str, Any],
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
+    get_dynamo_client_func: Any = None,
+) -> int:
+    """Update place metadata for all embeddings of a receipt.
+
+    Mirrors update_receipt_metadata() but for ReceiptPlace entities.
+    Builds exact ChromaDB IDs via DynamoDB instead of scanning the collection.
+    """
+    start_time = time.time()
+
+    if OBSERVABILITY_AVAILABLE:
+        logger.info(
+            "Starting place update",
+            image_id=image_id,
+            receipt_id=receipt_id,
+            changes=changes,
+        )
+    else:
+        logger.info(
+            "Starting place update",
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
+        logger.info("Changes to apply", changes=changes)
+
+    # Get DynamoDB client to query for words/lines
+    if get_dynamo_client_func:
+        dynamo_client = get_dynamo_client_func()
+    else:
+        dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
+
+    # Determine collection type from collection name
+    collection_name = collection.name
+
+    logger.info("Processing collection", collection_name=collection_name)
+
+    # Construct ChromaDB IDs by querying DynamoDB for exact entities
+    chromadb_ids = []
+
+    if "words" in collection_name:
+        try:
+            words = dynamo_client.list_receipt_words_from_receipt(
+                image_id, receipt_id
+            )
+
+            logger.info("Found words in DynamoDB", count=len(words))
+            if OBSERVABILITY_AVAILABLE and metrics:
+                metrics.gauge("CompactionDynamoDBWords", len(words))
+
+            chromadb_ids = [
+                (
+                    f"IMAGE#{word.image_id}"
+                    f"#RECEIPT#{word.receipt_id:05d}"
+                    f"#LINE#{word.line_id:05d}"
+                    f"#WORD#{word.word_id:05d}"
+                )
+                for word in words
+            ]
+        except Exception as e:
+            logger.error("Failed to query words from DynamoDB", error=str(e))
+
+            if OBSERVABILITY_AVAILABLE and metrics:
+                metrics.count(
+                    "CompactionDynamoDBQueryError",
+                    1,
+                    {"entity_type": "words", "error_type": type(e).__name__},
+                )
+            return 0
+
+    elif "lines" in collection_name:
+        try:
+            lines = dynamo_client.list_receipt_lines_from_receipt(
+                image_id, receipt_id
+            )
+
+            logger.info("Found lines in DynamoDB", count=len(lines))
+            if OBSERVABILITY_AVAILABLE and metrics:
+                metrics.gauge("CompactionDynamoDBLines", len(lines))
+
+            chromadb_ids = [
+                (
+                    f"IMAGE#{line.image_id}"
+                    f"#RECEIPT#{line.receipt_id:05d}"
+                    f"#LINE#{line.line_id:05d}"
+                )
+                for line in lines
+            ]
+        except Exception as e:
+            logger.error("Failed to query lines from DynamoDB", error=str(e))
+
+            if OBSERVABILITY_AVAILABLE and metrics:
+                metrics.count(
+                    "CompactionDynamoDBQueryError",
+                    1,
+                    {"entity_type": "lines", "error_type": type(e).__name__},
+                )
+            return 0
+    else:
+        logger.warning(
+            "Unknown collection type", collection_name=collection_name
+        )
+
+        if OBSERVABILITY_AVAILABLE and metrics:
+            metrics.count(
+                "CompactionUnknownCollectionType",
+                1,
+                {"collection_name": collection_name},
+            )
+        return 0
+
+    logger.info("Constructed ChromaDB IDs", count=len(chromadb_ids))
+
+    if not chromadb_ids:
+        logger.warning(
+            "No entities found in DynamoDB",
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
+        return 0
+
+    # Use direct ID lookup
+    try:
+        results = collection.get(ids=chromadb_ids, include=["metadatas"])
+        found_count = len(results.get("ids", []))
+
+        logger.info(
+            "Retrieved records from ChromaDB",
+            found_count=found_count,
+            expected_count=len(chromadb_ids),
+        )
+        if metrics:
+            metrics.gauge("CompactionChromaDBRecordsFound", found_count)
+
+        if found_count == 0:
+            logger.error(
+                "No matching embeddings found in ChromaDB for place update",
+                receipt_id=receipt_id,
+                image_id=image_id,
+                expected=len(chromadb_ids),
+            )
+            if metrics:
+                metrics.count(
+                    "CompactionPlaceEmbeddingNotFound",
+                    1,
+                    {
+                        "image_id": image_id,
+                        "receipt_id": str(receipt_id),
+                        "collection": collection_name,
+                    },
+                )
+            return 0
+    except Exception as e:
+        logger.error("Failed to query ChromaDB with exact IDs", error=str(e))
+
+        if metrics:
+            metrics.count(
+                "CompactionChromaDBQueryError",
+                1,
+                {"error_type": type(e).__name__},
+            )
+        return 0
+
+    # Prepare updated metadata for found records
+    matching_ids = results.get("ids", [])
+    matching_metadatas = []
+
+    for i, _ in enumerate(matching_ids):
+        existing_metadata = results["metadatas"][i] or {}
+        updated_metadata = existing_metadata.copy()
+
+        # Apply field changes, mapping ReceiptPlace fields to ChromaDB fields
+        for field, change in changes.items():
+            if hasattr(change, "new"):
+                new_value = change.new
+            else:
+                new_value = (
+                    change.get("new") if isinstance(change, dict) else change
+                )
+
+            # Map ReceiptPlace field names to ChromaDB metadata field names
+            chromadb_field = field
+            if field == "formatted_address":
+                chromadb_field = "address"
+
+            if new_value is not None:
+                updated_metadata[chromadb_field] = new_value
+            elif chromadb_field in updated_metadata:
+                del updated_metadata[chromadb_field]
+
+        # Add update timestamp
+        updated_metadata["last_place_update"] = datetime.now(
+            timezone.utc
+        ).isoformat()
+        matching_metadatas.append(updated_metadata)
+
+    # Update records if any found
+    if matching_ids:
+        try:
+            collection.update(ids=matching_ids, metadatas=matching_metadatas)
+            elapsed_time = time.time() - start_time
+
+            if OBSERVABILITY_AVAILABLE:
+                logger.info(
+                    "Successfully updated place metadata",
+                    updated_count=len(matching_ids),
+                    elapsed_seconds=elapsed_time,
+                )
+                if metrics:
+                    metrics.timer("CompactionPlaceUpdateTime", elapsed_time)
+                    metrics.count(
+                        "CompactionPlaceUpdatedRecords", len(matching_ids)
+                    )
+            else:
+                logger.info(
+                    "Successfully updated place metadata for embeddings",
+                    embedding_count=len(matching_ids),
+                    elapsed_seconds=elapsed_time,
+                )
+        except Exception as e:
+            logger.error("Failed to update ChromaDB place metadata", error=str(e))
+
+            if OBSERVABILITY_AVAILABLE and metrics:
+                metrics.count(
+                    "CompactionChromaDBUpdateError",
+                    1,
+                    {"error_type": type(e).__name__},
+                )
+            return 0
+    else:
+        logger.warning(
+            "No matching ChromaDB records found",
+            dynamodb_ids=len(chromadb_ids),
+        )
+
+    elapsed_time = time.time() - start_time
+
+    if OBSERVABILITY_AVAILABLE:
+        logger.info(
+            "Place update completed",
+            elapsed_seconds=elapsed_time,
+            approach="DynamoDB-driven",
+        )
+    else:
+        logger.info(
+            "Place update completed (DynamoDB-driven approach)",
+            elapsed_seconds=elapsed_time,
+        )
+    return len(matching_ids)
+
+
+def remove_receipt_place(
+    collection: Any,
+    image_id: str,
+    receipt_id: int,
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
+    get_dynamo_client_func: Any = None,
+) -> int:
+    """Remove place metadata fields for a receipt.
+
+    Mirrors remove_receipt_metadata() but for ReceiptPlace entities.
+    Uses DynamoDB to build exact ChromaDB IDs instead of scanning the
+    collection.
+    """
+    start_time = time.time()
+
+    if OBSERVABILITY_AVAILABLE:
+        logger.info(
+            "Starting place removal",
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
+    else:
+        logger.info(
+            "Starting place removal",
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
+
+    # Get DynamoDB client to query for words/lines
+    if get_dynamo_client_func:
+        dynamo_client = get_dynamo_client_func()
+    else:
+        dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
+
+    # Determine collection type from collection name
+    collection_name = collection.name
+
+    # Construct ChromaDB IDs by querying DynamoDB for exact entities
+    chromadb_ids = []
+
+    if "words" in collection_name:
+        try:
+            words = dynamo_client.list_receipt_words_from_receipt(
+                image_id, receipt_id
+            )
+            chromadb_ids = [
+                (
+                    f"IMAGE#{word.image_id}"
+                    f"#RECEIPT#{word.receipt_id:05d}"
+                    f"#LINE#{word.line_id:05d}"
+                    f"#WORD#{word.word_id:05d}"
+                )
+                for word in words
+            ]
+        except Exception as e:
+            logger.error("Failed to query words from DynamoDB", error=str(e))
+            return 0
+
+    elif "lines" in collection_name:
+        try:
+            lines = dynamo_client.list_receipt_lines_from_receipt(
+                image_id, receipt_id
+            )
+            chromadb_ids = [
+                (
+                    f"IMAGE#{line.image_id}"
+                    f"#RECEIPT#{line.receipt_id:05d}"
+                    f"#LINE#{line.line_id:05d}"
+                )
+                for line in lines
+            ]
+        except Exception as e:
+            logger.error("Failed to query lines from DynamoDB", error=str(e))
+            return 0
+    else:
+        logger.warning(
+            "Unknown collection type", collection_name=collection_name
+        )
+        return 0
+
+    if not chromadb_ids:
+        logger.warning(
+            "No entities found in DynamoDB",
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
+        return 0
+
+    # Fields to remove when place data is deleted
+    # Same as receipt_metadata plus any additional ReceiptPlace fields
+    fields_to_remove = [
+        "canonical_merchant_name",
+        "merchant_name",
+        "merchant_category",
+        "address",  # Maps from formatted_address
+        "phone_number",
+        "place_id",
+    ]
+
+    # Use direct ID lookup instead of scanning entire collection
+    try:
+        results = collection.get(ids=chromadb_ids, include=["metadatas"])
+        found_count = len(results.get("ids", []))
+
+        logger.info(
+            "Retrieved records from ChromaDB for removal", count=found_count
+        )
+    except Exception as e:
+        logger.error(
+            "Failed to query ChromaDB for place removal", error=str(e)
+        )
+        return 0
+
+    matching_ids = results.get("ids", [])
+    matching_metadatas = []
+
+    for i, _ in enumerate(matching_ids):
+        existing_metadata = results["metadatas"][i] or {}
+        updated_metadata = existing_metadata.copy()
+
+        # Set fields to None to remove them
+        for field in fields_to_remove:
+            if field in updated_metadata:
+                updated_metadata[field] = None
+
+        # Add removal timestamp
+        updated_metadata["place_removed_at"] = datetime.now(
+            timezone.utc
+        ).isoformat()
+        matching_metadatas.append(updated_metadata)
+
+    # Update records if any found
+    if matching_ids:
+        try:
+            collection.update(ids=matching_ids, metadatas=matching_metadatas)
+            elapsed_time = time.time() - start_time
+
+            if OBSERVABILITY_AVAILABLE:
+                logger.info(
+                    "Removed place metadata",
+                    removed_count=len(matching_ids),
+                    elapsed_seconds=elapsed_time,
+                )
+                if metrics:
+                    metrics.timer(
+                        "CompactionPlaceRemovalTime", elapsed_time
+                    )
+                    metrics.count(
+                        "CompactionPlaceRemovedRecords", len(matching_ids)
+                    )
+            else:
+                logger.info(
+                    "Removed place metadata from embeddings",
+                    embedding_count=len(matching_ids),
+                    elapsed_seconds=elapsed_time,
+                )
+        except Exception as e:
+            logger.error("Failed to remove ChromaDB place metadata", error=str(e))
+            return 0
+    else:
+        logger.warning(
+            "No matching ChromaDB records found for removal",
+            dynamodb_ids=len(chromadb_ids),
+        )
+
+    elapsed_time = time.time() - start_time
+
+    if OBSERVABILITY_AVAILABLE:
+        logger.info(
+            "Place removal completed",
+            elapsed_seconds=elapsed_time,
+            approach="DynamoDB-driven",
+        )
+    else:
+        logger.info(
+            "Place removal completed (DynamoDB-driven approach)",
+            elapsed_seconds=elapsed_time,
+        )
+    return len(matching_ids)
+
+
 def update_word_labels(
     collection: Any,
     chromadb_id: str,
