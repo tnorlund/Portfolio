@@ -263,7 +263,9 @@ def parse_place_autocomplete_response(
                     }
                 )
         except ValidationError as e:
-            logger.warning("Prediction #%s validation failed: %s, skipping", i, e)
+            logger.warning(
+                "Prediction #%s validation failed: %s, skipping", i, e
+            )
             continue
 
     return predictions

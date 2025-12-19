@@ -97,17 +97,18 @@ from receipt_dynamo.entities.receipt_line_item_analysis import (  # noqa: F401
     ReceiptLineItemAnalysis,
     item_to_receipt_line_item_analysis,
 )
-from receipt_dynamo.entities.receipt_metadata import (  # noqa: F401
+from receipt_dynamo.entities.receipt_metadata import (
     ReceiptMetadata,
     item_to_receipt_metadata,
 )
-from receipt_dynamo.entities.receipt_section import (  # noqa: F401
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_section import (
     ReceiptSection,
     item_to_receipt_section,
 )
 
 # Import receipt structure analysis types before __all__
-from receipt_dynamo.entities.receipt_structure_analysis import (  # noqa: F401
+from receipt_dynamo.entities.receipt_structure_analysis import (
     ContentPattern,
     ReceiptStructureAnalysis,
     SpatialPattern,
@@ -182,6 +183,7 @@ __all__ = [
     "ReceiptLine",
     "ReceiptLineItemAnalysis",
     "ReceiptMetadata",
+    "ReceiptPlace",
     "ReceiptSection",
     "ReceiptStructureAnalysis",
     "ReceiptValidationCategory",

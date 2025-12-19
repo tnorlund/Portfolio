@@ -36,6 +36,7 @@ from receipt_dynamo.data._receipt_line_item_analysis import (
     _ReceiptLineItemAnalysis,
 )
 from receipt_dynamo.data._receipt_metadata import _ReceiptMetadata
+from receipt_dynamo.data._receipt_place import _ReceiptPlace
 from receipt_dynamo.data._receipt_section import _ReceiptSection
 from receipt_dynamo.data._receipt_structure_analysis import (
     _ReceiptStructureAnalysis,
@@ -93,6 +94,7 @@ class DynamoClient(
     _BatchSummary,
     _EmbeddingBatchResult,
     _ReceiptMetadata,
+    _ReceiptPlace,
     _CompletionBatchResult,
     _OCRJob,
     _ReceiptSection,
@@ -117,7 +119,9 @@ class DynamoClient(
         """
         super().__init__()
 
-        self._client: DynamoDBClient = boto3.client("dynamodb", region_name=region)
+        self._client: DynamoDBClient = boto3.client(
+            "dynamodb", region_name=region
+        )
         self.table_name = table_name
         # Ensure the table already exists
         try:
