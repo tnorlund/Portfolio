@@ -100,12 +100,15 @@ async def main(
         )
         logger.info(f"✓ DynamoDB client initialized (table={dynamodb_table_name}, region={aws_region})")
 
-        # Initialize Places API client with no-op cache to avoid DynamoDB dependency
+        # Initialize v1 Places API client with no-op cache to avoid DynamoDB dependency
+        from receipt_places.config import PlacesConfig
+        places_config = PlacesConfig(use_v1_api=True)
         places = create_places_client(
             api_key=google_places_api_key,
+            config=places_config,
             cache_manager=NullCacheManager(),  # Use no-op cache for backfill
         )
-        logger.info(f"✓ Places API client initialized")
+        logger.info(f"✓ Places API client (v1) initialized")
 
         # Create backfiller
         backfiller = ReceiptPlaceBackfiller(
