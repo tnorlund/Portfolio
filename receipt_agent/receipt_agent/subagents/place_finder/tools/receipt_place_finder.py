@@ -1,5 +1,5 @@
 """
-Receipt Metadata Finder - Find Complete Metadata for Receipts
+Receipt Place Finder - Find Complete Place Data for Receipts
 =============================================================
 
 Purpose
@@ -43,17 +43,17 @@ The finder updates ANY missing fields:
 Usage
 -----
 ```python
-from receipt_agent.subagents.metadata_finder.tools import (
-    receipt_metadata_finder,
+from receipt_agent.subagents.place_finder.tools import (
+    receipt_place_finder,
 )
 
-finder = receipt_metadata_finder.ReceiptMetadataFinder(
+finder = receipt_place_finder.ReceiptPlaceFinder(
     dynamo_client,
     places_client,
     chroma_client,
     embed_fn,
 )
-report = await finder.find_all_metadata_agentic()
+report = await finder.find_all_place_data_agentic()
 finder.print_summary(report)
 
 # Apply fixes (adds all found metadata)
@@ -64,7 +64,7 @@ print(f"Updated {result.total_updated} receipts")
 Example Output
 --------------
 ```
-RECEIPT METADATA FINDER REPORT
+RECEIPT PLACE FINDER REPORT
 ======================================================================
 Total receipts with missing metadata: 65
   Found all fields: 42 (64.6%)
@@ -135,7 +135,7 @@ class AgenticSearchRequirementsError(ValueError):
     def __init__(self):
         super().__init__(
             "Agent-based search requires chroma_client and embed_fn. "
-            "Provide both when initializing ReceiptMetadataFinder."
+            "Provide both when initializing ReceiptPlaceFinder."
         )
 
 
@@ -277,7 +277,7 @@ class UpdateResult:
     errors: list[str] = field(default_factory=list)
 
 
-class ReceiptMetadataFinder:
+class ReceiptPlaceFinder:
     """
     Finds complete metadata for receipts using agent-based reasoning.
 
@@ -301,12 +301,12 @@ class ReceiptMetadataFinder:
 
     Example:
         ```python
-        finder = ReceiptMetadataFinder(
+        finder = ReceiptPlaceFinder(
             dynamo_client, places_client, chroma_client, embed_fn
         )
 
-        # Find metadata using agent (recommended)
-        report = await finder.find_all_metadata_agentic()
+        # Find place data using agent (recommended)
+        report = await finder.find_all_place_data_agentic()
         finder.print_summary(report)
 
         # Apply fixes (dry run first)
@@ -468,12 +468,12 @@ class ReceiptMetadataFinder:
 
         # Initialize agent graph if needed
         if self._agent_graph is None:
-            from receipt_agent.subagents.metadata_finder import (
-                create_receipt_metadata_finder_graph,
+            from receipt_agent.subagents.place_finder import (
+                create_receipt_place_finder_graph,
             )
 
             self._agent_graph, self._agent_state_holder = (
-                create_receipt_metadata_finder_graph(
+                create_receipt_place_finder_graph(
                     dynamo_client=self.dynamo,
                     chroma_client=self.chroma,
                     embed_fn=self.embed_fn,
@@ -515,11 +515,11 @@ class ReceiptMetadataFinder:
 
             for attempt in range(max_retries):
                 try:
-                    from receipt_agent.subagents.metadata_finder import (
-                        run_receipt_metadata_finder,
+                    from receipt_agent.subagents.place_finder import (
+                        run_receipt_place_finder,
                     )
 
-                    agent_result = await run_receipt_metadata_finder(
+                    agent_result = await run_receipt_place_finder(
                         graph=self._agent_graph,
                         state_holder=self._agent_state_holder,
                         image_id=receipt.image_id,
@@ -1063,7 +1063,7 @@ class ReceiptMetadataFinder:
                 ),  # Convert from percentage to decimal
                 reasoning=(
                     match.reasoning
-                    or "Created by receipt_metadata_finder with v1 API data"
+                    or "Created by receipt_place_finder with v1 API data"
                 ),
                 timestamp=datetime.now(timezone.utc),
                 places_api_version="v1",

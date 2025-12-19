@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `receipt_agent.agents.receipt_grouping` (was `graph.receipt_grouping_workflow`)
   - `receipt_agent.agents.agentic` (was `graph.agentic_workflow`)
   - `receipt_agent.agents.validation` (was `graph.workflow`)
-  - `receipt_agent.subagents.metadata_finder` (was `graph.receipt_metadata_finder_workflow`)
+  - `receipt_agent.subagents.place_finder` (was `graph.receipt_metadata_finder_workflow`)
   - `receipt_agent.subagents.cove_text_consistency` (was `graph.cove_text_consistency_workflow`)
   - `receipt_agent.subagents.financial_validation` (was `graph.financial_validation_workflow`)
 

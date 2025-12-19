@@ -1,7 +1,7 @@
 """
-Receipt Metadata Finder Sub-Agent Graph
+Receipt Place Finder Sub-Agent Graph
 
-Graph creation and execution functions for the receipt metadata finder
+Graph creation and execution functions for the receipt place finder
 workflow.
 """
 
@@ -20,8 +20,8 @@ from receipt_agent.agents.agentic.tools import (
     create_agentic_tools,
 )
 from receipt_agent.config.settings import Settings, get_settings
-from receipt_agent.subagents.metadata_finder.state import (
-    ReceiptMetadataFinderState,
+from receipt_agent.subagents.place_finder.state import (
+    ReceiptPlaceFinderState,
 )
 from receipt_agent.utils.agent_common import (
     create_agent_node_with_retry,
@@ -315,7 +315,7 @@ def create_metadata_submission_tool(state_holder: dict):
 # ======================================================================
 
 
-def create_receipt_metadata_finder_graph(
+def create_receipt_place_finder_graph(
     dynamo_client: Any,
     chroma_client: Any,
     embed_fn: Callable[[list[str]], list[list[float]]],
@@ -324,7 +324,7 @@ def create_receipt_metadata_finder_graph(
     chromadb_bucket: Optional[str] = None,
 ) -> tuple[Any, dict]:
     """
-    Create the receipt metadata finder workflow.
+    Create the receipt place finder workflow.
 
     Args:
         dynamo_client: DynamoDB client
@@ -363,14 +363,14 @@ def create_receipt_metadata_finder_graph(
     # Create agent node with retry logic using shared utility
     agent_node = create_agent_node_with_retry(
         llm=llm,
-        agent_name="metadata_finder",
+        agent_name="place_finder",
     )
 
     # Define tool node
     tool_node = ToolNode(tools)
 
     # Define routing function
-    def should_continue(state: ReceiptMetadataFinderState) -> str:
+    def should_continue(state: ReceiptPlaceFinderState) -> str:
         """Check if we should continue or end."""
         # Check if metadata was submitted
         if state_holder.get("metadata_result") is not None:
@@ -399,7 +399,7 @@ def create_receipt_metadata_finder_graph(
         return "agent"
 
     # Build the graph
-    workflow = StateGraph(ReceiptMetadataFinderState)
+    workflow = StateGraph(ReceiptPlaceFinderState)
 
     # Add nodes
     workflow.add_node("agent", agent_node)
@@ -429,11 +429,11 @@ def create_receipt_metadata_finder_graph(
 
 
 # ======================================================================
-# Metadata Finder Runner
+# Place Finder Runner
 # ======================================================================
 
 
-async def run_receipt_metadata_finder(
+async def run_receipt_place_finder(
     graph: Any,
     state_holder: dict,
     image_id: str,
@@ -444,7 +444,7 @@ async def run_receipt_metadata_finder(
     receipt_words: Optional[list] = None,
 ) -> dict:
     """
-    Run the receipt metadata finder workflow for a receipt.
+    Run the receipt place finder workflow for a receipt.
 
     Args:
         graph: Compiled workflow graph
@@ -504,7 +504,7 @@ async def run_receipt_metadata_finder(
     state_holder["metadata_result"] = None
 
     # Create initial state
-    initial_state = ReceiptMetadataFinderState(
+    initial_state = ReceiptPlaceFinderState(
         image_id=image_id,
         receipt_id=receipt_id,
         messages=[
@@ -521,7 +521,7 @@ async def run_receipt_metadata_finder(
     )
 
     logger.info(
-        f"Starting receipt metadata finder for {image_id}#{receipt_id}"
+        f"Starting receipt place finder for {image_id}#{receipt_id}"
     )
 
     # Run the workflow
@@ -538,7 +538,7 @@ async def run_receipt_metadata_finder(
             config["metadata"] = {
                 "image_id": image_id,
                 "receipt_id": receipt_id,
-                "workflow": "receipt_metadata_finder",
+                "workflow": "receipt_place_finder",
             }
 
         await graph.ainvoke(initial_state, config=config)
@@ -549,7 +549,7 @@ async def run_receipt_metadata_finder(
         if result:
             logger.info(
                 (
-                    f"Metadata finder complete: "
+                    f"Place finder complete: "
                     f"{len(result.get('fields_found', []))} fields found "
                     f"(confidence={result.get('confidence', 0):.2%})"
                 )
@@ -577,7 +577,7 @@ async def run_receipt_metadata_finder(
             }
 
     except Exception as e:
-        logger.exception("Error in receipt metadata finder")
+        logger.exception("Error in receipt place finder")
         return {
             "image_id": image_id,
             "receipt_id": receipt_id,
@@ -587,6 +587,6 @@ async def run_receipt_metadata_finder(
             "phone_number": None,
             "found": False,
             "confidence": 0.0,
-            "reasoning": f"Error during metadata finding: {e!s}",
+            "reasoning": f"Error during place finding: {e!s}",
             "fields_found": [],
         }

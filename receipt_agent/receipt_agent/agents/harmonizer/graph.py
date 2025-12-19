@@ -65,8 +65,8 @@ class HarmonizerStateDict(TypedDict):
     chromadb_bucket: Optional[str]
     chroma_client: Optional[Any]
     embed_fn: Optional[Callable[[list[str]], list[list[float]]]]
-    metadata_finder_graph: Any
-    metadata_finder_state_holder: Any
+    place_finder_graph: Any
+    place_finder_state_holder: Any
     cove_graph: Any
     cove_state_holder: Any
 
@@ -1319,22 +1319,22 @@ def create_harmonizer_tools(
                     chroma_client = None
                     embed_fn = None
 
-            # Check if we have the required dependencies for full metadata
+            # Check if we have the required dependencies for full place
             # finder
             if chroma_client and embed_fn:
-                # Use full metadata finder agent
+                # Use full place finder agent
                 try:
-                    from receipt_agent.subagents.metadata_finder import (
-                        create_receipt_metadata_finder_graph,
-                        run_receipt_metadata_finder,
+                    from receipt_agent.subagents.place_finder import (
+                        create_receipt_place_finder_graph,
+                        run_receipt_place_finder,
                     )
 
                     # Create graph if not already created (cache it in state)
-                    if "metadata_finder_graph" not in state:
+                    if "place_finder_graph" not in state:
                         (
-                            state["metadata_finder_graph"],
-                            state["metadata_finder_state_holder"],
-                        ) = create_receipt_metadata_finder_graph(
+                            state["place_finder_graph"],
+                            state["place_finder_state_holder"],
+                        ) = create_receipt_place_finder_graph(
                             dynamo_client=dynamo_client,
                             chroma_client=chroma_client,
                             embed_fn=embed_fn,
@@ -1344,15 +1344,15 @@ def create_harmonizer_tools(
                             # Pass bucket for lazy loading
                         )
 
-                    # Get receipt details to pass to metadata finder
+                    # Get receipt details to pass to place finder
                     receipt_details = dynamo_client.get_receipt_details(
                         image_id, receipt_id
                     )
 
-                    # Run metadata finder agent
-                    result = await run_receipt_metadata_finder(
-                        graph=state["metadata_finder_graph"],
-                        state_holder=state.get("metadata_finder_state_holder")
+                    # Run place finder agent
+                    result = await run_receipt_place_finder(
+                        graph=state["place_finder_graph"],
+                        state_holder=state.get("place_finder_state_holder")
                         or {},
                         image_id=image_id,
                         receipt_id=receipt_id,
@@ -1366,7 +1366,7 @@ def create_harmonizer_tools(
 
                     if result.get("found"):
                         logger.info(
-                            f"Metadata finder found "
+                            f"Place finder found "
                             f"{len(result.get('fields_found', []))} fields "
                             f"for {image_id}#{receipt_id}"
                         )
@@ -1379,22 +1379,22 @@ def create_harmonizer_tools(
                             "confidence": result.get("confidence", 0.0),
                             "reasoning": result.get("reasoning", ""),
                             "fields_found": result.get("fields_found", []),
-                            "method": "metadata_finder_agent",
+                            "method": "place_finder_agent",
                         }
                     else:
                         return {
                             "found": False,
                             "reasoning": result.get(
                                 "reasoning",
-                                "Metadata finder could not find "
+                                "Place finder could not find "
                                 "correct metadata",
                             ),
-                            "method": "metadata_finder_agent",
+                            "method": "place_finder_agent",
                         }
 
                 except Exception as e:
                     logger.warning(
-                        f"Metadata finder agent failed: {e}, trying fallback"
+                        f"Place finder agent failed: {e}, trying fallback"
                     )
                     # Fall through to fallback
 
