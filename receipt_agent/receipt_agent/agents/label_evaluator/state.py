@@ -99,6 +99,65 @@ class LabelPairGeometry:
 
 
 @dataclass
+class LabelRelativePosition:
+    """Position of a label relative to its constellation centroid."""
+
+    # Mean offset from constellation centroid
+    mean_dx: float = 0.0
+    mean_dy: float = 0.0
+
+    # Standard deviation of offsets
+    std_dx: float = 0.0
+    std_dy: float = 0.0
+
+    # Combined deviation metric (for threshold comparison)
+    std_deviation: float = 0.0
+
+
+@dataclass
+class ConstellationGeometry:
+    """
+    Statistics about geometric relationships within a label constellation (n-tuple).
+
+    A constellation is a group of labels (e.g., MERCHANT_NAME, ADDRESS_LINE, PHONE_NUMBER)
+    that frequently appear together and form a consistent spatial pattern.
+
+    Unlike pairwise geometry which only captures A↔B relationships, constellation
+    geometry captures the holistic structure of the group, enabling detection of:
+    - One label being displaced while others are correctly positioned
+    - Cluster stretching/compression
+    - Missing labels from expected groups
+    """
+
+    # The labels in this constellation, sorted for consistent lookup
+    # Example: ("ADDRESS_LINE", "MERCHANT_NAME", "PHONE_NUMBER")
+    labels: Tuple[str, ...] = field(default_factory=tuple)
+
+    # Number of receipts this constellation was observed in
+    observation_count: int = 0
+
+    # Relative positions from constellation centroid for each label
+    # Key: label name, Value: LabelRelativePosition
+    relative_positions: Dict[str, LabelRelativePosition] = field(default_factory=dict)
+
+    # Bounding box statistics (normalized 0-1 coordinates)
+    mean_width: Optional[float] = None
+    mean_height: Optional[float] = None
+    std_width: Optional[float] = None
+    std_height: Optional[float] = None
+
+    # Aspect ratio (width/height) - useful for detecting stretched constellations
+    mean_aspect_ratio: Optional[float] = None
+    std_aspect_ratio: Optional[float] = None
+
+    # Constellation centroid position (where the group typically appears on receipt)
+    mean_centroid_x: Optional[float] = None
+    mean_centroid_y: Optional[float] = None
+    std_centroid_x: Optional[float] = None
+    std_centroid_y: Optional[float] = None
+
+
+@dataclass
 class MerchantPatterns:
     """
     Patterns learned from other receipts of the same merchant.
@@ -167,6 +226,13 @@ class MerchantPatterns:
     # Geometric patterns learned from ANTI_PATTERN batch (problematic receipts)
     # Use lenient thresholds (3.0σ) or flag for review
     anti_label_pair_geometry: Dict[tuple, LabelPairGeometry] = field(
+        default_factory=dict
+    )
+
+    # Constellation geometry for n-tuple label groups (n >= 3)
+    # Example: {("ADDRESS_LINE", "MERCHANT_NAME", "PHONE_NUMBER"): ConstellationGeometry(...)}
+    # Captures holistic spatial relationships within label groups
+    constellation_geometry: Dict[Tuple[str, ...], "ConstellationGeometry"] = field(
         default_factory=dict
     )
 

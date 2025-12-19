@@ -16,9 +16,11 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 from receipt_agent.agents.label_evaluator.state import (
+    ConstellationGeometry,
     EvaluationIssue,
     GeometricRelationship,
     LabelPairGeometry,
+    LabelRelativePosition,
     MerchantPatterns,
     OtherReceiptData,
     ReviewContext,
@@ -735,9 +737,7 @@ def _compute_patterns_for_subset(
                         centroid_b = _calculate_centroid([w.position for w in words_b])
 
                         if pair not in geometry_dict:
-                            geometry_dict[pair] = LabelPairGeometry(
-                                label_pair=pair, observations=[]
-                            )
+                            geometry_dict[pair] = LabelPairGeometry()
 
                         angle = _calculate_angle_degrees(centroid_a, centroid_b)
                         distance = _calculate_distance(centroid_a, centroid_b)
@@ -746,7 +746,6 @@ def _compute_patterns_for_subset(
                             GeometricRelationship(
                                 angle=angle,
                                 distance=distance,
-                                context="",
                             )
                         )
 
@@ -793,6 +792,219 @@ def _compute_patterns_for_subset(
             )
 
     return geometry_dict
+
+
+def _compute_constellation_patterns(
+    receipts: List[OtherReceiptData],
+    constellations: List[Tuple[str, ...]],
+    min_observations: int = 3,
+) -> Dict[Tuple[str, ...], ConstellationGeometry]:
+    """
+    Compute constellation geometry patterns from receipts.
+
+    For each constellation (n-tuple of labels), computes:
+    - Relative position of each label to the constellation centroid
+    - Bounding box statistics (width, height, aspect ratio)
+    - Constellation centroid position on receipt
+
+    Args:
+        receipts: List of receipts to analyze
+        constellations: List of label tuples to compute patterns for
+        min_observations: Minimum receipts needed for valid pattern
+
+    Returns:
+        Dict mapping constellation tuple to ConstellationGeometry
+    """
+    # Initialize storage for observations
+    # constellation -> list of observations
+    # Each observation is a dict:
+    #   - label_positions: {label: (x, y)} for each label in constellation
+    #   - centroid: (x, y) of constellation center
+    #   - bbox: (width, height)
+    constellation_observations: Dict[
+        Tuple[str, ...], List[Dict[str, Any]]
+    ] = defaultdict(list)
+
+    for receipt_data in receipts:
+        words = receipt_data.words
+        labels = receipt_data.labels
+
+        # Build word lookup
+        word_by_id: Dict[Tuple[int, int], ReceiptWord] = {
+            (w.line_id, w.word_id): w for w in words
+        }
+
+        # Get most recent valid label per word
+        labels_by_word: Dict[
+            Tuple[int, int], List[ReceiptWordLabel]
+        ] = defaultdict(list)
+        for label in labels:
+            key = (label.line_id, label.word_id)
+            labels_by_word[key].append(label)
+
+        current_labels: Dict[Tuple[int, int], ReceiptWordLabel] = {}
+        for key, label_list in labels_by_word.items():
+            label_list.sort(
+                key=lambda lbl: (
+                    lbl.timestamp_added.isoformat()
+                    if hasattr(lbl.timestamp_added, "isoformat")
+                    else str(lbl.timestamp_added)
+                ),
+                reverse=True,
+            )
+            valid_labels = [
+                lbl for lbl in label_list if lbl.validation_status == "VALID"
+            ]
+            if valid_labels:
+                current_labels[key] = valid_labels[0]
+            elif label_list:
+                current_labels[key] = label_list[0]
+
+        # Group words by label type and compute centroids
+        label_centroids: Dict[str, Tuple[float, float]] = {}
+        labels_by_type: Dict[str, List[ReceiptWord]] = defaultdict(list)
+
+        for key, label in current_labels.items():
+            word = word_by_id.get(key)
+            if word:
+                labels_by_type[label.label].append(word)
+
+        # Compute centroid for each label type
+        for label_type, label_words in labels_by_type.items():
+            if label_words:
+                centroids = [w.calculate_centroid() for w in label_words]
+                label_centroids[label_type] = (
+                    sum(c[0] for c in centroids) / len(centroids),
+                    sum(c[1] for c in centroids) / len(centroids),
+                )
+
+        # Check each constellation
+        for constellation in constellations:
+            # Check if all labels in constellation are present
+            if not all(lbl in label_centroids for lbl in constellation):
+                continue
+
+            # Get positions of all labels in this constellation
+            positions = {
+                lbl: label_centroids[lbl] for lbl in constellation
+            }
+
+            # Compute constellation centroid
+            all_x = [pos[0] for pos in positions.values()]
+            all_y = [pos[1] for pos in positions.values()]
+            centroid = (
+                sum(all_x) / len(all_x),
+                sum(all_y) / len(all_y),
+            )
+
+            # Compute bounding box
+            min_x, max_x = min(all_x), max(all_x)
+            min_y, max_y = min(all_y), max(all_y)
+            width = max_x - min_x
+            height = max_y - min_y
+
+            # Store observation
+            constellation_observations[constellation].append({
+                "label_positions": positions,
+                "centroid": centroid,
+                "width": width,
+                "height": height,
+            })
+
+    # Compute statistics for each constellation
+    result: Dict[Tuple[str, ...], ConstellationGeometry] = {}
+
+    for constellation, observations in constellation_observations.items():
+        if len(observations) < min_observations:
+            continue
+
+        # Initialize ConstellationGeometry
+        geom = ConstellationGeometry(
+            labels=constellation,
+            observation_count=len(observations),
+            relative_positions={},
+        )
+
+        # Compute relative position statistics for each label
+        for label in constellation:
+            # Collect relative positions (offset from constellation centroid)
+            dx_values = []
+            dy_values = []
+
+            for obs in observations:
+                centroid = obs["centroid"]
+                pos = obs["label_positions"][label]
+                dx_values.append(pos[0] - centroid[0])
+                dy_values.append(pos[1] - centroid[1])
+
+            # Compute statistics
+            mean_dx = statistics.mean(dx_values)
+            mean_dy = statistics.mean(dy_values)
+            std_dx = (
+                statistics.stdev(dx_values) if len(dx_values) >= 2 else 0.0
+            )
+            std_dy = (
+                statistics.stdev(dy_values) if len(dy_values) >= 2 else 0.0
+            )
+
+            # Compute combined deviation metric
+            deviations = [
+                math.sqrt((dx - mean_dx) ** 2 + (dy - mean_dy) ** 2)
+                for dx, dy in zip(dx_values, dy_values)
+            ]
+            std_deviation = (
+                statistics.stdev(deviations) if len(deviations) >= 2 else 0.0
+            )
+
+            geom.relative_positions[label] = LabelRelativePosition(
+                mean_dx=mean_dx,
+                mean_dy=mean_dy,
+                std_dx=std_dx,
+                std_dy=std_dy,
+                std_deviation=std_deviation,
+            )
+
+        # Compute bounding box statistics
+        widths = [obs["width"] for obs in observations]
+        heights = [obs["height"] for obs in observations]
+
+        geom.mean_width = statistics.mean(widths)
+        geom.mean_height = statistics.mean(heights)
+        geom.std_width = (
+            statistics.stdev(widths) if len(widths) >= 2 else 0.0
+        )
+        geom.std_height = (
+            statistics.stdev(heights) if len(heights) >= 2 else 0.0
+        )
+
+        # Aspect ratio (avoid division by zero)
+        aspect_ratios = [
+            w / h if h > 0.001 else 0.0 for w, h in zip(widths, heights)
+        ]
+        if aspect_ratios:
+            geom.mean_aspect_ratio = statistics.mean(aspect_ratios)
+            geom.std_aspect_ratio = (
+                statistics.stdev(aspect_ratios)
+                if len(aspect_ratios) >= 2
+                else 0.0
+            )
+
+        # Constellation centroid position
+        centroid_x = [obs["centroid"][0] for obs in observations]
+        centroid_y = [obs["centroid"][1] for obs in observations]
+
+        geom.mean_centroid_x = statistics.mean(centroid_x)
+        geom.mean_centroid_y = statistics.mean(centroid_y)
+        geom.std_centroid_x = (
+            statistics.stdev(centroid_x) if len(centroid_x) >= 2 else 0.0
+        )
+        geom.std_centroid_y = (
+            statistics.stdev(centroid_y) if len(centroid_y) >= 2 else 0.0
+        )
+
+        result[constellation] = geom
+
+    return result
 
 
 def batch_receipts_by_quality(
@@ -1005,6 +1217,8 @@ def compute_merchant_patterns(
     # TWO-PASS OPTIMIZATION: Select top pairs/tuples before computing expensive geometry
     # This avoids computing geometry for pairs we'll discard anyway
     # For dimension >= 3, generate n-tuples and select top ones
+    selected_constellations: List[Tuple[str, ...]] = []  # Store for constellation computation
+
     if max_relationship_dimension >= 3:
         # Generate n-tuples from pair co-occurrence data
         label_ntuples = _generate_label_ntuples(
@@ -1021,6 +1235,9 @@ def compute_merchant_patterns(
             label_ntuples,
             max_ntuples=max_pair_patterns,
         )
+        # Store for constellation computation
+        selected_constellations = [tuple(sorted(t)) for t in selected_tuples]
+
         # Extract all pairs from selected n-tuples
         selected_pairs: Set[Tuple[str, ...]] = set()
         for ntuple in selected_tuples:
@@ -1234,6 +1451,34 @@ def compute_merchant_patterns(
     except Exception as e:
         logger.warning(f"Batch-specific pattern computation failed: {e}")
         logger.warning("Proceeding with non-batched patterns only")
+
+    # Compute constellation patterns for n-tuples (dimension >= 3)
+    if selected_constellations:
+        logger.info("\n" + "=" * 80)
+        logger.info("CONSTELLATION PATTERN COMPUTATION (N-Tuple Geometry)")
+        logger.info("=" * 80)
+
+        constellation_patterns = _compute_constellation_patterns(
+            other_receipt_data,
+            selected_constellations,
+            min_observations=3,
+        )
+        patterns.constellation_geometry = constellation_patterns
+
+        if constellation_patterns:
+            logger.info(
+                f"Computed {len(constellation_patterns)} constellation patterns:"
+            )
+            for constellation, geom in constellation_patterns.items():
+                labels_str = " + ".join(constellation)
+                logger.info(
+                    f"  {labels_str}: {geom.observation_count} observations, "
+                    f"bbox={geom.mean_width:.3f}x{geom.mean_height:.3f}"
+                )
+        else:
+            logger.info("No constellation patterns computed (insufficient data)")
+
+        logger.info("=" * 80 + "\n")
 
     return patterns
 
@@ -1706,6 +1951,125 @@ def _compute_geometric_issue(
                     f"actual ({actual_dx:.2f}, {actual_dy:.2f}), deviation {deviation:.3f} "
                     f"(adaptive threshold: {threshold_std}σ = {threshold_std * geometry.std_deviation:.3f}). "
                     f"This may indicate mislabeling."
+                ),
+                word_context=ctx,
+            )
+
+    return None
+
+
+def check_constellation_anomaly(
+    ctx: WordContext,
+    all_contexts: List[WordContext],
+    patterns: Optional[MerchantPatterns],
+    threshold_std: float = 2.0,
+) -> Optional[EvaluationIssue]:
+    """
+    Check if a labeled word is anomalously positioned within its constellation.
+
+    Unlike pairwise checks that only examine A↔B relationships, constellation
+    checks examine the holistic structure of label groups (n-tuples).
+
+    For each constellation the word's label belongs to:
+    1. Check if all labels in the constellation are present on the receipt
+    2. Compute the constellation centroid from actual positions
+    3. Check if this word's offset from centroid matches expected pattern
+
+    This catches anomalies that pairwise checks miss:
+    - A-B ok, B-C ok, but A is displaced relative to the group
+    - Cluster is stretched/compressed
+    - One label missing from expected group
+
+    Args:
+        ctx: WordContext to check
+        all_contexts: All WordContext objects on the receipt
+        patterns: MerchantPatterns with constellation_geometry
+        threshold_std: Standard deviations for anomaly detection
+
+    Returns:
+        EvaluationIssue if constellation anomaly detected, None otherwise
+    """
+    if ctx.current_label is None or patterns is None:
+        return None
+
+    if not patterns.constellation_geometry:
+        return None
+
+    label = ctx.current_label.label
+
+    # Find constellations that include this label
+    relevant_constellations = [
+        (constellation, geom)
+        for constellation, geom in patterns.constellation_geometry.items()
+        if label in constellation
+    ]
+
+    if not relevant_constellations:
+        return None
+
+    # Build label -> centroid mapping for this receipt
+    label_centroids: Dict[str, Tuple[float, float]] = {}
+    labels_by_type: Dict[str, List[WordContext]] = defaultdict(list)
+
+    for other_ctx in all_contexts:
+        if other_ctx.current_label:
+            labels_by_type[other_ctx.current_label.label].append(other_ctx)
+
+    for label_type, contexts in labels_by_type.items():
+        if contexts:
+            centroids = [c.word.calculate_centroid() for c in contexts]
+            label_centroids[label_type] = (
+                sum(c[0] for c in centroids) / len(centroids),
+                sum(c[1] for c in centroids) / len(centroids),
+            )
+
+    # Check each relevant constellation
+    for constellation, geom in relevant_constellations:
+        # Check if all labels in constellation are present
+        if not all(lbl in label_centroids for lbl in constellation):
+            continue
+
+        # Compute actual constellation centroid
+        all_x = [label_centroids[lbl][0] for lbl in constellation]
+        all_y = [label_centroids[lbl][1] for lbl in constellation]
+        actual_centroid = (
+            sum(all_x) / len(all_x),
+            sum(all_y) / len(all_y),
+        )
+
+        # Get this label's position and expected relative position
+        actual_pos = label_centroids[label]
+        actual_dx = actual_pos[0] - actual_centroid[0]
+        actual_dy = actual_pos[1] - actual_centroid[1]
+
+        expected = geom.relative_positions.get(label)
+        if expected is None or expected.std_deviation is None:
+            continue
+        if expected.std_deviation <= 0:
+            continue
+
+        # Compute deviation from expected position
+        deviation = math.sqrt(
+            (actual_dx - expected.mean_dx) ** 2
+            + (actual_dy - expected.mean_dy) ** 2
+        )
+
+        z_score = deviation / expected.std_deviation
+        if z_score > threshold_std:
+            constellation_str = " + ".join(constellation)
+            return EvaluationIssue(
+                issue_type="constellation_anomaly",
+                word=ctx.word,
+                current_label=label,
+                suggested_status="NEEDS_REVIEW",
+                reasoning=(
+                    f"'{ctx.word.text}' labeled {label} has unusual position within "
+                    f"constellation [{constellation_str}]. "
+                    f"Expected offset ({expected.mean_dx:.3f}, {expected.mean_dy:.3f}) "
+                    f"from cluster center, actual ({actual_dx:.3f}, {actual_dy:.3f}). "
+                    f"Deviation {deviation:.3f} exceeds {threshold_std}σ threshold "
+                    f"({threshold_std * expected.std_deviation:.3f}). "
+                    f"This suggests the label may be misplaced relative to its group."
                 ),
                 word_context=ctx,
             )
@@ -2210,6 +2574,12 @@ def evaluate_word_contexts(
 
             # Use geometric anomaly detection instead of simple same-line conflict
             issue = check_geometric_anomaly(ctx, word_contexts, patterns)
+            if issue:
+                issues.append(issue)
+                continue
+
+            # Check constellation anomaly (holistic n-tuple relationships)
+            issue = check_constellation_anomaly(ctx, word_contexts, patterns)
             if issue:
                 issues.append(issue)
                 continue

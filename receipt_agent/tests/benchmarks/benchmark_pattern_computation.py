@@ -14,22 +14,26 @@ Usage (from repo root):
     pip install -e 'receipt_agent[perf]'
 
     # Profile with 10 Sprouts receipts (default, skip LLM batching)
-    python -m receipt_agent.tests.benchmarks.benchmark_pattern_computation --merchant Sprouts
+    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py --merchant "Sprouts Farmers Market"
 
     # Include LLM batch classification (slower, more realistic)
-    python -m receipt_agent.tests.benchmarks.benchmark_pattern_computation --merchant Sprouts --include-batching
+    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py --merchant "Sprouts Farmers Market" --include-batching
 
     # Custom receipt count
-    python -m receipt_agent.tests.benchmarks.benchmark_pattern_computation --merchant Sprouts --limit 20
+    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py --merchant "Sprouts Farmers Market" --limit 20
 
-    # Different merchant
-    python -m receipt_agent.tests.benchmarks.benchmark_pattern_computation --merchant Target --limit 10
-
-    # Use prod stack
-    python -m receipt_agent.tests.benchmarks.benchmark_pattern_computation --merchant Sprouts --stack prod --limit 10
+    # Different merchant (use exact name from database, e.g., "Costco Wholesale", "Target Grocery")
+    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py --merchant "Costco Wholesale" --limit 10
 
     # Verbose logging
-    python -m receipt_agent.tests.benchmarks.benchmark_pattern_computation --merchant Sprouts --verbose
+    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py --merchant "Sprouts Farmers Market" --verbose
+
+Note: Merchant names must match exactly as stored in DynamoDB. Common merchants in dev:
+    - "Sprouts Farmers Market" (169 receipts)
+    - "Costco Wholesale" (26 receipts)
+    - "Vons" (24 receipts)
+    - "The Home Depot" (18 receipts)
+    - "Target Grocery" (9 receipts)
 """
 
 import argparse
