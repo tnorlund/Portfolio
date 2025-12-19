@@ -63,6 +63,12 @@ class PlacesConfig(BaseSettings):
         le=10,
     )
 
+    # API Version Selection
+    use_v1_api: bool = Field(
+        default=False,
+        description="Use new Places API v1 (False = legacy API). Feature flag for gradual rollout.",
+    )
+
     # Endpoint override (for testing)
     endpoint_url: str | None = Field(
         default=None,
