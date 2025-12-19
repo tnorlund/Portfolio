@@ -25,12 +25,15 @@ from tenacity import (
     wait_exponential,
 )
 
-from receipt_places.adapter import adapt_v1_to_candidate, adapt_v1_to_legacy
+from receipt_places.adapter import adapt_v1_to_legacy
 from receipt_places.cache import CacheManager
 from receipt_places.config import PlacesConfig, get_config
 from receipt_places.parsers import APIError, ParseError
-from receipt_places.types import Place, Candidate
-from receipt_places.types_v1 import PlaceV1, SearchTextResponse, SearchNearbyResponse
+from receipt_places.types import Place
+from receipt_places.types_v1 import (
+    PlaceV1,
+    SearchTextResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +129,7 @@ class PlacesClientV1:
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
     )
-    def _make_request(
+    def _make_request(  # pylint: disable=too-many-arguments
         self,
         endpoint: str,
         method: str = "GET",
@@ -211,7 +214,7 @@ class PlacesClientV1:
             try:
                 error_data = e.response.json()
                 error_msg = error_data.get("error", {}).get("message", str(e))
-            except Exception:
+            except (ValueError, AttributeError):
                 error_msg = str(e)
             logger.error("API HTTP error: %s", error_msg)
             raise APIError(f"Places API error: {error_msg}") from e
@@ -252,7 +255,9 @@ class PlacesClientV1:
             return place
 
         except (APIError, ParseError) as e:
-            logger.warning("Failed to get place details for %s: %s", place_id, e)
+            logger.warning(
+                "Failed to get place details for %s: %s", place_id, e
+            )
             return None
 
     def search_by_phone(self, phone_number: str) -> Optional[Place]:
@@ -305,9 +310,7 @@ class PlacesClientV1:
 
         return True
 
-    def _try_cached_phone_result(
-        self, digits: str
-    ) -> Optional[Place]:
+    def _try_cached_phone_result(self, digits: str) -> Optional[Place]:
         """Try to retrieve and parse cached phone search result."""
         cached_dict = self._cache.get("PHONE", digits)
         if not cached_dict:
@@ -362,7 +365,9 @@ class PlacesClientV1:
             # Fetch full details
             details = self.get_place_details(place_v1.id)
             if not details:
-                logger.warning("Could not fetch full details for place: %s", place_v1.id)
+                logger.warning(
+                    "Could not fetch full details for place: %s", place_v1.id
+                )
                 return None
 
             # Cache the full details response
@@ -371,7 +376,9 @@ class PlacesClientV1:
             details_response["_api_version"] = "v1"
             self._cache.put("PHONE", digits, place_v1.id, details_response)
 
-            logger.debug("✅ Found and cached place for phone: %s", phone_number)
+            logger.debug(
+                "✅ Found and cached place for phone: %s", phone_number
+            )
             return details
 
         except (APIError, ParseError, RetryError) as e:
@@ -381,19 +388,16 @@ class PlacesClientV1:
     def _format_phone_for_api(self, digits: str) -> str:
         """Format phone number for API search."""
         # E.164 format: +1{10-digit} for US
-        if len(digits) == 10:
-            return f"+1{digits}"
-        elif len(digits) == 11 and digits[0] == "1":
+        if len(digits) == 11 and digits[0] == "1":
             return f"+{digits}"
-        else:
-            # For other lengths, prefix with +1 and hope for best
-            return f"+1{digits}"
+        # For other lengths, prefix with +1
+        return f"+1{digits}"
 
-    def _try_text_search_fallback(
-        self, phone_number: str
-    ) -> Optional[Place]:
+    def _try_text_search_fallback(self, phone_number: str) -> Optional[Place]:
         """Fallback to text search if phone search fails."""
-        logger.info("📝 Falling back to text search for phone: %s", phone_number)
+        logger.info(
+            "📝 Falling back to text search for phone: %s", phone_number
+        )
 
         try:
             body = {
@@ -425,7 +429,7 @@ class PlacesClientV1:
     def search_by_address(
         self,
         address: str,
-        receipt_words: Optional[list[Any]] = None,
+        receipt_words: Optional[list[Any]] = None,  # pylint: disable=unused-argument
     ) -> Optional[Place]:
         """
         Search for a place by address.
@@ -464,9 +468,7 @@ class PlacesClientV1:
         normalized = re.sub(r"[^A-Z0-9\s]", "", normalized)
         return normalized
 
-    def _try_cached_address_result(
-        self, cache_key: str
-    ) -> Optional[Place]:
+    def _try_cached_address_result(self, cache_key: str) -> Optional[Place]:
         """Try to retrieve cached address search result."""
         cached_dict = self._cache.get("ADDRESS", cache_key)
         if not cached_dict:
@@ -519,7 +521,9 @@ class PlacesClientV1:
             # Cache the result
             details_response = details.model_dump()
             details_response["_api_version"] = "v1"
-            self._cache.put("ADDRESS", cache_key, place_v1.id, details_response)
+            self._cache.put(
+                "ADDRESS", cache_key, place_v1.id, details_response
+            )
 
             logger.debug("✅ Found and cached place for address: %s", address)
             return details

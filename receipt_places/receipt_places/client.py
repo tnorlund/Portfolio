@@ -135,11 +135,15 @@ class PlacesClient:
             error_msg = data.get(
                 "error_message", f"API returned status: {status}"
             )
-            logger.warning("Places API error: %s (status=%s)", error_msg, status)
+            logger.warning(
+                "Places API error: %s (status=%s)", error_msg, status
+            )
 
         return data
 
-    def search_by_phone(self, phone_number: str) -> Place | None:
+    def search_by_phone(  # pylint: disable=too-many-return-statements
+        self, phone_number: str
+    ) -> Place | None:
         """
         Search for a place by phone number.
 
@@ -167,7 +171,9 @@ class PlacesClient:
             return cached_result
 
         # Try API search
-        api_result = self._try_phone_api_search(phone_number, digits, expected_fields)
+        api_result = self._try_phone_api_search(
+            phone_number, digits, expected_fields
+        )
         if api_result:
             return api_result
 
@@ -233,6 +239,9 @@ class PlacesClient:
                     return None
 
                 # Get full details
+                if not place.place_id:
+                    logger.error("Phone search returned place without place_id")
+                    return None
                 details = self.get_place_details(place.place_id)
                 if not details:
                     return None
@@ -261,7 +270,9 @@ class PlacesClient:
             return f"+1{digits}"  # Assume US
         return f"+{digits}"
 
-    def _try_text_search_fallback(self, phone_number: str, digits: str) -> Place | None:
+    def _try_text_search_fallback(
+        self, phone_number: str, digits: str
+    ) -> Place | None:
         """Fallback to text search if phone search fails."""
         text_result = self.search_by_text(phone_number)
         if not text_result or not text_result.place_id:
@@ -277,7 +288,9 @@ class PlacesClient:
             "status": "OK",
             "result": details.model_dump(),
         }
-        self._cache.put("PHONE", digits, text_result.place_id, details_response)
+        self._cache.put(
+            "PHONE", digits, text_result.place_id, details_response
+        )
         return details
 
     def search_by_address(
@@ -358,6 +371,11 @@ class PlacesClient:
                         return None
 
                     # Get full details
+                    if not place.place_id:
+                        logger.error(
+                            "Address search returned place without place_id"
+                        )
+                        return None
                     details = self.get_place_details(place.place_id)
                     if details:
                         # Cache the full details response
@@ -666,10 +684,16 @@ def create_places_client(
 
     if config.use_v1_api:
         # Import here to avoid circular imports and only load v1 if needed
-        from receipt_places.client_v1 import PlacesClientV1
+        from receipt_places.client_v1 import (  # pylint: disable=import-outside-toplevel
+            PlacesClientV1,
+        )
 
         logger.info("Creating PlacesClientV1 (API v1)")
-        return PlacesClientV1(api_key=api_key, config=config, cache_manager=cache_manager)  # type: ignore
-    else:
-        logger.info("Creating PlacesClient (Legacy API)")
-        return PlacesClient(api_key=api_key, config=config, cache_manager=cache_manager)
+        return PlacesClientV1(
+            api_key=api_key, config=config, cache_manager=cache_manager
+        )
+
+    logger.info("Creating PlacesClient (Legacy API)")
+    return PlacesClient(
+        api_key=api_key, config=config, cache_manager=cache_manager
+    )

@@ -182,7 +182,9 @@ class PlaceV1(BaseModel):
     id: Optional[str] = None  # The actual place_id
 
     # === Names & Classification ===
-    display_name: Optional[LocalizedText] = Field(default=None, alias="displayName")
+    display_name: Optional[LocalizedText] = Field(
+        default=None, alias="displayName"
+    )
     primary_type: Optional[str] = Field(default=None, alias="primaryType")
     primary_type_display_name: Optional[LocalizedText] = Field(
         default=None, alias="primaryTypeDisplayName"
@@ -190,7 +192,9 @@ class PlaceV1(BaseModel):
     types: Optional[List[str]] = None
 
     # === Address ===
-    formatted_address: Optional[str] = Field(default=None, alias="formattedAddress")
+    formatted_address: Optional[str] = Field(
+        default=None, alias="formattedAddress"
+    )
     short_formatted_address: Optional[str] = Field(
         default=None, alias="shortFormattedAddress"
     )
@@ -214,13 +218,21 @@ class PlaceV1(BaseModel):
     google_maps_uri: Optional[str] = Field(default=None, alias="googleMapsUri")
 
     # === Business Status & Hours ===
-    business_status: Optional[str] = Field(default=None, alias="businessStatus")
-    opening_hours: Optional[OpeningHours] = Field(default=None, alias="openingHours")
-    current_opening_hours: Optional[OpeningHours] = Field(default=None, alias="currentOpeningHours")
+    business_status: Optional[str] = Field(
+        default=None, alias="businessStatus"
+    )
+    opening_hours: Optional[OpeningHours] = Field(
+        default=None, alias="openingHours"
+    )
+    current_opening_hours: Optional[OpeningHours] = Field(
+        default=None, alias="currentOpeningHours"
+    )
 
     # === Rating & Reviews ===
     rating: Optional[float] = None
-    user_rating_count: Optional[int] = Field(default=None, alias="userRatingCount")
+    user_rating_count: Optional[int] = Field(
+        default=None, alias="userRatingCount"
+    )
     reviews: Optional[List[Review]] = None
 
     # === Media ===
@@ -233,7 +245,9 @@ class PlaceV1(BaseModel):
 
     # === Additional Info ===
     price_level: Optional[str] = Field(default=None, alias="priceLevel")
-    utc_offset_minutes: Optional[int] = Field(default=None, alias="utcOffsetMinutes")
+    utc_offset_minutes: Optional[int] = Field(
+        default=None, alias="utcOffsetMinutes"
+    )
 
     @field_validator("rating")
     @classmethod

@@ -25,17 +25,20 @@ from receipt_places.types import (
 )
 from receipt_places.types_v1 import (
     Location,
-    OpeningHours as V1OpeningHours,
-    OpeningHoursPeriod as V1OpeningHoursPeriod,
-    PlaceV1,
-    PlusCode as V1PlusCode,
-    Viewport as V1Viewport,
 )
+from receipt_places.types_v1 import OpeningHours as V1OpeningHours
+from receipt_places.types_v1 import (
+    PlaceV1,
+)
+from receipt_places.types_v1 import PlusCode as V1PlusCode
+from receipt_places.types_v1 import Viewport as V1Viewport
 
 logger = logging.getLogger(__name__)
 
 
-def adapt_v1_location_to_legacy(location: Optional[Location]) -> Optional[LatLng]:
+def adapt_v1_location_to_legacy(
+    location: Optional[Location],
+) -> Optional[LatLng]:
     """Convert v1 Location to legacy LatLng format.
 
     Args:
@@ -47,10 +50,12 @@ def adapt_v1_location_to_legacy(location: Optional[Location]) -> Optional[LatLng
     if location is None:
         return None
 
-    return LatLng(lat=location.latitude, lng=location.longitude)
+    return LatLng(latitude=location.latitude, longitude=location.longitude)
 
 
-def adapt_v1_viewport_to_legacy(viewport: Optional[V1Viewport]) -> Optional[Viewport]:
+def adapt_v1_viewport_to_legacy(
+    viewport: Optional[V1Viewport],
+) -> Optional[Viewport]:
     """Convert v1 Viewport to legacy Viewport format.
 
     Args:
@@ -140,7 +145,7 @@ def adapt_v1_opening_hours_to_legacy(
 
 
 def adapt_v1_photos_to_legacy(
-    photos: Optional[list["receipt_places.types_v1.Photo"]],
+    photos: Optional[list],
 ) -> Optional[list[Photo]]:
     """Convert v1 Photo list to legacy Photo format.
 
@@ -192,13 +197,21 @@ def adapt_v1_to_legacy(place_v1: PlaceV1) -> Place:
     elif place_v1.name:
         # Fallback: use resource name if display_name not available
         # Resource name format: "places/{place_id}" - extract the last segment
-        name = place_v1.name.split("/")[-1] if "/" in place_v1.name else place_v1.name
+        name = (
+            place_v1.name.split("/")[-1]
+            if "/" in place_v1.name
+            else place_v1.name
+        )
 
     if not name:
-        raise ValueError("Place v1 has no name field - cannot resolve merchant name")
+        raise ValueError(
+            "Place v1 has no name field - cannot resolve merchant name"
+        )
 
     # Adapt geometry
-    geometry = adapt_v1_geometry_to_legacy(place_v1.location, place_v1.viewport)
+    geometry = adapt_v1_geometry_to_legacy(
+        place_v1.location, place_v1.viewport
+    )
 
     # Adapt plus code
     plus_code = adapt_v1_plus_code_to_legacy(place_v1.plus_code)
@@ -259,7 +272,9 @@ def adapt_v1_to_candidate(place_v1: PlaceV1) -> Candidate:
         name = place_v1.name
 
     # Adapt geometry
-    geometry = adapt_v1_geometry_to_legacy(place_v1.location, place_v1.viewport)
+    geometry = adapt_v1_geometry_to_legacy(
+        place_v1.location, place_v1.viewport
+    )
 
     return Candidate(
         formatted_address=place_v1.formatted_address,

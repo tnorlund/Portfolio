@@ -9,10 +9,14 @@ import logging
 import re
 import time
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from receipt_dynamo import DynamoClient, PlacesCache
-from receipt_dynamo.data.shared_exceptions import OperationError, ReceiptDynamoError
+from receipt_dynamo.data.shared_exceptions import (
+    OperationError,
+    ReceiptDynamoError,
+)
+
 from receipt_places.config import PlacesConfig, get_config
 
 logger = logging.getLogger(__name__)
@@ -121,13 +125,15 @@ class CacheManager:
             )
             self._increment_query_count(cache_item)
 
-            return cache_item.places_response
+            return cast(dict[str, Any], cache_item.places_response)
 
         except OperationError as e:
             logger.error("DynamoDB error during cache lookup: %s", e)
             return None
         except ReceiptDynamoError as e:
-            logger.error("Unexpected DynamoDB error during cache lookup: %s", e)
+            logger.error(
+                "Unexpected DynamoDB error during cache lookup: %s", e
+            )
             return None
 
     def _should_use_cache(self, search_value: str) -> bool:
@@ -305,7 +311,9 @@ class CacheManager:
         try:
             self._client.increment_query_count(cache_item)
         except (OperationError, ReceiptDynamoError) as e:
-            logger.debug("Failed to increment query count (non-critical): %s", e)
+            logger.debug(
+                "Failed to increment query count (non-critical): %s", e
+            )
 
     def delete(
         self,
@@ -333,7 +341,9 @@ class CacheManager:
             logger.error("Error deleting cache entry: %s", e)
             return False
         except ReceiptDynamoError as e:
-            logger.error("Unexpected DynamoDB error deleting cache entry: %s", e)
+            logger.error(
+                "Unexpected DynamoDB error deleting cache entry: %s", e
+            )
             return False
 
     def get_by_place_id(self, place_id: str) -> dict[str, Any] | None:
@@ -346,12 +356,14 @@ class CacheManager:
             cache_item = self._client.get_places_cache_by_place_id(place_id)
             if cache_item is None:
                 return None
-            return cache_item.places_response
+            return cast(dict[str, Any], cache_item.places_response)
         except OperationError as e:
             logger.error("Error querying by place_id: %s", e)
             return None
         except ReceiptDynamoError as e:
-            logger.error("Unexpected DynamoDB error querying by place_id: %s", e)
+            logger.error(
+                "Unexpected DynamoDB error querying by place_id: %s", e
+            )
             return None
 
     def get_stats(self) -> dict[str, Any]:
