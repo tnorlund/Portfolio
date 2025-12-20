@@ -441,7 +441,7 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
             )
 
             processor._enrich_receipt_place(
-                image_id="test-image",
+                image_id="550e8400-e29b-41d4-a716-446655440000",
                 receipt_id=1,
                 merchant_result=merchant_result,
             )
