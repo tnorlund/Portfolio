@@ -8,7 +8,7 @@ Use cases:
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from receipt_dynamo.constants import CompactionState
@@ -77,7 +77,7 @@ class CompactionRun(DynamoDBEntity):
     lines_merged_vectors: int = 0
     words_merged_vectors: int = 0
 
-    created_at: str | datetime = datetime.utcnow()
+    created_at: str | datetime = datetime.now(timezone.utc)
     updated_at: Optional[str | datetime] = None
 
     # ────────────────────────── validation ────────────────────────────

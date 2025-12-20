@@ -6,7 +6,7 @@ from typing import Annotated, Any, Optional
 
 from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AgentState(BaseModel):
@@ -24,8 +24,6 @@ class AgentState(BaseModel):
         default=None, description="Final decision when complete"
     )
 
-    class Config:
-        arbitrary_types_allowed = True
-
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
