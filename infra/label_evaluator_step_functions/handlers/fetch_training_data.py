@@ -5,6 +5,9 @@ learning and uploads the serialized data to S3. Uses caching to avoid
 redundant fetches across receipts from the same merchant.
 """
 
+# pylint: disable=import-outside-toplevel
+# Lambda handlers delay imports until runtime for cold start optimization
+
 import hashlib
 import json
 import logging

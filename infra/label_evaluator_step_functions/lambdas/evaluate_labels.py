@@ -12,6 +12,9 @@ Environment Variables:
 - LANGCHAIN_PROJECT: LangSmith project name
 """
 
+# pylint: disable=import-outside-toplevel,wrong-import-position
+# Lambda handlers delay imports until runtime for cold start optimization
+
 import json
 import logging
 import os

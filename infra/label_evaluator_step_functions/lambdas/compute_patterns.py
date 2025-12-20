@@ -8,6 +8,9 @@ This is the memory-intensive step - give it 10GB and longer timeout.
 Receipt evaluation Lambdas then just load the pre-computed patterns.
 """
 
+# pylint: disable=import-outside-toplevel
+# Lambda handlers delay imports until runtime for cold start optimization
+
 import json
 import logging
 import os

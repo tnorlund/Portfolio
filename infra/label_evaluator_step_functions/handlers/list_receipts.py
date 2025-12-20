@@ -4,6 +4,9 @@ This handler queries DynamoDB for receipts matching the specified merchant
 and creates a manifest file in S3 for the distributed map to process.
 """
 
+# pylint: disable=import-outside-toplevel
+# Lambda handlers delay imports until runtime for cold start optimization
+
 import json
 import logging
 import os

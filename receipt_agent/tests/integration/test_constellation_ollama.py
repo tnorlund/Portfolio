@@ -9,6 +9,9 @@ This test:
 Run: python receipt_agent/tests/integration/test_constellation_ollama.py
 """
 
+# pylint: disable=import-outside-toplevel
+# Imports delayed for optional dependencies and test isolation
+
 import asyncio
 import logging
 import sys

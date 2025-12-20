@@ -36,6 +36,9 @@ Note: Merchant names must match exactly as stored in DynamoDB. Common merchants 
     - "Target Grocery" (9 receipts)
 """
 
+# pylint: disable=import-outside-toplevel
+# Imports delayed for monkey-patching and optional dependencies
+
 import argparse
 import json
 import logging

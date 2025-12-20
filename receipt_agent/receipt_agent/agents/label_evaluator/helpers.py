@@ -5,6 +5,9 @@ Provides spatial analysis utilities for grouping words into visual lines,
 computing label patterns across receipts, and applying validation rules.
 """
 
+# pylint: disable=import-outside-toplevel
+# Optional imports (langchain_ollama) delayed until actually needed
+
 import logging
 import math
 import statistics

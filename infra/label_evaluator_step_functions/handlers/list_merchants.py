@@ -4,6 +4,9 @@ This handler queries DynamoDB for all ReceiptPlaces, groups by merchant,
 and returns merchants that meet the minimum receipt threshold.
 """
 
+# pylint: disable=import-outside-toplevel
+# Lambda handlers delay imports until runtime for cold start optimization
+
 import json
 import logging
 import os

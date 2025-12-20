@@ -18,6 +18,9 @@ Differences from ReceiptMetadata:
 - Stores geohash for efficient spatial queries via GSI4
 """
 
+# pylint: disable=import-outside-toplevel
+# json, decimal, boto3 imported only in DynamoDB serialization methods
+
 from __future__ import annotations
 
 import re

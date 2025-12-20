@@ -7,6 +7,9 @@ Uses dataclasses.asdict() for serialization since all entities are dataclasses.
 Deserialization parses datetime strings and passes kwargs to constructors.
 """
 
+# pylint: disable=import-outside-toplevel
+# Imports delayed to avoid circular dependencies with receipt_agent
+
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING

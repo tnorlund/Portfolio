@@ -4,6 +4,9 @@ This handler fetches words and labels for a target receipt and uploads
 the serialized data to S3 for the evaluate_labels Lambda to process.
 """
 
+# pylint: disable=import-outside-toplevel
+# Lambda handlers delay imports until runtime for cold start optimization
+
 import json
 import logging
 import os

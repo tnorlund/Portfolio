@@ -15,6 +15,9 @@ Detects labeling errors such as:
 - Text-label conflicts (same word text with different labels at different positions)
 """
 
+# pylint: disable=import-outside-toplevel
+# asyncio imported inside sync wrappers to avoid issues in async contexts
+
 import json
 import logging
 from datetime import datetime, timezone
