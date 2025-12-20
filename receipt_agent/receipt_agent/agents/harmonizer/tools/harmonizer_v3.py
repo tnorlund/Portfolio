@@ -68,7 +68,6 @@ Receipts needing updates: 142
 
 import asyncio
 import logging
-from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Optional
 

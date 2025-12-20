@@ -438,13 +438,14 @@ def combine_receipts(
                     image_id,
                     new_receipt_id,
                 )
+                # 5 min max, poll every 5s, wait 15s for CompactionRun
                 wait_for_compaction(
                     client=client,
                     image_id=image_id,
                     receipt_id=new_receipt_id,
-                    max_wait_seconds=300,  # 5 minutes - reduced for faster retries
-                    poll_interval=5,  # Poll every 5 seconds for faster detection
-                    initial_wait_seconds=15,  # Wait 15s for CompactionRun to appear
+                    max_wait_seconds=300,
+                    poll_interval=5,
+                    initial_wait_seconds=15,
                 )
                 logger.info(
                     "Compaction completed for new receipt %s/%s",
@@ -453,11 +454,12 @@ def combine_receipts(
                 )
 
                 # Delete original receipts in reverse order (highest ID first)
-                # This follows the same pattern as dev.test_realtime_embeddings.py
+                # Same pattern as dev.test_realtime_embeddings.py
                 sorted_receipt_ids = sorted(receipt_ids, reverse=True)
 
                 logger.info(
-                    "About to delete %d original receipt(s) for %s/%s: %s (these were combined into the new receipt)",
+                    "About to delete %d original receipt(s) for %s/%s: %s "
+                    "(combined into new receipt)",
                     len(sorted_receipt_ids),
                     image_id,
                     new_receipt_id,
@@ -466,7 +468,8 @@ def combine_receipts(
 
                 for receipt_id in sorted_receipt_ids:
                     logger.info(
-                        "Deleting original receipt %s/%s (was combined into %s/%s)",
+                        "Deleting original receipt %s/%s "
+                        "(was combined into %s/%s)",
                         image_id,
                         receipt_id,
                         image_id,
@@ -520,7 +523,7 @@ def combine_receipts(
                 )
                 # Continue anyway - don't fail the whole operation
 
-        # Build return dictionary with all fields, including records_s3_key/bucket from result
+        # Build return dict with all fields, including s3_key/bucket from result
         result_dict = {
             "new_receipt_id": new_receipt_id,
             "receipt": records["receipt"],

@@ -6,7 +6,7 @@ from DynamoDB for validation purposes.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
@@ -116,7 +116,7 @@ def get_receipt_context(
 
     try:
         # Get receipt details
-        # Returns ReceiptDetails object with: receipt, lines, words, letters, labels
+        # Returns ReceiptDetails with: receipt, lines, words, letters, labels
         details = _dynamo_client.get_receipt_details(
             image_id=image_id,
             receipt_id=receipt_id,
@@ -166,7 +166,8 @@ def get_receipt_context(
         if details.labels:
             for label in details.labels:
                 label_type = label.label
-                label_summary[label_type] = label_summary.get(label_type, 0) + 1
+                count = label_summary.get(label_type, 0)
+                label_summary[label_type] = count + 1
 
         return {
             "found": True,
@@ -235,13 +236,16 @@ def get_receipts_by_merchant(
             })
 
             if place.place_id:
-                place_ids[place.place_id] = place_ids.get(place.place_id, 0) + 1
+                pid = place.place_id
+                place_ids[pid] = place_ids.get(pid, 0) + 1
 
             if place.formatted_address:
-                addresses[place.formatted_address] = addresses.get(place.formatted_address, 0) + 1
+                addr = place.formatted_address
+                addresses[addr] = addresses.get(addr, 0) + 1
 
             if place.phone_number:
-                phones[place.phone_number] = phones.get(place.phone_number, 0) + 1
+                phone = place.phone_number
+                phones[phone] = phones.get(phone, 0) + 1
 
             if place.validation_status:
                 validation_statuses[place.validation_status] = (
@@ -271,8 +275,12 @@ def get_receipts_by_merchant(
             "receipts": receipts[:10],  # Limit detail output
             "place_ids": place_ids,
             "canonical_place_id": canonical_place_id,
-            "addresses": dict(sorted(addresses.items(), key=lambda x: -x[1])[:5]),
-            "phone_numbers": dict(sorted(phones.items(), key=lambda x: -x[1])[:5]),
+            "addresses": dict(
+                sorted(addresses.items(), key=lambda x: -x[1])[:5]
+            ),
+            "phone_numbers": dict(
+                sorted(phones.items(), key=lambda x: -x[1])[:5]
+            ),
             "validation_statuses": validation_statuses,
             "inconsistencies": inconsistencies,
         }
@@ -280,4 +288,3 @@ def get_receipts_by_merchant(
     except Exception as e:
         logger.error(f"Error getting receipts by merchant: {e}")
         return {"error": str(e)}
-

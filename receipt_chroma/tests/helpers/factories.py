@@ -12,14 +12,14 @@ from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 
-def create_metadata_message(
+def create_place_message(
     image_id: str = "test-image-id",
     receipt_id: int = 1,
     event_name: str = "MODIFY",
     changes: Optional[Dict[str, FieldChange]] = None,
     collections: tuple = (ChromaDBCollection.LINES, ChromaDBCollection.WORDS),
 ) -> StreamMessage:
-    """Create a RECEIPT_METADATA StreamMessage for testing.
+    """Create a RECEIPT_PLACE StreamMessage for testing.
 
     Args:
         image_id: Image identifier
@@ -29,7 +29,7 @@ def create_metadata_message(
         collections: Target collections for the message
 
     Returns:
-        StreamMessage for RECEIPT_METADATA entity
+        StreamMessage for RECEIPT_PLACE entity
     """
     if changes is None:
         changes = {
@@ -39,7 +39,7 @@ def create_metadata_message(
         }
 
     return StreamMessage(
-        entity_type="RECEIPT_METADATA",
+        entity_type="RECEIPT_PLACE",
         entity_data={
             "image_id": image_id,
             "receipt_id": receipt_id,

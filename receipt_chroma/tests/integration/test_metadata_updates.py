@@ -1,14 +1,14 @@
-"""Integration tests for metadata update processing."""
+"""Integration tests for place update processing."""
 
 from uuid import uuid4
 
 import pytest
 from receipt_chroma import ChromaClient
-from receipt_chroma.compaction.metadata import apply_metadata_updates
+from receipt_chroma.compaction.metadata import apply_place_updates
 
 from receipt_dynamo.constants import ChromaDBCollection
 from tests.helpers.factories import (
-    create_metadata_message,
+    create_place_message,
     create_mock_logger,
     create_receipt_lines_in_dynamodb,
     create_receipt_words_in_dynamodb,
@@ -16,13 +16,13 @@ from tests.helpers.factories import (
 
 
 @pytest.mark.integration
-class TestMetadataUpdates:
-    """Test metadata update processing with real ChromaDB operations."""
+class TestPlaceUpdates:
+    """Test place update processing with real ChromaDB operations."""
 
-    def test_apply_metadata_updates_modify_event(
+    def test_apply_place_updates_modify_event(
         self, temp_chromadb_dir, mock_logger, dynamo_client
     ):
-        """Test applying MODIFY metadata updates to ChromaDB."""
+        """Test applying MODIFY place updates to ChromaDB."""
         # Generate a valid UUID for testing
         test_image_id = str(uuid4())
 
@@ -50,10 +50,10 @@ class TestMetadataUpdates:
             ],
         )
 
-        # Create metadata update message
+        # Create place update message
         from receipt_dynamo_stream.models import FieldChange
 
-        update_msg = create_metadata_message(
+        update_msg = create_place_message(
             image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
@@ -65,10 +65,10 @@ class TestMetadataUpdates:
             collections=(ChromaDBCollection.LINES,),
         )
 
-        # Apply metadata updates
-        results = apply_metadata_updates(
+        # Apply place updates
+        results = apply_place_updates(
             chroma_client=client,
-            metadata_messages=[update_msg],
+            place_messages=[update_msg],
             collection=ChromaDBCollection.LINES,
             logger=mock_logger,
             dynamo_client=dynamo_client,
@@ -99,10 +99,10 @@ class TestMetadataUpdates:
 
         client.close()
 
-    def test_apply_metadata_updates_remove_event(
+    def test_apply_place_updates_remove_event(
         self, temp_chromadb_dir, mock_logger, dynamo_client
     ):
-        """Test applying REMOVE metadata updates to ChromaDB."""
+        """Test applying REMOVE place updates to ChromaDB."""
         # Generate a valid UUID for testing
         test_image_id = str(uuid4())
 
@@ -130,8 +130,8 @@ class TestMetadataUpdates:
             ],
         )
 
-        # Create metadata remove message
-        remove_msg = create_metadata_message(
+        # Create place remove message
+        remove_msg = create_place_message(
             image_id=test_image_id,
             receipt_id=1,
             event_name="REMOVE",
@@ -139,10 +139,10 @@ class TestMetadataUpdates:
             collections=(ChromaDBCollection.LINES,),
         )
 
-        # Apply metadata removal
-        results = apply_metadata_updates(
+        # Apply place removal
+        results = apply_place_updates(
             chroma_client=client,
-            metadata_messages=[remove_msg],
+            place_messages=[remove_msg],
             collection=ChromaDBCollection.LINES,
             logger=mock_logger,
             dynamo_client=dynamo_client,
@@ -172,10 +172,10 @@ class TestMetadataUpdates:
 
         client.close()
 
-    def test_apply_metadata_updates_to_words_collection(
+    def test_apply_place_updates_to_words_collection(
         self, temp_chromadb_dir, mock_logger, dynamo_client
     ):
-        """Test applying metadata updates to words collection."""
+        """Test applying place updates to words collection."""
         # Generate a valid UUID for testing
         test_image_id = str(uuid4())
 
@@ -207,10 +207,10 @@ class TestMetadataUpdates:
             ],
         )
 
-        # Create metadata update message
+        # Create place update message
         from receipt_dynamo_stream.models import FieldChange
 
-        update_msg = create_metadata_message(
+        update_msg = create_place_message(
             image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
@@ -222,10 +222,10 @@ class TestMetadataUpdates:
             collections=(ChromaDBCollection.WORDS,),
         )
 
-        # Apply metadata updates
-        results = apply_metadata_updates(
+        # Apply place updates
+        results = apply_place_updates(
             chroma_client=client,
-            metadata_messages=[update_msg],
+            place_messages=[update_msg],
             collection=ChromaDBCollection.WORDS,
             logger=mock_logger,
             dynamo_client=dynamo_client,
@@ -256,10 +256,10 @@ class TestMetadataUpdates:
 
         client.close()
 
-    def test_apply_metadata_updates_multiple_messages(
+    def test_apply_place_updates_multiple_messages(
         self, temp_chromadb_dir, mock_logger, dynamo_client
     ):
-        """Test applying multiple metadata update messages."""
+        """Test applying multiple place update messages."""
         # Generate a valid UUID for testing
         test_image_id = str(uuid4())
 
@@ -290,10 +290,10 @@ class TestMetadataUpdates:
             ],
         )
 
-        # Create multiple metadata update messages
+        # Create multiple place update messages
         from receipt_dynamo_stream.models import FieldChange
 
-        update_msg_1 = create_metadata_message(
+        update_msg_1 = create_place_message(
             image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
@@ -305,7 +305,7 @@ class TestMetadataUpdates:
             collections=(ChromaDBCollection.LINES,),
         )
 
-        update_msg_2 = create_metadata_message(
+        update_msg_2 = create_place_message(
             image_id=test_image_id,
             receipt_id=2,
             event_name="MODIFY",
@@ -317,10 +317,10 @@ class TestMetadataUpdates:
             collections=(ChromaDBCollection.LINES,),
         )
 
-        # Apply metadata updates
-        results = apply_metadata_updates(
+        # Apply place updates
+        results = apply_place_updates(
             chroma_client=client,
-            metadata_messages=[update_msg_1, update_msg_2],
+            place_messages=[update_msg_1, update_msg_2],
             collection=ChromaDBCollection.LINES,
             logger=mock_logger,
             dynamo_client=dynamo_client,
@@ -352,7 +352,7 @@ class TestMetadataUpdates:
 
         client.close()
 
-    def test_apply_metadata_updates_collection_not_found(
+    def test_apply_place_updates_collection_not_found(
         self, temp_chromadb_dir, mock_logger
     ):
         """Test handling when collection doesn't exist."""
@@ -361,17 +361,17 @@ class TestMetadataUpdates:
             persist_directory=temp_chromadb_dir, mode="write"
         )
 
-        # Create metadata update message
-        update_msg = create_metadata_message(
+        # Create place update message
+        update_msg = create_place_message(
             image_id="test-id",
             receipt_id=1,
             event_name="MODIFY",
         )
 
-        # Apply metadata updates to non-existent collection
-        results = apply_metadata_updates(
+        # Apply place updates to non-existent collection
+        results = apply_place_updates(
             chroma_client=client,
-            metadata_messages=[update_msg],
+            place_messages=[update_msg],
             collection=ChromaDBCollection.LINES,
             logger=mock_logger,
         )
@@ -381,10 +381,10 @@ class TestMetadataUpdates:
 
         client.close()
 
-    def test_apply_metadata_updates_with_error_handling(
+    def test_apply_place_updates_with_error_handling(
         self, temp_chromadb_dir, mock_logger
     ):
-        """Test error handling when metadata update fails."""
+        """Test error handling when place update fails."""
         # Create a ChromaDB snapshot with test data
         client = ChromaClient(
             persist_directory=temp_chromadb_dir, mode="write"
@@ -398,13 +398,13 @@ class TestMetadataUpdates:
             metadatas=[{"text": "Line 1"}],
         )
 
-        # Create an invalid metadata message (missing required fields)
+        # Create an invalid place message (missing required fields)
         from datetime import datetime
 
         from receipt_dynamo_stream.models import StreamMessage
 
         invalid_msg = StreamMessage(
-            entity_type="RECEIPT_METADATA",
+            entity_type="RECEIPT_PLACE",
             entity_data={},  # Missing image_id and receipt_id
             changes={},
             event_name="MODIFY",
@@ -414,10 +414,10 @@ class TestMetadataUpdates:
             aws_region="us-east-1",
         )
 
-        # Apply metadata updates
-        results = apply_metadata_updates(
+        # Apply place updates
+        results = apply_place_updates(
             chroma_client=client,
-            metadata_messages=[invalid_msg],
+            place_messages=[invalid_msg],
             collection=ChromaDBCollection.LINES,
             logger=mock_logger,
         )
@@ -429,10 +429,10 @@ class TestMetadataUpdates:
 
         client.close()
 
-    def test_apply_metadata_updates_no_messages(
+    def test_apply_place_updates_no_messages(
         self, temp_chromadb_dir, mock_logger
     ):
-        """Test applying metadata updates with no messages."""
+        """Test applying place updates with no messages."""
         client = ChromaClient(
             persist_directory=temp_chromadb_dir, mode="write"
         )
@@ -446,9 +446,9 @@ class TestMetadataUpdates:
         )
 
         # Apply with empty message list
-        results = apply_metadata_updates(
+        results = apply_place_updates(
             chroma_client=client,
-            metadata_messages=[],
+            place_messages=[],
             collection=ChromaDBCollection.LINES,
             logger=mock_logger,
         )

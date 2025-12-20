@@ -417,7 +417,9 @@ class ReceiptPlaceFinder:
                             ),
                             place_id=place.place_id if has_place_id else None,
                             address=(
-                                place.formatted_address if has_address else None
+                                place.formatted_address
+                                if has_address
+                                else None
                             ),
                             phone=place.phone_number if has_phone else None,
                             validation_status=getattr(
@@ -658,10 +660,11 @@ class ReceiptPlaceFinder:
         min_confidence: float = 50.0,
     ) -> UpdateResult:
         """
-        Apply metadata updates to DynamoDB by creating/updating ReceiptPlace entities.
+        Apply metadata updates to DynamoDB by creating/updating
+        ReceiptPlace entities.
 
-        Updates any missing fields with found values. Creates or updates ReceiptPlace
-        entities with rich data from Google Places API v1.
+        Updates any missing fields with found values. Creates or updates
+        ReceiptPlace entities with rich data from Google Places API v1.
 
         Args:
             dry_run: If True, only report what would be updated
@@ -917,8 +920,8 @@ class ReceiptPlaceFinder:
         """
         Create a ReceiptPlace entity from matched metadata and API data.
 
-        Calls Google Places API v1 to get rich data (coordinates, hours, ratings,
-        business status) and creates a ReceiptPlace entity with this data.
+        Calls Google Places API v1 to get rich data (coordinates, hours,
+        ratings, business status) and creates a ReceiptPlace entity.
 
         Args:
             match: MetadataMatch with found metadata
@@ -936,7 +939,8 @@ class ReceiptPlaceFinder:
 
         if not self.places:
             logger.debug(
-                "Places API client not available, skipping ReceiptPlace creation"
+                "Places API client not available, "
+                "skipping ReceiptPlace creation"
             )
             return
 

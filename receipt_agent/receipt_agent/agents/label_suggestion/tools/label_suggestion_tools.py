@@ -489,12 +489,12 @@ def create_label_suggestion_tools(
             # If we found similar words but none have valid_labels,
             # that's useful info
             if total_results > 0 and words_with_valid_labels == 0:
-                    logger.info(
-                        f"  Note: Found {total_results} similar words "
-                        f"in ChromaDB, but none have VALID labels yet. "
-                        f"This word will be skipped until similar words "
-                        f"are validated."
-                    )
+                logger.info(
+                    f"  Note: Found {total_results} similar words "
+                    f"in ChromaDB, but none have VALID labels yet. "
+                    f"This word will be skipped until similar words "
+                    f"are validated."
+                )
 
             return {
                 "word_text": word.text,
