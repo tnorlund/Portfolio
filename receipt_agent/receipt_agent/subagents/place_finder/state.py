@@ -7,7 +7,7 @@ State definition for the receipt place finder workflow.
 from typing import Annotated, Any
 
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ReceiptPlaceFinderState(BaseModel):
@@ -20,7 +20,5 @@ class ReceiptPlaceFinderState(BaseModel):
     # Conversation messages
     messages: Annotated[list[Any], add_messages] = Field(default_factory=list)
 
-    class Config:
-        arbitrary_types_allowed = True
-
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 

@@ -5,7 +5,7 @@ State definition for the Place ID Finder agent.
 from typing import Annotated, Any
 
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PlaceIdFinderState(BaseModel):
@@ -18,8 +18,6 @@ class PlaceIdFinderState(BaseModel):
     # Conversation messages
     messages: Annotated[list[Any], add_messages] = Field(default_factory=list)
 
-    class Config:
-        arbitrary_types_allowed = True
-
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 

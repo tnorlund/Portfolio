@@ -7,7 +7,7 @@ Use cases:
 - Provide a simple way to know when both collections are finished
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -77,7 +77,9 @@ class CompactionRun(DynamoDBEntity):
     lines_merged_vectors: int = 0
     words_merged_vectors: int = 0
 
-    created_at: str | datetime = datetime.now(timezone.utc)
+    created_at: str | datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     updated_at: Optional[str | datetime] = None
 
     # ────────────────────────── validation ────────────────────────────
