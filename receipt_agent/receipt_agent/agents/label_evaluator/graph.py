@@ -20,7 +20,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langgraph.graph import END, StateGraph
 
 # Optional: langchain_ollama for Ollama Cloud
@@ -47,7 +47,6 @@ from receipt_agent.agents.label_evaluator.state import (
     OtherReceiptData,
     ReviewResult,
 )
-from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWordLabel
 
 # Import CORE_LABELS definitions

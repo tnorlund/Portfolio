@@ -11,7 +11,7 @@ import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from itertools import combinations
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from receipt_agent.agents.label_evaluator.state import (
     ConstellationGeometry,
@@ -506,7 +506,7 @@ def _generate_label_ntuples(
 
     if dimension == 2:
         # For pairs, just return the input as-is (cast to match return type)
-        return {k: v for k, v in all_pairs.items()}
+        return dict(all_pairs.items())
 
     # For dimension >= 3, build a co-occurrence graph and find cliques
     # A clique is a set of labels that all co-occur with each other
@@ -1369,7 +1369,7 @@ def compute_merchant_patterns(
 
         # Cache centroids for this receipt (centroid caching optimization)
         centroid_cache: Dict[Tuple[int, int], Tuple[float, float]] = {}
-        for key in current_labels_2.keys():
+        for key in current_labels_2:
             word = word_by_id_2.get(key)
             if word:
                 centroid_cache[key] = word.calculate_centroid()
@@ -2849,13 +2849,13 @@ def assign_batch_with_llm(
     # Assignment logic
     if real_errors >= 3:
         return "ANTI_PATTERN"  # Many real errors = problematic
-    elif format_variations >= 2 and real_errors == 0:
+    if format_variations >= 2 and real_errors == 0:
         return "AMBIGUOUS"  # Format variations but no real errors
-    elif format_variations >= 1 and real_errors <= 1:
+    # pylint: disable-next=chained-comparison
+    if format_variations >= 1 and 0 <= real_errors <= 1:
         return "AMBIGUOUS"  # Mixed but mostly variations
-    else:
-        # Small number of issues, might still be usable
-        return "HAPPY" if real_errors == 0 else "AMBIGUOUS"
+    # Small number of issues, might still be usable
+    return "HAPPY" if real_errors == 0 else "AMBIGUOUS"
 
 
 def evaluate_word_contexts(

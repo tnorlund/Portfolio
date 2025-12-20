@@ -1,6 +1,5 @@
 """Main Pulumi program for AWS infrastructure."""
 
-import base64
 import os
 import sys
 from pathlib import Path
@@ -16,7 +15,9 @@ import api_gateway
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
-if config.get_bool("docker-buildkit") != False:  # Default to True if not set
+if (
+    config.get_bool("docker-buildkit") is not False
+):  # Default to True if not set
     os.environ["DOCKER_BUILDKIT"] = "1"
     os.environ["COMPOSE_DOCKER_CLI_BUILD"] = (
         "1"  # Also enable for docker-compose
@@ -35,7 +36,6 @@ from typing import Optional
 from pulumi import ResourceOptions
 
 # Import our infrastructure components
-import s3_website  # noqa: F401
 from billing_alerts import BillingAlerts
 from chromadb_compaction import create_chromadb_compaction_infrastructure
 from combine_receipts_step_functions import CombineReceiptsStepFunction
@@ -68,18 +68,19 @@ from upload_images import UploadImages
 
 # Import other necessary components
 try:
-    # from infra.components import lambda_layer  # noqa: F401
-    from infra.components import lambda_layer  # Imported for side effects
+    # pylint: disable=unused-import
+    from infra.components import lambda_layer  # noqa: F401 - side effects
     from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
         label_count_cache_updater_lambda,
     )
     from routes.health_check.infra import health_check_lambda  # noqa: F401
 
+    # pylint: enable=unused-import
+
     print("✓ Successfully imported label_count_cache_updater_lambda")
 except ImportError as e:
     # These may not be available in all environments
     print(f"⚠️  Failed to import label cache updater: {e}")
-    pass
 # import step_function  # Legacy - receipt_processor depends on removed receipt_label
 from chroma.nat_egress import NatEgress
 from chroma.orchestrator import ChromaOrchestrator

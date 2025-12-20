@@ -39,7 +39,6 @@ Note: Merchant names must match exactly as stored in DynamoDB. Common merchants 
 import argparse
 import json
 import logging
-import os
 import subprocess
 import sys
 import time

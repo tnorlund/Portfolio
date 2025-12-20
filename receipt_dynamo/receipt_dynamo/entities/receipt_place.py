@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
+from receipt_dynamo.constants import ValidationMethod
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
 from receipt_dynamo.entities.util import (
     _repr_str,

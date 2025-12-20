@@ -30,7 +30,6 @@ import os
 from typing import Optional
 
 import pulumi
-import pulumi_aws as aws
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -44,7 +43,6 @@ from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import (
     Function,
     FunctionEnvironmentArgs,
-    FunctionEphemeralStorageArgs,
 )
 from pulumi_aws.s3 import (
     Bucket,
