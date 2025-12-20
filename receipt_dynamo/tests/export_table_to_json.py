@@ -29,7 +29,7 @@ if __name__ == "__main__":
         receipt_words,
         receipt_letters,
         receipt_word_labels,
-        _receipt_metadatas,
+        _receipt_places,
         _ocr_jobs,
         _ocr_routing_decisions,
     ) = details
