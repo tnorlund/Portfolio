@@ -4,6 +4,9 @@ LLM Review Lambda Handler
 Reviews flagged label issues using Ollama LLM with ChromaDB for similarity
 search. This Lambda is invoked optionally when skip_llm_review=false.
 
+Uses async processing with bounded concurrency to review multiple issues
+in parallel while respecting Ollama rate limits.
+
 Environment Variables:
 - BATCH_BUCKET: S3 bucket for data and results
 - CHROMADB_BUCKET: S3 bucket with ChromaDB snapshots
@@ -18,11 +21,15 @@ Environment Variables:
 # pylint: disable=import-outside-toplevel
 # Lambda handlers delay imports until runtime for cold start optimization
 
+import asyncio
 import json
 import logging
 import os
 import time
 from typing import TYPE_CHECKING, Any
+
+# Maximum concurrent LLM calls to avoid Ollama rate limits
+MAX_CONCURRENT_LLM_CALLS = 3
 
 import boto3
 
@@ -214,53 +221,24 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
 
         logger.info("LLM initialized: %s at %s", ollama_model, ollama_base_url)
 
-        # 4. Review each issue
+        # 4. Review issues with bounded concurrency
+        logger.info(
+            "Reviewing %d issues with max %d concurrent LLM calls",
+            len(issues),
+            MAX_CONCURRENT_LLM_CALLS,
+        )
+
+        reviewed_issues = asyncio.run(_review_issues_async(llm, issues))
+
+        # Count decisions
         from collections import Counter
 
         decisions: Counter = Counter()
-        reviewed_issues: list[dict[str, Any]] = []
-
-        for issue in issues:
-            try:
-                # Build prompt for LLM review
-                prompt = _build_review_prompt(issue)
-
-                # Call LLM
-                from langchain_core.messages import HumanMessage
-
-                response = llm.invoke([HumanMessage(content=prompt)])
-                response_text = response.content.strip()
-
-                # Parse response
-                review_result = _parse_llm_response(response_text)
-                decisions[review_result["decision"]] += 1
-
-                reviewed_issues.append(
-                    {
-                        **issue,
-                        "llm_review": review_result,
-                    }
-                )
-
-                logger.debug(
-                    "Reviewed '%s': %s",
-                    issue.get("word_text"),
-                    review_result["decision"],
-                )
-
-            except Exception as e:
-                logger.warning("Error reviewing issue: %s", e)
-                reviewed_issues.append(
-                    {
-                        **issue,
-                        "llm_review": {
-                            "decision": "NEEDS_REVIEW",
-                            "reasoning": f"LLM review failed: {e}",
-                            "error": True,
-                        },
-                    }
-                )
-                decisions["NEEDS_REVIEW"] += 1
+        for reviewed in reviewed_issues:
+            decision = reviewed.get("llm_review", {}).get(
+                "decision", "NEEDS_REVIEW"
+            )
+            decisions[decision] += 1
 
         logger.info("Reviewed %s issues: %s", len(issues), dict(decisions))
 
@@ -418,3 +396,60 @@ def _parse_llm_response(response_text: str) -> dict[str, Any]:
             "reasoning": f"Failed to parse LLM response: {response_text[:200]}",
             "error": str(e),
         }
+
+
+async def _review_issues_async(
+    llm: Any,
+    issues: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Review issues with bounded concurrency using asyncio.Semaphore.
+
+    Args:
+        llm: LangChain ChatOllama instance
+        issues: List of issues to review
+
+    Returns:
+        List of issues with llm_review results attached
+    """
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_LLM_CALLS)
+
+    async def review_single(issue: dict[str, Any]) -> dict[str, Any]:
+        """Review a single issue with semaphore-controlled concurrency."""
+        async with semaphore:
+            try:
+                from langchain_core.messages import HumanMessage
+
+                prompt = _build_review_prompt(issue)
+                # Use async invoke for non-blocking LLM call
+                response = await llm.ainvoke([HumanMessage(content=prompt)])
+                response_text = response.content.strip()
+
+                review_result = _parse_llm_response(response_text)
+
+                logger.debug(
+                    "Reviewed '%s': %s",
+                    issue.get("word_text"),
+                    review_result["decision"],
+                )
+
+                return {**issue, "llm_review": review_result}
+
+            except Exception as e:
+                logger.warning(
+                    "Error reviewing issue '%s': %s",
+                    issue.get("word_text"),
+                    e,
+                )
+                return {
+                    **issue,
+                    "llm_review": {
+                        "decision": "NEEDS_REVIEW",
+                        "reasoning": f"LLM review failed: {e}",
+                        "error": True,
+                    },
+                }
+
+    # Launch all review tasks; semaphore limits concurrent execution
+    tasks = [review_single(issue) for issue in issues]
+    return await asyncio.gather(*tasks)
