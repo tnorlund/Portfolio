@@ -233,21 +233,21 @@ def create_receipt_grouper_tools(
                     ]
                     line_ids = sorted([rl.line_id for rl in receipt_lines])
 
-                    # Try to get metadata
+                    # Try to get place data
                     metadata = None
                     try:
-                        receipt_metadata = dynamo_client.get_receipt_metadata(
+                        receipt_place = dynamo_client.get_receipt_place(
                             ctx.image_id, receipt.receipt_id
                         )
-                        if receipt_metadata:
+                        if receipt_place:
                             metadata = {
-                                "merchant_name": receipt_metadata.merchant_name,
-                                "address": receipt_metadata.address,
-                                "phone": receipt_metadata.phone_number,
-                                "place_id": receipt_metadata.place_id,
+                                "merchant_name": receipt_place.merchant_name,
+                                "address": receipt_place.formatted_address,
+                                "phone": receipt_place.phone_number,
+                                "place_id": receipt_place.place_id,
                             }
                     except Exception:
-                        pass  # Metadata might not exist
+                        pass  # Place data might not exist
 
                     ctx.receipts.append({
                         "receipt_id": receipt.receipt_id,

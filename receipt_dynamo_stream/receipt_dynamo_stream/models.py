@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Mapping, Optional
 
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
-StreamEntity = ReceiptMetadata | ReceiptWordLabel
+StreamEntity = ReceiptPlace | ReceiptWordLabel
 
 
 class ChromaDBCollection(str, Enum):

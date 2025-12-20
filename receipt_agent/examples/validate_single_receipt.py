@@ -2,7 +2,7 @@
 """
 Example: Validate metadata for a single receipt.
 
-This script demonstrates how to use the MetadataValidatorAgent
+This script demonstrates how to use the PlaceValidatorAgent
 to validate receipt metadata using ChromaDB and DynamoDB.
 
 Usage:
@@ -21,7 +21,7 @@ import sys
 # Add parent to path for local development
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from receipt_agent.api import MetadataValidatorAgent
+from receipt_agent.api import PlaceValidatorAgent
 from receipt_agent.config.settings import get_settings
 
 
@@ -82,8 +82,8 @@ async def main(image_id: str, receipt_id: int, verbose: bool = False) -> None:
             logger.warning("receipt_label not available - Places API disabled")
 
     # Create the validation agent
-    logger.info("Creating MetadataValidatorAgent...")
-    agent = MetadataValidatorAgent(
+    logger.info("Creating PlaceValidatorAgent...")
+    agent = PlaceValidatorAgent(
         dynamo_client=dynamo,
         chroma_client=chroma,
         places_api=places_api,

@@ -9,7 +9,7 @@ from receipt_dynamo_stream import (
     parse_stream_record,
 )
 
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 
@@ -63,14 +63,16 @@ def _get_stream_records(
     return cast(list[dict[str, object]], records)
 
 
-def _metadata_entity(merchant_name: str = "Cafe Nero") -> ReceiptMetadata:
-    return ReceiptMetadata(
+def _place_entity(merchant_name: str = "Cafe Nero") -> ReceiptPlace:
+    return ReceiptPlace(
         image_id="550e8400-e29b-41d4-a716-446655440000",
         receipt_id=1,
         place_id="place123",
         merchant_name=merchant_name,
+        formatted_address="123 Main St",
+        phone_number="555-123-4567",
         matched_fields=["name"],
-        validated_by="PHONE_LOOKUP",
+        validated_by="INFERENCE",
         timestamp=datetime.fromisoformat("2024-01-01T00:00:00"),
     )
 
@@ -88,13 +90,13 @@ def _word_label_entity(label: str = "TOTAL") -> ReceiptWordLabel:
     )
 
 
-def test_parse_stream_record_for_metadata_insert_and_modify(
+def test_parse_stream_record_for_place_insert_and_modify(
     dynamodb_with_stream: tuple[Any, Any, str],
 ) -> None:
     dynamodb, streams, table_name = dynamodb_with_stream
 
-    metadata = _metadata_entity()
-    dynamodb.put_item(TableName=table_name, Item=metadata.to_item())
+    place = _place_entity()
+    dynamodb.put_item(TableName=table_name, Item=place.to_item())
 
     records = _get_stream_records(dynamodb, streams, table_name)
     insert_record = next(
@@ -103,15 +105,15 @@ def test_parse_stream_record_for_metadata_insert_and_modify(
 
     parsed_insert = parse_stream_record(insert_record)
     assert parsed_insert is not None
-    assert parsed_insert.entity_type == "RECEIPT_METADATA"
+    assert parsed_insert.entity_type == "RECEIPT_PLACE"
     assert parsed_insert.new_entity is not None
-    assert isinstance(parsed_insert.new_entity, ReceiptMetadata)
+    assert isinstance(parsed_insert.new_entity, ReceiptPlace)
     assert parsed_insert.new_entity.merchant_name == "Cafe Nero"
     assert parsed_insert.old_entity is None
 
     dynamodb.update_item(
         TableName=table_name,
-        Key={"PK": metadata.key["PK"], "SK": metadata.key["SK"]},
+        Key={"PK": place.key["PK"], "SK": place.key["SK"]},
         UpdateExpression="SET merchant_name = :m",
         ExpressionAttributeValues={":m": {"S": "New Merchant"}},
         ReturnValues="ALL_NEW",
@@ -124,11 +126,11 @@ def test_parse_stream_record_for_metadata_insert_and_modify(
 
     parsed_modify = parse_stream_record(modify_record)
     assert parsed_modify is not None
-    assert parsed_modify.entity_type == "RECEIPT_METADATA"
+    assert parsed_modify.entity_type == "RECEIPT_PLACE"
     assert parsed_modify.old_entity is not None
     assert parsed_modify.new_entity is not None
-    assert isinstance(parsed_modify.old_entity, ReceiptMetadata)
-    assert isinstance(parsed_modify.new_entity, ReceiptMetadata)
+    assert isinstance(parsed_modify.old_entity, ReceiptPlace)
+    assert isinstance(parsed_modify.new_entity, ReceiptPlace)
     changes = get_chromadb_relevant_changes(
         parsed_modify.entity_type,
         parsed_modify.old_entity,

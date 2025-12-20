@@ -10,7 +10,7 @@ from typing import Mapping, Optional, Protocol, cast
 
 from receipt_dynamo_stream.models import ParsedStreamRecord, StreamEntity
 
-from receipt_dynamo.entities.receipt_metadata import item_to_receipt_metadata
+from receipt_dynamo.entities.receipt_place import item_to_receipt_place
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
 )
@@ -37,8 +37,8 @@ StreamRecord = Mapping[str, object]
 
 def detect_entity_type(sk: str) -> Optional[str]:
     """Detect entity type from SK pattern."""
-    if "#METADATA" in sk:
-        return "RECEIPT_METADATA"
+    if "#PLACE" in sk:
+        return "RECEIPT_PLACE"
     if "#LABEL#" in sk:
         return "RECEIPT_WORD_LABEL"
     if "#COMPACTION_RUN#" in sk:
@@ -78,8 +78,8 @@ def parse_entity(  # pylint: disable=too-many-arguments,too-many-positional-argu
                 },
             )
 
-        if entity_type == "RECEIPT_METADATA":
-            return item_to_receipt_metadata(complete_item)
+        if entity_type == "RECEIPT_PLACE":
+            return item_to_receipt_place(complete_item)
         if entity_type == "RECEIPT_WORD_LABEL":
             return item_to_receipt_word_label(complete_item)
 
@@ -100,7 +100,7 @@ def parse_entity(  # pylint: disable=too-many-arguments,too-many-positional-argu
                 1,
                 {"entity_type": entity_type, "image_type": image_type},
             )
-    except (TypeError, KeyError) as exc:  # pragma: no cover
+    except (TypeError, KeyError, AttributeError) as exc:  # pragma: no cover
         logger.exception(
             "Unexpected error parsing entity",
             extra={

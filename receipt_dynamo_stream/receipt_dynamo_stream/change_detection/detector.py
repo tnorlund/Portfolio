@@ -7,11 +7,10 @@ from typing import Dict, Optional
 from receipt_dynamo_stream.models import FieldChange, StreamEntity
 
 CHROMADB_RELEVANT_FIELDS = {
-    "RECEIPT_METADATA": [
-        "canonical_merchant_name",
+    "RECEIPT_PLACE": [
         "merchant_name",
         "merchant_category",
-        "address",
+        "formatted_address",
         "phone_number",
         "place_id",
     ],

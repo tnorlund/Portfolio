@@ -10,7 +10,7 @@ from receipt_dynamo_stream.parsing.parsers import (
     parse_stream_record,
 )
 
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 # Import MockMetrics from conftest (same directory)
@@ -19,15 +19,15 @@ from .conftest import MockMetrics
 # Test detect_entity_type edge cases
 
 
-def test_detect_entity_type_metadata_variations() -> None:
-    """Test various metadata SK formats."""
+def test_detect_entity_type_place_variations() -> None:
+    """Test various place SK formats."""
     test_cases = [
-        "RECEIPT#00001#METADATA",
-        "RECEIPT#99999#METADATA",
-        "ANYTHING#METADATA",
+        "RECEIPT#00001#PLACE",
+        "RECEIPT#99999#PLACE",
+        "ANYTHING#PLACE",
     ]
     for sk in test_cases:
-        assert detect_entity_type(sk) == "RECEIPT_METADATA"
+        assert detect_entity_type(sk) == "RECEIPT_PLACE"
 
 
 def test_detect_entity_type_word_label_variations() -> None:
@@ -73,8 +73,8 @@ def test_detect_entity_type_empty_string() -> None:
 def test_detect_entity_type_case_sensitive() -> None:
     """Test that detection is case-sensitive."""
     # Lowercase should not match
-    assert detect_entity_type("receipt#00001#metadata") is None
-    assert detect_entity_type("RECEIPT#00001#metadata") is None
+    assert detect_entity_type("receipt#00001#place") is None
+    assert detect_entity_type("RECEIPT#00001#place") is None
 
 
 # Test parse_entity edge cases
@@ -82,34 +82,36 @@ def test_detect_entity_type_case_sensitive() -> None:
 
 def test_parse_entity_none_image() -> None:
     """Test parsing with None image."""
-    result = parse_entity(None, "RECEIPT_METADATA", "new", "PK", "SK")
+    result = parse_entity(None, "RECEIPT_PLACE", "new", "PK", "SK")
     assert result is None
 
 
-def test_parse_entity_metadata_success() -> None:
-    """Test successful metadata parsing."""
+def test_parse_entity_place_success() -> None:
+    """Test successful place parsing."""
     pk = "IMAGE#550e8400-e29b-41d4-a716-446655440000"
-    sk = "RECEIPT#00001#METADATA"
+    sk = "RECEIPT#00001#PLACE"
 
-    metadata = ReceiptMetadata(
+    place = ReceiptPlace(
         image_id="550e8400-e29b-41d4-a716-446655440000",
         receipt_id=1,
         place_id="place123",
         merchant_name="Test",
+        formatted_address="123 Main St",
+        phone_number="555-123-4567",
         matched_fields=["name"],
-        validated_by="PHONE_LOOKUP",
+        validated_by="INFERENCE",
         timestamp=datetime.fromisoformat("2024-01-01T00:00:00"),
     )
 
-    image = metadata.to_item()
+    image = place.to_item()
     # Remove PK/SK since parse_entity adds them
     image.pop("PK", None)
     image.pop("SK", None)
 
-    result = parse_entity(image, "RECEIPT_METADATA", "new", pk, sk)
+    result = parse_entity(image, "RECEIPT_PLACE", "new", pk, sk)
 
     assert result is not None
-    assert isinstance(result, ReceiptMetadata)
+    assert isinstance(result, ReceiptPlace)
     assert result.merchant_name == "Test"
 
 
@@ -149,19 +151,19 @@ def test_parse_entity_invalid_entity_type() -> None:
 
 
 def test_parse_entity_value_error_with_metrics() -> None:
-    """Test that ValueError is caught and metrics recorded."""
+    """Test that unexpected parsing errors are caught and metrics recorded."""
     metrics = MockMetrics()
     pk = "IMAGE#550e8400-e29b-41d4-a716-446655440000"
-    sk = "RECEIPT#00001#METADATA"
+    sk = "RECEIPT#00001#PLACE"
 
     # Invalid image that will cause ValueError
     image: Dict[str, Mapping[str, object]] = {"invalid_field": {"S": "value"}}
 
-    result = parse_entity(image, "RECEIPT_METADATA", "old", pk, sk, metrics)
+    result = parse_entity(image, "RECEIPT_PLACE", "old", pk, sk, metrics)
 
     assert result is None
     metric_names = [m[0] for m in metrics.counts]
-    assert "EntityParsingError" in metric_names
+    assert "EntityParsingUnexpectedError" in metric_names
 
 
 def test_parse_entity_type_error_with_metrics() -> None:
@@ -171,7 +173,7 @@ def test_parse_entity_type_error_with_metrics() -> None:
     # This should trigger TypeError/KeyError handling
     result = parse_entity(
         {"bad": "data"},  # type: ignore
-        "RECEIPT_METADATA",
+        "RECEIPT_PLACE",
         "new",
         "PK",
         "SK",
@@ -181,7 +183,7 @@ def test_parse_entity_type_error_with_metrics() -> None:
     assert result is None
     # Should record error metric
     metric_names = [m[0] for m in metrics.counts]
-    assert "EntityParsingError" in metric_names
+    assert "EntityParsingUnexpectedError" in metric_names
 
 
 # Test parse_stream_record edge cases
@@ -211,7 +213,7 @@ def test_parse_stream_record_non_image_pk() -> None:
         "dynamodb": {
             "Keys": {
                 "PK": {"S": "RECEIPT#00001"},
-                "SK": {"S": "RECEIPT#00001#METADATA"},
+                "SK": {"S": "RECEIPT#00001#PLACE"},
             },
         },
     }
@@ -241,16 +243,16 @@ def test_parse_stream_record_old_entity_parse_failure() -> None:
         "dynamodb": {
             "Keys": {
                 "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#METADATA"},
+                "SK": {"S": "RECEIPT#00001#PLACE"},
             },
-            "OldImage": {"invalid": {"S": "data"}},  # Invalid metadata
-            "NewImage": {"invalid": {"S": "data"}},  # Invalid metadata
+            "OldImage": {"invalid": {"S": "data"}},  # Invalid place
+            "NewImage": {"invalid": {"S": "data"}},  # Invalid place
         },
     }
     result = parse_stream_record(record)
     # Should still return a ParsedStreamRecord but with None entities
     assert result is not None
-    assert result.entity_type == "RECEIPT_METADATA"
+    assert result.entity_type == "RECEIPT_PLACE"
     assert result.old_entity is None
     assert result.new_entity is None
 
@@ -273,28 +275,30 @@ def test_parse_stream_record_with_metrics() -> None:
 
 def test_parse_stream_record_insert_with_new_image_only() -> None:
     """Test INSERT event with only NewImage."""
-    metadata = ReceiptMetadata(
+    place = ReceiptPlace(
         image_id="550e8400-e29b-41d4-a716-446655440000",
         receipt_id=1,
         place_id="place123",
         merchant_name="Test",
+        formatted_address="123 Main St",
+        phone_number="555-123-4567",
         matched_fields=["name"],
-        validated_by="PHONE_LOOKUP",
+        validated_by="INFERENCE",
         timestamp=datetime.fromisoformat("2024-01-01T00:00:00"),
     )
 
     record: Dict[str, Any] = {
         "eventName": "INSERT",
         "dynamodb": {
-            "Keys": metadata.key,
-            "NewImage": metadata.to_item(),
+            "Keys": place.key,
+            "NewImage": place.to_item(),
         },
     }
 
     result = parse_stream_record(record)
 
     assert result is not None
-    assert result.entity_type == "RECEIPT_METADATA"
+    assert result.entity_type == "RECEIPT_PLACE"
     assert result.new_entity is not None
     assert result.old_entity is None
 

@@ -1,37 +1,36 @@
-"""Metadata update processing for RECEIPT_METADATA entities."""
+"""Place update processing for RECEIPT_PLACE entities."""
 
 from typing import Any, List, Optional
 
 from receipt_chroma.compaction.models import MetadataUpdateResult
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.data.operations import (
-    remove_receipt_metadata,
-    update_receipt_metadata,
+    remove_receipt_place,
+    update_receipt_place,
 )
 
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 
-def apply_metadata_updates(
+def apply_place_updates(
     chroma_client: ChromaClient,
-    metadata_messages: List[Any],
+    place_messages: List[Any],
     collection: ChromaDBCollection,
     logger: Any,
     metrics: Any = None,
     dynamo_client: Optional[DynamoClient] = None,
 ) -> List[MetadataUpdateResult]:
-    """Apply metadata updates to an already-open ChromaDB client without
-    S3 I/O.
+    """Apply place updates to an already-open ChromaDB client without S3 I/O.
 
-    This function processes RECEIPT_METADATA update messages and applies them
+    This function processes RECEIPT_PLACE update messages and applies them
     to the given ChromaDB client. The caller is responsible for downloading
     the snapshot, opening the client, uploading the updated snapshot, and
     managing locks.
 
     Args:
         chroma_client: Open ChromaDB client with snapshot loaded
-        metadata_messages: List of StreamMessage objects for metadata updates
+        place_messages: List of StreamMessage objects for place updates
         collection: Target collection (LINES or WORDS)
         logger: Logger instance for observability
         metrics: Optional metrics collector
@@ -50,8 +49,8 @@ def apply_metadata_updates(
         logger.warning("Collection not found", database=database, error=str(e))
         return results
 
-    # Process each metadata update message
-    for update_msg in metadata_messages:
+    # Process each place update message
+    for update_msg in place_messages:
         try:
             entity_data = update_msg.entity_data
             changes = update_msg.changes
@@ -59,9 +58,9 @@ def apply_metadata_updates(
             image_id = entity_data["image_id"]
             receipt_id = entity_data["receipt_id"]
 
-            # Determine whether to update or remove metadata
+            # Determine whether to update or remove place data
             if event_name == "REMOVE":
-                updated_count = remove_receipt_metadata(
+                updated_count = remove_receipt_place(
                     collection=collection_obj,
                     image_id=image_id,
                     receipt_id=receipt_id,
@@ -73,7 +72,7 @@ def apply_metadata_updates(
                     ),
                 )
             else:  # MODIFY or INSERT
-                updated_count = update_receipt_metadata(
+                updated_count = update_receipt_place(
                     collection=collection_obj,
                     image_id=image_id,
                     receipt_id=receipt_id,
@@ -97,7 +96,7 @@ def apply_metadata_updates(
             )
 
         except Exception as e:
-            logger.exception("Error processing metadata update")
+            logger.exception("Error processing place update")
             results.append(
                 MetadataUpdateResult(
                     database=database,

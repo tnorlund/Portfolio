@@ -14,20 +14,22 @@ from receipt_dynamo_stream.message_builder import (
 )
 from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
 
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 from .conftest import MockMetrics
 
 
-def _make_metadata(merchant_name: str = "Test Merchant") -> ReceiptMetadata:
-    return ReceiptMetadata(
+def _make_place(merchant_name: str = "Test Merchant") -> ReceiptPlace:
+    return ReceiptPlace(
         image_id="550e8400-e29b-41d4-a716-446655440000",
         receipt_id=1,
         place_id="place123",
         merchant_name=merchant_name,
+        formatted_address="123 Main St",
+        phone_number="555-123-4567",
         matched_fields=["name"],
-        validated_by="PHONE_LOOKUP",
+        validated_by="INFERENCE",
         timestamp=datetime.fromisoformat("2024-01-01T00:00:00"),
     )
 
@@ -93,19 +95,19 @@ def _create_compaction_run_completion_record() -> dict[str, Any]:
     }
 
 
-def _create_metadata_modify_record() -> dict[str, Any]:
-    """Create a mock DynamoDB stream record for RECEIPT_METADATA MODIFY."""
-    old_metadata = _make_metadata("Old Merchant")
-    new_metadata = _make_metadata("New Merchant")
+def _create_place_modify_record() -> dict[str, Any]:
+    """Create a mock DynamoDB stream record for RECEIPT_PLACE MODIFY."""
+    old_place = _make_place("Old Merchant")
+    new_place = _make_place("New Merchant")
 
     return {
         "eventName": "MODIFY",
         "eventID": "event-789",
         "awsRegion": "us-east-1",
         "dynamodb": {
-            "Keys": old_metadata.key,
-            "OldImage": old_metadata.to_item(),
-            "NewImage": new_metadata.to_item(),
+            "Keys": old_place.key,
+            "OldImage": old_place.to_item(),
+            "NewImage": new_place.to_item(),
         },
     }
 
@@ -140,11 +142,11 @@ def test_build_messages_from_records_with_insert() -> None:
 
 def test_build_messages_from_records_with_modify() -> None:
     """Test building messages from MODIFY event."""
-    record = _create_metadata_modify_record()
+    record = _create_place_modify_record()
     messages = build_messages_from_records([record])
 
     assert len(messages) == 1
-    assert messages[0].entity_type == "RECEIPT_METADATA"
+    assert messages[0].entity_type == "RECEIPT_PLACE"
     assert messages[0].event_name == "MODIFY"
     assert "merchant_name" in messages[0].changes
 
@@ -172,7 +174,7 @@ def test_build_messages_from_records_with_completion() -> None:
 def test_build_messages_from_records_with_metrics() -> None:
     """Test that metrics are recorded correctly."""
     metrics = MockMetrics()
-    record = _create_metadata_modify_record()
+    record = _create_place_modify_record()
     messages = build_messages_from_records([record], metrics)
 
     assert len(messages) == 1
@@ -232,7 +234,7 @@ def test_build_compaction_run_messages_not_compaction_run() -> None:
         "dynamodb": {
             "Keys": {
                 "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#METADATA"},
+                "SK": {"S": "RECEIPT#00001#PLACE"},
             },
             "NewImage": {},
         },
@@ -306,7 +308,7 @@ def test_build_compaction_run_completion_messages_not_compaction_run() -> None:
         "dynamodb": {
             "Keys": {
                 "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#METADATA"},
+                "SK": {"S": "RECEIPT#00001#PLACE"},
             },
             "NewImage": {},
         },
@@ -344,13 +346,13 @@ def test_build_compaction_run_completion_messages_with_metrics() -> None:
 # Test build_entity_change_message
 
 
-def test_build_entity_change_message_metadata_modify() -> None:
-    """Test building message for metadata modification."""
-    record = _create_metadata_modify_record()
+def test_build_entity_change_message_place_modify() -> None:
+    """Test building message for place modification."""
+    record = _create_place_modify_record()
     message = build_entity_change_message(record)
 
     assert message is not None
-    assert message.entity_type == "RECEIPT_METADATA"
+    assert message.entity_type == "RECEIPT_PLACE"
     assert message.event_name == "MODIFY"
     assert "merchant_name" in message.changes
     assert message.collections == (
@@ -373,13 +375,13 @@ def test_build_entity_change_message_word_label_remove() -> None:
 def test_build_entity_change_message_no_relevant_changes() -> None:
     """Test when there are no ChromaDB-relevant changes."""
     # Create a MODIFY record with no relevant field changes
-    metadata = _make_metadata()
+    place = _make_place()
     record = {
         "eventName": "MODIFY",
         "dynamodb": {
-            "Keys": metadata.key,
-            "OldImage": metadata.to_item(),
-            "NewImage": metadata.to_item(),  # Same as old
+            "Keys": place.key,
+            "OldImage": place.to_item(),
+            "NewImage": place.to_item(),  # Same as old
         },
     }
     message = build_entity_change_message(record)
@@ -397,7 +399,7 @@ def test_build_entity_change_message_invalid_record() -> None:
 def test_build_entity_change_message_with_metrics() -> None:
     """Test that metrics are recorded."""
     metrics = MockMetrics()
-    record = _create_metadata_modify_record()
+    record = _create_place_modify_record()
     message = build_entity_change_message(record, metrics)
 
     assert message is not None
@@ -409,12 +411,12 @@ def test_build_entity_change_message_with_metrics() -> None:
 # Test _extract_entity_data
 
 
-def test_extract_entity_data_receipt_metadata() -> None:
-    """Test extracting data from ReceiptMetadata."""
-    entity = _make_metadata()
-    data, collections = _extract_entity_data("RECEIPT_METADATA", entity)
+def test_extract_entity_data_receipt_place() -> None:
+    """Test extracting data from ReceiptPlace."""
+    entity = _make_place()
+    data, collections = _extract_entity_data("RECEIPT_PLACE", entity)
 
-    assert data["entity_type"] == "RECEIPT_METADATA"
+    assert data["entity_type"] == "RECEIPT_PLACE"
     assert data["image_id"] == "550e8400-e29b-41d4-a716-446655440000"
     assert data["receipt_id"] == 1
     assert collections == [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
@@ -436,15 +438,15 @@ def test_extract_entity_data_receipt_word_label() -> None:
 
 def test_extract_entity_data_none_entity() -> None:
     """Test with None entity."""
-    data, collections = _extract_entity_data("RECEIPT_METADATA", None)
+    data, collections = _extract_entity_data("RECEIPT_PLACE", None)
     assert data == {}
     assert collections == []
 
 
 def test_extract_entity_data_mismatched_type() -> None:
     """Test with mismatched entity type."""
-    entity = _make_metadata()
-    # Pass ReceiptMetadata with RECEIPT_WORD_LABEL type
+    entity = _make_place()
+    # Pass ReceiptPlace with RECEIPT_WORD_LABEL type
     data, collections = _extract_entity_data("RECEIPT_WORD_LABEL", entity)
     assert data == {}
     assert collections == []
@@ -452,7 +454,7 @@ def test_extract_entity_data_mismatched_type() -> None:
 
 def test_extract_entity_data_unknown_type() -> None:
     """Test with unknown entity type."""
-    entity = _make_metadata()
+    entity = _make_place()
     data, collections = _extract_entity_data("UNKNOWN_TYPE", entity)
     assert data == {}
     assert collections == []

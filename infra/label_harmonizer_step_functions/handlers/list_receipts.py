@@ -60,15 +60,15 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     total_scanned = 0
 
     try:
-        # List all receipt metadatas to get receipt keys
+        # List all receipt places to get receipt keys
         while True:
-            metadatas, last_evaluated_key = dynamo.list_receipt_metadatas(
+            places, last_evaluated_key = dynamo.list_receipt_places(
                 limit=1000, last_evaluated_key=last_evaluated_key
             )
 
-            for metadata in metadatas:
+            for place in places:
                 total_scanned += 1
-                receipts.append((metadata.image_id, metadata.receipt_id))
+                receipts.append((place.image_id, place.receipt_id))
 
                 # Apply limit if specified
                 if limit and len(receipts) >= limit:
@@ -85,7 +85,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         raise
 
     logger.info(
-        "Finished scanning: %s metadatas, %s receipts",
+        "Finished scanning: %s places, %s receipts",
         total_scanned,
         len(receipts),
     )

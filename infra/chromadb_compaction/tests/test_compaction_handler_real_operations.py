@@ -32,8 +32,8 @@ class TestCompactionHandlerOrchestration:
             "MAX_HEARTBEAT_FAILURES": "3",
         },
     )
-    def test_process_metadata_update_message(self):
-        """Test Lambda orchestration of metadata updates with real receipt_label operations."""
+    def test_process_place_update_message(self):
+        """Test Lambda orchestration of place updates with real receipt_label operations."""
         # Create real AWS services with moto
         sqs = boto3.client("sqs", region_name="us-east-1")
         s3 = boto3.client("s3", region_name="us-east-1")
@@ -155,15 +155,15 @@ class TestCompactionHandlerOrchestration:
 
         # Create test SQS message
         message = {
-            "entity_type": "RECEIPT_METADATA",
+            "entity_type": "RECEIPT_PLACE",
             "event_name": "MODIFY",
             "entity_data": {
                 "image_id": "test",
                 "receipt_id": 1,
-                "canonical_merchant_name": "Target Store",
+                "merchant_name": "Target Store",
             },
             "changes": {
-                "canonical_merchant_name": {
+                "merchant_name": {
                     "old": "Target",
                     "new": "Target Store",
                 }

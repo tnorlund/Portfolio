@@ -5,7 +5,7 @@ State definition for the Receipt Grouping agent.
 from typing import Annotated, Any, Optional
 
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GroupingState(BaseModel):
@@ -22,8 +22,6 @@ class GroupingState(BaseModel):
         default=None, description="Final grouping when complete"
     )
 
-    class Config:
-        arbitrary_types_allowed = True
-
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 

@@ -7,7 +7,7 @@ Provides common state management patterns, merge functions, and type helpers.
 from typing import Any, Callable, Optional
 
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BaseAgentState(BaseModel):
@@ -28,8 +28,7 @@ class BaseAgentState(BaseModel):
         default_factory=list, description="Errors encountered during execution"
     )
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 def create_state_merge_fn(
@@ -64,6 +63,5 @@ def create_state_merge_fn(
         return result
 
     return default_merge
-
 
 
