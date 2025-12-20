@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
@@ -34,7 +35,11 @@ def fetch_merchant_counts():
         # Skip receipts with empty or missing merchant names
         if not merchant_name or not merchant_name.strip():
             continue
-        normalized_name = merchant_name.strip().upper()
+        normalized_name = merchant_name.upper()
+        normalized_name = re.sub(r"[^A-Z0-9]+", "_", normalized_name)
+        normalized_name = normalized_name.strip("_")
+        if not normalized_name:
+            continue
         if normalized_name not in merchant_counts:
             merchant_counts[normalized_name] = 0
         merchant_counts[normalized_name] += 1

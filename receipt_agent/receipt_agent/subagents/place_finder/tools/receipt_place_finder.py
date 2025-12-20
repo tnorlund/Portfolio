@@ -83,8 +83,9 @@ import asyncio
 import logging
 import re
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +100,9 @@ FIELD_NAME_MAPPING = {
     "address": "address",
     "place_id": "place_id",
 }
+
+# Sentinel values that represent missing/invalid place IDs.
+PLACE_ID_SENTINELS = {"", "null", "NO_RESULTS", "INVALID"}
 
 # Address suffixes for address detection
 ADDRESS_SUFFIXES = [
@@ -375,11 +379,9 @@ class ReceiptPlaceFinder:
 
                 for place in batch:
                     # Check if any field is missing
-                    has_place_id = place.place_id and place.place_id not in (
-                        "",
-                        "null",
-                        "NO_RESULTS",
-                        "INVALID",
+                    has_place_id = (
+                        place.place_id
+                        and place.place_id not in PLACE_ID_SENTINELS
                     )
                     has_merchant_name = bool(
                         place.merchant_name and place.merchant_name.strip()
@@ -774,7 +776,10 @@ class ReceiptPlaceFinder:
                 # Update existing ReceiptPlace
                 updated_fields = []
 
-                if match.place_id and not existing_place.place_id:
+                if match.place_id and (
+                    not existing_place.place_id
+                    or existing_place.place_id in PLACE_ID_SENTINELS
+                ):
                     existing_place.place_id = match.place_id
                     updated_fields.append("place_id")
 
@@ -851,16 +856,7 @@ class ReceiptPlaceFinder:
                     updated_fields.append("validation_status")
 
                 if updated_fields:
-                    self.dynamo.update_receipt_place(
-                        image_id=existing_place.image_id,
-                        receipt_id=existing_place.receipt_id,
-                        place_id=existing_place.place_id,
-                        merchant_name=existing_place.merchant_name,
-                        formatted_address=existing_place.formatted_address,
-                        phone_number=existing_place.phone_number,
-                        matched_fields=existing_place.matched_fields,
-                        validation_status=existing_place.validation_status,
-                    )
+                    self.dynamo.update_receipt_place(existing_place)
                     result.total_updated += 1
 
                     logger.debug(
@@ -934,6 +930,17 @@ class ReceiptPlaceFinder:
             return
 
         try:
+            merchant_name = (
+                match.merchant_name or match.receipt.merchant_name or ""
+            )
+            if not merchant_name.strip():
+                logger.warning(
+                    "Skipping ReceiptPlace creation due to empty "
+                    "merchant_name for %s#%s",
+                    match.receipt.image_id,
+                    match.receipt.receipt_id,
+                )
+                return
             # Get rich place data from v1 API
             logger.debug(
                 f"Fetching place details for {match.place_id} "
@@ -1015,7 +1022,7 @@ class ReceiptPlaceFinder:
                 image_id=match.receipt.image_id,
                 receipt_id=match.receipt.receipt_id,
                 place_id=match.place_id,
-                merchant_name=match.merchant_name or "",
+                merchant_name=merchant_name,
                 merchant_category=place_v1.primary_type or "",
                 merchant_types=place_v1.types or [],
                 formatted_address=place_v1.formatted_address or "",

@@ -86,7 +86,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Query NEEDS_REVIEW labels
     labels: List[Dict[str, Any]] = []
     labels_processed = 0
-    merchant_name_cache: Dict[str, str] = {}  # Cache merchant names
+    merchant_name_cache: Dict[str, Optional[str]] = {}  # Cache merchant names
 
     try:
         # Query by validation_status (one or many)

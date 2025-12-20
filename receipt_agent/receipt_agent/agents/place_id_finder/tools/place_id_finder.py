@@ -953,6 +953,15 @@ class PlaceIdFinder:
                     merchant_name = (
                         match.place_name or match.receipt.merchant_name or ""
                     )
+                    if not merchant_name.strip():
+                        logger.warning(
+                            "Skipping place creation due to empty merchant_name "
+                            "for %s#%s",
+                            match.receipt.image_id,
+                            match.receipt.receipt_id,
+                        )
+                        result.total_skipped += 1
+                        continue
                     address = (
                         match.place_address or match.receipt.address or ""
                     )
@@ -1101,12 +1110,21 @@ class PlaceIdFinder:
                             MerchantValidationStatus,
                         )
                         from receipt_dynamo.entities import ReceiptPlace
-
+                        merchant_name = match.receipt.merchant_name or ""
+                        if not merchant_name.strip():
+                            logger.warning(
+                                "Skipping needs-review place creation due to "
+                                "empty merchant_name for %s#%s",
+                                match.receipt.image_id,
+                                match.receipt.receipt_id,
+                            )
+                            result.total_skipped += 1
+                            continue
                         place = ReceiptPlace(
                             image_id=match.receipt.image_id,
                             receipt_id=match.receipt.receipt_id,
                             place_id="",  # No place_id found
-                            merchant_name=match.receipt.merchant_name or "",
+                            merchant_name=merchant_name,
                             formatted_address=match.receipt.address or "",
                             phone_number=match.receipt.phone or "",
                             reasoning=match.error

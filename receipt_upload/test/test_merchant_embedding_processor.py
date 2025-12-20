@@ -481,6 +481,12 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
 
         # Should not call update when no place data exists
         mock_dynamo_client.update_receipt_place.assert_not_called()
+        # Should call add to create new place
+        mock_dynamo_client.add_receipt_place.assert_called_once()
+        call_args = mock_dynamo_client.add_receipt_place.call_args[0]
+        new_place = call_args[0]
+        assert new_place.place_id == "ChIJ_test_place"
+        assert new_place.merchant_name == "Test Store"
 
 
 class TestMerchantResolvingEmbeddingProcessorInit:

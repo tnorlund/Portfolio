@@ -151,7 +151,7 @@ def test_parse_entity_invalid_entity_type() -> None:
 
 
 def test_parse_entity_value_error_with_metrics() -> None:
-    """Test that ValueError is caught and metrics recorded."""
+    """Test that unexpected parsing errors are caught and metrics recorded."""
     metrics = MockMetrics()
     pk = "IMAGE#550e8400-e29b-41d4-a716-446655440000"
     sk = "RECEIPT#00001#PLACE"

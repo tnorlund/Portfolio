@@ -224,7 +224,7 @@ def test_send_batch_to_queue_compaction_run_message_group(
     assert entries[0]["MessageGroupId"] == "COMPACTION_RUN:img-456:lines"
 
 
-def test_send_batch_to_queue_receipt_metadata_message_group(
+def test_send_batch_to_queue_receipt_place_message_group(
     env_test_queue: None,
 ) -> None:
     """Test message group ID for RECEIPT_PLACE."""
@@ -247,7 +247,7 @@ def test_send_batch_to_queue_receipt_metadata_message_group(
     assert sent == 1
     call_args = mock_sqs.send_message_batch.call_args
     entries = call_args[1]["Entries"]
-    assert entries[0]["MessageGroupId"] == "COMPACTION_RUN:img-789:words"
+    assert entries[0]["MessageGroupId"] == "RECEIPT_PLACE:img-789:words"
 
 
 def test_send_batch_to_queue_unknown_entity_type_fallback(

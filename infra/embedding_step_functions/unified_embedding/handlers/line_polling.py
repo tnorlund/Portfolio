@@ -264,6 +264,13 @@ async def _ensure_receipt_place_async(
                 f"Place finder could not create place for {image_id}#{receipt_id}"
             )
 
+        merchant_name = result.get("merchant_name") or ""
+        if not merchant_name.strip():
+            raise ValueError(
+                "Place finder returned empty merchant_name for "
+                f"{image_id}#{receipt_id}"
+            )
+
         matched_fields = []
         if result.get("merchant_name"):
             matched_fields.append("name")
@@ -278,7 +285,7 @@ async def _ensure_receipt_place_async(
             image_id=image_id,
             receipt_id=receipt_id,
             place_id=result.get("place_id") or "",
-            merchant_name=result.get("merchant_name") or "",
+            merchant_name=merchant_name,
             matched_fields=matched_fields,
             timestamp=datetime.now(timezone.utc),
             merchant_category="",
@@ -1032,6 +1039,34 @@ def _handle_internal_core(
             logger.info(
                 "Processing partial results", count=len(partial_results)
             )
+
+            # Ensure receipt_place exists for partial results
+            missing_places = []
+            for receipt_id, image_id in get_unique_receipt_and_image_ids(
+                partial_results
+            ):
+                try:
+                    _ensure_receipt_place(
+                        image_id,
+                        receipt_id,
+                        dynamo_client,
+                        line_results=partial_results,
+                        batch_id=batch_id,
+                    )
+                    dynamo_client.get_receipt_place(image_id, receipt_id)
+                except Exception:
+                    logger.exception(
+                        "Receipt place missing for partial results",
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                    )
+                    missing_places.append((image_id, receipt_id))
+            if missing_places:
+                raise ValueError(
+                    "Receipt place is required but missing for "
+                    f"{len(missing_places)} receipt(s) in partial results. "
+                    f"Failed to create place for: {missing_places[:5]}"
+                )
 
             # Get receipt details for successful results
             descriptions = _get_receipt_descriptions(partial_results)

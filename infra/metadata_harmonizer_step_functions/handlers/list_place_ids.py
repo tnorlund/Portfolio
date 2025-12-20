@@ -1,7 +1,7 @@
 """
 List Place IDs Handler (Zip Lambda)
 
-Scans DynamoDB for all receipt metadatas and extracts unique place_ids.
+Scans DynamoDB for all receipt places and extracts unique place_ids.
 Groups place_ids into batches for Step Functions Map processing.
 
 For large place_id groups (e.g., >20 receipts), splits them into sub-batches
@@ -122,7 +122,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 continue
 
     except Exception as e:
-        logger.error("Error scanning places: %s", e)
+        logger.exception("Error scanning places: %s", e)
         raise
 
     logger.info(

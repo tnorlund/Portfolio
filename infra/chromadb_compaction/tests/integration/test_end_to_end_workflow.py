@@ -38,8 +38,8 @@ class TestEndToEndWorkflow:
             "MAX_HEARTBEAT_FAILURES": "3",
         },
     )
-    def test_complete_metadata_update_workflow(self):
-        """Test end-to-end metadata update from DynamoDB stream to ChromaDB."""
+    def test_complete_place_update_workflow(self):
+        """Test end-to-end place update from DynamoDB stream to ChromaDB."""
         # Set up all AWS services with moto
         sqs = boto3.client("sqs", region_name="us-east-1")
         s3 = boto3.client("s3", region_name="us-east-1")

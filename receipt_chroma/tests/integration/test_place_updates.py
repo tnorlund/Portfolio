@@ -1,5 +1,6 @@
 """Integration tests for place update processing."""
 
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -20,8 +21,8 @@ class TestPlaceUpdates:
     """Test place update processing with real ChromaDB operations."""
 
     def test_apply_place_updates_modify_event(
-        self, temp_chromadb_dir, mock_logger, dynamo_client
-    ):
+        self, temp_chromadb_dir: Any, mock_logger: Any, dynamo_client: Any
+    ) -> None:
         """Test applying MODIFY place updates to ChromaDB."""
         # Generate a valid UUID for testing
         test_image_id = str(uuid4())
@@ -100,8 +101,8 @@ class TestPlaceUpdates:
         client.close()
 
     def test_apply_place_updates_remove_event(
-        self, temp_chromadb_dir, mock_logger, dynamo_client
-    ):
+        self, temp_chromadb_dir: Any, mock_logger: Any, dynamo_client: Any
+    ) -> None:
         """Test applying REMOVE place updates to ChromaDB."""
         # Generate a valid UUID for testing
         test_image_id = str(uuid4())
@@ -173,8 +174,8 @@ class TestPlaceUpdates:
         client.close()
 
     def test_apply_place_updates_to_words_collection(
-        self, temp_chromadb_dir, mock_logger, dynamo_client
-    ):
+        self, temp_chromadb_dir: Any, mock_logger: Any, dynamo_client: Any
+    ) -> None:
         """Test applying place updates to words collection."""
         # Generate a valid UUID for testing
         test_image_id = str(uuid4())
@@ -257,8 +258,8 @@ class TestPlaceUpdates:
         client.close()
 
     def test_apply_place_updates_multiple_messages(
-        self, temp_chromadb_dir, mock_logger, dynamo_client
-    ):
+        self, temp_chromadb_dir: Any, mock_logger: Any, dynamo_client: Any
+    ) -> None:
         """Test applying multiple place update messages."""
         # Generate a valid UUID for testing
         test_image_id = str(uuid4())
@@ -353,8 +354,8 @@ class TestPlaceUpdates:
         client.close()
 
     def test_apply_place_updates_collection_not_found(
-        self, temp_chromadb_dir, mock_logger
-    ):
+        self, temp_chromadb_dir: Any, mock_logger: Any
+    ) -> None:
         """Test handling when collection doesn't exist."""
         # Create an empty ChromaDB client
         client = ChromaClient(
@@ -382,8 +383,8 @@ class TestPlaceUpdates:
         client.close()
 
     def test_apply_place_updates_with_error_handling(
-        self, temp_chromadb_dir, mock_logger
-    ):
+        self, temp_chromadb_dir: Any, mock_logger: Any
+    ) -> None:
         """Test error handling when place update fails."""
         # Create a ChromaDB snapshot with test data
         client = ChromaClient(
@@ -430,8 +431,8 @@ class TestPlaceUpdates:
         client.close()
 
     def test_apply_place_updates_no_messages(
-        self, temp_chromadb_dir, mock_logger
-    ):
+        self, temp_chromadb_dir: Any, mock_logger: Any
+    ) -> None:
         """Test applying place updates with no messages."""
         client = ChromaClient(
             persist_directory=temp_chromadb_dir, mode="write"

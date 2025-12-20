@@ -122,6 +122,30 @@ def test_get_chromadb_relevant_changes_for_place() -> None:
     }
 
 
+def test_get_chromadb_relevant_changes_for_place_address() -> None:
+    old = _make_place()
+    new = _make_place()
+    new.formatted_address = "456 Oak Ave"
+
+    changes = get_chromadb_relevant_changes("RECEIPT_PLACE", old, new)
+
+    assert "formatted_address" in changes
+    assert changes["formatted_address"].old == "123 Main St"
+    assert changes["formatted_address"].new == "456 Oak Ave"
+
+
+def test_get_chromadb_relevant_changes_for_place_phone() -> None:
+    old = _make_place()
+    new = _make_place()
+    new.phone_number = "555-000-1234"
+
+    changes = get_chromadb_relevant_changes("RECEIPT_PLACE", old, new)
+
+    assert "phone_number" in changes
+    assert changes["phone_number"].old == "555-123-4567"
+    assert changes["phone_number"].new == "555-000-1234"
+
+
 def test_get_chromadb_relevant_changes_for_word_label() -> None:
     old = _make_word_label("TOTAL")
     new = _make_word_label("TOTAL")
