@@ -177,7 +177,7 @@ async def _ensure_receipt_place_async(
         record.chroma_id: record.embedding for record in line_records
     } or None
 
-    chroma_root = Path("/tmp/chroma/metadata_finder")
+    chroma_root = Path("/tmp/chroma/place_finder")
     lines_dir = chroma_root / "lines"
     words_dir = chroma_root / "words"
     lines_dir.mkdir(parents=True, exist_ok=True)
