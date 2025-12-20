@@ -64,8 +64,9 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
 
     start_time = time.time()
     logger.info(
-        f"Computing patterns for merchant '{merchant_name}' "
-        f"(max_receipts={max_training_receipts})"
+        "Computing patterns for merchant '%s' (max_receipts=%s)",
+        merchant_name,
+        max_training_receipts,
     )
 
     # Import DynamoDB client
@@ -114,14 +115,20 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
                 )
             except Exception as e:
                 logger.warning(
-                    f"Error loading receipt {place.image_id}#{place.receipt_id}: {e}"
+                    "Error loading receipt %s#%s: %s",
+                    place.image_id,
+                    place.receipt_id,
+                    e,
                 )
                 continue
 
         if not last_key:
             break
 
-    logger.info(f"Loaded {len(other_receipt_data)} training receipts")
+    logger.info(
+        "Loaded %s training receipts",
+        len(other_receipt_data),
+    )
 
     if not other_receipt_data:
         # No training data - save empty patterns
@@ -159,7 +166,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
     )
 
     compute_time = time.time() - compute_start
-    logger.info(f"Pattern computation completed in {compute_time:.2f}s")
+    logger.info("Pattern computation completed in %.2fs", compute_time)
 
     # Serialize patterns to S3
     patterns_s3_key = (
@@ -176,8 +183,10 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
 
     total_time = time.time() - start_time
     logger.info(
-        f"Saved patterns to s3://{batch_bucket}/{patterns_s3_key} "
-        f"(total time: {total_time:.2f}s)"
+        "Saved patterns to s3://%s/%s (total time: %.2fs)",
+        batch_bucket,
+        patterns_s3_key,
+        total_time,
     )
 
     pattern_stats = None

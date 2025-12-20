@@ -58,7 +58,7 @@ async def run_test():
             "DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22"
         )
         dynamo = DynamoClient(table_name=table_name)
-        logger.info(f"Using DynamoDB table: {table_name}")
+        logger.info("Using DynamoDB table: %s", table_name)
 
         # Find a Sprouts receipt with actual data
         logger.info("Finding a Sprouts receipt with words/labels...")
@@ -97,8 +97,12 @@ async def run_test():
             )
             return
 
-        logger.info(f"Testing receipt: {image_id}#{receipt_id}")
-        logger.info(f"Receipt has {len(words)} words and {len(labels)} labels")
+        logger.info("Testing receipt: %s#%s", image_id, receipt_id)
+        logger.info(
+            "Receipt has %s words and %s labels",
+            len(words),
+            len(labels),
+        )
 
         # Create graph and run evaluation with Ollama Cloud
         from receipt_agent.config.settings import get_settings
@@ -106,7 +110,7 @@ async def run_test():
         settings = get_settings()
 
         logger.info("Creating label evaluator graph with Ollama Cloud LLM...")
-        logger.info(f"  Ollama base URL: {settings.ollama_base_url}")
+        logger.info("  Ollama base URL: %s", settings.ollama_base_url)
         logger.info("  Ollama model: gpt-oss:20b-cloud")
 
         # Get API key from settings or Pulumi secrets
@@ -131,7 +135,7 @@ async def run_test():
                             "Loaded Ollama API key from Pulumi secrets"
                         )
             except Exception as e:
-                logger.debug(f"Could not load Ollama API key from Pulumi: {e}")
+                logger.debug("Could not load Ollama API key from Pulumi: %s", e)
 
         if not ollama_api_key:
             logger.error(

@@ -63,7 +63,7 @@ def handler(event: dict[str, Any], _context: Any) -> "FetchReceiptDataOutput":
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
 
-    logger.info(f"Fetching data for receipt {image_id}#{receipt_id}")
+    logger.info("Fetching data for receipt %s#%s", image_id, receipt_id)
 
     # Import DynamoDB client and serialization
     from receipt_dynamo import DynamoClient
@@ -88,12 +88,15 @@ def handler(event: dict[str, Any], _context: Any) -> "FetchReceiptDataOutput":
     try:
         place = dynamo.get_receipt_place(image_id, receipt_id)
     except Exception as e:
-        logger.warning(f"Could not fetch place data: {e}")
+        logger.warning("Could not fetch place data: %s", e)
         place = None
 
     logger.info(
-        f"Fetched {len(words)} words, {len(labels)} labels "
-        f"for {image_id}#{receipt_id}"
+        "Fetched %s words, %s labels for %s#%s",
+        len(words),
+        len(labels),
+        image_id,
+        receipt_id,
     )
 
     # Create data payload
@@ -115,7 +118,11 @@ def handler(event: dict[str, Any], _context: Any) -> "FetchReceiptDataOutput":
         ContentType="application/json",
     )
 
-    logger.info(f"Uploaded receipt data to s3://{batch_bucket}/{data_key}")
+    logger.info(
+        "Uploaded receipt data to s3://%s/%s",
+        batch_bucket,
+        data_key,
+    )
 
     return {
         "data_s3_key": data_key,

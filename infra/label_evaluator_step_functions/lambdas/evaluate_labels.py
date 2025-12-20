@@ -106,7 +106,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
     try:
         # 1. Load target receipt data from S3
         logger.info(
-            f"Loading receipt data from s3://{batch_bucket}/{data_s3_key}"
+            "Loading receipt data from s3://%s/%s",
+            batch_bucket,
+            data_s3_key,
         )
         target_data = load_json_from_s3(batch_bucket, data_s3_key)
 
@@ -125,23 +127,29 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         place = deserialize_place(target_data.get("place"))
 
         logger.info(
-            f"Loaded {len(words)} words, {len(labels)} labels "
-            f"for {image_id}#{receipt_id}"
+            "Loaded %s words, %s labels for %s#%s",
+            len(words),
+            len(labels),
+            image_id,
+            receipt_id,
         )
 
         # 2. Load pre-computed patterns from S3
         merchant_patterns = None
         if patterns_s3_key:
             logger.info(
-                f"Loading patterns from s3://{batch_bucket}/{patterns_s3_key}"
+                "Loading patterns from s3://%s/%s",
+                batch_bucket,
+                patterns_s3_key,
             )
             patterns_data = load_json_from_s3(batch_bucket, patterns_s3_key)
             merchant_patterns = deserialize_patterns(patterns_data)
 
             if merchant_patterns:
                 logger.info(
-                    f"Loaded patterns for {merchant_patterns.merchant_name} "
-                    f"({merchant_patterns.receipt_count} receipts)"
+                    "Loaded patterns for %s (%s receipts)",
+                    merchant_patterns.merchant_name,
+                    merchant_patterns.receipt_count,
                 )
             else:
                 logger.info("No patterns available for merchant")
@@ -174,8 +182,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
 
         compute_time = time.time() - compute_start
         logger.info(
-            f"Compute-only graph completed in {compute_time:.3f}s, "
-            f"found {result.get('issues_found', 0)} issues"
+            "Compute-only graph completed in %.3fs, found %s issues",
+            compute_time,
+            result.get("issues_found", 0),
         )
 
         # 5. Upload results to S3
@@ -183,7 +192,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         upload_json_to_s3(batch_bucket, results_s3_key, result)
 
         logger.info(
-            f"Uploaded results to s3://{batch_bucket}/{results_s3_key}"
+            "Uploaded results to s3://%s/%s",
+            batch_bucket,
+            results_s3_key,
         )
 
         # 6. Log metrics
@@ -225,7 +236,7 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         }
 
     except Exception as e:
-        logger.error(f"Error evaluating labels: {e}", exc_info=True)
+        logger.error("Error evaluating labels: %s", e, exc_info=True)
 
         # Log failure metrics
         from utils.emf_metrics import emf_metrics

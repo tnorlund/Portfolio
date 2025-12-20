@@ -28,4 +28,4 @@ def flush_langsmith_traces() -> None:
             client.flush()
             logger.info("LangSmith traces flushed")
         except Exception as e:
-            logger.warning(f"Failed to flush LangSmith traces: {e}")
+            logger.warning("Failed to flush LangSmith traces: %s", e)

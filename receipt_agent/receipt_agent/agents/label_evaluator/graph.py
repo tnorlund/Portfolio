@@ -144,14 +144,16 @@ Decide if the current label is correct:
 - **VALID**: The label IS correct despite the flag (false positive from evaluator)
   - Example: "CHARGE" labeled PAYMENT_METHOD is valid if it's part of "CREDIT CARD CHARGE"
 
-- **INVALID**: The label IS wrong - provide the correct label from CORE_LABELS, or null if no label applies
+- **INVALID**: The label IS wrong - provide the correct label from CORE_LABELS,
+  or null if no label applies
   - Example: "Sprouts" in product area should be PRODUCT_NAME, not MERCHANT_NAME
   - Example: "Tip:" is a descriptor, not a value - it should have no label (suggested_label: null)
 
 - **NEEDS_REVIEW**: Genuinely ambiguous, needs human review
 
 Respond with ONLY a JSON object (no markdown, no explanation outside JSON):
-{{"decision": "VALID|INVALID|NEEDS_REVIEW", "reasoning": "your explanation", "suggested_label": "LABEL_NAME or null"}}"""
+{{"decision": "VALID|INVALID|NEEDS_REVIEW", "reasoning": "your explanation",
+ "suggested_label": "LABEL_NAME or null"}}"""
 
 
 def _format_core_labels() -> str:
@@ -223,7 +225,7 @@ def create_label_evaluator_graph(
             client_kwargs=client_kwargs,
             temperature=0,
         )
-        logger.info(f"Using Ollama LLM: {llm_model} at {ollama_base_url}")
+        logger.info("Using Ollama LLM: %s at %s", llm_model, ollama_base_url)
     else:
         _llm = None
         logger.warning(
@@ -254,13 +256,17 @@ def create_label_evaluator_graph(
             except Exception:
                 place = None
                 logger.warning(
-                    f"Could not fetch place data for receipt "
-                    f"{state.image_id}#{state.receipt_id}"
+                    "Could not fetch place data for receipt %s#%s",
+                    state.image_id,
+                    state.receipt_id,
                 )
 
             logger.info(
-                f"Fetched {len(words)} words and {len(labels)} labels for "
-                f"receipt {state.image_id}#{state.receipt_id}"
+                "Fetched %s words and %s labels for receipt %s#%s",
+                len(words),
+                len(labels),
+                state.image_id,
+                state.receipt_id,
             )
 
             return {
@@ -270,7 +276,7 @@ def create_label_evaluator_graph(
             }
 
         except Exception as e:
-            logger.error(f"Error fetching receipt data: {e}")
+            logger.error("Error fetching receipt data: %s", e)
             return {"error": f"Failed to fetch receipt data: {e}"}
 
     def fetch_merchant_receipts(state: EvaluatorState) -> dict:
@@ -320,13 +326,15 @@ def create_label_evaluator_graph(
 
             if not other_places:
                 logger.info(
-                    f"No other receipts found for merchant '{merchant_name}'"
+                    "No other receipts found for merchant '%s'",
+                    merchant_name,
                 )
                 return {"other_receipt_data": []}
 
             logger.info(
-                f"Found {len(other_places)} other receipts for merchant "
-                f"'{merchant_name}'"
+                "Found %s other receipts for merchant '%s'",
+                len(other_places),
+                merchant_name,
             )
 
             # Fetch words and labels for each other receipt
@@ -354,15 +362,17 @@ def create_label_evaluator_graph(
                     )
                 except Exception as e:
                     logger.warning(
-                        f"Could not fetch data for receipt "
-                        f"{other_place.image_id}#{other_place.receipt_id}: {e}"
+                        "Could not fetch data for receipt %s#%s: %s",
+                        other_place.image_id,
+                        other_place.receipt_id,
+                        e,
                     )
                     continue
 
             return {"other_receipt_data": other_receipt_data}
 
         except Exception as e:
-            logger.error(f"Error fetching merchant receipts: {e}")
+            logger.error("Error fetching merchant receipts: %s", e)
             return {"other_receipt_data": []}
 
     def build_spatial_context(state: EvaluatorState) -> dict:
@@ -381,8 +391,9 @@ def create_label_evaluator_graph(
         visual_lines = assemble_visual_lines(word_contexts)
 
         logger.info(
-            f"Built {len(word_contexts)} word contexts in "
-            f"{len(visual_lines)} visual lines"
+            "Built %s word contexts in %s visual lines",
+            len(word_contexts),
+            len(visual_lines),
         )
 
         return {
@@ -398,8 +409,8 @@ def create_label_evaluator_graph(
         # Use pre-computed patterns if already provided
         if state.merchant_patterns:
             logger.info(
-                f"Using pre-computed patterns "
-                f"({state.merchant_patterns.receipt_count} receipts)"
+                "Using pre-computed patterns (%s receipts)",
+                state.merchant_patterns.receipt_count,
             )
             return {}  # Don't overwrite existing patterns
 
@@ -417,8 +428,9 @@ def create_label_evaluator_graph(
 
         if patterns:
             logger.info(
-                f"Computed patterns from {patterns.receipt_count} receipts: "
-                f"{len(patterns.label_positions)} label types"
+                "Computed patterns from %s receipts: %s label types",
+                patterns.receipt_count,
+                len(patterns.label_positions),
             )
 
         return {"merchant_patterns": patterns}
@@ -438,7 +450,7 @@ def create_label_evaluator_graph(
             state.visual_lines,  # Pass visual_lines for on-demand same-line lookup
         )
 
-        logger.info(f"Found {len(issues)} issues")
+        logger.info("Found %s issues", len(issues))
 
         return {"issues_found": issues}
 
@@ -502,10 +514,12 @@ def create_label_evaluator_graph(
                             similar_words, max_examples=5
                         )
                         logger.debug(
-                            f"Found {len(similar_words)} similar words for '{issue.word.text}'"
+                            "Found %s similar words for '%s'",
+                            len(similar_words),
+                            issue.word.text,
                         )
                     except Exception as e:
-                        logger.warning(f"Error querying similar words: {e}")
+                        logger.warning("Error querying similar words: %s", e)
                         similar_words_text = (
                             f"Error querying similar words: {e}"
                         )
@@ -560,8 +574,9 @@ def create_label_evaluator_graph(
                     # Validate suggested_label is from CORE_LABELS (or None)
                     if suggested_label and suggested_label not in CORE_LABELS:
                         logger.warning(
-                            f"LLM suggested label '{suggested_label}' not in CORE_LABELS, "
-                            f"ignoring suggestion"
+                            "LLM suggested label '%s' not in CORE_LABELS, "
+                            "ignoring suggestion",
+                            suggested_label,
                         )
                         suggested_label = None
 
@@ -573,7 +588,7 @@ def create_label_evaluator_graph(
                     )
 
                 except json.JSONDecodeError as e:
-                    logger.warning(f"Failed to parse LLM response: {e}")
+                    logger.warning("Failed to parse LLM response: %s", e)
                     review_result = ReviewResult(
                         issue=issue,
                         decision="NEEDS_REVIEW",
@@ -589,12 +604,17 @@ def create_label_evaluator_graph(
                 new_labels.append(label)
 
                 logger.info(
-                    f"Reviewed '{issue.word.text}': {review_result.decision} - {reasoning[:50]}..."
+                    "Reviewed '%s': %s - %s...",
+                    issue.word.text,
+                    review_result.decision,
+                    reasoning[:50],
                 )
 
             except Exception as e:
                 logger.error(
-                    f"Error reviewing issue for '{issue.word.text}': {e}"
+                    "Error reviewing issue for '%s': %s",
+                    issue.word.text,
+                    e,
                 )
                 # Fall back to evaluator result
                 review_result = ReviewResult(
@@ -608,7 +628,7 @@ def create_label_evaluator_graph(
                 label = _create_evaluation_label(issue, review_result)
                 new_labels.append(label)
 
-        logger.info(f"LLM reviewed {len(review_results)} issues")
+        logger.info("LLM reviewed %s issues", len(review_results))
 
         return {
             "review_results": review_results,
@@ -627,10 +647,11 @@ def create_label_evaluator_graph(
         try:
             _dynamo_client.add_receipt_word_labels(state.new_labels)
             logger.info(
-                f"Wrote {len(state.new_labels)} evaluation labels to DynamoDB"
+                "Wrote %s evaluation labels to DynamoDB",
+                len(state.new_labels),
             )
         except Exception as e:
-            logger.error(f"Error writing evaluation results: {e}")
+            logger.error("Error writing evaluation results: %s", e)
             return {"error": f"Failed to write evaluation results: {e}"}
 
         return {}
@@ -743,7 +764,7 @@ async def run_label_evaluator(
         skip_llm_review=skip_llm_review,
     )
 
-    logger.info(f"Starting label evaluation for {image_id}#{receipt_id}")
+    logger.info("Starting label evaluation for %s#%s", image_id, receipt_id)
 
     try:
         config = {
@@ -795,15 +816,16 @@ async def run_label_evaluator(
             )
 
         logger.info(
-            f"Evaluation complete: {result['issues_found']} issues, "
-            f"{len(review_results)} reviewed, "
-            f"{result['labels_written']} labels written"
+            "Evaluation complete: %s issues, %s reviewed, %s labels written",
+            result["issues_found"],
+            len(review_results),
+            result["labels_written"],
         )
 
         return result
 
     except Exception as e:
-        logger.error(f"Error in label evaluation: {e}")
+        logger.error("Error in label evaluation: %s", e)
         return {
             "image_id": image_id,
             "receipt_id": receipt_id,
@@ -936,7 +958,9 @@ def create_compute_only_graph(
         if not state.labels:
             # Labels can be empty for unlabeled receipts, but log warning
             logger.warning(
-                f"No labels for receipt {state.image_id}#{state.receipt_id}"
+                "No labels for receipt %s#%s",
+                state.image_id,
+                state.receipt_id,
             )
 
         # other_receipt_data can be empty (no merchant match)
@@ -951,9 +975,10 @@ def create_compute_only_graph(
             return {"error": error_msg}
 
         logger.info(
-            f"Validated state: {len(state.words)} words, "
-            f"{len(state.labels)} labels, "
-            f"{len(state.other_receipt_data)} training receipts"
+            "Validated state: %s words, %s labels, %s training receipts",
+            len(state.words),
+            len(state.labels),
+            len(state.other_receipt_data),
         )
         return {}
 
@@ -973,8 +998,9 @@ def create_compute_only_graph(
         visual_lines = assemble_visual_lines(word_contexts)
 
         logger.info(
-            f"Built {len(word_contexts)} word contexts in "
-            f"{len(visual_lines)} visual lines"
+            "Built %s word contexts in %s visual lines",
+            len(word_contexts),
+            len(visual_lines),
         )
 
         return {
@@ -985,9 +1011,11 @@ def create_compute_only_graph(
     def compute_patterns(state: EvaluatorState) -> dict:
         """Compute merchant patterns from other receipts."""
         logger.info(
-            f"compute_patterns: entered, error={state.error}, "
-            f"merchant_patterns={state.merchant_patterns is not None}, "
-            f"other_receipt_data={len(state.other_receipt_data) if state.other_receipt_data else 0}"
+            "compute_patterns: entered, error=%s, merchant_patterns=%s, "
+            "other_receipt_data=%s",
+            state.error,
+            state.merchant_patterns is not None,
+            len(state.other_receipt_data) if state.other_receipt_data else 0,
         )
         if state.error:
             return {}
@@ -995,8 +1023,8 @@ def create_compute_only_graph(
         # Use pre-computed patterns if already provided
         if state.merchant_patterns:
             logger.info(
-                f"Using pre-computed patterns "
-                f"({state.merchant_patterns.receipt_count} receipts)"
+                "Using pre-computed patterns (%s receipts)",
+                state.merchant_patterns.receipt_count,
             )
             return {}  # Don't overwrite existing patterns
 
@@ -1019,8 +1047,9 @@ def create_compute_only_graph(
 
         if patterns:
             logger.info(
-                f"Computed patterns from {patterns.receipt_count} receipts: "
-                f"{len(patterns.label_positions)} label types"
+                "Computed patterns from %s receipts: %s label types",
+                patterns.receipt_count,
+                len(patterns.label_positions),
             )
 
         return {"merchant_patterns": patterns}
@@ -1028,9 +1057,11 @@ def create_compute_only_graph(
     def evaluate_labels(state: EvaluatorState) -> dict:
         """Apply validation rules and detect issues."""
         logger.info(
-            f"evaluate_labels: entered, error={state.error}, "
-            f"word_contexts={len(state.word_contexts) if state.word_contexts else 0}, "
-            f"merchant_patterns={state.merchant_patterns is not None}"
+            "evaluate_labels: entered, error=%s, word_contexts=%s, "
+            "merchant_patterns=%s",
+            state.error,
+            len(state.word_contexts) if state.word_contexts else 0,
+            state.merchant_patterns is not None,
         )
         if state.error:
             return {}
@@ -1046,7 +1077,7 @@ def create_compute_only_graph(
             state.visual_lines,  # Pass visual_lines for on-demand same-line lookup
         )
 
-        logger.info(f"Found {len(issues)} issues")
+        logger.info("Found %s issues", len(issues))
 
         return {"issues_found": issues}
 
@@ -1085,8 +1116,9 @@ async def run_compute_only(
         Evaluation result dict with issues found
     """
     logger.info(
-        f"Starting compute-only evaluation for "
-        f"{state.image_id}#{state.receipt_id}"
+        "Starting compute-only evaluation for %s#%s",
+        state.image_id,
+        state.receipt_id,
     )
 
     try:
@@ -1133,13 +1165,14 @@ async def run_compute_only(
             )
 
         logger.info(
-            f"Compute-only evaluation complete: {result['issues_found']} issues"
+            "Compute-only evaluation complete: %s issues",
+            result["issues_found"],
         )
 
         return result
 
     except Exception as e:
-        logger.error(f"Error in compute-only evaluation: {e}")
+        logger.error("Error in compute-only evaluation: %s", e)
         return {
             "image_id": state.image_id,
             "receipt_id": state.receipt_id,

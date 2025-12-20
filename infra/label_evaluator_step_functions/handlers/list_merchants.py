@@ -70,7 +70,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ListMerchantsOutput":
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
 
-    logger.info(f"Listing merchants with min_receipts={min_receipts}")
+    logger.info("Listing merchants with min_receipts=%s", min_receipts)
 
     # Import DynamoDB client
     from receipt_dynamo import DynamoClient
@@ -90,7 +90,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ListMerchantsOutput":
         result = dynamo.list_receipt_places(last_evaluated_key=result[1])
         all_places.extend(result[0])
 
-    logger.info(f"Found {len(all_places)} total receipt places")
+    logger.info("Found %s total receipt places", len(all_places))
 
     # Count receipts per merchant
     merchant_counts: Counter = Counter()
@@ -114,8 +114,12 @@ def handler(event: dict[str, Any], _context: Any) -> "ListMerchantsOutput":
     total_receipts = sum(m["receipt_count"] for m in qualifying_merchants)
 
     logger.info(
-        f"Found {len(qualifying_merchants)} merchants with >= {min_receipts} receipts "
-        f"({total_receipts} total receipts). Skipped {skipped_count} merchants."
+        "Found %s merchants with >= %s receipts (%s total receipts). "
+        "Skipped %s merchants.",
+        len(qualifying_merchants),
+        min_receipts,
+        total_receipts,
+        skipped_count,
     )
 
     # Upload merchant list to S3 for reference
@@ -139,7 +143,9 @@ def handler(event: dict[str, Any], _context: Any) -> "ListMerchantsOutput":
     )
 
     logger.info(
-        f"Created merchant manifest at s3://{batch_bucket}/{manifest_key}"
+        "Created merchant manifest at s3://%s/%s",
+        batch_bucket,
+        manifest_key,
     )
 
     return {

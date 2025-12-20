@@ -81,7 +81,7 @@ def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
 
-    logger.info(f"Aggregating results for execution {execution_id}")
+    logger.info("Aggregating results for execution %s", execution_id)
 
     # Flatten nested results from distributed map
     all_results: list[ReceiptResultSummary] = []
@@ -130,7 +130,9 @@ def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
 
             except Exception as e:
                 logger.warning(
-                    f"Could not load results from {results_key}: {e}"
+                    "Could not load results from %s: %s",
+                    results_key,
+                    e,
                 )
                 # Fall back to summary in result
                 issues_found = result.get("issues_found", 0)
@@ -140,9 +142,11 @@ def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
     total_issues = sum(issue_type_counter.values())
 
     logger.info(
-        f"Aggregated {total_receipts} receipts, "
-        f"{successful_receipts} successful, {failed_receipts} failed, "
-        f"{total_issues} total issues"
+        "Aggregated %s receipts, %s successful, %s failed, %s total issues",
+        total_receipts,
+        successful_receipts,
+        failed_receipts,
+        total_issues,
     )
 
     # Build summary
@@ -188,10 +192,12 @@ def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
             ContentType="application/json",
         )
         logger.info(
-            f"Uploaded summary report to s3://{batch_bucket}/{report_key}"
+            "Uploaded summary report to s3://%s/%s",
+            batch_bucket,
+            report_key,
         )
     except Exception as e:
-        logger.error(f"Failed to upload summary report to {report_key}: {e}")
+        logger.error("Failed to upload summary report to %s: %s", report_key, e)
         raise
 
     # Also upload issues-only report for easy analysis
@@ -204,10 +210,12 @@ def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
             ContentType="application/json",
         )
         logger.info(
-            f"Uploaded issues report to s3://{batch_bucket}/{issues_key}"
+            "Uploaded issues report to s3://%s/%s",
+            batch_bucket,
+            issues_key,
         )
     except Exception as e:
-        logger.error(f"Failed to upload issues report to {issues_key}: {e}")
+        logger.error("Failed to upload issues report to %s: %s", issues_key, e)
         raise
 
     return {

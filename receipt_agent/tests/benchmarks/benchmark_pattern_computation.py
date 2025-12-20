@@ -14,19 +14,24 @@ Usage (from repo root):
     pip install -e 'receipt_agent[perf]'
 
     # Profile with 10 Sprouts receipts (default, skip LLM batching)
-    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py --merchant "Sprouts Farmers Market"
+    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py \
+        --merchant "Sprouts Farmers Market"
 
     # Include LLM batch classification (slower, more realistic)
-    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py --merchant "Sprouts Farmers Market" --include-batching
+    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py \
+        --merchant "Sprouts Farmers Market" --include-batching
 
     # Custom receipt count
-    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py --merchant "Sprouts Farmers Market" --limit 20
+    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py \
+        --merchant "Sprouts Farmers Market" --limit 20
 
     # Different merchant (use exact name from database, e.g., "Costco Wholesale", "Target Grocery")
-    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py --merchant "Costco Wholesale" --limit 10
+    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py \
+        --merchant "Costco Wholesale" --limit 10
 
     # Verbose logging
-    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py --merchant "Sprouts Farmers Market" --verbose
+    python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py \
+        --merchant "Sprouts Farmers Market" --verbose
 
 Note: Merchant names must match exactly as stored in DynamoDB. Common merchants in dev:
     - "Sprouts Farmers Market" (169 receipts)
@@ -86,7 +91,7 @@ def load_environment(stack: str = "dev") -> str:
 
         return table_name
     except Exception as e:
-        logger.error(f"Failed to load environment: {e}")
+        logger.error("Failed to load environment: %s", e)
         raise
 
 
@@ -106,7 +111,7 @@ def load_receipt_data(
     Returns:
         List of OtherReceiptData objects
     """
-    logger.info(f"Loading receipts for merchant: {merchant_name}")
+    logger.info("Loading receipts for merchant: %s", merchant_name)
 
     other_receipt_data: list[OtherReceiptData] = []
     last_evaluated_key = None
@@ -152,13 +157,19 @@ def load_receipt_data(
                     )
 
                     logger.debug(
-                        f"Loaded receipt {place.image_id}#{place.receipt_id} "
-                        f"({len(words)} words, {len(labels)} labels)"
+                        "Loaded receipt %s#%s (%s words, %s labels)",
+                        place.image_id,
+                        place.receipt_id,
+                        len(words),
+                        len(labels),
                     )
 
                 except Exception as e:
                     logger.warning(
-                        f"Failed to load receipt {place.image_id}#{place.receipt_id}: {e}"
+                        "Failed to load receipt %s#%s: %s",
+                        place.image_id,
+                        place.receipt_id,
+                        e,
                     )
                     continue
 
@@ -171,14 +182,15 @@ def load_receipt_data(
             )
 
         logger.info(
-            f"✓ Loaded {len(other_receipt_data)} receipts "
-            f"({sum(len(r.words) for r in other_receipt_data)} words total)"
+            "✓ Loaded %s receipts (%s words total)",
+            len(other_receipt_data),
+            sum(len(r.words) for r in other_receipt_data),
         )
 
         return other_receipt_data
 
     except Exception as e:
-        logger.error(f"Failed to load receipt data: {e}")
+        logger.error("Failed to load receipt data: %s", e)
         raise
 
 
@@ -228,7 +240,7 @@ def run_pattern_computation(
         )
         elapsed = time.perf_counter() - start_time
 
-        logger.info(f"✓ Pattern computation completed in {elapsed:.2f}s")
+        logger.info("✓ Pattern computation completed in %.2fs", elapsed)
         return result, elapsed
 
     finally:
@@ -388,7 +400,7 @@ with open("{output_dir}/_result_{timestamp}.json", "w") as f:
     )
 
     if result.returncode != 0:
-        logger.error(f"Scalene failed: {result.stderr}")
+        logger.error("Scalene failed: %s", result.stderr)
         raise RuntimeError(f"Scalene profiling failed: {result.stderr}")
 
     # Load result timing
@@ -402,7 +414,7 @@ with open("{output_dir}/_result_{timestamp}.json", "w") as f:
     data_file.unlink()
     result_file.unlink()
 
-    logger.info(f"✓ Scalene report: {html_path}")
+    logger.info("✓ Scalene report: %s", html_path)
 
     return html_path, elapsed_time
 
@@ -480,7 +492,7 @@ def main() -> None:
 
     try:
         # Load environment
-        logger.info(f"Loading {args.stack} environment...")
+        logger.info("Loading %s environment...", args.stack)
         table_name = load_environment(args.stack)
         logger.info("✓ Loaded environment")
 
@@ -550,7 +562,7 @@ def main() -> None:
         logger.info("Interrupted by user")
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Error: {e}")
+        logger.error("Error: %s", e)
         if args.verbose:
             import traceback
 

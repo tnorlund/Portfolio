@@ -46,11 +46,14 @@ For AWS Lambda / Step Functions (compute-only, no I/O):
     result = await run_compute_only(graph, state)
 
 The agent detects:
-- Position anomalies: Labels appearing in unexpected positions based on merchant patterns
-- Geometric anomalies: Label types with unusual angle/distance relationships compared to learned merchant patterns
+- Position anomalies: Labels appearing in unexpected positions based on merchant
+  patterns
+- Geometric anomalies: Label types with unusual angle/distance relationships
+  compared to learned merchant patterns
 - Constellation anomalies: Unusual n-tuple spatial patterns beyond pairwise label relationships
 - Missing labels in clusters: Unlabeled words surrounded by consistently labeled words
-- Missing constellation members: Unlabeled words at expected positions for missing labels in partial constellations
+- Missing constellation members: Unlabeled words at expected positions for
+  missing labels in partial constellations
 - Text-label conflicts: Same word text with different labels at different positions
 
 Results are written as new ReceiptWordLabel entries with validation_status and reasoning,

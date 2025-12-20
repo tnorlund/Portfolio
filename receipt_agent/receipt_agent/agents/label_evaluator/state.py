@@ -196,7 +196,8 @@ class MerchantPatterns:
     value_pairs: Dict[tuple, int] = field(default_factory=dict)
 
     # Y-position relationships for label pairs
-    # Example: {("SUBTOTAL", "GRAND_TOTAL"): (0.28, 0.15)} - SUBTOTAL at y=0.28, GRAND_TOTAL at y=0.15
+    # Example: {("SUBTOTAL", "GRAND_TOTAL"): (0.28, 0.15)} - SUBTOTAL at
+    # y=0.28, GRAND_TOTAL at y=0.15
     # Helps validate spatial ordering (GRAND_TOTAL should be below/after SUBTOTAL)
     value_pair_positions: Dict[tuple, tuple] = field(default_factory=dict)
 

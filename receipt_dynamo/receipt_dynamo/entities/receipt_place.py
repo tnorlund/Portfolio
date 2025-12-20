@@ -320,7 +320,10 @@ class ReceiptPlace(SerializationMixin):
         return {
             "GSI3PK": {"S": "PLACE_VALIDATION"},
             "GSI3SK": {
-                "S": f"CONFIDENCE#{confidence_str}#STATUS#{self.validation_status}#IMAGE#{self.image_id}"
+                "S": (
+                    f"CONFIDENCE#{confidence_str}#STATUS#{self.validation_status}"
+                    f"#IMAGE#{self.image_id}"
+                )
             },
         }
 

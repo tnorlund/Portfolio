@@ -87,7 +87,8 @@ from chroma.orchestrator import ChromaOrchestrator
 from chroma.service import ChromaEcsService
 from chroma.workers import ChromaWorkers
 
-# from step_function_enhanced import create_enhanced_receipt_processor  # Legacy - depends on receipt_processor which needs receipt_label
+# from step_function_enhanced import create_enhanced_receipt_processor  # Legacy
+# - depends on receipt_processor which needs receipt_label
 
 # Foundation VPC (public subnets only, no NAT) per Task 350
 public_vpc = PublicVpc("foundation")
@@ -171,7 +172,8 @@ billing_alerts = BillingAlerts(
 )
 
 # Export enhanced step function ARN
-# pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)  # Commented out - legacy code
+# pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
+# Commented out - legacy code
 
 # Task 6: ECS Service (scale-to-zero) using our Chroma container
 chroma_service = ChromaEcsService(
@@ -715,7 +717,8 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 #                         "elasticfilesystem:ClientMount",
 #                         "elasticfilesystem:ClientWrite"
 #                     ],
-#                     "Resource": "arn:aws:elasticfilesystem:{args['region']}:{args['account_id']}:file-system/{args['file_system_id']}"
+#                     "Resource": "arn:aws:elasticfilesystem:{args['region']}:"
+#                     "{args['account_id']}:file-system/{args['file_system_id']}"
 #                 }}
 #             ]
 #         }}"""
@@ -780,7 +783,8 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 #     ),
 #     network_interfaces=[
 #         aws.ec2.LaunchTemplateNetworkInterfaceArgs(
-#             associate_public_ip_address=True,  # Ensure instances in private subnets don't get public IPs
+#             associate_public_ip_address=True,
+#             # Ensure instances in private subnets don't get public IPs
 #             security_groups=[network.security_group_id],  # Use new security group
 #             # subnet_id is determined by the ASG's vpc_zone_identifiers
 #         )
@@ -811,11 +815,17 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 # mkdir -p /mnt/checkpoints || echo "Failed to create checkpoints mount point"
 
 # # Mount EFS access points
-# mount -t efs -o tls,accesspoint={args['training_ap_id']} {args['efs_dns_name']}:/ /mnt/training || echo "Failed to mount EFS training"
-# echo "{args['efs_dns_name']}:/ /mnt/training efs _netdev,tls,accesspoint={args['training_ap_id']} 0 0" >> /etc/fstab || echo "Failed to add EFS training to fstab"
+# mount -t efs -o tls,accesspoint={args['training_ap_id']} \
+# {args['efs_dns_name']}:/ /mnt/training || echo "Failed to mount EFS training"
+# echo "{args['efs_dns_name']}:/ /mnt/training efs \
+# _netdev,tls,accesspoint={args['training_ap_id']} 0 0" \
+# >> /etc/fstab || echo "Failed to add EFS training to fstab"
 
-# mount -t efs -o tls,accesspoint={args['checkpoints_ap_id']} {args['efs_dns_name']}:/ /mnt/checkpoints || echo "Failed to mount EFS checkpoints"
-# echo "{args['efs_dns_name']}:/ /mnt/checkpoints efs _netdev,tls,accesspoint={args['checkpoints_ap_id']} 0 0" >> /etc/fstab || echo "Failed to add EFS checkpoints to fstab"
+# mount -t efs -o tls,accesspoint={args['checkpoints_ap_id']} \
+# {args['efs_dns_name']}:/ /mnt/checkpoints || echo "Failed to mount EFS checkpoints"
+# echo "{args['efs_dns_name']}:/ /mnt/checkpoints efs \
+# _netdev,tls,accesspoint={args['checkpoints_ap_id']} 0 0" \
+# >> /etc/fstab || echo "Failed to add EFS checkpoints to fstab"
 
 # # Get instance metadata
 # export INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
@@ -823,7 +833,9 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 # export INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type)
 # export AZ=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
 # export IP_ADDRESS=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-# export IS_SPOT=$(curl -s http://169.254.169.254/latest/meta-data/instance-life-cycle | grep -q "spot" && echo "true" || echo "false")
+# export IS_SPOT=$(curl -s \
+# http://169.254.169.254/latest/meta-data/instance-life-cycle | \
+# grep -q "spot" && echo "true" || echo "false")
 # # Determine GPU count in a generic manner
 # if command -v nvidia-smi >/dev/null 2>&1; then
 #     export GPU_COUNT=$(nvidia-smi --query-gpu=count --format=csv,noheader 2>/dev/null)
@@ -854,8 +866,12 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 
 # # Download and setup training code
 # cd /mnt/training
-# aws s3 cp s3://{args['bucket_name']}/output/receipt_trainer/wheels/receipt_trainer-0.1.0-py3-none-any.whl /tmp/ || echo "Failed to download receipt_trainer"
-# aws s3 cp s3://{args['bucket_name']}/output/receipt_dynamo/wheels/receipt_dynamo-0.1.0-py3-none-any.whl /tmp/ || echo "Failed to download receipt_dynamo"
+# aws s3 cp s3://{args['bucket_name']}/output/receipt_trainer/wheels/ \
+# receipt_trainer-0.1.0-py3-none-any.whl /tmp/ || \
+# echo "Failed to download receipt_trainer"
+# aws s3 cp s3://{args['bucket_name']}/output/receipt_dynamo/wheels/ \
+# receipt_dynamo-0.1.0-py3-none-any.whl /tmp/ || \
+# echo "Failed to download receipt_dynamo"
 
 # # Install the package with pip (this will also install dependencies if specified in setup.py)
 # pip install /tmp/receipt_dynamo-0.1.0-py3-none-any.whl
@@ -863,8 +879,10 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 
 # # (Optional) Verify installation of key modules
 # python -c "import receipt_trainer; print('ReceiptTrainer module loaded successfully')"
-# python -c "import transformers; print('Transformers version:', getattr(transformers, '__version__', 'unknown'))"
-# python -c "import datasets; print('Datasets version:', getattr(datasets, '__version__', 'unknown'))"
+# python -c "import transformers; print('Transformers version:', \
+# getattr(transformers, '__version__', 'unknown'))"
+# python -c "import datasets; print('Datasets version:', \
+# getattr(datasets, '__version__', 'unknown'))"
 
 # # Register instance using the receipt_dynamo package
 # python -c "
@@ -936,7 +954,8 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 
 # # Adjust fields to reflect termination
 # instance.status = 'terminated'
-# instance.launched_at = datetime.utcnow().isoformat()  # or store a termination timestamp if desired
+# instance.launched_at = datetime.utcnow().isoformat()
+# or store a termination timestamp if desired
 # instance.health_status = 'unhealthy'
 
 # # Write changes back to DynamoDB
@@ -978,7 +997,8 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 #             spot_allocation_strategy="capacity-optimized",
 #         ),
 #         launch_template=aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateArgs(
-#             launch_template_specification=aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateLaunchTemplateSpecificationArgs(
+#             launch_template_specification=aws.autoscaling.
+#             GroupMixedInstancesPolicyLaunchTemplateLaunchTemplateSpecificationArgs(
 #                 launch_template_id=launch_template.id,
 #                 version="$Latest",
 #             ),
@@ -1017,7 +1037,8 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 #     autoscaling_group_name=asg.name,
 #     policy_type="TargetTrackingScaling",
 #     target_tracking_configuration=aws.autoscaling.PolicyTargetTrackingConfigurationArgs(
-#         predefined_metric_specification=aws.autoscaling.PolicyTargetTrackingConfigurationPredefinedMetricSpecificationArgs(
+#         predefined_metric_specification=aws.autoscaling.
+#         PolicyTargetTrackingConfigurationPredefinedMetricSpecificationArgs(
 #             predefined_metric_type="ASGAverageCPUUtilization",
 #         ),
 #         target_value=70.0,

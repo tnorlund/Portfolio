@@ -69,8 +69,10 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
         raise ValueError("batch_bucket is required")
 
     logger.info(
-        f"Listing receipts for merchant '{merchant_name}' "
-        f"(limit={limit}, batch_size={batch_size})"
+        "Listing receipts for merchant '%s' (limit=%s, batch_size=%s)",
+        merchant_name,
+        limit,
+        batch_size,
     )
 
     # Import DynamoDB client
@@ -88,7 +90,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
     )
 
     if not places:
-        logger.info(f"No receipts found for merchant '{merchant_name}'")
+        logger.info("No receipts found for merchant '%s'", merchant_name)
         return {
             "manifest_s3_key": None,
             "total_receipts": 0,
@@ -109,7 +111,9 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
     ]
 
     logger.info(
-        f"Found {len(receipts)} receipts for merchant '{merchant_name}'"
+        "Found %s receipts for merchant '%s'",
+        len(receipts),
+        merchant_name,
     )
 
     # Create batches for distributed map
@@ -136,8 +140,10 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
     )
 
     logger.info(
-        f"Created manifest at s3://{batch_bucket}/{manifest_key} "
-        f"with {len(batches)} batches"
+        "Created manifest at s3://%s/%s with %s batches",
+        batch_bucket,
+        manifest_key,
+        len(batches),
     )
 
     return {

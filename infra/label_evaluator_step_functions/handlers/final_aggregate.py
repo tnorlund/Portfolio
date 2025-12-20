@@ -51,8 +51,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         raise ValueError("batch_bucket is required")
 
     logger.info(
-        f"Final aggregation for execution {execution_id} "
-        f"with {len(merchant_results)} merchants"
+        "Final aggregation for execution %s with %s merchants",
+        execution_id,
+        len(merchant_results),
     )
 
     # Aggregate across all merchants
@@ -114,8 +115,10 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 )
 
     logger.info(
-        f"Grand total: {total_merchants} merchants, "
-        f"{total_receipts} receipts, {total_issues} issues"
+        "Grand total: %s merchants, %s receipts, %s issues",
+        total_merchants,
+        total_receipts,
+        total_issues,
     )
 
     # Build grand summary
@@ -145,10 +148,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             ContentType="application/json",
         )
         logger.info(
-            f"Uploaded grand summary to s3://{batch_bucket}/{report_key}"
+            "Uploaded grand summary to s3://%s/%s",
+            batch_bucket,
+            report_key,
         )
     except Exception as e:
-        logger.error(f"Failed to upload grand summary: {e}")
+        logger.error("Failed to upload grand summary: %s", e)
         raise
 
     return {

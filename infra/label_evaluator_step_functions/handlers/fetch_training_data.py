@@ -64,7 +64,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     try:
         s3.head_object(Bucket=batch_bucket, Key=training_key)
         logger.info(
-            f"Training data already cached at s3://{batch_bucket}/{training_key}"
+            "Training data already cached at s3://%s/%s",
+            batch_bucket,
+            training_key,
         )
 
         # Get receipt count from existing file
@@ -84,8 +86,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         # Not cached, need to fetch
 
     logger.info(
-        f"Fetching training data for merchant '{merchant_name}' "
-        f"(max_receipts={max_receipts})"
+        "Fetching training data for merchant '%s' (max_receipts=%s)",
+        merchant_name,
+        max_receipts,
     )
 
     # Import DynamoDB client
@@ -113,7 +116,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     ][:max_receipts]
 
     if not other_places:
-        logger.info(f"No other receipts found for merchant '{merchant_name}'")
+        logger.info("No other receipts found for merchant '%s'", merchant_name)
         # Upload empty training data
         training_data = {
             "merchant_name": merchant_name,
@@ -133,7 +136,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         }
 
     logger.info(
-        f"Fetching words/labels for {len(other_places)} training receipts"
+        "Fetching words/labels for %s training receipts",
+        len(other_places),
     )
 
     # Serialization helpers
@@ -209,11 +213,17 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             )
         except Exception as e:
             logger.warning(
-                f"Error fetching receipt {place.image_id}#{place.receipt_id}: {e}"
+                "Error fetching receipt %s#%s: %s",
+                place.image_id,
+                place.receipt_id,
+                e,
             )
             continue
 
-    logger.info(f"Successfully fetched {len(receipts_data)} training receipts")
+    logger.info(
+        "Successfully fetched %s training receipts",
+        len(receipts_data),
+    )
 
     # Upload training data to S3
     training_data = {
@@ -229,7 +239,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     )
 
     logger.info(
-        f"Uploaded training data to s3://{batch_bucket}/{training_key}"
+        "Uploaded training data to s3://%s/%s",
+        batch_bucket,
+        training_key,
     )
 
     return {

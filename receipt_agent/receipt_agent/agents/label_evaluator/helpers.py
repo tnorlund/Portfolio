@@ -446,11 +446,14 @@ def _select_top_label_pairs(
                 pair_info.append(f"{p} [ungrouped]")
 
         logger.info(
-            f"Selected {len(selected)} label pairs for geometry computation "
-            f"({within_group_count} within-group, {cross_group_count} cross-group):"
+            "Selected %s label pairs for geometry computation "
+            "(%s within-group, %s cross-group):",
+            len(selected),
+            within_group_count,
+            cross_group_count,
         )
         for info in pair_info:
-            logger.info(f"  - {info}")
+            logger.info("  - %s", info)
 
     return selected
 
@@ -480,8 +483,9 @@ def _select_top_label_ntuples(
     selected = {ntuple for ntuple, _ in sorted_ntuples[:max_ntuples]}
 
     logger.debug(
-        f"Selected {len(selected)} label n-tuples by frequency "
-        f"(top: {', '.join(str(nt) for nt, freq in sorted_ntuples[:3])})"
+        "Selected %s label n-tuples by frequency (top: %s)",
+        len(selected),
+        ", ".join(str(nt) for nt, freq in sorted_ntuples[:3]),
     )
 
     return selected
@@ -584,13 +588,17 @@ def _print_pattern_statistics(
         patterns: The learned MerchantPatterns
         merchant_name: Name of merchant for logging context
     """
-    logger.info(f"\n{'='*80}")
-    logger.info(f"PATTERN STATISTICS FOR {merchant_name}")
-    logger.info(f"{'='*80}")
-    logger.info(f"Training data: {patterns.receipt_count} receipts")
-    logger.info(f"Label types observed: {len(patterns.label_positions)}")
+    logger.info("\n%s", "=" * 80)
+    logger.info("PATTERN STATISTICS FOR %s", merchant_name)
+    logger.info("%s", "=" * 80)
+    logger.info("Training data: %s receipts", patterns.receipt_count)
     logger.info(
-        f"Label pairs with geometry: {len(patterns.label_pair_geometry)}\n"
+        "Label types observed: %s",
+        len(patterns.label_positions),
+    )
+    logger.info(
+        "Label pairs with geometry: %s\n",
+        len(patterns.label_pair_geometry),
     )
 
     if not patterns.label_pair_geometry:
@@ -601,8 +609,8 @@ def _print_pattern_statistics(
         geometry = patterns.label_pair_geometry[pair]
         obs_count = len(geometry.observations)
 
-        logger.info(f"\n{pair[0]} ↔ {pair[1]}:")
-        logger.info(f"  Observations: {obs_count}")
+        logger.info("\n%s ↔ %s:", pair[0], pair[1])
+        logger.info("  Observations: %s", obs_count)
 
         if geometry.mean_angle is not None:
             mean_angle = geometry.mean_angle
@@ -620,25 +628,32 @@ def _print_pattern_statistics(
             else:
                 tightness = "LOOSE"
 
-            logger.info(f"  [POLAR COORDINATES]")
+            logger.info("  [POLAR COORDINATES]")
             logger.info(
-                f"  Angle: mean={mean_angle:.1f}°, std={std_angle:.1f}° [{tightness}]"
+                "  Angle: mean=%.1f°, std=%.1f° [%s]",
+                mean_angle,
+                std_angle,
+                tightness,
             )
             logger.info(
-                f"    Range (±1.5σ): {(mean_angle - 1.5 * std_angle) % 360:.1f}° "
-                f"to {(mean_angle + 1.5 * std_angle) % 360:.1f}°"
+                "    Range (±1.5σ): %.1f° to %.1f°",
+                (mean_angle - 1.5 * std_angle) % 360,
+                (mean_angle + 1.5 * std_angle) % 360,
             )
 
             logger.info(
-                f"  Distance: mean={mean_distance:.3f}, std={std_distance:.3f}"
+                "  Distance: mean=%.3f, std=%.3f",
+                mean_distance,
+                std_distance,
             )
             logger.info(
-                f"    Range (±1.5σ): {max(0, mean_distance - 1.5 * std_distance):.3f} "
-                f"to {min(1.0, mean_distance + 1.5 * std_distance):.3f}"
+                "    Range (±1.5σ): %.3f to %.3f",
+                max(0, mean_distance - 1.5 * std_distance),
+                min(1.0, mean_distance + 1.5 * std_distance),
             )
 
             # Convert observations to Cartesian coordinates for analysis
-            logger.info(f"\n  [CARTESIAN COORDINATES]")
+            logger.info("\n  [CARTESIAN COORDINATES]")
             cartesian_coords = [
                 _convert_polar_to_cartesian(obs.angle, obs.distance)
                 for obs in geometry.observations
@@ -682,32 +697,49 @@ def _print_pattern_statistics(
             else:
                 cart_tightness = "LOOSE"
 
-            logger.info(f"  dx: mean={mean_dx:+.3f}, std={std_dx:.3f}")
-            logger.info(f"  dy: mean={mean_dy:+.3f}, std={std_dy:.3f}")
             logger.info(
-                f"  Mean position: ({mean_dx:+.3f}, {mean_dy:+.3f}) [distance from origin: {mean_cartesian_distance:.3f}]"
+                "  dx: mean=%+.3f, std=%.3f",
+                mean_dx,
+                std_dx,
             )
             logger.info(
-                f"  Deviation from mean: mean={mean_deviation:.3f}, std={std_deviation:.3f} [{cart_tightness}]"
+                "  dy: mean=%+.3f, std=%.3f",
+                mean_dy,
+                std_dy,
             )
             logger.info(
-                f"    Outlier range (±1.5σ): {max(0, mean_deviation - 1.5 * std_deviation):.3f} "
-                f"to {mean_deviation + 1.5 * std_deviation:.3f}"
+                "  Mean position: (%+.3f, %+.3f) [distance from origin: %.3f]",
+                mean_dx,
+                mean_dy,
+                mean_cartesian_distance,
+            )
+            logger.info(
+                "  Deviation from mean: mean=%.3f, std=%.3f [%s]",
+                mean_deviation,
+                std_deviation,
+                cart_tightness,
+            )
+            logger.info(
+                "    Outlier range (±1.5σ): %.3f to %.3f",
+                max(0, mean_deviation - 1.5 * std_deviation),
+                mean_deviation + 1.5 * std_deviation,
             )
 
             # Sample sizes assessment
             if obs_count < 5:
                 logger.info(
-                    f"\n  ⚠️  WARNING: Only {obs_count} observations - pattern may be unreliable"
+                    "\n  ⚠️  WARNING: Only %s observations - pattern may be unreliable",
+                    obs_count,
                 )
             elif obs_count < 10:
                 logger.info(
-                    f"\n  ⚠️  Note: {obs_count} observations - limited confidence"
+                    "\n  ⚠️  Note: %s observations - limited confidence",
+                    obs_count,
                 )
             else:
-                logger.info(f"\n  ✓ Sufficient observations ({obs_count})")
+                logger.info("\n  ✓ Sufficient observations (%s)", obs_count)
 
-    logger.info(f"\n{'='*80}\n")
+    logger.info("\n%s\n", "=" * 80)
 
 
 def _compute_patterns_for_subset(
@@ -1102,10 +1134,11 @@ def batch_receipts_by_quality(
         batches[batch].append(receipt_data)
 
     logger.info(
-        f"Batched {len(other_receipt_data)} receipts: "
-        f"HAPPY={len(batches['HAPPY'])}, "
-        f"AMBIGUOUS={len(batches['AMBIGUOUS'])}, "
-        f"ANTI_PATTERN={len(batches['ANTI_PATTERN'])}"
+        "Batched %s receipts: HAPPY=%s, AMBIGUOUS=%s, ANTI_PATTERN=%s",
+        len(other_receipt_data),
+        len(batches["HAPPY"]),
+        len(batches["AMBIGUOUS"]),
+        len(batches["ANTI_PATTERN"]),
     )
 
     return batches
@@ -1300,8 +1333,9 @@ def compute_merchant_patterns(
             dimension=max_relationship_dimension,
         )
         logger.debug(
-            f"Generated {len(label_ntuples)} label {max_relationship_dimension}-tuples "
-            f"from co-occurrence data"
+            "Generated %s label %s-tuples from co-occurrence data",
+            len(label_ntuples),
+            max_relationship_dimension,
         )
 
         # Select top n-tuples, then extract all pairs from them
@@ -1320,8 +1354,11 @@ def compute_merchant_patterns(
                 # combinations(..., 2) yields 2-tuples
                 selected_pairs.add((pair[0], pair[1]))
         logger.debug(
-            f"Selected {len(selected_tuples)} label {max_relationship_dimension}-tuples, "
-            f"extracted {len(selected_pairs)} pairwise relationships for geometry"
+            "Selected %s label %s-tuples, extracted %s pairwise relationships "
+            "for geometry",
+            len(selected_tuples),
+            max_relationship_dimension,
+            len(selected_pairs),
         )
     else:
         # For dimension == 2, use pairs directly
@@ -1330,7 +1367,8 @@ def compute_merchant_patterns(
             max_pairs=max_pair_patterns,
         )
         logger.debug(
-            f"Selected {len(selected_pairs)} label pairs for geometry computation"
+            "Selected %s label pairs for geometry computation",
+            len(selected_pairs),
         )
 
     # Second pass: Compute geometry only for selected top pairs
@@ -1497,15 +1535,17 @@ def compute_merchant_patterns(
     # Log geometry statistics (pairs already selected in two-pass optimization)
     if patterns.label_pair_geometry:
         logger.info(
-            f"Computed geometry for {len(patterns.label_pair_geometry)} selected label pairs "
-            f"(skipped {len(all_pair_frequencies) - len(patterns.label_pair_geometry)} non-selected pairs)"
+            "Computed geometry for %s selected label pairs "
+            "(skipped %s non-selected pairs)",
+            len(patterns.label_pair_geometry),
+            len(all_pair_frequencies) - len(patterns.label_pair_geometry),
         )
 
     # Print detailed statistics for learned patterns
     _print_pattern_statistics(patterns, merchant_name)
 
     # Compute batch-specific patterns for LLM-integrated batching
-    logger.info("\n" + "=" * 80)
+    logger.info("\n%s", "=" * 80)
     logger.info("BATCH-SPECIFIC PATTERN COMPUTATION (LLM-Integrated Batching)")
     logger.info("=" * 80)
 
@@ -1519,12 +1559,13 @@ def compute_merchant_patterns(
         # Compute patterns for each batch separately
         for batch_name, batch_receipts in batches.items():
             if not batch_receipts:
-                logger.info(f"{batch_name} batch: 0 receipts, skipping")
+                logger.info("%s batch: 0 receipts, skipping", batch_name)
                 continue
 
             logger.info(
-                f"\n{batch_name} batch: Computing patterns from "
-                f"{len(batch_receipts)} receipts"
+                "\n%s batch: Computing patterns from %s receipts",
+                batch_name,
+                len(batch_receipts),
             )
 
             # Compute patterns for this batch using existing logic
@@ -1534,31 +1575,32 @@ def compute_merchant_patterns(
             if batch_name == "HAPPY":
                 patterns.happy_label_pair_geometry = batch_patterns
                 logger.info(
-                    f"  Happy patterns: {len(batch_patterns)} label pairs "
-                    f"(threshold: 1.5σ - strict)"
+                    "  Happy patterns: %s label pairs (threshold: 1.5σ - strict)",
+                    len(batch_patterns),
                 )
             elif batch_name == "AMBIGUOUS":
                 patterns.ambiguous_label_pair_geometry = batch_patterns
                 logger.info(
-                    f"  Ambiguous patterns: {len(batch_patterns)} label pairs "
-                    f"(threshold: 2.0σ - moderate)"
+                    "  Ambiguous patterns: %s label pairs "
+                    "(threshold: 2.0σ - moderate)",
+                    len(batch_patterns),
                 )
             elif batch_name == "ANTI_PATTERN":
                 patterns.anti_label_pair_geometry = batch_patterns
                 logger.info(
-                    f"  Anti-patterns: {len(batch_patterns)} label pairs "
-                    f"(threshold: 3.0σ - lenient)"
+                    "  Anti-patterns: %s label pairs (threshold: 3.0σ - lenient)",
+                    len(batch_patterns),
                 )
 
-        logger.info("\n" + "=" * 80)
+        logger.info("\n%s", "=" * 80)
 
     except Exception as e:
-        logger.warning(f"Batch-specific pattern computation failed: {e}")
+        logger.warning("Batch-specific pattern computation failed: %s", e)
         logger.warning("Proceeding with non-batched patterns only")
 
     # Compute constellation patterns for n-tuples (dimension >= 3)
     if selected_constellations:
-        logger.info("\n" + "=" * 80)
+        logger.info("\n%s", "=" * 80)
         logger.info("CONSTELLATION PATTERN COMPUTATION (N-Tuple Geometry)")
         logger.info("=" * 80)
 
@@ -1571,20 +1613,24 @@ def compute_merchant_patterns(
 
         if constellation_patterns:
             logger.info(
-                f"Computed {len(constellation_patterns)} constellation patterns:"
+                "Computed %s constellation patterns:",
+                len(constellation_patterns),
             )
             for constellation, geom in constellation_patterns.items():
                 labels_str = " + ".join(constellation)
                 logger.info(
-                    f"  {labels_str}: {geom.observation_count} observations, "
-                    f"bbox={geom.mean_width:.3f}x{geom.mean_height:.3f}"
+                    "  %s: %s observations, bbox=%.3fx%.3f",
+                    labels_str,
+                    geom.observation_count,
+                    geom.mean_width,
+                    geom.mean_height,
                 )
         else:
             logger.info(
                 "No constellation patterns computed (insufficient data)"
             )
 
-        logger.info("=" * 80 + "\n")
+        logger.info("%s\n", "=" * 80)
 
     return patterns
 
@@ -1989,12 +2035,15 @@ def _check_geometry_against_batch(
                     current_label=label,
                     suggested_status="NEEDS_REVIEW",
                     reasoning=(
-                        f"[{confidence} confidence] '{ctx.word.text}' labeled {label} has unusual geometric relationship "
-                        f"with {other_label} (patterns from {batch_label} receipts). "
-                        f"Expected position ({geometry.mean_dx:.2f}, {geometry.mean_dy:.2f}), "
-                        f"actual ({actual_dx:.2f}, {actual_dy:.2f}), deviation {deviation:.3f} "
-                        f"(threshold: {threshold_std}σ = {threshold_std * geometry.std_deviation:.3f}). "
-                        f"This may indicate mislabeling."
+                        f"[{confidence} confidence] '{ctx.word.text}' labeled "
+                        f"{label} has unusual geometric relationship with "
+                        f"{other_label} (patterns from {batch_label} receipts). "
+                        f"Expected position ({geometry.mean_dx:.2f}, "
+                        f"{geometry.mean_dy:.2f}), actual ({actual_dx:.2f}, "
+                        f"{actual_dy:.2f}), deviation {deviation:.3f} "
+                        f"(threshold: {threshold_std}σ = "
+                        f"{threshold_std * geometry.std_deviation:.3f}). "
+                        "This may indicate mislabeling."
                     ),
                     word_context=ctx,
                 )
@@ -2081,11 +2130,13 @@ def _compute_geometric_issue(
                 current_label=label,
                 suggested_status="NEEDS_REVIEW",
                 reasoning=(
-                    f"'{ctx.word.text}' labeled {label} has unusual geometric relationship "
-                    f"with {other_label}. Expected position ({geometry.mean_dx:.2f}, {geometry.mean_dy:.2f}), "
-                    f"actual ({actual_dx:.2f}, {actual_dy:.2f}), deviation {deviation:.3f} "
-                    f"(adaptive threshold: {threshold_std}σ = {threshold_std * geometry.std_deviation:.3f}). "
-                    f"This may indicate mislabeling."
+                    f"'{ctx.word.text}' labeled {label} has unusual geometric "
+                    f"relationship with {other_label}. Expected position "
+                    f"({geometry.mean_dx:.2f}, {geometry.mean_dy:.2f}), "
+                    f"actual ({actual_dx:.2f}, {actual_dy:.2f}), deviation "
+                    f"{deviation:.3f} (adaptive threshold: {threshold_std}σ = "
+                    f"{threshold_std * geometry.std_deviation:.3f}). "
+                    "This may indicate mislabeling."
                 ),
                 word_context=ctx,
             )
@@ -2655,8 +2706,8 @@ def check_missing_constellation_member(
             reasoning=(
                 f"'{ctx.word.text}' has no label but is at the expected position "
                 f"for {missing_label} within constellation [{constellation_str}]. "
-                f"Present labels: [{present_str}]. "
-                f"Distance to expected position: {distance:.3f} (threshold: {position_threshold:.3f}). "
+                f"Present labels: [{present_str}]. Distance to expected position: "
+                f"{distance:.3f} (threshold: {position_threshold:.3f}). "
                 f"This word may be missing a {missing_label} label."
             ),
             word_context=ctx,
@@ -2694,8 +2745,13 @@ def detect_label_conflicts(
                 line_id, word_id = position
                 conflicts.append((line_id, word_id, label_set))
                 logger.warning(
-                    f"Label conflict at line {line_id}, word {word_id}: "
-                    f"{label1} and {label2} both present (all labels: {label_set})"
+                    "Label conflict at line %s, word %s: %s and %s both present "
+                    "(all labels: %s)",
+                    line_id,
+                    word_id,
+                    label1,
+                    label2,
+                    label_set,
                 )
                 break  # Only report once per position
 
@@ -2768,12 +2824,17 @@ Answer with ONLY one word: REAL_ERROR or FORMAT_VARIATION
 
             classifications[(line_id, word_id)] = classification
             logger.debug(
-                f"Conflict at line {line_id}, word {word_id}: {classification}"
+                "Conflict at line %s, word %s: %s",
+                line_id,
+                word_id,
+                classification,
             )
 
         except Exception as e:
             logger.warning(
-                f"LLM classification failed for line {line_id}: {e}, using heuristic"
+                "LLM classification failed for line %s: %s, using heuristic",
+                line_id,
+                e,
             )
             classifications[(line_id, word_id)] = _classify_conflict_heuristic(
                 label_set
@@ -2844,8 +2905,10 @@ def assign_batch_with_llm(
     )
 
     logger.info(
-        f"Batch classification: {len(conflicts)} conflicts "
-        f"({real_errors} real errors, {format_variations} format variations)"
+        "Batch classification: %s conflicts (%s real errors, %s format variations)",
+        len(conflicts),
+        real_errors,
+        format_variations,
     )
 
     # Assignment logic
@@ -3155,16 +3218,16 @@ def query_similar_validated_words(
         )
 
         if not get_result:
-            logger.warning(f"Word not found in ChromaDB: {word_chroma_id}")
+            logger.warning("Word not found in ChromaDB: %s", word_chroma_id)
             return []
 
         embeddings = get_result.get("embeddings")
         if embeddings is None or len(embeddings) == 0:
-            logger.warning(f"No embeddings found for word: {word_chroma_id}")
+            logger.warning("No embeddings found for word: %s", word_chroma_id)
             return []
 
         if embeddings[0] is None:
-            logger.warning(f"No embedding found for word: {word_chroma_id}")
+            logger.warning("No embedding found for word: %s", word_chroma_id)
             return []
 
         # Convert numpy array to list
@@ -3172,12 +3235,13 @@ def query_similar_validated_words(
             query_embedding = list(embeddings[0])
         except (TypeError, ValueError):
             logger.warning(
-                f"Invalid embedding format for word: {word_chroma_id}"
+                "Invalid embedding format for word: %s",
+                word_chroma_id,
             )
             return []
 
         if not query_embedding:
-            logger.warning(f"Empty embedding found for word: {word_chroma_id}")
+            logger.warning("Empty embedding found for word: %s", word_chroma_id)
             return []
 
         # Query ChromaDB words collection using the existing embedding
@@ -3216,7 +3280,7 @@ def query_similar_validated_words(
             try:
                 dist_float = float(dist)
             except (TypeError, ValueError):
-                logger.debug(f"Invalid distance value: {dist}")
+                logger.debug("Invalid distance value: %s", dist)
                 continue
 
             # Convert L2 distance to similarity (0.0-1.0)
@@ -3265,7 +3329,9 @@ def query_similar_validated_words(
 
     except Exception as e:
         logger.error(
-            f"Error querying ChromaDB for similar words: {e}", exc_info=True
+            "Error querying ChromaDB for similar words: %s",
+            e,
+            exc_info=True,
         )
         return []
 

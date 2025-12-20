@@ -47,19 +47,19 @@ def download_chromadb_snapshot(
     """Download ChromaDB snapshot from S3 using atomic pointer pattern."""
     chroma_db_file = os.path.join(cache_path, "chroma.sqlite3")
     if os.path.exists(chroma_db_file):
-        logger.info(f"ChromaDB already cached at {cache_path}")
+        logger.info("ChromaDB already cached at %s", cache_path)
         return cache_path
 
-    logger.info(f"Downloading ChromaDB from s3://{bucket}/{collection}/")
+    logger.info("Downloading ChromaDB from s3://%s/%s/", bucket, collection)
 
     # Get latest pointer
     pointer_key = f"{collection}/snapshot/latest-pointer.txt"
     try:
         response = s3.get_object(Bucket=bucket, Key=pointer_key)
         timestamp = response["Body"].read().decode().strip()
-        logger.info(f"Latest snapshot: {timestamp}")
+        logger.info("Latest snapshot: %s", timestamp)
     except Exception as e:
-        logger.error(f"Failed to get pointer: {e}")
+        logger.error("Failed to get pointer: %s", e)
         raise
 
     # Download snapshot files
@@ -81,7 +81,7 @@ def download_chromadb_snapshot(
             s3.download_file(bucket, key, local_path)
             downloaded += 1
 
-    logger.info(f"Downloaded {downloaded} files to {cache_path}")
+    logger.info("Downloaded %s files to %s", downloaded, cache_path)
     return cache_path
 
 
@@ -135,7 +135,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
     try:
         # 1. Load evaluation results from S3
         logger.info(
-            f"Loading results from s3://{batch_bucket}/{results_s3_key}"
+            "Loading results from s3://%s/%s",
+            batch_bucket,
+            results_s3_key,
         )
         eval_results = load_json_from_s3(batch_bucket, results_s3_key)
 
@@ -153,7 +155,10 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
             }
 
         logger.info(
-            f"Reviewing {len(issues)} issues for {image_id}#{receipt_id}"
+            "Reviewing %s issues for %s#%s",
+            len(issues),
+            image_id,
+            receipt_id,
         )
 
         # 2. Setup ChromaDB (optional)
@@ -181,7 +186,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
                 _chroma_client = ChromaClient(persist_directory=chroma_path)
                 logger.info("ChromaDB client initialized")
             except Exception as e:
-                logger.warning(f"Could not initialize ChromaDB: {e}")
+                logger.warning("Could not initialize ChromaDB: %s", e)
 
         # 3. Setup Ollama LLM
         ollama_api_key = os.environ.get("RECEIPT_AGENT_OLLAMA_API_KEY")
@@ -207,7 +212,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
             temperature=0,
         )
 
-        logger.info(f"LLM initialized: {ollama_model} at {ollama_base_url}")
+        logger.info("LLM initialized: %s at %s", ollama_model, ollama_base_url)
 
         # 4. Review each issue
         from collections import Counter
@@ -238,11 +243,13 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
                 )
 
                 logger.debug(
-                    f"Reviewed '{issue.get('word_text')}': {review_result['decision']}"
+                    "Reviewed '%s': %s",
+                    issue.get("word_text"),
+                    review_result["decision"],
                 )
 
             except Exception as e:
-                logger.warning(f"Error reviewing issue: {e}")
+                logger.warning("Error reviewing issue: %s", e)
                 reviewed_issues.append(
                     {
                         **issue,
@@ -255,7 +262,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
                 )
                 decisions["NEEDS_REVIEW"] += 1
 
-        logger.info(f"Reviewed {len(issues)} issues: {dict(decisions)}")
+        logger.info("Reviewed %s issues: %s", len(issues), dict(decisions))
 
         # 5. Upload reviewed results to S3
         reviewed_results = {
@@ -268,7 +275,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
         upload_json_to_s3(batch_bucket, reviewed_s3_key, reviewed_results)
 
         logger.info(
-            f"Uploaded reviewed results to s3://{batch_bucket}/{reviewed_s3_key}"
+            "Uploaded reviewed results to s3://%s/%s",
+            batch_bucket,
+            reviewed_s3_key,
         )
 
         # 6. Log metrics
@@ -303,7 +312,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
         }
 
     except Exception as e:
-        logger.error(f"Error in LLM review: {e}", exc_info=True)
+        logger.error("Error in LLM review: %s", e, exc_info=True)
 
         from utils.emf_metrics import emf_metrics
 
@@ -371,11 +380,13 @@ def _build_review_prompt(issue: dict[str, Any]) -> str:
 Decide if the current label is correct:
 
 - **VALID**: The label IS correct despite the flag (false positive)
-- **INVALID**: The label IS wrong - provide the correct label from CORE_LABELS, or null if no label applies
+- **INVALID**: The label IS wrong - provide the correct label from CORE_LABELS,
+  or null if no label applies
 - **NEEDS_REVIEW**: Genuinely ambiguous, needs human review
 
 Respond with ONLY a JSON object:
-{{"decision": "VALID|INVALID|NEEDS_REVIEW", "reasoning": "your explanation", "suggested_label": "LABEL_NAME or null"}}
+{{"decision": "VALID|INVALID|NEEDS_REVIEW", "reasoning": "your explanation",
+ "suggested_label": "LABEL_NAME or null"}}
 """
     return prompt
 
