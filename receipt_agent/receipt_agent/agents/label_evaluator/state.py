@@ -41,9 +41,6 @@ class WordContext:
         0  # Position within the visual line (left to right)
     )
 
-    # References to neighbor contexts (populated after all WordContexts created)
-    same_line_words: List["WordContext"] = field(default_factory=list)
-
 
 @dataclass
 class VisualLine:

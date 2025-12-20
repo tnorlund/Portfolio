@@ -102,3 +102,102 @@ def deserialize_labels(
 ) -> List[ReceiptWordLabel]:
     """Deserialize a list of ReceiptWordLabel objects."""
     return [deserialize_label(d) for d in data]
+
+
+def deserialize_patterns(data: Dict[str, Any]):
+    """
+    Deserialize pre-computed MerchantPatterns from S3.
+
+    The serialized format contains pre-computed statistics (mean, std, count)
+    rather than raw observations, allowing fast pattern loading.
+
+    Returns:
+        MerchantPatterns object or None if patterns is null
+    """
+    if not data or data.get("patterns") is None:
+        return None
+
+    from receipt_agent.agents.label_evaluator.state import (
+        ConstellationGeometry,
+        LabelPairGeometry,
+        LabelRelativePosition,
+        MerchantPatterns,
+    )
+
+    p = data["patterns"]
+
+    # Reconstruct label_positions as Dict[str, List[float]]
+    # We store stats but need to create synthetic positions for compatibility
+    # For evaluation, we only need mean_y and std_y, so store those
+    label_positions: Dict[str, List[float]] = {}
+    label_position_stats = p.get("label_positions", {})
+    for label, stats in label_position_stats.items():
+        # Store the mean as a single-element list (patterns uses mean internally)
+        # The evaluator will use the stats we attach separately
+        label_positions[label] = [stats["mean_y"]]
+
+    # Reconstruct label_pair_geometry
+    label_pair_geometry: Dict[tuple, LabelPairGeometry] = {}
+    for geom_data in p.get("label_pair_geometry", []):
+        pair_key = tuple(geom_data["labels"])
+        geom = LabelPairGeometry(
+            observations=[],  # Not stored in serialized form
+            mean_angle=geom_data.get("mean_angle"),
+            mean_distance=geom_data.get("mean_distance"),
+            std_angle=geom_data.get("std_angle"),
+            std_distance=geom_data.get("std_distance"),
+            mean_dx=geom_data.get("mean_dx"),
+            mean_dy=geom_data.get("mean_dy"),
+            std_dx=geom_data.get("std_dx"),
+            std_dy=geom_data.get("std_dy"),
+        )
+        label_pair_geometry[pair_key] = geom
+
+    # Reconstruct constellation_geometry
+    constellation_geometry: Dict[tuple, ConstellationGeometry] = {}
+    for cg_data in p.get("constellation_geometry", []):
+        labels_key = tuple(cg_data["labels"])
+        relative_positions = {}
+        for label, rel_data in cg_data.get("relative_positions", {}).items():
+            relative_positions[label] = LabelRelativePosition(
+                mean_x=rel_data.get("mean_x", 0.0),
+                mean_y=rel_data.get("mean_y", 0.0),
+                std_x=rel_data.get("std_x", 0.0),
+                std_y=rel_data.get("std_y", 0.0),
+            )
+        constellation_geometry[labels_key] = ConstellationGeometry(
+            labels=labels_key,
+            observation_count=cg_data.get("observation_count", 0),
+            relative_positions=relative_positions,
+        )
+
+    # Reconstruct all_observed_pairs
+    all_observed_pairs = set()
+    for pair in p.get("all_observed_pairs", []):
+        all_observed_pairs.add(tuple(pair))
+
+    # Reconstruct batch_classification
+    batch_classification = p.get("batch_classification", {
+        "HAPPY": 0, "AMBIGUOUS": 0, "ANTI_PATTERN": 0
+    })
+
+    # Reconstruct labels_with_same_line_multiplicity
+    labels_with_multiplicity = set(
+        p.get("labels_with_same_line_multiplicity", [])
+    )
+
+    patterns = MerchantPatterns(
+        merchant_name=p.get("merchant_name", ""),
+        receipt_count=p.get("receipt_count", 0),
+        label_positions=label_positions,
+        label_pair_geometry=label_pair_geometry,
+        all_observed_pairs=all_observed_pairs,
+        constellation_geometry=constellation_geometry,
+        batch_classification=batch_classification,
+        labels_with_same_line_multiplicity=labels_with_multiplicity,
+    )
+
+    # Attach pre-computed stats for efficient evaluation
+    patterns._label_position_stats = label_position_stats
+
+    return patterns

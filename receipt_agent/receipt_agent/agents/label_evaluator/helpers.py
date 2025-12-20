@@ -301,14 +301,35 @@ def assemble_visual_lines(
         )
     )
 
-    # Populate position_in_line and same_line_words for each context
+    # Populate position_in_line for each context
     for line in visual_lines:
         for i, ctx in enumerate(line.words):
             ctx.visual_line_index = line.line_index
             ctx.position_in_line = i
-            ctx.same_line_words = [c for c in line.words if c is not ctx]
 
     return visual_lines
+
+
+def get_same_line_words(
+    ctx: WordContext,
+    visual_lines: List[VisualLine],
+) -> List[WordContext]:
+    """
+    Get other words on the same visual line as ctx.
+
+    Computed on-demand to avoid circular references in state.
+
+    Args:
+        ctx: The WordContext to find neighbors for
+        visual_lines: All visual lines from the receipt
+
+    Returns:
+        List of WordContext objects on the same line (excluding ctx)
+    """
+    if ctx.visual_line_index >= len(visual_lines):
+        return []
+    line = visual_lines[ctx.visual_line_index]
+    return [c for c in line.words if c is not ctx]
 
 
 def _is_within_group_pair(pair: Tuple[str, str]) -> bool:
@@ -2352,6 +2373,7 @@ def _position_fit_score(
 
 def check_missing_label_in_cluster(
     ctx: WordContext,
+    visual_lines: List[VisualLine],
 ) -> Optional[EvaluationIssue]:
     """
     Check if an unlabeled word should have a label based on surrounding labels.
@@ -2360,6 +2382,7 @@ def check_missing_label_in_cluster(
 
     Args:
         ctx: WordContext to check (expected to have no current label)
+        visual_lines: All visual lines for on-demand same-line lookup
 
     Returns:
         EvaluationIssue if missing label detected, None otherwise
@@ -2367,9 +2390,10 @@ def check_missing_label_in_cluster(
     if ctx.current_label is not None:
         return None  # Only check unlabeled words
 
-    # Get labels from same visual line
+    # Get labels from same visual line (computed on-demand)
+    same_line_words = get_same_line_words(ctx, visual_lines)
     same_line_labels = [
-        c.current_label.label for c in ctx.same_line_words if c.current_label
+        c.current_label.label for c in same_line_words if c.current_label
     ]
 
     if not same_line_labels:
@@ -2825,6 +2849,7 @@ def assign_batch_with_llm(
 def evaluate_word_contexts(
     word_contexts: List[WordContext],
     patterns: Optional[MerchantPatterns],
+    visual_lines: Optional[List[VisualLine]] = None,
 ) -> List[EvaluationIssue]:
     """
     Apply all validation rules to word contexts and collect issues.
@@ -2832,6 +2857,7 @@ def evaluate_word_contexts(
     Args:
         word_contexts: All WordContext objects for the receipt
         patterns: MerchantPatterns from other receipts (may be None)
+        visual_lines: Visual lines for on-demand same-line lookup (optional)
 
     Returns:
         List of EvaluationIssue objects for all detected issues
@@ -2870,11 +2896,12 @@ def evaluate_word_contexts(
                 continue
         else:
             # Check unlabeled words
-            # First check same-line cluster heuristic
-            issue = check_missing_label_in_cluster(ctx)
-            if issue:
-                issues.append(issue)
-                continue
+            # First check same-line cluster heuristic (requires visual_lines)
+            if visual_lines:
+                issue = check_missing_label_in_cluster(ctx, visual_lines)
+                if issue:
+                    issues.append(issue)
+                    continue
 
             # Then check constellation-based missing label detection
             issue = check_missing_constellation_member(
@@ -2921,12 +2948,16 @@ def format_receipt_text(
     return "\n".join(lines)
 
 
-def get_visual_line_text(issue: EvaluationIssue) -> str:
+def get_visual_line_text(
+    issue: EvaluationIssue,
+    visual_lines: List[VisualLine],
+) -> str:
     """
     Get the text of the visual line containing the issue word.
 
     Args:
         issue: EvaluationIssue with word_context
+        visual_lines: All visual lines for on-demand same-line lookup
 
     Returns:
         Visual line text as a string
@@ -2934,19 +2965,24 @@ def get_visual_line_text(issue: EvaluationIssue) -> str:
     if not issue.word_context:
         return issue.word.text
 
-    # Get words on same line including this word
-    same_line = [issue.word_context] + issue.word_context.same_line_words
+    # Get words on same line including this word (computed on-demand)
+    same_line_words = get_same_line_words(issue.word_context, visual_lines)
+    same_line = [issue.word_context] + same_line_words
     # Sort by x position
     same_line.sort(key=lambda c: c.normalized_x)
     return " ".join(c.word.text for c in same_line)
 
 
-def get_visual_line_labels(issue: EvaluationIssue) -> List[str]:
+def get_visual_line_labels(
+    issue: EvaluationIssue,
+    visual_lines: List[VisualLine],
+) -> List[str]:
     """
     Get the labels of other words on the same visual line.
 
     Args:
         issue: EvaluationIssue with word_context
+        visual_lines: All visual lines for on-demand same-line lookup
 
     Returns:
         List of labels (excluding the target word)
@@ -2954,8 +2990,10 @@ def get_visual_line_labels(issue: EvaluationIssue) -> List[str]:
     if not issue.word_context:
         return []
 
+    # Get same-line words on-demand
+    same_line_words = get_same_line_words(issue.word_context, visual_lines)
     labels = []
-    for ctx in issue.word_context.same_line_words:
+    for ctx in same_line_words:
         if ctx.current_label:
             labels.append(ctx.current_label.label)
         else:
@@ -3015,8 +3053,8 @@ def build_review_context(
         issue_type=issue.issue_type,
         evaluator_reasoning=issue.reasoning,
         receipt_text=format_receipt_text(visual_lines, target_word=issue.word),
-        visual_line_text=get_visual_line_text(issue),
-        visual_line_labels=get_visual_line_labels(issue),
+        visual_line_text=get_visual_line_text(issue, visual_lines),
+        visual_line_labels=get_visual_line_labels(issue, visual_lines),
         label_history=format_label_history(issue.word_context),
         merchant_name=merchant_name,
     )

@@ -115,12 +115,12 @@ def deserialize_place(data: Optional[Dict[str, Any]]):
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    Run compute-only label evaluator with pre-loaded state.
+    Run compute-only label evaluator with pre-loaded state and patterns.
 
     Input:
     {
         "data_s3_key": "data/{exec}/{image_id}_{receipt_id}.json",
-        "training_s3_key": "training/{exec}/{merchant_hash}.json",
+        "patterns_s3_key": "patterns/{exec}/{merchant_hash}.json",
         "execution_id": "abc123",
         "batch_bucket": "bucket-name",
         "skip_llm_review": true,
@@ -137,7 +137,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     }
     """
     data_s3_key = event.get("data_s3_key")
-    training_s3_key = event.get("training_s3_key")
+    patterns_s3_key = event.get("patterns_s3_key")
     execution_id = event.get("execution_id", "unknown")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
 
@@ -166,32 +166,26 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             f"for {image_id}#{receipt_id}"
         )
 
-        # 2. Load training data from S3
-        other_receipt_data = []
-        if training_s3_key:
+        # 2. Load pre-computed patterns from S3
+        merchant_patterns = None
+        if patterns_s3_key:
             logger.info(
-                f"Loading training data from s3://{batch_bucket}/{training_s3_key}"
+                f"Loading patterns from s3://{batch_bucket}/{patterns_s3_key}"
             )
-            training_data = load_json_from_s3(batch_bucket, training_s3_key)
+            from utils.serialization import deserialize_patterns
 
-            from receipt_agent.agents.label_evaluator.state import OtherReceiptData
+            patterns_data = load_json_from_s3(batch_bucket, patterns_s3_key)
+            merchant_patterns = deserialize_patterns(patterns_data)
 
-            for r in training_data.get("receipts", []):
-                try:
-                    other_receipt_data.append(
-                        OtherReceiptData(
-                            place=deserialize_place(r.get("place")),
-                            words=[deserialize_word(w) for w in r.get("words", [])],
-                            labels=[deserialize_label(l) for l in r.get("labels", [])],
-                        )
-                    )
-                except Exception as e:
-                    logger.warning(f"Error deserializing training receipt: {e}")
-                    continue
+            if merchant_patterns:
+                logger.info(
+                    f"Loaded patterns for {merchant_patterns.merchant_name} "
+                    f"({merchant_patterns.receipt_count} receipts)"
+                )
+            else:
+                logger.info("No patterns available for merchant")
 
-            logger.info(f"Loaded {len(other_receipt_data)} training receipts")
-
-        # 3. Create pre-loaded EvaluatorState
+        # 3. Create pre-loaded EvaluatorState with patterns
         from receipt_agent.agents.label_evaluator.state import EvaluatorState
 
         state = EvaluatorState(
@@ -200,7 +194,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             words=words,
             labels=labels,
             place=place,
-            other_receipt_data=other_receipt_data,
+            other_receipt_data=[],  # Not needed - patterns already computed
+            merchant_patterns=merchant_patterns,  # Pre-computed patterns
             skip_llm_review=True,  # Always skip LLM in compute-only
         )
 
@@ -232,10 +227,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         from utils.emf_metrics import emf_metrics
 
         processing_time = time.time() - start_time
+        pattern_receipt_count = (
+            merchant_patterns.receipt_count if merchant_patterns else 0
+        )
         emf_metrics.log_metrics(
             metrics={
                 "IssuesFound": result.get("issues_found", 0),
-                "TrainingReceipts": len(other_receipt_data),
+                "PatternReceiptCount": pattern_receipt_count,
                 "ComputeTimeSeconds": round(compute_time, 3),
                 "ProcessingTimeSeconds": round(processing_time, 2),
             },
@@ -295,3 +293,4 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "receipt_id": event.get("receipt_id"),
             "issues_found": 0,
         }
+

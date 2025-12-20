@@ -55,7 +55,44 @@ COMPUTED_FIELDS = {
     "GSI3SK",
     "GSI4PK",
     "GSI4SK",
-    "TYPE",
+    "TYPE",  # Entity type discriminator
+}
+
+# Valid fields for ReceiptPlace dataclass (used for filtering unknown fields)
+VALID_RECEIPT_PLACE_FIELDS = {
+    "image_id",
+    "receipt_id",
+    "place_id",
+    "merchant_name",
+    "merchant_category",
+    "merchant_types",
+    "formatted_address",
+    "short_address",
+    "address_components",
+    "latitude",
+    "longitude",
+    "geohash",
+    "viewport_ne_lat",
+    "viewport_ne_lng",
+    "viewport_sw_lat",
+    "viewport_sw_lng",
+    "plus_code",
+    "phone_number",
+    "phone_intl",
+    "website",
+    "maps_url",
+    "business_status",
+    "open_now",
+    "hours_summary",
+    "hours_data",
+    "photo_references",
+    "matched_fields",
+    "validated_by",
+    "validation_status",
+    "confidence",
+    "reasoning",
+    "timestamp",
+    "places_api_version",
 }
 
 
@@ -450,6 +487,24 @@ def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
     deserializer = TypeDeserializer()
     deserialized = {k: deserializer.deserialize(v) for k, v in item.items()}
 
+    # Extract image_id and receipt_id from PK/SK if not present as fields
+    # PK format: IMAGE#{image_id}, SK format: RECEIPT#{receipt_id:05d}#PLACE
+    if "image_id" not in deserialized and "PK" in deserialized:
+        pk = deserialized["PK"]
+        if pk.startswith("IMAGE#"):
+            deserialized["image_id"] = pk[6:]  # Remove "IMAGE#" prefix
+
+    if "receipt_id" not in deserialized and "SK" in deserialized:
+        sk = deserialized["SK"]
+        if sk.startswith("RECEIPT#"):
+            # Extract receipt_id from "RECEIPT#00001#PLACE" or similar
+            parts = sk.split("#")
+            if len(parts) >= 2:
+                try:
+                    deserialized["receipt_id"] = int(parts[1])
+                except (ValueError, TypeError):
+                    pass
+
     # Filter out computed fields
     filtered_item = {
         k: v for k, v in deserialized.items() if k not in COMPUTED_FIELDS
@@ -531,4 +586,10 @@ def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
                 except (ValueError, TypeError):
                     filtered_item.pop(attr_name, None)
 
-    return ReceiptPlace(**filtered_item)
+    # Filter to only valid ReceiptPlace fields (handles legacy records)
+    valid_item = {
+        k: v for k, v in filtered_item.items()
+        if k in VALID_RECEIPT_PLACE_FIELDS
+    }
+
+    return ReceiptPlace(**valid_item)

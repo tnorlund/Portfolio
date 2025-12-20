@@ -5,7 +5,7 @@ This component creates a Step Function that validates receipt word labels
 using spatial pattern analysis across receipts from the same merchant.
 
 Architecture:
-- Zip Lambdas: list_receipts, fetch_receipt_data, fetch_training_data, aggregate_results
+- Zip Lambdas: list_receipts, fetch_receipt_data, compute_patterns, aggregate_results
 - Container Lambda: evaluate_labels (compute-only graph)
 - Container Lambda: llm_review (optional LLM-based review)
 - S3 Bucket: batch files and results storage
@@ -13,12 +13,16 @@ Architecture:
 
 Workflow:
 1. ListReceipts - Query receipts by merchant
-2. FetchAndEvaluate - Distributed Map:
+2. ComputePatterns - Compute merchant patterns ONCE (10GB, memory-intensive)
+3. ProcessBatches - Distributed Map:
    a. FetchReceiptData - Get target receipt
-   b. FetchTrainingData - Get merchant training data
-   c. EvaluateLabels - Run compute-only graph
-   d. (Optional) LLMReview - Review with Ollama
-3. AggregateResults - Generate summary report
+   b. EvaluateLabels - Run compute-only graph with pre-computed patterns
+   c. (Optional) LLMReview - Review with Ollama
+4. AggregateResults - Generate summary report
+
+Key optimization: Pattern computation is done ONCE before the distributed map,
+then each receipt evaluation simply loads the pre-computed patterns from S3.
+This reduces memory from 10GB per receipt to 1GB per receipt.
 """
 
 import json
@@ -37,7 +41,11 @@ from pulumi import (
 )
 from pulumi_aws.cloudwatch import LogGroup
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
-from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
+from pulumi_aws.lambda_ import (
+    Function,
+    FunctionEnvironmentArgs,
+    FunctionEphemeralStorageArgs,
+)
 from pulumi_aws.s3 import (
     Bucket,
     BucketVersioningV2,
@@ -288,6 +296,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         # ============================================================
         CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
         HANDLERS_DIR = os.path.join(CURRENT_DIR, "handlers")
+        LAMBDAS_DIR = os.path.join(CURRENT_DIR, "lambdas")
 
         # list_receipts Lambda
         list_receipts_lambda = Function(
@@ -351,36 +360,43 @@ class LabelEvaluatorStepFunction(ComponentResource):
             ),
         )
 
-        # fetch_training_data Lambda
-        fetch_training_data_lambda = Function(
-            f"{name}-fetch-training-data",
-            name=f"{name}-fetch-training-data",
-            role=lambda_role.arn,
-            runtime="python3.12",
-            architectures=["arm64"],
-            handler="fetch_training_data.handler",
-            code=AssetArchive(
-                {
-                    "fetch_training_data.py": FileAsset(
-                        os.path.join(HANDLERS_DIR, "fetch_training_data.py")
-                    ),
-                }
+        # ============================================================
+        # Container Lambda: compute_patterns (memory-intensive)
+        # Runs ONCE per merchant before distributed map
+        # ============================================================
+        compute_patterns_config = {
+            "role_arn": lambda_role.arn,
+            "timeout": 600,  # 10 minutes - pattern computation can be slow
+            "memory_size": 10240,  # 10 GB max - pattern computation is memory intensive
+            "tags": {"environment": stack},
+            "ephemeral_storage": 512,
+            "environment": {
+                "BATCH_BUCKET": self.batch_bucket.bucket,
+                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+            },
+        }
+
+        compute_patterns_docker_image = CodeBuildDockerImage(
+            f"{name}-compute-patterns-img",
+            dockerfile_path=(
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.compute_patterns"
             ),
-            timeout=120,
-            memory_size=1024,
-            layers=[dynamo_layer.arn] if dynamo_layer else [],
-            tags={"environment": stack},
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "DYNAMODB_TABLE_NAME": dynamodb_table_name,
-                    "BATCH_BUCKET": self.batch_bucket.bucket,
-                }
-            ),
-            opts=ResourceOptions(
-                parent=self,
-                ignore_changes=["layers"],
-            ),
+            build_context_path=".",
+            source_paths=[
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
+                "receipt_chroma",
+                "receipt_places",
+                "receipt_agent",
+            ],
+            lambda_function_name=f"{name}-compute-patterns",
+            lambda_config=compute_patterns_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
         )
+
+        compute_patterns_lambda = compute_patterns_docker_image.lambda_function
 
         # aggregate_results Lambda
         aggregate_results_lambda = Function(
@@ -414,7 +430,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         evaluate_lambda_config = {
             "role_arn": lambda_role.arn,
             "timeout": 300,  # 5 minutes
-            "memory_size": 1024,  # 1 GB
+            "memory_size": 512,  # 512MB - sufficient after removing circular refs
             "tags": {"environment": stack},
             "ephemeral_storage": 512,
             "environment": {
@@ -505,7 +521,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             policy=Output.all(
                 list_receipts_lambda.arn,
                 fetch_receipt_data_lambda.arn,
-                fetch_training_data_lambda.arn,
+                compute_patterns_lambda.arn,
                 evaluate_labels_lambda.arn,
                 llm_review_lambda.arn,
                 aggregate_results_lambda.arn,
@@ -584,7 +600,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             definition=Output.all(
                 list_receipts_lambda.arn,
                 fetch_receipt_data_lambda.arn,
-                fetch_training_data_lambda.arn,
+                compute_patterns_lambda.arn,
                 evaluate_labels_lambda.arn,
                 llm_review_lambda.arn,
                 aggregate_results_lambda.arn,
@@ -593,7 +609,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 lambda args: self._create_step_function_definition(
                     list_receipts_arn=args[0],
                     fetch_receipt_data_arn=args[1],
-                    fetch_training_data_arn=args[2],
+                    compute_patterns_arn=args[2],
                     evaluate_labels_arn=args[3],
                     llm_review_arn=args[4],
                     aggregate_results_arn=args[5],
@@ -627,7 +643,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         self,
         list_receipts_arn: str,
         fetch_receipt_data_arn: str,
-        fetch_training_data_arn: str,
+        compute_patterns_arn: str,
         evaluate_labels_arn: str,
         llm_review_arn: str,
         aggregate_results_arn: str,
@@ -654,27 +670,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "limit.$": "$.limit",
                     },
                     "ResultPath": "$.init",
-                    "Next": "SetDefaults",
-                },
-                # Set default values for optional parameters
-                "SetDefaults": {
-                    "Type": "Pass",
-                    "Parameters": {
-                        "execution_id.$": "$.init.execution_id",
-                        "start_time.$": "$.init.start_time",
-                        "batch_bucket.$": "$.init.batch_bucket",
-                        "batch_size.$": "$.init.batch_size",
-                        "merchant_name.$": "$.init.merchant_name",
-                        "skip_llm_review.$": (
-                            "States.JsonMerge(States.StringToJson("
-                            "'{\"default\": true}'), "
-                            "States.StringToJson(States.Format("
-                            "'{\"value\": {}}', $.init.skip_llm_review)), false)"
-                        ),
-                        "max_training_receipts": 50,
-                        "limit": 100,
-                    },
-                    "ResultPath": "$.config",
                     "Next": "ListReceipts",
                 },
                 # List receipts by merchant
@@ -711,7 +706,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         {
                             "Variable": "$.receipts_data.total_receipts",
                             "NumericGreaterThan": 0,
-                            "Next": "ProcessBatches",
+                            "Next": "ComputePatterns",
                         }
                     ],
                     "Default": "NoReceiptsToProcess",
@@ -724,6 +719,31 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     },
                     "End": True,
                 },
+                # Compute patterns ONCE for the merchant (memory-intensive)
+                "ComputePatterns": {
+                    "Type": "Task",
+                    "Resource": compute_patterns_arn,
+                    "TimeoutSeconds": 600,
+                    "Parameters": {
+                        "execution_id.$": "$.init.execution_id",
+                        "batch_bucket.$": "$.init.batch_bucket",
+                        "merchant_name.$": "$.init.merchant_name",
+                        "max_training_receipts.$": "$.init.max_training_receipts",
+                    },
+                    "ResultPath": "$.patterns_result",
+                    "Retry": [
+                        {
+                            "ErrorEquals": [
+                                "States.TaskFailed",
+                                "Lambda.ServiceException",
+                            ],
+                            "IntervalSeconds": 5,
+                            "MaxAttempts": 2,
+                            "BackoffRate": 2.0,
+                        }
+                    ],
+                    "Next": "ProcessBatches",
+                },
                 # Process receipt batches with Distributed Map
                 "ProcessBatches": {
                     "Type": "Map",
@@ -735,9 +755,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "execution_id.$": "$.init.execution_id",
                         "batch_bucket.$": "$.init.batch_bucket",
                         "skip_llm_review.$": "$.init.skip_llm_review",
-                        "max_training_receipts.$": (
-                            "$.receipts_data.max_training_receipts"
-                        ),
+                        "patterns_s3_key.$": "$.patterns_result.patterns_s3_key",
                     },
                     "ItemProcessor": {
                         "ProcessorConfig": {"Mode": "INLINE"},
@@ -753,9 +771,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     "execution_id.$": "$.execution_id",
                                     "batch_bucket.$": "$.batch_bucket",
                                     "skip_llm_review.$": "$.skip_llm_review",
-                                    "max_training_receipts.$": (
-                                        "$.max_training_receipts"
-                                    ),
+                                    "patterns_s3_key.$": "$.patterns_s3_key",
                                 },
                                 "ItemProcessor": {
                                     "ProcessorConfig": {"Mode": "INLINE"},
@@ -781,39 +797,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                     "BackoffRate": 2.0,
                                                 }
                                             ],
-                                            "Next": "FetchTrainingData",
-                                        },
-                                        "FetchTrainingData": {
-                                            "Type": "Task",
-                                            "Resource": fetch_training_data_arn,
-                                            "TimeoutSeconds": 120,
-                                            "Parameters": {
-                                                "merchant_name.$": (
-                                                    "$.receipt_data.merchant_name"
-                                                ),
-                                                "exclude_image_id.$": (
-                                                    "$.receipt.image_id"
-                                                ),
-                                                "exclude_receipt_id.$": (
-                                                    "$.receipt.receipt_id"
-                                                ),
-                                                "max_receipts.$": (
-                                                    "$.max_training_receipts"
-                                                ),
-                                                "execution_id.$": "$.execution_id",
-                                                "batch_bucket.$": "$.batch_bucket",
-                                            },
-                                            "ResultPath": "$.training_data",
-                                            "Retry": [
-                                                {
-                                                    "ErrorEquals": [
-                                                        "States.TaskFailed"
-                                                    ],
-                                                    "IntervalSeconds": 2,
-                                                    "MaxAttempts": 2,
-                                                    "BackoffRate": 2.0,
-                                                }
-                                            ],
                                             "Next": "EvaluateLabels",
                                         },
                                         "EvaluateLabels": {
@@ -824,8 +807,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                 "data_s3_key.$": (
                                                     "$.receipt_data.data_s3_key"
                                                 ),
-                                                "training_s3_key.$": (
-                                                    "$.training_data.training_s3_key"
+                                                "patterns_s3_key.$": (
+                                                    "$.patterns_s3_key"
                                                 ),
                                                 "execution_id.$": "$.execution_id",
                                                 "batch_bucket.$": "$.batch_bucket",

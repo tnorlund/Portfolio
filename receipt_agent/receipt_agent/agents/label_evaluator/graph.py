@@ -396,6 +396,14 @@ def create_label_evaluator_graph(
         if state.error:
             return {}
 
+        # Use pre-computed patterns if already provided
+        if state.merchant_patterns:
+            logger.info(
+                f"Using pre-computed patterns "
+                f"({state.merchant_patterns.receipt_count} receipts)"
+            )
+            return {}  # Don't overwrite existing patterns
+
         if not state.other_receipt_data:
             return {"merchant_patterns": None}
 
@@ -432,6 +440,7 @@ def create_label_evaluator_graph(
         issues = evaluate_word_contexts(
             state.word_contexts,
             state.merchant_patterns,
+            state.visual_lines,  # Pass visual_lines for on-demand same-line lookup
         )
 
         logger.info(f"Found {len(issues)} issues")
@@ -980,10 +989,24 @@ def create_compute_only_graph(
 
     def compute_patterns(state: EvaluatorState) -> dict:
         """Compute merchant patterns from other receipts."""
+        logger.info(
+            f"compute_patterns: entered, error={state.error}, "
+            f"merchant_patterns={state.merchant_patterns is not None}, "
+            f"other_receipt_data={len(state.other_receipt_data) if state.other_receipt_data else 0}"
+        )
         if state.error:
             return {}
 
+        # Use pre-computed patterns if already provided
+        if state.merchant_patterns:
+            logger.info(
+                f"Using pre-computed patterns "
+                f"({state.merchant_patterns.receipt_count} receipts)"
+            )
+            return {}  # Don't overwrite existing patterns
+
         if not state.other_receipt_data:
+            logger.info("compute_patterns: no other_receipt_data, returning None")
             return {"merchant_patterns": None}
 
         merchant_name = "Unknown"
@@ -1007,16 +1030,23 @@ def create_compute_only_graph(
 
     def evaluate_labels(state: EvaluatorState) -> dict:
         """Apply validation rules and detect issues."""
+        logger.info(
+            f"evaluate_labels: entered, error={state.error}, "
+            f"word_contexts={len(state.word_contexts) if state.word_contexts else 0}, "
+            f"merchant_patterns={state.merchant_patterns is not None}"
+        )
         if state.error:
             return {}
 
         if not state.word_contexts:
             return {"issues_found": []}
 
+        logger.info("evaluate_labels: starting evaluation...")
         # Evaluate all word contexts against validation rules
         issues = evaluate_word_contexts(
             state.word_contexts,
             state.merchant_patterns,
+            state.visual_lines,  # Pass visual_lines for on-demand same-line lookup
         )
 
         logger.info(f"Found {len(issues)} issues")

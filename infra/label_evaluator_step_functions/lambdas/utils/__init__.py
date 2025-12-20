@@ -3,10 +3,11 @@
 from utils.emf_metrics import emf_metrics
 from utils.serialization import (
     deserialize_label,
-    deserialize_metadata,
+    deserialize_patterns,
+    deserialize_place,
     deserialize_word,
     serialize_label,
-    serialize_metadata,
+    serialize_place,
     serialize_word,
 )
 
@@ -16,6 +17,7 @@ __all__ = [
     "deserialize_word",
     "serialize_label",
     "deserialize_label",
-    "serialize_metadata",
-    "deserialize_metadata",
+    "serialize_place",
+    "deserialize_place",
+    "deserialize_patterns",
 ]
