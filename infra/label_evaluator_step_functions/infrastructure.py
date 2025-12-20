@@ -298,6 +298,37 @@ class LabelEvaluatorStepFunction(ComponentResource):
         HANDLERS_DIR = os.path.join(CURRENT_DIR, "handlers")
         LAMBDAS_DIR = os.path.join(CURRENT_DIR, "lambdas")
 
+        # list_merchants Lambda (new - lists unique merchants)
+        list_merchants_lambda = Function(
+            f"{name}-list-merchants",
+            name=f"{name}-list-merchants",
+            role=lambda_role.arn,
+            runtime="python3.12",
+            architectures=["arm64"],
+            handler="list_merchants.handler",
+            code=AssetArchive(
+                {
+                    "list_merchants.py": FileAsset(
+                        os.path.join(HANDLERS_DIR, "list_merchants.py")
+                    ),
+                }
+            ),
+            timeout=300,
+            memory_size=512,
+            layers=[dynamo_layer.arn] if dynamo_layer else [],
+            tags={"environment": stack},
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                    "BATCH_BUCKET": self.batch_bucket.bucket,
+                }
+            ),
+            opts=ResourceOptions(
+                parent=self,
+                ignore_changes=["layers"],
+            ),
+        )
+
         # list_receipts Lambda
         list_receipts_lambda = Function(
             f"{name}-list-receipts",
@@ -519,6 +550,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             f"{name}-sfn-lambda-policy",
             role=sfn_role.id,
             policy=Output.all(
+                list_merchants_lambda.arn,
                 list_receipts_lambda.arn,
                 fetch_receipt_data_lambda.arn,
                 compute_patterns_lambda.arn,
@@ -533,7 +565,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                             {
                                 "Effect": "Allow",
                                 "Action": ["lambda:InvokeFunction"],
-                                "Resource": arns,
+                                "Resource": list(arns),
                             }
                         ],
                     }
@@ -598,6 +630,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             type="STANDARD",
             tags={"environment": stack},
             definition=Output.all(
+                list_merchants_lambda.arn,
                 list_receipts_lambda.arn,
                 fetch_receipt_data_lambda.arn,
                 compute_patterns_lambda.arn,
@@ -607,13 +640,14 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 self.batch_bucket.bucket,
             ).apply(
                 lambda args: self._create_step_function_definition(
-                    list_receipts_arn=args[0],
-                    fetch_receipt_data_arn=args[1],
-                    compute_patterns_arn=args[2],
-                    evaluate_labels_arn=args[3],
-                    llm_review_arn=args[4],
-                    aggregate_results_arn=args[5],
-                    batch_bucket=args[6],
+                    list_merchants_arn=args[0],
+                    list_receipts_arn=args[1],
+                    fetch_receipt_data_arn=args[2],
+                    compute_patterns_arn=args[3],
+                    evaluate_labels_arn=args[4],
+                    llm_review_arn=args[5],
+                    aggregate_results_arn=args[6],
+                    batch_bucket=args[7],
                     max_concurrency=self.max_concurrency,
                     batch_size=self.batch_size,
                 )
@@ -632,6 +666,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             {
                 "state_machine_arn": self.state_machine.arn,
                 "batch_bucket_name": self.batch_bucket.bucket,
+                "list_merchants_lambda_arn": list_merchants_lambda.arn,
                 "list_receipts_lambda_arn": list_receipts_lambda.arn,
                 "evaluate_labels_lambda_arn": evaluate_labels_lambda.arn,
                 "llm_review_lambda_arn": llm_review_lambda.arn,
@@ -641,6 +676,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
 
     def _create_step_function_definition(
         self,
+        list_merchants_arn: str,
         list_receipts_arn: str,
         fetch_receipt_data_arn: str,
         compute_patterns_arn: str,
@@ -651,7 +687,17 @@ class LabelEvaluatorStepFunction(ComponentResource):
         max_concurrency: int,
         batch_size: int,
     ) -> str:
-        """Create Step Function definition (ASL)."""
+        """Create Step Function definition (ASL).
+
+        Supports two modes:
+        1. All merchants mode: No merchant_name provided, processes all qualifying merchants
+        2. Single merchant mode: merchant_name provided, processes only that merchant
+
+        For all merchants mode:
+        - ListMerchants returns list of merchants with >= min_receipts
+        - ProcessMerchants loops over each merchant
+        - Each merchant goes through full evaluation workflow
+        """
         definition = {
             "Comment": "Label Evaluator - Validate receipt labels using spatial patterns",
             "StartAt": "Initialize",
@@ -667,25 +713,64 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "merchant_name.$": "$.merchant_name",
                         "skip_llm_review.$": "$.skip_llm_review",
                         "max_training_receipts.$": "$.max_training_receipts",
+                        "min_receipts.$": "$.min_receipts",
                         "limit.$": "$.limit",
                     },
                     "ResultPath": "$.init",
-                    "Next": "ListReceipts",
+                    "Next": "CheckMode",
                 },
-                # List receipts by merchant
-                "ListReceipts": {
+                # Check if single merchant or all merchants mode
+                "CheckMode": {
+                    "Type": "Choice",
+                    "Choices": [
+                        {
+                            "Variable": "$.init.merchant_name",
+                            "IsPresent": True,
+                            "Next": "CheckMerchantNotNull",
+                        }
+                    ],
+                    "Default": "ListMerchants",
+                },
+                "CheckMerchantNotNull": {
+                    "Type": "Choice",
+                    "Choices": [
+                        {
+                            "Variable": "$.init.merchant_name",
+                            "IsNull": False,
+                            "Next": "SingleMerchantMode",
+                        }
+                    ],
+                    "Default": "ListMerchants",
+                },
+                # Single merchant mode - process just one merchant
+                "SingleMerchantMode": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "merchants": [
+                            {
+                                "merchant_name.$": "$.init.merchant_name",
+                                "receipt_count": 0,
+                            }
+                        ],
+                        "total_merchants": 1,
+                        "mode": "single",
+                    },
+                    "ResultPath": "$.merchants_data",
+                    "Next": "ProcessMerchants",
+                },
+                # List all merchants with sufficient receipts
+                "ListMerchants": {
                     "Type": "Task",
-                    "Resource": list_receipts_arn,
+                    "Resource": list_merchants_arn,
                     "TimeoutSeconds": 300,
                     "Parameters": {
                         "execution_id.$": "$.init.execution_id",
                         "batch_bucket.$": "$.init.batch_bucket",
-                        "batch_size.$": "$.init.batch_size",
-                        "merchant_name.$": "$.init.merchant_name",
+                        "min_receipts.$": "$.init.min_receipts",
                         "max_training_receipts.$": "$.init.max_training_receipts",
-                        "limit.$": "$.init.limit",
+                        "skip_llm_review.$": "$.init.skip_llm_review",
                     },
-                    "ResultPath": "$.receipts_data",
+                    "ResultPath": "$.merchants_data",
                     "Retry": [
                         {
                             "ErrorEquals": [
@@ -697,214 +782,344 @@ class LabelEvaluatorStepFunction(ComponentResource):
                             "BackoffRate": 2.0,
                         }
                     ],
-                    "Next": "HasReceipts",
+                    "Next": "HasMerchants",
                 },
-                # Check if there are receipts to process
-                "HasReceipts": {
+                # Check if there are merchants to process
+                "HasMerchants": {
                     "Type": "Choice",
                     "Choices": [
                         {
-                            "Variable": "$.receipts_data.total_receipts",
+                            "Variable": "$.merchants_data.total_merchants",
                             "NumericGreaterThan": 0,
-                            "Next": "ComputePatterns",
+                            "Next": "ProcessMerchants",
                         }
                     ],
-                    "Default": "NoReceiptsToProcess",
+                    "Default": "NoMerchantsToProcess",
                 },
-                "NoReceiptsToProcess": {
+                "NoMerchantsToProcess": {
                     "Type": "Pass",
                     "Result": {
-                        "message": "No receipts found for merchant",
-                        "total_receipts": 0,
+                        "message": "No merchants found with sufficient receipts",
+                        "total_merchants": 0,
                     },
                     "End": True,
                 },
-                # Compute patterns ONCE for the merchant (memory-intensive)
-                "ComputePatterns": {
-                    "Type": "Task",
-                    "Resource": compute_patterns_arn,
-                    "TimeoutSeconds": 600,
-                    "Parameters": {
-                        "execution_id.$": "$.init.execution_id",
-                        "batch_bucket.$": "$.init.batch_bucket",
-                        "merchant_name.$": "$.init.merchant_name",
-                        "max_training_receipts.$": "$.init.max_training_receipts",
-                    },
-                    "ResultPath": "$.patterns_result",
-                    "Retry": [
-                        {
-                            "ErrorEquals": [
-                                "States.TaskFailed",
-                                "Lambda.ServiceException",
-                            ],
-                            "IntervalSeconds": 5,
-                            "MaxAttempts": 2,
-                            "BackoffRate": 2.0,
-                        }
-                    ],
-                    "Next": "ProcessBatches",
-                },
-                # Process receipt batches with Distributed Map
-                "ProcessBatches": {
+                # Process each merchant (outer loop)
+                "ProcessMerchants": {
                     "Type": "Map",
-                    "ItemsPath": "$.receipts_data.receipt_batches",
-                    "MaxConcurrency": max_concurrency,
+                    "ItemsPath": "$.merchants_data.merchants",
+                    "MaxConcurrency": 3,  # Process 3 merchants at a time
                     "Parameters": {
-                        "batch.$": "$$.Map.Item.Value",
-                        "batch_index.$": "$$.Map.Item.Index",
+                        "merchant.$": "$$.Map.Item.Value",
+                        "merchant_index.$": "$$.Map.Item.Index",
                         "execution_id.$": "$.init.execution_id",
                         "batch_bucket.$": "$.init.batch_bucket",
+                        "batch_size.$": "$.init.batch_size",
                         "skip_llm_review.$": "$.init.skip_llm_review",
-                        "patterns_s3_key.$": "$.patterns_result.patterns_s3_key",
+                        "max_training_receipts.$": "$.init.max_training_receipts",
+                        "limit.$": "$.init.limit",
                     },
                     "ItemProcessor": {
                         "ProcessorConfig": {"Mode": "INLINE"},
-                        "StartAt": "ProcessReceipts",
+                        "StartAt": "ListReceipts",
                         "States": {
-                            # Inner map for each receipt in batch
-                            "ProcessReceipts": {
-                                "Type": "Map",
-                                "ItemsPath": "$.batch",
-                                "MaxConcurrency": 5,
+                            # List receipts for this merchant
+                            "ListReceipts": {
+                                "Type": "Task",
+                                "Resource": list_receipts_arn,
+                                "TimeoutSeconds": 300,
                                 "Parameters": {
-                                    "receipt.$": "$$.Map.Item.Value",
+                                    "execution_id.$": "$.execution_id",
+                                    "batch_bucket.$": "$.batch_bucket",
+                                    "batch_size.$": "$.batch_size",
+                                    "merchant_name.$": "$.merchant.merchant_name",
+                                    "max_training_receipts.$": (
+                                        "$.max_training_receipts"
+                                    ),
+                                    "limit.$": "$.limit",
+                                },
+                                "ResultPath": "$.receipts_data",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": [
+                                            "States.TaskFailed",
+                                            "Lambda.ServiceException",
+                                        ],
+                                        "IntervalSeconds": 2,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                                "Next": "HasReceipts",
+                            },
+                            # Check if there are receipts
+                            "HasReceipts": {
+                                "Type": "Choice",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.receipts_data.total_receipts",
+                                        "NumericGreaterThan": 0,
+                                        "Next": "ComputePatterns",
+                                    }
+                                ],
+                                "Default": "NoReceiptsForMerchant",
+                            },
+                            "NoReceiptsForMerchant": {
+                                "Type": "Pass",
+                                "Parameters": {
+                                    "merchant_name.$": "$.merchant.merchant_name",
+                                    "status": "skipped",
+                                    "reason": "No receipts found",
+                                    "total_receipts": 0,
+                                },
+                                "End": True,
+                            },
+                            # Compute patterns for this merchant
+                            "ComputePatterns": {
+                                "Type": "Task",
+                                "Resource": compute_patterns_arn,
+                                "TimeoutSeconds": 600,
+                                "Parameters": {
+                                    "execution_id.$": "$.execution_id",
+                                    "batch_bucket.$": "$.batch_bucket",
+                                    "merchant_name.$": "$.merchant.merchant_name",
+                                    "max_training_receipts.$": (
+                                        "$.max_training_receipts"
+                                    ),
+                                },
+                                "ResultPath": "$.patterns_result",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": [
+                                            "States.TaskFailed",
+                                            "Lambda.ServiceException",
+                                        ],
+                                        "IntervalSeconds": 5,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                                "Next": "ProcessBatches",
+                            },
+                            # Process receipt batches
+                            "ProcessBatches": {
+                                "Type": "Map",
+                                "ItemsPath": "$.receipts_data.receipt_batches",
+                                "MaxConcurrency": max_concurrency,
+                                "Parameters": {
+                                    "batch.$": "$$.Map.Item.Value",
+                                    "batch_index.$": "$$.Map.Item.Index",
                                     "execution_id.$": "$.execution_id",
                                     "batch_bucket.$": "$.batch_bucket",
                                     "skip_llm_review.$": "$.skip_llm_review",
-                                    "patterns_s3_key.$": "$.patterns_s3_key",
+                                    "patterns_s3_key.$": (
+                                        "$.patterns_result.patterns_s3_key"
+                                    ),
                                 },
                                 "ItemProcessor": {
                                     "ProcessorConfig": {"Mode": "INLINE"},
-                                    "StartAt": "FetchReceiptData",
+                                    "StartAt": "ProcessReceipts",
                                     "States": {
-                                        "FetchReceiptData": {
-                                            "Type": "Task",
-                                            "Resource": fetch_receipt_data_arn,
-                                            "TimeoutSeconds": 60,
+                                        # Inner map for each receipt in batch
+                                        "ProcessReceipts": {
+                                            "Type": "Map",
+                                            "ItemsPath": "$.batch",
+                                            "MaxConcurrency": 5,
                                             "Parameters": {
-                                                "receipt.$": "$.receipt",
+                                                "receipt.$": "$$.Map.Item.Value",
                                                 "execution_id.$": "$.execution_id",
                                                 "batch_bucket.$": "$.batch_bucket",
-                                            },
-                                            "ResultPath": "$.receipt_data",
-                                            "Retry": [
-                                                {
-                                                    "ErrorEquals": [
-                                                        "States.TaskFailed"
-                                                    ],
-                                                    "IntervalSeconds": 1,
-                                                    "MaxAttempts": 2,
-                                                    "BackoffRate": 2.0,
-                                                }
-                                            ],
-                                            "Next": "EvaluateLabels",
-                                        },
-                                        "EvaluateLabels": {
-                                            "Type": "Task",
-                                            "Resource": evaluate_labels_arn,
-                                            "TimeoutSeconds": 300,
-                                            "Parameters": {
-                                                "data_s3_key.$": (
-                                                    "$.receipt_data.data_s3_key"
+                                                "skip_llm_review.$": (
+                                                    "$.skip_llm_review"
                                                 ),
                                                 "patterns_s3_key.$": (
                                                     "$.patterns_s3_key"
                                                 ),
-                                                "execution_id.$": "$.execution_id",
-                                                "batch_bucket.$": "$.batch_bucket",
                                             },
-                                            "ResultPath": "$.eval_result",
-                                            "Retry": [
-                                                {
-                                                    "ErrorEquals": [
-                                                        "States.TaskFailed"
-                                                    ],
-                                                    "IntervalSeconds": 2,
-                                                    "MaxAttempts": 2,
-                                                    "BackoffRate": 2.0,
-                                                }
-                                            ],
-                                            "Next": "CheckSkipLLM",
-                                        },
-                                        "CheckSkipLLM": {
-                                            "Type": "Choice",
-                                            "Choices": [
-                                                {
-                                                    "Variable": "$.skip_llm_review",
-                                                    "BooleanEquals": False,
-                                                    "Next": "LLMReview",
-                                                }
-                                            ],
-                                            "Default": "ReturnResult",
-                                        },
-                                        "LLMReview": {
-                                            "Type": "Task",
-                                            "Resource": llm_review_arn,
-                                            "TimeoutSeconds": 900,
-                                            "Parameters": {
-                                                "results_s3_key.$": (
-                                                    "$.eval_result.results_s3_key"
-                                                ),
-                                                "execution_id.$": "$.execution_id",
-                                                "batch_bucket.$": "$.batch_bucket",
-                                            },
-                                            "ResultPath": "$.llm_result",
-                                            "Retry": [
-                                                {
-                                                    "ErrorEquals": [
-                                                        "States.TaskFailed"
-                                                    ],
-                                                    "IntervalSeconds": 5,
-                                                    "MaxAttempts": 2,
-                                                    "BackoffRate": 2.0,
-                                                }
-                                            ],
-                                            "Next": "ReturnResult",
-                                        },
-                                        "ReturnResult": {
-                                            "Type": "Pass",
-                                            "Parameters": {
-                                                "status.$": "$.eval_result.status",
-                                                "image_id.$": (
-                                                    "$.eval_result.image_id"
-                                                ),
-                                                "receipt_id.$": (
-                                                    "$.eval_result.receipt_id"
-                                                ),
-                                                "issues_found.$": (
-                                                    "$.eval_result.issues_found"
-                                                ),
-                                                "results_s3_key.$": (
-                                                    "$.eval_result.results_s3_key"
-                                                ),
+                                            "ItemProcessor": {
+                                                "ProcessorConfig": {
+                                                    "Mode": "INLINE"
+                                                },
+                                                "StartAt": "FetchReceiptData",
+                                                "States": {
+                                                    "FetchReceiptData": {
+                                                        "Type": "Task",
+                                                        "Resource": (
+                                                            fetch_receipt_data_arn
+                                                        ),
+                                                        "TimeoutSeconds": 60,
+                                                        "Parameters": {
+                                                            "receipt.$": "$.receipt",
+                                                            "execution_id.$": (
+                                                                "$.execution_id"
+                                                            ),
+                                                            "batch_bucket.$": (
+                                                                "$.batch_bucket"
+                                                            ),
+                                                        },
+                                                        "ResultPath": "$.receipt_data",
+                                                        "Retry": [
+                                                            {
+                                                                "ErrorEquals": [
+                                                                    "States.TaskFailed"
+                                                                ],
+                                                                "IntervalSeconds": 1,
+                                                                "MaxAttempts": 2,
+                                                                "BackoffRate": 2.0,
+                                                            }
+                                                        ],
+                                                        "Next": "EvaluateLabels",
+                                                    },
+                                                    "EvaluateLabels": {
+                                                        "Type": "Task",
+                                                        "Resource": (
+                                                            evaluate_labels_arn
+                                                        ),
+                                                        "TimeoutSeconds": 300,
+                                                        "Parameters": {
+                                                            "data_s3_key.$": (
+                                                                "$.receipt_data"
+                                                                ".data_s3_key"
+                                                            ),
+                                                            "patterns_s3_key.$": (
+                                                                "$.patterns_s3_key"
+                                                            ),
+                                                            "execution_id.$": (
+                                                                "$.execution_id"
+                                                            ),
+                                                            "batch_bucket.$": (
+                                                                "$.batch_bucket"
+                                                            ),
+                                                        },
+                                                        "ResultPath": "$.eval_result",
+                                                        "Retry": [
+                                                            {
+                                                                "ErrorEquals": [
+                                                                    "States.TaskFailed"
+                                                                ],
+                                                                "IntervalSeconds": 2,
+                                                                "MaxAttempts": 2,
+                                                                "BackoffRate": 2.0,
+                                                            }
+                                                        ],
+                                                        "Next": "CheckSkipLLM",
+                                                    },
+                                                    "CheckSkipLLM": {
+                                                        "Type": "Choice",
+                                                        "Choices": [
+                                                            {
+                                                                "Variable": (
+                                                                    "$.skip_llm_review"
+                                                                ),
+                                                                "BooleanEquals": False,
+                                                                "Next": "LLMReview",
+                                                            }
+                                                        ],
+                                                        "Default": "ReturnResult",
+                                                    },
+                                                    "LLMReview": {
+                                                        "Type": "Task",
+                                                        "Resource": llm_review_arn,
+                                                        "TimeoutSeconds": 900,
+                                                        "Parameters": {
+                                                            "results_s3_key.$": (
+                                                                "$.eval_result"
+                                                                ".results_s3_key"
+                                                            ),
+                                                            "execution_id.$": (
+                                                                "$.execution_id"
+                                                            ),
+                                                            "batch_bucket.$": (
+                                                                "$.batch_bucket"
+                                                            ),
+                                                        },
+                                                        "ResultPath": "$.llm_result",
+                                                        "Retry": [
+                                                            {
+                                                                "ErrorEquals": [
+                                                                    "States.TaskFailed"
+                                                                ],
+                                                                "IntervalSeconds": 5,
+                                                                "MaxAttempts": 2,
+                                                                "BackoffRate": 2.0,
+                                                            }
+                                                        ],
+                                                        "Next": "ReturnResult",
+                                                    },
+                                                    "ReturnResult": {
+                                                        "Type": "Pass",
+                                                        "Parameters": {
+                                                            "status.$": (
+                                                                "$.eval_result.status"
+                                                            ),
+                                                            "image_id.$": (
+                                                                "$.eval_result"
+                                                                ".image_id"
+                                                            ),
+                                                            "receipt_id.$": (
+                                                                "$.eval_result"
+                                                                ".receipt_id"
+                                                            ),
+                                                            "issues_found.$": (
+                                                                "$.eval_result"
+                                                                ".issues_found"
+                                                            ),
+                                                            "results_s3_key.$": (
+                                                                "$.eval_result"
+                                                                ".results_s3_key"
+                                                            ),
+                                                        },
+                                                        "End": True,
+                                                    },
+                                                },
                                             },
                                             "End": True,
                                         },
                                     },
                                 },
+                                "ResultPath": "$.batch_results",
+                                "Next": "AggregateMerchantResults",
+                            },
+                            # Aggregate results for this merchant
+                            "AggregateMerchantResults": {
+                                "Type": "Task",
+                                "Resource": aggregate_results_arn,
+                                "TimeoutSeconds": 120,
+                                "Parameters": {
+                                    "execution_id.$": "$.execution_id",
+                                    "batch_bucket.$": "$.batch_bucket",
+                                    "process_results.$": "$.batch_results",
+                                    "merchant_name.$": "$.merchant.merchant_name",
+                                },
+                                "ResultPath": "$.merchant_summary",
+                                "Next": "ReturnMerchantResult",
+                            },
+                            "ReturnMerchantResult": {
+                                "Type": "Pass",
+                                "Parameters": {
+                                    "merchant_name.$": "$.merchant.merchant_name",
+                                    "status": "completed",
+                                    "total_receipts.$": (
+                                        "$.receipts_data.total_receipts"
+                                    ),
+                                    "summary.$": "$.merchant_summary",
+                                },
                                 "End": True,
                             },
                         },
                     },
-                    "ResultPath": "$.process_results",
-                    "Next": "AggregateResults",
+                    "ResultPath": "$.all_merchant_results",
+                    "Next": "FinalSummary",
                 },
-                # Aggregate all results
-                "AggregateResults": {
-                    "Type": "Task",
-                    "Resource": aggregate_results_arn,
-                    "TimeoutSeconds": 120,
-                    "Parameters": {
-                        "execution_id.$": "$.init.execution_id",
-                        "batch_bucket.$": "$.init.batch_bucket",
-                        "process_results.$": "$.process_results",
-                        "merchant_name.$": "$.init.merchant_name",
-                    },
-                    "ResultPath": "$.summary",
-                    "Next": "Done",
-                },
-                "Done": {
+                # Final summary across all merchants
+                "FinalSummary": {
                     "Type": "Pass",
+                    "Parameters": {
+                        "status": "completed",
+                        "execution_id.$": "$.init.execution_id",
+                        "total_merchants.$": "$.merchants_data.total_merchants",
+                        "merchant_results.$": "$.all_merchant_results",
+                    },
                     "End": True,
                 },
             },
