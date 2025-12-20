@@ -139,11 +139,12 @@ class TestBasicFunctionality:
 
         # These field lists are critical for determining what triggers
         # ChromaDB updates
-        metadata_fields = [
-            "canonical_merchant_name",
+        # Note: ReceiptPlace uses base fields (merchant_name, formatted_address)
+        # not canonical_* fields
+        place_fields = [
             "merchant_name",
             "merchant_category",
-            "address",
+            "formatted_address",
             "phone_number",
             "place_id",
         ]
@@ -157,12 +158,13 @@ class TestBasicFunctionality:
         ]
 
         # Verify expected fields are present
-        assert "canonical_merchant_name" in metadata_fields
-        assert "merchant_category" in metadata_fields
+        assert "merchant_name" in place_fields
+        assert "merchant_category" in place_fields
+        assert "formatted_address" in place_fields
         assert "label" in label_fields
         assert "validation_status" in label_fields
 
         # Verify we don't accidentally include internal fields
-        assert "created_at" not in metadata_fields
-        assert "updated_at" not in metadata_fields
+        assert "created_at" not in place_fields
+        assert "updated_at" not in place_fields
         assert "internal_id" not in label_fields

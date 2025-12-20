@@ -14,16 +14,12 @@ from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 old_place = ReceiptPlace(
     formatted_address="30740 Russell Ranch Rd, Westlake Village, CA 91362, USA",
     reasoning="Target store at Russell Ranch location with matching phone number.",
-    merchant_name="Target",
-    canonical_phone_number="818-661-2631",
+    merchant_name="30740 Russell Ranch Rd (Westlake Village)",
     merchant_category="Retail",
     matched_fields=["phone_number"],
     validated_by="TEXT_SEARCH",
-    canonical_address="30740 Russell Ranch Rd, Westlake Village, CA 91362",
-    canonical_place_id="ChIJbcsNQ2wk6IARlmoF-6DlBuE",
     phone_number="818-661-2631",
     validation_status="UNSURE",
-    canonical_merchant_name="30740 Russell Ranch Rd (Westlake Village)",
     image_id="7e2bd911-7afb-4e0a-84de-57f51ce4daff",
     receipt_id=1,
     place_id="ChIJbcsNQ2wk6IARlmoF-6DlBuE",
@@ -31,7 +27,7 @@ old_place = ReceiptPlace(
 )
 
 new_place = copy.deepcopy(old_place)
-new_place.canonical_merchant_name = "Target"
+new_place.merchant_name = "Target"
 
 TARGET_PLACE_UPDATE_EVENT = {
     "Records": [
@@ -65,13 +61,13 @@ TARGET_PLACE_UPDATE_EVENT = {
 TARGET_METADATA_UPDATE_EVENT = TARGET_PLACE_UPDATE_EVENT
 
 
-def get_target_event_variation(canonical_merchant_name: str = "Target"):
-    """Get a variation of the Target event with different canonical_merchant_name."""
+def get_target_event_variation(merchant_name: str = "Target"):
+    """Get a variation of the Target event with different merchant_name."""
     event = copy.deepcopy(TARGET_PLACE_UPDATE_EVENT)
     if "NewImage" in event["Records"][0]["dynamodb"]:
-        event["Records"][0]["dynamodb"]["NewImage"]["canonical_merchant_name"][
+        event["Records"][0]["dynamodb"]["NewImage"]["merchant_name"][
             "S"
-        ] = canonical_merchant_name
+        ] = merchant_name
     return event
 
 

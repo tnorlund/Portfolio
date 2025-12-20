@@ -160,10 +160,10 @@ class TestCompactionHandlerOrchestration:
             "entity_data": {
                 "image_id": "test",
                 "receipt_id": 1,
-                "canonical_merchant_name": "Target Store",
+                "merchant_name": "Target Store",
             },
             "changes": {
-                "canonical_merchant_name": {
+                "merchant_name": {
                     "old": "Target",
                     "new": "Target Store",
                 }

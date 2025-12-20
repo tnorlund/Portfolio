@@ -125,7 +125,7 @@ class TestCoreCompactionLogic:
 
         # Test metadata update
         changes = {
-            "canonical_merchant_name": {
+            "merchant_name": {
                 "old": "Old Store",
                 "new": "New Store",
             },
@@ -150,7 +150,7 @@ class TestCoreCompactionLogic:
 
         # Verify metadata was updated correctly
         for metadata in updated_metadatas:
-            assert metadata["canonical_merchant_name"] == "New Store"
+            assert metadata["merchant_name"] == "New Store"
             assert metadata["merchant_category"] == "Restaurant"
             assert "last_metadata_update" in metadata
 
@@ -261,18 +261,19 @@ class TestCoreCompactionLogic:
         # These are the fields that should trigger ChromaDB updates
         # pylint: disable=duplicate-code
         # Field lists are naturally duplicated in related test modules
+        # Note: ReceiptPlace uses base fields (merchant_name, formatted_address)
+        # not canonical_* fields
         relevant_fields = [
-            "canonical_merchant_name",
             "merchant_name",
             "merchant_category",
-            "address",
+            "formatted_address",
             "phone_number",
             "place_id",
         ]
 
         # Mock entity with many fields
         mock_changes = {
-            "canonical_merchant_name": {
+            "merchant_name": {
                 "old": "Old Store",
                 "new": "New Store",
             },
@@ -282,7 +283,7 @@ class TestCoreCompactionLogic:
                 "old": "2023-01-01",
                 "new": "2023-01-02",
             },  # Should be ignored
-            "address": {"old": "123 Main St", "new": "456 Oak St"},
+            "formatted_address": {"old": "123 Main St", "new": "456 Oak St"},
         }
 
         # Filter to only relevant fields
@@ -294,9 +295,9 @@ class TestCoreCompactionLogic:
         }
 
         assert len(filtered_changes) == 3  # Only 3 relevant fields
-        assert "canonical_merchant_name" in filtered_changes
+        assert "merchant_name" in filtered_changes
         assert "merchant_category" in filtered_changes
-        assert "address" in filtered_changes
+        assert "formatted_address" in filtered_changes
         assert "internal_id" not in filtered_changes
         assert "created_at" not in filtered_changes
 

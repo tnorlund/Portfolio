@@ -38,7 +38,7 @@ class TestPlaceMessageContract:
                 "receipt_id": 1,
             },
             changes={
-                "canonical_merchant_name": FieldChange(old="Old", new="New")
+                "merchant_name": FieldChange(old="Old", new="New")
             },
             event_name="MODIFY",
             collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
@@ -73,7 +73,7 @@ class TestPlaceMessageContract:
     def test_place_changes_structure(self):
         """Changes dict has old/new structure."""
         changes = {
-            "canonical_merchant_name": FieldChange(
+            "merchant_name": FieldChange(
                 old="Old Store", new="New Store"
             ),
             "place_id": FieldChange(old="place123", new="place456"),

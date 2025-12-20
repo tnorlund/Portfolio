@@ -11,7 +11,7 @@ EXPECTED_PLACE_MESSAGE_SCHEMA = {
     },
     "changes": {
         # Field changes with old/new structure
-        # Example: "canonical_merchant_name": {"old": "value1", "new": "value2"}
+        # Example: "merchant_name": {"old": "value1", "new": "value2"}
     },
     "event_name": str,  # "MODIFY" or "REMOVE"
     "timestamp": str,  # ISO format datetime

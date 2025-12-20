@@ -16,15 +16,14 @@ The DynamoDB Stream Processor enables real-time synchronization of metadata chan
 
 ## Supported Entities
 
-### 1. `RECEIPT_METADATA` - Merchant Information
+### 1. `RECEIPT_PLACE` - Merchant Information
 
-- **Key Pattern**: `PK: IMAGE#{uuid}`, `SK: RECEIPT#{id:05d}#METADATA`
+- **Key Pattern**: `PK: IMAGE#{uuid}`, `SK: RECEIPT#{id:05d}#PLACE`
 - **ChromaDB Impact**: Updates merchant info across ALL embeddings for that receipt
 - **Monitored Fields**:
-  - `canonical_merchant_name`
   - `merchant_name`
   - `merchant_category`
-  - `address`
+  - `formatted_address`
   - `phone_number`
   - `place_id`
 
@@ -86,7 +85,7 @@ Messages sent to the SQS queue have this structure:
 ```json
 {
   "source": "dynamodb_stream",
-  "entity_type": "RECEIPT_METADATA|RECEIPT_WORD_LABEL",
+  "entity_type": "RECEIPT_PLACE|RECEIPT_WORD_LABEL",
   "entity_data": {
     "image_id": "550e8400-e29b-41d4-a716-446655440000",
     "receipt_id": 1,
@@ -95,7 +94,7 @@ Messages sent to the SQS queue have this structure:
     "label": "TOTAL" // Only for RECEIPT_WORD_LABEL
   },
   "changes": {
-    "canonical_merchant_name": {
+    "merchant_name": {
       "old": "Old Merchant",
       "new": "New Merchant"
     }

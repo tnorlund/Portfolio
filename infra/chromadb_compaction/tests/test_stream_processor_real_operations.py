@@ -53,19 +53,19 @@ class TestStreamProcessorRealOperations:
                     "dynamodb": {
                         "ApproximateCreationDateTime": 1640995200.0,
                         "Keys": {
-                            "PK": {"S": "IMAGE#test-image#RECEIPT#00001"},
-                            "SK": {"S": "METADATA"},
+                            "PK": {"S": "IMAGE#test-image"},
+                            "SK": {"S": "RECEIPT#00001#PLACE"},
                         },
                         "NewImage": {
-                            "PK": {"S": "IMAGE#test-image#RECEIPT#00001"},
-                            "SK": {"S": "METADATA"},
-                            "canonical_merchant_name": {"S": "Target Store"},
+                            "PK": {"S": "IMAGE#test-image"},
+                            "SK": {"S": "RECEIPT#00001#PLACE"},
+                            "merchant_name": {"S": "Target Store"},
                             "merchant_category": {"S": "Retail"},
                         },
                         "OldImage": {
-                            "PK": {"S": "IMAGE#test-image#RECEIPT#00001"},
-                            "SK": {"S": "METADATA"},
-                            "canonical_merchant_name": {"S": "Target"},
+                            "PK": {"S": "IMAGE#test-image"},
+                            "SK": {"S": "RECEIPT#00001#PLACE"},
+                            "merchant_name": {"S": "Target"},
                             "merchant_category": {"S": "Retail"},
                         },
                         "SequenceNumber": "123456789",
@@ -336,10 +336,10 @@ class TestStreamProcessorRealOperations:
             "entity_data": {
                 "image_id": "test-image",
                 "receipt_id": 1,
-                "canonical_merchant_name": "Target Store",
+                "merchant_name": "Target Store",
             },
             "changes": {
-                "canonical_merchant_name": {
+                "merchant_name": {
                     "old": "Target",
                     "new": "Target Store",
                 }
@@ -378,11 +378,11 @@ class TestStreamProcessorRealOperations:
         assert lines_body["entity_type"] == "RECEIPT_PLACE"
         assert words_body["entity_type"] == "RECEIPT_PLACE"
         assert (
-            lines_body["entity_data"]["canonical_merchant_name"]
+            lines_body["entity_data"]["merchant_name"]
             == "Target Store"
         )
         assert (
-            words_body["entity_data"]["canonical_merchant_name"]
+            words_body["entity_data"]["merchant_name"]
             == "Target Store"
         )
 

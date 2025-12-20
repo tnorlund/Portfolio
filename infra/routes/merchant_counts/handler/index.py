@@ -27,10 +27,10 @@ def fetch_merchant_counts():
         )
         receipt_places.extend(next_receipt_places)
 
-    # Count the number of receipts for each canonical merchant name
+    # Count the number of receipts for each merchant name
     merchant_counts = {}
     for receipt_place in receipt_places:
-        merchant_name = receipt_place.canonical_merchant_name
+        merchant_name = receipt_place.merchant_name
         # Skip receipts with empty or missing merchant names
         if not merchant_name or not merchant_name.strip():
             continue

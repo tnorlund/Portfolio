@@ -138,9 +138,12 @@ class TestEndToEndWorkflow:
         receipt_place = ReceiptPlace(
             image_id=test_image_id,
             receipt_id=1,
-            canonical_merchant_name="Target",
-            canonical_address="123 Main St",
+            merchant_name="Target",
+            formatted_address="123 Main St",
             phone_number="555-123-4567",
+            place_id="test-place-id",
+            matched_fields=["name"],
+            validated_by="TEST",
         )
         dynamo_client.add_receipt_places([receipt_place])
 
@@ -213,24 +216,24 @@ class TestEndToEndWorkflow:
                         "ApproximateCreationDateTime": 1640995200.0,
                         "Keys": {
                             "PK": {
-                                "S": f"IMAGE#{test_image_id}#RECEIPT#00001"
+                                "S": f"IMAGE#{test_image_id}"
                             },
-                            "SK": {"S": "METADATA"},
+                            "SK": {"S": "RECEIPT#00001#PLACE"},
                         },
                         "NewImage": {
                             "PK": {
-                                "S": f"IMAGE#{test_image_id}#RECEIPT#00001"
+                                "S": f"IMAGE#{test_image_id}"
                             },
-                            "SK": {"S": "METADATA"},
-                            "canonical_merchant_name": {"S": "Target Store"},
+                            "SK": {"S": "RECEIPT#00001#PLACE"},
+                            "merchant_name": {"S": "Target Store"},
                             "merchant_category": {"S": "Retail"},
                         },
                         "OldImage": {
                             "PK": {
-                                "S": f"IMAGE#{test_image_id}#RECEIPT#00001"
+                                "S": f"IMAGE#{test_image_id}"
                             },
-                            "SK": {"S": "METADATA"},
-                            "canonical_merchant_name": {"S": "Target"},
+                            "SK": {"S": "RECEIPT#00001#PLACE"},
+                            "merchant_name": {"S": "Target"},
                             "merchant_category": {"S": "Retail"},
                         },
                         "SequenceNumber": "123456789",
@@ -377,10 +380,10 @@ class TestEndToEndWorkflow:
                             "entity_data": {
                                 "image_id": test_image_id,
                                 "receipt_id": 1,
-                                "canonical_merchant_name": "Target Store",
+                                "merchant_name": "Target Store",
                             },
                             "changes": {
-                                "canonical_merchant_name": {
+                                "merchant_name": {
                                     "old": "Target",
                                     "new": "Target Store",
                                 }
@@ -436,7 +439,7 @@ class TestEndToEndWorkflow:
             test_image_id, 1
         )
         assert (
-            receipt_place_result.canonical_merchant_name == "Target Store"
+            receipt_place_result.merchant_name == "Target"
         )
 
     @mock_aws

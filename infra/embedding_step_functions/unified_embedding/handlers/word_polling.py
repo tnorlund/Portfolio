@@ -412,10 +412,6 @@ async def _ensure_receipt_place_async(
             phone_number=result.get("phone_number") or "",
             validated_by="metadata_finder_agent",
             reasoning=result.get("reasoning") or "",
-            canonical_place_id=result.get("place_id") or "",
-            canonical_merchant_name=result.get("merchant_name") or "",
-            canonical_address=result.get("address") or "",
-            canonical_phone_number=result.get("phone_number") or "",
         )
         dynamo_client.add_receipt_places([place_entity])
 

@@ -93,7 +93,7 @@ class TestMessageStructure:
                 "receipt_id": 1,
             },
             changes={
-                "canonical_merchant_name": FieldChange(old="Old", new="New")
+                "merchant_name": FieldChange(old="Old", new="New")
             },
             event_name="MODIFY",
             collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
