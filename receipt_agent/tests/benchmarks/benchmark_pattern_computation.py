@@ -47,6 +47,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from receipt_dynamo.data._pulumi import load_env
+from receipt_dynamo.data.dynamo_client import DynamoClient
+
 from receipt_agent.agents.label_evaluator.helpers import (
     compute_merchant_patterns,
 )
@@ -54,8 +57,6 @@ from receipt_agent.agents.label_evaluator.state import (
     MerchantPatterns,
     OtherReceiptData,
 )
-from receipt_dynamo.data._pulumi import load_env
-from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +81,7 @@ def load_environment(stack: str = "dev") -> str:
 
         table_name = env.get("dynamodb_table_name")
         if not table_name:
-            raise ValueError(
-                f"Missing dynamodb_table_name in {stack} stack"
-            )
+            raise ValueError(f"Missing dynamodb_table_name in {stack} stack")
 
         return table_name
     except Exception as e:
@@ -279,20 +278,20 @@ def build_metrics(
         "data_metrics": {
             "total_words": total_words,
             "total_labels": total_labels,
-            "avg_words_per_receipt": round(total_words / len(data), 1)
-            if data
-            else 0,
-            "avg_labels_per_receipt": round(total_labels / len(data), 1)
-            if data
-            else 0,
+            "avg_words_per_receipt": (
+                round(total_words / len(data), 1) if data else 0
+            ),
+            "avg_labels_per_receipt": (
+                round(total_labels / len(data), 1) if data else 0
+            ),
         },
         "pattern_metrics": {
-            "label_pairs_selected": len(result.label_pair_geometry)
-            if result
-            else 0,
-            "label_pairs_total": len(result.all_observed_pairs)
-            if result
-            else 0,
+            "label_pairs_selected": (
+                len(result.label_pair_geometry) if result else 0
+            ),
+            "label_pairs_total": (
+                len(result.all_observed_pairs) if result else 0
+            ),
             "unique_labels": len(result.label_positions) if result else 0,
             "receipts_processed": result.receipt_count if result else 0,
         },
@@ -324,7 +323,7 @@ def run_with_scalene(
     repo_root = find_repo_root()
 
     # Create temporary wrapper script
-    wrapper_code = f'''
+    wrapper_code = f"""
 import sys
 import time
 import json
@@ -355,7 +354,7 @@ elapsed = time.perf_counter() - start
 # Save only the elapsed time (result is not picklable due to lambda functions)
 with open("{output_dir}/_result_{timestamp}.json", "w") as f:
     json.dump({{"elapsed": elapsed}}, f)
-'''
+"""
 
     wrapper_script = output_dir / f"_wrapper_{timestamp}.py"
     wrapper_script.write_text(wrapper_code)

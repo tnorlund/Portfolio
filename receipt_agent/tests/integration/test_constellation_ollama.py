@@ -30,9 +30,12 @@ async def run_test():
     """Run constellation anomaly detection test with Ollama."""
     # Import after path setup
     from receipt_dynamo import DynamoClient
-    from receipt_agent.agents.label_evaluator import graph as evaluator_graph
+
     from receipt_agent.agents.label_evaluator import (
         create_label_evaluator_graph,
+    )
+    from receipt_agent.agents.label_evaluator import graph as evaluator_graph
+    from receipt_agent.agents.label_evaluator import (
         run_label_evaluator,
     )
 
@@ -48,7 +51,10 @@ async def run_test():
         # Initialize DynamoDB client (use Pulumi stack output for table name)
         # Get table name from environment or use dev default
         import os
-        table_name = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
+
+        table_name = os.environ.get(
+            "DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22"
+        )
         dynamo = DynamoClient(table_name=table_name)
         logger.info(f"Using DynamoDB table: {table_name}")
 
@@ -84,7 +90,9 @@ async def run_test():
                 break
 
         if image_id is None:
-            logger.error("No Sprouts receipt found with sufficient words/labels")
+            logger.error(
+                "No Sprouts receipt found with sufficient words/labels"
+            )
             return
 
         logger.info(f"Testing receipt: {image_id}#{receipt_id}")
@@ -92,6 +100,7 @@ async def run_test():
 
         # Create graph and run evaluation with Ollama Cloud
         from receipt_agent.config.settings import get_settings
+
         settings = get_settings()
 
         logger.info("Creating label evaluator graph with Ollama Cloud LLM...")
@@ -105,7 +114,10 @@ async def run_test():
                 from receipt_dynamo.data._pulumi import (
                     load_secrets as load_pulumi_secrets,
                 )
-                pulumi_secrets = load_pulumi_secrets("dev") or load_pulumi_secrets("prod")
+
+                pulumi_secrets = load_pulumi_secrets(
+                    "dev"
+                ) or load_pulumi_secrets("prod")
                 if pulumi_secrets:
                     ollama_api_key = (
                         pulumi_secrets.get("portfolio:OLLAMA_API_KEY")
@@ -113,12 +125,16 @@ async def run_test():
                         or pulumi_secrets.get("RECEIPT_AGENT_OLLAMA_API_KEY")
                     )
                     if ollama_api_key:
-                        logger.info("Loaded Ollama API key from Pulumi secrets")
+                        logger.info(
+                            "Loaded Ollama API key from Pulumi secrets"
+                        )
             except Exception as e:
                 logger.debug(f"Could not load Ollama API key from Pulumi: {e}")
 
         if not ollama_api_key:
-            logger.error("RECEIPT_AGENT_OLLAMA_API_KEY not set - cannot use Ollama Cloud")
+            logger.error(
+                "RECEIPT_AGENT_OLLAMA_API_KEY not set - cannot use Ollama Cloud"
+            )
             return
 
         graph = create_label_evaluator_graph(
@@ -152,7 +168,9 @@ async def run_test():
         constellation_issues = [
             i for i in issues if i.get("type") == "constellation_anomaly"
         ]
-        other_issues = [i for i in issues if i.get("type") != "constellation_anomaly"]
+        other_issues = [
+            i for i in issues if i.get("type") != "constellation_anomaly"
+        ]
 
         print(f"\nTotal issues found: {issues_count}")
         print(f"  - Constellation anomalies: {len(constellation_issues)}")
@@ -174,7 +192,9 @@ async def run_test():
         if other_issues:
             print("\n--- Other Anomalies ---")
             for issue in other_issues[:5]:  # Limit to 5
-                print(f"\n  Word: '{issue.get('word_text')}' | Label: {issue.get('current_label')}")
+                print(
+                    f"\n  Word: '{issue.get('word_text')}' | Label: {issue.get('current_label')}"
+                )
                 print(f"    Type: {issue.get('type')}")
                 print(f"    Status: {issue.get('suggested_status')}")
 

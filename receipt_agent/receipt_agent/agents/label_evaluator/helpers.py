@@ -32,11 +32,20 @@ logger = logging.getLogger(__name__)
 
 # Configuration for limiting label pair geometry computation
 MAX_LABEL_PAIRS = 4  # Only compute geometry for top N label type pairs
-MAX_RELATIONSHIP_DIMENSION = 2  # Analyze relationships between N labels (2=pairs, 3=triples, etc.)
+MAX_RELATIONSHIP_DIMENSION = (
+    2  # Analyze relationships between N labels (2=pairs, 3=triples, etc.)
+)
 
 # Semantic groupings of related labels for better pattern understanding
 LABEL_GROUPS = {
-    "header": {"MERCHANT_NAME", "STORE_HOURS", "PHONE_NUMBER", "WEBSITE", "LOYALTY_ID", "ADDRESS_LINE"},
+    "header": {
+        "MERCHANT_NAME",
+        "STORE_HOURS",
+        "PHONE_NUMBER",
+        "WEBSITE",
+        "LOYALTY_ID",
+        "ADDRESS_LINE",
+    },
     "metadata": {"DATE", "TIME", "PAYMENT_METHOD"},
     "line_items": {"PRODUCT_NAME", "QUANTITY", "UNIT_PRICE", "LINE_TOTAL"},
     "discounts": {"COUPON", "DISCOUNT"},
@@ -177,7 +186,9 @@ def build_word_contexts(
         List of WordContext objects with label history populated
     """
     # Group labels by word (line_id, word_id)
-    labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = defaultdict(list)
+    labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = (
+        defaultdict(list)
+    )
     for label in labels:
         key = (label.line_id, label.word_id)
         labels_by_word[key].append(label)
@@ -341,7 +352,7 @@ def _select_top_label_pairs(
     Returns:
         Set of selected label type pairs (sorted tuples)
     """
-    selected = set()
+    selected: Set[Tuple[str, str]] = set()
 
     # Separate all pairs into categories
     within_group_pairs = []
@@ -349,7 +360,8 @@ def _select_top_label_pairs(
     other_pairs = []
 
     for pair in all_pairs.keys():
-        normalized = tuple(sorted(pair))
+        sorted_pair = sorted(pair)
+        normalized: Tuple[str, str] = (sorted_pair[0], sorted_pair[1])
         if _is_within_group_pair(pair):
             within_group_pairs.append((normalized, all_pairs[pair]))
         elif _is_cross_group_pair(pair):
@@ -378,9 +390,12 @@ def _select_top_label_pairs(
     # Pass 2: Fill remaining slots with most frequent pairs (any type)
     # This naturally preserves the data's distribution
     combined = sorted(
-        [(p, f) for p, f in within_group_pairs + cross_group_pairs + other_pairs
-         if p not in selected],
-        key=lambda x: -x[1]
+        [
+            (p, f)
+            for p, f in within_group_pairs + cross_group_pairs + other_pairs
+            if p not in selected
+        ],
+        key=lambda x: -x[1],
     )
 
     for pair, freq in combined:
@@ -391,7 +406,9 @@ def _select_top_label_pairs(
 
     # Categorize final selection and log
     if selected:
-        within_group_count = sum(1 for p in selected if _is_within_group_pair(p))
+        within_group_count = sum(
+            1 for p in selected if _is_within_group_pair(p)
+        )
         cross_group_count = sum(1 for p in selected if _is_cross_group_pair(p))
 
         pair_info = []
@@ -549,7 +566,9 @@ def _print_pattern_statistics(
     logger.info(f"{'='*80}")
     logger.info(f"Training data: {patterns.receipt_count} receipts")
     logger.info(f"Label types observed: {len(patterns.label_positions)}")
-    logger.info(f"Label pairs with geometry: {len(patterns.label_pair_geometry)}\n")
+    logger.info(
+        f"Label pairs with geometry: {len(patterns.label_pair_geometry)}\n"
+    )
 
     if not patterns.label_pair_geometry:
         logger.info("No geometric patterns to display.")
@@ -579,13 +598,17 @@ def _print_pattern_statistics(
                 tightness = "LOOSE"
 
             logger.info(f"  [POLAR COORDINATES]")
-            logger.info(f"  Angle: mean={mean_angle:.1f}°, std={std_angle:.1f}° [{tightness}]")
+            logger.info(
+                f"  Angle: mean={mean_angle:.1f}°, std={std_angle:.1f}° [{tightness}]"
+            )
             logger.info(
                 f"    Range (±1.5σ): {(mean_angle - 1.5 * std_angle) % 360:.1f}° "
                 f"to {(mean_angle + 1.5 * std_angle) % 360:.1f}°"
             )
 
-            logger.info(f"  Distance: mean={mean_distance:.3f}, std={std_distance:.3f}")
+            logger.info(
+                f"  Distance: mean={mean_distance:.3f}, std={std_distance:.3f}"
+            )
             logger.info(
                 f"    Range (±1.5σ): {max(0, mean_distance - 1.5 * std_distance):.3f} "
                 f"to {min(1.0, mean_distance + 1.5 * std_distance):.3f}"
@@ -617,7 +640,7 @@ def _print_pattern_statistics(
 
             # Compute distances of each observation from the mean
             deviations = [
-                math.sqrt((dx - mean_dx)**2 + (dy - mean_dy)**2)
+                math.sqrt((dx - mean_dx) ** 2 + (dy - mean_dy) ** 2)
                 for dx, dy in cartesian_coords
             ]
             mean_deviation = statistics.mean(deviations)
@@ -638,7 +661,9 @@ def _print_pattern_statistics(
 
             logger.info(f"  dx: mean={mean_dx:+.3f}, std={std_dx:.3f}")
             logger.info(f"  dy: mean={mean_dy:+.3f}, std={std_dy:.3f}")
-            logger.info(f"  Mean position: ({mean_dx:+.3f}, {mean_dy:+.3f}) [distance from origin: {mean_cartesian_distance:.3f}]")
+            logger.info(
+                f"  Mean position: ({mean_dx:+.3f}, {mean_dy:+.3f}) [distance from origin: {mean_cartesian_distance:.3f}]"
+            )
             logger.info(
                 f"  Deviation from mean: mean={mean_deviation:.3f}, std={std_deviation:.3f} [{cart_tightness}]"
             )
@@ -649,9 +674,13 @@ def _print_pattern_statistics(
 
             # Sample sizes assessment
             if obs_count < 5:
-                logger.info(f"\n  ⚠️  WARNING: Only {obs_count} observations - pattern may be unreliable")
+                logger.info(
+                    f"\n  ⚠️  WARNING: Only {obs_count} observations - pattern may be unreliable"
+                )
             elif obs_count < 10:
-                logger.info(f"\n  ⚠️  Note: {obs_count} observations - limited confidence")
+                logger.info(
+                    f"\n  ⚠️  Note: {obs_count} observations - limited confidence"
+                )
             else:
                 logger.info(f"\n  ✓ Sufficient observations ({obs_count})")
 
@@ -684,8 +713,8 @@ def _compute_patterns_for_subset(
         }
 
         # Get most recent label per word, preferring VALID ones
-        labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = defaultdict(
-            list
+        labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = (
+            defaultdict(list)
         )
         for label in labels:
             key = (label.line_id, label.word_id)
@@ -726,20 +755,35 @@ def _compute_patterns_for_subset(
             unique_labels = list(set(line_labels))
             for i, label_a in enumerate(unique_labels):
                 for label_b in unique_labels[i + 1 :]:
-                    pair = tuple(sorted([label_a, label_b]))
+                    sorted_labels = sorted([label_a, label_b])
+                    pair: Tuple[str, str] = (
+                        sorted_labels[0],
+                        sorted_labels[1],
+                    )
 
                     # Get centroids for this pair
                     words_a = labels_by_type[label_a]
                     words_b = labels_by_type[label_b]
 
                     if words_a and words_b:
-                        centroid_a = _calculate_centroid([w.position for w in words_a])
-                        centroid_b = _calculate_centroid([w.position for w in words_b])
+                        # Calculate centroids from word positions
+                        centroids_a = [w.calculate_centroid() for w in words_a]
+                        centroid_a = (
+                            sum(c[0] for c in centroids_a) / len(centroids_a),
+                            sum(c[1] for c in centroids_a) / len(centroids_a),
+                        )
+                        centroids_b = [w.calculate_centroid() for w in words_b]
+                        centroid_b = (
+                            sum(c[0] for c in centroids_b) / len(centroids_b),
+                            sum(c[1] for c in centroids_b) / len(centroids_b),
+                        )
 
                         if pair not in geometry_dict:
                             geometry_dict[pair] = LabelPairGeometry()
 
-                        angle = _calculate_angle_degrees(centroid_a, centroid_b)
+                        angle = _calculate_angle_degrees(
+                            centroid_a, centroid_b
+                        )
                         distance = _calculate_distance(centroid_a, centroid_b)
 
                         geometry_dict[pair].observations.append(
@@ -783,7 +827,9 @@ def _compute_patterns_for_subset(
             )
 
             deviations = [
-                math.sqrt((dx - geometry.mean_dx) ** 2 + (dy - geometry.mean_dy) ** 2)
+                math.sqrt(
+                    (dx - geometry.mean_dx) ** 2 + (dy - geometry.mean_dy) ** 2
+                )
                 for dx, dy in cartesian_coords
             ]
             geometry.mean_deviation = statistics.mean(deviations)
@@ -821,9 +867,9 @@ def _compute_constellation_patterns(
     #   - label_positions: {label: (x, y)} for each label in constellation
     #   - centroid: (x, y) of constellation center
     #   - bbox: (width, height)
-    constellation_observations: Dict[
-        Tuple[str, ...], List[Dict[str, Any]]
-    ] = defaultdict(list)
+    constellation_observations: Dict[Tuple[str, ...], List[Dict[str, Any]]] = (
+        defaultdict(list)
+    )
 
     for receipt_data in receipts:
         words = receipt_data.words
@@ -835,9 +881,9 @@ def _compute_constellation_patterns(
         }
 
         # Get most recent valid label per word
-        labels_by_word: Dict[
-            Tuple[int, int], List[ReceiptWordLabel]
-        ] = defaultdict(list)
+        labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = (
+            defaultdict(list)
+        )
         for label in labels:
             key = (label.line_id, label.word_id)
             labels_by_word[key].append(label)
@@ -885,9 +931,7 @@ def _compute_constellation_patterns(
                 continue
 
             # Get positions of all labels in this constellation
-            positions = {
-                lbl: label_centroids[lbl] for lbl in constellation
-            }
+            positions = {lbl: label_centroids[lbl] for lbl in constellation}
 
             # Compute constellation centroid
             all_x = [pos[0] for pos in positions.values()]
@@ -904,12 +948,14 @@ def _compute_constellation_patterns(
             height = max_y - min_y
 
             # Store observation
-            constellation_observations[constellation].append({
-                "label_positions": positions,
-                "centroid": centroid,
-                "width": width,
-                "height": height,
-            })
+            constellation_observations[constellation].append(
+                {
+                    "label_positions": positions,
+                    "centroid": centroid,
+                    "width": width,
+                    "height": height,
+                }
+            )
 
     # Compute statistics for each constellation
     result: Dict[Tuple[str, ...], ConstellationGeometry] = {}
@@ -926,14 +972,14 @@ def _compute_constellation_patterns(
         )
 
         # Compute relative position statistics for each label
-        for label in constellation:
+        for lbl_type in constellation:
             # Collect relative positions (offset from constellation centroid)
-            dx_values = []
-            dy_values = []
+            dx_values: List[float] = []
+            dy_values: List[float] = []
 
             for obs in observations:
                 centroid = obs["centroid"]
-                pos = obs["label_positions"][label]
+                pos = obs["label_positions"][lbl_type]
                 dx_values.append(pos[0] - centroid[0])
                 dy_values.append(pos[1] - centroid[1])
 
@@ -956,7 +1002,7 @@ def _compute_constellation_patterns(
                 statistics.stdev(deviations) if len(deviations) >= 2 else 0.0
             )
 
-            geom.relative_positions[label] = LabelRelativePosition(
+            geom.relative_positions[lbl_type] = LabelRelativePosition(
                 mean_dx=mean_dx,
                 mean_dy=mean_dy,
                 std_dx=std_dx,
@@ -970,9 +1016,7 @@ def _compute_constellation_patterns(
 
         geom.mean_width = statistics.mean(widths)
         geom.mean_height = statistics.mean(heights)
-        geom.std_width = (
-            statistics.stdev(widths) if len(widths) >= 2 else 0.0
-        )
+        geom.std_width = statistics.stdev(widths) if len(widths) >= 2 else 0.0
         geom.std_height = (
             statistics.stdev(heights) if len(heights) >= 2 else 0.0
         )
@@ -1103,8 +1147,8 @@ def compute_merchant_patterns(
         }
 
         # Get most recent label per word, preferring VALID ones
-        labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = defaultdict(
-            list
+        labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = (
+            defaultdict(list)
         )
         for label in labels:
             key = (label.line_id, label.word_id)
@@ -1147,9 +1191,9 @@ def compute_merchant_patterns(
 
         for line_labels in labels_by_line.values():
             # Track which labels appear multiple times on the same line
-            label_counts = defaultdict(int)
-            for label in line_labels:
-                label_counts[label] += 1
+            label_counts: Dict[str, int] = defaultdict(int)
+            for lbl in line_labels:
+                label_counts[lbl] += 1
 
             # Record labels that appear multiple times (multiplicity > 1)
             for label, count in label_counts.items():
@@ -1167,7 +1211,9 @@ def compute_merchant_patterns(
 
         # Track value pairs: when the same text has different labels
         # Group words by text to find duplicates
-        words_by_text: Dict[str, List[Tuple[ReceiptWord, str]]] = defaultdict(list)
+        words_by_text: Dict[str, List[Tuple[ReceiptWord, str]]] = defaultdict(
+            list
+        )
         for key, label in current_labels.items():
             word = word_by_id.get(key)
             if word:
@@ -1217,7 +1263,9 @@ def compute_merchant_patterns(
     # TWO-PASS OPTIMIZATION: Select top pairs/tuples before computing expensive geometry
     # This avoids computing geometry for pairs we'll discard anyway
     # For dimension >= 3, generate n-tuples and select top ones
-    selected_constellations: List[Tuple[str, ...]] = []  # Store for constellation computation
+    selected_constellations: List[Tuple[str, ...]] = (
+        []
+    )  # Store for constellation computation
 
     if max_relationship_dimension >= 3:
         # Generate n-tuples from pair co-occurrence data
@@ -1270,7 +1318,9 @@ def compute_merchant_patterns(
         }
 
         # Get most recent label per word, preferring VALID ones
-        labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = defaultdict(list)
+        labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = (
+            defaultdict(list)
+        )
         for label in labels:
             key = (label.line_id, label.word_id)
             labels_by_word[key].append(label)
@@ -1285,7 +1335,9 @@ def compute_merchant_patterns(
                 ),
                 reverse=True,
             )
-            valid_labels = [lbl for lbl in label_list if lbl.validation_status == "VALID"]
+            valid_labels = [
+                lbl for lbl in label_list if lbl.validation_status == "VALID"
+            ]
             if valid_labels:
                 current_labels[key] = valid_labels[0]
             elif label_list:
@@ -1317,17 +1369,39 @@ def compute_merchant_patterns(
                 word_keys_a = words_by_label[label_a]
                 word_keys_b = words_by_label[label_b]
 
-                x_coords_a = [centroid_cache[k][0] for k in word_keys_a if k in centroid_cache]
-                y_coords_a = [centroid_cache[k][1] for k in word_keys_a if k in centroid_cache]
+                x_coords_a = [
+                    centroid_cache[k][0]
+                    for k in word_keys_a
+                    if k in centroid_cache
+                ]
+                y_coords_a = [
+                    centroid_cache[k][1]
+                    for k in word_keys_a
+                    if k in centroid_cache
+                ]
                 if x_coords_a and y_coords_a:
-                    centroid_a = (sum(x_coords_a) / len(x_coords_a), sum(y_coords_a) / len(y_coords_a))
+                    centroid_a = (
+                        sum(x_coords_a) / len(x_coords_a),
+                        sum(y_coords_a) / len(y_coords_a),
+                    )
                 else:
                     continue
 
-                x_coords_b = [centroid_cache[k][0] for k in word_keys_b if k in centroid_cache]
-                y_coords_b = [centroid_cache[k][1] for k in word_keys_b if k in centroid_cache]
+                x_coords_b = [
+                    centroid_cache[k][0]
+                    for k in word_keys_b
+                    if k in centroid_cache
+                ]
+                y_coords_b = [
+                    centroid_cache[k][1]
+                    for k in word_keys_b
+                    if k in centroid_cache
+                ]
                 if x_coords_b and y_coords_b:
-                    centroid_b = (sum(x_coords_b) / len(x_coords_b), sum(y_coords_b) / len(y_coords_b))
+                    centroid_b = (
+                        sum(x_coords_b) / len(x_coords_b),
+                        sum(y_coords_b) / len(y_coords_b),
+                    )
                 else:
                     continue
 
@@ -1381,7 +1455,9 @@ def compute_merchant_patterns(
 
             # Compute distance-from-mean for each observation in Cartesian space
             deviations = [
-                math.sqrt((dx - geometry.mean_dx)**2 + (dy - geometry.mean_dy)**2)
+                math.sqrt(
+                    (dx - geometry.mean_dx) ** 2 + (dy - geometry.mean_dy) ** 2
+                )
                 for dx, dy in cartesian_coords
             ]
             geometry.mean_deviation = statistics.mean(deviations)
@@ -1409,7 +1485,8 @@ def compute_merchant_patterns(
     try:
         batches = batch_receipts_by_quality(other_receipt_data, merchant_name)
         patterns.batch_classification = {
-            batch_name: len(receipts) for batch_name, receipts in batches.items()
+            batch_name: len(receipts)
+            for batch_name, receipts in batches.items()
         }
 
         # Compute patterns for each batch separately
@@ -1476,7 +1553,9 @@ def compute_merchant_patterns(
                     f"bbox={geom.mean_width:.3f}x{geom.mean_height:.3f}"
                 )
         else:
-            logger.info("No constellation patterns computed (insufficient data)")
+            logger.info(
+                "No constellation patterns computed (insufficient data)"
+            )
 
         logger.info("=" * 80 + "\n")
 
@@ -1819,8 +1898,16 @@ def _check_geometry_against_batch(
         threshold_std = threshold_multiplier
 
         # Calculate actual geometry on this receipt (using word centroids)
-        label_words = [c.word for c in all_contexts if c.current_label and c.current_label.label == label]
-        other_words = [c.word for c in all_contexts if c.current_label and c.current_label.label == other_label]
+        label_words = [
+            c.word
+            for c in all_contexts
+            if c.current_label and c.current_label.label == label
+        ]
+        other_words = [
+            c.word
+            for c in all_contexts
+            if c.current_label and c.current_label.label == other_label
+        ]
 
         if not label_words or not other_words:
             continue
@@ -1845,11 +1932,14 @@ def _check_geometry_against_batch(
         actual_distance = _calculate_distance(centroid_label, centroid_other)
 
         # Convert to Cartesian coordinates
-        actual_dx, actual_dy = _convert_polar_to_cartesian(actual_angle, actual_distance)
+        actual_dx, actual_dy = _convert_polar_to_cartesian(
+            actual_angle, actual_distance
+        )
 
         # Compute deviation from expected position in Cartesian space
         deviation = math.sqrt(
-            (actual_dx - geometry.mean_dx) ** 2 + (actual_dy - geometry.mean_dy) ** 2
+            (actual_dx - geometry.mean_dx) ** 2
+            + (actual_dy - geometry.mean_dy) ** 2
         )
 
         # Check if deviation is anomalous
@@ -1857,9 +1947,13 @@ def _check_geometry_against_batch(
             deviation_z_score = deviation / geometry.std_deviation
             if deviation_z_score > threshold_std:
                 batch_label = (
-                    "conflict-free (HAPPY)" if batch_type == "happy"
-                    else "format variation (AMBIGUOUS)" if batch_type == "ambiguous"
-                    else "problematic (ANTI_PATTERN)"
+                    "conflict-free (HAPPY)"
+                    if batch_type == "happy"
+                    else (
+                        "format variation (AMBIGUOUS)"
+                        if batch_type == "ambiguous"
+                        else "problematic (ANTI_PATTERN)"
+                    )
                 )
                 return EvaluationIssue(
                     issue_type="geometric_anomaly",
@@ -1903,8 +1997,16 @@ def _compute_geometric_issue(
         EvaluationIssue if anomaly detected, None otherwise
     """
     # Calculate actual geometry on this receipt (using word centroids)
-    label_words = [c.word for c in all_contexts if c.current_label and c.current_label.label == label]
-    other_words = [c.word for c in all_contexts if c.current_label and c.current_label.label == other_label]
+    label_words = [
+        c.word
+        for c in all_contexts
+        if c.current_label and c.current_label.label == label
+    ]
+    other_words = [
+        c.word
+        for c in all_contexts
+        if c.current_label and c.current_label.label == other_label
+    ]
 
     if not label_words or not other_words:
         return None
@@ -1929,11 +2031,14 @@ def _compute_geometric_issue(
     actual_distance = _calculate_distance(centroid_label, centroid_other)
 
     # Convert to Cartesian coordinates
-    actual_dx, actual_dy = _convert_polar_to_cartesian(actual_angle, actual_distance)
+    actual_dx, actual_dy = _convert_polar_to_cartesian(
+        actual_angle, actual_distance
+    )
 
     # Compute deviation from expected position in Cartesian space
     deviation = math.sqrt(
-        (actual_dx - geometry.mean_dx) ** 2 + (actual_dy - geometry.mean_dy) ** 2
+        (actual_dx - geometry.mean_dx) ** 2
+        + (actual_dy - geometry.mean_dy) ** 2
     )
 
     # Check if deviation is anomalous
@@ -2124,14 +2229,28 @@ def check_text_label_conflict(
                 # This is a known valid combination (e.g., SUBTOTAL + GRAND_TOTAL)
                 # Verify spatial ordering makes sense
                 y_positions = patterns.value_pair_positions.get(pair)
-                if y_positions and y_positions[0] is not None and y_positions[1] is not None:
+                if (
+                    y_positions
+                    and y_positions[0] is not None
+                    and y_positions[1] is not None
+                ):
                     expected_y1, expected_y2 = y_positions
-                    actual_y1 = ctx.normalized_y if label == pair[0] else other.normalized_y
-                    actual_y2 = ctx.normalized_y if label == pair[1] else other.normalized_y
+                    actual_y1 = (
+                        ctx.normalized_y
+                        if label == pair[0]
+                        else other.normalized_y
+                    )
+                    actual_y2 = (
+                        ctx.normalized_y
+                        if label == pair[1]
+                        else other.normalized_y
+                    )
 
                     # Check if spatial ordering roughly matches (allow small variation)
                     # Y values: 0=bottom, 1=top (receipt coordinates)
-                    same_order = (actual_y1 - actual_y2) * (expected_y1 - expected_y2) >= 0
+                    same_order = (actual_y1 - actual_y2) * (
+                        expected_y1 - expected_y2
+                    ) >= 0
 
                     if same_order or abs(actual_y1 - actual_y2) < 0.1:
                         # Spatial ordering is correct or very close, no issue
@@ -2159,7 +2278,9 @@ def check_text_label_conflict(
                     other.normalized_y, other_label, patterns
                 )
 
-                if other_fit > my_fit + 0.5:  # Other position is significantly better
+                if (
+                    other_fit > my_fit + 0.5
+                ):  # Other position is significantly better
                     return EvaluationIssue(
                         issue_type="text_label_conflict",
                         word=ctx.word,
@@ -2347,13 +2468,19 @@ def _is_plausible_for_label(text: str, label: str) -> bool:
 
     if label == "QUANTITY":
         # Typically a number
-        return text.replace(".", "").isdigit() or text_lower in ("ea", "each", "lb")
+        return text.replace(".", "").isdigit() or text_lower in (
+            "ea",
+            "each",
+            "lb",
+        )
 
     # Default: be permissive
     return True
 
 
-def detect_label_conflicts(labels: List[ReceiptWordLabel]) -> List[Tuple[int, int, Set[str]]]:
+def detect_label_conflicts(
+    labels: List[ReceiptWordLabel],
+) -> List[Tuple[int, int, Set[str]]]:
     """
     Detect when the same word position has conflicting labels.
 
@@ -2409,7 +2536,9 @@ def classify_conflicts_with_llm(
     try:
         from langchain_ollama import ChatOllama
     except ImportError:
-        logger.warning("ChatOllama not available, using heuristic classification")
+        logger.warning(
+            "ChatOllama not available, using heuristic classification"
+        )
         return _heuristic_conflict_classification(conflicts)
 
     classifications = {}
@@ -2481,12 +2610,14 @@ def _classify_conflict_heuristic(label_set: Set[str]) -> str:
 
 
 def _heuristic_conflict_classification(
-    conflicts: List[Tuple[int, int, Set[str]]]
+    conflicts: List[Tuple[int, int, Set[str]]],
 ) -> Dict[Tuple[int, int], str]:
     """Classify conflicts using heuristics only."""
     classifications = {}
     for line_id, word_id, label_set in conflicts:
-        classifications[(line_id, word_id)] = _classify_conflict_heuristic(label_set)
+        classifications[(line_id, word_id)] = _classify_conflict_heuristic(
+            label_set
+        )
     return classifications
 
 
@@ -2830,7 +2961,9 @@ def query_similar_validated_words(
         try:
             query_embedding = list(embeddings[0])
         except (TypeError, ValueError):
-            logger.warning(f"Invalid embedding format for word: {word_chroma_id}")
+            logger.warning(
+                f"Invalid embedding format for word: {word_chroma_id}"
+            )
             return []
 
         if not query_embedding:
@@ -2841,7 +2974,8 @@ def query_similar_validated_words(
         results = chroma_client.query(
             collection_name="words",
             query_embeddings=[query_embedding],
-            n_results=n_results * 2 + 1,  # Fetch more, filter later (+1 for self)
+            n_results=n_results * 2
+            + 1,  # Fetch more, filter later (+1 for self)
             include=["documents", "metadatas", "distances"],
         )
 
@@ -2855,7 +2989,9 @@ def query_similar_validated_words(
 
         similar_words: List[SimilarWordResult] = []
 
-        for doc_id, doc, meta, dist in zip(ids, documents, metadatas, distances):
+        for doc_id, doc, meta, dist in zip(
+            ids, documents, metadatas, distances
+        ):
             # Skip self (the query word)
             if doc_id == word_chroma_id:
                 continue
@@ -2883,12 +3019,20 @@ def query_similar_validated_words(
             valid_labels_str = meta.get("valid_labels", "")
             invalid_labels_str = meta.get("invalid_labels", "")
             valid_labels = (
-                [lbl.strip() for lbl in valid_labels_str.split(",") if lbl.strip()]
+                [
+                    lbl.strip()
+                    for lbl in valid_labels_str.split(",")
+                    if lbl.strip()
+                ]
                 if valid_labels_str
                 else []
             )
             invalid_labels = (
-                [lbl.strip() for lbl in invalid_labels_str.split(",") if lbl.strip()]
+                [
+                    lbl.strip()
+                    for lbl in invalid_labels_str.split(",")
+                    if lbl.strip()
+                ]
                 if invalid_labels_str
                 else []
             )
@@ -2910,7 +3054,9 @@ def query_similar_validated_words(
         return similar_words[:n_results]
 
     except Exception as e:
-        logger.error(f"Error querying ChromaDB for similar words: {e}", exc_info=True)
+        logger.error(
+            f"Error querying ChromaDB for similar words: {e}", exc_info=True
+        )
         return []
 
 
@@ -2947,10 +3093,14 @@ def format_similar_words_for_prompt(
 
     lines = []
     for w in examples:
-        status = f"[{w.validation_status}]" if w.validation_status else "[unvalidated]"
+        status = (
+            f"[{w.validation_status}]"
+            if w.validation_status
+            else "[unvalidated]"
+        )
         label = w.label or "no label"
         lines.append(
-            f"- \"{w.word_text}\" → {label} {status} (similarity: {w.similarity_score:.2f})"
+            f'- "{w.word_text}" → {label} {status} (similarity: {w.similarity_score:.2f})'
         )
 
         # Add valid/invalid labels if available

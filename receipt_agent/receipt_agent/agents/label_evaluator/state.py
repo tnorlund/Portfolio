@@ -9,7 +9,11 @@ and across receipts from the same merchant.
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from receipt_dynamo.entities import ReceiptMetadata, ReceiptWord, ReceiptWordLabel
+from receipt_dynamo.entities import (
+    ReceiptMetadata,
+    ReceiptWord,
+    ReceiptWordLabel,
+)
 
 
 @dataclass
@@ -33,7 +37,9 @@ class WordContext:
     normalized_y: float = 0.0  # 0=bottom, 1=top (receipt coordinate system)
     normalized_x: float = 0.0  # 0=left, 1=right
     visual_line_index: int = 0  # Index of the visual line this word belongs to
-    position_in_line: int = 0  # Position within the visual line (left to right)
+    position_in_line: int = (
+        0  # Position within the visual line (left to right)
+    )
 
     # References to neighbor contexts (populated after all WordContexts created)
     same_line_words: List["WordContext"] = field(default_factory=list)
@@ -55,7 +61,9 @@ class VisualLine:
     def get_labels(self) -> List[str]:
         """Get all labels present on this visual line."""
         return [
-            w.current_label.label for w in self.words if w.current_label is not None
+            w.current_label.label
+            for w in self.words
+            if w.current_label is not None
         ]
 
 
@@ -94,8 +102,10 @@ class LabelPairGeometry:
     std_dy: Optional[float] = None
 
     # Cartesian distance-from-mean metrics (more robust than polar)
-    mean_deviation: Optional[float] = None  # Mean distance of observations from mean point
-    std_deviation: Optional[float] = None   # Std dev of those distances
+    mean_deviation: Optional[float] = (
+        None  # Mean distance of observations from mean point
+    )
+    std_deviation: Optional[float] = None  # Std dev of those distances
 
 
 @dataclass
@@ -138,7 +148,9 @@ class ConstellationGeometry:
 
     # Relative positions from constellation centroid for each label
     # Key: label name, Value: LabelRelativePosition
-    relative_positions: Dict[str, LabelRelativePosition] = field(default_factory=dict)
+    relative_positions: Dict[str, LabelRelativePosition] = field(
+        default_factory=dict
+    )
 
     # Bounding box statistics (normalized 0-1 coordinates)
     mean_width: Optional[float] = None
@@ -194,7 +206,9 @@ class MerchantPatterns:
     # Geometric relationships between label pairs
     # Example: {("ADDRESS_LINE", "UNIT_PRICE"): LabelPairGeometry(...)}
     # Tracks angle and distance between label centroids across receipts
-    label_pair_geometry: Dict[tuple, LabelPairGeometry] = field(default_factory=dict)
+    label_pair_geometry: Dict[tuple, LabelPairGeometry] = field(
+        default_factory=dict
+    )
 
     # All label pairs observed across receipts (for unexpected pair detection)
     # This is a complete set, unlike label_pair_geometry which is limited to top 4
@@ -232,8 +246,8 @@ class MerchantPatterns:
     # Constellation geometry for n-tuple label groups (n >= 3)
     # Example: {("ADDRESS_LINE", "MERCHANT_NAME", "PHONE_NUMBER"): ConstellationGeometry(...)}
     # Captures holistic spatial relationships within label groups
-    constellation_geometry: Dict[Tuple[str, ...], "ConstellationGeometry"] = field(
-        default_factory=dict
+    constellation_geometry: Dict[Tuple[str, ...], "ConstellationGeometry"] = (
+        field(default_factory=dict)
     )
 
 
@@ -248,7 +262,9 @@ class EvaluationIssue:
 
     issue_type: str  # "position_anomaly", "same_line_conflict", "missing_label_cluster", etc.
     word: ReceiptWord
-    current_label: Optional[str]  # The label being evaluated (None if unlabeled)
+    current_label: Optional[
+        str
+    ]  # The label being evaluated (None if unlabeled)
     suggested_status: str  # "VALID", "INVALID", or "NEEDS_REVIEW"
     reasoning: str  # Human-readable explanation
 
@@ -350,10 +366,18 @@ class EvaluatorState:
     review_results: List["ReviewResult"] = field(default_factory=list)
 
     # Configuration
-    skip_llm_review: bool = False  # If True, skip LLM review and use evaluator results directly
-    skip_geometry: bool = False  # If True, skip expensive geometric anomaly detection
-    skip_merchant_patterns: bool = False  # If True, skip all merchant pattern learning
-    max_receipts: Optional[int] = None  # Max other receipts to fetch (None = use default)
+    skip_llm_review: bool = (
+        False  # If True, skip LLM review and use evaluator results directly
+    )
+    skip_geometry: bool = (
+        False  # If True, skip expensive geometric anomaly detection
+    )
+    skip_merchant_patterns: bool = (
+        False  # If True, skip all merchant pattern learning
+    )
+    max_receipts: Optional[int] = (
+        None  # Max other receipts to fetch (None = use default)
+    )
 
     # Error handling
     error: Optional[str] = None

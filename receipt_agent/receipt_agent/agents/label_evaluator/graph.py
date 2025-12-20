@@ -167,7 +167,10 @@ Respond with ONLY a JSON object (no markdown, no explanation outside JSON):
 
 def _format_core_labels() -> str:
     """Format CORE_LABELS as a readable string."""
-    return "\n".join(f"- **{label}**: {definition}" for label, definition in CORE_LABELS.items())
+    return "\n".join(
+        f"- **{label}**: {definition}"
+        for label, definition in CORE_LABELS.items()
+    )
 
 
 def create_label_evaluator_graph(
@@ -219,7 +222,9 @@ def create_label_evaluator_graph(
     if _chroma_client:
         logger.info("ChromaDB client provided for similar word lookup")
     else:
-        logger.info("ChromaDB not configured - similar word lookup will be skipped")
+        logger.info(
+            "ChromaDB not configured - similar word lookup will be skipped"
+        )
 
     # Initialize LLM for review (cheap model for cost efficiency)
     if llm is not None:
@@ -228,7 +233,9 @@ def create_label_evaluator_graph(
         if HAS_OLLAMA and ChatOllama is not None:
             client_kwargs = {"timeout": 120}
             if ollama_api_key:
-                client_kwargs["headers"] = {"Authorization": f"Bearer {ollama_api_key}"}
+                client_kwargs["headers"] = {
+                    "Authorization": f"Bearer {ollama_api_key}"
+                }
             _llm = ChatOllama(
                 base_url=ollama_base_url,
                 model=llm_model,
@@ -254,7 +261,9 @@ def create_label_evaluator_graph(
             )
     else:
         _llm = None
-        logger.warning(f"Unknown LLM provider: {llm_provider}. LLM review will be skipped.")
+        logger.warning(
+            f"Unknown LLM provider: {llm_provider}. LLM review will be skipped."
+        )
 
     def fetch_receipt_data(state: EvaluatorState) -> dict:
         """Fetch words, labels, and metadata for the receipt being evaluated."""
@@ -304,30 +313,44 @@ def create_label_evaluator_graph(
             return {}  # Skip if previous step failed
 
         if not state.metadata:
-            logger.info("No metadata available, skipping merchant pattern learning")
+            logger.info(
+                "No metadata available, skipping merchant pattern learning"
+            )
             return {"other_receipt_data": []}
 
         merchant_name = (
-            state.metadata.canonical_merchant_name or state.metadata.merchant_name
+            state.metadata.canonical_merchant_name
+            or state.metadata.merchant_name
         )
         if not merchant_name:
-            logger.info("No merchant name available, skipping pattern learning")
+            logger.info(
+                "No merchant name available, skipping pattern learning"
+            )
             return {"other_receipt_data": []}
 
         try:
             # Query for other receipts with same merchant
             # If MAX_OTHER_RECEIPTS is None, fetch all receipts
-            limit = MAX_OTHER_RECEIPTS + 1 if MAX_OTHER_RECEIPTS is not None else None
-            other_metadatas, _ = _dynamo_client.get_receipt_metadatas_by_merchant(
-                merchant_name,
-                limit=limit,  # None means fetch all available
+            limit = (
+                MAX_OTHER_RECEIPTS + 1
+                if MAX_OTHER_RECEIPTS is not None
+                else None
+            )
+            other_metadatas, _ = (
+                _dynamo_client.get_receipt_metadatas_by_merchant(
+                    merchant_name,
+                    limit=limit,  # None means fetch all available
+                )
             )
 
             # Filter out current receipt
             other_metadatas = [
                 m
                 for m in other_metadatas
-                if not (m.image_id == state.image_id and m.receipt_id == state.receipt_id)
+                if not (
+                    m.image_id == state.image_id
+                    and m.receipt_id == state.receipt_id
+                )
             ]
 
             # Apply limit if MAX_OTHER_RECEIPTS is set
@@ -335,7 +358,9 @@ def create_label_evaluator_graph(
                 other_metadatas = other_metadatas[:MAX_OTHER_RECEIPTS]
 
             if not other_metadatas:
-                logger.info(f"No other receipts found for merchant '{merchant_name}'")
+                logger.info(
+                    f"No other receipts found for merchant '{merchant_name}'"
+                )
                 return {"other_receipt_data": []}
 
             logger.info(
@@ -353,8 +378,10 @@ def create_label_evaluator_graph(
                     if isinstance(words, tuple):
                         words = words[0]
 
-                    labels, _ = _dynamo_client.list_receipt_word_labels_for_receipt(
-                        other_meta.image_id, other_meta.receipt_id
+                    labels, _ = (
+                        _dynamo_client.list_receipt_word_labels_for_receipt(
+                            other_meta.image_id, other_meta.receipt_id
+                        )
                     )
 
                     other_receipt_data.append(
@@ -469,7 +496,9 @@ def create_label_evaluator_graph(
 
         # Skip LLM review if LLM is not available
         if _llm is None:
-            logger.warning("LLM not available, using evaluator results directly")
+            logger.warning(
+                "LLM not available, using evaluator results directly"
+            )
             new_labels = []
             for issue in state.issues_found:
                 label = _create_evaluation_label(issue, None)
@@ -495,7 +524,9 @@ def create_label_evaluator_graph(
                 )
 
                 # Query ChromaDB for similar validated words (scoped to same merchant)
-                similar_words_text = "ChromaDB not configured - no similar words available."
+                similar_words_text = (
+                    "ChromaDB not configured - no similar words available."
+                )
                 if _chroma_client:
                     try:
                         similar_words = query_similar_validated_words(
@@ -513,7 +544,9 @@ def create_label_evaluator_graph(
                         )
                     except Exception as e:
                         logger.warning(f"Error querying similar words: {e}")
-                        similar_words_text = f"Error querying similar words: {e}"
+                        similar_words_text = (
+                            f"Error querying similar words: {e}"
+                        )
 
                 # Format label history
                 if review_ctx.label_history:
@@ -553,7 +586,9 @@ def create_label_evaluator_graph(
 
                     result_json = json.loads(response_text)
                     decision = result_json.get("decision", "NEEDS_REVIEW")
-                    reasoning = result_json.get("reasoning", "No reasoning provided")
+                    reasoning = result_json.get(
+                        "reasoning", "No reasoning provided"
+                    )
                     suggested_label = result_json.get("suggested_label")
 
                     # Validate decision
@@ -596,7 +631,9 @@ def create_label_evaluator_graph(
                 )
 
             except Exception as e:
-                logger.error(f"Error reviewing issue for '{issue.word.text}': {e}")
+                logger.error(
+                    f"Error reviewing issue for '{issue.word.text}': {e}"
+                )
                 # Fall back to evaluator result
                 review_result = ReviewResult(
                     issue=issue,
@@ -627,7 +664,9 @@ def create_label_evaluator_graph(
 
         try:
             _dynamo_client.add_receipt_word_labels(state.new_labels)
-            logger.info(f"Wrote {len(state.new_labels)} evaluation labels to DynamoDB")
+            logger.info(
+                f"Wrote {len(state.new_labels)} evaluation labels to DynamoDB"
+            )
         except Exception as e:
             logger.error(f"Error writing evaluation results: {e}")
             return {"error": f"Failed to write evaluation results: {e}"}
@@ -676,7 +715,10 @@ def _create_evaluation_label(
     """
     if review_result:
         # Use LLM review result
-        if review_result.decision == "INVALID" and review_result.suggested_label:
+        if (
+            review_result.decision == "INVALID"
+            and review_result.suggested_label
+        ):
             label = review_result.suggested_label
         elif issue.suggested_label:
             label = issue.suggested_label
@@ -786,7 +828,9 @@ async def run_label_evaluator(
         }
 
         if merchant_patterns:
-            result["merchant_receipts_analyzed"] = merchant_patterns.receipt_count
+            result["merchant_receipts_analyzed"] = (
+                merchant_patterns.receipt_count
+            )
 
         logger.info(
             f"Evaluation complete: {result['issues_found']} issues, "
