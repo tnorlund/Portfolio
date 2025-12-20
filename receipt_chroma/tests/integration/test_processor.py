@@ -307,7 +307,7 @@ class TestProcessor:
         from receipt_dynamo_stream.models import StreamMessage
 
         invalid_msg = StreamMessage(
-            entity_type="RECEIPT_METADATA",
+            entity_type="RECEIPT_PLACE",
             entity_data={},  # Missing image_id and receipt_id
             changes={},
             event_name="MODIFY",

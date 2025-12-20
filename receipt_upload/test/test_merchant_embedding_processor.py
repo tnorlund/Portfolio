@@ -412,7 +412,7 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
         call_kwargs = mock_dynamo_client.update_receipt_place.call_args[1]
         assert call_kwargs["place_id"] == "ChIJ_test_place"
         assert call_kwargs["merchant_name"] == "Test Store"
-        assert call_kwargs["address"] == "123 Main St"
+        assert call_kwargs["formatted_address"] == "123 Main St"
         assert call_kwargs["phone_number"] == "5551234567"
 
     def test_enrich_does_not_overwrite_existing_data(self, mock_dynamo_client):
