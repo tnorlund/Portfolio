@@ -84,9 +84,9 @@ class EmbeddedMetricsFormatter:
         }
 
         if dimensions:
-            emf_log.update(dimensions)
+            emf_log.update(dimensions)  # type: ignore[arg-type]
 
-        emf_log.update(metrics)
+        emf_log.update(metrics)  # type: ignore[arg-type]
 
         if properties:
             emf_log.update(properties)

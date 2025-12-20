@@ -505,8 +505,8 @@ def _generate_label_ntuples(
         raise ValueError("dimension must be >= 2")
 
     if dimension == 2:
-        # For pairs, just return the input as-is
-        return all_pairs
+        # For pairs, just return the input as-is (cast to match return type)
+        return {k: v for k, v in all_pairs.items()}
 
     # For dimension >= 3, build a co-occurrence graph and find cliques
     # A clique is a set of labels that all co-occur with each other
@@ -529,7 +529,7 @@ def _generate_label_ntuples(
 
         for i, label_a in enumerate(ntuple):
             for label_b in ntuple[i + 1 :]:
-                pair = tuple(sorted([label_a, label_b]))
+                pair = (min(label_a, label_b), max(label_a, label_b))
                 if pair not in all_pairs:
                     is_clique = False
                     break
@@ -539,7 +539,7 @@ def _generate_label_ntuples(
 
         if is_clique and min_freq > 0:
             sorted_tuple = tuple(sorted(ntuple))
-            ntuples[sorted_tuple] = min_freq
+            ntuples[sorted_tuple] = int(min_freq)
 
     return ntuples
 
@@ -1216,15 +1216,15 @@ def compute_merchant_patterns(
                 label_counts[lbl] += 1
 
             # Record labels that appear multiple times (multiplicity > 1)
-            for label, count in label_counts.items():
+            for lbl_name, count in label_counts.items():
                 if count > 1:
-                    patterns.labels_with_same_line_multiplicity.add(label)
+                    patterns.labels_with_same_line_multiplicity.add(lbl_name)
 
             # Track unique label pairs on this line
-            unique_labels = list(set(line_labels))
-            for i, label_a in enumerate(unique_labels):
-                for label_b in unique_labels[i + 1 :]:
-                    pair = tuple(sorted([label_a, label_b]))
+            unique_line_labels = list(set(line_labels))
+            for i, label_a in enumerate(unique_line_labels):
+                for label_b in unique_line_labels[i + 1 :]:
+                    pair = (min(label_a, label_b), max(label_a, label_b))
                     patterns.same_line_pairs[pair] += 1
                     all_pair_frequencies[pair] += 1
                     patterns.all_observed_pairs.add(pair)
@@ -1234,24 +1234,27 @@ def compute_merchant_patterns(
         words_by_text: Dict[str, List[Tuple[ReceiptWord, str]]] = defaultdict(
             list
         )
-        for key, label in current_labels.items():
+        for key, cur_label in current_labels.items():
             word = word_by_id.get(key)
             if word:
-                words_by_text[word.text].append((word, label.label))
+                words_by_text[word.text].append((word, cur_label.label))
 
         # For each text value that appears multiple times with different labels
         for text, word_label_pairs in words_by_text.items():
             if len(word_label_pairs) > 1:
                 # Check for same text with different labels
-                unique_label_pairs = set()
-                label_positions_by_label = {}
+                unique_label_pairs: Set[Tuple[str, str]] = set()
+                label_positions_by_label: Dict[str, float] = {}
 
-                for word, label in word_label_pairs:
-                    y = word.calculate_centroid()[1]
-                    label_positions_by_label[label] = y
-                    for other_word, other_label in word_label_pairs:
-                        if label != other_label:
-                            pair = tuple(sorted([label, other_label]))
+                for w, lbl_name in word_label_pairs:
+                    y = w.calculate_centroid()[1]
+                    label_positions_by_label[lbl_name] = y
+                    for other_word, other_lbl in word_label_pairs:
+                        if lbl_name != other_lbl:
+                            pair = (
+                                min(lbl_name, other_lbl),
+                                max(lbl_name, other_lbl),
+                            )
                             unique_label_pairs.add(pair)
 
                 # Record each value pair and their positions
@@ -1267,16 +1270,16 @@ def compute_merchant_patterns(
         # Count pair frequencies for geometry (first pass - cheap)
         # Group words by label (using existing ReceiptWord objects)
         words_by_label: Dict[str, List[ReceiptWord]] = defaultdict(list)
-        for key, label in current_labels.items():
+        for key, cur_label in current_labels.items():
             word = word_by_id.get(key)
             if word:
-                words_by_label[label.label].append(word)
+                words_by_label[cur_label.label].append(word)
 
         # Count label pairs without expensive geometry calculation
         unique_labels = list(words_by_label.keys())
         for i, label_a in enumerate(unique_labels):
             for label_b in unique_labels[i + 1 :]:
-                pair = tuple(sorted([label_a, label_b]))
+                pair = (min(label_a, label_b), max(label_a, label_b))
                 all_pair_frequencies[pair] += 1
                 patterns.all_observed_pairs.add(pair)
 
@@ -1307,11 +1310,12 @@ def compute_merchant_patterns(
         selected_constellations = [tuple(sorted(t)) for t in selected_tuples]
 
         # Extract all pairs from selected n-tuples
-        selected_pairs: Set[Tuple[str, ...]] = set()
+        selected_pairs: Set[Tuple[str, str]] = set()
         for ntuple in selected_tuples:
             # Add all pairwise combinations from this n-tuple
             for pair in combinations(sorted(ntuple), 2):
-                selected_pairs.add(pair)
+                # combinations(..., 2) yields 2-tuples
+                selected_pairs.add((pair[0], pair[1]))
         logger.debug(
             f"Selected {len(selected_tuples)} label {max_relationship_dimension}-tuples, "
             f"extracted {len(selected_pairs)} pairwise relationships for geometry"
@@ -1329,24 +1333,24 @@ def compute_merchant_patterns(
     # Second pass: Compute geometry only for selected top pairs
     # Cache centroids per label per receipt to avoid recalculation
     for receipt_data in other_receipt_data:
-        words = receipt_data.words
-        labels = receipt_data.labels
+        words_2 = receipt_data.words
+        labels_2 = receipt_data.labels
 
         # Build word lookup
-        word_by_id: Dict[Tuple[int, int], ReceiptWord] = {
-            (w.line_id, w.word_id): w for w in words
+        word_by_id_2: Dict[Tuple[int, int], ReceiptWord] = {
+            (w.line_id, w.word_id): w for w in words_2
         }
 
         # Get most recent label per word, preferring VALID ones
-        labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = (
+        labels_by_word_2: Dict[Tuple[int, int], List[ReceiptWordLabel]] = (
             defaultdict(list)
         )
-        for label in labels:
-            key = (label.line_id, label.word_id)
-            labels_by_word[key].append(label)
+        for label_item in labels_2:
+            key = (label_item.line_id, label_item.word_id)
+            labels_by_word_2[key].append(label_item)
 
-        current_labels: Dict[Tuple[int, int], ReceiptWordLabel] = {}
-        for key, label_list in labels_by_word.items():
+        current_labels_2: Dict[Tuple[int, int], ReceiptWordLabel] = {}
+        for key, label_list in labels_by_word_2.items():
             label_list.sort(
                 key=lambda lbl: (
                     lbl.timestamp_added.isoformat()
@@ -1359,35 +1363,35 @@ def compute_merchant_patterns(
                 lbl for lbl in label_list if lbl.validation_status == "VALID"
             ]
             if valid_labels:
-                current_labels[key] = valid_labels[0]
+                current_labels_2[key] = valid_labels[0]
             elif label_list:
-                current_labels[key] = label_list[0]
+                current_labels_2[key] = label_list[0]
 
         # Cache centroids for this receipt (centroid caching optimization)
         centroid_cache: Dict[Tuple[int, int], Tuple[float, float]] = {}
-        for key in current_labels.keys():
-            word = word_by_id.get(key)
+        for key in current_labels_2.keys():
+            word = word_by_id_2.get(key)
             if word:
                 centroid_cache[key] = word.calculate_centroid()
 
-        # Group words by label
-        words_by_label: Dict[str, List[Tuple[int, int]]] = defaultdict(list)
-        for key, label in current_labels.items():
-            words_by_label[label.label].append(key)
+        # Group words by label (storing keys, not ReceiptWord objects)
+        words_by_label_2: Dict[str, List[Tuple[int, int]]] = defaultdict(list)
+        for key, cur_label in current_labels_2.items():
+            words_by_label_2[cur_label.label].append(key)
 
         # Compute geometry ONLY for selected pairs
-        unique_labels = list(words_by_label.keys())
-        for i, label_a in enumerate(unique_labels):
-            for label_b in unique_labels[i + 1 :]:
-                pair = tuple(sorted([label_a, label_b]))
+        unique_labels_2 = list(words_by_label_2.keys())
+        for i, label_a in enumerate(unique_labels_2):
+            for label_b in unique_labels_2[i + 1 :]:
+                pair = (min(label_a, label_b), max(label_a, label_b))
 
                 # Skip if not in top pairs
                 if pair not in selected_pairs:
                     continue
 
                 # Calculate centroids using cached values
-                word_keys_a = words_by_label[label_a]
-                word_keys_b = words_by_label[label_b]
+                word_keys_a = words_by_label_2[label_a]
+                word_keys_b = words_by_label_2[label_b]
 
                 x_coords_a = [
                     centroid_cache[k][0]
@@ -1886,6 +1890,8 @@ def _check_geometry_against_batch(
     if not batch_geometry:
         return None
 
+    if ctx.current_label is None:
+        return None
     label = ctx.current_label.label
 
     # Find all other labels present on this receipt
@@ -2056,6 +2062,8 @@ def _compute_geometric_issue(
     )
 
     # Compute deviation from expected position in Cartesian space
+    if geometry.mean_dx is None or geometry.mean_dy is None:
+        return None
     deviation = math.sqrt(
         (actual_dx - geometry.mean_dx) ** 2
         + (actual_dy - geometry.mean_dy) ** 2
@@ -2237,6 +2245,8 @@ def check_text_label_conflict(
     ]
 
     for other in same_text_contexts:
+        # current_label is guaranteed non-None by the filter above
+        assert other.current_label is not None
         if other.current_label.label != label:
             # Same text, different labels
             other_label = other.current_label.label
@@ -2248,6 +2258,9 @@ def check_text_label_conflict(
             if is_known_pair:
                 # This is a known valid combination (e.g., SUBTOTAL + GRAND_TOTAL)
                 # Verify spatial ordering makes sense
+                assert (
+                    patterns is not None
+                )  # Guaranteed by is_known_pair check
                 y_positions = patterns.value_pair_positions.get(pair)
                 if (
                     y_positions

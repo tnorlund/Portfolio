@@ -345,7 +345,7 @@ class ReceiptPlace(SerializationMixin):
         Returns:
             Dict with DynamoDB formatted item ready for PutItem/UpdateItem
         """
-        item = {
+        item: Dict[str, Any] = {
             **self.key,
             **self.gsi1_key,
             **self.gsi2_key,

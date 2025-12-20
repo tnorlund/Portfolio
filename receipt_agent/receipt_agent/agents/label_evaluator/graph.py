@@ -210,7 +210,7 @@ def create_label_evaluator_graph(
     if llm is not None:
         _llm = llm
     elif HAS_OLLAMA and ChatOllama is not None:
-        client_kwargs = {"timeout": 120}
+        client_kwargs: dict[str, Any] = {"timeout": 120}
         if ollama_api_key:
             client_kwargs["headers"] = {
                 "Authorization": f"Bearer {ollama_api_key}"
@@ -452,22 +452,22 @@ def create_label_evaluator_graph(
         if state.skip_llm_review:
             logger.info("Skipping LLM review (skip_llm_review=True)")
             # Use evaluator results directly
-            new_labels = []
+            skip_labels: list[ReceiptWordLabel] = []
             for issue in state.issues_found:
-                label = _create_evaluation_label(issue, None)
-                new_labels.append(label)
-            return {"review_results": [], "new_labels": new_labels}
+                eval_label = _create_evaluation_label(issue, None)
+                skip_labels.append(eval_label)
+            return {"review_results": [], "new_labels": skip_labels}
 
         # Skip LLM review if LLM is not available
         if _llm is None:
             logger.warning(
                 "LLM not available, using evaluator results directly"
             )
-            new_labels = []
+            fallback_labels: list[ReceiptWordLabel] = []
             for issue in state.issues_found:
-                label = _create_evaluation_label(issue, None)
-                new_labels.append(label)
-            return {"review_results": [], "new_labels": new_labels}
+                eval_label = _create_evaluation_label(issue, None)
+                fallback_labels.append(eval_label)
+            return {"review_results": [], "new_labels": fallback_labels}
 
         merchant_name = "Unknown"
         if state.place:

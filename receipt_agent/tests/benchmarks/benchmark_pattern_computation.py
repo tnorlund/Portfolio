@@ -106,7 +106,7 @@ def load_receipt_data(
     """
     logger.info(f"Loading receipts for merchant: {merchant_name}")
 
-    other_receipt_data = []
+    other_receipt_data: list[OtherReceiptData] = []
     last_evaluated_key = None
 
     try:

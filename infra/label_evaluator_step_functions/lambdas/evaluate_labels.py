@@ -110,6 +110,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         image_id = target_data.get("image_id")
         receipt_id = target_data.get("receipt_id")
 
+        if not image_id or receipt_id is None:
+            raise ValueError("image_id and receipt_id are required in data")
+
         # Deserialize entities
         words = [deserialize_word(w) for w in target_data.get("words", [])]
         labels = [

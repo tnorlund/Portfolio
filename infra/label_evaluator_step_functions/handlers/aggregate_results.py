@@ -30,6 +30,8 @@ class ReceiptResultSummary(TypedDict, total=False):
 class IssueDetail(TypedDict, total=False):
     """Details of a detected labeling issue."""
 
+    image_id: str
+    receipt_id: int
     type: str
     word_text: str
     current_label: str | None
@@ -116,8 +118,8 @@ def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
                 for issue in issues:
                     all_issues.append(
                         {
-                            "image_id": result.get("image_id"),
-                            "receipt_id": result.get("receipt_id"),
+                            "image_id": result.get("image_id", ""),
+                            "receipt_id": result.get("receipt_id", 0),
                             **issue,
                         }
                     )
