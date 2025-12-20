@@ -67,12 +67,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     dynamo = DynamoClient(table_name=table_name)
 
-    # Query receipts by merchant
-    metadatas, _ = dynamo.get_receipt_metadatas_by_merchant(
+    # Query receipts by merchant (using ReceiptPlace instead of ReceiptMetadata)
+    places, _ = dynamo.get_receipt_places_by_merchant(
         merchant_name, limit=limit
     )
 
-    if not metadatas:
+    if not places:
         logger.info(f"No receipts found for merchant '{merchant_name}'")
         return {
             "manifest_s3_key": None,
@@ -86,11 +86,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Create receipt list
     receipts = [
         {
-            "image_id": m.image_id,
-            "receipt_id": m.receipt_id,
-            "merchant_name": m.canonical_merchant_name or m.merchant_name,
+            "image_id": p.image_id,
+            "receipt_id": p.receipt_id,
+            "merchant_name": p.merchant_name,
         }
-        for m in metadatas
+        for p in places
     ]
 
     logger.info(f"Found {len(receipts)} receipts for merchant '{merchant_name}'")

@@ -69,79 +69,48 @@ def upload_json_to_s3(bucket: str, key: str, data: Any) -> None:
 
 
 def deserialize_word(data: Dict[str, Any]):
-    """Deserialize a ReceiptWord from JSON."""
+    """Deserialize a ReceiptWord from JSON using kwargs."""
     from receipt_dynamo.entities import ReceiptWord
 
-    return ReceiptWord(
-        image_id=data["image_id"],
-        receipt_id=data["receipt_id"],
-        line_id=data["line_id"],
-        word_id=data["word_id"],
-        text=data["text"],
-        bounding_box=data.get("bounding_box"),
-        top_right=data.get("top_right"),
-        top_left=data.get("top_left"),
-        bottom_right=data.get("bottom_right"),
-        bottom_left=data.get("bottom_left"),
-        angle_degrees=data.get("angle_degrees"),
-        angle_radians=data.get("angle_radians"),
-        confidence=data.get("confidence"),
-        extracted_data=data.get("extracted_data"),
-        embedding_status=data.get("embedding_status", "NONE"),
-        is_noise=data.get("is_noise", False),
-    )
+    return ReceiptWord(**data)
 
 
 def deserialize_label(data: Dict[str, Any]):
     """Deserialize a ReceiptWordLabel from JSON."""
     from receipt_dynamo.entities import ReceiptWordLabel
 
-    timestamp = data.get("timestamp_added")
-    if isinstance(timestamp, str):
+    # Parse timestamp string back to datetime
+    if isinstance(data.get("timestamp_added"), str):
         try:
-            timestamp = datetime.fromisoformat(timestamp)
+            data["timestamp_added"] = datetime.fromisoformat(
+                data["timestamp_added"]
+            )
         except ValueError:
-            timestamp = None
+            data["timestamp_added"] = None
 
-    return ReceiptWordLabel(
-        image_id=data["image_id"],
-        receipt_id=data["receipt_id"],
-        line_id=data["line_id"],
-        word_id=data["word_id"],
-        label=data["label"],
-        reasoning=data.get("reasoning"),
-        timestamp_added=timestamp,
-        validation_status=data.get("validation_status"),
-        label_proposed_by=data.get("label_proposed_by"),
-        label_consolidated_from=data.get("label_consolidated_from"),
-    )
+    return ReceiptWordLabel(**data)
 
 
-def deserialize_metadata(data: Optional[Dict[str, Any]]):
-    """Deserialize a ReceiptMetadata from JSON."""
+def deserialize_place(data: Optional[Dict[str, Any]]):
+    """Deserialize a ReceiptPlace from JSON."""
     if not data:
         return None
 
-    from receipt_dynamo.entities import ReceiptMetadata
+    from receipt_dynamo.entities import ReceiptPlace
 
-    date_val = data.get("date")
-    if isinstance(date_val, str):
+    # Parse timestamp string back to datetime
+    if isinstance(data.get("timestamp"), str):
         try:
-            date_val = datetime.fromisoformat(date_val).date()
+            ts = data["timestamp"]
+            if ts.endswith("+00:00"):
+                ts = ts.replace("+00:00", "")
+            data["timestamp"] = datetime.fromisoformat(ts)
         except ValueError:
-            date_val = None
+            data["timestamp"] = datetime.now()
+    elif data.get("timestamp") is None:
+        data["timestamp"] = datetime.now()
 
-    return ReceiptMetadata(
-        image_id=data["image_id"],
-        receipt_id=data["receipt_id"],
-        merchant_name=data.get("merchant_name"),
-        canonical_merchant_name=data.get("canonical_merchant_name"),
-        place_id=data.get("place_id"),
-        address=data.get("address"),
-        date=date_val,
-        total=data.get("total"),
-        currency=data.get("currency"),
-    )
+    return ReceiptPlace(**data)
 
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -190,7 +159,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Deserialize entities
         words = [deserialize_word(w) for w in target_data.get("words", [])]
         labels = [deserialize_label(l) for l in target_data.get("labels", [])]
-        metadata = deserialize_metadata(target_data.get("metadata"))
+        place = deserialize_place(target_data.get("place"))
 
         logger.info(
             f"Loaded {len(words)} words, {len(labels)} labels "
@@ -211,7 +180,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 try:
                     other_receipt_data.append(
                         OtherReceiptData(
-                            metadata=deserialize_metadata(r.get("metadata")),
+                            place=deserialize_place(r.get("place")),
                             words=[deserialize_word(w) for w in r.get("words", [])],
                             labels=[deserialize_label(l) for l in r.get("labels", [])],
                         )
@@ -230,7 +199,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             receipt_id=receipt_id,
             words=words,
             labels=labels,
-            metadata=metadata,
+            place=place,
             other_receipt_data=other_receipt_data,
             skip_llm_review=True,  # Always skip LLM in compute-only
         )

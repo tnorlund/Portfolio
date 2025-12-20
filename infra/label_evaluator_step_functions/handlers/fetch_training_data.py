@@ -94,19 +94,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     dynamo = DynamoClient(table_name=table_name)
 
-    # Query other receipts from same merchant
-    other_metadatas, _ = dynamo.get_receipt_metadatas_by_merchant(
+    # Query other receipts from same merchant (using ReceiptPlace)
+    other_places, _ = dynamo.get_receipt_places_by_merchant(
         merchant_name, limit=max_receipts + 1
     )
 
     # Exclude target receipt
-    other_metadatas = [
-        m
-        for m in other_metadatas
-        if not (m.image_id == exclude_image_id and m.receipt_id == exclude_receipt_id)
+    other_places = [
+        p
+        for p in other_places
+        if not (p.image_id == exclude_image_id and p.receipt_id == exclude_receipt_id)
     ][:max_receipts]
 
-    if not other_metadatas:
+    if not other_places:
         logger.info(f"No other receipts found for merchant '{merchant_name}'")
         # Upload empty training data
         training_data = {
@@ -127,7 +127,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     logger.info(
-        f"Fetching words/labels for {len(other_metadatas)} training receipts"
+        f"Fetching words/labels for {len(other_places)} training receipts"
     )
 
     # Serialization helpers
@@ -169,36 +169,39 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "label_consolidated_from": l.label_consolidated_from,
         }
 
-    def serialize_metadata(m):
+    def serialize_place(p):
+        """Serialize ReceiptPlace to JSON-compatible dict."""
         return {
-            "image_id": m.image_id,
-            "receipt_id": m.receipt_id,
-            "merchant_name": m.merchant_name,
-            "canonical_merchant_name": m.canonical_merchant_name,
+            "image_id": p.image_id,
+            "receipt_id": p.receipt_id,
+            "merchant_name": p.merchant_name,
+            "place_id": p.place_id,
+            "formatted_address": p.formatted_address,
+            "validation_status": p.validation_status,
         }
 
     # Fetch and serialize each receipt
     receipts_data = []
-    for meta in other_metadatas:
+    for place in other_places:
         try:
             words = dynamo.list_receipt_words_from_receipt(
-                meta.image_id, meta.receipt_id
+                place.image_id, place.receipt_id
             )
             if isinstance(words, tuple):
                 words = words[0]
 
             labels, _ = dynamo.list_receipt_word_labels_for_receipt(
-                meta.image_id, meta.receipt_id
+                place.image_id, place.receipt_id
             )
 
             receipts_data.append({
-                "metadata": serialize_metadata(meta),
+                "place": serialize_place(place),
                 "words": [serialize_word(w) for w in words],
                 "labels": [serialize_label(l) for l in labels],
             })
         except Exception as e:
             logger.warning(
-                f"Error fetching receipt {meta.image_id}#{meta.receipt_id}: {e}"
+                f"Error fetching receipt {place.image_id}#{place.receipt_id}: {e}"
             )
             continue
 

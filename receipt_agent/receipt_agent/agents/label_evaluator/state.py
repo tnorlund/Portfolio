@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from receipt_dynamo.entities import (
-    ReceiptMetadata,
+    ReceiptPlace,
     ReceiptWord,
     ReceiptWordLabel,
 )
@@ -325,7 +325,7 @@ class ReviewResult:
 class OtherReceiptData:
     """Data fetched from another receipt of the same merchant."""
 
-    metadata: ReceiptMetadata
+    place: ReceiptPlace
     words: List[ReceiptWord]
     labels: List[ReceiptWordLabel]
 
@@ -346,7 +346,7 @@ class EvaluatorState:
     # Fetched data for this receipt
     words: List[ReceiptWord] = field(default_factory=list)
     labels: List[ReceiptWordLabel] = field(default_factory=list)
-    metadata: Optional[ReceiptMetadata] = None
+    place: Optional[ReceiptPlace] = None
 
     # Fetched data from other receipts of same merchant
     other_receipt_data: List[OtherReceiptData] = field(default_factory=list)

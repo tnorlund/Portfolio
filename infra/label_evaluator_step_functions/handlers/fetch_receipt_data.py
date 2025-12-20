@@ -70,12 +70,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Fetch labels
     labels, _ = dynamo.list_receipt_word_labels_for_receipt(image_id, receipt_id)
 
-    # Fetch metadata
+    # Fetch place data (replaces metadata)
     try:
-        metadata = dynamo.get_receipt_metadata(image_id, receipt_id)
+        place = dynamo.get_receipt_place(image_id, receipt_id)
     except Exception as e:
-        logger.warning(f"Could not fetch metadata: {e}")
-        metadata = None
+        logger.warning(f"Could not fetch place data: {e}")
+        place = None
 
     logger.info(
         f"Fetched {len(words)} words, {len(labels)} labels "
@@ -123,23 +123,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "label_consolidated_from": l.label_consolidated_from,
         }
 
-    def serialize_metadata(m):
-        if not m:
+    def serialize_place(p):
+        """Serialize ReceiptPlace to JSON-compatible dict."""
+        if not p:
             return None
         return {
-            "image_id": m.image_id,
-            "receipt_id": m.receipt_id,
-            "merchant_name": m.merchant_name,
-            "canonical_merchant_name": m.canonical_merchant_name,
-            "place_id": getattr(m, "place_id", None),
-            "address": getattr(m, "address", None),
-            "date": (
-                m.date.isoformat()
-                if hasattr(m, "date") and m.date
-                else None
-            ),
-            "total": getattr(m, "total", None),
-            "currency": getattr(m, "currency", None),
+            "image_id": p.image_id,
+            "receipt_id": p.receipt_id,
+            "merchant_name": p.merchant_name,
+            "place_id": p.place_id,
+            "formatted_address": p.formatted_address,
+            "short_address": p.short_address,
+            "latitude": p.latitude,
+            "longitude": p.longitude,
+            "phone_number": p.phone_number,
+            "validation_status": p.validation_status,
+            "confidence": p.confidence,
         }
 
     # Create data payload
@@ -149,7 +148,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         "merchant_name": merchant_name,
         "words": [serialize_word(w) for w in words],
         "labels": [serialize_label(l) for l in labels],
-        "metadata": serialize_metadata(metadata),
+        "place": serialize_place(place),
     }
 
     # Upload to S3

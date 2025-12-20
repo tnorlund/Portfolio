@@ -235,7 +235,7 @@ def create_label_evaluator_graph(
         )
 
     def fetch_receipt_data(state: EvaluatorState) -> dict:
-        """Fetch words, labels, and metadata for the receipt being evaluated."""
+        """Fetch words, labels, and place data for the receipt being evaluated."""
         try:
             # Get all words for this receipt
             words = _dynamo_client.list_receipt_words_from_receipt(
@@ -249,15 +249,15 @@ def create_label_evaluator_graph(
                 state.image_id, state.receipt_id
             )
 
-            # Get receipt metadata (for merchant info)
+            # Get receipt place (for merchant info)
             try:
-                metadata = _dynamo_client.get_receipt_metadata(
+                place = _dynamo_client.get_receipt_place(
                     state.image_id, state.receipt_id
                 )
             except Exception:
-                metadata = None
+                place = None
                 logger.warning(
-                    f"Could not fetch metadata for receipt "
+                    f"Could not fetch place data for receipt "
                     f"{state.image_id}#{state.receipt_id}"
                 )
 
@@ -269,7 +269,7 @@ def create_label_evaluator_graph(
             return {
                 "words": words,
                 "labels": labels,
-                "metadata": metadata,
+                "place": place,
             }
 
         except Exception as e:
@@ -281,16 +281,13 @@ def create_label_evaluator_graph(
         if state.error:
             return {}  # Skip if previous step failed
 
-        if not state.metadata:
+        if not state.place:
             logger.info(
-                "No metadata available, skipping merchant pattern learning"
+                "No place data available, skipping merchant pattern learning"
             )
             return {"other_receipt_data": []}
 
-        merchant_name = (
-            state.metadata.canonical_merchant_name
-            or state.metadata.merchant_name
-        )
+        merchant_name = state.place.merchant_name
         if not merchant_name:
             logger.info(
                 "No merchant name available, skipping pattern learning"
@@ -305,57 +302,57 @@ def create_label_evaluator_graph(
                 if MAX_OTHER_RECEIPTS is not None
                 else None
             )
-            other_metadatas, _ = (
-                _dynamo_client.get_receipt_metadatas_by_merchant(
+            other_places, _ = (
+                _dynamo_client.get_receipt_places_by_merchant(
                     merchant_name,
                     limit=limit,  # None means fetch all available
                 )
             )
 
             # Filter out current receipt
-            other_metadatas = [
-                m
-                for m in other_metadatas
+            other_places = [
+                p
+                for p in other_places
                 if not (
-                    m.image_id == state.image_id
-                    and m.receipt_id == state.receipt_id
+                    p.image_id == state.image_id
+                    and p.receipt_id == state.receipt_id
                 )
             ]
 
             # Apply limit if MAX_OTHER_RECEIPTS is set
             if MAX_OTHER_RECEIPTS is not None:
-                other_metadatas = other_metadatas[:MAX_OTHER_RECEIPTS]
+                other_places = other_places[:MAX_OTHER_RECEIPTS]
 
-            if not other_metadatas:
+            if not other_places:
                 logger.info(
                     f"No other receipts found for merchant '{merchant_name}'"
                 )
                 return {"other_receipt_data": []}
 
             logger.info(
-                f"Found {len(other_metadatas)} other receipts for merchant "
+                f"Found {len(other_places)} other receipts for merchant "
                 f"'{merchant_name}'"
             )
 
             # Fetch words and labels for each other receipt
             other_receipt_data = []
-            for other_meta in other_metadatas:
+            for other_place in other_places:
                 try:
                     words = _dynamo_client.list_receipt_words_from_receipt(
-                        other_meta.image_id, other_meta.receipt_id
+                        other_place.image_id, other_place.receipt_id
                     )
                     if isinstance(words, tuple):
                         words = words[0]
 
                     labels, _ = (
                         _dynamo_client.list_receipt_word_labels_for_receipt(
-                            other_meta.image_id, other_meta.receipt_id
+                            other_place.image_id, other_place.receipt_id
                         )
                     )
 
                     other_receipt_data.append(
                         OtherReceiptData(
-                            metadata=other_meta,
+                            place=other_place,
                             words=words,
                             labels=labels,
                         )
@@ -363,7 +360,7 @@ def create_label_evaluator_graph(
                 except Exception as e:
                     logger.warning(
                         f"Could not fetch data for receipt "
-                        f"{other_meta.image_id}#{other_meta.receipt_id}: {e}"
+                        f"{other_place.image_id}#{other_place.receipt_id}: {e}"
                     )
                     continue
 
@@ -407,10 +404,10 @@ def create_label_evaluator_graph(
             return {"merchant_patterns": None}
 
         merchant_name = (
-            state.metadata.canonical_merchant_name
-            if state.metadata
+            state.place.merchant_name
+            if state.place
             else "Unknown"
-        ) or (state.metadata.merchant_name if state.metadata else "Unknown")
+        )
 
         patterns = compute_merchant_patterns(
             state.other_receipt_data,
@@ -475,12 +472,8 @@ def create_label_evaluator_graph(
             return {"review_results": [], "new_labels": new_labels}
 
         merchant_name = "Unknown"
-        if state.metadata:
-            merchant_name = (
-                state.metadata.canonical_merchant_name
-                or state.metadata.merchant_name
-                or "Unknown"
-            )
+        if state.place:
+            merchant_name = state.place.merchant_name or "Unknown"
 
         review_results: List[ReviewResult] = []
         new_labels: List[ReceiptWordLabel] = []
@@ -861,7 +854,7 @@ def run_label_evaluator_sync(
 # - words: List[ReceiptWord] - target receipt words
 # - labels: List[ReceiptWordLabel] - target receipt labels
 # - other_receipt_data: List[OtherReceiptData] - training receipts from same merchant
-# - metadata: Optional[ReceiptMetadata] - for merchant name (optional)
+# - place: Optional[ReceiptPlace] - for merchant name (optional)
 #
 
 
@@ -914,10 +907,10 @@ def create_compute_only_graph(
                 receipt_id=event["receipt_id"],
                 words=deserialize_words(s3_data["target_words"]),
                 labels=deserialize_labels(s3_data["target_labels"]),
-                metadata=deserialize_metadata(s3_data.get("metadata")),
+                place=deserialize_place(s3_data.get("place")),
                 other_receipt_data=[
                     OtherReceiptData(
-                        metadata=deserialize_metadata(r["metadata"]),
+                        place=deserialize_place(r["place"]),
                         words=deserialize_words(r["words"]),
                         labels=deserialize_labels(r["labels"]),
                     )
@@ -998,12 +991,8 @@ def create_compute_only_graph(
             return {"merchant_patterns": None}
 
         merchant_name = "Unknown"
-        if state.metadata:
-            merchant_name = (
-                state.metadata.canonical_merchant_name
-                or state.metadata.merchant_name
-                or "Unknown"
-            )
+        if state.place:
+            merchant_name = state.place.merchant_name or "Unknown"
 
         patterns = compute_merchant_patterns(
             state.other_receipt_data,

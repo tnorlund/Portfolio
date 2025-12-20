@@ -1,154 +1,85 @@
 """Entity serialization for S3 data transfer.
 
 Provides functions to serialize/deserialize receipt entities (ReceiptWord,
-ReceiptWordLabel, ReceiptMetadata) for JSON storage in S3.
+ReceiptWordLabel, ReceiptPlace) for JSON storage in S3.
+
+Uses dataclasses.asdict() for serialization since all entities are dataclasses.
+Deserialization parses datetime strings and passes kwargs to constructors.
 """
 
+from dataclasses import asdict
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from receipt_dynamo.entities import (
-    ReceiptMetadata,
+    ReceiptPlace,
     ReceiptWord,
     ReceiptWordLabel,
 )
 
 
 def serialize_word(word: ReceiptWord) -> Dict[str, Any]:
-    """Serialize ReceiptWord for S3 storage."""
-    return {
-        "image_id": word.image_id,
-        "receipt_id": word.receipt_id,
-        "line_id": word.line_id,
-        "word_id": word.word_id,
-        "text": word.text,
-        "bounding_box": word.bounding_box,
-        "top_right": word.top_right,
-        "top_left": word.top_left,
-        "bottom_right": word.bottom_right,
-        "bottom_left": word.bottom_left,
-        "angle_degrees": word.angle_degrees,
-        "angle_radians": word.angle_radians,
-        "confidence": word.confidence,
-        "extracted_data": word.extracted_data,
-        "embedding_status": (
-            str(word.embedding_status)
-            if word.embedding_status
-            else None
-        ),
-        "is_noise": word.is_noise,
-    }
+    """Serialize ReceiptWord for S3 storage using asdict."""
+    data = asdict(word)
+    # Convert embedding_status enum to string if present
+    if data.get("embedding_status"):
+        data["embedding_status"] = str(data["embedding_status"])
+    return data
 
 
 def deserialize_word(data: Dict[str, Any]) -> ReceiptWord:
     """Deserialize ReceiptWord from S3 data."""
-    return ReceiptWord(
-        image_id=data["image_id"],
-        receipt_id=data["receipt_id"],
-        line_id=data["line_id"],
-        word_id=data["word_id"],
-        text=data["text"],
-        bounding_box=data.get("bounding_box"),
-        top_right=data.get("top_right"),
-        top_left=data.get("top_left"),
-        bottom_right=data.get("bottom_right"),
-        bottom_left=data.get("bottom_left"),
-        angle_degrees=data.get("angle_degrees"),
-        angle_radians=data.get("angle_radians"),
-        confidence=data.get("confidence"),
-        extracted_data=data.get("extracted_data"),
-        embedding_status=data.get("embedding_status", "NONE"),
-        is_noise=data.get("is_noise", False),
-    )
+    return ReceiptWord(**data)
 
 
 def serialize_label(label: ReceiptWordLabel) -> Dict[str, Any]:
-    """Serialize ReceiptWordLabel for S3 storage."""
-    timestamp = label.timestamp_added
-    if hasattr(timestamp, "isoformat"):
-        timestamp_str = timestamp.isoformat()
-    else:
-        timestamp_str = str(timestamp) if timestamp else None
-
-    return {
-        "image_id": label.image_id,
-        "receipt_id": label.receipt_id,
-        "line_id": label.line_id,
-        "word_id": label.word_id,
-        "label": label.label,
-        "reasoning": label.reasoning,
-        "timestamp_added": timestamp_str,
-        "validation_status": label.validation_status,
-        "label_proposed_by": label.label_proposed_by,
-        "label_consolidated_from": label.label_consolidated_from,
-    }
+    """Serialize ReceiptWordLabel for S3 storage using asdict."""
+    data = asdict(label)
+    # timestamp_added is already converted to string by asdict
+    return data
 
 
 def deserialize_label(data: Dict[str, Any]) -> ReceiptWordLabel:
     """Deserialize ReceiptWordLabel from S3 data."""
-    timestamp = data.get("timestamp_added")
-    if isinstance(timestamp, str):
+    # Parse timestamp string back to datetime
+    if isinstance(data.get("timestamp_added"), str):
         try:
-            timestamp = datetime.fromisoformat(timestamp)
+            data["timestamp_added"] = datetime.fromisoformat(
+                data["timestamp_added"]
+            )
         except ValueError:
-            timestamp = None
-
-    return ReceiptWordLabel(
-        image_id=data["image_id"],
-        receipt_id=data["receipt_id"],
-        line_id=data["line_id"],
-        word_id=data["word_id"],
-        label=data["label"],
-        reasoning=data.get("reasoning"),
-        timestamp_added=timestamp,
-        validation_status=data.get("validation_status"),
-        label_proposed_by=data.get("label_proposed_by"),
-        label_consolidated_from=data.get("label_consolidated_from"),
-    )
+            data["timestamp_added"] = None
+    return ReceiptWordLabel(**data)
 
 
-def serialize_metadata(metadata: ReceiptMetadata) -> Dict[str, Any]:
-    """Serialize ReceiptMetadata for S3 storage."""
-    return {
-        "image_id": metadata.image_id,
-        "receipt_id": metadata.receipt_id,
-        "merchant_name": metadata.merchant_name,
-        "canonical_merchant_name": metadata.canonical_merchant_name,
-        "place_id": getattr(metadata, "place_id", None),
-        "address": getattr(metadata, "address", None),
-        "date": (
-            metadata.date.isoformat()
-            if hasattr(metadata, "date") and metadata.date
-            else None
-        ),
-        "total": getattr(metadata, "total", None),
-        "currency": getattr(metadata, "currency", None),
-    }
+def serialize_place(place: ReceiptPlace) -> Dict[str, Any]:
+    """Serialize ReceiptPlace for S3 storage using asdict."""
+    data = asdict(place)
+    # Convert datetime to ISO string
+    if data.get("timestamp") and hasattr(data["timestamp"], "isoformat"):
+        data["timestamp"] = data["timestamp"].isoformat()
+    return data
 
 
-def deserialize_metadata(data: Dict[str, Any]) -> Optional[ReceiptMetadata]:
-    """Deserialize ReceiptMetadata from S3 data."""
+def deserialize_place(data: Dict[str, Any]) -> Optional[ReceiptPlace]:
+    """Deserialize ReceiptPlace from S3 data."""
     if not data:
         return None
 
-    date_val = data.get("date")
-    if isinstance(date_val, str):
+    # Parse timestamp string back to datetime
+    if isinstance(data.get("timestamp"), str):
         try:
-            date_val = datetime.fromisoformat(date_val).date()
+            # Handle both with and without timezone
+            ts = data["timestamp"]
+            if ts.endswith("+00:00"):
+                ts = ts.replace("+00:00", "")
+            data["timestamp"] = datetime.fromisoformat(ts)
         except ValueError:
-            date_val = None
+            data["timestamp"] = datetime.now()
+    elif data.get("timestamp") is None:
+        data["timestamp"] = datetime.now()
 
-    return ReceiptMetadata(
-        image_id=data["image_id"],
-        receipt_id=data["receipt_id"],
-        merchant_name=data.get("merchant_name"),
-        canonical_merchant_name=data.get("canonical_merchant_name"),
-        place_id=data.get("place_id"),
-        address=data.get("address"),
-        date=date_val,
-        total=data.get("total"),
-        currency=data.get("currency"),
-    )
+    return ReceiptPlace(**data)
 
 
 def serialize_words(words: List[ReceiptWord]) -> List[Dict[str, Any]]:
