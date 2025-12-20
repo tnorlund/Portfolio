@@ -1,18 +1,21 @@
 """
 Label Evaluator Agent Workflow
 
-A LangGraph agent that validates receipt word labels by analyzing spatial patterns
-within receipts and across receipts from the same merchant.
+A LangGraph agent that validates receipt word labels by analyzing spatial
+patterns within receipts and across receipts from the same merchant.
 
 The workflow has two phases:
-1. Deterministic evaluation: Uses geometric analysis and pattern matching to flag issues
-2. LLM review: Uses a cheap LLM (Haiku) to make semantic decisions on flagged issues
+1. Deterministic evaluation: Uses geometric analysis and pattern matching to
+   flag issues
+2. LLM review: Uses a cheap LLM (Haiku) to make semantic decisions on flagged
+   issues
 
 Detects labeling errors such as:
 - Position anomalies (MERCHANT_NAME appearing in the middle of the receipt)
 - Same-line conflicts (MERCHANT_NAME on same line as PRODUCT_NAME)
 - Missing labels in clusters (unlabeled zip code surrounded by ADDRESS_LINE)
-- Text-label conflicts (same word text with different labels at different positions)
+- Text-label conflicts (same word text with different labels at different
+  positions)
 """
 
 # pylint: disable=import-outside-toplevel
@@ -58,15 +61,27 @@ try:
 except ImportError:
     # Fallback if receipt_label is not available
     CORE_LABELS = {
-        "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
-        "STORE_HOURS": "Printed business hours or opening times for the merchant.",
-        "PHONE_NUMBER": "Telephone number printed on the receipt (store's main line).",
-        "WEBSITE": "Web or email address printed on the receipt (e.g., sprouts.com).",
+        "MERCHANT_NAME": (
+            "Trading name or brand of the store issuing the receipt."
+        ),
+        "STORE_HOURS": (
+            "Printed business hours or opening times for the merchant."
+        ),
+        "PHONE_NUMBER": (
+            "Telephone number printed on the receipt (store's main line)."
+        ),
+        "WEBSITE": (
+            "Web or email address printed on the receipt (e.g., sprouts.com)."
+        ),
         "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
-        "ADDRESS_LINE": "Full address line (street + city etc.) printed on the receipt.",
+        "ADDRESS_LINE": (
+            "Full address line (street + city etc.) printed on the receipt."
+        ),
         "DATE": "Calendar date of the transaction.",
         "TIME": "Time of the transaction.",
-        "PAYMENT_METHOD": "Payment instrument summary (e.g., VISA ••••1234, CASH).",
+        "PAYMENT_METHOD": (
+            "Payment instrument summary (e.g., VISA ••••1234, CASH)."
+        ),
         "COUPON": "Coupon code or description that reduces price.",
         "DISCOUNT": "Any non-coupon discount line item (e.g., '10% OFF').",
         "PRODUCT_NAME": "Name of a product or item being purchased.",
@@ -75,10 +90,13 @@ except ImportError:
         "LINE_TOTAL": "Total price for a line item (quantity × unit_price).",
         "SUBTOTAL": "Subtotal before tax and discounts.",
         "TAX": "Tax amount (sales tax, VAT, etc.).",
-        "GRAND_TOTAL": "Final total amount paid (after all discounts and taxes).",
+        "GRAND_TOTAL": (
+            "Final total amount paid (after all discounts and taxes)."
+        ),
         # Payment-related labels (added 2025-12-18)
-        # These were missing from original schema and caused mislabeling in training data.
-        # When these values appeared on receipts, they were incorrectly labeled as LINE_TOTAL.
+        # These were missing from original schema and caused mislabeling in
+        # training data. When these values appeared on receipts, they were
+        # incorrectly labeled as LINE_TOTAL.
         "CHANGE": "Change amount returned to the customer after transaction.",
         "CASH_BACK": "Cash back amount dispensed from purchase.",
         "REFUND": "Refund amount (full or partial return).",
@@ -89,14 +107,16 @@ logger = logging.getLogger(__name__)
 # Maximum number of other receipts to fetch for pattern learning
 # Pattern computation itself is fast (<0.1s for 150 receipts).
 # The limit exists to control DynamoDB I/O time during sequential fetching.
-# In Step Functions, use Distributed Map to parallelize fetches and increase this.
+# In Step Functions, use Distributed Map to parallelize fetches and increase
+# this.
 # Can be overridden per-run via max_receipts parameter.
 MAX_OTHER_RECEIPTS = 10
 
 # LLM Review Prompt
 LLM_REVIEW_PROMPT = """You are reviewing a flagged label issue on a receipt.
 
-An automated evaluator flagged this label as potentially incorrect based on spatial patterns.
+An automated evaluator flagged this label as potentially incorrect based on
+spatial patterns.
 Your job is to make the final semantic decision using the full context.
 
 ## CORE_LABELS Definitions
@@ -125,12 +145,14 @@ Labels on this line: {visual_line_labels}
 
 ## Similar Words from Database
 
-These are semantically similar words from other receipts with their validated labels:
+These are semantically similar words from other receipts with their validated
+labels:
 
 {similar_words}
 
-IMPORTANT: Use these examples to understand what labels are typically assigned to similar text.
-If the similar words show that text like "{word_text}" typically has NO label or a DIFFERENT label,
+IMPORTANT: Use these examples to understand what labels are typically assigned
+to similar text. If the similar words show that text like "{word_text}"
+typically has NO label or a DIFFERENT label,
 that's strong evidence the current label may be wrong.
 
 ## Label History
@@ -141,13 +163,17 @@ that's strong evidence the current label may be wrong.
 
 Decide if the current label is correct:
 
-- **VALID**: The label IS correct despite the flag (false positive from evaluator)
-  - Example: "CHARGE" labeled PAYMENT_METHOD is valid if it's part of "CREDIT CARD CHARGE"
+- **VALID**: The label IS correct despite the flag (false positive from
+  evaluator)
+  - Example: "CHARGE" labeled PAYMENT_METHOD is valid if it's part of
+    "CREDIT CARD CHARGE"
 
 - **INVALID**: The label IS wrong - provide the correct label from CORE_LABELS,
   or null if no label applies
-  - Example: "Sprouts" in product area should be PRODUCT_NAME, not MERCHANT_NAME
-  - Example: "Tip:" is a descriptor, not a value - it should have no label (suggested_label: null)
+  - Example: "Sprouts" in product area should be PRODUCT_NAME, not
+    MERCHANT_NAME
+  - Example: "Tip:" is a descriptor, not a value - it should have no label
+    (suggested_label: null)
 
 - **NEEDS_REVIEW**: Genuinely ambiguous, needs human review
 
@@ -180,15 +206,18 @@ def create_label_evaluator_graph(
     Args:
         dynamo_client: DynamoDB client for fetching receipt data
         llm_model: Model to use for LLM review. Default: "gpt-oss:20b-cloud"
-        llm: Optional pre-configured LLM instance. If provided, ignores other LLM settings.
-        ollama_base_url: Base URL for Ollama Cloud API (default: https://ollama.com)
+        llm: Optional pre-configured LLM instance. If provided, ignores other
+            LLM settings.
+        ollama_base_url: Base URL for Ollama Cloud API (default:
+            https://ollama.com)
         ollama_api_key: API key for Ollama Cloud (required for cloud usage)
-        chroma_client: Optional ChromaDB client for similar word lookup. Words' existing
-                       embeddings are retrieved by ID, so no embed_fn is needed.
-        max_pair_patterns: Maximum label pairs/tuples to compute geometry for (default: 4)
-                           Higher = more comprehensive analysis but slower
-        max_relationship_dimension: Analyze n-label relationships (default: 2)
-                                   2=pairs, 3=triples, 4+=higher-order
+        chroma_client: Optional ChromaDB client for similar word lookup.
+            Words' existing embeddings are retrieved by ID, so no embed_fn is
+            needed.
+        max_pair_patterns: Maximum label pairs/tuples to compute geometry for
+            (default: 4). Higher = more comprehensive analysis but slower.
+        max_relationship_dimension: Analyze n-label relationships (default: 2).
+            2=pairs, 3=triples, 4+=higher-order.
 
     Returns:
         Compiled LangGraph workflow
@@ -234,7 +263,8 @@ def create_label_evaluator_graph(
         )
 
     def fetch_receipt_data(state: EvaluatorState) -> dict:
-        """Fetch words, labels, and place data for the receipt being evaluated."""
+        """Fetch words, labels, and place data for the receipt being
+        evaluated."""
         try:
             # Get all words for this receipt
             words = _dynamo_client.list_receipt_words_from_receipt(
@@ -444,10 +474,11 @@ def create_label_evaluator_graph(
             return {"issues_found": []}
 
         # Evaluate all word contexts against validation rules
+        # Pass visual_lines for on-demand same-line lookup.
         issues = evaluate_word_contexts(
             state.word_contexts,
             state.merchant_patterns,
-            state.visual_lines,  # Pass visual_lines for on-demand same-line lookup
+            state.visual_lines,
         )
 
         logger.info("Found %s issues", len(issues))
@@ -497,7 +528,8 @@ def create_label_evaluator_graph(
                     issue, state.visual_lines, merchant_name
                 )
 
-                # Query ChromaDB for similar validated words (scoped to same merchant)
+                # Query ChromaDB for similar validated words (scoped to same
+                # merchant).
                 similar_words_text = (
                     "ChromaDB not configured - no similar words available."
                 )
@@ -592,7 +624,10 @@ def create_label_evaluator_graph(
                     review_result = ReviewResult(
                         issue=issue,
                         decision="NEEDS_REVIEW",
-                        reasoning=f"LLM response parsing failed: {response_text[:100]}",
+                        reasoning=(
+                            "LLM response parsing failed: "
+                            f"{response_text[:100]}"
+                        ),
                         review_completed=False,
                         review_error=str(e),
                     )
@@ -620,7 +655,9 @@ def create_label_evaluator_graph(
                 review_result = ReviewResult(
                     issue=issue,
                     decision=issue.suggested_status,
-                    reasoning=f"LLM review failed: {e}. Using evaluator result.",
+                    reasoning=(
+                        f"LLM review failed: {e}. Using evaluator result."
+                    ),
                     review_completed=False,
                     review_error=str(e),
                 )
@@ -691,7 +728,8 @@ def _create_evaluation_label(
 
     Args:
         issue: The evaluation issue
-        review_result: Optional LLM review result (if None, uses evaluator result)
+        review_result: Optional LLM review result (if None, uses evaluator
+            result)
 
     Returns:
         New ReceiptWordLabel with validation status and reasoning
@@ -753,7 +791,8 @@ async def run_label_evaluator(
         graph: Compiled workflow graph
         image_id: Image ID of the receipt
         receipt_id: Receipt ID
-        skip_llm_review: If True, skip LLM review and use evaluator results directly
+        skip_llm_review: If True, skip LLM review and use evaluator results
+            directly
 
     Returns:
         Evaluation result dict with issues found, reviews, and labels written
@@ -850,7 +889,8 @@ def run_label_evaluator_sync(
         graph: Compiled workflow graph
         image_id: Image ID of the receipt
         receipt_id: Receipt ID
-        skip_llm_review: If True, skip LLM review and use evaluator results directly
+        skip_llm_review: If True, skip LLM review and use evaluator results
+            directly
 
     Returns:
         Evaluation result dict
@@ -866,7 +906,8 @@ def run_label_evaluator_sync(
 # Compute-Only Graph for Step Functions / Lambda
 # =============================================================================
 #
-# This graph skips I/O operations (DynamoDB fetch) and expects pre-loaded state.
+# This graph skips I/O operations (DynamoDB fetch) and expects pre-loaded
+# state.
 # Use this when:
 # - Running in AWS Step Functions with Distributed Map
 # - Data is fetched in parallel by separate Lambdas and passed via S3/state
@@ -875,7 +916,8 @@ def run_label_evaluator_sync(
 # Required pre-loaded state fields:
 # - words: List[ReceiptWord] - target receipt words
 # - labels: List[ReceiptWordLabel] - target receipt labels
-# - other_receipt_data: List[OtherReceiptData] - training receipts from same merchant
+# - other_receipt_data: List[OtherReceiptData] - training receipts from same
+#   merchant
 # - place: Optional[ReceiptPlace] - for merchant name (optional)
 #
 
@@ -899,7 +941,8 @@ def create_compute_only_graph(
     - Performance benchmarking of pure Python computation
 
     Args:
-        max_pair_patterns: Maximum label pairs/tuples to compute geometry for (default: 4)
+        max_pair_patterns: Maximum label pairs/tuples to compute geometry for
+            (default: 4)
         max_relationship_dimension: Analyze n-label relationships (default: 2)
                                    2=pairs, 3=triples, 4+=higher-order
 
@@ -1074,7 +1117,8 @@ def create_compute_only_graph(
         issues = evaluate_word_contexts(
             state.word_contexts,
             state.merchant_patterns,
-            state.visual_lines,  # Pass visual_lines for on-demand same-line lookup
+            state.visual_lines,
+            # Pass visual_lines for on-demand same-line lookup
         )
 
         logger.info("Found %s issues", len(issues))
@@ -1110,7 +1154,8 @@ async def run_compute_only(
 
     Args:
         graph: Compiled compute-only workflow graph
-        state: Pre-populated EvaluatorState with words, labels, other_receipt_data
+        state: Pre-populated EvaluatorState with words, labels,
+            other_receipt_data
 
     Returns:
         Evaluation result dict with issues found

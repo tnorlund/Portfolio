@@ -135,11 +135,15 @@ async def run_test():
                             "Loaded Ollama API key from Pulumi secrets"
                         )
             except Exception as e:
-                logger.debug("Could not load Ollama API key from Pulumi: %s", e)
+                logger.debug(
+                    "Could not load Ollama API key from Pulumi: %s",
+                    e,
+                )
 
         if not ollama_api_key:
             logger.error(
-                "RECEIPT_AGENT_OLLAMA_API_KEY not set - cannot use Ollama Cloud"
+                "RECEIPT_AGENT_OLLAMA_API_KEY not set - cannot use Ollama "
+                "Cloud"
             )
             return
 
@@ -167,7 +171,8 @@ async def run_test():
         print(f"\nReceipt: {image_id}#{receipt_id}")
         print(f"Words: {len(words)}, Labels: {len(labels)}")
 
-        # Check for constellation-related issues (issues are dicts, not objects)
+        # Check for constellation-related issues (issues are dicts, not
+        # objects)
         issues = result.get("issues", [])
         issues_count = result.get("issues_found", 0)
         constellation_issues = [
@@ -198,7 +203,8 @@ async def run_test():
             print("\n--- Other Anomalies ---")
             for issue in other_issues[:5]:  # Limit to 5
                 print(
-                    f"\n  Word: '{issue.get('word_text')}' | Label: {issue.get('current_label')}"
+                    f"\n  Word: '{issue.get('word_text')}' | Label: "
+                    f"{issue.get('current_label')}"
                 )
                 print(f"    Type: {issue.get('type')}")
                 print(f"    Status: {issue.get('suggested_status')}")

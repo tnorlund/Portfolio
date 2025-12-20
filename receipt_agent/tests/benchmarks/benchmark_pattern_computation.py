@@ -25,7 +25,8 @@ Usage (from repo root):
     python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py \
         --merchant "Sprouts Farmers Market" --limit 20
 
-    # Different merchant (use exact name from database, e.g., "Costco Wholesale", "Target Grocery")
+    # Different merchant (use exact name from database, e.g., "Costco
+    # Wholesale", "Target Grocery")
     python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py \
         --merchant "Costco Wholesale" --limit 10
 
@@ -33,7 +34,8 @@ Usage (from repo root):
     python receipt_agent/tests/benchmarks/benchmark_pattern_computation.py \
         --merchant "Sprouts Farmers Market" --verbose
 
-Note: Merchant names must match exactly as stored in DynamoDB. Common merchants in dev:
+Note: Merchant names must match exactly as stored in DynamoDB. Common merchants
+in dev:
     - "Sprouts Farmers Market" (169 receipts)
     - "Costco Wholesale" (26 receipts)
     - "Vons" (24 receipts)
@@ -209,7 +211,8 @@ def run_pattern_computation(
         merchant_name: Merchant name for patterns
         skip_batching: If True, skip LLM batch classification
         max_pair_patterns: Max number of pairs/tuples to compute
-        max_relationship_dimension: Relationship dimension (2=pairs, 3+=n-tuples)
+        max_relationship_dimension: Relationship dimension (2=pairs, 3+=n-
+        tuples)
 
     Returns:
         (MerchantPatterns result, elapsed time in seconds)
@@ -349,7 +352,9 @@ with open("{output_dir}/_data_{timestamp}.pkl", "rb") as f:
     other_receipt_data = pickle.load(f)
 
 # Import function
-from receipt_agent.agents.label_evaluator.helpers import compute_merchant_patterns
+from receipt_agent.agents.label_evaluator.helpers import (
+    compute_merchant_patterns,
+)
 
 # Skip batching if requested
 skip_batching = {skip_batching}
@@ -462,14 +467,20 @@ def main() -> None:
         "--max-pairs",
         type=int,
         default=4,
-        help="Maximum number of label pairs to compute geometry for (default: 4)",
+        help=(
+            "Maximum number of label pairs to compute geometry for (default: "
+            "4)"
+        ),
     )
     parser.add_argument(
         "--dimension",
         type=int,
         default=2,
         choices=[2, 3, 4, 5],
-        help="Relationship dimension: 2=pairs, 3=triples, 4=quadruples (default: 2)",
+        help=(
+            "Relationship dimension: 2=pairs, 3=triples, 4=quadruples "
+            "(default: 2)"
+        ),
     )
     parser.add_argument(
         "--verbose",

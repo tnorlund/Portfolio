@@ -48,7 +48,8 @@ class VisualLine:
     A row of words grouped by y-coordinate proximity.
 
     Since OCR line_id can split visual lines (e.g., product description and
-    price on the same visual row), this groups words by their actual y-position.
+    price on the same visual row), this groups words by their actual
+    y-position.
     """
 
     line_index: int
@@ -69,7 +70,8 @@ class GeometricRelationship:
     """Geometric relationship between two label types on a receipt."""
 
     # Angle in degrees (0-360) from label_a centroid to label_b centroid
-    # 0° = directly right, 90° = directly down, 180° = directly left, 270° = directly up
+    # 0° = directly right, 90° = directly down
+    # 180° = directly left, 270° = directly up
     angle: float
 
     # Euclidean distance between centroids (normalized 0-1 scale)
@@ -124,13 +126,16 @@ class LabelRelativePosition:
 @dataclass
 class ConstellationGeometry:
     """
-    Statistics about geometric relationships within a label constellation (n-tuple).
+    Statistics about geometric relationships within a label constellation
+    (n-tuple).
 
-    A constellation is a group of labels (e.g., MERCHANT_NAME, ADDRESS_LINE, PHONE_NUMBER)
+    A constellation is a group of labels (e.g., MERCHANT_NAME, ADDRESS_LINE,
+    PHONE_NUMBER)
     that frequently appear together and form a consistent spatial pattern.
 
-    Unlike pairwise geometry which only captures A↔B relationships, constellation
-    geometry captures the holistic structure of the group, enabling detection of:
+    Unlike pairwise geometry which only captures A↔B relationships,
+    constellation geometry captures the holistic structure of the group,
+    enabling detection of:
     - One label being displaced while others are correctly positioned
     - Cluster stretching/compression
     - Missing labels from expected groups
@@ -155,11 +160,13 @@ class ConstellationGeometry:
     std_width: Optional[float] = None
     std_height: Optional[float] = None
 
-    # Aspect ratio (width/height) - useful for detecting stretched constellations
+    # Aspect ratio (width/height) - useful for detecting stretched
+    # constellations
     mean_aspect_ratio: Optional[float] = None
     std_aspect_ratio: Optional[float] = None
 
-    # Constellation centroid position (where the group typically appears on receipt)
+    # Constellation centroid position (where the group typically appears on
+    # receipt)
     mean_centroid_x: Optional[float] = None
     mean_centroid_y: Optional[float] = None
     std_centroid_x: Optional[float] = None
@@ -178,8 +185,10 @@ class MerchantPatterns:
     merchant_name: str
     receipt_count: int
 
-    # Per-label y-position distributions (label -> list of y positions from receipts)
-    # Example: {"MERCHANT_NAME": [0.95, 0.93, 0.94], "GRAND_TOTAL": [0.08, 0.10]}
+    # Per-label y-position distributions (label -> list of y positions from
+    # receipts)
+    # Example: {"MERCHANT_NAME": [0.95, 0.93, 0.94], "GRAND_TOTAL": [0.08,
+    # 0.10]}
     label_positions: Dict[str, List[float]] = field(default_factory=dict)
 
     # Text examples per label (for text-based validation)
@@ -192,13 +201,15 @@ class MerchantPatterns:
 
     # Label pairs that share the same value (learned from receipt patterns)
     # Example: {("SUBTOTAL", "GRAND_TOTAL"): 42, ("LINE_TOTAL", "SUBTOTAL"): 3}
-    # Used to identify valid co-occurring values (e.g., no-tax receipts) vs errors
+    # Used to identify valid co-occurring values (e.g., no-tax receipts) vs
+    # errors
     value_pairs: Dict[tuple, int] = field(default_factory=dict)
 
     # Y-position relationships for label pairs
     # Example: {("SUBTOTAL", "GRAND_TOTAL"): (0.28, 0.15)} - SUBTOTAL at
     # y=0.28, GRAND_TOTAL at y=0.15
-    # Helps validate spatial ordering (GRAND_TOTAL should be below/after SUBTOTAL)
+    # Helps validate spatial ordering (GRAND_TOTAL should be below/after
+    # SUBTOTAL)
     value_pair_positions: Dict[tuple, tuple] = field(default_factory=dict)
 
     # Geometric relationships between label pairs
@@ -209,10 +220,12 @@ class MerchantPatterns:
     )
 
     # All label pairs observed across receipts (for unexpected pair detection)
-    # This is a complete set, unlike label_pair_geometry which is limited to top 4
+    # This is a complete set, unlike label_pair_geometry which is limited to
+    # top 4
     all_observed_pairs: Set[Tuple[str, str]] = field(default_factory=set)
 
-    # Label types that appear multiple times on the same line (tracked from training data)
+    # Label types that appear multiple times on the same line (tracked from
+    # training data)
     # Example: {"PRODUCT_NAME"} if we see multiple products on the same line
     # This helps distinguish between normal multiplicity and errors
     labels_with_same_line_multiplicity: Set[str] = field(default_factory=set)
@@ -223,7 +236,8 @@ class MerchantPatterns:
         default_factory=lambda: {"HAPPY": 0, "AMBIGUOUS": 0, "ANTI_PATTERN": 0}
     )  # Count of receipts in each batch
 
-    # Geometric patterns learned from HAPPY batch (high confidence, conflict-free receipts)
+    # Geometric patterns learned from HAPPY batch (high confidence,
+    # conflict-free receipts)
     # Use strictest thresholds (1.5σ) for evaluation
     happy_label_pair_geometry: Dict[tuple, LabelPairGeometry] = field(
         default_factory=dict
@@ -242,7 +256,8 @@ class MerchantPatterns:
     )
 
     # Constellation geometry for n-tuple label groups (n >= 3)
-    # Example: {("ADDRESS_LINE", "MERCHANT_NAME", "PHONE_NUMBER"): ConstellationGeometry(...)}
+    # Example: {("ADDRESS_LINE", "MERCHANT_NAME", "PHONE_NUMBER"):
+    # ConstellationGeometry(...)}
     # Captures holistic spatial relationships within label groups
     constellation_geometry: Dict[Tuple[str, ...], "ConstellationGeometry"] = (
         field(default_factory=dict)
@@ -258,7 +273,8 @@ class EvaluationIssue:
     with the evaluation result.
     """
 
-    issue_type: str  # "position_anomaly", "same_line_conflict", "missing_label_cluster", etc.
+    issue_type: str  # "position_anomaly", "same_line_conflict",
+    # "missing_label_cluster", etc.
     word: ReceiptWord
     current_label: Optional[
         str
@@ -289,7 +305,8 @@ class ReviewContext:
     evaluator_reasoning: str
 
     # Receipt context
-    receipt_text: str  # Full receipt in reading order, target word marked with [brackets]
+    receipt_text: str  # Full receipt in reading order, target word marked with
+    # [brackets]
     visual_line_text: str  # The line containing the word
     visual_line_labels: List[str]  # Labels of other words on same line
 

@@ -93,7 +93,8 @@ CROSS_GROUP_PRIORITY_PAIRS = {
 # Conflicting label pairs that should NEVER appear on the same word position
 # These indicate data quality issues in training labels
 CONFLICTING_LABEL_PAIRS = {
-    # Line item quantity/price pairs (a price can't be both unit and line total for same item)
+    # Line item quantity/price pairs (a price can't be both unit and line total
+    # for same item)
     ("QUANTITY", "UNIT_PRICE"),
     ("QUANTITY", "LINE_TOTAL"),
     ("UNIT_PRICE", "LINE_TOTAL"),
@@ -363,7 +364,8 @@ def _select_top_label_pairs(
     - Diversity (mix within-group and cross-group patterns from actual data)
 
     Approach:
-    1. Separate pairs into within-group and cross-group based on semantic groups
+    1. Separate pairs into within-group and cross-group based on semantic
+       groups
     2. Prioritize important pairs that exist in the data
     3. Fill slots with most frequent pairs, naturally balancing types
     4. Let the data distribution determine the final mix
@@ -440,7 +442,8 @@ def _select_top_label_pairs(
                 pair_info.append(f"{p} [within-{LABEL_TO_GROUP.get(p[0])}]")
             elif _is_cross_group_pair(p):
                 pair_info.append(
-                    f"{p} [cross: {LABEL_TO_GROUP.get(p[0])}↔{LABEL_TO_GROUP.get(p[1])}]"
+                    f"{p} [cross: {LABEL_TO_GROUP.get(p[0])}↔"
+                    f"{LABEL_TO_GROUP.get(p[1])}]"
                 )
             else:
                 pair_info.append(f"{p} [ungrouped]")
@@ -499,7 +502,8 @@ def _generate_label_ntuples(
     Generate n-tuples of labels from pair co-occurrence data.
 
     For dimension=2: Returns pairs as-is
-    For dimension=3+: Identifies labels that co-occur and groups them into n-tuples
+    For dimension=3+: Identifies labels that co-occur and groups them into
+    n-tuples
 
     Args:
         all_pairs: Dict mapping (label1, label2) to co-occurrence frequency
@@ -728,9 +732,10 @@ def _print_pattern_statistics(
             # Sample sizes assessment
             if obs_count < 5:
                 logger.info(
-                    "\n  ⚠️  WARNING: Only %s observations - pattern may be unreliable",
+                    "\n  ⚠️  WARNING: Only %s observations - ",
                     obs_count,
                 )
+                logger.info("pattern may be unreliable")
             elif obs_count < 10:
                 logger.info(
                     "\n  ⚠️  Note: %s observations - limited confidence",
@@ -1296,7 +1301,8 @@ def compute_merchant_patterns(
                 # Record each value pair and their positions
                 for pair in unique_label_pairs:
                     patterns.value_pairs[pair] += 1
-                    # Store y-positions: (label1_y, label2_y) where labels are sorted
+                    # Store y-positions: (label1_y, label2_y) where labels are
+                    # sorted
                     label1, label2 = pair
                     y1 = label_positions_by_label.get(label1)
                     y2 = label_positions_by_label.get(label2)
@@ -1319,7 +1325,8 @@ def compute_merchant_patterns(
                 all_pair_frequencies[pair] += 1
                 patterns.all_observed_pairs.add(pair)
 
-    # TWO-PASS OPTIMIZATION: Select top pairs/tuples before computing expensive geometry
+    # TWO-PASS OPTIMIZATION: Select top pairs/tuples before computing expensive
+    # geometry
     # This avoids computing geometry for pairs we'll discard anyway
     # For dimension >= 3, generate n-tuples and select top ones
     selected_constellations: List[Tuple[str, ...]] = (
@@ -1499,7 +1506,8 @@ def compute_merchant_patterns(
                 geometry.std_angle = 0.0
                 geometry.std_distance = 0.0
 
-            # Cartesian statistics - convert observations to (dx, dy) coordinates
+            # Cartesian statistics - convert observations to (dx, dy)
+            # coordinates
             cartesian_coords = [
                 _convert_polar_to_cartesian(obs.angle, obs.distance)
                 for obs in geometry.observations
@@ -1518,7 +1526,8 @@ def compute_merchant_patterns(
                 geometry.std_dx = 0.0
                 geometry.std_dy = 0.0
 
-            # Compute distance-from-mean for each observation in Cartesian space
+            # Compute distance-from-mean for each observation in Cartesian
+            # space
             deviations = [
                 math.sqrt(
                     (dx - geometry.mean_dx) ** 2 + (dy - geometry.mean_dy) ** 2
@@ -1575,7 +1584,8 @@ def compute_merchant_patterns(
             if batch_name == "HAPPY":
                 patterns.happy_label_pair_geometry = batch_patterns
                 logger.info(
-                    "  Happy patterns: %s label pairs (threshold: 1.5σ - strict)",
+                    "  Happy patterns: %s label pairs (threshold: 1.5σ - "
+                    "strict)",
                     len(batch_patterns),
                 )
             elif batch_name == "AMBIGUOUS":
@@ -1588,7 +1598,8 @@ def compute_merchant_patterns(
             elif batch_name == "ANTI_PATTERN":
                 patterns.anti_label_pair_geometry = batch_patterns
                 logger.info(
-                    "  Anti-patterns: %s label pairs (threshold: 3.0σ - lenient)",
+                    "  Anti-patterns: %s label pairs (threshold: 3.0σ - "
+                    "lenient)",
                     len(batch_patterns),
                 )
 
@@ -1680,8 +1691,8 @@ def check_position_anomaly(
             suggested_status="NEEDS_REVIEW",
             reasoning=(
                 f"{label} at y={ctx.normalized_y:.2f} but typically "
-                f"appears at y={mean_y:.2f}\u00b1{std_y:.2f} for this merchant "
-                f"(z-score={z_score:.1f})"
+                f"appears at y={mean_y:.2f}\u00b1{std_y:.2f} for this "
+                f"merchant (z-score={z_score:.1f})"
             ),
             word_context=ctx,
         )
@@ -1729,9 +1740,11 @@ def check_unexpected_label_pair(
 
     # Check if any label pair is unexpected (never seen in training data)
     for other_label in other_labels:
-        # Special handling for self-comparisons (same label appearing multiple times)
+        # Special handling for self-comparisons (same label appearing multiple
+        # times)
         if label == other_label:
-            # If this label type never appears multiple times in training data, flag it
+            # If this label type never appears multiple times in training data,
+            # flag it
             if label not in patterns.labels_with_same_line_multiplicity:
                 # Only flag if we have good training data
                 if patterns.receipt_count >= 5:
@@ -1741,20 +1754,24 @@ def check_unexpected_label_pair(
                         current_label=label,
                         suggested_status="NEEDS_REVIEW",
                         reasoning=(
-                            f"'{ctx.word.text}' labeled {label} appears multiple times on receipt, "
-                            f"but {label} never appears multiple times in {patterns.receipt_count} "
-                            f"training receipts for this merchant. This may indicate mislabeling."
+                            f"'{ctx.word.text}' labeled {label} appears "
+                            "multiple times on receipt, but "
+                            f"{label} never appears multiple times in "
+                            f"{patterns.receipt_count} training receipts for "
+                            "this merchant. This may indicate mislabeling."
                         ),
                         word_context=ctx,
                     )
-            # Label appears multiple times in training data, so this is expected
+            # Label appears multiple times in training data, so this is
+            # expected
             continue
 
         pair = tuple(sorted([label, other_label]))
 
         # If this pair never appeared in training receipts, it's unexpected
         if pair not in patterns.all_observed_pairs:
-            # But be permissive: only flag if we have good training data coverage
+            # But be permissive: only flag if we have good training data
+            # coverage
             # (need confidence from multiple receipts)
             if patterns.receipt_count >= 5:
                 return EvaluationIssue(
@@ -1763,9 +1780,11 @@ def check_unexpected_label_pair(
                     current_label=label,
                     suggested_status="NEEDS_REVIEW",
                     reasoning=(
-                        f"'{ctx.word.text}' labeled {label} appears with {other_label}, "
-                        f"a combination never seen in {patterns.receipt_count} training receipts "
-                        f"for this merchant. This may indicate mislabeling or unusual structure."
+                        f"'{ctx.word.text}' labeled {label} appears with "
+                        f"{other_label}, a combination never seen in "
+                        f"{patterns.receipt_count} training receipts for this "
+                        "merchant. This may indicate mislabeling or unusual "
+                        "structure."
                     ),
                     word_context=ctx,
                 )
@@ -1810,9 +1829,12 @@ def check_geometric_anomaly(
     against learned patterns from the same merchant.
 
     With LLM batching enabled, checks patterns hierarchically:
-    1. HAPPY patterns (conflict-free receipts): 1.5σ threshold (strict, HIGH confidence)
-    2. AMBIGUOUS patterns (format variations): 2.0σ threshold (moderate, MEDIUM confidence)
-    3. ANTI-PATTERN patterns (problematic receipts): 3.0σ threshold (lenient, LOW confidence)
+    1. HAPPY patterns (conflict-free receipts): 1.5σ threshold (strict, HIGH
+       confidence)
+    2. AMBIGUOUS patterns (format variations): 2.0σ threshold (moderate,
+       MEDIUM confidence)
+    3. ANTI-PATTERN patterns (problematic receipts): 3.0σ threshold (lenient,
+       LOW confidence)
 
     Without batching, uses adaptive thresholds based on pattern tightness:
     - TIGHT patterns (std < 0.1): 1.5σ threshold
@@ -1871,7 +1893,8 @@ def check_geometric_anomaly(
         if issue:
             return issue
     else:
-        # Use original patterns with adaptive thresholds (fallback if no batching)
+        # Use original patterns with adaptive thresholds (fallback if no
+        # batching)
         if not patterns.label_pair_geometry:
             return None
 
@@ -1884,7 +1907,8 @@ def check_geometric_anomaly(
                 continue
 
             geometry = patterns.label_pair_geometry[pair]
-            # Skip if we don't have Cartesian statistics (shouldn't happen with new code)
+            # Skip if we don't have Cartesian statistics (shouldn't happen with
+            # new code)
             if (
                 geometry.mean_dx is None
                 or geometry.mean_dy is None
@@ -1919,7 +1943,8 @@ def _check_geometry_against_batch(
         all_contexts: All WordContext objects on the receipt
         patterns: MerchantPatterns with batch-specific geometry
         batch_type: "happy", "ambiguous", or "anti"
-        threshold_multiplier: Multiplier for standard deviations (1.5, 2.0, or 3.0)
+        threshold_multiplier: Multiplier for standard deviations (1.5, 2.0, or
+            3.0)
 
     Returns:
         EvaluationIssue if geometric anomaly detected, None otherwise
@@ -2037,11 +2062,12 @@ def _check_geometry_against_batch(
                     reasoning=(
                         f"[{confidence} confidence] '{ctx.word.text}' labeled "
                         f"{label} has unusual geometric relationship with "
-                        f"{other_label} (patterns from {batch_label} receipts). "
-                        f"Expected position ({geometry.mean_dx:.2f}, "
-                        f"{geometry.mean_dy:.2f}), actual ({actual_dx:.2f}, "
-                        f"{actual_dy:.2f}), deviation {deviation:.3f} "
-                        f"(threshold: {threshold_std}σ = "
+                        f"{other_label} (patterns from {batch_label} "
+                        "receipts). Expected position "
+                        f"({geometry.mean_dx:.2f}, {geometry.mean_dy:.2f}), "
+                        f"actual ({actual_dx:.2f}, {actual_dy:.2f}), "
+                        f"deviation "
+                        f"{deviation:.3f} (threshold: {threshold_std}σ = "
                         f"{threshold_std * geometry.std_deviation:.3f}). "
                         "This may indicate mislabeling."
                     ),
@@ -2133,8 +2159,9 @@ def _compute_geometric_issue(
                     f"'{ctx.word.text}' labeled {label} has unusual geometric "
                     f"relationship with {other_label}. Expected position "
                     f"({geometry.mean_dx:.2f}, {geometry.mean_dy:.2f}), "
-                    f"actual ({actual_dx:.2f}, {actual_dy:.2f}), deviation "
-                    f"{deviation:.3f} (adaptive threshold: {threshold_std}σ = "
+                    f"actual ({actual_dx:.2f}, {actual_dy:.2f}), "
+                    f"deviation {deviation:.3f} (adaptive threshold: "
+                    f"{threshold_std}σ = "
                     f"{threshold_std * geometry.std_deviation:.3f}). "
                     "This may indicate mislabeling."
                 ),
@@ -2249,13 +2276,15 @@ def check_constellation_anomaly(
                 current_label=label,
                 suggested_status="NEEDS_REVIEW",
                 reasoning=(
-                    f"'{ctx.word.text}' labeled {label} has unusual position within "
-                    f"constellation [{constellation_str}]. "
-                    f"Expected offset ({expected.mean_dx:.3f}, {expected.mean_dy:.3f}) "
-                    f"from cluster center, actual ({actual_dx:.3f}, {actual_dy:.3f}). "
-                    f"Deviation {deviation:.3f} exceeds {threshold_std}σ threshold "
-                    f"({threshold_std * expected.std_deviation:.3f}). "
-                    f"This suggests the label may be misplaced relative to its group."
+                    f"'{ctx.word.text}' labeled {label} has unusual position "
+                    f"within constellation [{constellation_str}]. Expected "
+                    f"offset ({expected.mean_dx:.3f}, "
+                    f"{expected.mean_dy:.3f}) from cluster center, actual "
+                    f"({actual_dx:.3f}, {actual_dy:.3f}). Deviation "
+                    f"{deviation:.3f} exceeds {threshold_std}σ threshold "
+                    f"({threshold_std * expected.std_deviation:.3f}). This "
+                    "suggests the label may be misplaced relative to its "
+                    "group."
                 ),
                 word_context=ctx,
             )
@@ -2309,7 +2338,8 @@ def check_text_label_conflict(
             is_known_pair = patterns and pair in patterns.value_pairs
 
             if is_known_pair:
-                # This is a known valid combination (e.g., SUBTOTAL + GRAND_TOTAL)
+                # This is a known valid combination (e.g., SUBTOTAL +
+                # GRAND_TOTAL)
                 # Verify spatial ordering makes sense
                 assert (
                     patterns is not None
@@ -2332,7 +2362,8 @@ def check_text_label_conflict(
                         else other.normalized_y
                     )
 
-                    # Check if spatial ordering roughly matches (allow small variation)
+                    # Check if spatial ordering roughly matches (allow small
+                    # variation)
                     # Y values: 0=bottom, 1=top (receipt coordinates)
                     same_order = (actual_y1 - actual_y2) * (
                         expected_y1 - expected_y2
@@ -2348,9 +2379,11 @@ def check_text_label_conflict(
                         current_label=label,
                         suggested_status="NEEDS_REVIEW",
                         reasoning=(
-                            f"'{ctx.word.text}' labeled {label} at y={ctx.normalized_y:.2f}, "
-                            f"but same text labeled {other_label} at y={other.normalized_y:.2f}. "
-                            f"Spatial ordering doesn't match learned pattern for this label pair."
+                            f"'{ctx.word.text}' labeled {label} at "
+                            f"y={ctx.normalized_y:.2f}, but same text labeled "
+                            f"{other_label} at y={other.normalized_y:.2f}. "
+                            "Spatial ordering doesn't match learned pattern "
+                            "for this label pair."
                         ),
                         word_context=ctx,
                     )
@@ -2373,9 +2406,10 @@ def check_text_label_conflict(
                         current_label=label,
                         suggested_status="NEEDS_REVIEW",
                         reasoning=(
-                            f"'{ctx.word.text}' labeled {label} at y={ctx.normalized_y:.2f}, "
-                            f"but same text labeled {other_label} at "
-                            f"y={other.normalized_y:.2f} which better fits merchant pattern"
+                            f"'{ctx.word.text}' labeled {label} at "
+                            f"y={ctx.normalized_y:.2f}, but same text labeled "
+                            f"{other_label} at y={other.normalized_y:.2f} "
+                            "which better fits merchant pattern"
                         ),
                         word_context=ctx,
                     )
@@ -2387,9 +2421,10 @@ def check_text_label_conflict(
                     current_label=label,
                     suggested_status="NEEDS_REVIEW",
                     reasoning=(
-                        f"'{ctx.word.text}' labeled {label} at y={ctx.normalized_y:.2f}, "
-                        f"but same text labeled {other_label} at "
-                        f"y={other.normalized_y:.2f} - inconsistent labeling"
+                        f"'{ctx.word.text}' labeled {label} at "
+                        f"y={ctx.normalized_y:.2f}, but same text labeled "
+                        f"{other_label} at y={other.normalized_y:.2f} - "
+                        "inconsistent labeling"
                     ),
                     word_context=ctx,
                 )
@@ -2443,7 +2478,8 @@ def check_missing_label_in_cluster(
     """
     Check if an unlabeled word should have a label based on surrounding labels.
 
-    Detects cases like a zip code with no label but surrounded by ADDRESS_LINE words.
+    Detects cases like a zip code with no label but surrounded by
+    ADDRESS_LINE words.
 
     Args:
         ctx: WordContext to check (expected to have no current label)
@@ -2471,8 +2507,8 @@ def check_missing_label_in_cluster(
 
     most_common_label, count = label_counts.most_common(1)[0]
 
-    # Be conservative - require strong signal (at least 2 neighbors with same label,
-    # and they represent at least 70% of labeled neighbors)
+    # Be conservative - require strong signal (at least 2 neighbors with same
+    # label, and they represent at least 70% of labeled neighbors)
     if count >= 2 and count / len(same_line_labels) >= 0.7:
         # Additional check: does word text look plausible for this label?
         if _is_plausible_for_label(ctx.word.text, most_common_label):
@@ -2596,7 +2632,8 @@ def check_missing_constellation_member(
         position_threshold: Max distance (normalized) to expected position
 
     Returns:
-        EvaluationIssue if missing constellation member detected, None otherwise
+        EvaluationIssue if missing constellation member detected, None
+        otherwise
     """
     if ctx.current_label is not None:
         return None  # Only check unlabeled words
@@ -2704,11 +2741,12 @@ def check_missing_constellation_member(
             suggested_status="NEEDS_REVIEW",
             suggested_label=missing_label,
             reasoning=(
-                f"'{ctx.word.text}' has no label but is at the expected position "
-                f"for {missing_label} within constellation [{constellation_str}]. "
-                f"Present labels: [{present_str}]. Distance to expected position: "
-                f"{distance:.3f} (threshold: {position_threshold:.3f}). "
-                f"This word may be missing a {missing_label} label."
+                f"'{ctx.word.text}' has no label but is at the expected "
+                f"position for {missing_label} within constellation "
+                f"[{constellation_str}]. Present labels: [{present_str}]. "
+                f"Distance to expected position: {distance:.3f} (threshold: "
+                f"{position_threshold:.3f}). This word may be missing a "
+                f"{missing_label} label."
             ),
             word_context=ctx,
         )
@@ -2723,13 +2761,15 @@ def detect_label_conflicts(
     Detect when the same word position has conflicting labels.
 
     This identifies data quality issues in training labels where semantic
-    contradictions appear (e.g., same price labeled as both UNIT_PRICE and LINE_TOTAL).
+    contradictions appear (e.g., same price labeled as both UNIT_PRICE and
+    LINE_TOTAL).
 
     Args:
         labels: All ReceiptWordLabel objects for a receipt
 
     Returns:
-        List of (line_id, word_id, conflicting_labels) tuples where labels conflict
+        List of (line_id, word_id, conflicting_labels) tuples where labels
+        conflict
     """
     # Group labels by position
     labels_by_position = defaultdict(set)
@@ -2745,8 +2785,8 @@ def detect_label_conflicts(
                 line_id, word_id = position
                 conflicts.append((line_id, word_id, label_set))
                 logger.warning(
-                    "Label conflict at line %s, word %s: %s and %s both present "
-                    "(all labels: %s)",
+                    "Label conflict at line %s, word %s: %s and %s both "
+                    "present (all labels: %s)",
                     line_id,
                     word_id,
                     label1,
@@ -2803,7 +2843,8 @@ At line {line_id}, word {word_id}, we found these conflicting labels:
 Conflicting pairs:
 {", ".join(conflicting_pairs)}
 
-Question: Is this a data quality issue or an expected format variation for {receipt_label}?
+Question: Is this a data quality issue or an expected format variation for
+{receipt_label}?
 
 Consider:
 - UNIT_PRICE ↔ LINE_TOTAL: Sprouts often shows both (FORMAT_VARIATION)
@@ -2905,7 +2946,8 @@ def assign_batch_with_llm(
     )
 
     logger.info(
-        "Batch classification: %s conflicts (%s real errors, %s format variations)",
+        "Batch classification: %s conflicts (%s real errors, %s format "
+        "variations)",
         len(conflicts),
         real_errors,
         format_variations,
@@ -2955,7 +2997,8 @@ def evaluate_word_contexts(
                 issues.append(issue)
                 continue
 
-            # Use geometric anomaly detection instead of simple same-line conflict
+            # Use geometric anomaly detection instead of simple same-line
+            # conflict
             issue = check_geometric_anomaly(ctx, word_contexts, patterns)
             if issue:
                 issues.append(issue)
@@ -3173,7 +3216,10 @@ def build_word_chroma_id(
     Returns:
         ChromaDB document ID in format IMAGE#...#RECEIPT#...#LINE#...#WORD#...
     """
-    return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
+    return (
+        f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+        f"#WORD#{word_id:05d}"
+    )
 
 
 def query_similar_validated_words(
@@ -3241,7 +3287,10 @@ def query_similar_validated_words(
             return []
 
         if not query_embedding:
-            logger.warning("Empty embedding found for word: %s", word_chroma_id)
+            logger.warning(
+                "Empty embedding found for word: %s",
+                word_chroma_id,
+            )
             return []
 
         # Query ChromaDB words collection using the existing embedding
@@ -3376,7 +3425,8 @@ def format_similar_words_for_prompt(
         )
         label = w.label or "no label"
         lines.append(
-            f'- "{w.word_text}" → {label} {status} (similarity: {w.similarity_score:.2f})'
+            f'- "{w.word_text}" → {label} {status} '
+            f"(similarity: {w.similarity_score:.2f})"
         )
 
         # Add valid/invalid labels if available

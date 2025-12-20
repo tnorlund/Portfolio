@@ -1,7 +1,8 @@
 """
 Agent implementations for receipt processing.
 
-Each agent is organized as a self-contained module with state, graph, nodes, and tools.
+Each agent is organized as a self-contained module with state, graph, nodes,
+and tools.
 """
 
 from receipt_agent.agents.label_evaluator import (

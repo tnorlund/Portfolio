@@ -3,7 +3,8 @@ Label Evaluator Agent
 
 A two-phase agent that validates receipt word labels:
 1. Deterministic evaluation: Analyzes spatial patterns to flag potential issues
-2. LLM review: Uses a cheap LLM (Haiku) to make semantic decisions on flagged issues
+2. LLM review: Uses a cheap LLM (Haiku) to make semantic decisions on flagged
+   issues
 
 Usage:
     from receipt_agent.agents.label_evaluator import (
@@ -19,7 +20,12 @@ Usage:
     result = await run_label_evaluator(graph, image_id, receipt_id)
 
     # Run without LLM review (faster, cheaper)
-    result = await run_label_evaluator(graph, image_id, receipt_id, skip_llm_review=True)
+    result = await run_label_evaluator(
+        graph,
+        image_id,
+        receipt_id,
+        skip_llm_review=True,
+    )
 
     # Or synchronously
     result = run_label_evaluator_sync(graph, image_id, receipt_id)
@@ -46,18 +52,21 @@ For AWS Lambda / Step Functions (compute-only, no I/O):
     result = await run_compute_only(graph, state)
 
 The agent detects:
-- Position anomalies: Labels appearing in unexpected positions based on merchant
-  patterns
+- Position anomalies: Labels appearing in unexpected positions based on
+  merchant patterns
 - Geometric anomalies: Label types with unusual angle/distance relationships
   compared to learned merchant patterns
-- Constellation anomalies: Unusual n-tuple spatial patterns beyond pairwise label relationships
-- Missing labels in clusters: Unlabeled words surrounded by consistently labeled words
+- Constellation anomalies: Unusual n-tuple spatial patterns beyond pairwise
+  label relationships
+- Missing labels in clusters: Unlabeled words surrounded by consistently
+  labeled words
 - Missing constellation members: Unlabeled words at expected positions for
   missing labels in partial constellations
-- Text-label conflicts: Same word text with different labels at different positions
+- Text-label conflicts: Same word text with different labels at different
+  positions
 
-Results are written as new ReceiptWordLabel entries with validation_status and reasoning,
-creating an audit trail of label changes.
+Results are written as new ReceiptWordLabel entries with validation_status and
+reasoning, creating an audit trail of label changes.
 """
 
 from receipt_agent.agents.label_evaluator.graph import (

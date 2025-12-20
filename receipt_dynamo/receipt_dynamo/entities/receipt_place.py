@@ -41,8 +41,9 @@ from receipt_dynamo.utils.geospatial import calculate_geohash
 logger = __import__("logging").getLogger(__name__)
 
 # Validation thresholds (reserved for future field validation logic)
-# Currently ReceiptPlace relies on Google Places API validation, but these constants
-# are available if additional client-side validation is needed in the future
+# Currently ReceiptPlace relies on Google Places API validation, but these
+# constants are available if additional client-side validation is needed in the
+# future
 MIN_PHONE_DIGITS = 7
 MIN_NAME_LENGTH = 2
 
@@ -133,25 +134,30 @@ class ReceiptPlace(SerializationMixin):
         plus_code (str): Open Location Code (Plus Code).
 
         phone_number (str): Phone in national format (e.g., "(555) 123-4567").
-        phone_intl (str): Phone in international format (e.g., "+1 555 123-4567").
+        phone_intl (str): Phone in international format (e.g., "+1 555
+            123-4567").
         website (str): Business website URL.
         maps_url (str): Google Maps link for the place.
 
-        business_status (str): Status (OPERATIONAL, CLOSED_TEMPORARILY, CLOSED_PERMANENTLY).
+        business_status (str): Status (OPERATIONAL, CLOSED_TEMPORARILY,
+            CLOSED_PERMANENTLY).
         open_now (bool): Whether the place is currently open.
-        hours_summary (list[str]): Human-readable hours (e.g., "Mon: 9 AM - 5 PM").
+        hours_summary (list[str]): Human-readable hours (e.g., "Mon: 9 AM - 5
+            PM").
         hours_data (dict): Structured hours data (periods).
 
         photo_references (list[str]): Photo resource names from Google.
 
-        matched_fields (list[str]): Which fields matched (e.g., ["name", "phone"]).
+        matched_fields (list[str]): Which fields matched (e.g., ["name",
+            "phone"]).
         validated_by (str): Source of validation (INFERENCE, GPT, MANUAL).
         validation_status (str): Status (MATCHED, UNSURE, NO_MATCH).
         confidence (float): Match confidence score (0.0-1.0).
         reasoning (str): Why this match was made.
 
         timestamp (datetime): When created/updated.
-        places_api_version (str): Which API version was used ("v1" or "legacy").
+        places_api_version (str): Which API version was used ("v1" or
+            "legacy").
     """
 
     # === Identity (Required) ===
@@ -233,10 +239,12 @@ class ReceiptPlace(SerializationMixin):
         # Validate confidence score
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(
-                f"confidence must be between 0.0 and 1.0, got {self.confidence}"
+                f"confidence must be between 0.0 and 1.0, got "
+                f"{self.confidence}"
             )
 
-        # Validate merchant_name produces non-empty GSI1 key after normalization
+        # Validate merchant_name produces non-empty GSI1 key after
+        # normalization
         if not self.merchant_name:
             raise ValueError("merchant_name cannot be empty")
         normalized_merchant = self.merchant_name.upper()
@@ -244,8 +252,9 @@ class ReceiptPlace(SerializationMixin):
         normalized_merchant = normalized_merchant.strip("_")
         if not normalized_merchant:
             raise ValueError(
-                f"merchant_name '{self.merchant_name}' contains no alphanumeric "
-                "characters and would produce an invalid GSI1 key"
+                f"merchant_name '{self.merchant_name}' contains no "
+                "alphanumeric characters and would produce an invalid GSI1 "
+                "key"
             )
 
         # Validate coordinates if present
@@ -291,14 +300,18 @@ class ReceiptPlace(SerializationMixin):
     @property
     def gsi1_key(self) -> dict[str, dict[str, str]]:
         """Get GSI1 key (query by merchant name)."""
-        # Normalize name: uppercase, replace special chars with underscore, collapse whitespace
+        # Normalize name: uppercase, replace special chars with underscore,
+        # collapse whitespace
         normalized_name = self.merchant_name.upper()
         normalized_name = re.sub(r"[^A-Z0-9]+", "_", normalized_name)
         normalized_name = normalized_name.strip("_")
         return {
             "GSI1PK": {"S": f"MERCHANT#{normalized_name}"},
             "GSI1SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#PLACE"
+                "S": (
+                    f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+                    "#PLACE"
+                )
             },
         }
 
@@ -308,7 +321,10 @@ class ReceiptPlace(SerializationMixin):
         return {
             "GSI2PK": {"S": f"PLACE#{self.place_id}"},
             "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#PLACE"
+                "S": (
+                    f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+                    "#PLACE"
+                )
             },
         }
 
@@ -321,7 +337,8 @@ class ReceiptPlace(SerializationMixin):
             "GSI3PK": {"S": "PLACE_VALIDATION"},
             "GSI3SK": {
                 "S": (
-                    f"CONFIDENCE#{confidence_str}#STATUS#{self.validation_status}"
+                    f"CONFIDENCE#{confidence_str}#STATUS#"
+                    f"{self.validation_status}"
                     f"#IMAGE#{self.image_id}"
                 )
             },
@@ -346,7 +363,8 @@ class ReceiptPlace(SerializationMixin):
         Serialize the ReceiptPlace object into DynamoDB item format.
 
         Includes primary keys, GSI keys, and all location/merchant data with
-        appropriate DynamoDB type annotations (S for string, N for number, etc).
+        appropriate DynamoDB type annotations (S for string, N for number,
+        etc).
 
         Returns:
             Dict with DynamoDB formatted item ready for PutItem/UpdateItem
@@ -394,7 +412,8 @@ class ReceiptPlace(SerializationMixin):
                 else:
                     item[attr] = {"NULL": True}
 
-        # List fields (string sets) - filter out empty strings (DynamoDB SS rejects empty strings)
+        # List fields (string sets) - filter out empty strings (DynamoDB SS
+        # rejects empty strings)
         merchant_types_filtered = [
             s.strip()
             for s in self.merchant_types
@@ -474,7 +493,8 @@ class ReceiptPlace(SerializationMixin):
 
 def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
     """
-    Create ReceiptPlace from DynamoDB item (low-level client format with type annotations).
+    Create ReceiptPlace from DynamoDB item (low-level client format with type
+    annotations).
 
     Handles DynamoDB JSON format items like {'S': 'value'}, {'N': '123'}, etc.
 
