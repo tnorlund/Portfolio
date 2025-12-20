@@ -490,41 +490,35 @@ async def process_place_id_batch(
                             updates_failed += 1
                             continue
 
-                        # TODO: DEPRECATION - Update base fields instead of canonical fields
-                        # See docs/architecture/CANONICAL_FIELDS_DEPRECATION.md
-                        # Currently updating canonical fields for backward compatibility,
-                        # but the goal is to remove canonical fields entirely.
-                        # The harmonizer determines canonical values for the place_id group
-                        # These should be written to base fields (merchant_name, formatted_address, phone_number)
-                        # instead of canonical fields.
+                        # Update base fields with harmonized values
+                        # The harmonizer determines the best values for a place_id group
+                        # and applies them to all receipts in the group
                         updated_fields = []
                         if (
                             canonical_merchant_name
-                            and place.canonical_merchant_name
+                            and place.merchant_name
                             != canonical_merchant_name
                         ):
-                            place.canonical_merchant_name = (
-                                canonical_merchant_name
-                            )
-                            updated_fields.append("canonical_merchant_name")
+                            place.merchant_name = canonical_merchant_name
+                            updated_fields.append("merchant_name")
 
                         sanitized_address = sanitize_canonical_address(
-                            canonical_address, place.canonical_address
+                            canonical_address, place.formatted_address
                         )
                         if (
                             sanitized_address
-                            and place.canonical_address != sanitized_address
+                            and place.formatted_address != sanitized_address
                         ):
-                            place.canonical_address = sanitized_address
-                            updated_fields.append("canonical_address")
+                            place.formatted_address = sanitized_address
+                            updated_fields.append("formatted_address")
 
                         if (
                             canonical_phone
-                            and place.canonical_phone_number
+                            and place.phone_number
                             != canonical_phone
                         ):
-                            place.canonical_phone_number = canonical_phone
-                            updated_fields.append("canonical_phone_number")
+                            place.phone_number = canonical_phone
+                            updated_fields.append("phone_number")
 
                         if updated_fields:
                             dynamo_client.update_receipt_place(place)

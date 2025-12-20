@@ -20,7 +20,6 @@ from ...lambdas.stream_processor import (
 
 def create_test_receipt_place(
     merchant_name: str = "Test Merchant",
-    canonical_merchant_name: str = "",
     **kwargs,
 ) -> ReceiptPlace:
     """Create a test ReceiptPlace entity with sensible defaults."""
@@ -29,7 +28,6 @@ def create_test_receipt_place(
         "receipt_id": 1,
         "place_id": "place123",
         "merchant_name": merchant_name,
-        "canonical_merchant_name": canonical_merchant_name,
         "matched_fields": ["name"],
         "validated_by": ValidationMethod.PHONE_LOOKUP,
         "timestamp": datetime.fromisoformat("2024-01-01T00:00:00"),

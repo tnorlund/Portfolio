@@ -12,9 +12,9 @@ from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from .models import FieldChange
 
 # Define ChromaDB-relevant fields for each entity type
+# These are fields on ReceiptPlace/ReceiptWordLabel that affect ChromaDB metadata
 CHROMADB_RELEVANT_FIELDS = {
     "RECEIPT_PLACE": [
-        "canonical_merchant_name",
         "merchant_name",
         "merchant_category",
         "formatted_address",

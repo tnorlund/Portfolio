@@ -20,7 +20,6 @@ from ...lambdas.stream_processor import (
 
 def create_test_receipt_place(
     merchant_name: str = "Test Merchant",
-    canonical_merchant_name: str = "",
     **kwargs,
 ) -> ReceiptPlace:
     """Create a test ReceiptPlace entity with sensible defaults."""
@@ -29,7 +28,6 @@ def create_test_receipt_place(
         "receipt_id": 1,
         "place_id": "place123",
         "merchant_name": merchant_name,
-        "canonical_merchant_name": canonical_merchant_name,
         "matched_fields": ["name"],
         "validated_by": ValidationMethod.PHONE_LOOKUP,
         "timestamp": datetime.fromisoformat("2024-01-01T00:00:00"),
@@ -63,14 +61,12 @@ class TestPlaceChangeDetection:
         """Test place field changes are detected."""
         old_entity = create_test_receipt_place(
             merchant_name="Old Merchant",
-            canonical_merchant_name="Old Merchant",
             place_id="old_place_123",
             formatted_address="Old Address",
         )
 
         new_entity = create_test_receipt_place(
             merchant_name="New Merchant",
-            canonical_merchant_name="New Merchant",
             place_id="new_place_123",
             formatted_address="Old Address",  # Same address - no change expected
         )
@@ -79,20 +75,11 @@ class TestPlaceChangeDetection:
             "RECEIPT_PLACE", old_entity, new_entity
         )
 
-        assert "canonical_merchant_name" in changes
-        assert isinstance(changes["canonical_merchant_name"], FieldChange)
-        assert (
-            changes["canonical_merchant_name"].old
-            == old_entity.canonical_merchant_name
-        )
-        assert (
-            changes["canonical_merchant_name"].new
-            == new_entity.canonical_merchant_name
-        )
         assert "place_id" in changes
         assert changes["place_id"].old == old_entity.place_id
         assert changes["place_id"].new == new_entity.place_id
         assert "merchant_name" in changes
+        assert isinstance(changes["merchant_name"], FieldChange)
         assert changes["merchant_name"].old == old_entity.merchant_name
         assert changes["merchant_name"].new == new_entity.merchant_name
         assert (
@@ -103,7 +90,6 @@ class TestPlaceChangeDetection:
         """Test when no relevant changes are detected."""
         entity = create_test_receipt_place(
             merchant_name="Same Merchant",
-            canonical_merchant_name="Same Merchant",
             place_id="same_place_123",
             formatted_address="Same Address",
         )
