@@ -1,0 +1,181 @@
+"""Aggregate evaluation results and generate summary report.
+
+This handler collects all individual receipt evaluation results from S3
+and generates a summary report with statistics by issue type and merchant.
+"""
+
+import json
+import logging
+import os
+from collections import Counter
+from typing import Any, Dict, List
+
+import boto3
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+s3 = boto3.client("s3")
+
+
+def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """
+    Aggregate all evaluation results and generate summary report.
+
+    Input:
+    {
+        "execution_id": "abc123",
+        "batch_bucket": "bucket-name",
+        "process_results": [[{"status": "completed", ...}], ...],
+        "merchant_name": "Sprouts Farmers Market",
+        "dry_run": true
+    }
+
+    Output:
+    {
+        "execution_id": "abc123",
+        "summary": {
+            "total_receipts": 150,
+            "successful_receipts": 148,
+            "failed_receipts": 2,
+            "total_issues": 23,
+            "by_issue_type": {"position_anomaly": 12, "same_line_conflict": 11},
+            "by_status": {"NEEDS_REVIEW": 20, "INVALID": 3}
+        },
+        "report_s3_key": "reports/{exec}/summary.json"
+    }
+    """
+    execution_id = event.get("execution_id", "unknown")
+    batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
+    process_results = event.get("process_results", [])
+    merchant_name = event.get("merchant_name", "Unknown")
+    dry_run = event.get("dry_run", True)
+
+    if not batch_bucket:
+        raise ValueError("batch_bucket is required")
+
+    logger.info(f"Aggregating results for execution {execution_id}")
+
+    # Flatten nested results from distributed map
+    all_results: List[Dict[str, Any]] = []
+    for batch_results in process_results:
+        if isinstance(batch_results, list):
+            all_results.extend(batch_results)
+        elif isinstance(batch_results, dict):
+            all_results.append(batch_results)
+
+    # Count statistics
+    total_receipts = len(all_results)
+    successful_receipts = sum(
+        1 for r in all_results if r.get("status") == "completed"
+    )
+    failed_receipts = sum(
+        1 for r in all_results if r.get("status") == "error"
+    )
+
+    # Aggregate issues
+    all_issues: List[Dict[str, Any]] = []
+    issue_type_counter: Counter = Counter()
+    status_counter: Counter = Counter()
+
+    for result in all_results:
+        if result.get("status") != "completed":
+            continue
+
+        # Load detailed results from S3 if available
+        results_key = result.get("results_s3_key")
+        if results_key:
+            try:
+                response = s3.get_object(Bucket=batch_bucket, Key=results_key)
+                detailed = json.loads(response["Body"].read().decode("utf-8"))
+                issues = detailed.get("issues", [])
+
+                for issue in issues:
+                    all_issues.append({
+                        "image_id": result.get("image_id"),
+                        "receipt_id": result.get("receipt_id"),
+                        **issue,
+                    })
+                    issue_type_counter[issue.get("type", "unknown")] += 1
+                    status_counter[issue.get("suggested_status", "unknown")] += 1
+
+            except Exception as e:
+                logger.warning(f"Could not load results from {results_key}: {e}")
+                # Fall back to summary in result
+                issues_found = result.get("issues_found", 0)
+                issue_type_counter["unknown"] += issues_found
+
+    total_issues = sum(issue_type_counter.values())
+
+    logger.info(
+        f"Aggregated {total_receipts} receipts, "
+        f"{successful_receipts} successful, {failed_receipts} failed, "
+        f"{total_issues} total issues"
+    )
+
+    # Build summary
+    summary = {
+        "execution_id": execution_id,
+        "merchant_name": merchant_name,
+        "dry_run": dry_run,
+        "total_receipts": total_receipts,
+        "successful_receipts": successful_receipts,
+        "failed_receipts": failed_receipts,
+        "total_issues": total_issues,
+        "by_issue_type": dict(issue_type_counter.most_common()),
+        "by_status": dict(status_counter.most_common()),
+        "sample_issues": all_issues[:20],  # Include sample for review
+    }
+
+    # Build detailed report
+    report = {
+        "execution_id": execution_id,
+        "merchant_name": merchant_name,
+        "dry_run": dry_run,
+        "summary": summary,
+        "all_issues": all_issues,
+        "receipt_results": [
+            {
+                "image_id": r.get("image_id"),
+                "receipt_id": r.get("receipt_id"),
+                "status": r.get("status"),
+                "issues_found": r.get("issues_found", 0),
+                "results_s3_key": r.get("results_s3_key"),
+            }
+            for r in all_results
+        ],
+    }
+
+    # Upload summary report to S3
+    report_key = f"reports/{execution_id}/summary.json"
+    s3.put_object(
+        Bucket=batch_bucket,
+        Key=report_key,
+        Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
+        ContentType="application/json",
+    )
+
+    logger.info(f"Uploaded summary report to s3://{batch_bucket}/{report_key}")
+
+    # Also upload issues-only report for easy analysis
+    issues_key = f"reports/{execution_id}/issues.json"
+    s3.put_object(
+        Bucket=batch_bucket,
+        Key=issues_key,
+        Body=json.dumps(all_issues, indent=2, default=str).encode("utf-8"),
+        ContentType="application/json",
+    )
+
+    return {
+        "execution_id": execution_id,
+        "summary": {
+            "total_receipts": total_receipts,
+            "successful_receipts": successful_receipts,
+            "failed_receipts": failed_receipts,
+            "total_issues": total_issues,
+            "by_issue_type": dict(issue_type_counter.most_common(5)),
+            "by_status": dict(status_counter.most_common()),
+        },
+        "report_s3_key": report_key,
+        "issues_s3_key": issues_key,
+    }

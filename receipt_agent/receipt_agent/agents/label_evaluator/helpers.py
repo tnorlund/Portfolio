@@ -2478,6 +2478,155 @@ def _is_plausible_for_label(text: str, label: str) -> bool:
     return True
 
 
+def check_missing_constellation_member(
+    ctx: WordContext,
+    all_contexts: List[WordContext],
+    patterns: Optional[MerchantPatterns],
+    position_threshold: float = 0.08,
+) -> Optional[EvaluationIssue]:
+    """
+    Check if an unlabeled word is at a position where a constellation label
+    is expected but missing.
+
+    For each constellation pattern (e.g., SUBTOTAL + TAX + TOTAL):
+    1. Check if the receipt has SOME but not ALL labels in the constellation
+    2. For each missing label, compute its expected position based on:
+       - The centroid of the present labels
+       - The learned relative position of the missing label
+    3. If this unlabeled word is near the expected position, flag it
+
+    This catches missing labels that simple same-line heuristics miss:
+    - TAX label missing between SUBTOTAL and TOTAL
+    - ADDRESS_LINE missing from a partial address block
+    - PRODUCT_NAME missing from a product line with price
+
+    Args:
+        ctx: WordContext to check (expected to have no current label)
+        all_contexts: All WordContext objects on the receipt
+        patterns: MerchantPatterns with constellation_geometry
+        position_threshold: Max distance (normalized) to expected position
+
+    Returns:
+        EvaluationIssue if missing constellation member detected, None otherwise
+    """
+    if ctx.current_label is not None:
+        return None  # Only check unlabeled words
+
+    if patterns is None or not patterns.constellation_geometry:
+        return None
+
+    # Get this word's normalized position
+    word_pos = (ctx.normalized_x, ctx.normalized_y)
+
+    # Build label -> centroid mapping for present labels on this receipt
+    label_centroids: Dict[str, Tuple[float, float]] = {}
+    labels_by_type: Dict[str, List[WordContext]] = defaultdict(list)
+
+    for other_ctx in all_contexts:
+        if other_ctx.current_label:
+            labels_by_type[other_ctx.current_label.label].append(other_ctx)
+
+    for label_type, contexts in labels_by_type.items():
+        if contexts:
+            # Use normalized positions for comparison
+            norm_positions = [
+                (c.normalized_x, c.normalized_y) for c in contexts
+            ]
+            label_centroids[label_type] = (
+                sum(p[0] for p in norm_positions) / len(norm_positions),
+                sum(p[1] for p in norm_positions) / len(norm_positions),
+            )
+
+    present_labels = set(label_centroids.keys())
+
+    # Check each constellation for partial matches
+    best_match: Optional[Tuple[str, str, float]] = (
+        None  # (missing_label, constellation_str, distance)
+    )
+
+    for constellation, geom in patterns.constellation_geometry.items():
+        constellation_labels = set(constellation)
+
+        # Check for partial constellation (some but not all labels present)
+        present_in_constellation = constellation_labels & present_labels
+        missing_from_constellation = constellation_labels - present_labels
+
+        # Require at least 2 labels present and exactly 1 missing
+        # (more conservative - avoids false positives)
+        if (
+            len(present_in_constellation) < 2
+            or len(missing_from_constellation) != 1
+        ):
+            continue
+
+        missing_label = next(iter(missing_from_constellation))
+
+        # Get the expected relative position for the missing label
+        expected_rel = geom.relative_positions.get(missing_label)
+        if expected_rel is None:
+            continue
+
+        # Compute the constellation centroid from present labels
+        present_positions = [
+            label_centroids[lbl] for lbl in present_in_constellation
+        ]
+        constellation_centroid = (
+            sum(p[0] for p in present_positions) / len(present_positions),
+            sum(p[1] for p in present_positions) / len(present_positions),
+        )
+
+        # Compute expected absolute position for the missing label
+        expected_pos = (
+            constellation_centroid[0] + expected_rel.mean_dx,
+            constellation_centroid[1] + expected_rel.mean_dy,
+        )
+
+        # Check distance from this unlabeled word to expected position
+        distance = math.sqrt(
+            (word_pos[0] - expected_pos[0]) ** 2
+            + (word_pos[1] - expected_pos[1]) ** 2
+        )
+
+        # Use adaptive threshold based on learned variance
+        threshold = position_threshold
+        if expected_rel.std_deviation and expected_rel.std_deviation > 0:
+            # Allow 2 standard deviations, but cap at position_threshold
+            threshold = min(
+                position_threshold, 2.0 * expected_rel.std_deviation
+            )
+
+        if distance <= threshold:
+            # Check if word text is plausible for this label
+            if _is_plausible_for_label(ctx.word.text, missing_label):
+                # Track best match (closest distance)
+                if best_match is None or distance < best_match[2]:
+                    constellation_str = " + ".join(constellation)
+                    best_match = (missing_label, constellation_str, distance)
+
+    if best_match:
+        missing_label, constellation_str, distance = best_match
+        present_str = ", ".join(
+            sorted(present_labels & set(constellation_str.split(" + ")))
+        )
+        return EvaluationIssue(
+            issue_type="missing_constellation_member",
+            word=ctx.word,
+            current_label=None,
+            suggested_status="NEEDS_REVIEW",
+            suggested_label=missing_label,
+            reasoning=(
+                f"'{ctx.word.text}' has no label but is at the expected position "
+                f"for {missing_label} within constellation [{constellation_str}]. "
+                f"Present labels: [{present_str}]. "
+                f"Distance to expected position: {distance:.3f} (threshold: {position_threshold:.3f}). "
+                f"This word may be missing a {missing_label} label."
+            ),
+            word_context=ctx,
+        )
+
+    return None
+
+
 def detect_label_conflicts(
     labels: List[ReceiptWordLabel],
 ) -> List[Tuple[int, int, Set[str]]]:
@@ -2721,7 +2870,16 @@ def evaluate_word_contexts(
                 continue
         else:
             # Check unlabeled words
+            # First check same-line cluster heuristic
             issue = check_missing_label_in_cluster(ctx)
+            if issue:
+                issues.append(issue)
+                continue
+
+            # Then check constellation-based missing label detection
+            issue = check_missing_constellation_member(
+                ctx, word_contexts, patterns
+            )
             if issue:
                 issues.append(issue)
 

@@ -41,6 +41,7 @@ from dynamo_db import (
 )
 from embedding_step_functions import EmbeddingInfrastructure
 from label_harmonizer_step_functions import LabelHarmonizerV3StepFunction
+from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from label_suggestion_step_functions import LabelSuggestionStepFunction
 from label_validation_agent_step_functions import (
     LabelValidationAgentStepFunction,
@@ -1187,4 +1188,20 @@ pulumi.export(
 pulumi.export(
     "metadata_harmonizer_batch_bucket_name",
     metadata_harmonizer_sf.batch_bucket_name,
+)
+
+# Label Evaluator Step Function (spatial pattern analysis for label validation)
+label_evaluator_sf = LabelEvaluatorStepFunction(
+    f"label-evaluator-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
+    max_concurrency=10,  # Process 10 receipts in parallel
+    batch_size=25,  # 25 receipts per batch
+)
+
+pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
+pulumi.export(
+    "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
 )

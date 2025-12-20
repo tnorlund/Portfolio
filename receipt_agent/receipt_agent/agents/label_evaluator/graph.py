@@ -23,15 +23,6 @@ from typing import Any, Dict, List, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 
-# Optional: langchain_anthropic for LLM review
-try:
-    from langchain_anthropic import ChatAnthropic
-
-    HAS_ANTHROPIC = True
-except ImportError:
-    HAS_ANTHROPIC = False
-    ChatAnthropic = None  # type: ignore
-
 # Optional: langchain_ollama for Ollama Cloud
 try:
     from langchain_ollama import ChatOllama
@@ -95,9 +86,10 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Maximum number of other receipts to fetch for pattern learning
-# Optimized for speed: 10 receipts provides good statistical confidence for patterns
-# while keeping runtime under 5 minutes (vs 30+ minutes with all receipts)
-# Can be overridden per-run via max_receipts parameter
+# Pattern computation itself is fast (<0.1s for 150 receipts).
+# The limit exists to control DynamoDB I/O time during sequential fetching.
+# In Step Functions, use Distributed Map to parallelize fetches and increase this.
+# Can be overridden per-run via max_receipts parameter.
 MAX_OTHER_RECEIPTS = 10
 
 # Cache for merchant patterns (merchant_name -> MerchantPatterns)
@@ -177,7 +169,6 @@ def create_label_evaluator_graph(
     dynamo_client: Any,
     llm_model: Optional[str] = None,
     llm: Any = None,
-    llm_provider: str = "anthropic",
     ollama_base_url: str = "https://ollama.com",
     ollama_api_key: Optional[str] = None,
     chroma_client: Any = None,
@@ -189,13 +180,10 @@ def create_label_evaluator_graph(
 
     Args:
         dynamo_client: DynamoDB client for fetching receipt data
-        llm_model: Model to use for LLM review. Defaults based on provider:
-                   - For Anthropic: "claude-3-5-haiku-latest"
-                   - For Ollama Cloud: "gpt-oss:20b-cloud"
+        llm_model: Model to use for LLM review. Default: "gpt-oss:20b-cloud"
         llm: Optional pre-configured LLM instance. If provided, ignores other LLM settings.
-        llm_provider: LLM provider to use ("anthropic" or "ollama")
-        ollama_base_url: Base URL for Ollama Cloud API
-        ollama_api_key: API key for Ollama Cloud (required if using ollama provider)
+        ollama_base_url: Base URL for Ollama Cloud API (default: https://ollama.com)
+        ollama_api_key: API key for Ollama Cloud (required for cloud usage)
         chroma_client: Optional ChromaDB client for similar word lookup. Words' existing
                        embeddings are retrieved by ID, so no embed_fn is needed.
         max_pair_patterns: Maximum label pairs/tuples to compute geometry for (default: 4)
@@ -206,12 +194,9 @@ def create_label_evaluator_graph(
     Returns:
         Compiled LangGraph workflow
     """
-    # Set default model based on provider
+    # Set default model
     if llm_model is None:
-        if llm_provider == "ollama":
-            llm_model = "gpt-oss:20b-cloud"
-        else:
-            llm_model = "claude-3-5-haiku-latest"
+        llm_model = "gpt-oss:20b-cloud"
     # Store clients and configuration in closure for node access
     _dynamo_client = dynamo_client
     _chroma_client = chroma_client
@@ -226,43 +211,27 @@ def create_label_evaluator_graph(
             "ChromaDB not configured - similar word lookup will be skipped"
         )
 
-    # Initialize LLM for review (cheap model for cost efficiency)
+    # Initialize LLM for review (uses Ollama)
     if llm is not None:
         _llm = llm
-    elif llm_provider == "ollama":
-        if HAS_OLLAMA and ChatOllama is not None:
-            client_kwargs = {"timeout": 120}
-            if ollama_api_key:
-                client_kwargs["headers"] = {
-                    "Authorization": f"Bearer {ollama_api_key}"
-                }
-            _llm = ChatOllama(
-                base_url=ollama_base_url,
-                model=llm_model,
-                client_kwargs=client_kwargs,
-                temperature=0,
-            )
-            logger.info(f"Using Ollama Cloud LLM: {llm_model}")
-        else:
-            _llm = None
-            logger.warning(
-                "langchain_ollama not installed. LLM review will be skipped. "
-                "Install with: pip install langchain-ollama"
-            )
-    elif llm_provider == "anthropic":
-        if HAS_ANTHROPIC and ChatAnthropic is not None:
-            _llm = ChatAnthropic(model=llm_model, temperature=0)
-            logger.info(f"Using Anthropic LLM: {llm_model}")
-        else:
-            _llm = None
-            logger.warning(
-                "langchain_anthropic not installed. LLM review will be skipped. "
-                "Install with: pip install langchain-anthropic"
-            )
+    elif HAS_OLLAMA and ChatOllama is not None:
+        client_kwargs = {"timeout": 120}
+        if ollama_api_key:
+            client_kwargs["headers"] = {
+                "Authorization": f"Bearer {ollama_api_key}"
+            }
+        _llm = ChatOllama(
+            base_url=ollama_base_url,
+            model=llm_model,
+            client_kwargs=client_kwargs,
+            temperature=0,
+        )
+        logger.info(f"Using Ollama LLM: {llm_model} at {ollama_base_url}")
     else:
         _llm = None
         logger.warning(
-            f"Unknown LLM provider: {llm_provider}. LLM review will be skipped."
+            "langchain_ollama not installed. LLM review will be skipped. "
+            "Install with: pip install langchain-ollama"
         )
 
     def fetch_receipt_data(state: EvaluatorState) -> dict:
@@ -876,3 +845,312 @@ def run_label_evaluator_sync(
     return asyncio.run(
         run_label_evaluator(graph, image_id, receipt_id, skip_llm_review)
     )
+
+
+# =============================================================================
+# Compute-Only Graph for Step Functions / Lambda
+# =============================================================================
+#
+# This graph skips I/O operations (DynamoDB fetch) and expects pre-loaded state.
+# Use this when:
+# - Running in AWS Step Functions with Distributed Map
+# - Data is fetched in parallel by separate Lambdas and passed via S3/state
+# - You want to benchmark pure computation without I/O overhead
+#
+# Required pre-loaded state fields:
+# - words: List[ReceiptWord] - target receipt words
+# - labels: List[ReceiptWordLabel] - target receipt labels
+# - other_receipt_data: List[OtherReceiptData] - training receipts from same merchant
+# - metadata: Optional[ReceiptMetadata] - for merchant name (optional)
+#
+
+
+def create_compute_only_graph(
+    max_pair_patterns: int = 4,
+    max_relationship_dimension: int = 2,
+) -> Any:
+    """
+    Create a compute-only label evaluator graph for Lambda/Step Functions.
+
+    This graph expects pre-loaded state and performs only pure computation:
+    1. validate_state: Check that required data is present
+    2. build_spatial_context: Build word contexts and visual lines
+    3. compute_patterns: Compute merchant patterns from training data
+    4. evaluate_labels: Apply validation rules and detect issues
+
+    No DynamoDB fetches, no LLM calls, no writes. Perfect for:
+    - AWS Lambda with data passed via S3
+    - Step Functions Distributed Map pattern
+    - Performance benchmarking of pure Python computation
+
+    Args:
+        max_pair_patterns: Maximum label pairs/tuples to compute geometry for (default: 4)
+        max_relationship_dimension: Analyze n-label relationships (default: 2)
+                                   2=pairs, 3=triples, 4+=higher-order
+
+    Returns:
+        Compiled LangGraph workflow
+
+    Example usage in Lambda:
+        ```python
+        # In Lambda handler
+        import json
+        from receipt_agent.agents.label_evaluator import (
+            create_compute_only_graph,
+            run_compute_only,
+        )
+        from receipt_agent.agents.label_evaluator.state import (
+            EvaluatorState,
+            OtherReceiptData,
+        )
+
+        def handler(event, context):
+            # Load pre-fetched data from S3 or event
+            s3_data = load_from_s3(event["data_key"])
+
+            # Create pre-loaded state
+            initial_state = EvaluatorState(
+                image_id=event["image_id"],
+                receipt_id=event["receipt_id"],
+                words=deserialize_words(s3_data["target_words"]),
+                labels=deserialize_labels(s3_data["target_labels"]),
+                metadata=deserialize_metadata(s3_data.get("metadata")),
+                other_receipt_data=[
+                    OtherReceiptData(
+                        metadata=deserialize_metadata(r["metadata"]),
+                        words=deserialize_words(r["words"]),
+                        labels=deserialize_labels(r["labels"]),
+                    )
+                    for r in s3_data["training_receipts"]
+                ],
+                skip_llm_review=True,
+            )
+
+            graph = create_compute_only_graph()
+            result = run_compute_only(graph, initial_state)
+            return result
+        ```
+    """
+    _max_pair_patterns = max_pair_patterns
+    _max_relationship_dimension = max_relationship_dimension
+
+    def validate_state(state: EvaluatorState) -> dict:
+        """Validate that required pre-loaded data is present."""
+        errors = []
+
+        if not state.words:
+            errors.append("words: required but empty or missing")
+        if not state.labels:
+            # Labels can be empty for unlabeled receipts, but log warning
+            logger.warning(
+                f"No labels for receipt {state.image_id}#{state.receipt_id}"
+            )
+
+        # other_receipt_data can be empty (no merchant match)
+        if not state.other_receipt_data:
+            logger.info(
+                "No other_receipt_data provided - pattern learning disabled"
+            )
+
+        if errors:
+            error_msg = f"Validation failed: {'; '.join(errors)}"
+            logger.error(error_msg)
+            return {"error": error_msg}
+
+        logger.info(
+            f"Validated state: {len(state.words)} words, "
+            f"{len(state.labels)} labels, "
+            f"{len(state.other_receipt_data)} training receipts"
+        )
+        return {}
+
+    def build_spatial_context(state: EvaluatorState) -> dict:
+        """Build visual lines and word contexts using geometric analysis."""
+        if state.error:
+            return {}
+
+        if not state.words:
+            logger.warning("No words to analyze")
+            return {"word_contexts": [], "visual_lines": []}
+
+        # Build WordContext for each word with label history
+        word_contexts = build_word_contexts(state.words, state.labels)
+
+        # Group into visual lines by y-coordinate proximity
+        visual_lines = assemble_visual_lines(word_contexts)
+
+        logger.info(
+            f"Built {len(word_contexts)} word contexts in "
+            f"{len(visual_lines)} visual lines"
+        )
+
+        return {
+            "word_contexts": word_contexts,
+            "visual_lines": visual_lines,
+        }
+
+    def compute_patterns(state: EvaluatorState) -> dict:
+        """Compute merchant patterns from other receipts."""
+        if state.error:
+            return {}
+
+        if not state.other_receipt_data:
+            return {"merchant_patterns": None}
+
+        merchant_name = "Unknown"
+        if state.metadata:
+            merchant_name = (
+                state.metadata.canonical_merchant_name
+                or state.metadata.merchant_name
+                or "Unknown"
+            )
+
+        patterns = compute_merchant_patterns(
+            state.other_receipt_data,
+            merchant_name,
+            max_pair_patterns=_max_pair_patterns,
+            max_relationship_dimension=_max_relationship_dimension,
+        )
+
+        if patterns:
+            logger.info(
+                f"Computed patterns from {patterns.receipt_count} receipts: "
+                f"{len(patterns.label_positions)} label types"
+            )
+
+        return {"merchant_patterns": patterns}
+
+    def evaluate_labels(state: EvaluatorState) -> dict:
+        """Apply validation rules and detect issues."""
+        if state.error:
+            return {}
+
+        if not state.word_contexts:
+            return {"issues_found": []}
+
+        # Evaluate all word contexts against validation rules
+        issues = evaluate_word_contexts(
+            state.word_contexts,
+            state.merchant_patterns,
+        )
+
+        logger.info(f"Found {len(issues)} issues")
+
+        return {"issues_found": issues}
+
+    # Build the compute-only graph
+    workflow = StateGraph(EvaluatorState)
+
+    # Add nodes (no fetch, no LLM, no write)
+    workflow.add_node("validate_state", validate_state)
+    workflow.add_node("build_spatial_context", build_spatial_context)
+    workflow.add_node("compute_patterns", compute_patterns)
+    workflow.add_node("evaluate_labels", evaluate_labels)
+
+    # Linear flow
+    workflow.add_edge("validate_state", "build_spatial_context")
+    workflow.add_edge("build_spatial_context", "compute_patterns")
+    workflow.add_edge("compute_patterns", "evaluate_labels")
+    workflow.add_edge("evaluate_labels", END)
+
+    workflow.set_entry_point("validate_state")
+
+    return workflow.compile()
+
+
+async def run_compute_only(
+    graph: Any,
+    state: EvaluatorState,
+) -> dict:
+    """
+    Run the compute-only label evaluator with pre-loaded state.
+
+    Args:
+        graph: Compiled compute-only workflow graph
+        state: Pre-populated EvaluatorState with words, labels, other_receipt_data
+
+    Returns:
+        Evaluation result dict with issues found
+    """
+    logger.info(
+        f"Starting compute-only evaluation for "
+        f"{state.image_id}#{state.receipt_id}"
+    )
+
+    try:
+        config = {
+            "recursion_limit": 10,
+            "configurable": {
+                "thread_id": f"{state.image_id}#{state.receipt_id}"
+            },
+        }
+
+        final_state = await graph.ainvoke(state, config=config)
+
+        # LangGraph returns a dict
+        issues_found = final_state.get("issues_found", [])
+        merchant_patterns = final_state.get("merchant_patterns")
+        error = final_state.get("error")
+
+        result = {
+            "image_id": state.image_id,
+            "receipt_id": state.receipt_id,
+            "issues_found": len(issues_found),
+            "issues": [
+                {
+                    "type": issue.issue_type,
+                    "word_text": issue.word.text,
+                    "word_id": issue.word.word_id,
+                    "line_id": issue.word.line_id,
+                    "current_label": issue.current_label,
+                    "suggested_status": issue.suggested_status,
+                    "suggested_label": issue.suggested_label,
+                    "reasoning": issue.reasoning,
+                }
+                for issue in issues_found
+            ],
+            "error": error,
+        }
+
+        if merchant_patterns:
+            result["merchant_receipts_analyzed"] = (
+                merchant_patterns.receipt_count
+            )
+            result["label_types_found"] = len(
+                merchant_patterns.label_positions
+            )
+
+        logger.info(
+            f"Compute-only evaluation complete: {result['issues_found']} issues"
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error in compute-only evaluation: {e}")
+        return {
+            "image_id": state.image_id,
+            "receipt_id": state.receipt_id,
+            "issues_found": 0,
+            "issues": [],
+            "error": str(e),
+        }
+
+
+def run_compute_only_sync(
+    graph: Any,
+    state: EvaluatorState,
+) -> dict:
+    """
+    Synchronous wrapper for run_compute_only.
+
+    Args:
+        graph: Compiled compute-only workflow graph
+        state: Pre-populated EvaluatorState
+
+    Returns:
+        Evaluation result dict
+    """
+    import asyncio
+
+    return asyncio.run(run_compute_only(graph, state))
