@@ -111,53 +111,53 @@ def load_receipt_data(
     last_evaluated_key = None
 
     try:
-        # Query receipts by merchant
+        # Query receipts by merchant (using ReceiptPlace)
         while len(other_receipt_data) < limit:
-            metadatas, last_evaluated_key = (
-                dynamo_client.get_receipt_metadatas_by_merchant(
+            places, last_evaluated_key = (
+                dynamo_client.get_receipt_places_by_merchant(
                     merchant_name=merchant_name,
                     limit=min(100, limit - len(other_receipt_data)),
                     last_evaluated_key=last_evaluated_key,
                 )
             )
 
-            if not metadatas:
+            if not places:
                 break
 
-            for metadata in metadatas:
+            for place in places:
                 if len(other_receipt_data) >= limit:
                     break
 
                 try:
                     # Fetch words for this receipt
                     words = dynamo_client.list_receipt_words_from_receipt(
-                        metadata.image_id, metadata.receipt_id
+                        place.image_id, place.receipt_id
                     )
 
                     # Fetch labels for this receipt
                     labels, _ = (
                         dynamo_client.list_receipt_word_labels_for_receipt(
-                            metadata.image_id, metadata.receipt_id
+                            place.image_id, place.receipt_id
                         )
                     )
 
                     # Create OtherReceiptData
                     other_receipt_data.append(
                         OtherReceiptData(
-                            metadata=metadata,
+                            place=place,
                             words=words,
                             labels=labels,
                         )
                     )
 
                     logger.debug(
-                        f"Loaded receipt {metadata.image_id}#{metadata.receipt_id} "
+                        f"Loaded receipt {place.image_id}#{place.receipt_id} "
                         f"({len(words)} words, {len(labels)} labels)"
                     )
 
                 except Exception as e:
                     logger.warning(
-                        f"Failed to load receipt {metadata.image_id}#{metadata.receipt_id}: {e}"
+                        f"Failed to load receipt {place.image_id}#{place.receipt_id}: {e}"
                     )
                     continue
 

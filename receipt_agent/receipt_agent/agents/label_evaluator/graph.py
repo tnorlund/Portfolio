@@ -92,10 +92,6 @@ logger = logging.getLogger(__name__)
 # Can be overridden per-run via max_receipts parameter.
 MAX_OTHER_RECEIPTS = 10
 
-# Cache for merchant patterns (merchant_name -> MerchantPatterns)
-# Speeds up repeated runs on the same merchant
-_PATTERN_CACHE: Dict[str, Optional[Any]] = {}
-
 # LLM Review Prompt
 LLM_REVIEW_PROMPT = """You are reviewing a flagged label issue on a receipt.
 
