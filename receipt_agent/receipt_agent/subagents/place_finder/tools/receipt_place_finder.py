@@ -87,7 +87,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 if TYPE_CHECKING:
-    pass  # Removed ReceiptMetadata import - no longer needed
+    pass
 
 logger = logging.getLogger(__name__)
 

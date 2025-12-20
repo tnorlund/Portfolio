@@ -17,7 +17,7 @@ Receipts without place_ids are missing a critical piece of data that enables:
 
 How It Works
 ------------
-1. **Load receipts without place_id**: Query DynamoDB for all ReceiptMetadata without place_id
+1. **Load receipts without place_id**: Query DynamoDB for all ReceiptPlace without place_id
 2. **Search Google Places**: For each receipt, try multiple search strategies:
    - Phone number lookup (most reliable)
    - Address geocoding
