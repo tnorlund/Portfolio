@@ -25,11 +25,17 @@ import asyncio
 import json
 import logging
 import os
+import random
 import time
 from typing import TYPE_CHECKING, Any
 
 # Maximum concurrent LLM calls to avoid Ollama rate limits
 MAX_CONCURRENT_LLM_CALLS = 3
+# Retry settings for 429 rate limits (mirror Step Functions LLMReview retry)
+MAX_LLM_REVIEW_ATTEMPTS = 2
+LLM_REVIEW_BASE_DELAY_SECONDS = 5.0
+LLM_REVIEW_BACKOFF_RATE = 2.0
+LLM_REVIEW_START_JITTER_SECONDS = 1.5
 
 import boto3
 
@@ -122,7 +128,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
     Output:
     {
         "status": "completed",
-        "reviewed_results_s3_key": "reviewed/{exec}/{image_id}_{receipt_id}.json",
+        "reviewed_results_s3_key": (
+            "reviewed/{exec}/{image_id}_{receipt_id}.json"
+        ),
         "issues_reviewed": 3,
         "decisions": {"VALID": 1, "INVALID": 1, "NEEDS_REVIEW": 1}
     }
@@ -351,7 +359,8 @@ def _build_review_prompt(issue: dict[str, Any]) -> str:
 - **Word**: "{issue.get('word_text')}"
 - **Current Label**: {issue.get('current_label') or 'None'}
 - **Issue Type**: {issue.get('type')}
-- **Evaluator Reasoning**: {issue.get('reasoning', 'No reasoning provided')[:500]}
+- **Evaluator Reasoning**:
+  {issue.get('reasoning', 'No reasoning provided')[:500]}
 
 ## Your Task
 
@@ -393,7 +402,9 @@ def _parse_llm_response(response_text: str) -> dict[str, Any]:
     except json.JSONDecodeError as e:
         return {
             "decision": "NEEDS_REVIEW",
-            "reasoning": f"Failed to parse LLM response: {response_text[:200]}",
+            "reasoning": (
+                f"Failed to parse LLM response: {response_text[:200]}"
+            ),
             "error": str(e),
         }
 
@@ -417,38 +428,79 @@ async def _review_issues_async(
     async def review_single(issue: dict[str, Any]) -> dict[str, Any]:
         """Review a single issue with semaphore-controlled concurrency."""
         async with semaphore:
-            try:
-                from langchain_core.messages import HumanMessage
+            from langchain_core.messages import HumanMessage
 
-                prompt = _build_review_prompt(issue)
-                # Use async invoke for non-blocking LLM call
-                response = await llm.ainvoke([HumanMessage(content=prompt)])
-                response_text = response.content.strip()
+            prompt = _build_review_prompt(issue)
+            word_text = issue.get("word_text")
+            last_error: Exception | None = None
 
-                review_result = _parse_llm_response(response_text)
+            await asyncio.sleep(
+                random.uniform(0, LLM_REVIEW_START_JITTER_SECONDS)
+            )
 
-                logger.debug(
-                    "Reviewed '%s': %s",
-                    issue.get("word_text"),
-                    review_result["decision"],
-                )
+            for attempt in range(MAX_LLM_REVIEW_ATTEMPTS):
+                try:
+                    # Use async invoke for non-blocking LLM call
+                    response = await llm.ainvoke(
+                        [HumanMessage(content=prompt)]
+                    )
+                    response_text = response.content.strip()
 
-                return {**issue, "llm_review": review_result}
+                    review_result = _parse_llm_response(response_text)
 
-            except Exception as e:
-                logger.warning(
-                    "Error reviewing issue '%s': %s",
-                    issue.get("word_text"),
-                    e,
-                )
-                return {
-                    **issue,
-                    "llm_review": {
-                        "decision": "NEEDS_REVIEW",
-                        "reasoning": f"LLM review failed: {e}",
-                        "error": True,
-                    },
-                }
+                    logger.debug(
+                        "Reviewed '%s': %s",
+                        word_text,
+                        review_result["decision"],
+                    )
+
+                    return {**issue, "llm_review": review_result}
+
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e)
+                    is_rate_limit = (
+                        "429" in error_str
+                        or "rate limit" in error_str.lower()
+                        or "rate_limit" in error_str.lower()
+                        or "too many concurrent requests" in error_str.lower()
+                        or "too many requests" in error_str.lower()
+                        or "OllamaRateLimitError" in error_str
+                    )
+
+                    if is_rate_limit and attempt < (
+                        MAX_LLM_REVIEW_ATTEMPTS - 1
+                    ):
+                        delay = LLM_REVIEW_BASE_DELAY_SECONDS * (
+                            LLM_REVIEW_BACKOFF_RATE**attempt
+                        )
+                        logger.warning(
+                            "Rate limit reviewing '%s' (attempt %s/%s): %s. "
+                            "Retrying in %.1fs.",
+                            word_text,
+                            attempt + 1,
+                            MAX_LLM_REVIEW_ATTEMPTS,
+                            error_str,
+                            delay,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+
+                    logger.warning(
+                        "Error reviewing issue '%s': %s",
+                        word_text,
+                        error_str,
+                    )
+                    break
+
+            return {
+                **issue,
+                "llm_review": {
+                    "decision": "NEEDS_REVIEW",
+                    "reasoning": f"LLM review failed: {last_error}",
+                    "error": True,
+                },
+            }
 
     # Launch all review tasks; semaphore limits concurrent execution
     tasks = [review_single(issue) for issue in issues]
