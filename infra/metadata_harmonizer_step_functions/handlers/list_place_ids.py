@@ -70,7 +70,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     total_scanned = 0
 
     try:
-        # List all receipt metadatas to find unique place_ids
+        # List all receipt places to find unique place_ids
         # Catch validation errors for malformed records and skip those batches
         from receipt_dynamo.data.base_operations.error_handling import (
             OperationError,
@@ -78,24 +78,24 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
         while True:
             try:
-                metadatas, last_evaluated_key = dynamo.list_receipt_metadatas(
+                places, last_evaluated_key = dynamo.list_receipt_places(
                     limit=1000, last_evaluated_key=last_evaluated_key
                 )
 
-                for metadata in metadatas:
+                for place in places:
                     total_scanned += 1
                     # Count receipts per place_id
                     if (
-                        metadata.place_id
-                        and isinstance(metadata.place_id, str)
-                        and metadata.place_id.strip()
+                        place.place_id
+                        and isinstance(place.place_id, str)
+                        and place.place_id.strip()
                     ):
-                        place_id_counts[metadata.place_id] += 1
+                        place_id_counts[place.place_id] += 1
 
                 # Log progress every 1000 records
                 if total_scanned % 1000 == 0:
                     logger.info(
-                        "Scanned %s metadatas, found %s unique place_ids",
+                        "Scanned %s places, found %s unique place_ids",
                         total_scanned,
                         len(place_id_counts),
                     )

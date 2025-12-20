@@ -13,24 +13,24 @@ dynamo_client = DynamoClient(dynamodb_table_name)
 
 
 def fetch_merchant_counts():
-    receipt_metadatas, last_evaluated_key = (
-        dynamo_client.list_receipt_metadatas(
+    receipt_places, last_evaluated_key = (
+        dynamo_client.list_receipt_places(
             limit=1000,
         )
     )
     while last_evaluated_key is not None:
-        next_receipt_metadatas, last_evaluated_key = (
-            dynamo_client.list_receipt_metadatas(
+        next_receipt_places, last_evaluated_key = (
+            dynamo_client.list_receipt_places(
                 limit=1000,
                 last_evaluated_key=last_evaluated_key,
             )
         )
-        receipt_metadatas.extend(next_receipt_metadatas)
+        receipt_places.extend(next_receipt_places)
 
     # Count the number of receipts for each canonical merchant name
     merchant_counts = {}
-    for receipt_metadata in receipt_metadatas:
-        merchant_name = receipt_metadata.canonical_merchant_name
+    for receipt_place in receipt_places:
+        merchant_name = receipt_place.canonical_merchant_name
         # Skip receipts with empty or missing merchant names
         if not merchant_name or not merchant_name.strip():
             continue

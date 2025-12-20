@@ -134,15 +134,15 @@ class TestEndToEndWorkflow:
         # Create test receipt data
         test_image_id = "550e8400-e29b-41d4-a716-446655440000"
 
-        # Insert receipt metadata
-        receipt_metadata = ReceiptMetadata(
+        # Insert receipt place
+        receipt_place = ReceiptPlace(
             image_id=test_image_id,
             receipt_id=1,
             canonical_merchant_name="Target",
             canonical_address="123 Main St",
             phone_number="555-123-4567",
         )
-        dynamo_client.put_receipt_metadata(receipt_metadata)
+        dynamo_client.add_receipt_places([receipt_place])
 
         # Insert receipt words
         test_words = [
@@ -432,11 +432,11 @@ class TestEndToEndWorkflow:
 
         # Step 7: Verify end-to-end data consistency
         # The test data should be consistent across all services
-        receipt_metadata_result = dynamo_client.get_receipt_metadata(
+        receipt_place_result = dynamo_client.get_receipt_place(
             test_image_id, 1
         )
         assert (
-            receipt_metadata_result.canonical_merchant_name == "Target Store"
+            receipt_place_result.canonical_merchant_name == "Target Store"
         )
 
     @mock_aws

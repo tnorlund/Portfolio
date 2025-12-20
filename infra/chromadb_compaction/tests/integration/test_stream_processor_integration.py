@@ -62,7 +62,7 @@ class TestPlaceRoutingSQS:
         # Verify message content
         lines_body = json.loads(lines_messages[0]["Body"])
         assert lines_body["source"] == "dynamodb_stream"
-        assert lines_body["entity_type"] == "RECEIPT_METADATA"
+        assert lines_body["entity_type"] == "RECEIPT_PLACE"
         assert lines_body["event_name"] == "MODIFY"
         assert (
             lines_body["entity_data"]["image_id"]
