@@ -36,6 +36,16 @@ MAX_LLM_REVIEW_ATTEMPTS = 2
 LLM_REVIEW_BASE_DELAY_SECONDS = 5.0
 LLM_REVIEW_BACKOFF_RATE = 2.0
 LLM_REVIEW_START_JITTER_SECONDS = 1.5
+# Fixed-size issue chunking to avoid large single-shot reviews
+ISSUE_REVIEW_CHUNK_SIZE = 20
+
+
+def _chunk_issues(issues: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    """Split issues into fixed-size chunks."""
+    return [
+        issues[i : i + ISSUE_REVIEW_CHUNK_SIZE]
+        for i in range(0, len(issues), ISSUE_REVIEW_CHUNK_SIZE)
+    ]
 
 import boto3
 
@@ -230,13 +240,27 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
         logger.info("LLM initialized: %s at %s", ollama_model, ollama_base_url)
 
         # 4. Review issues with bounded concurrency
+        issue_chunks = _chunk_issues(issues)
         logger.info(
-            "Reviewing %d issues with max %d concurrent LLM calls",
+            "Reviewing %d issues in %d chunks (size=%d) with max %d "
+            "concurrent LLM calls",
             len(issues),
+            len(issue_chunks),
+            ISSUE_REVIEW_CHUNK_SIZE,
             MAX_CONCURRENT_LLM_CALLS,
         )
 
-        reviewed_issues = asyncio.run(_review_issues_async(llm, issues))
+        reviewed_issues: list[dict[str, Any]] = []
+        for idx, chunk in enumerate(issue_chunks, start=1):
+            logger.info(
+                "Reviewing chunk %d/%d (%d issues)",
+                idx,
+                len(issue_chunks),
+                len(chunk),
+            )
+            reviewed_issues.extend(
+                asyncio.run(_review_issues_async(llm, chunk))
+            )
 
         # Count decisions
         from collections import Counter
