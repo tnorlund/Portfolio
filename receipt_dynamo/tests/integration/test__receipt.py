@@ -1086,6 +1086,7 @@ def test_get_receipt_details_success(
         words,
         letters,
         _,  # labels not used in this test
+        _,  # place not used in this test
     ) = details
 
     assert r == sample_receipt
