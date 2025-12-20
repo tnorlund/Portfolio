@@ -233,10 +233,10 @@ def _serialize_patterns(patterns, merchant_name: str) -> dict[str, Any]:
         relative_positions_dict = {}
         for label, rel_pos in cg.relative_positions.items():
             relative_positions_dict[label] = {
-                "mean_x": rel_pos.mean_x,
-                "mean_y": rel_pos.mean_y,
-                "std_x": rel_pos.std_x,
-                "std_y": rel_pos.std_y,
+                "mean_dx": rel_pos.mean_dx,
+                "mean_dy": rel_pos.mean_dy,
+                "std_dx": rel_pos.std_dx,
+                "std_dy": rel_pos.std_dy,
             }
         constellation_geometry_list.append({
             "labels": list(labels_tuple),

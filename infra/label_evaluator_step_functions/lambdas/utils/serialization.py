@@ -162,10 +162,10 @@ def deserialize_patterns(data: dict[str, Any]):
         relative_positions = {}
         for label, rel_data in cg_data.get("relative_positions", {}).items():
             relative_positions[label] = LabelRelativePosition(
-                mean_x=rel_data.get("mean_x", 0.0),
-                mean_y=rel_data.get("mean_y", 0.0),
-                std_x=rel_data.get("std_x", 0.0),
-                std_y=rel_data.get("std_y", 0.0),
+                mean_dx=rel_data.get("mean_dx", 0.0),
+                mean_dy=rel_data.get("mean_dy", 0.0),
+                std_dx=rel_data.get("std_dx", 0.0),
+                std_dy=rel_data.get("std_dy", 0.0),
             )
         constellation_geometry[labels_key] = ConstellationGeometry(
             labels=labels_key,
@@ -198,8 +198,5 @@ def deserialize_patterns(data: dict[str, Any]):
         batch_classification=batch_classification,
         labels_with_same_line_multiplicity=labels_with_multiplicity,
     )
-
-    # Attach pre-computed stats for efficient evaluation
-    patterns._label_position_stats = label_position_stats
 
     return patterns

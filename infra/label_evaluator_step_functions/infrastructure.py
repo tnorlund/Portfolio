@@ -297,7 +297,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
         # ============================================================
         CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
         HANDLERS_DIR = os.path.join(CURRENT_DIR, "handlers")
-        LAMBDAS_DIR = os.path.join(CURRENT_DIR, "lambdas")
 
         # list_merchants Lambda (new - lists unique merchants)
         list_merchants_lambda = Function(
