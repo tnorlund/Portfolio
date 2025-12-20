@@ -2,7 +2,7 @@
 """
 Example: Batch validate metadata for multiple receipts.
 
-This script demonstrates how to use the MetadataValidatorAgent
+This script demonstrates how to use the PlaceValidatorAgent
 for batch validation with concurrency control.
 
 Usage:
@@ -28,7 +28,7 @@ sys.path.insert(
     ),
 )
 
-from receipt_agent.api import MetadataValidatorAgent
+from receipt_agent.api import PlaceValidatorAgent
 from receipt_agent.state.models import ValidationStatus
 
 
@@ -411,27 +411,27 @@ async def main(
 
     # Find receipts for this merchant
     logger.info(f"Finding receipts for merchant: {merchant_name}")
-    metadatas, _ = dynamo.get_receipt_metadatas_by_merchant(
+    places, _ = dynamo.get_receipt_places_by_merchant(
         merchant_name=merchant_name,
         limit=limit,
     )
 
-    if not metadatas:
+    if not places:
         print(f"\n❌ No receipts found for merchant: {merchant_name}")
         return
 
-    receipts = [(m.image_id, m.receipt_id) for m in metadatas]
+    receipts = [(p.image_id, p.receipt_id) for p in places]
     print(f"\n✅ Found {len(receipts)} receipts to validate")
 
     # Create agent
-    print("\n🚀 Initializing MetadataValidatorAgent...")
-    agent = MetadataValidatorAgent(
+    print("\n🚀 Initializing PlaceValidatorAgent...")
+    agent = PlaceValidatorAgent(
         dynamo_client=dynamo,
         chroma_client=chroma_client,
         places_api=places_client,
         enable_tracing=bool(secrets.get("portfolio:LANGCHAIN_API_KEY")),
     )
-    print("✅ MetadataValidatorAgent created")
+    print("✅ PlaceValidatorAgent created")
 
     # Run batch validation
     print(f"\n🔄 Validating with concurrency={concurrency}...")

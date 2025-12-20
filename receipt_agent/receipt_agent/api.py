@@ -31,7 +31,7 @@ from receipt_agent.state.models import (
 )
 
 __all__ = [
-    "MetadataValidatorAgent",
+    "PlaceValidatorAgent",
     "create_validation_graph",
     "run_validation",
     "create_agentic_validation_graph",
