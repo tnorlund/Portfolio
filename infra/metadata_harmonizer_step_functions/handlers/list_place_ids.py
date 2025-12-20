@@ -122,11 +122,11 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 continue
 
     except Exception as e:
-        logger.error("Error scanning metadatas: %s", e)
+        logger.error("Error scanning places: %s", e)
         raise
 
     logger.info(
-        "Finished scanning: %s metadatas, %s unique place_ids",
+        "Finished scanning: %s places, %s unique place_ids",
         total_scanned,
         len(place_id_counts),
     )

@@ -89,7 +89,7 @@ def create_embeddings_and_compaction_run(
             dynamo_client=_NoOpDynamoClient(),
             receipt_place=receipt_place,
             receipt_word_labels=None,  # combine_receipts doesn't use labels
-            merchant_name=None,  # Let receipt_chroma extract from metadata
+            merchant_name=None,  # Let receipt_chroma extract from place
         )
 
         # Extract CompactionRun before closing

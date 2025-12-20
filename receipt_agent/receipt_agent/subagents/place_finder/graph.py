@@ -42,12 +42,12 @@ logger = logging.getLogger(__name__)
 # System Prompt
 # ======================================================================
 
-RECEIPT_METADATA_FINDER_PROMPT = """You are a receipt metadata finder.
-Your job is to find ALL missing metadata for a receipt, not just the place_id.
+RECEIPT_PLACE_FINDER_PROMPT = """You are a receipt place finder.
+Your job is to find ALL missing place data for a receipt, not just the place_id.
 
 ## Your Task
 
-Find complete metadata for this receipt:
+Find complete place data for this receipt:
 1. **place_id** - Google Place ID (if missing)
 2. **merchant_name** - Business name (if missing or incorrect)
 3. **address** - Formatted address (if missing or incomplete)
@@ -56,7 +56,7 @@ Find complete metadata for this receipt:
 ## Available Tools
 
 ### Context Tools (understand this receipt)
-- `get_my_metadata`: See what metadata already exists (may be incomplete)
+- `get_my_place`: See what place data already exists (may be incomplete)
 - `get_my_lines`: See all text lines on the receipt
 - `get_my_words`: See labeled words (MERCHANT_NAME, PHONE, ADDRESS, etc.)
 - `get_receipt_text`: View formatted receipt text (receipt order, grouped rows)
@@ -89,18 +89,18 @@ Find complete metadata for this receipt:
     name**
 
 ### Decision Tool (REQUIRED at the end)
-- `submit_place`: Submit ALL metadata you found (place_id, merchant_name,
+- `submit_place`: Submit ALL place data you found (place_id, merchant_name,
   address, phone)
 
 ## Strategy
 
 1. **Start** by examining the receipt:
-   - Get metadata to see what's already known
+   - Get place data to see what's already known
    - Get lines to see all text on the receipt
    - Get words to see labeled fields (MERCHANT_NAME, ADDRESS, PHONE, etc.)
    - Use `get_receipt_text` for a human-readable view of the receipt text
 
-2. **Extract metadata from receipt content**:
+2. **Extract place data from receipt content**:
    - Look for MERCHANT_NAME labels in words
    - Look for ADDRESS labels in words
    - Look for PHONE labels in words
@@ -133,16 +133,16 @@ Find complete metadata for this receipt:
    - Match business names with receipt content
 
 7. **Submit your findings**:
-   - Submit ALL metadata you found (even if some fields are still missing)
+   - Submit ALL place data you found (even if some fields are still missing)
    - Include confidence scores for each field
    - Explain how you found each field
    - **ALWAYS call submit_place** - never end without calling it
 
 ## Important Rules
 
-1. ALWAYS start by getting receipt content (get_my_metadata, get_my_lines,
+1. ALWAYS start by getting receipt content (get_my_place, get_my_lines,
    get_my_words)
-2. Extract metadata from receipt FIRST (it's the most reliable source)
+2. Extract place data from receipt FIRST (it's the most reliable source)
 3. Use Google Places to find place_id and validate/fill in other fields
 4. **NEVER accept an address as a merchant name**
 5. Fill in as many fields as possible, even if place_id can't be found
@@ -158,14 +158,14 @@ For each field, use this priority:
 
 ## What Gets Updated
 
-When you submit metadata, ALL fields you provide will be used:
+When you submit place data, ALL fields you provide will be used:
 - `place_id` ← Google Place ID (if found)
 - `merchant_name` ← From receipt or Google Places
 - `address` ← From receipt or Google Places
 - `phone_number` ← From receipt or Google Places
 
 Begin by examining the receipt content, then systematically find all missing
-metadata."""
+place data."""
 
 
 # ======================================================================
@@ -175,8 +175,6 @@ metadata."""
 
 def create_place_submission_tool(state_holder: dict):
     """Create a tool for submitting found place data."""
-    from pydantic import BaseModel, Field
-
     class SubmitPlaceInput(BaseModel):
         """Input for submit_place tool."""
 
@@ -199,7 +197,7 @@ def create_place_submission_tool(state_holder: dict):
             default=0.0,
             ge=0.0,
             le=1.0,
-            description="Overall confidence in the metadata (0.0 to 1.0)",
+            description="Overall confidence in the place data (0.0 to 1.0)",
         )
         field_confidence: dict[str, float] = Field(
             default_factory=dict,
@@ -210,7 +208,7 @@ def create_place_submission_tool(state_holder: dict):
         )
         reasoning: str = Field(
             description=(
-                "Explanation of how you found the metadata and why you're "
+                "Explanation of how you found the place data and why you're "
                 "confident"
             )
         )
@@ -352,7 +350,7 @@ def create_receipt_place_finder_graph(
         chromadb_bucket=chromadb_bucket,
     )
 
-    # Add metadata submission tool
+    # Add place submission tool
     submit_tool = create_place_submission_tool(state_holder)
     tools.append(submit_tool)
 
@@ -372,7 +370,7 @@ def create_receipt_place_finder_graph(
     # Define routing function
     def should_continue(state: ReceiptPlaceFinderState) -> str:
         """Check if we should continue or end."""
-        # Check if metadata was submitted
+        # Check if place data was submitted
         if state_holder.get("place_result") is not None:
             return "end"
 
@@ -459,7 +457,7 @@ async def run_receipt_place_finder(
             read)
 
     Returns:
-        Metadata result dict
+        Place result dict
     """
     # Convert entity objects to dict format if provided
     lines_dict = None
@@ -508,10 +506,10 @@ async def run_receipt_place_finder(
         image_id=image_id,
         receipt_id=receipt_id,
         messages=[
-            SystemMessage(content=RECEIPT_METADATA_FINDER_PROMPT),
+            SystemMessage(content=RECEIPT_PLACE_FINDER_PROMPT),
             HumanMessage(
                 content=(
-                    f"Please find ALL missing metadata "
+                    f"Please find ALL missing place data "
                     f"for receipt {image_id}#{receipt_id}. "
                     "Start by examining the receipt content, "
                     "then find any missing fields."
@@ -559,7 +557,7 @@ async def run_receipt_place_finder(
             # Agent ended without submitting result
             logger.warning(
                 (
-                    f"Agent ended without submitting metadata for "
+                    f"Agent ended without submitting place data for "
                     f"{image_id}#{receipt_id}"
                 )
             )
@@ -572,7 +570,7 @@ async def run_receipt_place_finder(
                 "phone_number": None,
                 "found": False,
                 "confidence": 0.0,
-                "reasoning": "Agent did not submit metadata result",
+                "reasoning": "Agent did not submit place data result",
                 "fields_found": [],
             }
 

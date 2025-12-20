@@ -405,9 +405,13 @@ def create_agentic_tools(
                         "phone": place.phone_number,
                         "validation_status": place.validation_status,
                     }
+                else:
+                    ctx.metadata = {
+                        "error": "No place found for this receipt",
+                    }
             except Exception as e:
                 logger.debug("No receipt_place found: %s", e)
-                ctx.metadata = {"error": "No metadata found for this receipt"}
+                ctx.metadata = {"error": "No place found for this receipt"}
 
         return ctx.metadata
 

@@ -202,7 +202,7 @@ def create_label_validation_tools(
                 receipt_place = {
                     "merchant_name": place.merchant_name,
                     "place_id": place.place_id,
-                    "address": place.formatted_address,
+                    "formatted_address": place.formatted_address,
                     "phone_number": place.phone_number,
                 }
 
@@ -223,14 +223,14 @@ def create_label_validation_tools(
         """
         Get Google Places metadata for the receipt.
 
-        **NOTE**: Merchant metadata is already provided in the initial prompt above.
-        Use this tool only if you need to re-fetch or verify the metadata.
+        **NOTE**: Merchant place data is already provided in the initial prompt above.
+        Use this tool only if you need to re-fetch or verify the place data.
 
         Google Places data is mostly accurate.
 
         Returns:
         - merchant_name: Official merchant name from Google Places
-        - address: Formatted address
+        - formatted_address: Formatted address
         - phone_number: Phone number
         - place_id: Google Place ID
         """
@@ -243,17 +243,19 @@ def create_label_validation_tools(
                 image_id=ctx.image_id,
                 receipt_id=ctx.receipt_id,
             )
+            if not place:
+                return {"error": "No place data found for this receipt"}
 
             return {
                 "merchant_name": place.merchant_name,
-                "address": place.formatted_address,
+                "formatted_address": place.formatted_address,
                 "phone_number": place.phone_number,
                 "place_id": place.place_id,
                 "note": "This data comes from Google Places and is mostly accurate",
             }
 
         except Exception as e:
-            logger.error(f"Error getting merchant metadata: {e}")
+            logger.error(f"Error getting place metadata: {e}")
             return {"error": f"No place data found for this receipt: {e}"}
 
     @tool(args_schema=SearchSimilarWordsInput)
@@ -615,7 +617,7 @@ def create_label_validation_tools(
                     "line_context": similar_line_context,
                     "surrounding_words": similar_surrounding_words,  # Surrounding words on same line
                     "surrounding_lines": similar_surrounding_lines,  # ±N lines around the word
-                    "receipt_place": similar_receipt_place,  # Full receipt metadata (place_id, address, phone, website)
+                    "receipt_place": similar_receipt_place,  # Full receipt metadata (place_id, formatted_address, phone, website)
                     "audit_trail": similar_audit_trail,  # Complete label history with reasoning
                 })
 
@@ -851,4 +853,3 @@ def create_label_validation_tools(
     ]
 
     return tools, state
-

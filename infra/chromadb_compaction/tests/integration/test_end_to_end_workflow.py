@@ -143,7 +143,7 @@ class TestEndToEndWorkflow:
             phone_number="555-123-4567",
             place_id="test-place-id",
             matched_fields=["name"],
-            validated_by="TEST",
+            validated_by="INFERENCE",
         )
         dynamo_client.add_receipt_places([receipt_place])
 

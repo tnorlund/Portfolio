@@ -1,8 +1,8 @@
-# DynamoDB Stream Processor for ChromaDB Metadata Sync
+# DynamoDB Stream Processor for ChromaDB Place Sync
 
 ## Overview
 
-The DynamoDB Stream Processor enables real-time synchronization of metadata changes between DynamoDB entities and ChromaDB vector databases. It processes stream events for receipt metadata and word labels, triggering ChromaDB updates through the existing compaction infrastructure.
+The DynamoDB Stream Processor enables real-time synchronization of place changes between DynamoDB entities and ChromaDB vector databases. It processes stream events for receipt place and word labels, triggering ChromaDB updates through the existing compaction infrastructure.
 
 ## Architecture
 
@@ -42,12 +42,12 @@ The DynamoDB Stream Processor enables real-time synchronization of metadata chan
 
 ### MODIFY Events
 
-- **Metadata Changes**: Merchant name corrections, address updates
+- **Place Changes**: Merchant name corrections, formatted address updates
 - **Label Changes**: Label updates, validation status changes, reasoning updates
 
 ### REMOVE Events
 
-- **Metadata Removal**: When receipt metadata is deleted → update all related embeddings
+- **Place Removal**: When receipt place is deleted → update all related embeddings
 - **Label Removal**: When labels are deleted → remove label metadata from word embeddings
 
 ## Components

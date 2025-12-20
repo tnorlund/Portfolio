@@ -194,7 +194,7 @@ async def _ensure_receipt_place_async(
             )
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning(
-                "Failed to download lines snapshot for metadata finder",
+                "Failed to download lines snapshot for place finder",
                 error=str(e),
             )
         try:
@@ -206,7 +206,7 @@ async def _ensure_receipt_place_async(
             )
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning(
-                "Failed to download words snapshot for metadata finder",
+                "Failed to download words snapshot for place finder",
                 error=str(e),
             )
 
@@ -261,7 +261,7 @@ async def _ensure_receipt_place_async(
 
         if not result.get("found"):
             raise ValueError(
-                f"Metadata finder could not create metadata for {image_id}#{receipt_id}"
+                f"Place finder could not create place for {image_id}#{receipt_id}"
             )
 
         matched_fields = []
@@ -284,13 +284,13 @@ async def _ensure_receipt_place_async(
             merchant_category="",
             formatted_address=result.get("address") or "",
             phone_number=result.get("phone_number") or "",
-            validated_by="metadata_finder_agent",
+            validated_by="place_finder_agent",
             reasoning=result.get("reasoning") or "",
         )
         dynamo_client.add_receipt_places([place_entity])
 
         logger.info(
-            "Created receipt_place via metadata finder",
+            "Created receipt_place via place finder",
             image_id=image_id,
             receipt_id=receipt_id,
             place_id=place_entity.place_id,
@@ -739,13 +739,11 @@ def _handle_internal_core(
                             image_id=image_id,
                             receipt_id=receipt_id,
                         )
-                    except Exception as verify_error:
-                        logger.error(
+                    except Exception:
+                        logger.exception(
                             "Place verification failed - place was not created",
                             image_id=image_id,
                             receipt_id=receipt_id,
-                            verify_error=str(verify_error),
-                            verify_error_type=type(verify_error).__name__,
                         )
                         missing_places.append((image_id, receipt_id))
                 except Exception as e:

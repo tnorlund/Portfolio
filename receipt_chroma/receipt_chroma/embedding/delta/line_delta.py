@@ -112,7 +112,7 @@ def save_line_embeddings_as_delta(
         receipt_details = descriptions[image_id][receipt_id]
         lines = receipt_details["lines"]
         words = receipt_details["words"]
-        metadata = receipt_details["metadata"]
+        place = receipt_details["place"]
 
         # Find the target line
         target_line = next((l for l in lines if l.line_id == line_id), None)
@@ -138,12 +138,12 @@ def save_line_embeddings_as_delta(
 
         # Priority: canonical name > regular merchant name
         if (
-            hasattr(metadata, "canonical_merchant_name")
-            and metadata.canonical_merchant_name
+            hasattr(place, "canonical_merchant_name")
+            and place.canonical_merchant_name
         ):
-            merchant_name = metadata.canonical_merchant_name
+            merchant_name = place.canonical_merchant_name
         else:
-            merchant_name = metadata.merchant_name
+            merchant_name = place.merchant_name
 
         # Build metadata for ChromaDB using consolidated metadata creation
         section_label = getattr(target_line, "section_label", None) or None

@@ -84,10 +84,7 @@ import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Optional
-
-if TYPE_CHECKING:
-    pass
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -367,8 +364,6 @@ class ReceiptPlaceFinder:
 
         self._receipts_with_missing_metadata = []
         total = 0
-        seen_receipts = set()  # Track (image_id, receipt_id) already processed
-
         # Check ReceiptPlace entities
         try:
             last_key = None
@@ -379,9 +374,6 @@ class ReceiptPlaceFinder:
                 )
 
                 for place in batch:
-                    receipt_key = (place.image_id, place.receipt_id)
-                    seen_receipts.add(receipt_key)
-
                     # Check if any field is missing
                     has_place_id = place.place_id and place.place_id not in (
                         "",
@@ -446,11 +438,11 @@ class ReceiptPlaceFinder:
         limit: Optional[int] = None,
     ) -> FinderResult:
         """
-        Find metadata using agent-based reasoning (recommended).
+        Find place data using agent-based reasoning (recommended).
 
         This method uses an LLM agent to:
         - Examine receipt content (lines, words, labels)
-        - Extract metadata from receipt itself
+        - Extract place data from receipt itself
         - Search Google Places API for missing fields
         - Use similar receipts for verification
         - Determine the best values for each field
@@ -461,6 +453,11 @@ class ReceiptPlaceFinder:
         Returns:
             FinderResult with all matches
         """
+        from receipt_agent.subagents.place_finder import (
+            create_receipt_place_finder_graph,
+            run_receipt_place_finder,
+        )
+
         if not self.chroma or not self.embed_fn:
             raise AgenticSearchRequirementsError()
 
@@ -470,10 +467,6 @@ class ReceiptPlaceFinder:
 
         # Initialize agent graph if needed
         if self._agent_graph is None:
-            from receipt_agent.subagents.place_finder import (
-                create_receipt_place_finder_graph,
-            )
-
             self._agent_graph, self._agent_state_holder = (
                 create_receipt_place_finder_graph(
                     dynamo_client=self.dynamo,
@@ -493,10 +486,8 @@ class ReceiptPlaceFinder:
         result.total_processed = len(receipts_to_process)
 
         logger.info(
-            (
-                "Finding metadata using agent for "
-                f"{len(receipts_to_process)} receipts..."
-            )
+            "Finding place data using agent for "
+            f"{len(receipts_to_process)} receipts..."
         )
 
         # Process each receipt with agent
@@ -517,10 +508,6 @@ class ReceiptPlaceFinder:
 
             for attempt in range(max_retries):
                 try:
-                    from receipt_agent.subagents.place_finder import (
-                        run_receipt_place_finder,
-                    )
-
                     agent_result = await run_receipt_place_finder(
                         graph=self._agent_graph,
                         state_holder=self._agent_state_holder,
@@ -769,12 +756,10 @@ class ReceiptPlaceFinder:
                             await self._create_receipt_place_from_match(match)
                             result.total_updated += 1
                             logger.info(
-                                (
-                                    "Created new ReceiptPlace for "
-                                    f"{match.receipt.image_id[:8]}..."
-                                    f"#{match.receipt.receipt_id}: "
-                                    f"{len(match.fields_found)} fields"
-                                )
+                                "Created new ReceiptPlace for "
+                                f"{match.receipt.image_id[:8]}..."
+                                f"#{match.receipt.receipt_id}: "
+                                f"{len(match.fields_found)} fields"
                             )
                         except Exception as e:
                             logger.warning(

@@ -86,7 +86,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Query NEEDS_REVIEW labels
     labels: List[Dict[str, Any]] = []
     labels_processed = 0
-    metadata_cache: Dict[str, str] = {}  # Cache merchant names
+    merchant_name_cache: Dict[str, str] = {}  # Cache merchant names
 
     try:
         # Query by validation_status (one or many)
@@ -117,22 +117,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
                     # Get merchant name (with caching)
                     cache_key = f"{label.image_id}#{label.receipt_id}"
-                    if cache_key not in metadata_cache:
+                    if cache_key not in merchant_name_cache:
                         try:
                             place = dynamo.get_receipt_place(
                                 image_id=label.image_id,
                                 receipt_id=label.receipt_id,
                             )
-                            metadata_cache[cache_key] = (
+                            merchant_name_cache[cache_key] = (
                                 place.merchant_name if place else None
                             )
                         except Exception as e:
                             logger.warning(
                                 f"Failed to get place for {cache_key}: {e}"
                             )
-                            metadata_cache[cache_key] = None
+                            merchant_name_cache[cache_key] = None
 
-                    merchant_name = metadata_cache[cache_key]
+                    merchant_name = merchant_name_cache[cache_key]
 
                     # Get word text
                     try:

@@ -349,7 +349,7 @@ async def main(
     logger = logging.getLogger(__name__)
 
     print("=" * 60)
-    print("🧪 Batch Metadata Validation")
+    print("🧪 Batch Place Validation")
     print("=" * 60)
 
     # Setup environment (load Pulumi config, download ChromaDB, etc.)
@@ -496,7 +496,7 @@ async def main(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Batch validate receipt metadata for a merchant"
+        description="Batch validate receipt place data for a merchant"
     )
     parser.add_argument(
         "--merchant",

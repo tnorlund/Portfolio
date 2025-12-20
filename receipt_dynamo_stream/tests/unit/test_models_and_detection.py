@@ -12,18 +12,20 @@ from receipt_dynamo_stream import (
     get_chromadb_relevant_changes,
 )
 
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 
-def _make_metadata(merchant_name: str = "Test Merchant") -> ReceiptMetadata:
-    return ReceiptMetadata(
+def _make_place(merchant_name: str = "Test Merchant") -> ReceiptPlace:
+    return ReceiptPlace(
         image_id="550e8400-e29b-41d4-a716-446655440000",
         receipt_id=1,
         place_id="place123",
         merchant_name=merchant_name,
+        formatted_address="123 Main St",
+        phone_number="555-123-4567",
         matched_fields=["name"],
-        validated_by="PHONE_LOOKUP",
+        validated_by="INFERENCE",
         timestamp=datetime.fromisoformat("2024-01-01T00:00:00"),
     )
 
@@ -61,25 +63,25 @@ def test_field_change_is_frozen() -> None:
 
 
 def test_parsed_stream_record_round_trip() -> None:
-    entity = _make_metadata()
+    entity = _make_place()
     record = ParsedStreamRecord(
-        entity_type="RECEIPT_METADATA",
+        entity_type="RECEIPT_PLACE",
         old_entity=entity,
         new_entity=None,
         pk=entity.key["PK"]["S"],
         sk=entity.key["SK"]["S"],
     )
 
-    assert record.entity_type == "RECEIPT_METADATA"
+    assert record.entity_type == "RECEIPT_PLACE"
     assert record.pk.startswith("IMAGE#")
-    assert record.sk.endswith("#METADATA")
+    assert record.sk.endswith("#PLACE")
     assert record.old_entity == entity
     assert record.new_entity is None
 
 
 def test_stream_message_supports_multiple_collections() -> None:
     message = StreamMessage(
-        entity_type="RECEIPT_METADATA",
+        entity_type="RECEIPT_PLACE",
         entity_data={"image_id": "img", "receipt_id": 1},
         changes={"merchant_name": FieldChange(old="old", new="new")},
         event_name="MODIFY",
@@ -105,18 +107,18 @@ def test_detect_entity_type_patterns() -> None:
     assert detect_entity_type("RECEIPT#00001#LINE#00001") is None
 
 
-def test_get_chromadb_relevant_changes_for_metadata() -> None:
-    old = _make_metadata("Old Merchant")
-    new = _make_metadata("New Merchant")
+def test_get_chromadb_relevant_changes_for_place() -> None:
+    old = _make_place("Old Merchant")
+    new = _make_place("New Merchant")
 
-    changes = get_chromadb_relevant_changes("RECEIPT_METADATA", old, new)
+    changes = get_chromadb_relevant_changes("RECEIPT_PLACE", old, new)
 
     assert "merchant_name" in changes
     assert changes["merchant_name"].old == "Old Merchant"
     assert changes["merchant_name"].new == "New Merchant"
-    assert set(CHROMADB_RELEVANT_FIELDS["RECEIPT_METADATA"]) >= {
+    assert set(CHROMADB_RELEVANT_FIELDS["RECEIPT_PLACE"]) >= {
         "merchant_name",
-        "canonical_merchant_name",
+        "formatted_address",
     }
 
 

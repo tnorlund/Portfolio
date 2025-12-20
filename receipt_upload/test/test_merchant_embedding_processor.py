@@ -452,7 +452,7 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
         assert call_kwargs["place_id"] == "ChIJ_new_place"
         # Existing data should not be overwritten
         assert "merchant_name" not in call_kwargs
-        assert "address" not in call_kwargs
+        assert "formatted_address" not in call_kwargs
         assert "phone_number" not in call_kwargs
 
     def test_enrich_handles_missing_place_data(self, mock_dynamo_client):

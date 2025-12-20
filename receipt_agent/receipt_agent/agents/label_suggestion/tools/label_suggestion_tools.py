@@ -153,7 +153,7 @@ def create_label_suggestion_tools(
                 )
                 merchant_name = place.merchant_name
             except Exception:
-                # Place data doesn't exist yet
+                # Place data unavailable
                 merchant_name = None
 
             return {

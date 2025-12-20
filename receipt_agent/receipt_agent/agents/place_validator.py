@@ -34,11 +34,11 @@ logger = structlog.get_logger(__name__)
 
 class PlaceValidatorAgent:
     """
-    Agent for validating receipt metadata using agentic search.
+    Agent for validating receipt place data using agentic search.
 
     This agent uses LangGraph to orchestrate a multi-step validation
     process that:
-    1. Loads current metadata from DynamoDB
+    1. Loads current place data from DynamoDB
     2. Searches ChromaDB for similar receipts
     3. Verifies consistency across receipts
     4. Optionally checks Google Places

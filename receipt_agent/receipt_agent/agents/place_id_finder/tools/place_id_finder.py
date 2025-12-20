@@ -4,7 +4,7 @@ Place ID Finder - Find Google Place IDs for Receipts
 
 Purpose
 -------
-Finds Google Place IDs for receipt metadata that don't have place_ids yet.
+Finds Google Place IDs for receipt place data that don't have place_ids yet.
 This complements the harmonizer v3 workflow which works on receipts that
 already have place_ids.
 
@@ -23,13 +23,13 @@ How It Works
    - Address geocoding
    - Merchant name text search
 3. **Match confidence**: Score matches based on how well they align with receipt data
-4. **Update metadata**: Add place_id and optionally update other fields from Google Places
+4. **Update place data**: Add place_id and optionally update other fields from Google Places
 
 What Gets Updated
 -----------------
 The finder updates:
 - `place_id` ← Google Place ID (primary goal)
-- Optionally: `merchant_name`, `address`, `phone_number` from Google Places
+- Optionally: `merchant_name`, `formatted_address`, `phone_number` from Google Places
 
 Usage
 -----
@@ -73,13 +73,13 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ReceiptRecord:
     """
-    A single receipt's metadata (without place_id).
+    A single receipt's place data (without place_id).
 
     Attributes:
         image_id: UUID of the image containing this receipt
         receipt_id: Receipt number within the image
         merchant_name: Current merchant name (from OCR/original)
-        address: Current address
+        address: Current formatted address
         phone: Current phone number
         validation_status: Current validation status
     """
@@ -1048,14 +1048,7 @@ class PlaceIdFinder:
                     updated_fields.append(f"phone_number={match.place_phone}")
 
                 # Update the record
-                self.dynamo.update_receipt_place(
-                    image_id=place.image_id,
-                    receipt_id=place.receipt_id,
-                    place_id=place.place_id,
-                    merchant_name=place.merchant_name,
-                    formatted_address=place.formatted_address,
-                    phone_number=place.phone_number,
-                )
+                self.dynamo.update_receipt_place(place)
                 result.total_updated += 1
 
                 logger.debug(
@@ -1135,13 +1128,14 @@ class PlaceIdFinder:
                     )
 
                     # Update the record
-                    self.dynamo.update_receipt_place(
-                        image_id=place.image_id,
-                        receipt_id=place.receipt_id,
-                        validation_status=MerchantValidationStatus.UNSURE.value,
-                        reasoning=match.error
-                        or "No searchable data available for place_id lookup",
+                    place.validation_status = (
+                        MerchantValidationStatus.UNSURE.value
                     )
+                    place.reasoning = (
+                        match.error
+                        or "No searchable data available for place_id lookup"
+                    )
+                    self.dynamo.update_receipt_place(place)
                     result.total_updated += 1
 
                     logger.debug(

@@ -65,7 +65,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Stream labels from DynamoDB using GSI1
     merchant_groups: Dict[str, list] = {}
     labels_processed = 0
-    metadata_cache: Dict[str, str] = {}  # Cache merchant names
+    merchant_name_cache: Dict[str, str] = {}  # Cache merchant names
 
     try:
         # Use the GSI1-based query for efficient label retrieval
@@ -86,22 +86,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 # Get merchant name (with caching)
                 # ReceiptWordLabel is a dataclass, use attribute access
                 cache_key = f"{label.image_id}#{label.receipt_id}"
-                if cache_key not in metadata_cache:
+                if cache_key not in merchant_name_cache:
                     try:
                         place = dynamo.get_receipt_place(
                             image_id=label.image_id,
                             receipt_id=label.receipt_id,
                         )
-                        metadata_cache[cache_key] = (
+                        merchant_name_cache[cache_key] = (
                             place.merchant_name if place else "Unknown"
                         )
                     except Exception as e:
                         logger.warning(
                             f"Failed to get place for {cache_key}: {e}"
                         )
-                        metadata_cache[cache_key] = "Unknown"
+                        merchant_name_cache[cache_key] = "Unknown"
 
-                merchant_name = metadata_cache[cache_key]
+                merchant_name = merchant_name_cache[cache_key]
 
                 # Check merchant limit
                 if max_merchants and merchant_name not in merchant_groups:

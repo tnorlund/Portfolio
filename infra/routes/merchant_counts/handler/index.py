@@ -27,16 +27,17 @@ def fetch_merchant_counts():
         )
         receipt_places.extend(next_receipt_places)
 
-    # Count the number of receipts for each merchant name
+    # Count the number of receipts for each normalized merchant name
     merchant_counts = {}
     for receipt_place in receipt_places:
         merchant_name = receipt_place.merchant_name
         # Skip receipts with empty or missing merchant names
         if not merchant_name or not merchant_name.strip():
             continue
-        if merchant_name not in merchant_counts:
-            merchant_counts[merchant_name] = 0
-        merchant_counts[merchant_name] += 1
+        normalized_name = merchant_name.strip().upper()
+        if normalized_name not in merchant_counts:
+            merchant_counts[normalized_name] = 0
+        merchant_counts[normalized_name] += 1
 
     return merchant_counts
 
