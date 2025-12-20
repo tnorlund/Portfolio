@@ -701,10 +701,22 @@ class LabelEvaluatorStepFunction(ComponentResource):
         """
         definition = {
             "Comment": "Label Evaluator - Validate receipt labels using spatial patterns",
-            "StartAt": "Initialize",
+            "StartAt": "CheckInputMode",
             "States": {
-                # Initialize execution context
-                "Initialize": {
+                # Check if merchant_name is in input (before Initialize)
+                "CheckInputMode": {
+                    "Type": "Choice",
+                    "Choices": [
+                        {
+                            "Variable": "$.merchant_name",
+                            "IsPresent": True,
+                            "Next": "InitializeSingleMerchant",
+                        }
+                    ],
+                    "Default": "InitializeAllMerchants",
+                },
+                # Initialize for single merchant mode with defaults
+                "InitializeSingleMerchant": {
                     "Type": "Pass",
                     "Parameters": {
                         "execution_id.$": "$$.Execution.Name",
@@ -712,36 +724,32 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "batch_bucket": batch_bucket,
                         "batch_size": batch_size,
                         "merchant_name.$": "$.merchant_name",
-                        "skip_llm_review.$": "$.skip_llm_review",
-                        "max_training_receipts.$": "$.max_training_receipts",
-                        "min_receipts.$": "$.min_receipts",
-                        "limit.$": "$.limit",
+                        "skip_llm_review": True,
+                        "max_training_receipts": 50,
+                        "min_receipts": 5,
+                        "limit": 1000,
+                        "original_input.$": "$",
                     },
                     "ResultPath": "$.init",
-                    "Next": "CheckMode",
+                    "Next": "SingleMerchantMode",
                 },
-                # Check if single merchant or all merchants mode
-                "CheckMode": {
-                    "Type": "Choice",
-                    "Choices": [
-                        {
-                            "Variable": "$.init.merchant_name",
-                            "IsPresent": True,
-                            "Next": "CheckMerchantNotNull",
-                        }
-                    ],
-                    "Default": "ListMerchants",
-                },
-                "CheckMerchantNotNull": {
-                    "Type": "Choice",
-                    "Choices": [
-                        {
-                            "Variable": "$.init.merchant_name",
-                            "IsNull": False,
-                            "Next": "SingleMerchantMode",
-                        }
-                    ],
-                    "Default": "ListMerchants",
+                # Initialize for all merchants mode with defaults
+                "InitializeAllMerchants": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "execution_id.$": "$$.Execution.Name",
+                        "start_time.$": "$$.Execution.StartTime",
+                        "batch_bucket": batch_bucket,
+                        "batch_size": batch_size,
+                        "merchant_name": None,
+                        "skip_llm_review": True,
+                        "max_training_receipts": 50,
+                        "min_receipts": 5,
+                        "limit": 1000,
+                        "original_input.$": "$",
+                    },
+                    "ResultPath": "$.init",
+                    "Next": "ListMerchants",
                 },
                 # Single merchant mode - process just one merchant
                 "SingleMerchantMode": {
