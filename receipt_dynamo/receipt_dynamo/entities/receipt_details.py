@@ -1,11 +1,14 @@
 from dataclasses import dataclass
-from typing import Generator, List
+from typing import TYPE_CHECKING, Generator, List, Optional
 
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+
+if TYPE_CHECKING:
+    from receipt_dynamo.entities.receipt_place import ReceiptPlace
 
 
 @dataclass
@@ -17,10 +20,12 @@ class ReceiptDetails:
     words: List[ReceiptWord]
     letters: List[ReceiptLetter]
     labels: List[ReceiptWordLabel]
+    place: Optional["ReceiptPlace"] = None
 
-    def __iter__(self) -> Generator[List | Receipt, None, None]:
+    def __iter__(self) -> Generator[List | Receipt | None, None, None]:
         yield self.receipt
         yield self.lines
         yield self.words
         yield self.letters
         yield self.labels
+        yield self.place

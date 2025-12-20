@@ -30,6 +30,9 @@ from receipt_dynamo.entities.receipt_word import (
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
 )
+from receipt_dynamo.entities.receipt_place import (
+    item_to_receipt_place,
+)
 
 from ._receipt_details_processor import process_receipt_details_query
 
@@ -220,6 +223,8 @@ class _Receipt(
                 return ("letter", item_to_receipt_letter(item))
             if item_type == "RECEIPT_WORD_LABEL":
                 return ("label", item_to_receipt_word_label(item))
+            if item_type == "RECEIPT_PLACE":
+                return ("place", item_to_receipt_place(item))
             return None
 
         # Query all items for this receipt
@@ -237,6 +242,7 @@ class _Receipt(
         )
 
         receipt = None
+        place = None
         lines, words, letters, labels = [], [], [], []
 
         # Process converted items
@@ -254,6 +260,8 @@ class _Receipt(
                 letters.append(entity)
             elif item_type == "label":
                 labels.append(entity)
+            elif item_type == "place":
+                place = entity
 
         if receipt is None:
             raise EntityNotFoundError(
@@ -268,6 +276,7 @@ class _Receipt(
             words=words,
             letters=letters,
             labels=labels,
+            place=place,
         )
 
     @handle_dynamodb_errors("list_receipts")
