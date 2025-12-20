@@ -7,9 +7,9 @@ Uses dataclasses.asdict() for serialization since all entities are dataclasses.
 Deserialization parses datetime strings and passes kwargs to constructors.
 """
 
-import sys
 from dataclasses import asdict
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from receipt_dynamo.entities import (
     ReceiptPlace,
@@ -17,17 +17,16 @@ from receipt_dynamo.entities import (
     ReceiptWordLabel,
 )
 
-# Import types from parent package
-sys.path.insert(0, str(__file__).rsplit("/lambdas", 1)[0])
-from evaluator_types import (
-    PatternsFile,
-    SerializedLabel,
-    SerializedPlace,
-    SerializedWord,
-)
+if TYPE_CHECKING:
+    from evaluator_types import (
+        PatternsFile,
+        SerializedLabel,
+        SerializedPlace,
+        SerializedWord,
+    )
 
 
-def serialize_word(word: ReceiptWord) -> SerializedWord:
+def serialize_word(word: ReceiptWord) -> "SerializedWord":
     """Serialize ReceiptWord for S3 storage using asdict."""
     data = asdict(word)
     # Convert embedding_status enum to string if present
@@ -36,12 +35,12 @@ def serialize_word(word: ReceiptWord) -> SerializedWord:
     return data  # type: ignore[return-value]
 
 
-def deserialize_word(data: SerializedWord) -> ReceiptWord:
+def deserialize_word(data: "SerializedWord") -> ReceiptWord:
     """Deserialize ReceiptWord from S3 data."""
     return ReceiptWord(**data)
 
 
-def serialize_label(label: ReceiptWordLabel) -> SerializedLabel:
+def serialize_label(label: ReceiptWordLabel) -> "SerializedLabel":
     """Serialize ReceiptWordLabel for S3 storage using asdict."""
     data = asdict(label)
     # Convert timestamp_added to ISO string for JSON serialization
@@ -50,7 +49,7 @@ def serialize_label(label: ReceiptWordLabel) -> SerializedLabel:
     return data  # type: ignore[return-value]
 
 
-def deserialize_label(data: SerializedLabel) -> ReceiptWordLabel:
+def deserialize_label(data: "SerializedLabel") -> ReceiptWordLabel:
     """Deserialize ReceiptWordLabel from S3 data."""
     # Make a mutable copy to avoid modifying the input
     label_data = dict(data)
@@ -65,7 +64,7 @@ def deserialize_label(data: SerializedLabel) -> ReceiptWordLabel:
     return ReceiptWordLabel(**label_data)
 
 
-def serialize_place(place: ReceiptPlace) -> SerializedPlace:
+def serialize_place(place: ReceiptPlace) -> "SerializedPlace":
     """Serialize ReceiptPlace for S3 storage using asdict."""
     data = asdict(place)
     # Convert datetime to ISO string
@@ -74,7 +73,7 @@ def serialize_place(place: ReceiptPlace) -> SerializedPlace:
     return data  # type: ignore[return-value]
 
 
-def deserialize_place(data: SerializedPlace | None) -> ReceiptPlace | None:
+def deserialize_place(data: "SerializedPlace | None") -> ReceiptPlace | None:
     """Deserialize ReceiptPlace from S3 data."""
     if not data:
         return None
@@ -97,27 +96,27 @@ def deserialize_place(data: SerializedPlace | None) -> ReceiptPlace | None:
     return ReceiptPlace(**place_data)
 
 
-def serialize_words(words: list[ReceiptWord]) -> list[SerializedWord]:
+def serialize_words(words: list[ReceiptWord]) -> "list[SerializedWord]":
     """Serialize a list of ReceiptWord objects."""
     return [serialize_word(w) for w in words]
 
 
-def deserialize_words(data: list[SerializedWord]) -> list[ReceiptWord]:
+def deserialize_words(data: "list[SerializedWord]") -> list[ReceiptWord]:
     """Deserialize a list of ReceiptWord objects."""
     return [deserialize_word(d) for d in data]
 
 
-def serialize_labels(labels: list[ReceiptWordLabel]) -> list[SerializedLabel]:
+def serialize_labels(labels: list[ReceiptWordLabel]) -> "list[SerializedLabel]":
     """Serialize a list of ReceiptWordLabel objects."""
     return [serialize_label(label) for label in labels]
 
 
-def deserialize_labels(data: list[SerializedLabel]) -> list[ReceiptWordLabel]:
+def deserialize_labels(data: "list[SerializedLabel]") -> list[ReceiptWordLabel]:
     """Deserialize a list of ReceiptWordLabel objects."""
     return [deserialize_label(d) for d in data]
 
 
-def deserialize_patterns(data: PatternsFile | None):
+def deserialize_patterns(data: "PatternsFile | None"):
     """
     Deserialize pre-computed MerchantPatterns from S3.
 

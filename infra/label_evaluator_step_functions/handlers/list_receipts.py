@@ -7,14 +7,21 @@ and creates a manifest file in S3 for the distributed map to process.
 import json
 import logging
 import os
-import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import boto3
 
-# Add parent directory for type imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from evaluator_types import ListReceiptsOutput, ReceiptRef
+if TYPE_CHECKING:
+    from evaluator_types import ListReceiptsOutput
+
+
+class ReceiptRef(TypedDict):
+    """Reference to a receipt for processing."""
+
+    image_id: str
+    receipt_id: int
+    merchant_name: str
+
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -22,7 +29,7 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
-def handler(event: dict[str, Any], _context: Any) -> ListReceiptsOutput:
+def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
     """
     List receipts by merchant name and create processing manifest.
 

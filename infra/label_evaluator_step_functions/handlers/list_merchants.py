@@ -7,15 +7,21 @@ and returns merchants that meet the minimum receipt threshold.
 import json
 import logging
 import os
-import sys
 from collections import Counter
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import boto3
 
-# Add parent directory for type imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from evaluator_types import ListMerchantsOutput, MerchantInfo
+if TYPE_CHECKING:
+    from evaluator_types import ListMerchantsOutput
+
+
+class MerchantInfo(TypedDict):
+    """Merchant info from list_merchants."""
+
+    merchant_name: str
+    receipt_count: int
+
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -26,7 +32,7 @@ s3 = boto3.client("s3")
 DEFAULT_MIN_RECEIPTS = 5
 
 
-def handler(event: dict[str, Any], _context: Any) -> ListMerchantsOutput:
+def handler(event: dict[str, Any], _context: Any) -> "ListMerchantsOutput":
     """
     List unique merchants that have enough receipts for pattern learning.
 

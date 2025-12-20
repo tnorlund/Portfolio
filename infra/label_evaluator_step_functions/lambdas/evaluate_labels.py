@@ -15,18 +15,16 @@ Environment Variables:
 import json
 import logging
 import os
-import sys
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import boto3
 
 # Import shared tracing utility
 from utils.tracing import flush_langsmith_traces
 
-# Add parent directory for type imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from evaluator_types import EvaluateLabelsOutput, PatternsFile, ReceiptDataFile
+if TYPE_CHECKING:
+    from evaluator_types import EvaluateLabelsOutput
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -38,7 +36,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 s3 = boto3.client("s3")
 
 
-def load_json_from_s3(bucket: str, key: str) -> dict:
+def load_json_from_s3(bucket: str, key: str) -> dict[str, Any]:
     """Load JSON data from S3."""
     response = s3.get_object(Bucket=bucket, Key=key)
     return json.loads(response["Body"].read().decode("utf-8"))
@@ -63,7 +61,7 @@ from utils.serialization import (
 )
 
 
-def handler(event: dict[str, Any], _context: Any) -> EvaluateLabelsOutput:
+def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
     """
     Run compute-only label evaluator with pre-loaded state and patterns.
 

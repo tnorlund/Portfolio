@@ -7,19 +7,35 @@ and generates a summary report with statistics by issue type and merchant.
 import json
 import logging
 import os
-import sys
 from collections import Counter
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import boto3
 
-# Add parent directory for type imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from evaluator_types import (
-    AggregateResultsOutput,
-    IssueDetail,
-    ReceiptResultSummary,
-)
+if TYPE_CHECKING:
+    from evaluator_types import AggregateResultsOutput
+
+
+class ReceiptResultSummary(TypedDict, total=False):
+    """Summary of a single receipt evaluation."""
+
+    status: str
+    image_id: str
+    receipt_id: int
+    issues_found: int
+    results_s3_key: str
+    error: str
+
+
+class IssueDetail(TypedDict, total=False):
+    """Details of a detected labeling issue."""
+
+    type: str
+    word_text: str
+    current_label: str | None
+    suggested_status: str
+    reasoning: str
+
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -27,7 +43,7 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
-def handler(event: dict[str, Any], _context: Any) -> AggregateResultsOutput:
+def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
     """
     Aggregate all evaluation results and generate summary report.
 
