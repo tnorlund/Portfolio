@@ -144,6 +144,7 @@ class TestEndToEndWorkflow:
             place_id="test-place-id",
             matched_fields=["name"],
             validated_by="INFERENCE",
+            validation_status="MATCHED",
         )
         dynamo_client.add_receipt_places([receipt_place])
 

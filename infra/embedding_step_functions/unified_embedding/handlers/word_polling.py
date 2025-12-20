@@ -303,7 +303,7 @@ async def _ensure_receipt_place_async(
         else None
     )
 
-    chroma_root = Path("/tmp/chroma/metadata_finder")
+    chroma_root = Path("/tmp/chroma/place_finder")
     lines_dir = chroma_root / "lines"
     words_dir = chroma_root / "words"
     lines_dir.mkdir(parents=True, exist_ok=True)
@@ -680,6 +680,15 @@ def _handle_internal_core(
                 image_id=image_id,
                 receipt_id=receipt_id,
             )
+            if (
+                receipt_place is None
+                or not receipt_place.merchant_name
+                or not receipt_place.merchant_name.strip()
+            ):
+                raise ValueError(
+                    "Receipt place missing merchant_name for "
+                    f"{image_id}#{receipt_id}"
+                )
             descriptions.setdefault(image_id, {})[receipt_id] = {
                 "receipt": receipt_details.receipt,
                 "lines": receipt_details.lines,

@@ -930,17 +930,6 @@ class ReceiptPlaceFinder:
             return
 
         try:
-            merchant_name = (
-                match.merchant_name or match.receipt.merchant_name or ""
-            )
-            if not merchant_name.strip():
-                logger.warning(
-                    "Skipping ReceiptPlace creation due to empty "
-                    "merchant_name for %s#%s",
-                    match.receipt.image_id,
-                    match.receipt.receipt_id,
-                )
-                return
             # Get rich place data from v1 API
             logger.debug(
                 f"Fetching place details for {match.place_id} "
@@ -953,6 +942,26 @@ class ReceiptPlaceFinder:
             if not place_v1:
                 logger.warning(
                     f"v1 API returned no data for place_id {match.place_id}"
+                )
+                return
+
+            display_name = ""
+            if place_v1.display_name:
+                display_name = place_v1.display_name.text
+
+            merchant_name = (
+                match.merchant_name
+                or match.receipt.merchant_name
+                or display_name
+                or place_v1.formatted_address
+                or ""
+            )
+            if not merchant_name.strip():
+                logger.warning(
+                    "Skipping ReceiptPlace creation due to empty "
+                    "merchant_name for %s#%s",
+                    match.receipt.image_id,
+                    match.receipt.receipt_id,
                 )
                 return
 

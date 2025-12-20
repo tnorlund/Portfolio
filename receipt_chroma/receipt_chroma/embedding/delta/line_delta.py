@@ -136,19 +136,12 @@ def save_line_embeddings_as_delta(
         )
         prev_line, next_line = parse_prev_next_from_formatted(embedding_input)
 
-        # Priority: canonical name > regular merchant name
-        if (
-            hasattr(place, "canonical_merchant_name")
-            and place.canonical_merchant_name
-        ):
-            merchant_name = place.canonical_merchant_name
-        elif hasattr(place, "merchant_name") and place.merchant_name:
-            merchant_name = place.merchant_name
-        else:
+        if not place.merchant_name:
             raise ValueError(
                 f"No merchant name available for image_id={image_id}, "
                 f"receipt_id={receipt_id}"
             )
+        merchant_name = place.merchant_name
 
         # Build metadata for ChromaDB using consolidated metadata creation
         section_label = getattr(target_line, "section_label", None) or None

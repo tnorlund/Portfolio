@@ -238,13 +238,13 @@ class PlaceIdFinder:
 
     def load_receipts_without_place_id(self) -> int:
         """
-        Load all receipt metadata from DynamoDB that don't have place_ids.
+        Load all receipt place data from DynamoDB that don't have place_ids.
 
         Returns:
             Total number of receipts without place_id
         """
         logger.info(
-            "Loading receipt metadata without place_id from DynamoDB..."
+            "Loading receipt place data without place_id from DynamoDB..."
         )
 
         self._receipts_without_place_id = []
@@ -942,8 +942,6 @@ class PlaceIdFinder:
 
                 if not place_exists:
                     # Create new place from Google Places data
-                    from datetime import datetime, timezone
-
                     from receipt_dynamo.constants import (
                         MerchantValidationStatus,
                     )

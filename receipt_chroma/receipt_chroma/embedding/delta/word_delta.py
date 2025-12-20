@@ -152,14 +152,12 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         left_text = left_words[0] if left_words else "<EDGE>"
         right_text = right_words[0] if right_words else "<EDGE>"
 
-        # Priority: canonical name > regular merchant name
-        if (
-            hasattr(place, "canonical_merchant_name")
-            and place.canonical_merchant_name
-        ):
-            merchant_name = place.canonical_merchant_name
-        else:
-            merchant_name = place.merchant_name
+        if not place.merchant_name:
+            raise ValueError(
+                f"No merchant name available for image_id={image_id}, "
+                f"receipt_id={receipt_id}"
+            )
+        merchant_name = place.merchant_name
 
         # Build metadata for ChromaDB using consolidated metadata creation
         word_metadata = create_word_metadata(

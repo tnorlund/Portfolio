@@ -557,6 +557,15 @@ def _handle_internal_core(
                 image_id=image_id,
                 receipt_id=receipt_id,
             )
+            if (
+                receipt_place is None
+                or not receipt_place.merchant_name
+                or not receipt_place.merchant_name.strip()
+            ):
+                raise ValueError(
+                    "Receipt place missing merchant_name for "
+                    f"{image_id}#{receipt_id}"
+                )
             receipt_sections = dynamo_client.get_receipt_sections_from_receipt(
                 image_id=image_id,
                 receipt_id=receipt_id,

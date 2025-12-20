@@ -121,8 +121,8 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 # Continue to next iteration to try next page
                 continue
 
-    except Exception as e:
-        logger.exception("Error scanning places: %s", e)
+    except Exception:
+        logger.exception("Error scanning places")
         raise
 
     logger.info(
