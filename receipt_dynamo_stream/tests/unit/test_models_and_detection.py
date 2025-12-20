@@ -95,7 +95,7 @@ def test_stream_message_supports_multiple_collections() -> None:
 
 
 def test_detect_entity_type_patterns() -> None:
-    assert detect_entity_type("RECEIPT#00001#METADATA") == "RECEIPT_METADATA"
+    assert detect_entity_type("RECEIPT#00001#PLACE") == "RECEIPT_PLACE"
     assert (
         detect_entity_type("RECEIPT#00001#LINE#00001#WORD#00001#LABEL#TOTAL")
         == "RECEIPT_WORD_LABEL"

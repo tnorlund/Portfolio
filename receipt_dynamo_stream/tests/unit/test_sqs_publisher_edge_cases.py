@@ -45,7 +45,7 @@ def env_test_queue(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _create_test_message(
-    entity_type: str = "RECEIPT_METADATA",
+    entity_type: str = "RECEIPT_PLACE",
     collections: tuple[ChromaDBCollection, ...] = (
         ChromaDBCollection.LINES,
         ChromaDBCollection.WORDS,
@@ -76,7 +76,7 @@ def test_message_to_dict_basic() -> None:
     result = _message_to_dict(msg)
 
     assert result["source"] == "dynamodb_stream"
-    assert result["entity_type"] == "RECEIPT_METADATA"
+    assert result["entity_type"] == "RECEIPT_PLACE"
     assert result["event_name"] == "MODIFY"
     assert "changes" in result
     assert isinstance(result["changes"], dict)
@@ -227,12 +227,12 @@ def test_send_batch_to_queue_compaction_run_message_group(
 def test_send_batch_to_queue_receipt_metadata_message_group(
     env_test_queue: None,
 ) -> None:
-    """Test message group ID for RECEIPT_METADATA."""
+    """Test message group ID for RECEIPT_PLACE."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
     msg = _create_test_message(
-        entity_type="RECEIPT_METADATA",
+        entity_type="RECEIPT_PLACE",
         entity_data={"image_id": "img-789", "receipt_id": 1},
     )
     msg_dict = _message_to_dict(msg)
@@ -407,6 +407,6 @@ def test_send_batch_to_queue_message_attributes(
     attrs = entries[0]["MessageAttributes"]
 
     assert attrs["source"]["StringValue"] == "dynamodb_stream"
-    assert attrs["entity_type"]["StringValue"] == "RECEIPT_METADATA"
+    assert attrs["entity_type"]["StringValue"] == "RECEIPT_PLACE"
     assert attrs["event_name"]["StringValue"] == "MODIFY"
     assert attrs["collection"]["StringValue"] == "words"
