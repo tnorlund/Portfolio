@@ -37,7 +37,7 @@ class TestMerchantResolvingEmbeddingProcessor:
                 [],
                 None,
             )
-            client.get_receipt_metadata.return_value = None
+            client.get_receipt_place.return_value = None
             MockDynamo.return_value = client
             yield client
 
@@ -377,15 +377,15 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
             MockBoto.client.return_value = s3
             yield s3
 
-    def test_enrich_receipt_metadata_updates_dynamo(self, mock_dynamo_client):
-        """Test that receipt metadata is enriched in DynamoDB."""
-        # Setup existing metadata
-        mock_metadata = MagicMock()
-        mock_metadata.merchant_name = None
-        mock_metadata.address = None
-        mock_metadata.phone_number = None
-        mock_metadata.place_id = None
-        mock_dynamo_client.get_receipt_metadata.return_value = mock_metadata
+    def test_enrich_receipt_place_updates_dynamo(self, mock_dynamo_client):
+        """Test that receipt place data is enriched in DynamoDB."""
+        # Setup existing place data
+        mock_place = MagicMock()
+        mock_place.merchant_name = None
+        mock_place.formatted_address = None
+        mock_place.phone_number = None
+        mock_place.place_id = None
+        mock_dynamo_client.get_receipt_place.return_value = mock_place
 
         with patch(
             "receipt_upload.merchant_resolution.embedding_processor.boto3"
@@ -402,14 +402,14 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
                 phone="5551234567",
             )
 
-            processor._enrich_receipt_metadata(
+            processor._enrich_receipt_place(
                 image_id="test-image",
                 receipt_id=1,
                 merchant_result=merchant_result,
             )
 
-        mock_dynamo_client.update_receipt_metadata.assert_called_once()
-        call_kwargs = mock_dynamo_client.update_receipt_metadata.call_args[1]
+        mock_dynamo_client.update_receipt_place.assert_called_once()
+        call_kwargs = mock_dynamo_client.update_receipt_place.call_args[1]
         assert call_kwargs["place_id"] == "ChIJ_test_place"
         assert call_kwargs["merchant_name"] == "Test Store"
         assert call_kwargs["address"] == "123 Main St"
@@ -417,13 +417,13 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
 
     def test_enrich_does_not_overwrite_existing_data(self, mock_dynamo_client):
         """Test that existing merchant data is not overwritten."""
-        # Setup existing metadata with data
-        mock_metadata = MagicMock()
-        mock_metadata.merchant_name = "Existing Store"
-        mock_metadata.address = "Existing Address"
-        mock_metadata.phone_number = "1111111111"
-        mock_metadata.place_id = None
-        mock_dynamo_client.get_receipt_metadata.return_value = mock_metadata
+        # Setup existing place data with data
+        mock_place = MagicMock()
+        mock_place.merchant_name = "Existing Store"
+        mock_place.formatted_address = "Existing Address"
+        mock_place.phone_number = "1111111111"
+        mock_place.place_id = None
+        mock_dynamo_client.get_receipt_place.return_value = mock_place
 
         with patch(
             "receipt_upload.merchant_resolution.embedding_processor.boto3"
@@ -440,14 +440,14 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
                 phone="5551234567",
             )
 
-            processor._enrich_receipt_metadata(
+            processor._enrich_receipt_place(
                 image_id="test-image",
                 receipt_id=1,
                 merchant_result=merchant_result,
             )
 
-        mock_dynamo_client.update_receipt_metadata.assert_called_once()
-        call_kwargs = mock_dynamo_client.update_receipt_metadata.call_args[1]
+        mock_dynamo_client.update_receipt_place.assert_called_once()
+        call_kwargs = mock_dynamo_client.update_receipt_place.call_args[1]
         # place_id should be updated
         assert call_kwargs["place_id"] == "ChIJ_new_place"
         # Existing data should not be overwritten
@@ -455,9 +455,9 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
         assert "address" not in call_kwargs
         assert "phone_number" not in call_kwargs
 
-    def test_enrich_handles_missing_metadata(self, mock_dynamo_client):
-        """Test handling when no existing metadata found."""
-        mock_dynamo_client.get_receipt_metadata.return_value = None
+    def test_enrich_handles_missing_place_data(self, mock_dynamo_client):
+        """Test handling when no existing place data found."""
+        mock_dynamo_client.get_receipt_place.return_value = None
 
         with patch(
             "receipt_upload.merchant_resolution.embedding_processor.boto3"
@@ -473,14 +473,14 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
             )
 
             # Should not raise
-            processor._enrich_receipt_metadata(
+            processor._enrich_receipt_place(
                 image_id="test-image",
                 receipt_id=1,
                 merchant_result=merchant_result,
             )
 
-        # Should not call update when no metadata exists
-        mock_dynamo_client.update_receipt_metadata.assert_not_called()
+        # Should not call update when no place data exists
+        mock_dynamo_client.update_receipt_place.assert_not_called()
 
 
 class TestMerchantResolvingEmbeddingProcessorInit:

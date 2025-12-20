@@ -2,7 +2,7 @@
 Public façade for receipt_agent.
 
 Provides stable, minimal imports for common usage:
-- MetadataValidatorAgent (deterministic or agentic validation)
+- PlaceValidatorAgent (deterministic or agentic validation)
 - Validation graph helpers
 - Client factory helpers
 """
@@ -11,7 +11,7 @@ from receipt_agent.agents.agentic import (
     create_agentic_validation_graph,
     run_agentic_validation,
 )
-from receipt_agent.agents.metadata_validator import MetadataValidatorAgent
+from receipt_agent.agents.place_validator import PlaceValidatorAgent
 from receipt_agent.agents.validation import (
     create_validation_graph,
     run_validation,

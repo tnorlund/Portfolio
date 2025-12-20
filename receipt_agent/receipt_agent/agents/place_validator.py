@@ -1,7 +1,7 @@
 """
-MetadataValidatorAgent - Main agent class for receipt metadata validation.
+PlaceValidatorAgent - Main agent class for receipt place validation.
 
-This module provides a high-level API for validating receipt metadata
+This module provides a high-level API for validating receipt place data
 using ChromaDB similarity search and cross-reference verification.
 
 Supports two modes:
@@ -32,7 +32,7 @@ from receipt_agent.tools.registry import create_tool_registry
 logger = structlog.get_logger(__name__)
 
 
-class MetadataValidatorAgent:
+class PlaceValidatorAgent:
     """
     Agent for validating receipt metadata using agentic search.
 
@@ -46,7 +46,7 @@ class MetadataValidatorAgent:
 
     Example:
         ```python
-        from receipt_agent.agents.metadata_validator import MetadataValidatorAgent
+        from receipt_agent.agents.place_validator import PlaceValidatorAgent
         from receipt_dynamo.data.dynamo_client import DynamoClient
         from receipt_chroma.data.chroma_client import ChromaClient
 
@@ -55,7 +55,7 @@ class MetadataValidatorAgent:
         chroma = ChromaClient(persist_directory="/path/to/chroma")
 
         # Create agent
-        agent = MetadataValidatorAgent(
+        agent = PlaceValidatorAgent(
             dynamo_client=dynamo,
             chroma_client=chroma,
         )
@@ -82,11 +82,11 @@ class MetadataValidatorAgent:
         mode: Literal["deterministic", "agentic"] = "deterministic",
     ):
         """
-        Initialize the MetadataValidatorAgent.
+        Initialize the PlaceValidatorAgent.
 
         Args:
-            dynamo_client: DynamoDB client (receipt_dynamo.data.dynamo_client.DynamoClient)
-            chroma_client: ChromaDB client (receipt_chroma.data.chroma_client.ChromaClient)
+            dynamo_client: DynamoDB client
+            chroma_client: ChromaDB client
             embed_fn: Function to generate embeddings. If None, uses OpenAI.
             places_api: Optional Google Places API client
             settings: Configuration settings
@@ -144,7 +144,7 @@ class MetadataValidatorAgent:
             )
 
         logger.info(
-            "MetadataValidatorAgent initialized",
+            "PlaceValidatorAgent initialized",
             mode=mode,
             ollama_model=self._settings.ollama_model,
             tracing_enabled=enable_tracing,
@@ -198,7 +198,7 @@ class MetadataValidatorAgent:
             logger.warning(f"Failed to initialize LangSmith: {e}")
             self._enable_tracing = False
 
-    @traceable(name="validate_metadata")
+    @traceable(name="validate_place")
     async def validate(
         self,
         image_id: str,
@@ -206,7 +206,7 @@ class MetadataValidatorAgent:
         thread_id: Optional[str] = None,
     ) -> ValidationResult:
         """
-        Validate metadata for a single receipt.
+        Validate place data for a single receipt.
 
         Args:
             image_id: UUID of the receipt image
@@ -217,7 +217,7 @@ class MetadataValidatorAgent:
             ValidationResult with status, confidence, and reasoning
         """
         logger.info(
-            "Starting metadata validation",
+            "Starting place validation",
             image_id=image_id,
             receipt_id=receipt_id,
             mode=self._mode,
@@ -373,7 +373,7 @@ class MetadataValidatorAgent:
         max_concurrency: int = 5,
     ) -> list[tuple[tuple[str, int], ValidationResult]]:
         """
-        Validate metadata for multiple receipts concurrently.
+        Validate place data for multiple receipts concurrently.
 
         Args:
             receipts: List of (image_id, receipt_id) tuples

@@ -583,7 +583,7 @@ async def run_label_validation(
                 surrounding_lines = formatted_lines
 
             # Get receipt place data (includes merchant metadata from Google Places)
-            receipt_metadata = None
+            receipt_place = None
             merchant_metadata_data = {}
             try:
                 place = dynamo_client.get_receipt_place(
@@ -591,7 +591,7 @@ async def run_label_validation(
                     image_id=image_id,
                 )
                 if place:
-                    receipt_metadata = {
+                    receipt_place = {
                         "merchant_name": place.merchant_name,
                         "place_id": place.place_id,
                         "formatted_address": place.formatted_address,
@@ -614,7 +614,7 @@ async def run_label_validation(
                 "line_text": line_text,
                 "surrounding_words": surrounding_words,
                 "surrounding_lines": surrounding_lines,
-                "receipt_metadata": receipt_metadata,
+                "receipt_place": receipt_place,
             }
         except Exception as e:
             logger.warning(f"Could not fetch initial context: {e}")
@@ -635,9 +635,9 @@ async def run_label_validation(
                 word_context_data["surrounding_lines"]
             )
             word_context_text += "\n  ```\n"
-        if word_context_data.get("receipt_metadata"):
-            meta = word_context_data["receipt_metadata"]
-            word_context_text += f"- **Receipt metadata**: merchant={meta.get('merchant_name')}, place_id={meta.get('place_id')}\n"
+        if word_context_data.get("receipt_place"):
+            meta = word_context_data["receipt_place"]
+            word_context_text += f"- **Receipt place**: merchant={meta.get('merchant_name')}, place_id={meta.get('place_id')}\n"
 
     # Format merchant metadata for prompt
     merchant_metadata_text = ""

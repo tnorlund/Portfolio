@@ -373,9 +373,9 @@ def create_agentic_tools(
         return {"formatted_text": formatted, "line_count": len(lines)}
 
     @tool
-    def get_my_metadata() -> dict:
+    def get_my_place() -> dict:
         """
-        Get the current metadata stored for this receipt.
+        Get the current place data stored for this receipt.
 
         Returns:
         - merchant_name: Current merchant name
@@ -384,7 +384,7 @@ def create_agentic_tools(
         - phone: Stored phone number
         - validation_status: Current validation status
 
-        This is the metadata you need to validate.
+        This is the place data you need to validate.
         """
         ctx: ReceiptContext = state["context"]
         if ctx is None:
@@ -1194,7 +1194,7 @@ def create_agentic_tools(
         get_my_lines,
         get_my_words,
         get_receipt_text,
-        get_my_metadata,
+        get_my_place,
         find_similar_to_my_line,
         find_similar_to_my_word,
         search_lines,

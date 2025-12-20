@@ -114,7 +114,7 @@ Your job is to:
   actual businesses there
 
 ### Metadata Correction Tools
-- `find_correct_metadata`: Spin up a sub-agent to find the correct metadata for
+- `find_correct_place`: Spin up a sub-agent to find the correct metadata for
   a receipt whose metadata looks incorrect. Use this when a receipt's metadata
   doesn't match Google Places or other receipts in the group.
 
@@ -122,7 +122,7 @@ Your job is to:
 - `verify_address_on_receipt`: Verify that a specific address
   (from metadata or Google Places) actually appears on the receipt text. This
   is CRITICAL for catching wrong place_id assignments. If the address doesn't
-  match, use `find_correct_metadata` to fix it.
+  match, use `find_correct_place` to fix it.
 
 ### Text Consistency Verification Tool
 - `verify_text_consistency`: Verify that all receipts in the group actually
@@ -159,7 +159,7 @@ Your job is to:
    - If an address like "55 Fulton St, New York, NY 10038, USA" appears but
      the receipt shows a California address, this is a WRONG place_id
      assignment
-   - **If address doesn't match receipt text, use `find_correct_metadata` to
+   - **If address doesn't match receipt text, use `find_correct_place` to
      fix it immediately**
    - Do NOT proceed with harmonization if addresses don't match - fix them
      first
@@ -175,7 +175,7 @@ Your job is to:
    - Use these to verify metadata matches what's actually on the receipt
 
 6. **Find correct metadata** (if metadata appears incorrect) with
-   `find_correct_metadata`
+   `find_correct_place`
    - **USE THIS if address doesn't match receipt text** - this indicates wrong
      place_id
    - If a receipt's metadata doesn't match Google Places or seems wrong, use
@@ -240,7 +240,7 @@ Your job is to:
 2. ALWAYS check Google Places with `verify_place_id` before deciding
 3. **CRITICAL: ALWAYS verify addresses match receipt text** - Use
    `display_receipt_text` or `verify_address_on_receipt` to check
-4. **If address doesn't match receipt text, use `find_correct_metadata` to fix
+4. **If address doesn't match receipt text, use `find_correct_place` to fix
    it** - Don't proceed with wrong place_id
 5. NEVER accept an address as a merchant name
 6. RECOMMENDED: Use `verify_text_consistency` before submitting to check for
@@ -533,7 +533,7 @@ def create_harmonizer_tools(
         - evidence: What address text was found on the receipt (if any)
         - formatted_text: The formatted receipt text for inspection
         - recommendation: What to do if address doesn't match (use
-          find_correct_metadata)
+          find_correct_place)
         """
         try:
             # Sanitize image_id first (remove trailing characters like '?')
@@ -732,7 +732,7 @@ def create_harmonizer_tools(
                 recommendation = (
                     "WARNING: Address does NOT match receipt text. "
                     "This may indicate a wrong place_id assignment. "
-                    "Use find_correct_metadata to find the correct place_id "
+                    "Use find_correct_place to find the correct place_id "
                     "and metadata for this receipt."
                 )
 
@@ -1239,16 +1239,16 @@ def create_harmonizer_tools(
 
     # ========== METADATA FINDER TOOL ==========
 
-    class FindCorrectMetadataInput(BaseModel):
-        """Input for find_correct_metadata tool."""
+    class FindCorrectPlaceInput(BaseModel):
+        """Input for find_correct_place tool."""
 
         image_id: str = Field(
             description="Image ID of the receipt with incorrect metadata"
         )
         receipt_id: int = Field(description="Receipt ID")
 
-    @tool(args_schema=FindCorrectMetadataInput)
-    async def find_correct_metadata(image_id: str, receipt_id: int) -> dict:
+    @tool(args_schema=FindCorrectPlaceInput)
+    async def find_correct_place(image_id: str, receipt_id: int) -> dict:
         """
         Find the correct metadata for a receipt that appears to have
         incorrect metadata.
@@ -1803,7 +1803,7 @@ def create_harmonizer_tools(
         verify_address_on_receipt,
         get_field_variations,
         verify_place_id,
-        find_correct_metadata,
+        find_correct_place,
         verify_text_consistency,
         submit_harmonization,
     ]
@@ -1839,9 +1839,9 @@ def create_harmonizer_graph(
         places_api: Google Places API client
         settings: Optional settings
         chroma_client: Optional ChromaDB client (for metadata finder sub-agent)
-            If None, will be lazy-loaded when find_correct_metadata is called
+            If None, will be lazy-loaded when find_correct_place is called
         embed_fn: Optional embedding function (for metadata finder sub-agent)
-            If None, will be lazy-loaded when find_correct_metadata is called
+            If None, will be lazy-loaded when find_correct_place is called
         chromadb_bucket: Optional S3 bucket name for ChromaDB snapshots
             (for lazy loading)
 

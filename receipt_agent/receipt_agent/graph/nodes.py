@@ -35,22 +35,22 @@ def _build_chromadb_word_id(image_id: str, receipt_id: int, line_id: int, word_i
     return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
 
 
-async def load_metadata(
+async def load_place(
     state: ValidationState,
     dynamo_client: Any,
     chroma_client: Optional[Any] = None,
 ) -> dict[str, Any]:
     """
-    Load current receipt metadata and context from DynamoDB.
+    Load current receipt place data and context from DynamoDB.
 
     This is the entry node that fetches the current state of the
     receipt we're validating. Also verifies embeddings exist in ChromaDB.
     """
     logger.info(
-        f"Loading metadata for {state.image_id}#{state.receipt_id}"
+        f"Loading place data for {state.image_id}#{state.receipt_id}"
     )
 
-    updates: dict[str, Any] = {"current_step": "load_metadata"}
+    updates: dict[str, Any] = {"current_step": "load_place"}
 
     try:
         # Get current place data

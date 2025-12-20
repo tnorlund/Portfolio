@@ -89,7 +89,7 @@ Find complete metadata for this receipt:
     name**
 
 ### Decision Tool (REQUIRED at the end)
-- `submit_metadata`: Submit ALL metadata you found (place_id, merchant_name,
+- `submit_place`: Submit ALL metadata you found (place_id, merchant_name,
   address, phone)
 
 ## Strategy
@@ -136,7 +136,7 @@ Find complete metadata for this receipt:
    - Submit ALL metadata you found (even if some fields are still missing)
    - Include confidence scores for each field
    - Explain how you found each field
-   - **ALWAYS call submit_metadata** - never end without calling it
+   - **ALWAYS call submit_place** - never end without calling it
 
 ## Important Rules
 
@@ -146,7 +146,7 @@ Find complete metadata for this receipt:
 3. Use Google Places to find place_id and validate/fill in other fields
 4. **NEVER accept an address as a merchant name**
 5. Fill in as many fields as possible, even if place_id can't be found
-6. **ALWAYS end with submit_metadata** - submit all fields you found
+6. **ALWAYS end with submit_place** - submit all fields you found
 
 ## Field Priority
 
@@ -169,16 +169,16 @@ metadata."""
 
 
 # ======================================================================
-# Metadata Submission Tool
+# Place Submission Tool
 # ======================================================================
 
 
-def create_metadata_submission_tool(state_holder: dict):
-    """Create a tool for submitting found metadata."""
+def create_place_submission_tool(state_holder: dict):
+    """Create a tool for submitting found place data."""
     from pydantic import BaseModel, Field
 
-    class SubmitMetadataInput(BaseModel):
-        """Input for submit_metadata tool."""
+    class SubmitPlaceInput(BaseModel):
+        """Input for submit_place tool."""
 
         place_id: Optional[str] = Field(
             default=None,
@@ -229,8 +229,8 @@ def create_metadata_submission_tool(state_holder: dict):
             ),
         )
 
-    @tool(args_schema=SubmitMetadataInput)
-    def submit_metadata(
+    @tool(args_schema=SubmitPlaceInput)
+    def submit_place(
         place_id: Optional[str] = None,
         merchant_name: Optional[str] = None,
         address: Optional[str] = None,
@@ -242,9 +242,9 @@ def create_metadata_submission_tool(state_holder: dict):
         search_methods_used: Optional[list[str]] = None,
     ) -> dict:
         """
-        Submit ALL metadata you found for this receipt.
+        Submit ALL place data you found for this receipt.
 
-        Call this when you've found metadata (or determined what can't be
+        Call this when you've found place data (or determined what can't be
         found).
         This ends the workflow.
 
@@ -255,7 +255,7 @@ def create_metadata_submission_tool(state_holder: dict):
             phone_number: Phone number (or None if not found)
             confidence: Overall confidence (0.0 to 1.0)
             field_confidence: Confidence for each field
-            reasoning: How you found the metadata
+            reasoning: How you found the place data
             sources: Source for each field (receipt_content,
                 google_places, similar_receipts)
             search_methods_used: Methods you used (phone, address, text, etc.)
@@ -292,9 +292,9 @@ def create_metadata_submission_tool(state_holder: dict):
             "found": len(fields_found) > 0,
         }
 
-        state_holder["metadata_result"] = result
+        state_holder["place_result"] = result
         logger.info(
-            f"Metadata submitted: {len(fields_found)} fields found "
+            f"Place data submitted: {len(fields_found)} fields found "
             f"(place_id={'✓' if place_id else '✗'}, "
             f"merchant_name={'✓' if merchant_name else '✗'}, "
             f"address={'✓' if address else '✗'}, "
@@ -303,11 +303,11 @@ def create_metadata_submission_tool(state_holder: dict):
 
         return {
             "status": "submitted",
-            "message": f"Metadata submitted: {len(fields_found)} fields found",
+            "message": f"Place data submitted: {len(fields_found)} fields found",
             "result": result,
         }
 
-    return submit_metadata
+    return submit_place
 
 
 # ======================================================================
@@ -353,7 +353,7 @@ def create_receipt_place_finder_graph(
     )
 
     # Add metadata submission tool
-    submit_tool = create_metadata_submission_tool(state_holder)
+    submit_tool = create_place_submission_tool(state_holder)
     tools.append(submit_tool)
 
     # Create LLM with tools bound using shared utility
@@ -373,7 +373,7 @@ def create_receipt_place_finder_graph(
     def should_continue(state: ReceiptPlaceFinderState) -> str:
         """Check if we should continue or end."""
         # Check if metadata was submitted
-        if state_holder.get("metadata_result") is not None:
+        if state_holder.get("place_result") is not None:
             return "end"
 
         # Check last message for tool calls
@@ -501,7 +501,7 @@ async def run_receipt_place_finder(
         line_embeddings=line_embeddings,
         word_embeddings=word_embeddings,
     )
-    state_holder["metadata_result"] = None
+    state_holder["place_result"] = None
 
     # Create initial state
     initial_state = ReceiptPlaceFinderState(
@@ -544,7 +544,7 @@ async def run_receipt_place_finder(
         await graph.ainvoke(initial_state, config=config)
 
         # Get result from state holder
-        result = state_holder.get("metadata_result")
+        result = state_holder.get("place_result")
 
         if result:
             logger.info(

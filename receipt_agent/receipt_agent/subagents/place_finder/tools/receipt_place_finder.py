@@ -197,7 +197,7 @@ class ReceiptRecord:
 
 
 @dataclass
-class MetadataMatch:
+class PlaceMatch:
     """
     Result of finding metadata for a receipt.
 
@@ -241,7 +241,7 @@ class FinderResult:
         total_found_partial: Number with some fields found
         total_not_found: Number with no fields found
         total_errors: Number with errors
-        matches: List of MetadataMatch results
+        matches: List of PlaceMatch results
         field_counts: Count of each field found
     """
 
@@ -250,7 +250,7 @@ class FinderResult:
     total_found_partial: int = 0
     total_not_found: int = 0
     total_errors: int = 0
-    matches: list[MetadataMatch] = field(default_factory=list)
+    matches: list[PlaceMatch] = field(default_factory=list)
     field_counts: dict[str, int] = field(
         default_factory=lambda: defaultdict(int)
     )
@@ -348,7 +348,7 @@ class ReceiptPlaceFinder:
         self._agent_graph: Optional[Any] = None
         self._agent_state_holder: Optional[dict] = None
 
-    def load_receipts_with_missing_metadata(self) -> int:
+    def load_receipts_with_missing_place_data(self) -> int:
         """
         Load all receipt place data from DynamoDB that have missing fields.
 
@@ -466,7 +466,7 @@ class ReceiptPlaceFinder:
 
         # Load receipts if not already loaded
         if not self._receipts_with_missing_metadata:
-            self.load_receipts_with_missing_metadata()
+            self.load_receipts_with_missing_place_data()
 
         # Initialize agent graph if needed
         if self._agent_graph is None:
@@ -565,8 +565,8 @@ class ReceiptPlaceFinder:
                     # Fall through to record match.error / total_errors
                     break
 
-            # Convert agent result to MetadataMatch
-            match = MetadataMatch(receipt=receipt)
+            # Convert agent result to PlaceMatch
+            match = PlaceMatch(receipt=receipt)
 
             if agent_result and agent_result.get("found"):
                 match.place_id = agent_result.get("place_id")
@@ -915,7 +915,7 @@ class ReceiptPlaceFinder:
         return result
 
     async def _create_receipt_place_from_match(
-        self, match: MetadataMatch
+        self, match: PlaceMatch
     ) -> None:
         """
         Create a ReceiptPlace entity from matched metadata and API data.
@@ -924,7 +924,7 @@ class ReceiptPlaceFinder:
         ratings, business status) and creates a ReceiptPlace entity.
 
         Args:
-            match: MetadataMatch with found metadata
+            match: PlaceMatch with found place data
 
         Raises:
             Exception: If places API fails or ReceiptPlace creation fails

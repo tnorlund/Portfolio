@@ -1,7 +1,7 @@
 """
-DynamoDB tools for receipt metadata operations.
+DynamoDB tools for receipt place operations.
 
-These tools enable the agent to read receipt data and metadata
+These tools enable the agent to read receipt data and place info
 from DynamoDB for validation purposes.
 """
 
@@ -14,8 +14,8 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
-class GetReceiptMetadataInput(BaseModel):
-    """Input schema for get_receipt_metadata tool."""
+class GetReceiptPlaceInput(BaseModel):
+    """Input schema for get_receipt_place tool."""
 
     image_id: str = Field(description="UUID of the receipt image")
     receipt_id: int = Field(description="Receipt ID within the image")
@@ -40,8 +40,8 @@ class GetReceiptsByMerchantInput(BaseModel):
     )
 
 
-@tool(args_schema=GetReceiptMetadataInput)
-def get_receipt_metadata(
+@tool(args_schema=GetReceiptPlaceInput)
+def get_receipt_place(
     image_id: str,
     receipt_id: int,
     # Injected at runtime
@@ -108,7 +108,7 @@ def get_receipt_context(
     - Extracted data (addresses, phones, merchant names found)
     - Word-level details if needed for fine-grained validation
 
-    This helps verify if the merchant metadata matches
+    This helps verify if the merchant place data matches
     what's actually on the receipt.
     """
     if _dynamo_client is None:
@@ -201,7 +201,7 @@ def get_receipts_by_merchant(
     - Are addresses consistent?
     - Are phone numbers consistent?
 
-    Returns metadata for each receipt found.
+    Returns place data for each receipt found.
     """
     if _dynamo_client is None:
         return {"error": "DynamoDB client not configured"}
