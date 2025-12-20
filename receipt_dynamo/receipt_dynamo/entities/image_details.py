@@ -9,7 +9,7 @@ from receipt_dynamo.entities.ocr_routing_decision import OCRRoutingDecision
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo.entities.word import Word
@@ -28,7 +28,7 @@ class ImageDetails:
     receipt_words: List[ReceiptWord]
     receipt_letters: List[ReceiptLetter]
     receipt_word_labels: List[ReceiptWordLabel]
-    receipt_metadatas: List[ReceiptMetadata]
+    receipt_places: List[ReceiptPlace]
     ocr_jobs: List[OCRJob]
     ocr_routing_decisions: List[OCRRoutingDecision]
 
@@ -42,6 +42,6 @@ class ImageDetails:
         yield self.receipt_words
         yield self.receipt_letters
         yield self.receipt_word_labels
-        yield self.receipt_metadatas
+        yield self.receipt_places
         yield self.ocr_jobs
         yield self.ocr_routing_decisions

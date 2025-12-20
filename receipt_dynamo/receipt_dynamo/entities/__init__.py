@@ -101,7 +101,10 @@ from receipt_dynamo.entities.receipt_metadata import (
     ReceiptMetadata,
     item_to_receipt_metadata,
 )
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_place import (
+    ReceiptPlace,
+    item_to_receipt_place,
+)
 from receipt_dynamo.entities.receipt_section import (
     ReceiptSection,
     item_to_receipt_section,
@@ -229,6 +232,7 @@ __all__ = [
     "item_to_receipt_line",
     "item_to_receipt_line_item_analysis",
     "item_to_receipt_metadata",
+    "item_to_receipt_place",
     "item_to_receipt_section",
     "item_to_receipt_structure_analysis",
     "item_to_receipt_validation_category",

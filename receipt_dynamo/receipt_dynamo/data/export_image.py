@@ -55,7 +55,7 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
     receipt_words = details.receipt_words
     receipt_letters = details.receipt_letters
     receipt_word_labels = details.receipt_word_labels
-    receipt_metadatas = details.receipt_metadatas
+    receipt_places = details.receipt_places
     ocr_jobs = details.ocr_jobs
     ocr_routing_decisions = details.ocr_routing_decisions
 
@@ -73,7 +73,7 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         "receipt_words": [asdict(word) for word in receipt_words],
         "receipt_letters": [asdict(letter) for letter in receipt_letters],
         "receipt_word_labels": [asdict(label) for label in receipt_word_labels],
-        "receipt_metadatas": [asdict(metadata) for metadata in receipt_metadatas],
+        "receipt_places": [asdict(place) for place in receipt_places],
         "ocr_jobs": [asdict(job) for job in ocr_jobs],
         "ocr_routing_decisions": [
             asdict(decision) for decision in ocr_routing_decisions
