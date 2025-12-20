@@ -479,13 +479,13 @@ async def process_place_id_batch(
                     receipt_id = update.get("receipt_id")
 
                     try:
-                        metadata = dynamo_client.get_receipt_metadata(
+                        place = dynamo_client.get_receipt_place(
                             image_id, receipt_id
                         )
 
-                        if not metadata:
+                        if not place:
                             logger.warning(
-                                f"Metadata not found for {image_id}#{receipt_id}"
+                                f"Place not found for {image_id}#{receipt_id}"
                             )
                             updates_failed += 1
                             continue
@@ -495,39 +495,39 @@ async def process_place_id_batch(
                         # Currently updating canonical fields for backward compatibility,
                         # but the goal is to remove canonical fields entirely.
                         # The harmonizer determines canonical values for the place_id group
-                        # These should be written to base fields (merchant_name, address, phone_number)
+                        # These should be written to base fields (merchant_name, formatted_address, phone_number)
                         # instead of canonical fields.
                         updated_fields = []
                         if (
                             canonical_merchant_name
-                            and metadata.canonical_merchant_name
+                            and place.canonical_merchant_name
                             != canonical_merchant_name
                         ):
-                            metadata.canonical_merchant_name = (
+                            place.canonical_merchant_name = (
                                 canonical_merchant_name
                             )
                             updated_fields.append("canonical_merchant_name")
 
                         sanitized_address = sanitize_canonical_address(
-                            canonical_address, metadata.canonical_address
+                            canonical_address, place.canonical_address
                         )
                         if (
                             sanitized_address
-                            and metadata.canonical_address != sanitized_address
+                            and place.canonical_address != sanitized_address
                         ):
-                            metadata.canonical_address = sanitized_address
+                            place.canonical_address = sanitized_address
                             updated_fields.append("canonical_address")
 
                         if (
                             canonical_phone
-                            and metadata.canonical_phone_number
+                            and place.canonical_phone_number
                             != canonical_phone
                         ):
-                            metadata.canonical_phone_number = canonical_phone
+                            place.canonical_phone_number = canonical_phone
                             updated_fields.append("canonical_phone_number")
 
                         if updated_fields:
-                            dynamo_client.update_receipt_metadata(metadata)
+                            dynamo_client.update_receipt_place(place)
                             updates_applied += 1
                             logger.debug(
                                 f"Updated {image_id[:8]}...#{receipt_id}: "
@@ -555,13 +555,13 @@ async def process_place_id_batch(
 
                 for receipt in group.receipts:
                     try:
-                        metadata = dynamo_client.get_receipt_metadata(
+                        place = dynamo_client.get_receipt_place(
                             receipt.image_id, receipt.receipt_id
                         )
 
-                        if not metadata:
+                        if not place:
                             logger.warning(
-                                f"Metadata not found for {receipt.image_id}#{receipt.receipt_id}"
+                                f"Place not found for {receipt.image_id}#{receipt.receipt_id}"
                             )
                             updates_failed += 1
                             continue
@@ -570,31 +570,31 @@ async def process_place_id_batch(
                         updated_fields = []
                         if (
                             canonical_merchant_name
-                            and metadata.merchant_name
+                            and place.merchant_name
                             != canonical_merchant_name
                         ):
-                            metadata.merchant_name = canonical_merchant_name
+                            place.merchant_name = canonical_merchant_name
                             updated_fields.append("merchant_name")
 
                         sanitized_address = sanitize_canonical_address(
-                            canonical_address, metadata.address
+                            canonical_address, place.formatted_address
                         )
                         if (
                             sanitized_address
-                            and metadata.address != sanitized_address
+                            and place.formatted_address != sanitized_address
                         ):
-                            metadata.address = sanitized_address
-                            updated_fields.append("address")
+                            place.formatted_address = sanitized_address
+                            updated_fields.append("formatted_address")
 
                         if (
                             canonical_phone
-                            and metadata.phone_number != canonical_phone
+                            and place.phone_number != canonical_phone
                         ):
-                            metadata.phone_number = canonical_phone
+                            place.phone_number = canonical_phone
                             updated_fields.append("phone_number")
 
                         if updated_fields:
-                            dynamo_client.update_receipt_metadata(metadata)
+                            dynamo_client.update_receipt_place(place)
                             updates_applied += 1
                             logger.debug(
                                 f"Updated {receipt.image_id[:8]}...#{receipt.receipt_id}: "

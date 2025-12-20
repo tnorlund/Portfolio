@@ -25,15 +25,15 @@ from ..fixtures.expected_messages import (
 )
 
 
-class TestMetadataMessageContract:
-    """Verify RECEIPT_METADATA message schema."""
+class TestPlaceMessageContract:
+    """Verify RECEIPT_PLACE message schema."""
 
-    def test_metadata_message_required_fields(self):
+    def test_place_message_required_fields(self):
         """All required fields present for compaction handler."""
         msg = StreamMessage(
-            entity_type="RECEIPT_METADATA",
+            entity_type="RECEIPT_PLACE",
             entity_data={
-                "entity_type": "RECEIPT_METADATA",
+                "entity_type": "RECEIPT_PLACE",
                 "image_id": "7e2bd911-7afb-4e0a-84de-57f51ce4daff",
                 "receipt_id": 1,
             },
@@ -70,7 +70,7 @@ class TestMetadataMessageContract:
         assert "image_id" in msg_dict["entity_data"]
         assert "receipt_id" in msg_dict["entity_data"]
 
-    def test_metadata_changes_structure(self):
+    def test_place_changes_structure(self):
         """Changes dict has old/new structure."""
         changes = {
             "canonical_merchant_name": FieldChange(
@@ -92,7 +92,7 @@ class TestMetadataMessageContract:
         """Message is JSON serializable."""
         msg_dict = {
             "source": "dynamodb_stream",
-            "entity_type": "RECEIPT_METADATA",
+            "entity_type": "RECEIPT_PLACE",
             "entity_data": {"image_id": "abc-123", "receipt_id": 1},
             "changes": {"merchant_name": {"old": "A", "new": "B"}},
             "event_name": "MODIFY",
@@ -107,7 +107,7 @@ class TestMetadataMessageContract:
 
         # Should be deserializable
         parsed = json.loads(json_str)
-        assert parsed["entity_type"] == "RECEIPT_METADATA"
+        assert parsed["entity_type"] == "RECEIPT_PLACE"
 
 
 class TestWordLabelMessageContract:
@@ -253,9 +253,9 @@ class TestCompactionRunMessageContract:
 class TestCollectionTargeting:
     """Test collection targeting rules."""
 
-    def test_metadata_targets_both_collections(self):
-        """Metadata changes must target both collections."""
-        targeting = COLLECTION_TARGETING_RULES["RECEIPT_METADATA"]
+    def test_place_targets_both_collections(self):
+        """Place changes must target both collections."""
+        targeting = COLLECTION_TARGETING_RULES["RECEIPT_PLACE"]
 
         assert "lines" in targeting
         assert "words" in targeting

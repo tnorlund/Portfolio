@@ -88,16 +88,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 cache_key = f"{label.image_id}#{label.receipt_id}"
                 if cache_key not in metadata_cache:
                     try:
-                        metadata = dynamo.get_receipt_metadata(
+                        place = dynamo.get_receipt_place(
                             image_id=label.image_id,
                             receipt_id=label.receipt_id,
                         )
                         metadata_cache[cache_key] = (
-                            metadata.merchant_name if metadata else "Unknown"
+                            place.merchant_name if place else "Unknown"
                         )
                     except Exception as e:
                         logger.warning(
-                            f"Failed to get metadata for {cache_key}: {e}"
+                            f"Failed to get place for {cache_key}: {e}"
                         )
                         metadata_cache[cache_key] = "Unknown"
 

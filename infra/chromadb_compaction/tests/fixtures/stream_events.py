@@ -3,16 +3,16 @@
 import copy
 from datetime import datetime
 
-from receipt_dynamo.entities import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.compaction_run import CompactionRun
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 # ============================================================================
-# RECEIPT_METADATA EVENTS
+# RECEIPT_PLACE EVENTS
 # ============================================================================
 
-old_metadata = ReceiptMetadata(
-    address="30740 Russell Ranch Rd, Westlake Village, CA 91362, USA",
+old_place = ReceiptPlace(
+    formatted_address="30740 Russell Ranch Rd, Westlake Village, CA 91362, USA",
     reasoning="Target store at Russell Ranch location with matching phone number.",
     merchant_name="Target",
     canonical_phone_number="818-661-2631",
@@ -30,10 +30,10 @@ old_metadata = ReceiptMetadata(
     timestamp=datetime.fromisoformat("2025-08-08T03:53:53.200541+00:00"),
 )
 
-new_metadata = copy.deepcopy(old_metadata)
-new_metadata.canonical_merchant_name = "Target"
+new_place = copy.deepcopy(old_place)
+new_place.canonical_merchant_name = "Target"
 
-TARGET_METADATA_UPDATE_EVENT = {
+TARGET_PLACE_UPDATE_EVENT = {
     "Records": [
         {
             "eventID": "16a9dd5e2f0213450b6df980241160f0",
@@ -44,11 +44,11 @@ TARGET_METADATA_UPDATE_EVENT = {
             "dynamodb": {
                 "ApproximateCreationDateTime": 1755754670.0,
                 "Keys": {
-                    "SK": {"S": "RECEIPT#00001#METADATA"},
+                    "SK": {"S": "RECEIPT#00001#PLACE"},
                     "PK": {"S": "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff"},
                 },
-                "NewImage": new_metadata.to_item(),
-                "OldImage": old_metadata.to_item(),
+                "NewImage": new_place.to_item(),
+                "OldImage": old_place.to_item(),
                 "SequenceNumber": "977119800000398701107540001",
                 "SizeBytes": 1786,
                 "StreamViewType": "NEW_AND_OLD_IMAGES",
@@ -61,10 +61,13 @@ TARGET_METADATA_UPDATE_EVENT = {
     ]
 }
 
+# Keep old name for backward compatibility
+TARGET_METADATA_UPDATE_EVENT = TARGET_PLACE_UPDATE_EVENT
+
 
 def get_target_event_variation(canonical_merchant_name: str = "Target"):
     """Get a variation of the Target event with different canonical_merchant_name."""
-    event = copy.deepcopy(TARGET_METADATA_UPDATE_EVENT)
+    event = copy.deepcopy(TARGET_PLACE_UPDATE_EVENT)
     if "NewImage" in event["Records"][0]["dynamodb"]:
         event["Records"][0]["dynamodb"]["NewImage"]["canonical_merchant_name"][
             "S"
