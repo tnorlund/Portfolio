@@ -22,7 +22,16 @@ class ReceiptDetails:
     labels: List[ReceiptWordLabel]
     place: Optional["ReceiptPlace"] = None
 
-    def __iter__(self) -> Generator[List | Receipt | None, None, None]:
+    def __iter__(self) -> Generator[
+        Receipt
+        | List[ReceiptLine]
+        | List[ReceiptWord]
+        | List[ReceiptLetter]
+        | List[ReceiptWordLabel]
+        | Optional["ReceiptPlace"],
+        None,
+        None,
+    ]:
         yield self.receipt
         yield self.lines
         yield self.words
