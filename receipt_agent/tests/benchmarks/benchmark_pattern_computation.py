@@ -134,8 +134,6 @@ def load_receipt_data(
                     words = dynamo_client.list_receipt_words_from_receipt(
                         metadata.image_id, metadata.receipt_id
                     )
-                    if isinstance(words, tuple):
-                        words = words[0]  # Handle pagination
 
                     # Fetch labels for this receipt
                     labels, _ = (
@@ -351,7 +349,7 @@ if skip_batching:
 
 # Run computation
 start = time.perf_counter()
-result = compute_merchant_patterns(other_receipt_data, "{merchant_name}")
+result = compute_merchant_patterns(other_receipt_data, {repr(merchant_name)})
 elapsed = time.perf_counter() - start
 
 # Save only the elapsed time (result is not picklable due to lambda functions)

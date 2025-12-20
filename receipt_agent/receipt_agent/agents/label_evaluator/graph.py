@@ -467,6 +467,15 @@ def create_label_evaluator_graph(
                 new_labels.append(label)
             return {"review_results": [], "new_labels": new_labels}
 
+        # Skip LLM review if LLM is not available
+        if _llm is None:
+            logger.warning("LLM not available, using evaluator results directly")
+            new_labels = []
+            for issue in state.issues_found:
+                label = _create_evaluation_label(issue, None)
+                new_labels.append(label)
+            return {"review_results": [], "new_labels": new_labels}
+
         merchant_name = "Unknown"
         if state.metadata:
             merchant_name = (
