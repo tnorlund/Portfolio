@@ -253,7 +253,6 @@ infra/backups/
 logs/
 
 # Development scripts (local-only, not for version control)
-dev.*.py
 dev_*.py
 *_plan.md
 *_plan.html

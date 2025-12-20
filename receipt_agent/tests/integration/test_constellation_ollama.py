@@ -96,7 +96,7 @@ async def run_test():
 
         logger.info("Creating label evaluator graph with Ollama Cloud LLM...")
         logger.info(f"  Ollama base URL: {settings.ollama_base_url}")
-        logger.info(f"  Ollama model: gpt-oss:20b-cloud")
+        logger.info("  Ollama model: gpt-oss:20b-cloud")
 
         # Get API key from settings or Pulumi secrets
         ollama_api_key = settings.ollama_api_key.get_secret_value()
@@ -190,7 +190,7 @@ async def run_test():
         # Check patterns computed (from result summary)
         merchant_receipts = result.get("merchant_receipts_analyzed")
         if merchant_receipts:
-            print(f"\n--- Pattern Statistics ---")
+            print("\n--- Pattern Statistics ---")
             print(f"  Merchant receipts analyzed: {merchant_receipts}")
 
         print("\n" + "=" * 80)

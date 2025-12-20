@@ -208,7 +208,7 @@ def run_pattern_computation(
     if skip_batching:
         import receipt_agent.agents.label_evaluator.helpers as helpers
 
-        def mock_batch_classification(*args, **kwargs):  # type: ignore
+        def mock_batch_classification(*_args, **_kwargs):  # type: ignore
             """Skip LLM calls by returning empty batches."""
             return {
                 "HAPPY": [],
@@ -395,7 +395,7 @@ with open("{output_dir}/_result_{timestamp}.json", "w") as f:
 
     # Load result timing
     result_file = output_dir / f"_result_{timestamp}.json"
-    with open(result_file, "r") as f:
+    with open(result_file) as f:
         result_data = json.load(f)
         elapsed_time = result_data["elapsed"]
 
@@ -538,7 +538,7 @@ def main() -> None:
         print(f"Receipts profiled: {len(other_receipt_data)}")
         print(f"Pattern computation time: {actual_elapsed:.2f}s")
         print(f"Skip batching: {args.skip_batching}")
-        print(f"\nOutputs:")
+        print("\nOutputs:")
         print(f"  HTML report: {html_path}")
         print(f"  Metrics JSON: {metrics_path}")
         print("\nNext steps:")
