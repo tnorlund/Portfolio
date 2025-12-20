@@ -322,7 +322,7 @@ class ReviewResult:
 class OtherReceiptData:
     """Data fetched from another receipt of the same merchant."""
 
-    place: ReceiptPlace
+    place: Optional[ReceiptPlace]
     words: List[ReceiptWord]
     labels: List[ReceiptWordLabel]
 

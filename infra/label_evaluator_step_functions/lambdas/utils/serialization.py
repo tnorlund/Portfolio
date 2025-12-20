@@ -8,8 +8,8 @@ Deserialization parses datetime strings and passes kwargs to constructors.
 """
 
 from dataclasses import asdict
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 from receipt_dynamo.entities import (
     ReceiptPlace,
@@ -18,7 +18,7 @@ from receipt_dynamo.entities import (
 )
 
 
-def serialize_word(word: ReceiptWord) -> Dict[str, Any]:
+def serialize_word(word: ReceiptWord) -> dict[str, Any]:
     """Serialize ReceiptWord for S3 storage using asdict."""
     data = asdict(word)
     # Convert embedding_status enum to string if present
@@ -27,19 +27,21 @@ def serialize_word(word: ReceiptWord) -> Dict[str, Any]:
     return data
 
 
-def deserialize_word(data: Dict[str, Any]) -> ReceiptWord:
+def deserialize_word(data: dict[str, Any]) -> ReceiptWord:
     """Deserialize ReceiptWord from S3 data."""
     return ReceiptWord(**data)
 
 
-def serialize_label(label: ReceiptWordLabel) -> Dict[str, Any]:
+def serialize_label(label: ReceiptWordLabel) -> dict[str, Any]:
     """Serialize ReceiptWordLabel for S3 storage using asdict."""
     data = asdict(label)
-    # timestamp_added is already converted to string by asdict
+    # Convert timestamp_added to ISO string for JSON serialization
+    if data.get("timestamp_added") and hasattr(data["timestamp_added"], "isoformat"):
+        data["timestamp_added"] = data["timestamp_added"].isoformat()
     return data
 
 
-def deserialize_label(data: Dict[str, Any]) -> ReceiptWordLabel:
+def deserialize_label(data: dict[str, Any]) -> ReceiptWordLabel:
     """Deserialize ReceiptWordLabel from S3 data."""
     # Parse timestamp string back to datetime
     if isinstance(data.get("timestamp_added"), str):
@@ -52,7 +54,7 @@ def deserialize_label(data: Dict[str, Any]) -> ReceiptWordLabel:
     return ReceiptWordLabel(**data)
 
 
-def serialize_place(place: ReceiptPlace) -> Dict[str, Any]:
+def serialize_place(place: ReceiptPlace) -> dict[str, Any]:
     """Serialize ReceiptPlace for S3 storage using asdict."""
     data = asdict(place)
     # Convert datetime to ISO string
@@ -61,7 +63,7 @@ def serialize_place(place: ReceiptPlace) -> Dict[str, Any]:
     return data
 
 
-def deserialize_place(data: Dict[str, Any]) -> Optional[ReceiptPlace]:
+def deserialize_place(data: dict[str, Any]) -> Optional[ReceiptPlace]:
     """Deserialize ReceiptPlace from S3 data."""
     if not data:
         return None
@@ -75,36 +77,36 @@ def deserialize_place(data: Dict[str, Any]) -> Optional[ReceiptPlace]:
                 ts = ts.replace("+00:00", "")
             data["timestamp"] = datetime.fromisoformat(ts)
         except ValueError:
-            data["timestamp"] = datetime.now()
+            data["timestamp"] = datetime.now(timezone.utc)
     elif data.get("timestamp") is None:
-        data["timestamp"] = datetime.now()
+        data["timestamp"] = datetime.now(timezone.utc)
 
     return ReceiptPlace(**data)
 
 
-def serialize_words(words: List[ReceiptWord]) -> List[Dict[str, Any]]:
+def serialize_words(words: list[ReceiptWord]) -> list[dict[str, Any]]:
     """Serialize a list of ReceiptWord objects."""
     return [serialize_word(w) for w in words]
 
 
-def deserialize_words(data: List[Dict[str, Any]]) -> List[ReceiptWord]:
+def deserialize_words(data: list[dict[str, Any]]) -> list[ReceiptWord]:
     """Deserialize a list of ReceiptWord objects."""
     return [deserialize_word(d) for d in data]
 
 
-def serialize_labels(labels: List[ReceiptWordLabel]) -> List[Dict[str, Any]]:
+def serialize_labels(labels: list[ReceiptWordLabel]) -> list[dict[str, Any]]:
     """Serialize a list of ReceiptWordLabel objects."""
-    return [serialize_label(l) for l in labels]
+    return [serialize_label(label) for label in labels]
 
 
 def deserialize_labels(
-    data: List[Dict[str, Any]]
-) -> List[ReceiptWordLabel]:
+    data: list[dict[str, Any]]
+) -> list[ReceiptWordLabel]:
     """Deserialize a list of ReceiptWordLabel objects."""
     return [deserialize_label(d) for d in data]
 
 
-def deserialize_patterns(data: Dict[str, Any]):
+def deserialize_patterns(data: dict[str, Any]):
     """
     Deserialize pre-computed MerchantPatterns from S3.
 
@@ -126,10 +128,10 @@ def deserialize_patterns(data: Dict[str, Any]):
 
     p = data["patterns"]
 
-    # Reconstruct label_positions as Dict[str, List[float]]
+    # Reconstruct label_positions as dict[str, list[float]]
     # We store stats but need to create synthetic positions for compatibility
     # For evaluation, we only need mean_y and std_y, so store those
-    label_positions: Dict[str, List[float]] = {}
+    label_positions: dict[str, list[float]] = {}
     label_position_stats = p.get("label_positions", {})
     for label, stats in label_position_stats.items():
         # Store the mean as a single-element list (patterns uses mean internally)
@@ -137,7 +139,7 @@ def deserialize_patterns(data: Dict[str, Any]):
         label_positions[label] = [stats["mean_y"]]
 
     # Reconstruct label_pair_geometry
-    label_pair_geometry: Dict[tuple, LabelPairGeometry] = {}
+    label_pair_geometry: dict[tuple, LabelPairGeometry] = {}
     for geom_data in p.get("label_pair_geometry", []):
         pair_key = tuple(geom_data["labels"])
         geom = LabelPairGeometry(
@@ -154,7 +156,7 @@ def deserialize_patterns(data: Dict[str, Any]):
         label_pair_geometry[pair_key] = geom
 
     # Reconstruct constellation_geometry
-    constellation_geometry: Dict[tuple, ConstellationGeometry] = {}
+    constellation_geometry: dict[tuple, ConstellationGeometry] = {}
     for cg_data in p.get("constellation_geometry", []):
         labels_key = tuple(cg_data["labels"])
         relative_positions = {}

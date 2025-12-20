@@ -8,7 +8,7 @@ import json
 import logging
 import os
 from collections import Counter
-from typing import Any, Dict, List
+from typing import Any
 
 import boto3
 
@@ -18,7 +18,7 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Aggregate all evaluation results and generate summary report.
 
@@ -57,7 +57,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     logger.info(f"Aggregating results for execution {execution_id}")
 
     # Flatten nested results from distributed map
-    all_results: List[Dict[str, Any]] = []
+    all_results: list[dict[str, Any]] = []
     for batch_results in process_results:
         if isinstance(batch_results, list):
             all_results.extend(batch_results)
@@ -74,7 +74,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     )
 
     # Aggregate issues
-    all_issues: List[Dict[str, Any]] = []
+    all_issues: list[dict[str, Any]] = []
     issue_type_counter: Counter = Counter()
     status_counter: Counter = Counter()
 
@@ -104,6 +104,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 # Fall back to summary in result
                 issues_found = result.get("issues_found", 0)
                 issue_type_counter["unknown"] += issues_found
+                status_counter["unknown"] += issues_found
 
     total_issues = sum(issue_type_counter.values())
 
@@ -148,23 +149,31 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     # Upload summary report to S3
     report_key = f"reports/{execution_id}/summary.json"
-    s3.put_object(
-        Bucket=batch_bucket,
-        Key=report_key,
-        Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
-        ContentType="application/json",
-    )
-
-    logger.info(f"Uploaded summary report to s3://{batch_bucket}/{report_key}")
+    try:
+        s3.put_object(
+            Bucket=batch_bucket,
+            Key=report_key,
+            Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
+            ContentType="application/json",
+        )
+        logger.info(f"Uploaded summary report to s3://{batch_bucket}/{report_key}")
+    except Exception as e:
+        logger.error(f"Failed to upload summary report to {report_key}: {e}")
+        raise
 
     # Also upload issues-only report for easy analysis
     issues_key = f"reports/{execution_id}/issues.json"
-    s3.put_object(
-        Bucket=batch_bucket,
-        Key=issues_key,
-        Body=json.dumps(all_issues, indent=2, default=str).encode("utf-8"),
-        ContentType="application/json",
-    )
+    try:
+        s3.put_object(
+            Bucket=batch_bucket,
+            Key=issues_key,
+            Body=json.dumps(all_issues, indent=2, default=str).encode("utf-8"),
+            ContentType="application/json",
+        )
+        logger.info(f"Uploaded issues report to s3://{batch_bucket}/{issues_key}")
+    except Exception as e:
+        logger.error(f"Failed to upload issues report to {issues_key}: {e}")
+        raise
 
     return {
         "execution_id": execution_id,

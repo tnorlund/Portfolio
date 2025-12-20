@@ -7,7 +7,7 @@ and creates a manifest file in S3 for the distributed map to process.
 import json
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Any
 
 import boto3
 
@@ -17,7 +17,7 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     List receipts by merchant name and create processing manifest.
 
@@ -96,7 +96,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     logger.info(f"Found {len(receipts)} receipts for merchant '{merchant_name}'")
 
     # Create batches for distributed map
-    batches: List[List[Dict[str, Any]]] = []
+    batches: list[list[dict[str, Any]]] = []
     for i in range(0, len(receipts), batch_size):
         batches.append(receipts[i : i + batch_size])
 

@@ -10,6 +10,7 @@ from utils.serialization import (
     serialize_place,
     serialize_word,
 )
+from utils.tracing import flush_langsmith_traces
 
 __all__ = [
     "emf_metrics",
@@ -20,4 +21,5 @@ __all__ = [
     "serialize_place",
     "deserialize_place",
     "deserialize_patterns",
+    "flush_langsmith_traces",
 ]

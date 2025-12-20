@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 import boto3
 
@@ -22,7 +22,7 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Compute merchant patterns from training receipts.
 
@@ -74,7 +74,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Load training receipts
     from receipt_agent.agents.label_evaluator.state import OtherReceiptData
 
-    other_receipt_data: List[OtherReceiptData] = []
+    other_receipt_data: list[OtherReceiptData] = []
     last_key = None
 
     while len(other_receipt_data) < max_training_receipts:
@@ -191,7 +191,7 @@ def _hash_merchant(merchant_name: str) -> str:
     return hashlib.md5(merchant_name.encode()).hexdigest()[:12]
 
 
-def _serialize_patterns(patterns, merchant_name: str) -> Dict[str, Any]:
+def _serialize_patterns(patterns, merchant_name: str) -> dict[str, Any]:
     """Serialize MerchantPatterns to JSON-safe dict."""
     import statistics
 

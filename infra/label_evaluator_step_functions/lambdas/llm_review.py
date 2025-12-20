@@ -19,29 +19,12 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import boto3
 
-# LangSmith tracing
-try:
-    from langsmith.run_trees import get_cached_client as get_langsmith_client
-
-    HAS_LANGSMITH = True
-except ImportError:
-    HAS_LANGSMITH = False
-    get_langsmith_client = None
-
-
-def flush_langsmith_traces():
-    """Flush pending LangSmith traces before Lambda returns."""
-    if HAS_LANGSMITH and get_langsmith_client:
-        try:
-            client = get_langsmith_client()
-            client.flush()
-            logger.info("LangSmith traces flushed")
-        except Exception as e:
-            logger.warning(f"Failed to flush LangSmith traces: {e}")
+# Import shared tracing utility
+from utils.tracing import flush_langsmith_traces
 
 
 logger = logging.getLogger()
@@ -95,7 +78,7 @@ def download_chromadb_snapshot(bucket: str, collection: str, cache_path: str) ->
     return cache_path
 
 
-def load_json_from_s3(bucket: str, key: str) -> Dict[str, Any]:
+def load_json_from_s3(bucket: str, key: str) -> dict[str, Any]:
     """Load JSON data from S3."""
     response = s3.get_object(Bucket=bucket, Key=key)
     return json.loads(response["Body"].read().decode("utf-8"))
@@ -111,7 +94,7 @@ def upload_json_to_s3(bucket: str, key: str, data: Any) -> None:
     )
 
 
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Review flagged issues with LLM.
 
@@ -209,12 +192,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         from collections import Counter
 
         decisions: Counter = Counter()
-        reviewed_issues: List[Dict[str, Any]] = []
+        reviewed_issues: list[dict[str, Any]] = []
 
         for issue in issues:
             try:
                 # Build prompt for LLM review
-                prompt = _build_review_prompt(issue, chroma_client)
+                prompt = _build_review_prompt(issue)
 
                 # Call LLM
                 from langchain_core.messages import HumanMessage
@@ -318,7 +301,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
 
-def _build_review_prompt(issue: Dict[str, Any], chroma_client: Any) -> str:
+def _build_review_prompt(issue: dict[str, Any]) -> str:
     """Build LLM review prompt for an issue."""
     # Core labels definition
     core_labels = """
@@ -370,7 +353,7 @@ Respond with ONLY a JSON object:
     return prompt
 
 
-def _parse_llm_response(response_text: str) -> Dict[str, Any]:
+def _parse_llm_response(response_text: str) -> dict[str, Any]:
     """Parse LLM JSON response."""
     import json
 

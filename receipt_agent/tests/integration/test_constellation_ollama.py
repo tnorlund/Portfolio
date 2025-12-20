@@ -139,7 +139,6 @@ async def run_test():
 
         graph = create_label_evaluator_graph(
             dynamo,
-            llm_provider="ollama",
             llm_model="gpt-oss:20b-cloud",
             ollama_base_url=settings.ollama_base_url,
             ollama_api_key=ollama_api_key,

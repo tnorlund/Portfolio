@@ -57,9 +57,11 @@ from pulumi_aws.sfn import StateMachine, StateMachineLoggingConfigurationArgs
 try:
     from codebuild_docker_image import CodeBuildDockerImage
     from lambda_layer import dynamo_layer
-except ImportError:
-    CodeBuildDockerImage = None  # type: ignore
-    dynamo_layer = None  # type: ignore
+except ImportError as e:
+    raise ImportError(
+        "Required modules 'codebuild_docker_image' and 'lambda_layer' not found. "
+        "Ensure they are available in the Pulumi project."
+    ) from e
 
 # Load secrets from Pulumi config
 config = Config("portfolio")
@@ -232,7 +234,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
         )
 
         # S3 access policy
-        s3_resources = [self.batch_bucket.arn]
         if chromadb_bucket_arn:
             RolePolicy(
                 f"{name}-lambda-s3-policy",

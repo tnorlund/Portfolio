@@ -7,7 +7,7 @@ the serialized data to S3 for the evaluate_labels Lambda to process.
 import json
 import logging
 import os
-from typing import Any, Dict
+from typing import Any
 
 import boto3
 
@@ -17,7 +17,7 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Fetch words and labels for a target receipt.
 
@@ -107,20 +107,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "is_noise": w.is_noise,
         }
 
-    def serialize_label(l):
-        ts = l.timestamp_added
+    def serialize_label(label):
+        ts = label.timestamp_added
         ts_str = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
         return {
-            "image_id": l.image_id,
-            "receipt_id": l.receipt_id,
-            "line_id": l.line_id,
-            "word_id": l.word_id,
-            "label": l.label,
-            "reasoning": l.reasoning,
+            "image_id": label.image_id,
+            "receipt_id": label.receipt_id,
+            "line_id": label.line_id,
+            "word_id": label.word_id,
+            "label": label.label,
+            "reasoning": label.reasoning,
             "timestamp_added": ts_str,
-            "validation_status": l.validation_status,
-            "label_proposed_by": l.label_proposed_by,
-            "label_consolidated_from": l.label_consolidated_from,
+            "validation_status": label.validation_status,
+            "label_proposed_by": label.label_proposed_by,
+            "label_consolidated_from": label.label_consolidated_from,
         }
 
     def serialize_place(p):
@@ -147,7 +147,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         "receipt_id": receipt_id,
         "merchant_name": merchant_name,
         "words": [serialize_word(w) for w in words],
-        "labels": [serialize_label(l) for l in labels],
+        "labels": [serialize_label(label) for label in labels],
         "place": serialize_place(place),
     }
 

@@ -16,30 +16,12 @@ import json
 import logging
 import os
 import time
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import boto3
 
-# LangSmith tracing - flush before Lambda exits
-try:
-    from langsmith.run_trees import get_cached_client as get_langsmith_client
-
-    HAS_LANGSMITH = True
-except ImportError:
-    HAS_LANGSMITH = False
-    get_langsmith_client = None
-
-
-def flush_langsmith_traces():
-    """Flush pending LangSmith traces before Lambda returns."""
-    if HAS_LANGSMITH and get_langsmith_client:
-        try:
-            client = get_langsmith_client()
-            client.flush()
-            logger.info("LangSmith traces flushed")
-        except Exception as e:
-            logger.warning(f"Failed to flush LangSmith traces: {e}")
+# Import shared tracing utility
+from utils.tracing import flush_langsmith_traces
 
 
 logger = logging.getLogger()
@@ -52,7 +34,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 s3 = boto3.client("s3")
 
 
-def load_json_from_s3(bucket: str, key: str) -> Dict[str, Any]:
+def load_json_from_s3(bucket: str, key: str) -> dict[str, Any]:
     """Load JSON data from S3."""
     response = s3.get_object(Bucket=bucket, Key=key)
     return json.loads(response["Body"].read().decode("utf-8"))
@@ -68,52 +50,16 @@ def upload_json_to_s3(bucket: str, key: str, data: Any) -> None:
     )
 
 
-def deserialize_word(data: Dict[str, Any]):
-    """Deserialize a ReceiptWord from JSON using kwargs."""
-    from receipt_dynamo.entities import ReceiptWord
-
-    return ReceiptWord(**data)
-
-
-def deserialize_label(data: Dict[str, Any]):
-    """Deserialize a ReceiptWordLabel from JSON."""
-    from receipt_dynamo.entities import ReceiptWordLabel
-
-    # Parse timestamp string back to datetime
-    if isinstance(data.get("timestamp_added"), str):
-        try:
-            data["timestamp_added"] = datetime.fromisoformat(
-                data["timestamp_added"]
-            )
-        except ValueError:
-            data["timestamp_added"] = None
-
-    return ReceiptWordLabel(**data)
+# Import shared deserialization utilities
+from utils.serialization import (
+    deserialize_label,
+    deserialize_patterns,
+    deserialize_place,
+    deserialize_word,
+)
 
 
-def deserialize_place(data: Optional[Dict[str, Any]]):
-    """Deserialize a ReceiptPlace from JSON."""
-    if not data:
-        return None
-
-    from receipt_dynamo.entities import ReceiptPlace
-
-    # Parse timestamp string back to datetime
-    if isinstance(data.get("timestamp"), str):
-        try:
-            ts = data["timestamp"]
-            if ts.endswith("+00:00"):
-                ts = ts.replace("+00:00", "")
-            data["timestamp"] = datetime.fromisoformat(ts)
-        except ValueError:
-            data["timestamp"] = datetime.now()
-    elif data.get("timestamp") is None:
-        data["timestamp"] = datetime.now()
-
-    return ReceiptPlace(**data)
-
-
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Run compute-only label evaluator with pre-loaded state and patterns.
 
@@ -148,17 +94,24 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     start_time = time.time()
 
+    # Initialize identifiers for error reporting
+    image_id = None
+    receipt_id = None
+
     try:
         # 1. Load target receipt data from S3
         logger.info(f"Loading receipt data from s3://{batch_bucket}/{data_s3_key}")
         target_data = load_json_from_s3(batch_bucket, data_s3_key)
 
-        image_id = target_data["image_id"]
-        receipt_id = target_data["receipt_id"]
+        image_id = target_data.get("image_id")
+        receipt_id = target_data.get("receipt_id")
 
         # Deserialize entities
         words = [deserialize_word(w) for w in target_data.get("words", [])]
-        labels = [deserialize_label(l) for l in target_data.get("labels", [])]
+        labels = [
+            deserialize_label(label_data)
+            for label_data in target_data.get("labels", [])
+        ]
         place = deserialize_place(target_data.get("place"))
 
         logger.info(
@@ -172,8 +125,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             logger.info(
                 f"Loading patterns from s3://{batch_bucket}/{patterns_s3_key}"
             )
-            from utils.serialization import deserialize_patterns
-
             patterns_data = load_json_from_s3(batch_bucket, patterns_s3_key)
             merchant_patterns = deserialize_patterns(patterns_data)
 
@@ -289,8 +240,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return {
             "status": "error",
             "error": str(e),
-            "image_id": event.get("image_id"),
-            "receipt_id": event.get("receipt_id"),
+            "image_id": image_id,
+            "receipt_id": receipt_id,
             "issues_found": 0,
         }
 

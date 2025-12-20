@@ -22,7 +22,7 @@ Usage:
 import json
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 class EmbeddedMetricsFormatter:
@@ -41,10 +41,10 @@ class EmbeddedMetricsFormatter:
 
     def create_metric_log(
         self,
-        metrics: Dict[str, float],
-        dimensions: Optional[Dict[str, str]] = None,
-        properties: Optional[Dict[str, Any]] = None,
-        units: Optional[Dict[str, str]] = None,
+        metrics: dict[str, float],
+        dimensions: Optional[dict[str, str]] = None,
+        properties: Optional[dict[str, Any]] = None,
+        units: Optional[dict[str, str]] = None,
     ) -> str:
         """Create an EMF-formatted log entry.
 
@@ -95,11 +95,11 @@ class EmbeddedMetricsFormatter:
 
     def log_metrics(
         self,
-        metrics: Dict[str, float],
-        dimensions: Optional[Dict[str, str]] = None,
-        properties: Optional[Dict[str, Any]] = None,
-        units: Optional[Dict[str, str]] = None,
-    ):
+        metrics: dict[str, float],
+        dimensions: Optional[dict[str, str]] = None,
+        properties: Optional[dict[str, Any]] = None,
+        units: Optional[dict[str, str]] = None,
+    ) -> None:
         """Log metrics using EMF format to stdout.
 
         Args:
