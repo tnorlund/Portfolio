@@ -18,7 +18,7 @@ Detects labeling errors such as:
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
@@ -480,8 +480,8 @@ def create_label_evaluator_graph(
         if state.place:
             merchant_name = state.place.merchant_name or "Unknown"
 
-        review_results: List[ReviewResult] = []
-        new_labels: List[ReceiptWordLabel] = []
+        review_results: list[ReviewResult] = []
+        new_labels: list[ReceiptWordLabel] = []
 
         for issue in state.issues_found:
             try:

@@ -11,6 +11,9 @@ from typing import TYPE_CHECKING, Any
 
 import boto3
 
+# Use shared serialization utilities (included in Lambda zip)
+from serialization import serialize_label, serialize_place, serialize_word
+
 if TYPE_CHECKING:
     from evaluator_types import FetchReceiptDataOutput
 
@@ -84,65 +87,6 @@ def handler(event: dict[str, Any], _context: Any) -> "FetchReceiptDataOutput":
         f"Fetched {len(words)} words, {len(labels)} labels "
         f"for {image_id}#{receipt_id}"
     )
-
-    # Serialize data
-    from datetime import datetime
-
-    def serialize_word(w):
-        return {
-            "image_id": w.image_id,
-            "receipt_id": w.receipt_id,
-            "line_id": w.line_id,
-            "word_id": w.word_id,
-            "text": w.text,
-            "bounding_box": w.bounding_box,
-            "top_right": w.top_right,
-            "top_left": w.top_left,
-            "bottom_right": w.bottom_right,
-            "bottom_left": w.bottom_left,
-            "angle_degrees": w.angle_degrees,
-            "angle_radians": w.angle_radians,
-            "confidence": w.confidence,
-            "extracted_data": w.extracted_data,
-            "embedding_status": (
-                str(w.embedding_status) if w.embedding_status else None
-            ),
-            "is_noise": w.is_noise,
-        }
-
-    def serialize_label(label):
-        ts = label.timestamp_added
-        ts_str = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
-        return {
-            "image_id": label.image_id,
-            "receipt_id": label.receipt_id,
-            "line_id": label.line_id,
-            "word_id": label.word_id,
-            "label": label.label,
-            "reasoning": label.reasoning,
-            "timestamp_added": ts_str,
-            "validation_status": label.validation_status,
-            "label_proposed_by": label.label_proposed_by,
-            "label_consolidated_from": label.label_consolidated_from,
-        }
-
-    def serialize_place(p):
-        """Serialize ReceiptPlace to JSON-compatible dict."""
-        if not p:
-            return None
-        return {
-            "image_id": p.image_id,
-            "receipt_id": p.receipt_id,
-            "merchant_name": p.merchant_name,
-            "place_id": p.place_id,
-            "formatted_address": p.formatted_address,
-            "short_address": p.short_address,
-            "latitude": p.latitude,
-            "longitude": p.longitude,
-            "phone_number": p.phone_number,
-            "validation_status": p.validation_status,
-            "confidence": p.confidence,
-        }
 
     # Create data payload
     data = {

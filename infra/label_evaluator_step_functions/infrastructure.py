@@ -297,6 +297,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         # ============================================================
         CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
         HANDLERS_DIR = os.path.join(CURRENT_DIR, "handlers")
+        UTILS_DIR = os.path.join(CURRENT_DIR, "lambdas", "utils")
 
         # list_merchants Lambda (new - lists unique merchants)
         list_merchants_lambda = Function(
@@ -372,6 +373,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 {
                     "fetch_receipt_data.py": FileAsset(
                         os.path.join(HANDLERS_DIR, "fetch_receipt_data.py")
+                    ),
+                    "serialization.py": FileAsset(
+                        os.path.join(UTILS_DIR, "serialization.py")
                     ),
                 }
             ),
