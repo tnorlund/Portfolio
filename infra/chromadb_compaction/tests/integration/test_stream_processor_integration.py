@@ -27,8 +27,8 @@ import pytest
 from ...lambdas.stream_processor import lambda_handler
 
 
-class TestMetadataRoutingSQS:
-    """Test RECEIPT_METADATA routing to SQS queues."""
+class TestPlaceRoutingSQS:
+    """Test RECEIPT_PLACE routing to SQS queues."""
 
     def test_metadata_update_sends_to_both_queues(
         self, target_metadata_event, mock_sqs_queues

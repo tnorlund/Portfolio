@@ -216,7 +216,7 @@ class TestCoreCompactionLogic:
         # Mock SQS messages with different sources
         messages = [
             {
-                "body": '{"entity_type": "RECEIPT_METADATA"}',
+                "body": '{"entity_type": "RECEIPT_PLACE"}',
                 "messageAttributes": {
                     "source": {"stringValue": "dynamodb_stream"}
                 },
@@ -252,7 +252,7 @@ class TestCoreCompactionLogic:
 
         assert len(stream_messages) == 2
         assert len(delta_messages) == 2
-        assert stream_messages[0]["entity_type"] == "RECEIPT_METADATA"
+        assert stream_messages[0]["entity_type"] == "RECEIPT_PLACE"
         assert stream_messages[1]["entity_type"] == "RECEIPT_WORD_LABEL"
 
     def test_metadata_field_filtering(self):
@@ -335,7 +335,7 @@ class TestDataclassIntegration:
         """Test StreamMessage dataclass parsing."""
 
         message_dict = {
-            "entity_type": "RECEIPT_METADATA",
+            "entity_type": "RECEIPT_PLACE",
             "entity_data": {"image_id": "test123", "receipt_id": 456},
             "changes": {"merchant_name": {"old": "Old", "new": "New"}},
             "event_name": "MODIFY",
@@ -350,7 +350,7 @@ class TestDataclassIntegration:
             source=message_dict.get("source", "dynamodb_stream"),
         )
 
-        assert stream_msg.entity_type == "RECEIPT_METADATA"
+        assert stream_msg.entity_type == "RECEIPT_PLACE"
         assert stream_msg.entity_data["image_id"] == "test123"
         assert stream_msg.changes["merchant_name"]["new"] == "New"
         assert stream_msg.collection == ChromaDBCollection.LINES

@@ -328,10 +328,10 @@ class TestStreamProcessorRealOperations:
         lines_queue_url = lines_queue["QueueUrl"]
         words_queue_url = words_queue["QueueUrl"]
 
-        # Test sending messages to both queues (what RECEIPT_METADATA does)
+        # Test sending messages to both queues (what RECEIPT_PLACE does)
         metadata_message = {
             "source": "dynamodb_stream",
-            "entity_type": "RECEIPT_METADATA",
+            "entity_type": "RECEIPT_PLACE",
             "event_name": "MODIFY",
             "entity_data": {
                 "image_id": "test-image",
@@ -348,7 +348,7 @@ class TestStreamProcessorRealOperations:
             "aws_region": "us-east-1",
         }
 
-        # Send to both queues (what RECEIPT_METADATA does)
+        # Send to both queues (what RECEIPT_PLACE does)
         sqs.send_message(
             QueueUrl=lines_queue_url, MessageBody=json.dumps(metadata_message)
         )
@@ -375,8 +375,8 @@ class TestStreamProcessorRealOperations:
         lines_body = json.loads(lines_messages[0]["Body"])
         words_body = json.loads(words_messages[0]["Body"])
 
-        assert lines_body["entity_type"] == "RECEIPT_METADATA"
-        assert words_body["entity_type"] == "RECEIPT_METADATA"
+        assert lines_body["entity_type"] == "RECEIPT_PLACE"
+        assert words_body["entity_type"] == "RECEIPT_PLACE"
         assert (
             lines_body["entity_data"]["canonical_merchant_name"]
             == "Target Store"

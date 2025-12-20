@@ -16,7 +16,7 @@ from moto import mock_aws
 from receipt_dynamo import (
     DynamoClient,
     ReceiptLine,
-    ReceiptMetadata,
+    ReceiptPlace,
     ReceiptWord,
 )
 
@@ -372,7 +372,7 @@ class TestEndToEndWorkflow:
                     "receiptHandle": "test-receipt-handle",
                     "body": json.dumps(
                         {
-                            "entity_type": "RECEIPT_METADATA",
+                            "entity_type": "RECEIPT_PLACE",
                             "event_name": "MODIFY",
                             "entity_data": {
                                 "image_id": test_image_id,

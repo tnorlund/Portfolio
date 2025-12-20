@@ -155,7 +155,7 @@ class TestCompactionHandlerOrchestration:
 
         # Create test SQS message
         message = {
-            "entity_type": "RECEIPT_METADATA",
+            "entity_type": "RECEIPT_PLACE",
             "event_name": "MODIFY",
             "entity_data": {
                 "image_id": "test",

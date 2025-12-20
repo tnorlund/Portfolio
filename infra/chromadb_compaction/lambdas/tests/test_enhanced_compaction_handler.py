@@ -46,7 +46,7 @@ def sample_sqs_event():
         "Records": [
             {
                 "messageId": "msg-1",
-                "body": '{"entity_type": "RECEIPT_METADATA", "entity_data": {"image_id": "'
+                "body": '{"entity_type": "RECEIPT_PLACE", "entity_data": {"image_id": "'
                 + str(uuid4())
                 + '", "receipt_id": 1}, "changes": {}, "event_name": "MODIFY", "collections": ["lines"], "timestamp": "2025-01-01T00:00:00Z", "stream_record_id": "record-1", "aws_region": "us-east-1"}',
             }
@@ -62,7 +62,7 @@ def sample_stream_message():
     from receipt_dynamo.constants import ChromaDBCollection
 
     return StreamMessage(
-        entity_type="RECEIPT_METADATA",
+        entity_type="RECEIPT_PLACE",
         entity_data={"image_id": str(uuid4()), "receipt_id": 1},
         changes={},
         event_name="MODIFY",
@@ -317,7 +317,7 @@ class TestProcessCollection:
         # Create test messages
         test_image_id = str(uuid4())
         msg1 = StreamMessage(
-            entity_type="RECEIPT_METADATA",
+            entity_type="RECEIPT_PLACE",
             entity_data={"image_id": test_image_id, "receipt_id": 1},
             changes={},
             event_name="MODIFY",
@@ -502,7 +502,7 @@ class TestProcessSQSMessages:
 
         # Create test messages
         msg1 = StreamMessage(
-            entity_type="RECEIPT_METADATA",
+            entity_type="RECEIPT_PLACE",
             entity_data={"image_id": str(uuid4()), "receipt_id": 1},
             changes={},
             event_name="MODIFY",
@@ -512,7 +512,7 @@ class TestProcessSQSMessages:
             aws_region="us-east-1",
         )
         msg2 = StreamMessage(
-            entity_type="RECEIPT_METADATA",
+            entity_type="RECEIPT_PLACE",
             entity_data={"image_id": str(uuid4()), "receipt_id": 2},
             changes={},
             event_name="MODIFY",
