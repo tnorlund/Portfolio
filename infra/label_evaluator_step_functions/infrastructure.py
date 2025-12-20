@@ -429,7 +429,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
 
         compute_patterns_lambda = compute_patterns_docker_image.lambda_function
 
-        # aggregate_results Lambda
+        # aggregate_results Lambda (per-merchant aggregation)
         aggregate_results_lambda = Function(
             f"{name}-aggregate-results",
             name=f"{name}-aggregate-results",
@@ -441,6 +441,32 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 {
                     "aggregate_results.py": FileAsset(
                         os.path.join(HANDLERS_DIR, "aggregate_results.py")
+                    ),
+                }
+            ),
+            timeout=120,
+            memory_size=512,
+            tags={"environment": stack},
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "BATCH_BUCKET": self.batch_bucket.bucket,
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # final_aggregate Lambda (cross-merchant grand totals)
+        final_aggregate_lambda = Function(
+            f"{name}-final-aggregate",
+            name=f"{name}-final-aggregate",
+            role=lambda_role.arn,
+            runtime="python3.12",
+            architectures=["arm64"],
+            handler="final_aggregate.handler",
+            code=AssetArchive(
+                {
+                    "final_aggregate.py": FileAsset(
+                        os.path.join(HANDLERS_DIR, "final_aggregate.py")
                     ),
                 }
             ),
@@ -557,6 +583,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 evaluate_labels_lambda.arn,
                 llm_review_lambda.arn,
                 aggregate_results_lambda.arn,
+                final_aggregate_lambda.arn,
             ).apply(
                 lambda arns: json.dumps(
                     {
@@ -637,6 +664,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 evaluate_labels_lambda.arn,
                 llm_review_lambda.arn,
                 aggregate_results_lambda.arn,
+                final_aggregate_lambda.arn,
                 self.batch_bucket.bucket,
             ).apply(
                 lambda args: self._create_step_function_definition(
@@ -647,7 +675,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     evaluate_labels_arn=args[4],
                     llm_review_arn=args[5],
                     aggregate_results_arn=args[6],
-                    batch_bucket=args[7],
+                    final_aggregate_arn=args[7],
+                    batch_bucket=args[8],
                     max_concurrency=self.max_concurrency,
                     batch_size=self.batch_size,
                 )
@@ -671,6 +700,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "evaluate_labels_lambda_arn": evaluate_labels_lambda.arn,
                 "llm_review_lambda_arn": llm_review_lambda.arn,
                 "aggregate_results_lambda_arn": aggregate_results_lambda.arn,
+                "final_aggregate_lambda_arn": final_aggregate_lambda.arn,
             }
         )
 
@@ -683,6 +713,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         evaluate_labels_arn: str,
         llm_review_arn: str,
         aggregate_results_arn: str,
+        final_aggregate_arn: str,
         batch_bucket: str,
         max_concurrency: int,
         batch_size: int,
@@ -1119,15 +1150,27 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "ResultPath": "$.all_merchant_results",
                     "Next": "FinalSummary",
                 },
-                # Final summary across all merchants
+                # Final aggregation across all merchants
                 "FinalSummary": {
-                    "Type": "Pass",
+                    "Type": "Task",
+                    "Resource": final_aggregate_arn,
+                    "TimeoutSeconds": 120,
                     "Parameters": {
-                        "status": "completed",
                         "execution_id.$": "$.init.execution_id",
-                        "total_merchants.$": "$.merchants_data.total_merchants",
-                        "merchant_results.$": "$.all_merchant_results",
+                        "batch_bucket.$": "$.init.batch_bucket",
+                        "all_merchant_results.$": "$.all_merchant_results",
                     },
+                    "Retry": [
+                        {
+                            "ErrorEquals": [
+                                "States.TaskFailed",
+                                "Lambda.ServiceException",
+                            ],
+                            "IntervalSeconds": 2,
+                            "MaxAttempts": 2,
+                            "BackoffRate": 2.0,
+                        }
+                    ],
                     "End": True,
                 },
             },
