@@ -12,7 +12,7 @@ from receipt_dynamo.constants import ChromaDBCollection
 from tests.helpers.factories import (
     create_compaction_run_message,
     create_label_message,
-    create_metadata_message,
+    create_place_message,
     create_mock_logger,
     create_mock_metrics,
     create_receipt_lines_in_dynamodb,
@@ -57,7 +57,7 @@ class TestProcessor:
         # Create metadata update message
         from receipt_dynamo_stream.models import FieldChange
 
-        metadata_msg = create_metadata_message(
+        metadata_msg = create_place_message(
             image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
@@ -221,7 +221,7 @@ class TestProcessor:
         # Create mixed messages
         from receipt_dynamo_stream.models import FieldChange
 
-        metadata_msg = create_metadata_message(
+        metadata_msg = create_place_message(
             image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
@@ -293,7 +293,7 @@ class TestProcessor:
         # Create a valid message and an invalid message
         from receipt_dynamo_stream.models import FieldChange
 
-        valid_msg = create_metadata_message(
+        valid_msg = create_place_message(
             image_id="test-id",
             receipt_id=1,
             event_name="MODIFY",
@@ -387,7 +387,7 @@ class TestProcessor:
         # Create metadata update message
         from receipt_dynamo_stream.models import FieldChange
 
-        metadata_msg = create_metadata_message(
+        metadata_msg = create_place_message(
             image_id="test-id",
             receipt_id=1,
             event_name="MODIFY",
@@ -501,7 +501,7 @@ class TestProcessor:
         )
 
         # Metadata update for the receipt
-        metadata_msg = create_metadata_message(
+        metadata_msg = create_place_message(
             image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
