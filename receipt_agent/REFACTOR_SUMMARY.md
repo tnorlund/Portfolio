@@ -45,7 +45,7 @@ receipt_agent/
 └── subagents/                     # Reusable sub-agents
     ├── financial_validation/      # Re-exports from graph/
     ├── cove_text_consistency/     # Re-exports from graph/
-    ├── metadata_finder/           # Re-exports from graph/
+    ├── place_finder/              # Re-exports from graph/
     └── table_columns/             # Placeholder (embedded in label_harmonizer)
 ```
 
@@ -54,7 +54,7 @@ receipt_agent/
 - `agentic/` — Agentic validation workflow (LLM-driven validation)
 - `validation/` — Deterministic validation workflow (non-agentic)
 - `label_harmonizer/` — Label harmonizer v3 (whole-receipt consistency); uses `subagents/financial_validation`
-- `harmonizer/` — Metadata/merchant harmonizer (place_id groups); uses `subagents/metadata_finder` + `subagents/cove_text_consistency`
+- `harmonizer/` — Metadata/merchant harmonizer (place_id groups); uses `subagents/place_finder` + `subagents/cove_text_consistency`
 - `label_suggestion/` — Label suggestion helper (async, non-LangGraph)
 - `label_validation/` — Label validation agent/state
 - `place_id_finder/` — Finds missing place_ids
@@ -63,7 +63,7 @@ receipt_agent/
 Subagents:
 - `financial_validation/` — Financial consistency checks (used by label_harmonizer)
 - `cove_text_consistency/` — Cross-line text consistency (used by harmonizer)
-- `metadata_finder/` — Metadata fill-in (used by harmonizer)
+- `place_finder/` — Place data fill-in (used by harmonizer)
 - `table_columns/` — Placeholder/embedded helper for label_harmonizer
 
 ## Migration Pattern
@@ -122,7 +122,7 @@ Three backward compatibility shim files remain in `graph/` and can be removed:
 
 1. **`graph/cove_text_consistency_workflow.py`** → `subagents.cove_text_consistency`
 2. **`graph/financial_validation_workflow.py`** → `subagents.financial_validation`
-3. **`graph/receipt_metadata_finder_workflow.py`** → `subagents.metadata_finder`
+3. **`graph/receipt_metadata_finder_workflow.py`** → `subagents.place_finder`
 
 **Status**: No current imports found. Safe to remove in next major version.
 

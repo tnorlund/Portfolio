@@ -31,7 +31,7 @@ def delete_receipt_child_records(
     2. ReceiptWord
     3. ReceiptLine
     4. ReceiptLetter (best effort)
-    5. ReceiptMetadata (best effort)
+    5. ReceiptPlace (best effort)
     6. CompactionRun (best effort)
 
     Args:
@@ -50,7 +50,7 @@ def delete_receipt_child_records(
         "words": 0,
         "lines": 0,
         "letters": 0,
-        "metadata": 0,
+        "place": 0,
         "compaction_runs": 0,
     }
 
@@ -189,28 +189,28 @@ def delete_receipt_child_records(
                 error=str(e),
             )
 
-        # 5. Delete ReceiptMetadata (best effort)
+        # 5. Delete ReceiptPlace (best effort)
         try:
-            metadata = dynamo_client.get_receipt_metadata(image_id, receipt_id)
-            if metadata:
-                dynamo_client.delete_receipt_metadata(metadata)
-                deletion_counts["metadata"] = 1
+            place = dynamo_client.get_receipt_place(image_id, receipt_id)
+            if place:
+                dynamo_client.delete_receipt_place(place)
+                deletion_counts["place"] = 1
                 if OBSERVABILITY_AVAILABLE:
                     logger.info(
-                        "Deleted receipt metadata",
+                        "Deleted receipt place",
                         image_id=image_id,
                         receipt_id=receipt_id,
                     )
                 else:
                     logger.info(
-                        f"Deleted receipt metadata for receipt {receipt_id}"
+                        f"Deleted receipt place for receipt {receipt_id}"
                     )
                 if metrics:
-                    metrics.count("CompactionReceiptMetadataDeleted", 1)
+                    metrics.count("CompactionReceiptPlaceDeleted", 1)
         except Exception as e:  # noqa: BLE001
-            # Metadata might not exist - log but don't fail
+            # Place might not exist - log but don't fail
             logger.debug(
-                "Skipping receipt metadata deletion (may not exist)",
+                "Skipping receipt place deletion (may not exist)",
                 image_id=image_id,
                 receipt_id=receipt_id,
                 error=str(e),
@@ -295,7 +295,7 @@ def process_receipt_deletions(
 
     Deletes all embeddings for the receipt from ChromaDB and all child records
     from DynamoDB (ReceiptWordLabel, ReceiptWord, ReceiptLine, ReceiptLetter,
-    ReceiptMetadata, CompactionRun).
+    ReceiptPlace, CompactionRun).
 
     The compactor is responsible for complete cleanup when a Receipt is deleted.
     """
@@ -514,7 +514,7 @@ def apply_receipt_deletions_in_memory(
     This is used when the collection is already loaded in memory (e.g., during compaction).
 
     Also deletes all child records from DynamoDB (ReceiptWordLabel, ReceiptWord,
-    ReceiptLine, ReceiptLetter, ReceiptMetadata, CompactionRun).
+    ReceiptLine, ReceiptLetter, ReceiptPlace, CompactionRun).
     """
     logger.info(
         "Applying receipt deletions in memory", count=len(receipt_deletions)

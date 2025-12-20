@@ -346,13 +346,12 @@ class MerchantResolver:
             place_id if found and valid, None otherwise
         """
         try:
-            metadata = self.dynamo.get_receipt_metadata(image_id, receipt_id)
-            if metadata and metadata.place_id:
-                # Skip invalid place_ids
-                if metadata.place_id not in INVALID_PLACE_IDS:
-                    return metadata.place_id
+            place = self.dynamo.get_receipt_place(image_id, receipt_id)
+            if place and place.place_id:
+                if place.place_id not in INVALID_PLACE_IDS:
+                    return place.place_id
         except Exception as e:
-            _log(f"Error getting place_id from DynamoDB: {e}")
+            _log(f"Error getting place_id from receipt_place: {e}")
             logger.exception("DynamoDB lookup failed")
 
         return None

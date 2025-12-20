@@ -151,7 +151,7 @@ class TestEnhancedCompactionIntegration:
         # Create test message
         test_image_id = setup_s3_snapshot
         msg = StreamMessage(
-            entity_type="RECEIPT_METADATA",
+            entity_type="RECEIPT_PLACE",
             entity_data={"image_id": test_image_id, "receipt_id": 1},
             changes={
                 "merchant_name": {"old": "Old Merchant", "new": "New Merchant"}
@@ -219,7 +219,7 @@ class TestEnhancedCompactionIntegration:
         # Create test SQS records
         test_image_id = str(uuid4())
         message_body = {
-            "entity_type": "RECEIPT_METADATA",
+            "entity_type": "RECEIPT_PLACE",
             "entity_data": {"image_id": test_image_id, "receipt_id": 1},
             "changes": {},
             "event_name": "MODIFY",
@@ -282,7 +282,7 @@ class TestEnhancedCompactionIntegration:
         # Create test SQS event
         test_image_id = str(uuid4())
         message_body = {
-            "entity_type": "RECEIPT_METADATA",
+            "entity_type": "RECEIPT_PLACE",
             "entity_data": {"image_id": test_image_id, "receipt_id": 1},
             "changes": {"merchant_name": {"old": "Old", "new": "New"}},
             "event_name": "MODIFY",
@@ -364,7 +364,7 @@ class TestEnhancedCompactionIntegration:
         # Create test SQS event
         test_image_id = str(uuid4())
         message_body = {
-            "entity_type": "RECEIPT_METADATA",
+            "entity_type": "RECEIPT_PLACE",
             "entity_data": {"image_id": test_image_id, "receipt_id": 1},
             "changes": {},
             "event_name": "MODIFY",
@@ -419,7 +419,7 @@ class TestEnhancedCompactionIntegration:
         test_image_id = str(uuid4())
 
         message_body_lines = {
-            "entity_type": "RECEIPT_METADATA",
+            "entity_type": "RECEIPT_PLACE",
             "entity_data": {"image_id": test_image_id, "receipt_id": 1},
             "changes": {},
             "event_name": "MODIFY",

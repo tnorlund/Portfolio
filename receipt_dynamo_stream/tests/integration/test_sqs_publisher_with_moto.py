@@ -44,9 +44,9 @@ def fifo_queues(moto_sqs: Any) -> dict[str, str]:
     return {"lines": lines_queue, "words": words_queue}
 
 
-def _sample_metadata_message() -> StreamMessage:
+def _sample_place_message() -> StreamMessage:
     return StreamMessage(
-        entity_type="RECEIPT_METADATA",
+        entity_type="RECEIPT_PLACE",
         entity_data={"image_id": "img-1", "receipt_id": 1},
         changes={
             "merchant_name": FieldChange(old="Old", new="New"),
@@ -105,10 +105,10 @@ def _get_messages(sqs: Any, queue_url: str) -> list[dict[str, Any]]:
     return cast(list[dict[str, Any]], resp.get("Messages", []))
 
 
-def test_metadata_routed_to_both_queues(
+def test_place_routed_to_both_queues(
     moto_sqs: Any, fifo_queues: dict[str, str]
 ) -> None:
-    msg = _sample_metadata_message()
+    msg = _sample_place_message()
     sent = publish_messages([msg])
     assert sent == 2
 
@@ -119,7 +119,7 @@ def test_metadata_routed_to_both_queues(
     assert len(words_msgs) == 1
 
     body = json.loads(lines_msgs[0]["Body"])
-    assert body["entity_type"] == "RECEIPT_METADATA"
+    assert body["entity_type"] == "RECEIPT_PLACE"
     assert body["entity_data"]["receipt_id"] == 1
     assert "merchant_name" in body["changes"]
 
@@ -166,7 +166,7 @@ def test_batches_above_ten_messages(
 ) -> None:
     msgs = [
         StreamMessage(
-            entity_type="RECEIPT_METADATA",
+            entity_type="RECEIPT_PLACE",
             entity_data={"image_id": f"img-{i}", "receipt_id": i},
             changes={"merchant_name": FieldChange(old="A", new="B")},
             event_name="MODIFY",
@@ -191,6 +191,6 @@ def test_batches_above_ten_messages(
 def test_missing_queue_env_returns_zero(moto_sqs: Any) -> None:
     os.environ.pop("LINES_QUEUE_URL", None)
     os.environ.pop("WORDS_QUEUE_URL", None)
-    msg = _sample_metadata_message()
+    msg = _sample_place_message()
     sent = publish_messages([msg])
     assert sent == 0

@@ -1,11 +1,11 @@
 """
-Receipt Agent - Agentic validation for receipt metadata.
+Receipt Agent - Agentic validation for receipt place data.
 
-This package provides LangGraph-based agents for validating receipt metadata
+This package provides LangGraph-based agents for validating receipt place data
 using ChromaDB similarity search and cross-reference verification.
 """
 
-from receipt_agent.agents.metadata_validator import MetadataValidatorAgent
+from receipt_agent.agents.place_validator import PlaceValidatorAgent
 from receipt_agent.agents.validation import create_validation_graph
 from receipt_agent.clients.factory import (
     create_all_clients,
@@ -25,7 +25,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     # Main agent
-    "MetadataValidatorAgent",
+    "PlaceValidatorAgent",
     # State models
     "ValidationResult",
     "ValidationState",

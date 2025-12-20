@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 
@@ -40,9 +40,9 @@ class LambdaResponse:
 class ParsedStreamRecord:
     """Parsed DynamoDB stream record with entity information."""
 
-    entity_type: str  # "RECEIPT_METADATA" or "RECEIPT_WORD_LABEL"
-    old_entity: Optional[Union[ReceiptMetadata, ReceiptWordLabel]]
-    new_entity: Optional[Union[ReceiptMetadata, ReceiptWordLabel]]
+    entity_type: str  # "RECEIPT_PLACE" or "RECEIPT_WORD_LABEL"
+    old_entity: Optional[Union[ReceiptPlace, ReceiptWordLabel]]
+    new_entity: Optional[Union[ReceiptPlace, ReceiptWordLabel]]
     pk: str
     sk: str
 

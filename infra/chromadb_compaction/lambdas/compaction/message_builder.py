@@ -215,7 +215,7 @@ def categorize_stream_messages(
     compaction_runs = []
 
     for message in stream_messages:
-        if message.entity_type == "RECEIPT_METADATA":
+        if message.entity_type == "RECEIPT_PLACE":
             metadata_updates.append(message)
         elif message.entity_type == "RECEIPT_WORD_LABEL":
             label_updates.append(message)

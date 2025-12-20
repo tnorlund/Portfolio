@@ -68,9 +68,9 @@ class TestMerchantResolverTier1Phone:
         }
 
         # Mock DynamoDB to return place_id
-        mock_metadata = MagicMock()
-        mock_metadata.place_id = "ChIJ_test_place_id"
-        mock_dynamo_client.get_receipt_metadata.return_value = mock_metadata
+        mock_place = MagicMock()
+        mock_place.place_id = "ChIJ_test_place_id"
+        mock_dynamo_client.get_receipt_place.return_value = mock_place
 
         result = resolver.resolve(
             lines_client=mock_lines_client,
@@ -197,9 +197,9 @@ class TestMerchantResolverTier1Address:
         }
 
         # Mock DynamoDB to return place_id
-        mock_metadata = MagicMock()
-        mock_metadata.place_id = "ChIJ_address_place_id"
-        mock_dynamo_client.get_receipt_metadata.return_value = mock_metadata
+        mock_place = MagicMock()
+        mock_place.place_id = "ChIJ_address_place_id"
+        mock_dynamo_client.get_receipt_place.return_value = mock_place
 
         result = resolver.resolve(
             lines_client=mock_lines_client,
@@ -456,7 +456,7 @@ class TestMerchantResolverErrorHandling:
         }
 
         # Mock DynamoDB to raise exception
-        mock_dynamo_client.get_receipt_metadata.side_effect = Exception(
+        mock_dynamo_client.get_receipt_place.side_effect = Exception(
             "DynamoDB error"
         )
 
@@ -491,10 +491,10 @@ class TestMerchantResolverErrorHandling:
 
         # Test invalid place_id values
         for invalid_id in ["", "null", "NO_RESULTS", "INVALID"]:
-            mock_metadata = MagicMock()
-            mock_metadata.place_id = invalid_id
-            mock_dynamo_client.get_receipt_metadata.return_value = (
-                mock_metadata
+            mock_place = MagicMock()
+            mock_place.place_id = invalid_id
+            mock_dynamo_client.get_receipt_place.return_value = (
+                mock_place
             )
 
             result = resolver.resolve(

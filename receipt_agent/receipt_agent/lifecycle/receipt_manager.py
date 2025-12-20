@@ -18,7 +18,6 @@ from receipt_dynamo.entities import (
     Receipt,
     ReceiptLetter,
     ReceiptLine,
-    ReceiptMetadata,
     ReceiptWord,
     ReceiptWordLabel,
 )
@@ -51,7 +50,6 @@ def create_receipt(
     receipt_words: List[ReceiptWord],
     receipt_letters: Optional[List[ReceiptLetter]] = None,
     receipt_labels: Optional[List[ReceiptWordLabel]] = None,
-    receipt_metadata: Optional[ReceiptMetadata] = None,
     chromadb_bucket: Optional[str] = None,
     artifacts_bucket: Optional[str] = None,
     embed_ndjson_queue_url: Optional[str] = None,
@@ -65,7 +63,7 @@ def create_receipt(
     Create a receipt with all associated entities in DynamoDB and ChromaDB.
 
     This is the main function for creating receipts. It handles:
-    1. Saving to DynamoDB (Receipt, ReceiptLine, ReceiptWord, ReceiptLetter, ReceiptWordLabel, ReceiptMetadata)
+    1. Saving to DynamoDB (Receipt, ReceiptLine, ReceiptWord, ReceiptLetter, ReceiptWordLabel)
     2. Creating embeddings in ChromaDB (if create_embeddings_flag is True)
     3. Exporting NDJSON to S3 (if export_ndjson_flag is True)
     4. Waiting for compaction (if wait_for_compaction_flag is True)
@@ -77,7 +75,6 @@ def create_receipt(
         receipt_words: List of ReceiptWord entities
         receipt_letters: Optional list of ReceiptLetter entities
         receipt_labels: Optional list of ReceiptWordLabel entities
-        receipt_metadata: Optional ReceiptMetadata entity
         chromadb_bucket: S3 bucket for ChromaDB deltas (required if create_embeddings_flag is True)
         artifacts_bucket: S3 bucket for artifacts/NDJSON (required if export_ndjson_flag is True)
         embed_ndjson_queue_url: Optional queue URL for NDJSON processing (not used if create_embeddings_flag is True)
@@ -101,8 +98,6 @@ def create_receipt(
             client.add_receipt_words(receipt_words)
             if receipt_letters:
                 client.add_receipt_letters(receipt_letters)
-            if receipt_metadata:
-                client.add_receipt_metadata(receipt_metadata)
             if receipt_labels:
                 for label in receipt_labels:
                     client.add_receipt_word_label(label)
@@ -174,7 +169,7 @@ def delete_receipt(
     1. Deletes ChromaDB embeddings (queries DynamoDB for ReceiptLine or
        ReceiptWord to construct IDs)
     2. Deletes all child records from DynamoDB (ReceiptWordLabel, ReceiptWord,
-       ReceiptLine, ReceiptLetter, ReceiptMetadata, CompactionRun)
+       ReceiptLine, ReceiptLetter, ReceiptPlace, CompactionRun)
 
     The compactor is the single source of truth for cleanup - it handles both
     ChromaDB and DynamoDB child record deletion automatically.
@@ -206,7 +201,7 @@ def delete_receipt(
         # The enhanced compactor will automatically handle:
         # 1. ChromaDB embedding deletion (queries DynamoDB for child records to construct IDs)
         # 2. DynamoDB child record deletion (ReceiptWordLabel, ReceiptWord, ReceiptLine,
-        #    ReceiptLetter, ReceiptMetadata, CompactionRun)
+        #    ReceiptLetter, ReceiptPlace, CompactionRun)
         #
         # Child records must remain in DynamoDB when the Receipt is deleted so the compactor
         # can query them to construct ChromaDB IDs.

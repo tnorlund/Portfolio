@@ -145,12 +145,16 @@ def create_label_suggestion_tools(
                 if (w.line_id, w.word_id) not in labeled_word_keys
             ]
 
-            # Get merchant metadata
-            metadata = dynamo_client.get_receipt_metadata(
-                image_id=ctx.image_id,
-                receipt_id=ctx.receipt_id,
-            )
-            merchant_name = metadata.merchant_name if metadata else None
+            # Get merchant place data (may not exist)
+            try:
+                place = dynamo_client.get_receipt_place(
+                    image_id=ctx.image_id,
+                    receipt_id=ctx.receipt_id,
+                )
+                merchant_name = place.merchant_name
+            except Exception:
+                # Place data unavailable
+                merchant_name = None
 
             return {
                 "total_words": len(meaningful_words),
@@ -485,12 +489,12 @@ def create_label_suggestion_tools(
             # If we found similar words but none have valid_labels,
             # that's useful info
             if total_results > 0 and words_with_valid_labels == 0:
-                    logger.info(
-                        f"  Note: Found {total_results} similar words "
-                        f"in ChromaDB, but none have VALID labels yet. "
-                        f"This word will be skipped until similar words "
-                        f"are validated."
-                    )
+                logger.info(
+                    f"  Note: Found {total_results} similar words "
+                    f"in ChromaDB, but none have VALID labels yet. "
+                    f"This word will be skipped until similar words "
+                    f"are validated."
+                )
 
             return {
                 "word_text": word.text,

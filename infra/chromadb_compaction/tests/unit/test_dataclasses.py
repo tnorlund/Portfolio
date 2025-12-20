@@ -9,7 +9,7 @@ from datetime import datetime
 import pytest
 
 from receipt_dynamo.constants import ValidationMethod
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 
 from ...lambdas.stream_processor import (
     FieldChange,
@@ -18,24 +18,22 @@ from ...lambdas.stream_processor import (
 )
 
 
-def create_test_receipt_metadata(
+def create_test_receipt_place(
     merchant_name: str = "Test Merchant",
-    canonical_merchant_name: str = "",
     **kwargs,
-) -> ReceiptMetadata:
-    """Create a test ReceiptMetadata entity with sensible defaults."""
+) -> ReceiptPlace:
+    """Create a test ReceiptPlace entity with sensible defaults."""
     defaults = {
         "image_id": "550e8400-e29b-41d4-a716-446655440000",
         "receipt_id": 1,
         "place_id": "place123",
         "merchant_name": merchant_name,
-        "canonical_merchant_name": canonical_merchant_name,
         "matched_fields": ["name"],
         "validated_by": ValidationMethod.PHONE_LOOKUP,
         "timestamp": datetime.fromisoformat("2024-01-01T00:00:00"),
     }
     defaults.update(kwargs)
-    return ReceiptMetadata(**defaults)
+    return ReceiptPlace(**defaults)
 
 
 class TestLambdaResponse:
@@ -111,21 +109,21 @@ class TestParsedStreamRecord:
 
     def test_parsed_stream_record_creation(self):
         """Test ParsedStreamRecord dataclass creation."""
-        old_entity = create_test_receipt_metadata(merchant_name="Old Merchant")
+        old_entity = create_test_receipt_place(merchant_name="Old Merchant")
 
         entity_key = old_entity.key
         pk = entity_key["PK"]["S"]
         sk = entity_key["SK"]["S"]
 
         parsed = ParsedStreamRecord(
-            entity_type="RECEIPT_METADATA",
+            entity_type="RECEIPT_PLACE",
             old_entity=old_entity,
             new_entity=None,
             pk=pk,
             sk=sk,
         )
 
-        assert parsed.entity_type == "RECEIPT_METADATA"
+        assert parsed.entity_type == "RECEIPT_PLACE"
         assert parsed.old_entity == old_entity
         assert parsed.new_entity is None
         assert parsed.pk == pk
@@ -133,15 +131,15 @@ class TestParsedStreamRecord:
 
     def test_parsed_stream_record_with_both_entities(self):
         """Test ParsedStreamRecord with both old and new entities."""
-        old_entity = create_test_receipt_metadata(merchant_name="Old Merchant")
-        new_entity = create_test_receipt_metadata(merchant_name="New Merchant")
+        old_entity = create_test_receipt_place(merchant_name="Old Merchant")
+        new_entity = create_test_receipt_place(merchant_name="New Merchant")
 
         entity_key = old_entity.key
         pk = entity_key["PK"]["S"]
         sk = entity_key["SK"]["S"]
 
         parsed = ParsedStreamRecord(
-            entity_type="RECEIPT_METADATA",
+            entity_type="RECEIPT_PLACE",
             old_entity=old_entity,
             new_entity=new_entity,
             pk=pk,
@@ -150,15 +148,15 @@ class TestParsedStreamRecord:
 
         assert parsed.old_entity == old_entity
         assert parsed.new_entity == new_entity
-        assert parsed.entity_type == "RECEIPT_METADATA"
+        assert parsed.entity_type == "RECEIPT_PLACE"
 
     def test_parsed_stream_record_frozen(self):
         """Test that ParsedStreamRecord is immutable."""
-        old_entity = create_test_receipt_metadata(merchant_name="Test")
+        old_entity = create_test_receipt_place(merchant_name="Test")
         entity_key = old_entity.key
 
         parsed = ParsedStreamRecord(
-            entity_type="RECEIPT_METADATA",
+            entity_type="RECEIPT_PLACE",
             old_entity=old_entity,
             new_entity=None,
             pk=entity_key["PK"]["S"],

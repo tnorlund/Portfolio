@@ -17,10 +17,10 @@ from ...lambdas.stream_processor import (
 class TestCollectionTargeting:
     """Test that messages target correct collections."""
 
-    def test_metadata_targets_both_collections(self):
-        """Metadata changes should target both lines and words collections."""
+    def test_place_targets_both_collections(self):
+        """Place changes should target both lines and words collections."""
         msg = StreamMessage(
-            entity_type="RECEIPT_METADATA",
+            entity_type="RECEIPT_PLACE",
             entity_data={"image_id": "abc", "receipt_id": 1},
             changes={"merchant_name": FieldChange(old="A", new="B")},
             event_name="MODIFY",
@@ -83,17 +83,17 @@ class TestCollectionTargeting:
 class TestMessageStructure:
     """Test message structure and required fields."""
 
-    def test_metadata_message_has_required_fields(self):
-        """Metadata messages should have all required fields."""
+    def test_place_message_has_required_fields(self):
+        """Place messages should have all required fields."""
         msg = StreamMessage(
-            entity_type="RECEIPT_METADATA",
+            entity_type="RECEIPT_PLACE",
             entity_data={
-                "entity_type": "RECEIPT_METADATA",
+                "entity_type": "RECEIPT_PLACE",
                 "image_id": "test-image-123",
                 "receipt_id": 1,
             },
             changes={
-                "canonical_merchant_name": FieldChange(old="Old", new="New")
+                "merchant_name": FieldChange(old="Old", new="New")
             },
             event_name="MODIFY",
             collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
@@ -103,7 +103,7 @@ class TestMessageStructure:
             aws_region="us-east-1",
         )
 
-        assert msg.entity_type == "RECEIPT_METADATA"
+        assert msg.entity_type == "RECEIPT_PLACE"
         assert "image_id" in msg.entity_data
         assert "receipt_id" in msg.entity_data
         assert msg.source == "dynamodb_stream"

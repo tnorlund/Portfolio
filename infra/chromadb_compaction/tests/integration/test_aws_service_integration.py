@@ -79,8 +79,8 @@ class TestAWSServiceIntegration:
             lines_body = json.loads(lines_messages[0]["Body"])
             words_body = json.loads(words_messages[0]["Body"])
 
-            assert lines_body["entity_type"] == "RECEIPT_METADATA"
-            assert words_body["entity_type"] == "RECEIPT_METADATA"
+            assert lines_body["entity_type"] == "RECEIPT_PLACE"
+            assert words_body["entity_type"] == "RECEIPT_PLACE"
             assert lines_body["event_name"] == "MODIFY"
             assert words_body["event_name"] == "MODIFY"
 

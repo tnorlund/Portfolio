@@ -22,7 +22,7 @@ def publish_messages(messages: List[StreamMessage], metrics=None) -> int:
     Send messages to appropriate collection-specific SQS queues.
 
     Each message is sent to the queue(s) for the collections it affects:
-    - RECEIPT_METADATA messages go to both lines and words queues
+    - RECEIPT_PLACE messages go to both lines and words queues
     - RECEIPT_WORD_LABEL messages go only to words queue
 
     Args:
@@ -145,7 +145,7 @@ def send_batch_to_queue(
                 message_group_id = (
                     f"COMPACTION_RUN:{image_id}:{collection.value}"
                 )
-            elif entity_type in {"RECEIPT_METADATA", "RECEIPT_WORD_LABEL"}:
+            elif entity_type in {"RECEIPT_PLACE", "RECEIPT_WORD_LABEL"}:
                 # Use same MessageGroupId as COMPACTION_RUN for the same image
                 # This ensures metadata updates are processed AFTER delta merge completes,
                 # maintaining proper ordering in the FIFO queue.

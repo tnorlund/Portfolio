@@ -23,9 +23,9 @@ from receipt_agent.clients.factory import (
     create_places_client,
 )
 from receipt_agent.config.settings import get_settings
-from receipt_agent.subagents.metadata_finder import (
-    create_receipt_metadata_finder_graph,
-    run_receipt_metadata_finder,
+from receipt_agent.subagents.place_finder import (
+    create_receipt_place_finder_graph,
+    run_receipt_place_finder,
 )
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.delta import save_word_embeddings_as_delta
@@ -75,7 +75,7 @@ from utils.tracing import (  # pylint: disable=import-error
 from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -83,8 +83,8 @@ get_operation_logger = utils.logging.get_operation_logger
 logger = get_operation_logger(__name__)
 
 
-class MetadataFinderError(ValueError):
-    """Raised when metadata finder fails to produce metadata."""
+class PlaceFinderError(ValueError):
+    """Raised when place finder fails to produce place data."""
 
 
 s3_client = boto3.client("s3")
@@ -216,7 +216,7 @@ def _propagate_agent_env() -> None:
             os.environ[dest] = os.environ[src]
 
 
-async def _ensure_receipt_metadata_async(
+async def _ensure_receipt_place_async(
     image_id: str,
     receipt_id: int,
     dynamo_client: DynamoClient,
@@ -224,24 +224,24 @@ async def _ensure_receipt_metadata_async(
     word_results: Optional[List[dict]] = None,
     batch_id: Optional[str] = None,
 ) -> None:
-    """Create receipt_metadata if missing using receipt_agent + local Chroma."""
+    """Create receipt_place if missing using receipt_agent + local Chroma."""
     try:
-        dynamo_client.get_receipt_metadata(image_id, receipt_id)
+        dynamo_client.get_receipt_place(image_id, receipt_id)
         logger.debug(
-            "Receipt metadata already exists",
+            "Receipt place already exists",
             image_id=image_id,
             receipt_id=receipt_id,
         )
         return
     except EntityNotFoundError:
         logger.info(
-            "Receipt metadata missing; will attempt creation",
+            "Receipt place missing; will attempt creation",
             image_id=image_id,
             receipt_id=receipt_id,
         )
     except Exception as error:
         logger.error(
-            "Failed to fetch existing receipt_metadata",
+            "Failed to fetch existing receipt_place",
             image_id=image_id,
             receipt_id=receipt_id,
             error=str(error),
@@ -303,7 +303,7 @@ async def _ensure_receipt_metadata_async(
         else None
     )
 
-    chroma_root = Path("/tmp/chroma/metadata_finder")
+    chroma_root = Path("/tmp/chroma/place_finder")
     lines_dir = chroma_root / "lines"
     words_dir = chroma_root / "words"
     lines_dir.mkdir(parents=True, exist_ok=True)
@@ -320,7 +320,7 @@ async def _ensure_receipt_metadata_async(
             )
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning(
-                "Failed to download lines snapshot for metadata finder",
+                "Failed to download lines snapshot for place finder",
                 error=str(e),
             )
         try:
@@ -332,7 +332,7 @@ async def _ensure_receipt_metadata_async(
             )
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning(
-                "Failed to download words snapshot for metadata finder",
+                "Failed to download words snapshot for place finder",
                 error=str(e),
             )
 
@@ -366,7 +366,7 @@ async def _ensure_receipt_metadata_async(
         embed_fn = create_embed_fn(settings=settings)
         places_client = create_places_client(settings=settings)
 
-        graph, state_holder = create_receipt_metadata_finder_graph(
+        graph, state_holder = create_receipt_place_finder_graph(
             dynamo_client=dynamo_client,
             chroma_client=chroma_client,
             embed_fn=embed_fn,
@@ -374,7 +374,7 @@ async def _ensure_receipt_metadata_async(
             settings=settings,
         )
 
-        result = await run_receipt_metadata_finder(
+        result = await run_receipt_place_finder(
             graph=graph,
             state_holder=state_holder,
             image_id=image_id,
@@ -386,8 +386,15 @@ async def _ensure_receipt_metadata_async(
         )
 
         if not result.get("found"):
-            raise MetadataFinderError(
-                f"Metadata finder could not create metadata for {image_id}#{receipt_id}"
+            raise PlaceFinderError(
+                f"Place finder could not create place data for {image_id}#{receipt_id}"
+            )
+
+        merchant_name = result.get("merchant_name") or ""
+        if not merchant_name.strip():
+            raise PlaceFinderError(
+                "Place finder returned empty merchant_name for "
+                f"{image_id}#{receipt_id}"
             )
 
         matched_fields = []
@@ -400,30 +407,26 @@ async def _ensure_receipt_metadata_async(
         if result.get("place_id"):
             matched_fields.append("place_id")
 
-        metadata_entity = ReceiptMetadata(
+        place_entity = ReceiptPlace(
             image_id=image_id,
             receipt_id=receipt_id,
             place_id=result.get("place_id") or "",
-            merchant_name=result.get("merchant_name") or "",
+            merchant_name=merchant_name,
             matched_fields=matched_fields,
             timestamp=datetime.now(timezone.utc),
             merchant_category="",
-            address=result.get("address") or "",
+            formatted_address=result.get("address") or "",
             phone_number=result.get("phone_number") or "",
-            validated_by="metadata_finder_agent",
+            validated_by="place_finder_agent",
             reasoning=result.get("reasoning") or "",
-            canonical_place_id=result.get("place_id") or "",
-            canonical_merchant_name=result.get("merchant_name") or "",
-            canonical_address=result.get("address") or "",
-            canonical_phone_number=result.get("phone_number") or "",
         )
-        dynamo_client.add_receipt_metadatas([metadata_entity])
+        dynamo_client.add_receipt_places([place_entity])
 
         logger.info(
-            "Created receipt_metadata via metadata finder",
+            "Created receipt_place via place finder",
             image_id=image_id,
             receipt_id=receipt_id,
-            place_id=metadata_entity.place_id,
+            place_id=place_entity.place_id,
         )
     finally:
         try:
@@ -434,7 +437,7 @@ async def _ensure_receipt_metadata_async(
             )
 
 
-def _ensure_receipt_metadata(
+def _ensure_receipt_place(
     image_id: str,
     receipt_id: int,
     dynamo_client: DynamoClient,
@@ -442,9 +445,9 @@ def _ensure_receipt_metadata(
     word_results: Optional[List[dict]] = None,
     batch_id: Optional[str] = None,
 ) -> None:
-    """Synchronous wrapper for async metadata creation."""
+    """Synchronous wrapper for async place creation."""
     asyncio.run(
-        _ensure_receipt_metadata_async(
+        _ensure_receipt_place_async(
             image_id=image_id,
             receipt_id=receipt_id,
             dynamo_client=dynamo_client,
@@ -665,7 +668,7 @@ def _handle_internal_core(
                 - words
                 - letters
                 - labels
-                - metadata
+                - place
         """
         descriptions: dict[str, dict[int, dict]] = {}
         for receipt_id, image_id in get_unique_receipt_and_image_ids(results):
@@ -673,17 +676,26 @@ def _handle_internal_core(
                 image_id=image_id,
                 receipt_id=receipt_id,
             )
-            receipt_metadata = dynamo_client.get_receipt_metadata(
+            receipt_place = dynamo_client.get_receipt_place(
                 image_id=image_id,
                 receipt_id=receipt_id,
             )
+            if (
+                receipt_place is None
+                or not receipt_place.merchant_name
+                or not receipt_place.merchant_name.strip()
+            ):
+                raise ValueError(
+                    "Receipt place missing merchant_name for "
+                    f"{image_id}#{receipt_id}"
+                )
             descriptions.setdefault(image_id, {})[receipt_id] = {
                 "receipt": receipt_details.receipt,
                 "lines": receipt_details.lines,
                 "words": receipt_details.words,
                 "letters": receipt_details.letters,
                 "labels": receipt_details.labels,
-                "metadata": receipt_metadata,
+                "place": receipt_place,
             }
         return descriptions
 
@@ -881,59 +893,57 @@ def _handle_internal_core(
         collected_metrics["DownloadedResults"] = result_count
         tracer.add_metadata("result_count", result_count)
 
-        # Ensure receipt_metadata exists for all receipts (create if missing using Places API)
-        # This is required because get_receipt_descriptions requires receipt_metadata
-        # and embeddings need metadata to work properly
+        # Ensure receipt_place exists for all receipts (create if missing using Places API)
+        # This is required because get_receipt_descriptions requires receipt_place
+        # and embeddings need place data to work properly
         with operation_with_timeout(
-            "ensure_receipt_metadata", max_duration=120
+            "ensure_receipt_place", max_duration=120
         ):
             unique_receipts = get_unique_receipt_and_image_ids(results)
-            missing_metadata = []
+            missing_places = []
             for receipt_id, image_id in unique_receipts:
                 try:
-                    _ensure_receipt_metadata(
+                    _ensure_receipt_place(
                         image_id,
                         receipt_id,
                         dynamo_client,
                         word_results=results,
                         batch_id=batch_id,
                     )
-                    # Verify metadata was created (or already existed)
+                    # Verify place was created (or already existed)
                     try:
-                        dynamo_client.get_receipt_metadata(
+                        dynamo_client.get_receipt_place(
                             image_id, receipt_id
                         )
                         logger.debug(
-                            "Verified receipt_metadata exists",
+                            "Verified receipt_place exists",
                             image_id=image_id,
                             receipt_id=receipt_id,
                         )
-                    except Exception as verify_error:
-                        logger.error(
-                            "Metadata verification failed - metadata was not created",
+                    except Exception:
+                        logger.exception(
+                            "Place verification failed - place was not created",
                             image_id=image_id,
                             receipt_id=receipt_id,
-                            verify_error=str(verify_error),
-                            verify_error_type=type(verify_error).__name__,
                         )
-                        missing_metadata.append((image_id, receipt_id))
+                        missing_places.append((image_id, receipt_id))
                 except Exception as e:
                     logger.error(
-                        "Failed to ensure receipt_metadata",
+                        "Failed to ensure receipt_place",
                         image_id=image_id,
                         receipt_id=receipt_id,
                         error=str(e),
                         error_type=type(e).__name__,
                         exc_info=True,  # Include full traceback
                     )
-                    missing_metadata.append((image_id, receipt_id))
+                    missing_places.append((image_id, receipt_id))
 
-            # Fail if any receipts are missing metadata - embeddings require it
-            if missing_metadata:
+            # Fail if any receipts are missing place data - embeddings require it
+            if missing_places:
                 error_msg = (
-                    f"Receipt metadata is required but missing for "
-                    f"{len(missing_metadata)} receipt(s). "
-                    f"Failed to create metadata for: {missing_metadata[:5]}"
+                    f"Receipt place is required but missing for "
+                    f"{len(missing_places)} receipt(s). "
+                    f"Failed to create place for: {missing_places[:5]}"
                 )
                 logger.error(error_msg)
                 raise ValueError(error_msg)
@@ -1162,6 +1172,34 @@ def _handle_internal_core(
             logger.info(
                 "Processing partial results", count=len(partial_results)
             )
+
+            # Ensure receipt_place exists for partial results
+            missing_places = []
+            for receipt_id, image_id in get_unique_receipt_and_image_ids(
+                partial_results
+            ):
+                try:
+                    _ensure_receipt_place(
+                        image_id,
+                        receipt_id,
+                        dynamo_client,
+                        word_results=partial_results,
+                        batch_id=batch_id,
+                    )
+                    dynamo_client.get_receipt_place(image_id, receipt_id)
+                except Exception:
+                    logger.exception(
+                        "Receipt place missing for partial results",
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                    )
+                    missing_places.append((image_id, receipt_id))
+            if missing_places:
+                raise ValueError(
+                    "Receipt place is required but missing for "
+                    f"{len(missing_places)} receipt(s) in partial results. "
+                    f"Failed to create place for: {missing_places[:5]}"
+                )
 
             # Get receipt details for successful results
             descriptions = _get_receipt_descriptions(partial_results)
