@@ -20,11 +20,11 @@ from receipt_agent.tools.chroma import (
 )
 from receipt_agent.tools.dynamo import (
     get_receipt_context,
-    get_receipt_metadata,
+    get_receipt_place,
     get_receipts_by_merchant,
 )
 from receipt_agent.tools.places import (
-    compare_metadata_with_places,
+    compare_place_with_google,
     verify_with_google_places,
 )
 
@@ -132,7 +132,7 @@ class ToolRegistry:
         if self._dynamo_client is not None:
             tools.extend([
                 self._bind_tool(
-                    get_receipt_metadata,
+                    get_receipt_place,
                     _dynamo_client=self._dynamo_client,
                 ),
                 self._bind_tool(
@@ -163,8 +163,8 @@ class ToolRegistry:
         else:
             logger.warning("Places API not configured - places tools disabled")
 
-        # compare_metadata_with_places doesn't need external deps
-        tools.append(compare_metadata_with_places)
+        # compare_place_with_google doesn't need external deps
+        tools.append(compare_place_with_google)
 
         return tools
 

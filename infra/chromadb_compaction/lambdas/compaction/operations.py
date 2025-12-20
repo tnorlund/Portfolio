@@ -341,12 +341,13 @@ def remove_receipt_metadata(
         )
         return 0
 
-    # Fields to remove when metadata is deleted
+    # Fields to remove when place info is deleted
+    # Include both old (ReceiptMetadata) and new (ReceiptPlace) field names for cleanup
     fields_to_remove = [
-        "canonical_merchant_name",
         "merchant_name",
         "merchant_category",
-        "address",
+        "formatted_address",  # ReceiptPlace field name
+        "address",  # Legacy ReceiptMetadata field name
         "phone_number",
         "place_id",
     ]

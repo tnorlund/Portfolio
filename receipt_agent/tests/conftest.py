@@ -11,25 +11,25 @@ def mock_dynamo_client() -> MagicMock:
     """Create a mock DynamoDB client."""
     client = MagicMock()
 
-    # Mock metadata
-    mock_metadata = MagicMock()
-    mock_metadata.image_id = "test-image-id"
-    mock_metadata.receipt_id = 1
-    mock_metadata.merchant_name = "Test Merchant"
-    mock_metadata.place_id = "ChIJtest123"
-    mock_metadata.address = "123 Test St"
-    mock_metadata.phone_number = "555-123-4567"
-    mock_metadata.merchant_category = "Restaurant"
-    mock_metadata.matched_fields = ["name", "phone"]
-    mock_metadata.validated_by = "google_places"
-    mock_metadata.validation_status = "MATCHED"
-    mock_metadata.reasoning = "Test reasoning"
-    mock_metadata.canonical_merchant_name = "Test Merchant"
-    mock_metadata.canonical_place_id = "ChIJtest123"
-    mock_metadata.canonical_address = "123 Test St"
-    mock_metadata.canonical_phone_number = "555-123-4567"
+    # Mock place data
+    mock_place = MagicMock()
+    mock_place.image_id = "test-image-id"
+    mock_place.receipt_id = 1
+    mock_place.merchant_name = "Test Merchant"
+    mock_place.place_id = "ChIJtest123"
+    mock_place.formatted_address = "123 Test St"
+    mock_place.phone_number = "555-123-4567"
+    mock_place.merchant_category = "Restaurant"
+    mock_place.matched_fields = ["name", "phone"]
+    mock_place.validated_by = "google_places"
+    mock_place.validation_status = "MATCHED"
+    mock_place.reasoning = "Test reasoning"
+    mock_place.canonical_merchant_name = "Test Merchant"
+    mock_place.canonical_place_id = "ChIJtest123"
+    mock_place.canonical_address = "123 Test St"
+    mock_place.canonical_phone_number = "555-123-4567"
 
-    client.get_receipt_metadata.return_value = mock_metadata
+    client.get_receipt_place.return_value = mock_place
 
     # Mock receipt details
     mock_receipt = MagicMock()
@@ -51,8 +51,8 @@ def mock_dynamo_client() -> MagicMock:
         [],  # labels
     )
 
-    # Mock get_receipt_metadatas_by_merchant
-    client.get_receipt_metadatas_by_merchant.return_value = ([mock_metadata], None)
+    # Mock get_receipt_places_by_merchant
+    client.get_receipt_places_by_merchant.return_value = ([mock_place], None)
 
     return client
 

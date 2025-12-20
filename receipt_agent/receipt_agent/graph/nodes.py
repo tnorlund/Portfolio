@@ -35,41 +35,41 @@ def _build_chromadb_word_id(image_id: str, receipt_id: int, line_id: int, word_i
     return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
 
 
-async def load_metadata(
+async def load_place(
     state: ValidationState,
     dynamo_client: Any,
     chroma_client: Optional[Any] = None,
 ) -> dict[str, Any]:
     """
-    Load current receipt metadata and context from DynamoDB.
+    Load current receipt place data and context from DynamoDB.
 
     This is the entry node that fetches the current state of the
     receipt we're validating. Also verifies embeddings exist in ChromaDB.
     """
     logger.info(
-        f"Loading metadata for {state.image_id}#{state.receipt_id}"
+        f"Loading place data for {state.image_id}#{state.receipt_id}"
     )
 
-    updates: dict[str, Any] = {"current_step": "load_metadata"}
+    updates: dict[str, Any] = {"current_step": "load_place"}
 
     try:
-        # Get current metadata
-        metadata = dynamo_client.get_receipt_metadata(
+        # Get current place data
+        place = dynamo_client.get_receipt_place(
             image_id=state.image_id,
             receipt_id=state.receipt_id,
         )
 
-        if metadata:
+        if place:
             updates.update({
-                "current_merchant_name": metadata.merchant_name,
-                "current_place_id": metadata.place_id,
-                "current_address": metadata.address,
-                "current_phone": metadata.phone_number,
-                "current_validation_status": metadata.validation_status,
+                "current_merchant_name": place.merchant_name,
+                "current_place_id": place.place_id,
+                "current_address": place.formatted_address,
+                "current_phone": place.phone_number,
+                "current_validation_status": place.validation_status,
             })
         else:
             logger.warning(
-                f"No metadata found for {state.image_id}#{state.receipt_id}"
+                f"No place found for {state.image_id}#{state.receipt_id}"
             )
 
         # Get receipt context (lines, words, etc.)
@@ -419,12 +419,12 @@ async def verify_consistency(
             return updates
 
         # Get other receipts from same merchant
-        metadatas, _ = dynamo_client.get_receipt_metadatas_by_merchant(
+        places, _ = dynamo_client.get_receipt_places_by_merchant(
             merchant_name=state.current_merchant_name,
             limit=50,
         )
 
-        if not metadatas:
+        if not places:
             step = VerificationStep(
                 step_name="consistency_check",
                 question=f"Are there other receipts from {state.current_merchant_name}?",
@@ -440,20 +440,20 @@ async def verify_consistency(
         addresses: dict[str, int] = {}
         phones: dict[str, int] = {}
 
-        for meta in metadatas:
+        for place in places:
             # Skip the receipt we're validating
             if (
-                meta.image_id == state.image_id
-                and meta.receipt_id == state.receipt_id
+                place.image_id == state.image_id
+                and place.receipt_id == state.receipt_id
             ):
                 continue
 
-            if meta.place_id:
-                place_ids[meta.place_id] = place_ids.get(meta.place_id, 0) + 1
-            if meta.address:
-                addresses[meta.address] = addresses.get(meta.address, 0) + 1
-            if meta.phone_number:
-                phones[meta.phone_number] = phones.get(meta.phone_number, 0) + 1
+            if place.place_id:
+                place_ids[place.place_id] = place_ids.get(place.place_id, 0) + 1
+            if place.formatted_address:
+                addresses[place.formatted_address] = addresses.get(place.formatted_address, 0) + 1
+            if place.phone_number:
+                phones[place.phone_number] = phones.get(place.phone_number, 0) + 1
 
         # Check place_id consistency
         step_place = VerificationStep(

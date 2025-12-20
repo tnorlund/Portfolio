@@ -2,11 +2,11 @@
 DynamoDB Stream Processor Lambda for ChromaDB Compaction Integration
 
 This module defines the Lambda function that processes DynamoDB stream events
-for receipt metadata and word label changes, triggering ChromaDB metadata
+for receipt place data and word label changes, triggering ChromaDB metadata
 updates through the existing compaction SQS queue.
 
 Focuses on:
-- RECEIPT_METADATA entities (merchant info changes)
+- RECEIPT_PLACE entities (merchant info changes)
 - RECEIPT_WORD_LABEL entities (word label changes)
 - COMPACTION_RUN entities (delta compaction jobs)
 - Both MODIFY and REMOVE operations

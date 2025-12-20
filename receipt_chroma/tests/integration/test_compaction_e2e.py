@@ -21,7 +21,7 @@ from receipt_dynamo.constants import ChromaDBCollection
 from tests.helpers.factories import (
     create_compaction_run_message,
     create_label_message,
-    create_metadata_message,
+    create_place_message,
     create_mock_logger,
     create_mock_metrics,
     create_receipt_lines_in_dynamodb,
@@ -88,7 +88,7 @@ class TestCompactionEndToEnd:
         # Step 2: Simulate receiving stream messages
         from receipt_dynamo_stream.models import FieldChange
 
-        metadata_msg = create_metadata_message(
+        metadata_msg = create_place_message(
             image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
@@ -239,7 +239,7 @@ class TestCompactionEndToEnd:
         # Step 3: Simulate receiving stream messages
         from receipt_dynamo_stream.models import FieldChange
 
-        metadata_msg = create_metadata_message(
+        metadata_msg = create_place_message(
             image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
@@ -390,7 +390,7 @@ class TestCompactionEndToEnd:
         # Step 2: Create stream messages (metadata + label updates)
         from receipt_dynamo_stream.models import FieldChange
 
-        metadata_msg = create_metadata_message(
+        metadata_msg = create_place_message(
             image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
@@ -523,7 +523,7 @@ class TestCompactionEndToEnd:
         messages = []
         for idx, image_id in enumerate(image_ids):
             receipt_id = idx + 1
-            msg = create_metadata_message(
+            msg = create_place_message(
                 image_id=image_id,
                 receipt_id=receipt_id,
                 event_name="MODIFY",
@@ -629,7 +629,7 @@ class TestCompactionEndToEnd:
         # Create stream message
         from receipt_dynamo_stream.models import FieldChange
 
-        metadata_msg = create_metadata_message(
+        metadata_msg = create_place_message(
             image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",

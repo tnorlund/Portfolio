@@ -24,7 +24,7 @@ from receipt_dynamo_stream.parsing import (
     parse_stream_record,
 )
 
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
@@ -276,7 +276,7 @@ def build_entity_change_message(
 
 
 def _extract_entity_data(
-    entity_type: str, entity: ReceiptMetadata | ReceiptWordLabel | None
+    entity_type: str, entity: ReceiptPlace | ReceiptWordLabel | None
 ) -> tuple[dict[str, object], list[ChromaDBCollection]]:
     """
     Extract entity data and determine target collections.
@@ -284,8 +284,8 @@ def _extract_entity_data(
     if not entity:
         return {}, []
 
-    if entity_type == "RECEIPT_METADATA" and isinstance(
-        entity, ReceiptMetadata
+    if entity_type == "RECEIPT_PLACE" and isinstance(
+        entity, ReceiptPlace
     ):
         entity_data = {
             "entity_type": entity_type,

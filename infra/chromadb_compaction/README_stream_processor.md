@@ -1,8 +1,8 @@
-# DynamoDB Stream Processor for ChromaDB Metadata Sync
+# DynamoDB Stream Processor for ChromaDB Place Sync
 
 ## Overview
 
-The DynamoDB Stream Processor enables real-time synchronization of metadata changes between DynamoDB entities and ChromaDB vector databases. It processes stream events for receipt metadata and word labels, triggering ChromaDB updates through the existing compaction infrastructure.
+The DynamoDB Stream Processor enables real-time synchronization of place changes between DynamoDB entities and ChromaDB vector databases. It processes stream events for receipt place and word labels, triggering ChromaDB updates through the existing compaction infrastructure.
 
 ## Architecture
 
@@ -16,15 +16,14 @@ The DynamoDB Stream Processor enables real-time synchronization of metadata chan
 
 ## Supported Entities
 
-### 1. `RECEIPT_METADATA` - Merchant Information
+### 1. `RECEIPT_PLACE` - Merchant Information
 
-- **Key Pattern**: `PK: IMAGE#{uuid}`, `SK: RECEIPT#{id:05d}#METADATA`
+- **Key Pattern**: `PK: IMAGE#{uuid}`, `SK: RECEIPT#{id:05d}#PLACE`
 - **ChromaDB Impact**: Updates merchant info across ALL embeddings for that receipt
 - **Monitored Fields**:
-  - `canonical_merchant_name`
   - `merchant_name`
   - `merchant_category`
-  - `address`
+  - `formatted_address`
   - `phone_number`
   - `place_id`
 
@@ -43,12 +42,12 @@ The DynamoDB Stream Processor enables real-time synchronization of metadata chan
 
 ### MODIFY Events
 
-- **Metadata Changes**: Merchant name corrections, address updates
+- **Place Changes**: Merchant name corrections, formatted address updates
 - **Label Changes**: Label updates, validation status changes, reasoning updates
 
 ### REMOVE Events
 
-- **Metadata Removal**: When receipt metadata is deleted → update all related embeddings
+- **Place Removal**: When receipt place is deleted → update all related embeddings
 - **Label Removal**: When labels are deleted → remove label metadata from word embeddings
 
 ## Components
@@ -86,7 +85,7 @@ Messages sent to the SQS queue have this structure:
 ```json
 {
   "source": "dynamodb_stream",
-  "entity_type": "RECEIPT_METADATA|RECEIPT_WORD_LABEL",
+  "entity_type": "RECEIPT_PLACE|RECEIPT_WORD_LABEL",
   "entity_data": {
     "image_id": "550e8400-e29b-41d4-a716-446655440000",
     "receipt_id": 1,
@@ -95,7 +94,7 @@ Messages sent to the SQS queue have this structure:
     "label": "TOTAL" // Only for RECEIPT_WORD_LABEL
   },
   "changes": {
-    "canonical_merchant_name": {
+    "merchant_name": {
       "old": "Old Merchant",
       "new": "New Merchant"
     }

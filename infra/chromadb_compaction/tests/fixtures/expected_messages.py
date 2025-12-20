@@ -1,23 +1,26 @@
 """Expected SQS message outputs for contract testing."""
 
-# Expected structure for RECEIPT_METADATA messages
-EXPECTED_METADATA_MESSAGE_SCHEMA = {
+# Expected structure for RECEIPT_PLACE messages
+EXPECTED_PLACE_MESSAGE_SCHEMA = {
     "source": "dynamodb_stream",
-    "entity_type": "RECEIPT_METADATA",
+    "entity_type": "RECEIPT_PLACE",
     "entity_data": {
-        "entity_type": "RECEIPT_METADATA",
+        "entity_type": "RECEIPT_PLACE",
         "image_id": str,  # UUID string
         "receipt_id": int,
     },
     "changes": {
         # Field changes with old/new structure
-        # Example: "canonical_merchant_name": {"old": "value1", "new": "value2"}
+        # Example: "merchant_name": {"old": "value1", "new": "value2"}
     },
     "event_name": str,  # "MODIFY" or "REMOVE"
     "timestamp": str,  # ISO format datetime
     "stream_record_id": str,
     "aws_region": str,
 }
+
+# Keep old name for backward compatibility
+EXPECTED_METADATA_MESSAGE_SCHEMA = EXPECTED_PLACE_MESSAGE_SCHEMA
 
 # Expected structure for RECEIPT_WORD_LABEL messages
 EXPECTED_WORD_LABEL_MESSAGE_SCHEMA = {
@@ -85,7 +88,7 @@ REQUIRED_MESSAGE_ATTRIBUTES = {
 
 # Collection targeting rules
 COLLECTION_TARGETING_RULES = {
-    "RECEIPT_METADATA": ["lines", "words"],  # Affects both collections
+    "RECEIPT_PLACE": ["lines", "words"],  # Affects both collections
     "RECEIPT_WORD_LABEL": ["words"],  # Only affects words
     "COMPACTION_RUN": ["lines", "words"],  # Separate message per collection
 }

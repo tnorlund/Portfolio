@@ -27,8 +27,8 @@ import pytest
 from ...lambdas.stream_processor import lambda_handler
 
 
-class TestMetadataRoutingSQS:
-    """Test RECEIPT_METADATA routing to SQS queues."""
+class TestPlaceRoutingSQS:
+    """Test RECEIPT_PLACE routing to SQS queues."""
 
     def test_metadata_update_sends_to_both_queues(
         self, target_metadata_event, mock_sqs_queues
@@ -62,24 +62,24 @@ class TestMetadataRoutingSQS:
         # Verify message content
         lines_body = json.loads(lines_messages[0]["Body"])
         assert lines_body["source"] == "dynamodb_stream"
-        assert lines_body["entity_type"] == "RECEIPT_METADATA"
+        assert lines_body["entity_type"] == "RECEIPT_PLACE"
         assert lines_body["event_name"] == "MODIFY"
         assert (
             lines_body["entity_data"]["image_id"]
             == "7e2bd911-7afb-4e0a-84de-57f51ce4daff"
         )
         assert lines_body["entity_data"]["receipt_id"] == 1
-        assert "canonical_merchant_name" in lines_body["changes"]
+        assert "merchant_name" in lines_body["changes"]
 
-    def test_different_canonical_merchant_names(
+    def test_different_merchant_names(
         self, target_event_factory, mock_sqs_queues
     ):
-        """Test stream processor with different corrected canonical merchant names."""
+        """Test stream processor with different corrected merchant names."""
         sqs = mock_sqs_queues["sqs_client"]
         lines_queue_url = mock_sqs_queues["lines_queue_url"]
 
         custom_event = target_event_factory(
-            canonical_merchant_name="Target Store"
+            merchant_name="Target Store"
         )
         result = lambda_handler(custom_event, None)
 
@@ -92,12 +92,12 @@ class TestMetadataRoutingSQS:
         message = response["Messages"][0]
         body = json.loads(message["Body"])
 
-        canonical_change = body["changes"]["canonical_merchant_name"]
+        merchant_change = body["changes"]["merchant_name"]
         assert (
-            canonical_change["old"]
+            merchant_change["old"]
             == "30740 Russell Ranch Rd (Westlake Village)"
         )
-        assert canonical_change["new"] == "Target Store"
+        assert merchant_change["new"] == "Target Store"
 
 
 class TestWordLabelRoutingSQS:
@@ -242,11 +242,11 @@ class TestBatchProcessing:
         self, target_event_factory, mock_sqs_queues
     ):
         """Test handling >10 messages (SQS batch limit)."""
-        # Create event with 15 metadata changes
+        # Create event with 15 place changes
         events = {"Records": []}
         for i in range(15):
             single_event = target_event_factory(
-                canonical_merchant_name=f"Merchant {i}"
+                merchant_name=f"Merchant {i}"
             )
             record = single_event["Records"][0]
             record["eventID"] = f"event-{i}"

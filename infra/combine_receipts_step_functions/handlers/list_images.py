@@ -127,14 +127,14 @@ def get_image_ids_from_llm_analysis(
 
 def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
-    List images/receipts that need combination because they lack merchant metadata.
+    List images/receipts that need combination because they lack merchant place info.
 
     Logic:
     - Fetch all receipts (IMAGE#/RECEIPT# items).
-    - Fetch all receipt metadata items.
+    - Fetch all receipt place items.
     - Identify:
-        * Receipts whose metadata exists but merchant_name is missing/blank.
-        * Receipts that have no metadata at all.
+        * Receipts whose place exists but merchant_name is missing/blank.
+        * Receipts that have no place at all.
     - Group by image_id and emit only images with 2+ target receipts.
 
     All other behaviors (LLM selection, combination) happen downstream.
@@ -162,7 +162,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             batch_bucket, llm_analysis_s3_key
         )
     else:
-        logger.info("Listing receipts and metadatas to find missing merchants")
+        logger.info("Listing receipts and places to find missing merchants")
         if not table_name:
             raise ValueError("DYNAMODB_TABLE_NAME required")
 
@@ -182,35 +182,35 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             if not last_key:
                 break
 
-        # Collect metadata and note which have missing merchant_name
-        meta_missing_merchant: Dict[str, set[int]] = {}
-        meta_seen: Dict[str, set[int]] = {}
+        # Collect place info and note which have missing merchant_name
+        place_missing_merchant: Dict[str, set[int]] = {}
+        place_seen: Dict[str, set[int]] = {}
         last_key = None
         while True:
-            metas, last_key = dynamo.list_receipt_metadatas(
+            places, last_key = dynamo.list_receipt_places(
                 limit=100, last_evaluated_key=last_key
             )
-            for m in metas:
-                meta_seen.setdefault(m.image_id, set()).add(m.receipt_id)
-                if not m.merchant_name or not str(m.merchant_name).strip():
-                    meta_missing_merchant.setdefault(m.image_id, set()).add(
-                        m.receipt_id
+            for p in places:
+                place_seen.setdefault(p.image_id, set()).add(p.receipt_id)
+                if not p.merchant_name or not str(p.merchant_name).strip():
+                    place_missing_merchant.setdefault(p.image_id, set()).add(
+                        p.receipt_id
                     )
             if not last_key:
                 break
 
-        # Receipts with no metadata
-        no_metadata: Dict[str, set[int]] = {}
+        # Receipts with no place info
+        no_place: Dict[str, set[int]] = {}
         for img, rids in receipts_by_image.items():
-            missing = rids - meta_seen.get(img, set())
+            missing = rids - place_seen.get(img, set())
             if missing:
-                no_metadata.setdefault(img, set()).update(missing)
+                no_place.setdefault(img, set()).update(missing)
 
-        # Union of “no metadata” and “metadata missing merchant”
+        # Union of "no place" and "place missing merchant"
         target_receipts_by_image: Dict[str, set[int]] = {}
-        for img, rids in no_metadata.items():
+        for img, rids in no_place.items():
             target_receipts_by_image.setdefault(img, set()).update(rids)
-        for img, rids in meta_missing_merchant.items():
+        for img, rids in place_missing_merchant.items():
             target_receipts_by_image.setdefault(img, set()).update(rids)
 
         # For any image with at least one target receipt, include ALL receipts on that image

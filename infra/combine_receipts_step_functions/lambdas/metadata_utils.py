@@ -1,7 +1,7 @@
 """
-Metadata utilities for receipt combination.
+Place data utilities for receipt combination.
 
-This module contains functions for selecting and migrating metadata and labels
+This module contains functions for selecting and migrating place data and labels
 when combining receipts.
 """
 
@@ -11,18 +11,18 @@ from typing import Dict, List, Optional, Tuple
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import MerchantValidationStatus
-from receipt_dynamo.entities import ReceiptMetadata, ReceiptWordLabel
+from receipt_dynamo.entities import ReceiptPlace, ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
 
-def get_best_receipt_metadata(
+def get_best_receipt_place(
     client: DynamoClient,
     image_id: str,
     receipt_ids: List[int],
-) -> Optional[ReceiptMetadata]:
+) -> Optional[ReceiptPlace]:
     """
-    Get the best ReceiptMetadata from the original receipts.
+    Get the best ReceiptPlace from the original receipts.
 
     Args:
         client: DynamoDB client
@@ -30,21 +30,21 @@ def get_best_receipt_metadata(
         receipt_ids: List of receipt IDs to consider
 
     Returns:
-        Best ReceiptMetadata or None if no valid metadata found
+        Best ReceiptPlace or None if no valid place data found
     """
-    metadatas = []
+    places = []
     for receipt_id in receipt_ids:
         try:
-            metadata = client.get_receipt_metadata(image_id, receipt_id)
+            place = client.get_receipt_place(image_id, receipt_id)
             if (
-                metadata
-                and metadata.merchant_name
-                and metadata.merchant_name.strip()
+                place
+                and place.merchant_name
+                and place.merchant_name.strip()
             ):
-                metadatas.append(metadata)
+                places.append(place)
         except Exception as e:  # pylint: disable=broad-except
             logger.error(
-                "Failed to fetch metadata for image_id=%s receipt_id=%s: %s",
+                "Failed to fetch place data for image_id=%s receipt_id=%s: %s",
                 image_id,
                 receipt_id,
                 e,
@@ -52,30 +52,30 @@ def get_best_receipt_metadata(
             )
             continue
 
-    if not metadatas:
+    if not places:
         return None
 
-    def score_metadata(meta: ReceiptMetadata) -> int:
-        """Score metadata based on completeness and validation status."""
+    def score_place(place: ReceiptPlace) -> int:
+        """Score place data based on completeness and validation status."""
         score = 0
-        if meta.place_id and meta.place_id.strip():
+        if place.place_id and place.place_id.strip():
             score += 10
-        if meta.merchant_name and meta.merchant_name.strip():
+        if place.merchant_name and place.merchant_name.strip():
             score += 5
-        if meta.address and meta.address.strip():
+        if place.formatted_address and place.formatted_address.strip():
             score += 3
-        if meta.phone_number and meta.phone_number.strip():
+        if place.phone_number and place.phone_number.strip():
             score += 2
-        if meta.validation_status == MerchantValidationStatus.MATCHED.value:
+        if place.validation_status == MerchantValidationStatus.MATCHED.value:
             score += 5
-        elif meta.validation_status == MerchantValidationStatus.UNSURE.value:
+        elif place.validation_status == MerchantValidationStatus.UNSURE.value:
             score += 2
         return score
 
-    metadatas.sort(
-        key=lambda m: (score_metadata(m), m.timestamp), reverse=True
+    places.sort(
+        key=lambda p: (score_place(p), p.timestamp), reverse=True
     )
-    return metadatas[0]
+    return places[0]
 
 
 def migrate_receipt_word_labels(

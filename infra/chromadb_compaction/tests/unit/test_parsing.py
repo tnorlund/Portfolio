@@ -10,7 +10,7 @@ import pytest
 
 from receipt_dynamo.constants import ValidationMethod, ValidationStatus
 from receipt_dynamo.entities.compaction_run import CompactionRun
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 from ...lambdas.stream_processor import (
@@ -22,24 +22,22 @@ from ...lambdas.stream_processor import (
 
 
 # Helper functions to create test entities
-def create_test_receipt_metadata(
+def create_test_receipt_place(
     merchant_name: str = "Test Merchant",
-    canonical_merchant_name: str = "",
     **kwargs,
-) -> ReceiptMetadata:
-    """Create a test ReceiptMetadata entity with sensible defaults."""
+) -> ReceiptPlace:
+    """Create a test ReceiptPlace entity with sensible defaults."""
     defaults = {
         "image_id": "550e8400-e29b-41d4-a716-446655440000",
         "receipt_id": 1,
         "place_id": "place123",
         "merchant_name": merchant_name,
-        "canonical_merchant_name": canonical_merchant_name,
         "matched_fields": ["name"],
         "validated_by": ValidationMethod.PHONE_LOOKUP,
         "timestamp": datetime.fromisoformat("2024-01-01T00:00:00"),
     }
     defaults.update(kwargs)
-    return ReceiptMetadata(**defaults)
+    return ReceiptPlace(**defaults)
 
 
 def create_test_receipt_word_label(
@@ -92,10 +90,10 @@ def create_stream_record_from_entities(
 class TestParseStreamRecord:
     """Test DynamoDB stream record parsing logic."""
 
-    def test_parse_receipt_metadata_modify_event(self):
-        """Test parsing RECEIPT_METADATA MODIFY event."""
-        old_entity = create_test_receipt_metadata(merchant_name="Old Merchant")
-        new_entity = create_test_receipt_metadata(merchant_name="New Merchant")
+    def test_parse_receipt_place_modify_event(self):
+        """Test parsing RECEIPT_PLACE MODIFY event."""
+        old_entity = create_test_receipt_place(merchant_name="Old Merchant")
+        new_entity = create_test_receipt_place(merchant_name="New Merchant")
 
         record = create_stream_record_from_entities(
             event_name="MODIFY", old_entity=old_entity, new_entity=new_entity
@@ -105,14 +103,14 @@ class TestParseStreamRecord:
 
         assert result is not None
         assert isinstance(result, ParsedStreamRecord)
-        assert result.entity_type == "RECEIPT_METADATA"
+        assert result.entity_type == "RECEIPT_PLACE"
         expected_key = old_entity.key
         assert result.pk == expected_key["PK"]["S"]
         assert result.sk == expected_key["SK"]["S"]
         assert result.old_entity is not None
         assert result.new_entity is not None
-        assert isinstance(result.old_entity, ReceiptMetadata)
-        assert isinstance(result.new_entity, ReceiptMetadata)
+        assert isinstance(result.old_entity, ReceiptPlace)
+        assert isinstance(result.new_entity, ReceiptPlace)
         assert result.old_entity.merchant_name == old_entity.merchant_name
         assert result.new_entity.merchant_name == new_entity.merchant_name
 
@@ -147,7 +145,7 @@ class TestParseStreamRecord:
             "dynamodb": {
                 "Keys": {
                     "PK": {"S": "BATCH#12345"},
-                    "SK": {"S": "RECEIPT#00001#METADATA"},
+                    "SK": {"S": "RECEIPT#00001#PLACE"},
                 }
             },
         }
@@ -209,10 +207,10 @@ class TestCompactionRunParsing:
             "RECEIPT#00001#COMPACTION_RUN#test-run-123",
         )
 
-        # Not a compaction run (metadata)
+        # Not a compaction run (place)
         assert not _is_compaction_run(
             "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff",
-            "RECEIPT#00001#METADATA",
+            "RECEIPT#00001#PLACE",
         )
 
         # Not an IMAGE PK

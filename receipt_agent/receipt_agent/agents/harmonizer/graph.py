@@ -65,8 +65,8 @@ class HarmonizerStateDict(TypedDict):
     chromadb_bucket: Optional[str]
     chroma_client: Optional[Any]
     embed_fn: Optional[Callable[[list[str]], list[list[float]]]]
-    metadata_finder_graph: Any
-    metadata_finder_state_holder: Any
+    place_finder_graph: Any
+    place_finder_state_holder: Any
     cove_graph: Any
     cove_state_holder: Any
 
@@ -114,7 +114,7 @@ Your job is to:
   actual businesses there
 
 ### Metadata Correction Tools
-- `find_correct_metadata`: Spin up a sub-agent to find the correct metadata for
+- `find_correct_place`: Spin up a sub-agent to find the correct metadata for
   a receipt whose metadata looks incorrect. Use this when a receipt's metadata
   doesn't match Google Places or other receipts in the group.
 
@@ -122,7 +122,7 @@ Your job is to:
 - `verify_address_on_receipt`: Verify that a specific address
   (from metadata or Google Places) actually appears on the receipt text. This
   is CRITICAL for catching wrong place_id assignments. If the address doesn't
-  match, use `find_correct_metadata` to fix it.
+  match, use `find_correct_place` to fix it.
 
 ### Text Consistency Verification Tool
 - `verify_text_consistency`: Verify that all receipts in the group actually
@@ -159,7 +159,7 @@ Your job is to:
    - If an address like "55 Fulton St, New York, NY 10038, USA" appears but
      the receipt shows a California address, this is a WRONG place_id
      assignment
-   - **If address doesn't match receipt text, use `find_correct_metadata` to
+   - **If address doesn't match receipt text, use `find_correct_place` to
      fix it immediately**
    - Do NOT proceed with harmonization if addresses don't match - fix them
      first
@@ -175,7 +175,7 @@ Your job is to:
    - Use these to verify metadata matches what's actually on the receipt
 
 6. **Find correct metadata** (if metadata appears incorrect) with
-   `find_correct_metadata`
+   `find_correct_place`
    - **USE THIS if address doesn't match receipt text** - this indicates wrong
      place_id
    - If a receipt's metadata doesn't match Google Places or seems wrong, use
@@ -240,7 +240,7 @@ Your job is to:
 2. ALWAYS check Google Places with `verify_place_id` before deciding
 3. **CRITICAL: ALWAYS verify addresses match receipt text** - Use
    `display_receipt_text` or `verify_address_on_receipt` to check
-4. **If address doesn't match receipt text, use `find_correct_metadata` to fix
+4. **If address doesn't match receipt text, use `find_correct_place` to fix
    it** - Don't proceed with wrong place_id
 5. NEVER accept an address as a merchant name
 6. RECOMMENDED: Use `verify_text_consistency` before submitting to check for
@@ -533,7 +533,7 @@ def create_harmonizer_tools(
         - evidence: What address text was found on the receipt (if any)
         - formatted_text: The formatted receipt text for inspection
         - recommendation: What to do if address doesn't match (use
-          find_correct_metadata)
+          find_correct_place)
         """
         try:
             # Sanitize image_id first (remove trailing characters like '?')
@@ -732,7 +732,7 @@ def create_harmonizer_tools(
                 recommendation = (
                     "WARNING: Address does NOT match receipt text. "
                     "This may indicate a wrong place_id assignment. "
-                    "Use find_correct_metadata to find the correct place_id "
+                    "Use find_correct_place to find the correct place_id "
                     "and metadata for this receipt."
                 )
 
@@ -877,34 +877,24 @@ def create_harmonizer_tools(
                     "verification_prompt": "Receipt has no text lines.",
                 }
 
-            # Use ReceiptMetadata when the Receipt entity lacks fields
-            current_metadata = {}
+            # Get metadata from ReceiptPlace
+            current_metadata = {
+                "merchant_name": "(not available)",
+                "address": "(not available)",
+                "phone": "(not available)",
+            }
             try:
-                metadata = dynamo_client.get_receipt_metadata(
-                    image_id, receipt_id
-                )
-                if metadata:
+                place = dynamo_client.get_receipt_place(image_id, receipt_id)
+                if place:
                     current_metadata = {
-                        "merchant_name": metadata.merchant_name or "(not set)",
-                        "address": metadata.address or "(not set)",
-                        "phone": metadata.phone_number or "(not set)",
-                    }
-                else:
-                    current_metadata = {
-                        "merchant_name": "(not available)",
-                        "address": "(not available)",
-                        "phone": "(not available)",
+                        "merchant_name": place.merchant_name or "(not set)",
+                        "address": place.formatted_address or "(not set)",
+                        "phone": place.phone_number or "(not set)",
                     }
             except Exception as e:
                 logger.debug(
-                    "Could not fetch metadata for "
-                    f"{image_id}#{receipt_id}: {e}"
+                    f"Could not fetch receipt_place for {image_id}#{receipt_id}: {e}"
                 )
-                current_metadata = {
-                    "merchant_name": "(not available)",
-                    "address": "(not available)",
-                    "phone": "(not available)",
-                }
 
             try:
                 formatted_text = format_receipt_text_receipt_space(lines)
@@ -1249,16 +1239,16 @@ def create_harmonizer_tools(
 
     # ========== METADATA FINDER TOOL ==========
 
-    class FindCorrectMetadataInput(BaseModel):
-        """Input for find_correct_metadata tool."""
+    class FindCorrectPlaceInput(BaseModel):
+        """Input for find_correct_place tool."""
 
         image_id: str = Field(
             description="Image ID of the receipt with incorrect metadata"
         )
         receipt_id: int = Field(description="Receipt ID")
 
-    @tool(args_schema=FindCorrectMetadataInput)
-    async def find_correct_metadata(image_id: str, receipt_id: int) -> dict:
+    @tool(args_schema=FindCorrectPlaceInput)
+    async def find_correct_place(image_id: str, receipt_id: int) -> dict:
         """
         Find the correct metadata for a receipt that appears to have
         incorrect metadata.
@@ -1329,22 +1319,22 @@ def create_harmonizer_tools(
                     chroma_client = None
                     embed_fn = None
 
-            # Check if we have the required dependencies for full metadata
+            # Check if we have the required dependencies for full place
             # finder
             if chroma_client and embed_fn:
-                # Use full metadata finder agent
+                # Use full place finder agent
                 try:
-                    from receipt_agent.subagents.metadata_finder import (
-                        create_receipt_metadata_finder_graph,
-                        run_receipt_metadata_finder,
+                    from receipt_agent.subagents.place_finder import (
+                        create_receipt_place_finder_graph,
+                        run_receipt_place_finder,
                     )
 
                     # Create graph if not already created (cache it in state)
-                    if "metadata_finder_graph" not in state:
+                    if "place_finder_graph" not in state:
                         (
-                            state["metadata_finder_graph"],
-                            state["metadata_finder_state_holder"],
-                        ) = create_receipt_metadata_finder_graph(
+                            state["place_finder_graph"],
+                            state["place_finder_state_holder"],
+                        ) = create_receipt_place_finder_graph(
                             dynamo_client=dynamo_client,
                             chroma_client=chroma_client,
                             embed_fn=embed_fn,
@@ -1354,15 +1344,15 @@ def create_harmonizer_tools(
                             # Pass bucket for lazy loading
                         )
 
-                    # Get receipt details to pass to metadata finder
+                    # Get receipt details to pass to place finder
                     receipt_details = dynamo_client.get_receipt_details(
                         image_id, receipt_id
                     )
 
-                    # Run metadata finder agent
-                    result = await run_receipt_metadata_finder(
-                        graph=state["metadata_finder_graph"],
-                        state_holder=state.get("metadata_finder_state_holder")
+                    # Run place finder agent
+                    result = await run_receipt_place_finder(
+                        graph=state["place_finder_graph"],
+                        state_holder=state.get("place_finder_state_holder")
                         or {},
                         image_id=image_id,
                         receipt_id=receipt_id,
@@ -1376,7 +1366,7 @@ def create_harmonizer_tools(
 
                     if result.get("found"):
                         logger.info(
-                            f"Metadata finder found "
+                            f"Place finder found "
                             f"{len(result.get('fields_found', []))} fields "
                             f"for {image_id}#{receipt_id}"
                         )
@@ -1389,22 +1379,22 @@ def create_harmonizer_tools(
                             "confidence": result.get("confidence", 0.0),
                             "reasoning": result.get("reasoning", ""),
                             "fields_found": result.get("fields_found", []),
-                            "method": "metadata_finder_agent",
+                            "method": "place_finder_agent",
                         }
                     else:
                         return {
                             "found": False,
                             "reasoning": result.get(
                                 "reasoning",
-                                "Metadata finder could not find "
+                                "Place finder could not find "
                                 "correct metadata",
                             ),
-                            "method": "metadata_finder_agent",
+                            "method": "place_finder_agent",
                         }
 
                 except Exception as e:
                     logger.warning(
-                        f"Metadata finder agent failed: {e}, trying fallback"
+                        f"Place finder agent failed: {e}, trying fallback"
                     )
                     # Fall through to fallback
 
@@ -1813,7 +1803,7 @@ def create_harmonizer_tools(
         verify_address_on_receipt,
         get_field_variations,
         verify_place_id,
-        find_correct_metadata,
+        find_correct_place,
         verify_text_consistency,
         submit_harmonization,
     ]
@@ -1849,9 +1839,9 @@ def create_harmonizer_graph(
         places_api: Google Places API client
         settings: Optional settings
         chroma_client: Optional ChromaDB client (for metadata finder sub-agent)
-            If None, will be lazy-loaded when find_correct_metadata is called
+            If None, will be lazy-loaded when find_correct_place is called
         embed_fn: Optional embedding function (for metadata finder sub-agent)
-            If None, will be lazy-loaded when find_correct_metadata is called
+            If None, will be lazy-loaded when find_correct_place is called
         chromadb_bucket: Optional S3 bucket name for ChromaDB snapshots
             (for lazy loading)
 

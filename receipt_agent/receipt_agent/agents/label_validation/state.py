@@ -5,7 +5,7 @@ State definition for the Label Validation agent.
 from typing import Annotated, Any, Optional
 
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LabelValidationState(BaseModel):
@@ -35,8 +35,6 @@ class LabelValidationState(BaseModel):
         default=None, description="Final decision when complete"
     )
 
-    class Config:
-        arbitrary_types_allowed = True
-
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 

@@ -35,7 +35,7 @@
 ### Sub-Agents Structure
 - ✅ `subagents/financial_validation/` - Re-exports from current location
 - ✅ `subagents/cove_text_consistency/` - Re-exports from current location
-- ✅ `subagents/metadata_finder/` - Re-exports from current location
+- ✅ `subagents/place_finder/` - Re-exports from current location
 - ✅ `subagents/table_columns/` - Placeholder (embedded in label_harmonizer)
 
 ## Fully Migrated Agents (All 8) ✅
@@ -57,9 +57,9 @@
 
 ### Internal Import Updates
 - ✅ All internal imports updated to use `subagents/*` paths instead of `graph/*`
-- ✅ `agents/harmonizer/graph.py` - Updated metadata_finder and cove_text_consistency imports
+- ✅ `agents/harmonizer/graph.py` - Updated place_finder and cove_text_consistency imports
 - ✅ `agents/label_harmonizer/tools/factory.py` - Updated financial_validation import
-- ✅ `tools/receipt_metadata_finder.py` - Updated metadata_finder imports
+- ✅ `tools/receipt_place_finder.py` - Updated place_finder imports
 - ✅ Deprecated shims (`graph/harmonizer_workflow.py`, `graph/label_harmonizer_workflow.py`) also updated
 
 ## Remaining Work 📝
@@ -68,7 +68,7 @@
 - ✅ All sub-agent implementations extracted from `graph/*` to `subagents/*`
 - ✅ `subagents/financial_validation/` - Implementation moved from `graph/financial_validation_workflow.py`
 - ✅ `subagents/cove_text_consistency/` - Implementation moved from `graph/cove_text_consistency_workflow.py`
-- ✅ `subagents/metadata_finder/` - Implementation moved from `graph/receipt_metadata_finder_workflow.py`
+- ✅ `subagents/place_finder/` - Implementation moved from `graph/receipt_metadata_finder_workflow.py`
 - ✅ All deprecated shim files have been removed from `graph/*`
 
 ### Remaining Issues 🔍
@@ -177,7 +177,7 @@ subagents/<subagent_name>/
 - `agentic/` — Agentic validation workflow (LLM-driven validation)
 - `validation/` — Deterministic validation workflow (non-agentic)
 - `label_harmonizer/` — Label harmonizer v3 (whole-receipt consistency); uses `subagents/financial_validation`
-- `harmonizer/` — Metadata/merchant harmonizer (place_id groups); uses `subagents/metadata_finder` and `subagents/cove_text_consistency`
+- `harmonizer/` — Metadata/merchant harmonizer (place_id groups); uses `subagents/place_finder` and `subagents/cove_text_consistency`
 - `label_suggestion/` — Label suggestion helper (async, non-LangGraph)
 - `label_validation/` — Label validation agent/state
 - `place_id_finder/` — Finds missing place_ids
@@ -186,7 +186,7 @@ subagents/<subagent_name>/
 Subagents:
 - `financial_validation/` — Financial consistency checks (used by label_harmonizer)
 - `cove_text_consistency/` — Cross-line text consistency (used by harmonizer)
-- `metadata_finder/` — Metadata fill-in (used by harmonizer)
+- `place_finder/` — Place data fill-in (used by harmonizer)
 - `table_columns/` — Placeholder/embedded table column helper for label_harmonizer
 
 ## Migration Complete ✅
