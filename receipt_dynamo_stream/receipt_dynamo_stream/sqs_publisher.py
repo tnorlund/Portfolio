@@ -128,7 +128,7 @@ def send_batch_to_queue(  # pylint: disable=too-many-locals
             elif entity_type in {"RECEIPT_PLACE", "RECEIPT_WORD_LABEL"}:
                 image_id = entity_data.get("image_id") or "unknown"
                 message_group_id = (
-                    f"COMPACTION_RUN:{image_id}:{collection.value}"
+                    f"{entity_type}:{image_id}:{collection.value}"
                 )
             else:
                 group_key = (
