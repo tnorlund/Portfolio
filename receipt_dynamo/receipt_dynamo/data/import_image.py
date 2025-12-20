@@ -13,7 +13,7 @@ from receipt_dynamo.entities import (
     Receipt,
     ReceiptLetter,
     ReceiptLine,
-    ReceiptMetadata,
+    ReceiptPlace,
     ReceiptWord,
     ReceiptWordLabel,
     Word,
@@ -62,8 +62,8 @@ def import_image(table_name: str, json_path: str) -> None:
         "receipt_word_labels": [
             ReceiptWordLabel(**item) for item in data.get("receipt_word_labels", [])
         ],
-        "receipt_metadatas": [
-            ReceiptMetadata(**item) for item in data.get("receipt_metadatas", [])
+        "receipt_places": [
+            ReceiptPlace(**item) for item in data.get("receipt_places", [])
         ],
         "ocr_jobs": [OCRJob(**item) for item in data.get("ocr_jobs", [])],
         "ocr_routing_decisions": [
@@ -105,9 +105,9 @@ def import_image(table_name: str, json_path: str) -> None:
         # type: ignore[arg-type]
         dynamo_client.add_receipt_word_labels(entities["receipt_word_labels"])
 
-    if entities["receipt_metadatas"]:
+    if entities["receipt_places"]:
         # type: ignore[arg-type]
-        dynamo_client.add_receipt_metadatas(entities["receipt_metadatas"])
+        dynamo_client.add_receipt_places(entities["receipt_places"])
 
     if entities["ocr_jobs"]:
         # type: ignore[arg-type]

@@ -27,7 +27,7 @@ from receipt_dynamo.data.shared_exceptions import (
 from receipt_dynamo.entities import (
     OCRJob,
     OCRRoutingDecision,
-    ReceiptMetadata,
+    ReceiptPlace,
     ReceiptWordLabel,
 )
 
@@ -127,10 +127,10 @@ def _sample_letter(unique_image_id: str) -> Letter:
     )
 
 
-@pytest.fixture(name="sample_receipt_metadata")
-def _sample_receipt_metadata(unique_image_id: str) -> ReceiptMetadata:
-    """Provides a sample ReceiptMetadata for testing."""
-    return ReceiptMetadata(
+@pytest.fixture(name="sample_receipt_place")
+def _sample_receipt_place(unique_image_id: str) -> ReceiptPlace:
+    """Provides a sample ReceiptPlace for testing."""
+    return ReceiptPlace(
         image_id=unique_image_id,
         receipt_id=1,
         place_id="id",
@@ -664,7 +664,7 @@ def test_get_image_details_complete(
     sample_line: Line,
     sample_word: Word,
     sample_letter: Letter,
-    sample_receipt_metadata: ReceiptMetadata,
+    sample_receipt_place: ReceiptPlace,
     sample_ocr_job: OCRJob,
     sample_routing_decision: OCRRoutingDecision,
     sample_receipt_word_label: ReceiptWordLabel,
@@ -677,7 +677,7 @@ def test_get_image_details_complete(
     client.add_line(sample_line)
     client.add_word(sample_word)
     client.add_letter(sample_letter)
-    client.add_receipt_metadata(sample_receipt_metadata)
+    client.add_receipt_place(sample_receipt_place)
     client.add_ocr_job(sample_ocr_job)
     client.add_ocr_routing_decision(sample_routing_decision)
     client.add_receipt_word_label(sample_receipt_word_label)
@@ -702,11 +702,11 @@ def test_get_image_details_complete(
     assert retrieved_label.label == sample_receipt_word_label.label
     assert retrieved_label.reasoning == sample_receipt_word_label.reasoning
 
-    # Verify receipt metadata
-    assert len(details.receipt_metadatas) == 1
-    retrieved_metadata = details.receipt_metadatas[0]
-    assert retrieved_metadata.image_id == sample_receipt_metadata.image_id
-    assert retrieved_metadata.receipt_id == sample_receipt_metadata.receipt_id
+    # Verify receipt place
+    assert len(details.receipt_places) == 1
+    retrieved_place = details.receipt_places[0]
+    assert retrieved_place.image_id == sample_receipt_place.image_id
+    assert retrieved_place.receipt_id == sample_receipt_place.receipt_id
 
     # Verify OCR entities
     assert details.ocr_jobs == [sample_ocr_job]
@@ -719,18 +719,18 @@ def test_get_image_details_complete(
 
 
 @pytest.mark.integration
-def test_get_image_details_multiple_receipt_metadatas(
+def test_get_image_details_multiple_receipt_places(
     dynamodb_table: Literal["MyMockedTable"],
     sample_image: Image,
 ) -> None:
-    """Tests get_image_details with multiple receipt metadatas."""
+    """Tests get_image_details with multiple receipt places."""
     client = DynamoClient(dynamodb_table)
     client.add_image(sample_image)
 
-    # Create multiple receipt metadatas
-    metadatas = []
+    # Create multiple receipt places
+    places = []
     for i in range(1, 4):
-        metadata = ReceiptMetadata(
+        place = ReceiptPlace(
             image_id=sample_image.image_id,
             receipt_id=i,
             place_id=f"place_{i}",
@@ -741,22 +741,22 @@ def test_get_image_details_multiple_receipt_metadatas(
             validated_by=["NEARBY_LOOKUP", "TEXT_SEARCH", "PHONE_LOOKUP"][i - 1],
             timestamp=datetime(2025, 1, 1, i - 1, 0, 0),
         )
-        client.add_receipt_metadata(metadata)
-        metadatas.append(metadata)
+        client.add_receipt_place(place)
+        places.append(place)
 
     # Get details
     details = client.get_image_details(sample_image.image_id)
 
-    # Verify all metadatas retrieved
-    assert len(details.receipt_metadatas) == 3
+    # Verify all places retrieved
+    assert len(details.receipt_places) == 3
 
     # Sort for consistent comparison
-    sorted_metadatas = sorted(details.receipt_metadatas, key=lambda x: x.receipt_id)
+    sorted_places = sorted(details.receipt_places, key=lambda x: x.receipt_id)
 
-    for i, metadata in enumerate(sorted_metadatas):
-        assert metadata.receipt_id == i + 1
-        assert metadata.merchant_name == f"Merchant {chr(65 + i)}"
-        assert metadata.place_id == f"place_{i + 1}"
+    for i, place in enumerate(sorted_places):
+        assert place.receipt_id == i + 1
+        assert place.merchant_name == f"Merchant {chr(65 + i)}"
+        assert place.place_id == f"place_{i + 1}"
 
 
 @pytest.mark.integration
@@ -786,7 +786,7 @@ def test_get_image_details_no_related_entities(
             "receipt_words",
             "receipt_letters",
             "receipt_word_labels",
-            "receipt_metadatas",
+            "receipt_places",
             "ocr_jobs",
             "ocr_routing_decisions",
         ]
