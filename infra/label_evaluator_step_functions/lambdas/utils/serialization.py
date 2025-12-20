@@ -7,9 +7,9 @@ Uses dataclasses.asdict() for serialization since all entities are dataclasses.
 Deserialization parses datetime strings and passes kwargs to constructors.
 """
 
+import sys
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Any, Optional
 
 from receipt_dynamo.entities import (
     ReceiptPlace,
@@ -17,104 +17,118 @@ from receipt_dynamo.entities import (
     ReceiptWordLabel,
 )
 
+# Import types from parent package
+sys.path.insert(0, str(__file__).rsplit("/lambdas", 1)[0])
+from evaluator_types import (
+    PatternsFile,
+    SerializedLabel,
+    SerializedPlace,
+    SerializedWord,
+)
 
-def serialize_word(word: ReceiptWord) -> dict[str, Any]:
+
+def serialize_word(word: ReceiptWord) -> SerializedWord:
     """Serialize ReceiptWord for S3 storage using asdict."""
     data = asdict(word)
     # Convert embedding_status enum to string if present
     if data.get("embedding_status"):
         data["embedding_status"] = str(data["embedding_status"])
-    return data
+    return data  # type: ignore[return-value]
 
 
-def deserialize_word(data: dict[str, Any]) -> ReceiptWord:
+def deserialize_word(data: SerializedWord) -> ReceiptWord:
     """Deserialize ReceiptWord from S3 data."""
     return ReceiptWord(**data)
 
 
-def serialize_label(label: ReceiptWordLabel) -> dict[str, Any]:
+def serialize_label(label: ReceiptWordLabel) -> SerializedLabel:
     """Serialize ReceiptWordLabel for S3 storage using asdict."""
     data = asdict(label)
     # Convert timestamp_added to ISO string for JSON serialization
     if data.get("timestamp_added") and hasattr(data["timestamp_added"], "isoformat"):
         data["timestamp_added"] = data["timestamp_added"].isoformat()
-    return data
+    return data  # type: ignore[return-value]
 
 
-def deserialize_label(data: dict[str, Any]) -> ReceiptWordLabel:
+def deserialize_label(data: SerializedLabel) -> ReceiptWordLabel:
     """Deserialize ReceiptWordLabel from S3 data."""
+    # Make a mutable copy to avoid modifying the input
+    label_data = dict(data)
     # Parse timestamp string back to datetime
-    if isinstance(data.get("timestamp_added"), str):
+    if isinstance(label_data.get("timestamp_added"), str):
         try:
-            data["timestamp_added"] = datetime.fromisoformat(
-                data["timestamp_added"]
+            label_data["timestamp_added"] = datetime.fromisoformat(
+                label_data["timestamp_added"]
             )
         except ValueError:
-            data["timestamp_added"] = None
-    return ReceiptWordLabel(**data)
+            label_data["timestamp_added"] = None
+    return ReceiptWordLabel(**label_data)
 
 
-def serialize_place(place: ReceiptPlace) -> dict[str, Any]:
+def serialize_place(place: ReceiptPlace) -> SerializedPlace:
     """Serialize ReceiptPlace for S3 storage using asdict."""
     data = asdict(place)
     # Convert datetime to ISO string
     if data.get("timestamp") and hasattr(data["timestamp"], "isoformat"):
         data["timestamp"] = data["timestamp"].isoformat()
-    return data
+    return data  # type: ignore[return-value]
 
 
-def deserialize_place(data: dict[str, Any]) -> Optional[ReceiptPlace]:
+def deserialize_place(data: SerializedPlace | None) -> ReceiptPlace | None:
     """Deserialize ReceiptPlace from S3 data."""
     if not data:
         return None
 
+    # Make a mutable copy to avoid modifying the input
+    place_data = dict(data)
     # Parse timestamp string back to datetime
-    if isinstance(data.get("timestamp"), str):
+    if isinstance(place_data.get("timestamp"), str):
         try:
             # Handle both with and without timezone
-            ts = data["timestamp"]
+            ts = place_data["timestamp"]
             if ts.endswith("+00:00"):
                 ts = ts.replace("+00:00", "")
-            data["timestamp"] = datetime.fromisoformat(ts)
+            place_data["timestamp"] = datetime.fromisoformat(ts)
         except ValueError:
-            data["timestamp"] = datetime.now(timezone.utc)
-    elif data.get("timestamp") is None:
-        data["timestamp"] = datetime.now(timezone.utc)
+            place_data["timestamp"] = datetime.now(timezone.utc)
+    elif place_data.get("timestamp") is None:
+        place_data["timestamp"] = datetime.now(timezone.utc)
 
-    return ReceiptPlace(**data)
+    return ReceiptPlace(**place_data)
 
 
-def serialize_words(words: list[ReceiptWord]) -> list[dict[str, Any]]:
+def serialize_words(words: list[ReceiptWord]) -> list[SerializedWord]:
     """Serialize a list of ReceiptWord objects."""
     return [serialize_word(w) for w in words]
 
 
-def deserialize_words(data: list[dict[str, Any]]) -> list[ReceiptWord]:
+def deserialize_words(data: list[SerializedWord]) -> list[ReceiptWord]:
     """Deserialize a list of ReceiptWord objects."""
     return [deserialize_word(d) for d in data]
 
 
-def serialize_labels(labels: list[ReceiptWordLabel]) -> list[dict[str, Any]]:
+def serialize_labels(labels: list[ReceiptWordLabel]) -> list[SerializedLabel]:
     """Serialize a list of ReceiptWordLabel objects."""
     return [serialize_label(label) for label in labels]
 
 
-def deserialize_labels(
-    data: list[dict[str, Any]]
-) -> list[ReceiptWordLabel]:
+def deserialize_labels(data: list[SerializedLabel]) -> list[ReceiptWordLabel]:
     """Deserialize a list of ReceiptWordLabel objects."""
     return [deserialize_label(d) for d in data]
 
 
-def deserialize_patterns(data: dict[str, Any]):
+def deserialize_patterns(data: PatternsFile | None):
     """
     Deserialize pre-computed MerchantPatterns from S3.
 
     The serialized format contains pre-computed statistics (mean, std, count)
     rather than raw observations, allowing fast pattern loading.
 
+    Args:
+        data: Patterns file loaded from S3, or None.
+
     Returns:
-        MerchantPatterns object or None if patterns is null
+        MerchantPatterns object or None if patterns is null.
     """
     if not data or data.get("patterns") is None:
         return None

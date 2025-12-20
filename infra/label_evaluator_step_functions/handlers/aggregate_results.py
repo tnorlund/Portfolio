@@ -7,10 +7,19 @@ and generates a summary report with statistics by issue type and merchant.
 import json
 import logging
 import os
+import sys
 from collections import Counter
 from typing import Any
 
 import boto3
+
+# Add parent directory for type imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from evaluator_types import (
+    AggregateResultsOutput,
+    IssueDetail,
+    ReceiptResultSummary,
+)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -18,7 +27,7 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
-def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
+def handler(event: dict[str, Any], _context: Any) -> AggregateResultsOutput:
     """
     Aggregate all evaluation results and generate summary report.
 
@@ -57,12 +66,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     logger.info(f"Aggregating results for execution {execution_id}")
 
     # Flatten nested results from distributed map
-    all_results: list[dict[str, Any]] = []
+    all_results: list[ReceiptResultSummary] = []
     for batch_results in process_results:
         if isinstance(batch_results, list):
             all_results.extend(batch_results)
         elif isinstance(batch_results, dict):
-            all_results.append(batch_results)
+            all_results.append(batch_results)  # type: ignore[arg-type]
 
     # Count statistics
     total_receipts = len(all_results)
@@ -74,7 +83,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     )
 
     # Aggregate issues
-    all_issues: list[dict[str, Any]] = []
+    all_issues: list[IssueDetail] = []
     issue_type_counter: Counter = Counter()
     status_counter: Counter = Counter()
 

@@ -18,6 +18,7 @@ Environment Variables:
 import json
 import logging
 import os
+import sys
 import time
 from typing import Any, Optional
 
@@ -26,6 +27,9 @@ import boto3
 # Import shared tracing utility
 from utils.tracing import flush_langsmith_traces
 
+# Add parent directory for type imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from evaluator_types import IssueDetail, LLMReviewOutput
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -94,7 +98,7 @@ def upload_json_to_s3(bucket: str, key: str, data: Any) -> None:
     )
 
 
-def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
+def handler(event: dict[str, Any], _context: Any) -> LLMReviewOutput:
     """
     Review flagged issues with LLM.
 

@@ -7,9 +7,14 @@ and creates a manifest file in S3 for the distributed map to process.
 import json
 import logging
 import os
+import sys
 from typing import Any
 
 import boto3
+
+# Add parent directory for type imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from evaluator_types import ListReceiptsOutput, ReceiptRef
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -17,7 +22,7 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
-def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
+def handler(event: dict[str, Any], _context: Any) -> ListReceiptsOutput:
     """
     List receipts by merchant name and create processing manifest.
 
@@ -83,20 +88,20 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "receipt_batches": [],
         }
 
-    # Create receipt list
-    receipts = [
-        {
-            "image_id": p.image_id,
-            "receipt_id": p.receipt_id,
-            "merchant_name": p.merchant_name,
-        }
+    # Create receipt list with typed references
+    receipts: list[ReceiptRef] = [
+        ReceiptRef(
+            image_id=p.image_id,
+            receipt_id=p.receipt_id,
+            merchant_name=p.merchant_name,
+        )
         for p in places
     ]
 
     logger.info(f"Found {len(receipts)} receipts for merchant '{merchant_name}'")
 
     # Create batches for distributed map
-    batches: list[list[dict[str, Any]]] = []
+    batches: list[list[ReceiptRef]] = []
     for i in range(0, len(receipts), batch_size):
         batches.append(receipts[i : i + batch_size])
 

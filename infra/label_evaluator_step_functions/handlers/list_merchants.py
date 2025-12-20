@@ -7,10 +7,15 @@ and returns merchants that meet the minimum receipt threshold.
 import json
 import logging
 import os
+import sys
 from collections import Counter
-from typing import Any, Dict, List
+from typing import Any
 
 import boto3
+
+# Add parent directory for type imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from evaluator_types import ListMerchantsOutput, MerchantInfo
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -21,7 +26,7 @@ s3 = boto3.client("s3")
 DEFAULT_MIN_RECEIPTS = 5
 
 
-def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
+def handler(event: dict[str, Any], _context: Any) -> ListMerchantsOutput:
     """
     List unique merchants that have enough receipts for pattern learning.
 
@@ -86,17 +91,16 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         merchant_counts[place.merchant_name] += 1
 
     # Filter merchants by minimum receipt threshold
-    qualifying_merchants: List[Dict[str, Any]] = []
+    qualifying_merchants: list[MerchantInfo] = []
     skipped_count = 0
 
     for merchant_name, count in sorted(
         merchant_counts.items(), key=lambda x: -x[1]
     ):
         if count >= min_receipts:
-            qualifying_merchants.append({
-                "merchant_name": merchant_name,
-                "receipt_count": count,
-            })
+            qualifying_merchants.append(
+                MerchantInfo(merchant_name=merchant_name, receipt_count=count)
+            )
         else:
             skipped_count += 1
 

@@ -7,9 +7,14 @@ the serialized data to S3 for the evaluate_labels Lambda to process.
 import json
 import logging
 import os
+import sys
 from typing import Any
 
 import boto3
+
+# Add parent directory for type imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from evaluator_types import FetchReceiptDataOutput
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -17,7 +22,7 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
-def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
+def handler(event: dict[str, Any], _context: Any) -> FetchReceiptDataOutput:
     """
     Fetch words and labels for a target receipt.
 
