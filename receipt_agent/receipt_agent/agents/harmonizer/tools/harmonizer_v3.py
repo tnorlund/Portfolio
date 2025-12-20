@@ -667,18 +667,6 @@ class MerchantHarmonizerV3:
                     update["image_id"], update["receipt_id"]
                 )
 
-                if not place:
-                    logger.warning(
-                        f"ReceiptPlace not found for {update['image_id']}#"
-                        f"{update['receipt_id']}"
-                    )
-                    result.total_failed += 1
-                    result.errors.append(
-                        f"{update['image_id']}#{update['receipt_id']}: "
-                        "ReceiptPlace not found"
-                    )
-                    continue
-
                 # Update fields
                 updated_fields = []
                 if (
