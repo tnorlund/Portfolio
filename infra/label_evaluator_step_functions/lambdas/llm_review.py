@@ -148,6 +148,12 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
         logger.info(f"Reviewing {len(issues)} issues for {image_id}#{receipt_id}")
 
         # 2. Setup ChromaDB (optional)
+        # TODO: Wire ChromaDB into the LLM review prompt to provide similarity
+        # search context. Currently the client is initialized but not used.
+        # Options:
+        #   1. Query similar words from ChromaDB and include in prompt
+        #   2. Use embeddings for semantic similarity scoring
+        #   3. Remove ChromaDB setup if not needed for this use case
         chroma_client = None
         if chromadb_bucket:
             try:
