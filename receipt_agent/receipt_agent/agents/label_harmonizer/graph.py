@@ -391,12 +391,12 @@ async def run_label_harmonizer_agent(
                 "line_count": len(lines_data),
                 "workflow": "label_harmonizer_v3",
                 "merchant_name": (
-                    receipt_metadata.merchant_name
-                    if receipt_metadata
+                    receipt_place.merchant_name
+                    if receipt_place
                     else None
                 ),
                 "place_id": (
-                    receipt_metadata.place_id if receipt_metadata else None
+                    receipt_place.place_id if receipt_place else None
                 ),
             }
 

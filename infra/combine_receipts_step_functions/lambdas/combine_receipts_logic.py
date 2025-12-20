@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
-from receipt_dynamo.entities import ReceiptMetadata
+from receipt_dynamo.entities import ReceiptPlace
 
 # Import image processing (optional)
 try:
@@ -34,7 +34,7 @@ except ImportError as e:
 from embedding_utils import create_embeddings_and_compaction_run
 from geometry_utils import calculate_min_area_rect, create_warped_receipt_image
 from metadata_utils import (
-    get_best_receipt_metadata,
+    get_best_receipt_place,
     migrate_receipt_word_labels,
 )
 from records_builder import (
@@ -82,7 +82,7 @@ def combine_receipts(
             - receipt_lines: List of ReceiptLine entities
             - receipt_words: List of ReceiptWord entities
             - receipt_letters: List of ReceiptLetter entities
-            - receipt_metadata: ReceiptMetadata entity (if available)
+            - receipt_place: ReceiptPlace entity (if available)
             - migrated_labels: List of ReceiptWordLabel entities
             - compaction_run: CompactionRun entity (if embeddings created)
             - status: "success" or "failed"
@@ -247,40 +247,34 @@ def combine_receipts(
                     combined_image.tobytes()
                 )
 
-        # Get best ReceiptMetadata
-        best_metadata = get_best_receipt_metadata(
+        # Get best ReceiptPlace
+        best_place = get_best_receipt_place(
             client, image_id, receipt_ids
         )
-        receipt_metadata = None
-        if best_metadata:
-            receipt_metadata = ReceiptMetadata(
+        receipt_place = None
+        if best_place:
+            receipt_place = ReceiptPlace(
                 image_id=image_id,
                 receipt_id=new_receipt_id,
-                place_id=best_metadata.place_id or "",
-                merchant_name=best_metadata.merchant_name or "",
-                merchant_category=best_metadata.merchant_category or "",
-                address=best_metadata.address or "",
-                phone_number=best_metadata.phone_number or "",
+                place_id=best_place.place_id or "",
+                merchant_name=best_place.merchant_name or "",
+                merchant_category=best_place.merchant_category or "",
+                formatted_address=best_place.formatted_address or "",
+                phone_number=best_place.phone_number or "",
                 matched_fields=(
-                    best_metadata.matched_fields.copy()
-                    if best_metadata.matched_fields
+                    best_place.matched_fields.copy()
+                    if best_place.matched_fields
                     else []
                 ),
-                validated_by=best_metadata.validated_by
+                validated_by=best_place.validated_by
                 or ValidationMethod.TEXT_SEARCH.value,
                 timestamp=datetime.now(timezone.utc),
                 reasoning=(
                     f"Combined from receipts {receipt_ids}. "
-                    f"Original: {best_metadata.reasoning or 'N/A'}"
+                    f"Original: {best_place.reasoning or 'N/A'}"
                 ),
-                validation_status=best_metadata.validation_status
+                validation_status=best_place.validation_status
                 or MerchantValidationStatus.MATCHED.value,
-                canonical_place_id=best_metadata.canonical_place_id or "",
-                canonical_merchant_name=best_metadata.canonical_merchant_name
-                or "",
-                canonical_address=best_metadata.canonical_address or "",
-                canonical_phone_number=best_metadata.canonical_phone_number
-                or "",
             )
 
         # Migrate labels
@@ -301,7 +295,7 @@ def combine_receipts(
             compaction_run = create_embeddings_and_compaction_run(
                 receipt_lines=records["receipt_lines"],
                 receipt_words=records["receipt_words"],
-                receipt_metadata=receipt_metadata,
+                receipt_place=receipt_place,
                 image_id=image_id,
                 new_receipt_id=new_receipt_id,
                 chromadb_bucket=chromadb_bucket,
@@ -320,8 +314,8 @@ def combine_receipts(
             "receipt_letters": [
                 dict(letter) for letter in records["receipt_letters"]
             ],
-            "receipt_metadata": (
-                dict(receipt_metadata) if receipt_metadata else None
+            "receipt_place": (
+                dict(receipt_place) if receipt_place else None
             ),
             "migrated_labels": [dict(label) for label in migrated_labels],
             "compaction_run": dict(compaction_run) if compaction_run else None,
@@ -365,11 +359,11 @@ def combine_receipts(
                     # Re-raise if it's a different error
                     raise
 
-            # Try to add metadata, but if it already exists (from a previous failed attempt),
+            # Try to add place data, but if it already exists (from a previous failed attempt),
             # delete it first and try again
-            if receipt_metadata:
+            if receipt_place:
                 try:
-                    client.add_receipt_metadata(receipt_metadata)
+                    client.add_receipt_place(receipt_place)
                 except Exception as e:  # pylint: disable=broad-except
                     error_str = str(e)
                     if (
@@ -377,22 +371,22 @@ def combine_receipts(
                         or "already exists" in error_str.lower()
                     ):
                         logger.warning(
-                            "Receipt metadata already exists for receipt %s/%s (likely from previous failed attempt), deleting and retrying",
+                            "Receipt place data already exists for receipt %s/%s (likely from previous failed attempt), deleting and retrying",
                             image_id,
                             new_receipt_id,
                         )
-                        # Delete the existing metadata (pass the ReceiptMetadata object)
+                        # Delete the existing place data (pass the ReceiptPlace object)
                         try:
-                            client.delete_receipt_metadata(receipt_metadata)
+                            client.delete_receipt_place(receipt_place)
                         except (
                             Exception
                         ) as delete_err:  # pylint: disable=broad-except
                             logger.warning(
-                                "Error deleting existing metadata (may not exist): %s",
+                                "Error deleting existing place data (may not exist): %s",
                                 delete_err,
                             )
                         # Try adding again
-                        client.add_receipt_metadata(receipt_metadata)
+                        client.add_receipt_place(receipt_place)
                     else:
                         # Re-raise if it's a different error
                         raise
@@ -533,7 +527,7 @@ def combine_receipts(
             "receipt_lines": records["receipt_lines"],
             "receipt_words": records["receipt_words"],
             "receipt_letters": records["receipt_letters"],
-            "receipt_metadata": receipt_metadata,
+            "receipt_place": receipt_place,
             "migrated_labels": migrated_labels,
             "compaction_run": compaction_run,
             "status": "success",

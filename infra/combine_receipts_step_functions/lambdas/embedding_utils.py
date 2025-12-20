@@ -16,7 +16,7 @@ from typing import List, Optional
 from receipt_dynamo.entities import (
     CompactionRun,
     ReceiptLine,
-    ReceiptMetadata,
+    ReceiptPlace,
     ReceiptWord,
 )
 
@@ -37,7 +37,7 @@ class _NoOpDynamoClient:  # pylint: disable=too-few-public-methods
 def create_embeddings_and_compaction_run(
     receipt_lines: List[ReceiptLine],
     receipt_words: List[ReceiptWord],
-    receipt_metadata: Optional[ReceiptMetadata],
+    receipt_place: Optional[ReceiptPlace],
     image_id: str,
     new_receipt_id: int,
     chromadb_bucket: str,
@@ -57,7 +57,7 @@ def create_embeddings_and_compaction_run(
     Args:
         receipt_lines: Lines to embed
         receipt_words: Words to embed
-        receipt_metadata: Optional metadata for merchant context
+        receipt_place: Optional place data for merchant context
         image_id: Image identifier
         new_receipt_id: Receipt identifier (maps to receipt_id in receipt_chroma)
         chromadb_bucket: S3 bucket for ChromaDB deltas
@@ -87,7 +87,7 @@ def create_embeddings_and_compaction_run(
             receipt_id=new_receipt_id,  # Map new_receipt_id -> receipt_id
             chromadb_bucket=chromadb_bucket,
             dynamo_client=_NoOpDynamoClient(),
-            receipt_metadata=receipt_metadata,
+            receipt_place=receipt_place,
             receipt_word_labels=None,  # combine_receipts doesn't use labels
             merchant_name=None,  # Let receipt_chroma extract from metadata
         )

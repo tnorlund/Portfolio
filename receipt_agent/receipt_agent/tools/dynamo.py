@@ -267,7 +267,7 @@ def get_receipts_by_merchant(
         return {
             "found": True,
             "merchant_name": merchant_name,
-            "receipt_count": len(metadatas),
+            "receipt_count": len(places),
             "receipts": receipts[:10],  # Limit detail output
             "place_ids": place_ids,
             "canonical_place_id": canonical_place_id,

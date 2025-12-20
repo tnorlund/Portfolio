@@ -244,9 +244,6 @@ def create_label_validation_tools(
                 receipt_id=ctx.receipt_id,
             )
 
-            if not place:
-                return {"error": "No place data found for this receipt"}
-
             return {
                 "merchant_name": place.merchant_name,
                 "address": place.formatted_address,
@@ -257,7 +254,7 @@ def create_label_validation_tools(
 
         except Exception as e:
             logger.error(f"Error getting merchant metadata: {e}")
-            return {"error": str(e)}
+            return {"error": f"No place data found for this receipt: {e}"}
 
     @tool(args_schema=SearchSimilarWordsInput)
     def search_similar_words(n_results: int = 20) -> list[dict]:

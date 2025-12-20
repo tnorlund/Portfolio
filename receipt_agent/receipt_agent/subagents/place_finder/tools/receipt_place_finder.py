@@ -439,7 +439,7 @@ class ReceiptPlaceFinder:
 
         return total
 
-    async def find_all_metadata_agentic(
+    async def find_all_place_data_agentic(
         self,
         limit: Optional[int] = None,
     ) -> FinderResult:
@@ -671,7 +671,7 @@ class ReceiptPlaceFinder:
             UpdateResult with counts and any errors
         """
         if not self._last_report:
-            await self.find_all_metadata_agentic()
+            await self.find_all_place_data_agentic()
 
         assert self._last_report is not None
 
@@ -1093,12 +1093,12 @@ class ReceiptPlaceFinder:
 
         if not report:
             print(
-                "No report available. Run find_all_metadata_agentic() first."
+                "No report available. Run find_all_place_data_agentic() first."
             )
             return
 
         print("=" * 70)
-        print("RECEIPT METADATA FINDER REPORT")
+        print("RECEIPT PLACE FINDER REPORT")
         print("=" * 70)
         print(
             f"Total receipts with missing metadata: {report.total_processed}"
