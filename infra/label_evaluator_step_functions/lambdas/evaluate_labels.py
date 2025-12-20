@@ -59,7 +59,7 @@ from utils.serialization import (
 )
 
 
-def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
     Run compute-only label evaluator with pre-loaded state and patterns.
 

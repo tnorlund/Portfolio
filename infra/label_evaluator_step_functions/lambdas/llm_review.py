@@ -94,7 +94,7 @@ def upload_json_to_s3(bucket: str, key: str, data: Any) -> None:
     )
 
 
-def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
     Review flagged issues with LLM.
 

@@ -17,7 +17,7 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
-def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
     Fetch words and labels for a target receipt.
 

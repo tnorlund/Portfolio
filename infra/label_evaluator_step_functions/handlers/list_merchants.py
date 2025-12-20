@@ -21,7 +21,7 @@ s3 = boto3.client("s3")
 DEFAULT_MIN_RECEIPTS = 5
 
 
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     List unique merchants that have enough receipts for pattern learning.
 
