@@ -7,11 +7,11 @@ We still have ~1,045 `C0301` long-line warnings. To finish manually, tackle them
 - `receipt_agent/subagents/financial_validation/enhanced_graph.py`
 - `receipt_agent/subagents/financial_validation/graph.py`
 
-## Batch 2 — Metadata Finder & Text Consistency
-- `receipt_agent/subagents/metadata_finder/graph.py`
-- `receipt_agent/subagents/metadata_finder/tools/receipt_metadata_finder.py`
-- `receipt_agent/subagents/metadata_finder/__init__.py`
-- `receipt_agent/subagents/metadata_finder/state.py`
+## Batch 2 — Place Finder & Text Consistency
+- `receipt_agent/subagents/place_finder/graph.py`
+- `receipt_agent/subagents/place_finder/tools/receipt_place_finder.py`
+- `receipt_agent/subagents/place_finder/__init__.py`
+- `receipt_agent/subagents/place_finder/state.py`
 - `receipt_agent/subagents/cove_text_consistency/graph.py`
 
 ## Batch 3 — Harmonizer

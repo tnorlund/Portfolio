@@ -73,19 +73,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # We'll scan for RECEIPT items or use a more efficient method
         receipt_keys: Set[Tuple[str, int]] = set()
 
-        # Get all receipt keys by listing receipt metadata
+        # Get all receipt keys by listing receipt places
         # This gives us all (image_id, receipt_id) pairs
         logger.info("Scanning for receipts...")
         last_evaluated_key = None
         while True:
-            # List receipt metadata to get all receipt keys
-            all_metadata, last_evaluated_key = dynamo.list_receipt_metadatas(
+            # List receipt places to get all receipt keys
+            all_places, last_evaluated_key = dynamo.list_receipt_places(
                 limit=1000,
                 last_evaluated_key=last_evaluated_key,
             )
 
-            for metadata in all_metadata:
-                receipt_keys.add((metadata.image_id, metadata.receipt_id))
+            for place in all_places:
+                receipt_keys.add((place.image_id, place.receipt_id))
 
             if not last_evaluated_key:
                 break
@@ -143,13 +143,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
                 # Only include receipts with unlabeled words
                 if unlabeled_words:
-                    # Get merchant metadata
-                    metadata = dynamo.get_receipt_metadata(
+                    # Get merchant place info
+                    place = dynamo.get_receipt_place(
                         image_id=image_id,
                         receipt_id=receipt_id,
                     )
                     merchant_name = (
-                        metadata.merchant_name if metadata else None
+                        place.merchant_name if place else None
                     )
 
                     receipts.append(

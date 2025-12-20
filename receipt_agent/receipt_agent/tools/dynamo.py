@@ -1,12 +1,12 @@
 """
-DynamoDB tools for receipt metadata operations.
+DynamoDB tools for receipt place operations.
 
-These tools enable the agent to read receipt data and metadata
+These tools enable the agent to read receipt data and place info
 from DynamoDB for validation purposes.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
@@ -14,8 +14,8 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
-class GetReceiptMetadataInput(BaseModel):
-    """Input schema for get_receipt_metadata tool."""
+class GetReceiptPlaceInput(BaseModel):
+    """Input schema for get_receipt_place tool."""
 
     image_id: str = Field(description="UUID of the receipt image")
     receipt_id: int = Field(description="Receipt ID within the image")
@@ -40,22 +40,21 @@ class GetReceiptsByMerchantInput(BaseModel):
     )
 
 
-@tool(args_schema=GetReceiptMetadataInput)
-def get_receipt_metadata(
+@tool(args_schema=GetReceiptPlaceInput)
+def get_receipt_place(
     image_id: str,
     receipt_id: int,
     # Injected at runtime
     _dynamo_client: Any = None,
 ) -> dict[str, Any]:
     """
-    Retrieve the current ReceiptMetadata from DynamoDB.
+    Retrieve the current ReceiptPlace from DynamoDB.
 
     Use this tool to get the current merchant information stored
     for a receipt, including:
     - merchant_name, address, phone_number
     - place_id (Google Places ID)
     - validation_status
-    - matched_fields and reasoning
 
     This is the starting point for validation - compare this against
     what you find in ChromaDB and Google Places.
@@ -65,38 +64,31 @@ def get_receipt_metadata(
 
     try:
         # Use receipt_dynamo client
-        metadata = _dynamo_client.get_receipt_metadata(
+        place = _dynamo_client.get_receipt_place(
             image_id=image_id,
             receipt_id=receipt_id,
         )
 
-        if metadata is None:
+        if place is None:
             return {
                 "found": False,
-                "message": f"No metadata found for {image_id}#{receipt_id}",
+                "message": f"No place found for {image_id}#{receipt_id}",
             }
 
         return {
             "found": True,
-            "image_id": metadata.image_id,
-            "receipt_id": metadata.receipt_id,
-            "merchant_name": metadata.merchant_name,
-            "place_id": metadata.place_id,
-            "address": metadata.address,
-            "phone_number": metadata.phone_number,
-            "merchant_category": metadata.merchant_category,
-            "matched_fields": metadata.matched_fields,
-            "validated_by": metadata.validated_by,
-            "validation_status": metadata.validation_status,
-            "reasoning": metadata.reasoning,
-            "canonical_merchant_name": metadata.canonical_merchant_name,
-            "canonical_place_id": metadata.canonical_place_id,
-            "canonical_address": metadata.canonical_address,
-            "canonical_phone_number": metadata.canonical_phone_number,
+            "image_id": place.image_id,
+            "receipt_id": place.receipt_id,
+            "merchant_name": place.merchant_name,
+            "place_id": place.place_id,
+            "address": place.formatted_address,
+            "phone_number": place.phone_number,
+            "merchant_category": getattr(place, "merchant_category", None),
+            "validation_status": place.validation_status,
         }
 
     except Exception as e:
-        logger.error(f"Error getting receipt metadata: {e}")
+        logger.error(f"Error getting receipt place: {e}")
         return {"error": str(e)}
 
 
@@ -116,7 +108,7 @@ def get_receipt_context(
     - Extracted data (addresses, phones, merchant names found)
     - Word-level details if needed for fine-grained validation
 
-    This helps verify if the merchant metadata matches
+    This helps verify if the merchant place data matches
     what's actually on the receipt.
     """
     if _dynamo_client is None:
@@ -124,7 +116,7 @@ def get_receipt_context(
 
     try:
         # Get receipt details
-        # Returns ReceiptDetails object with: receipt, lines, words, letters, labels
+        # Returns ReceiptDetails with: receipt, lines, words, letters, labels
         details = _dynamo_client.get_receipt_details(
             image_id=image_id,
             receipt_id=receipt_id,
@@ -174,7 +166,8 @@ def get_receipt_context(
         if details.labels:
             for label in details.labels:
                 label_type = label.label
-                label_summary[label_type] = label_summary.get(label_type, 0) + 1
+                count = label_summary.get(label_type, 0)
+                label_summary[label_type] = count + 1
 
         return {
             "found": True,
@@ -208,19 +201,19 @@ def get_receipts_by_merchant(
     - Are addresses consistent?
     - Are phone numbers consistent?
 
-    Returns metadata for each receipt found.
+    Returns place data for each receipt found.
     """
     if _dynamo_client is None:
         return {"error": "DynamoDB client not configured"}
 
     try:
         # Query using GSI on merchant name
-        metadatas, _ = _dynamo_client.get_receipt_metadatas_by_merchant(
+        places, _ = _dynamo_client.get_receipt_places_by_merchant(
             merchant_name=merchant_name,
             limit=limit,
         )
 
-        if not metadatas:
+        if not places:
             return {
                 "found": False,
                 "merchant_name": merchant_name,
@@ -234,26 +227,29 @@ def get_receipts_by_merchant(
         validation_statuses: dict[str, int] = {}
 
         receipts = []
-        for meta in metadatas:
+        for place in places:
             receipts.append({
-                "image_id": meta.image_id,
-                "receipt_id": meta.receipt_id,
-                "place_id": meta.place_id,
-                "validation_status": meta.validation_status,
+                "image_id": place.image_id,
+                "receipt_id": place.receipt_id,
+                "place_id": place.place_id,
+                "validation_status": place.validation_status,
             })
 
-            if meta.place_id:
-                place_ids[meta.place_id] = place_ids.get(meta.place_id, 0) + 1
+            if place.place_id:
+                pid = place.place_id
+                place_ids[pid] = place_ids.get(pid, 0) + 1
 
-            if meta.address:
-                addresses[meta.address] = addresses.get(meta.address, 0) + 1
+            if place.formatted_address:
+                addr = place.formatted_address
+                addresses[addr] = addresses.get(addr, 0) + 1
 
-            if meta.phone_number:
-                phones[meta.phone_number] = phones.get(meta.phone_number, 0) + 1
+            if place.phone_number:
+                phone = place.phone_number
+                phones[phone] = phones.get(phone, 0) + 1
 
-            if meta.validation_status:
-                validation_statuses[meta.validation_status] = (
-                    validation_statuses.get(meta.validation_status, 0) + 1
+            if place.validation_status:
+                validation_statuses[place.validation_status] = (
+                    validation_statuses.get(place.validation_status, 0) + 1
                 )
 
         # Identify canonical values (most common)
@@ -275,12 +271,16 @@ def get_receipts_by_merchant(
         return {
             "found": True,
             "merchant_name": merchant_name,
-            "receipt_count": len(metadatas),
+            "receipt_count": len(places),
             "receipts": receipts[:10],  # Limit detail output
             "place_ids": place_ids,
             "canonical_place_id": canonical_place_id,
-            "addresses": dict(sorted(addresses.items(), key=lambda x: -x[1])[:5]),
-            "phone_numbers": dict(sorted(phones.items(), key=lambda x: -x[1])[:5]),
+            "addresses": dict(
+                sorted(addresses.items(), key=lambda x: -x[1])[:5]
+            ),
+            "phone_numbers": dict(
+                sorted(phones.items(), key=lambda x: -x[1])[:5]
+            ),
             "validation_statuses": validation_statuses,
             "inconsistencies": inconsistencies,
         }
@@ -288,4 +288,3 @@ def get_receipts_by_merchant(
     except Exception as e:
         logger.error(f"Error getting receipts by merchant: {e}")
         return {"error": str(e)}
-

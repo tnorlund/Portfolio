@@ -10,23 +10,25 @@ from receipt_dynamo_stream.change_detection.detector import (
 )
 from receipt_dynamo_stream.models import FieldChange
 
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 
-def _make_metadata(**kwargs: object) -> ReceiptMetadata:
-    """Helper to create ReceiptMetadata with custom fields."""
+def _make_place(**kwargs: object) -> ReceiptPlace:
+    """Helper to create ReceiptPlace with custom fields."""
     defaults = {
         "image_id": "550e8400-e29b-41d4-a716-446655440000",
         "receipt_id": 1,
         "place_id": "place123",
         "merchant_name": "Test Merchant",
+        "formatted_address": "123 Main St",
+        "phone_number": "555-123-4567",
         "matched_fields": ["name"],
-        "validated_by": "PHONE_LOOKUP",
+        "validated_by": "INFERENCE",
         "timestamp": datetime.fromisoformat("2024-01-01T00:00:00"),
     }
     defaults.update(kwargs)
-    return ReceiptMetadata(**defaults)  # type: ignore
+    return ReceiptPlace(**defaults)  # type: ignore
 
 
 def _make_word_label(**kwargs: object) -> ReceiptWordLabel:
@@ -50,16 +52,15 @@ def _make_word_label(**kwargs: object) -> ReceiptWordLabel:
 
 def test_chromadb_relevant_fields_contains_expected() -> None:
     """Test that CHROMADB_RELEVANT_FIELDS contains expected fields."""
-    assert "RECEIPT_METADATA" in CHROMADB_RELEVANT_FIELDS
+    assert "RECEIPT_PLACE" in CHROMADB_RELEVANT_FIELDS
     assert "RECEIPT_WORD_LABEL" in CHROMADB_RELEVANT_FIELDS
 
-    metadata_fields = CHROMADB_RELEVANT_FIELDS["RECEIPT_METADATA"]
-    assert "canonical_merchant_name" in metadata_fields
-    assert "merchant_name" in metadata_fields
-    assert "merchant_category" in metadata_fields
-    assert "address" in metadata_fields
-    assert "phone_number" in metadata_fields
-    assert "place_id" in metadata_fields
+    place_fields = CHROMADB_RELEVANT_FIELDS["RECEIPT_PLACE"]
+    assert "merchant_name" in place_fields
+    assert "merchant_category" in place_fields
+    assert "formatted_address" in place_fields
+    assert "phone_number" in place_fields
+    assert "place_id" in place_fields
 
     word_label_fields = CHROMADB_RELEVANT_FIELDS["RECEIPT_WORD_LABEL"]
     assert "label" in word_label_fields
@@ -74,15 +75,15 @@ def test_chromadb_relevant_fields_contains_expected() -> None:
 
 def test_get_chromadb_relevant_changes_both_none() -> None:
     """Test when both old and new entities are None."""
-    changes = get_chromadb_relevant_changes("RECEIPT_METADATA", None, None)
+    changes = get_chromadb_relevant_changes("RECEIPT_PLACE", None, None)
     assert changes == {}
 
 
 def test_get_chromadb_relevant_changes_old_none() -> None:
     """Test when old entity is None (INSERT case)."""
-    new_entity = _make_metadata(merchant_name="New Merchant")
+    new_entity = _make_place(merchant_name="New Merchant")
     changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", None, new_entity
+        "RECEIPT_PLACE", None, new_entity
     )
 
     # All relevant fields should be detected as changes
@@ -93,9 +94,9 @@ def test_get_chromadb_relevant_changes_old_none() -> None:
 
 def test_get_chromadb_relevant_changes_new_none() -> None:
     """Test when new entity is None (REMOVE case)."""
-    old_entity = _make_metadata(merchant_name="Old Merchant")
+    old_entity = _make_place(merchant_name="Old Merchant")
     changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", old_entity, None
+        "RECEIPT_PLACE", old_entity, None
     )
 
     # All relevant fields should be detected as changes
@@ -106,36 +107,32 @@ def test_get_chromadb_relevant_changes_new_none() -> None:
 
 def test_get_chromadb_relevant_changes_no_changes() -> None:
     """Test when entities are identical."""
-    entity1 = _make_metadata()
-    entity2 = _make_metadata()
+    entity1 = _make_place()
+    entity2 = _make_place()
     changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", entity1, entity2
+        "RECEIPT_PLACE", entity1, entity2
     )
     assert changes == {}
 
 
 def test_get_chromadb_relevant_changes_multiple_fields() -> None:
     """Test detecting changes in multiple fields."""
-    old_entity = _make_metadata(
+    old_entity = _make_place(
         merchant_name="Old Merchant",
-        canonical_merchant_name="old canonical",
         merchant_category="RESTAURANT",
     )
-    new_entity = _make_metadata(
+    new_entity = _make_place(
         merchant_name="New Merchant",
-        canonical_merchant_name="new canonical",
         merchant_category="CAFE",
     )
 
     changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", old_entity, new_entity
+        "RECEIPT_PLACE", old_entity, new_entity
     )
 
-    assert len(changes) == 3
+    assert len(changes) == 2
     assert changes["merchant_name"].old == "Old Merchant"
     assert changes["merchant_name"].new == "New Merchant"
-    assert changes["canonical_merchant_name"].old == "old canonical"
-    assert changes["canonical_merchant_name"].new == "new canonical"
     assert changes["merchant_category"].old == "RESTAURANT"
     assert changes["merchant_category"].new == "CAFE"
 
@@ -172,52 +169,52 @@ def test_get_chromadb_relevant_changes_word_label_all_fields() -> None:
 
 def test_get_chromadb_relevant_changes_unknown_entity_type() -> None:
     """Test with unknown entity type."""
-    entity1 = _make_metadata()
-    entity2 = _make_metadata()
+    entity1 = _make_place()
+    entity2 = _make_place()
     changes = get_chromadb_relevant_changes("UNKNOWN_TYPE", entity1, entity2)
     assert changes == {}
 
 
 def test_get_chromadb_relevant_changes_empty_to_value() -> None:
     """Test when a field changes from empty string to a value."""
-    old_entity = _make_metadata(canonical_merchant_name="")
-    new_entity = _make_metadata(canonical_merchant_name="New Canonical")
+    old_entity = _make_place(formatted_address="")
+    new_entity = _make_place(formatted_address="456 New St")
 
     changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", old_entity, new_entity
+        "RECEIPT_PLACE", old_entity, new_entity
     )
 
-    assert "canonical_merchant_name" in changes
-    assert changes["canonical_merchant_name"].old == ""
-    assert changes["canonical_merchant_name"].new == "New Canonical"
+    assert "formatted_address" in changes
+    assert changes["formatted_address"].old == ""
+    assert changes["formatted_address"].new == "456 New St"
 
 
 def test_get_chromadb_relevant_changes_value_to_empty() -> None:
     """Test when a field changes from a value to empty string."""
-    old_entity = _make_metadata(canonical_merchant_name="Old Canonical")
-    new_entity = _make_metadata(canonical_merchant_name="")
+    old_entity = _make_place(formatted_address="456 Old St")
+    new_entity = _make_place(formatted_address="")
 
     changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", old_entity, new_entity
+        "RECEIPT_PLACE", old_entity, new_entity
     )
 
-    assert "canonical_merchant_name" in changes
-    assert changes["canonical_merchant_name"].old == "Old Canonical"
-    assert changes["canonical_merchant_name"].new == ""
+    assert "formatted_address" in changes
+    assert changes["formatted_address"].old == "456 Old St"
+    assert changes["formatted_address"].new == ""
 
 
 def test_get_chromadb_relevant_changes_irrelevant_fields_ignored() -> None:
     """Test that non-relevant field changes are ignored."""
     # These entities differ in timestamp, which is not a relevant field
-    old_entity = _make_metadata(
+    old_entity = _make_place(
         timestamp=datetime.fromisoformat("2024-01-01T00:00:00")
     )
-    new_entity = _make_metadata(
+    new_entity = _make_place(
         timestamp=datetime.fromisoformat("2024-01-02T00:00:00")
     )
 
     changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", old_entity, new_entity
+        "RECEIPT_PLACE", old_entity, new_entity
     )
 
     # timestamp is not in CHROMADB_RELEVANT_FIELDS
@@ -226,11 +223,11 @@ def test_get_chromadb_relevant_changes_irrelevant_fields_ignored() -> None:
 
 def test_get_chromadb_relevant_changes_field_change_immutability() -> None:
     """Test that FieldChange objects are immutable."""
-    old_entity = _make_metadata(merchant_name="Old")
-    new_entity = _make_metadata(merchant_name="New")
+    old_entity = _make_place(merchant_name="Old")
+    new_entity = _make_place(merchant_name="New")
 
     changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", old_entity, new_entity
+        "RECEIPT_PLACE", old_entity, new_entity
     )
 
     field_change = changes["merchant_name"]

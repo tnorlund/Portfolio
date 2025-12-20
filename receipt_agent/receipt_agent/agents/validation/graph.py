@@ -1,5 +1,5 @@
 """
-LangGraph workflow for receipt metadata validation.
+LangGraph workflow for receipt place validation.
 
 This module defines the graph structure that orchestrates the validation
 process, connecting nodes with conditional edges and managing state flow.
@@ -16,7 +16,7 @@ from langgraph.graph import END, StateGraph
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.graph.nodes import (
     check_google_places,
-    load_metadata,
+    load_place,
     make_decision,
     search_similar_receipts,
     verify_consistency,
@@ -47,7 +47,7 @@ def should_continue(state: ValidationState) -> str:
     # Route based on current step
     step = state.current_step
 
-    if step == "load_metadata":
+    if step == "load_place":
         return "search_similar"
     elif step == "search_similar":
         return "verify_consistency"
@@ -77,7 +77,7 @@ def create_validation_graph(
     checkpointer: Optional[Any] = None,
 ) -> Any:
     """
-    Create the LangGraph workflow for metadata validation.
+    Create the LangGraph workflow for place validation.
 
     Args:
         dynamo_client: DynamoDB client for receipt data
@@ -116,8 +116,8 @@ def create_validation_graph(
     graph = StateGraph(ValidationState)
 
     # Bind dependencies to nodes
-    bound_load_metadata = partial(
-        load_metadata,
+    bound_load_place = partial(
+        load_place,
         dynamo_client=dynamo_client,
         chroma_client=chroma_client,
     )
@@ -137,18 +137,18 @@ def create_validation_graph(
     bound_make_decision = partial(make_decision, llm=llm)
 
     # Add nodes
-    graph.add_node("load_metadata", bound_load_metadata)
+    graph.add_node("load_place", bound_load_place)
     graph.add_node("search_similar", bound_search_similar)
     graph.add_node("verify_consistency", bound_verify_consistency)
     graph.add_node("check_places", bound_check_places)
     graph.add_node("make_decision", bound_make_decision)
 
     # Set entry point
-    graph.set_entry_point("load_metadata")
+    graph.set_entry_point("load_place")
 
     # Add conditional edges
     graph.add_conditional_edges(
-        "load_metadata",
+        "load_place",
         should_continue,
         {
             "search_similar": "search_similar",

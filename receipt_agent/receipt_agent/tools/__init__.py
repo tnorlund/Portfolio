@@ -14,7 +14,7 @@ from receipt_agent.tools.chroma import (
 )
 from receipt_agent.tools.dynamo import (
     get_receipt_context,
-    get_receipt_metadata,
+    get_receipt_place,
     get_receipts_by_merchant,
 )
 from receipt_agent.tools.places import verify_with_google_places
@@ -28,7 +28,7 @@ __all__ = [
     "search_by_place_id",
     # DynamoDB tools
     "get_receipt_context",
-    "get_receipt_metadata",
+    "get_receipt_place",
     "get_receipts_by_merchant",
     # Places tools
     "verify_with_google_places",

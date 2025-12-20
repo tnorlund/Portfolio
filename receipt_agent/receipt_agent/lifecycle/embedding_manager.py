@@ -17,7 +17,6 @@ from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import (
     CompactionRun,
     ReceiptLine,
-    ReceiptMetadata,
     ReceiptWord,
     ReceiptWordLabel,
 )
@@ -39,7 +38,6 @@ def create_embeddings_and_compaction_run(
     receipt_id: int,
     receipt_lines: Optional[list[ReceiptLine]] = None,
     receipt_words: Optional[list[ReceiptWord]] = None,
-    receipt_metadata: Optional[ReceiptMetadata] = None,
     receipt_word_labels: Optional[list[ReceiptWordLabel]] = None,
     merchant_name: Optional[str] = None,
     add_to_dynamo: bool = False,
@@ -60,7 +58,6 @@ def create_embeddings_and_compaction_run(
         receipt_id: Receipt ID
         receipt_lines: Optional lines (fetched if None)
         receipt_words: Optional words (fetched if None)
-        receipt_metadata: Optional metadata for merchant context
         receipt_word_labels: Optional word labels (fetched if None)
         merchant_name: Explicit merchant name override
         add_to_dynamo: If True, persist the CompactionRun via the client
@@ -117,7 +114,6 @@ def create_embeddings_and_compaction_run(
             receipt_id=receipt_id,
             chromadb_bucket=chromadb_bucket,
             dynamo_client=dynamo_for_chroma,
-            receipt_metadata=receipt_metadata,
             receipt_word_labels=receipt_word_labels,
             merchant_name=merchant_name,
         )
@@ -148,7 +144,6 @@ def create_embeddings(
     receipt_id: int,
     receipt_lines: Optional[list[ReceiptLine]] = None,
     receipt_words: Optional[list[ReceiptWord]] = None,
-    receipt_metadata: Optional[ReceiptMetadata] = None,
     merchant_name: Optional[str] = None,
 ) -> Optional[str]:
     """
@@ -162,7 +157,6 @@ def create_embeddings(
         receipt_id=receipt_id,
         receipt_lines=receipt_lines,
         receipt_words=receipt_words,
-        receipt_metadata=receipt_metadata,
         merchant_name=merchant_name,
         add_to_dynamo=True,
     )

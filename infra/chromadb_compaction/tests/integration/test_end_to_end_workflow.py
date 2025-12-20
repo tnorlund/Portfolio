@@ -16,7 +16,7 @@ from moto import mock_aws
 from receipt_dynamo import (
     DynamoClient,
     ReceiptLine,
-    ReceiptMetadata,
+    ReceiptPlace,
     ReceiptWord,
 )
 
@@ -38,8 +38,8 @@ class TestEndToEndWorkflow:
             "MAX_HEARTBEAT_FAILURES": "3",
         },
     )
-    def test_complete_metadata_update_workflow(self):
-        """Test end-to-end metadata update from DynamoDB stream to ChromaDB."""
+    def test_complete_place_update_workflow(self):
+        """Test end-to-end place update from DynamoDB stream to ChromaDB."""
         # Set up all AWS services with moto
         sqs = boto3.client("sqs", region_name="us-east-1")
         s3 = boto3.client("s3", region_name="us-east-1")
@@ -134,15 +134,19 @@ class TestEndToEndWorkflow:
         # Create test receipt data
         test_image_id = "550e8400-e29b-41d4-a716-446655440000"
 
-        # Insert receipt metadata
-        receipt_metadata = ReceiptMetadata(
+        # Insert receipt place
+        receipt_place = ReceiptPlace(
             image_id=test_image_id,
             receipt_id=1,
-            canonical_merchant_name="Target",
-            canonical_address="123 Main St",
+            merchant_name="Target",
+            formatted_address="123 Main St",
             phone_number="555-123-4567",
+            place_id="test-place-id",
+            matched_fields=["name"],
+            validated_by="INFERENCE",
+            validation_status="MATCHED",
         )
-        dynamo_client.put_receipt_metadata(receipt_metadata)
+        dynamo_client.add_receipt_places([receipt_place])
 
         # Insert receipt words
         test_words = [
@@ -213,24 +217,24 @@ class TestEndToEndWorkflow:
                         "ApproximateCreationDateTime": 1640995200.0,
                         "Keys": {
                             "PK": {
-                                "S": f"IMAGE#{test_image_id}#RECEIPT#00001"
+                                "S": f"IMAGE#{test_image_id}"
                             },
-                            "SK": {"S": "METADATA"},
+                            "SK": {"S": "RECEIPT#00001#PLACE"},
                         },
                         "NewImage": {
                             "PK": {
-                                "S": f"IMAGE#{test_image_id}#RECEIPT#00001"
+                                "S": f"IMAGE#{test_image_id}"
                             },
-                            "SK": {"S": "METADATA"},
-                            "canonical_merchant_name": {"S": "Target Store"},
+                            "SK": {"S": "RECEIPT#00001#PLACE"},
+                            "merchant_name": {"S": "Target Store"},
                             "merchant_category": {"S": "Retail"},
                         },
                         "OldImage": {
                             "PK": {
-                                "S": f"IMAGE#{test_image_id}#RECEIPT#00001"
+                                "S": f"IMAGE#{test_image_id}"
                             },
-                            "SK": {"S": "METADATA"},
-                            "canonical_merchant_name": {"S": "Target"},
+                            "SK": {"S": "RECEIPT#00001#PLACE"},
+                            "merchant_name": {"S": "Target"},
                             "merchant_category": {"S": "Retail"},
                         },
                         "SequenceNumber": "123456789",
@@ -372,15 +376,15 @@ class TestEndToEndWorkflow:
                     "receiptHandle": "test-receipt-handle",
                     "body": json.dumps(
                         {
-                            "entity_type": "RECEIPT_METADATA",
+                            "entity_type": "RECEIPT_PLACE",
                             "event_name": "MODIFY",
                             "entity_data": {
                                 "image_id": test_image_id,
                                 "receipt_id": 1,
-                                "canonical_merchant_name": "Target Store",
+                                "merchant_name": "Target Store",
                             },
                             "changes": {
-                                "canonical_merchant_name": {
+                                "merchant_name": {
                                     "old": "Target",
                                     "new": "Target Store",
                                 }
@@ -432,11 +436,11 @@ class TestEndToEndWorkflow:
 
         # Step 7: Verify end-to-end data consistency
         # The test data should be consistent across all services
-        receipt_metadata_result = dynamo_client.get_receipt_metadata(
+        receipt_place_result = dynamo_client.get_receipt_place(
             test_image_id, 1
         )
         assert (
-            receipt_metadata_result.canonical_merchant_name == "Target Store"
+            receipt_place_result.merchant_name == "Target"
         )
 
     @mock_aws

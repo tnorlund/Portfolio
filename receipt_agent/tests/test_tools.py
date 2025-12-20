@@ -11,11 +11,11 @@ from receipt_agent.tools.chroma import (
 )
 from receipt_agent.tools.dynamo import (
     get_receipt_context,
-    get_receipt_metadata,
+    get_receipt_place,
     get_receipts_by_merchant,
 )
 from receipt_agent.tools.places import (
-    compare_metadata_with_places,
+    compare_place_with_google,
     verify_with_google_places,
 )
 from receipt_agent.tools.registry import ToolRegistry, create_tool_registry
@@ -70,19 +70,19 @@ class TestSearchByMerchantName:
         assert "receipt_count" in result
 
 
-class TestGetReceiptMetadata:
-    """Tests for get_receipt_metadata tool."""
+class TestGetReceiptPlace:
+    """Tests for get_receipt_place tool."""
 
     def test_returns_error_without_client(self):
-        result = get_receipt_metadata.func(
+        result = get_receipt_place.func(
             image_id="test",
             receipt_id=1,
             _dynamo_client=None,
         )
         assert "error" in result
 
-    def test_returns_metadata(self, mock_dynamo_client):
-        result = get_receipt_metadata.func(
+    def test_returns_place(self, mock_dynamo_client):
+        result = get_receipt_place.func(
             image_id="test-image",
             receipt_id=1,
             _dynamo_client=mock_dynamo_client,
@@ -108,11 +108,11 @@ class TestGetReceiptContext:
         assert "extracted_data" in result
 
 
-class TestCompareMetadataWithPlaces:
-    """Tests for compare_metadata_with_places tool."""
+class TestComparePlaceWithGoogle:
+    """Tests for compare_place_with_google tool."""
 
     def test_compares_matching_data(self):
-        result = compare_metadata_with_places.func(
+        result = compare_place_with_google.func(
             current_name="Starbucks Coffee",
             current_address="123 Main St",
             current_phone="555-123-4567",
@@ -126,7 +126,7 @@ class TestCompareMetadataWithPlaces:
         assert result["match_count"] >= 2
 
     def test_detects_mismatches(self):
-        result = compare_metadata_with_places.func(
+        result = compare_place_with_google.func(
             current_name="Starbucks",
             current_address="123 Main St",
             current_phone="555-123-4567",
@@ -201,5 +201,5 @@ class TestToolRegistry:
         descriptions = registry.get_tool_descriptions()
 
         assert "query_similar_lines" in descriptions
-        assert "get_receipt_metadata" in descriptions
+        assert "get_receipt_place" in descriptions
 

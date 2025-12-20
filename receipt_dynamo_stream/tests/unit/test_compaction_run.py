@@ -45,7 +45,7 @@ def test_is_compaction_run_invalid_sk() -> None:
     pk = "IMAGE#550e8400-e29b-41d4-a716-446655440000"
 
     test_cases = [
-        "RECEIPT#00001#METADATA",
+        "RECEIPT#00001#PLACE",
         "RECEIPT#00001#LINE#00001",
         "RECEIPT#00001#LABEL#TOTAL",
     ]

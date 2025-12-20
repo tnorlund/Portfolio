@@ -68,7 +68,7 @@ def create_agent_node_with_retry(
 
     Args:
         llm: The LLM to invoke
-        agent_name: Name for logging (e.g., "harmonizer", "metadata_finder")
+        agent_name: Name for logging (e.g., "harmonizer", "place_finder")
         max_retries: Maximum number of retries
         base_delay: Base delay in seconds for exponential backoff
         max_wait: Maximum wait time in seconds (caps exponential backoff)

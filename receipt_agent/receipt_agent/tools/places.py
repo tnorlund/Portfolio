@@ -264,15 +264,15 @@ def _format_place_result(place_data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-class CompareMetadataInput(BaseModel):
-    """Input schema for compare_metadata_with_places tool."""
+class ComparePlaceInput(BaseModel):
+    """Input schema for compare_place_with_google tool."""
 
-    current_name: str = Field(description="Current merchant name in metadata")
+    current_name: str = Field(description="Current merchant name in place")
     current_address: Optional[str] = Field(
-        default=None, description="Current address in metadata"
+        default=None, description="Current address in place"
     )
     current_phone: Optional[str] = Field(
-        default=None, description="Current phone in metadata"
+        default=None, description="Current phone in place"
     )
     places_name: str = Field(description="Name from Google Places")
     places_address: Optional[str] = Field(
@@ -283,8 +283,8 @@ class CompareMetadataInput(BaseModel):
     )
 
 
-@tool(args_schema=CompareMetadataInput)
-def compare_metadata_with_places(
+@tool(args_schema=ComparePlaceInput)
+def compare_place_with_google(
     current_name: str,
     current_address: Optional[str],
     current_phone: Optional[str],
@@ -293,10 +293,10 @@ def compare_metadata_with_places(
     places_phone: Optional[str],
 ) -> dict[str, Any]:
     """
-    Compare current metadata against Google Places data.
+    Compare current place data against Google Places data.
 
     Use this tool to understand the differences between
-    what's stored in metadata and what Google Places reports.
+    what's stored in place and what Google Places reports.
 
     Returns a detailed comparison showing:
     - Which fields match

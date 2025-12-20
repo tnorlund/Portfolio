@@ -20,7 +20,7 @@ Receipt (parent entity)
   ├── ReceiptWord (child of ReceiptLine)
   ├── ReceiptLetter (child of ReceiptWord, optional)
   ├── ReceiptWordLabel (references ReceiptWord, optional)
-  └── ReceiptMetadata (references Receipt, optional)
+  └── ReceiptPlace (references Receipt, optional)
 ```
 
 **What Happens:**
@@ -28,7 +28,7 @@ Receipt (parent entity)
 - `client.add_receipt_lines(receipt_lines)` - Creates ReceiptLine entities
 - `client.add_receipt_words(receipt_words)` - Creates ReceiptWord entities
 - `client.add_receipt_letters(receipt_letters)` - Creates ReceiptLetter entities (if any)
-- `client.add_receipt_metadata(receipt_metadata)` - Creates ReceiptMetadata entity (if any)
+- `client.add_receipt_place(receipt_place)` - Creates ReceiptPlace entity (if any)
 - `client.add_receipt_word_label(label)` - Creates ReceiptWordLabel entities (if any)
 
 **DynamoDB Structure:**
@@ -39,7 +39,7 @@ Receipt (parent entity)
   - ReceiptWord: `RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}`
   - ReceiptLetter: `RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}`
   - ReceiptWordLabel: `RECEIPT#{receipt_id:05d}#WORD#{word_id:05d}#LABEL#{label}`
-  - ReceiptMetadata: `RECEIPT#{receipt_id:05d}#METADATA`
+  - ReceiptPlace: `RECEIPT#{receipt_id:05d}#PLACE`
 
 **Why This Order:**
 - Foreign key relationships: Words reference Lines, Letters reference Words, Labels reference Words
@@ -156,7 +156,7 @@ Receipt (parent entity)
 │ 1. DynamoDB: Save Receipt Entities                           │
 │    - Receipt                                                  │
 │    - ReceiptLine, ReceiptWord, ReceiptLetter                  │
-│    - ReceiptWordLabel, ReceiptMetadata                        │
+│    - ReceiptWordLabel, ReceiptPlace                           │
 └─────────────────────────────────────────────────────────────┘
                         ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -208,7 +208,7 @@ ReceiptLine (references Receipt)
   ↓
 ReceiptLetter (references Words)
   ↓
-ReceiptMetadata (references Receipt)
+ReceiptPlace (references Receipt)
   ↓
 CompactionRun (references Receipt)
   ↓
@@ -220,7 +220,7 @@ Receipt (parent entity)              ← Delete last
 - `client.delete_receipt_words(receipt_words)` - Delete all words
 - `client.delete_receipt_lines(receipt_lines)` - Delete all lines
 - `client.delete_receipt_letters(receipt_letters)` - Delete all letters (if any)
-- `client.delete_receipt_metadata(image_id, receipt_id)` - Delete metadata (if any)
+- `client.delete_receipt_place(image_id, receipt_id)` - Delete place data (if any)
 - `client.delete_compaction_run(...)` - Delete all compaction runs for the receipt
 - `client.delete_receipt(image_id, receipt_id)` - Delete the Receipt entity **LAST**
 
@@ -310,7 +310,7 @@ Receipt (parent entity)              ← Delete last
 │    - ReceiptWordLabel (first)                                │
 │    - ReceiptWord                                             │
 │    - ReceiptLine                                             │
-│    - ReceiptLetter, ReceiptMetadata                          │
+│    - ReceiptLetter, ReceiptPlace                             │
 │    - CompactionRun                                           │
 │    - Receipt (last)                                          │
 └─────────────────────────────────────────────────────────────┘

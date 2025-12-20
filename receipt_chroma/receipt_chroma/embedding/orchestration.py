@@ -37,7 +37,7 @@ from receipt_dynamo.constants import CompactionState
 from receipt_dynamo.entities import (
     CompactionRun,
     ReceiptLine,
-    ReceiptMetadata,
+    ReceiptPlace,
     ReceiptWord,
     ReceiptWordLabel,
 )
@@ -268,7 +268,7 @@ def create_embeddings_and_compaction_run(
     chromadb_bucket: str,
     dynamo_client: "DynamoClient",
     s3_client: Optional["S3Client"] = None,
-    receipt_metadata: Optional[ReceiptMetadata] = None,
+    receipt_place: Optional[ReceiptPlace] = None,
     receipt_word_labels: Optional[List[ReceiptWordLabel]] = None,
     merchant_name: Optional[str] = None,
     sqs_notify: bool = True,
@@ -292,7 +292,7 @@ def create_embeddings_and_compaction_run(
         chromadb_bucket: S3 bucket for ChromaDB snapshots/deltas
         dynamo_client: DynamoDB client for CompactionRun persistence
         s3_client: Optional S3 client (creates one if not provided)
-        receipt_metadata: Optional metadata for merchant context
+        receipt_place: Optional place data for merchant context
         receipt_word_labels: Optional word labels for enrichment
         merchant_name: Explicit merchant name override
         sqs_notify: Whether to send SQS notification (default True)
@@ -320,9 +320,9 @@ def create_embeddings_and_compaction_run(
 
     openai_client = OpenAI()
 
-    # Resolve merchant name
+    # Resolve merchant name from receipt_place if not explicitly provided
     merchant_name = merchant_name or (
-        receipt_metadata.merchant_name if receipt_metadata else None
+        receipt_place.merchant_name if receipt_place else None
     )
 
     run_id = str(uuid.uuid4())

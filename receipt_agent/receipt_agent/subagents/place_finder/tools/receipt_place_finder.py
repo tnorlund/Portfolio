@@ -1,5 +1,5 @@
 """
-Receipt Metadata Finder - Find Complete Metadata for Receipts
+Receipt Place Finder - Find Complete Place Data for Receipts
 =============================================================
 
 Purpose
@@ -43,17 +43,17 @@ The finder updates ANY missing fields:
 Usage
 -----
 ```python
-from receipt_agent.subagents.metadata_finder.tools import (
-    receipt_metadata_finder,
+from receipt_agent.subagents.place_finder.tools import (
+    receipt_place_finder,
 )
 
-finder = receipt_metadata_finder.ReceiptMetadataFinder(
+finder = receipt_place_finder.ReceiptPlaceFinder(
     dynamo_client,
     places_client,
     chroma_client,
     embed_fn,
 )
-report = await finder.find_all_metadata_agentic()
+report = await finder.find_all_place_data_agentic()
 finder.print_summary(report)
 
 # Apply fixes (adds all found metadata)
@@ -64,7 +64,7 @@ print(f"Updated {result.total_updated} receipts")
 Example Output
 --------------
 ```
-RECEIPT METADATA FINDER REPORT
+RECEIPT PLACE FINDER REPORT
 ======================================================================
 Total receipts with missing metadata: 65
   Found all fields: 42 (64.6%)
@@ -83,11 +83,9 @@ import asyncio
 import logging
 import re
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Optional
-
-if TYPE_CHECKING:
-    from receipt_dynamo.entities import ReceiptMetadata
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +100,9 @@ FIELD_NAME_MAPPING = {
     "address": "address",
     "place_id": "place_id",
 }
+
+# Sentinel values that represent missing/invalid place IDs.
+PLACE_ID_SENTINELS = {"", "null", "NO_RESULTS", "INVALID"}
 
 # Address suffixes for address detection
 ADDRESS_SUFFIXES = [
@@ -135,7 +136,7 @@ class AgenticSearchRequirementsError(ValueError):
     def __init__(self):
         super().__init__(
             "Agent-based search requires chroma_client and embed_fn. "
-            "Provide both when initializing ReceiptMetadataFinder."
+            "Provide both when initializing ReceiptPlaceFinder."
         )
 
 
@@ -197,7 +198,7 @@ class ReceiptRecord:
 
 
 @dataclass
-class MetadataMatch:
+class PlaceMatch:
     """
     Result of finding metadata for a receipt.
 
@@ -241,7 +242,7 @@ class FinderResult:
         total_found_partial: Number with some fields found
         total_not_found: Number with no fields found
         total_errors: Number with errors
-        matches: List of MetadataMatch results
+        matches: List of PlaceMatch results
         field_counts: Count of each field found
     """
 
@@ -250,7 +251,7 @@ class FinderResult:
     total_found_partial: int = 0
     total_not_found: int = 0
     total_errors: int = 0
-    matches: list[MetadataMatch] = field(default_factory=list)
+    matches: list[PlaceMatch] = field(default_factory=list)
     field_counts: dict[str, int] = field(
         default_factory=lambda: defaultdict(int)
     )
@@ -277,7 +278,7 @@ class UpdateResult:
     errors: list[str] = field(default_factory=list)
 
 
-class ReceiptMetadataFinder:
+class ReceiptPlaceFinder:
     """
     Finds complete metadata for receipts using agent-based reasoning.
 
@@ -301,12 +302,12 @@ class ReceiptMetadataFinder:
 
     Example:
         ```python
-        finder = ReceiptMetadataFinder(
+        finder = ReceiptPlaceFinder(
             dynamo_client, places_client, chroma_client, embed_fn
         )
 
-        # Find metadata using agent (recommended)
-        report = await finder.find_all_metadata_agentic()
+        # Find place data using agent (recommended)
+        report = await finder.find_all_place_data_agentic()
         finder.print_summary(report)
 
         # Apply fixes (dry run first)
@@ -331,7 +332,7 @@ class ReceiptMetadataFinder:
         Initialize the receipt metadata finder.
 
         Args:
-            dynamo_client: DynamoDB client with list_receipt_metadatas() method
+            dynamo_client: DynamoDB client with list_receipt_places() method
             places_client: Google Places client (PlacesClient from
                 receipt_places)
             chroma_client: ChromaDB client for agent-based search
@@ -348,51 +349,49 @@ class ReceiptMetadataFinder:
         self._agent_graph: Optional[Any] = None
         self._agent_state_holder: Optional[dict] = None
 
-    def load_receipts_with_missing_metadata(self) -> int:
+    def load_receipts_with_missing_place_data(self) -> int:
         """
-        Load all receipt metadata from DynamoDB that have missing fields.
+        Load all receipt place data from DynamoDB that have missing fields.
 
         A receipt has missing metadata if ANY of these are missing:
         - place_id
         - merchant_name
-        - address
+        - formatted_address
         - phone_number
 
         Returns:
             Total number of receipts with missing metadata
         """
         logger.info(
-            "Loading receipt metadata with missing fields from DynamoDB..."
+            "Loading receipt place data with missing fields from DynamoDB..."
         )
 
         self._receipts_with_missing_metadata = []
         total = 0
-
+        # Check ReceiptPlace entities
         try:
-            # Paginate and filter in one pass to avoid accumulating
-            # all metadatas
             last_key = None
             while True:
-                batch, last_key = self.dynamo.list_receipt_metadatas(
+                batch, last_key = self.dynamo.list_receipt_places(
                     limit=1000,
                     last_evaluated_key=last_key,
                 )
 
-                # Filter to receipts with missing metadata within this batch
-                for meta in batch:
+                for place in batch:
                     # Check if any field is missing
-                    has_place_id = meta.place_id and meta.place_id not in (
-                        "",
-                        "null",
-                        "NO_RESULTS",
-                        "INVALID",
+                    has_place_id = (
+                        place.place_id
+                        and place.place_id not in PLACE_ID_SENTINELS
                     )
                     has_merchant_name = bool(
-                        meta.merchant_name and meta.merchant_name.strip()
+                        place.merchant_name and place.merchant_name.strip()
                     )
-                    has_address = bool(meta.address and meta.address.strip())
+                    has_address = bool(
+                        place.formatted_address
+                        and place.formatted_address.strip()
+                    )
                     has_phone = bool(
-                        meta.phone_number and meta.phone_number.strip()
+                        place.phone_number and place.phone_number.strip()
                     )
 
                     # If any field is missing, include it
@@ -403,18 +402,22 @@ class ReceiptMetadataFinder:
                         and has_phone
                     ):
                         receipt = ReceiptRecord(
-                            image_id=meta.image_id,
-                            receipt_id=meta.receipt_id,
+                            image_id=place.image_id,
+                            receipt_id=place.receipt_id,
                             merchant_name=(
-                                meta.merchant_name
+                                place.merchant_name
                                 if has_merchant_name
                                 else None
                             ),
-                            place_id=meta.place_id if has_place_id else None,
-                            address=meta.address if has_address else None,
-                            phone=meta.phone_number if has_phone else None,
+                            place_id=place.place_id if has_place_id else None,
+                            address=(
+                                place.formatted_address
+                                if has_address
+                                else None
+                            ),
+                            phone=place.phone_number if has_phone else None,
                             validation_status=getattr(
-                                meta, "validation_status", None
+                                place, "validation_status", None
                             ),
                         )
 
@@ -432,16 +435,16 @@ class ReceiptMetadataFinder:
 
         return total
 
-    async def find_all_metadata_agentic(
+    async def find_all_place_data_agentic(
         self,
         limit: Optional[int] = None,
     ) -> FinderResult:
         """
-        Find metadata using agent-based reasoning (recommended).
+        Find place data using agent-based reasoning (recommended).
 
         This method uses an LLM agent to:
         - Examine receipt content (lines, words, labels)
-        - Extract metadata from receipt itself
+        - Extract place data from receipt itself
         - Search Google Places API for missing fields
         - Use similar receipts for verification
         - Determine the best values for each field
@@ -452,21 +455,22 @@ class ReceiptMetadataFinder:
         Returns:
             FinderResult with all matches
         """
+        from receipt_agent.subagents.place_finder import (
+            create_receipt_place_finder_graph,
+            run_receipt_place_finder,
+        )
+
         if not self.chroma or not self.embed_fn:
             raise AgenticSearchRequirementsError()
 
         # Load receipts if not already loaded
         if not self._receipts_with_missing_metadata:
-            self.load_receipts_with_missing_metadata()
+            self.load_receipts_with_missing_place_data()
 
         # Initialize agent graph if needed
         if self._agent_graph is None:
-            from receipt_agent.subagents.metadata_finder import (
-                create_receipt_metadata_finder_graph,
-            )
-
             self._agent_graph, self._agent_state_holder = (
-                create_receipt_metadata_finder_graph(
+                create_receipt_place_finder_graph(
                     dynamo_client=self.dynamo,
                     chroma_client=self.chroma,
                     embed_fn=self.embed_fn,
@@ -484,10 +488,8 @@ class ReceiptMetadataFinder:
         result.total_processed = len(receipts_to_process)
 
         logger.info(
-            (
-                "Finding metadata using agent for "
-                f"{len(receipts_to_process)} receipts..."
-            )
+            "Finding place data using agent for "
+            f"{len(receipts_to_process)} receipts..."
         )
 
         # Process each receipt with agent
@@ -508,11 +510,7 @@ class ReceiptMetadataFinder:
 
             for attempt in range(max_retries):
                 try:
-                    from receipt_agent.subagents.metadata_finder import (
-                        run_receipt_metadata_finder,
-                    )
-
-                    agent_result = await run_receipt_metadata_finder(
+                    agent_result = await run_receipt_place_finder(
                         graph=self._agent_graph,
                         state_holder=self._agent_state_holder,
                         image_id=receipt.image_id,
@@ -556,8 +554,8 @@ class ReceiptMetadataFinder:
                     # Fall through to record match.error / total_errors
                     break
 
-            # Convert agent result to MetadataMatch
-            match = MetadataMatch(receipt=receipt)
+            # Convert agent result to PlaceMatch
+            match = PlaceMatch(receipt=receipt)
 
             if agent_result and agent_result.get("found"):
                 match.place_id = agent_result.get("place_id")
@@ -649,25 +647,23 @@ class ReceiptMetadataFinder:
         self,
         dry_run: bool = True,
         min_confidence: float = 50.0,
-        create_receipt_place: bool = True,
     ) -> UpdateResult:
         """
-        Apply metadata updates to DynamoDB with optional dual-write to ReceiptPlace.
+        Apply metadata updates to DynamoDB by creating/updating
+        ReceiptPlace entities.
 
-        Updates any missing fields with found values. If create_receipt_place is True,
-        also creates ReceiptPlace entities with rich data from Google Places API v1.
+        Updates any missing fields with found values. Creates or updates
+        ReceiptPlace entities with rich data from Google Places API v1.
 
         Args:
             dry_run: If True, only report what would be updated
             min_confidence: Minimum confidence to apply fix (0-100)
-            create_receipt_place: If True, create ReceiptPlace entities alongside
-                ReceiptMetadata (dual-write during migration)
 
         Returns:
             UpdateResult with counts and any errors
         """
         if not self._last_report:
-            await self.find_all_metadata_agentic()
+            await self.find_all_place_data_agentic()
 
         assert self._last_report is not None
 
@@ -700,17 +696,9 @@ class ReceiptMetadataFinder:
             logger.info(
                 (
                     "[DRY RUN] Would update "
-                    f"{len(matches_to_update)} receipts with metadata"
+                    f"{len(matches_to_update)} ReceiptPlace entities"
                 )
             )
-            if create_receipt_place:
-                logger.info(
-                    (
-                        "[DRY RUN] Would also create "
-                        f"{len(matches_to_update)} ReceiptPlace entities "
-                        "(dual-write)"
-                    )
-                )
             for match in matches_to_update[:10]:
                 fields = [
                     f"{f}={getattr(match, f, None) is not None}"
@@ -736,23 +724,21 @@ class ReceiptMetadataFinder:
         # Actually apply updates
         logger.info(
             (
-                "Applying metadata updates to "
+                "Applying ReceiptPlace updates to "
                 f"{len(matches_to_update)} receipts..."
             )
         )
-        if create_receipt_place:
-            logger.info("Dual-write mode enabled: creating ReceiptPlace entities")
 
         for match in matches_to_update:
             try:
-                # Try to get existing metadata
-                metadata = None
-                metadata_exists = False
+                # Try to get existing ReceiptPlace
+                existing_place = None
+                place_exists = False
                 try:
-                    metadata = self.dynamo.get_receipt_metadata(
+                    existing_place = self.dynamo.get_receipt_place(
                         match.receipt.image_id, match.receipt.receipt_id
                     )
-                    metadata_exists = True
+                    place_exists = True
                 except Exception as e:
                     error_str = str(e)
                     error_type = type(e).__name__
@@ -761,77 +747,49 @@ class ReceiptMetadataFinder:
                         or "EntityNotFoundError" in error_type
                         or "not found" in error_str.lower()
                     ):
-                        metadata_exists = False
+                        place_exists = False
                     else:
                         raise
 
-                if not metadata_exists:
-                    # Create new metadata from found data
-                    from datetime import datetime, timezone
-
-                    from receipt_dynamo.constants import (
-                        MerchantValidationStatus,
-                        ValidationMethod,
-                    )
-                    from receipt_dynamo.entities import ReceiptMetadata
-
-                    # Determine matched fields in canonical format
-                    matched_fields = [
-                        FIELD_NAME_MAPPING.get(f, f)
-                        for f in match.fields_found
-                    ]
-
-                    # Create new ReceiptMetadata
-                    metadata = ReceiptMetadata(
-                        image_id=match.receipt.image_id,
-                        receipt_id=match.receipt.receipt_id,
-                        place_id=match.place_id or "",
-                        merchant_name=match.merchant_name or "",
-                        merchant_category="",
-                        address=match.address or "",
-                        phone_number=match.phone_number or "",
-                        matched_fields=matched_fields,
-                        validated_by=ValidationMethod.INFERENCE.value,
-                        timestamp=datetime.now(timezone.utc),
-                        reasoning=match.reasoning
-                        or "Created by receipt_metadata_finder",
-                        validation_status=(
-                            MerchantValidationStatus.MATCHED.value
-                            if match.place_id
-                            else MerchantValidationStatus.UNSURE.value
-                        ),
-                    )
-
-                    self.dynamo.add_receipt_metadata(metadata)
-                    result.total_updated += 1
-
-                    logger.info(
-                        (
-                            "Created new metadata for "
-                            f"{match.receipt.image_id[:8]}..."
-                            f"#{match.receipt.receipt_id}: "
-                            f"{len(match.fields_found)} fields"
-                        )
-                    )
+                if not place_exists:
+                    # Create new ReceiptPlace with Google Places API data
+                    if match.place_id:
+                        try:
+                            await self._create_receipt_place_from_match(match)
+                            result.total_updated += 1
+                            logger.info(
+                                "Created new ReceiptPlace for "
+                                f"{match.receipt.image_id[:8]}..."
+                                f"#{match.receipt.receipt_id}: "
+                                f"{len(match.fields_found)} fields"
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to create ReceiptPlace: {e!s}"
+                            )
+                            result.total_failed += 1
+                    else:
+                        # No place_id, skip
+                        result.total_skipped += 1
                     continue
 
-                # Update existing metadata
+                # Update existing ReceiptPlace
                 updated_fields = []
 
-                if match.place_id and not metadata.place_id:
-                    metadata.place_id = match.place_id
+                if match.place_id and (
+                    not existing_place.place_id
+                    or existing_place.place_id in PLACE_ID_SENTINELS
+                ):
+                    existing_place.place_id = match.place_id
                     updated_fields.append("place_id")
 
                 # Update merchant_name if missing OR if different
-                # (especially if current looks like an address)
                 # CRITICAL: Never use an address as a merchant name
                 if match.merchant_name:
-                    # Validate that match.merchant_name is NOT an address
                     match_looks_like_address = _looks_like_address(
                         match.merchant_name
                     )
 
-                    # Skip if the match itself looks like an address
                     if match_looks_like_address:
                         logger.warning(
                             (
@@ -842,32 +800,29 @@ class ReceiptMetadataFinder:
                                 "an address, not a merchant name"
                             )
                         )
-                    elif not metadata.merchant_name:
-                        metadata.merchant_name = match.merchant_name
+                    elif not existing_place.merchant_name:
+                        existing_place.merchant_name = match.merchant_name
                         updated_fields.append("merchant_name")
-                    elif metadata.merchant_name != match.merchant_name:
-                        # Check if current merchant_name looks like an address
+                    elif existing_place.merchant_name != match.merchant_name:
                         looks_like_address = _looks_like_address(
-                            metadata.merchant_name
+                            existing_place.merchant_name
                         )
-                        # Always update if different and we have high
-                        # confidence, or if current looks like address
                         if looks_like_address or match.confidence >= 80:
-                            metadata.merchant_name = match.merchant_name
+                            existing_place.merchant_name = match.merchant_name
                             updated_fields.append("merchant_name")
 
-                if match.address and not metadata.address:
-                    metadata.address = match.address
-                    updated_fields.append("address")
+                if match.address and not existing_place.formatted_address:
+                    existing_place.formatted_address = match.address
+                    updated_fields.append("formatted_address")
 
-                if match.phone_number and not metadata.phone_number:
-                    metadata.phone_number = match.phone_number
+                if match.phone_number and not existing_place.phone_number:
+                    existing_place.phone_number = match.phone_number
                     updated_fields.append("phone_number")
 
-                # Update matched_fields to include all fields we found
+                # Update matched_fields
                 new_matched_fields = (
-                    list(metadata.matched_fields)
-                    if metadata.matched_fields
+                    list(existing_place.matched_fields)
+                    if existing_place.matched_fields
                     else []
                 )
                 for field in match.fields_found:
@@ -876,44 +831,32 @@ class ReceiptMetadataFinder:
                         new_matched_fields.append(mapped_field)
 
                 if set(new_matched_fields) != set(
-                    metadata.matched_fields or []
+                    existing_place.matched_fields or []
                 ):
-                    metadata.matched_fields = new_matched_fields
+                    existing_place.matched_fields = new_matched_fields
                     updated_fields.append("matched_fields")
 
-                # Update validation_status based on whether we found a place_id
-                # and confidence
-                # Note: ReceiptMetadata.__post_init__ will recalculate this.
-                # We set it explicitly to ensure it's correct based on our
-                # confidence and place_id
+                # Update validation_status
                 from receipt_dynamo.constants import MerchantValidationStatus
 
-                confidence = (
-                    match.confidence / 100.0
-                )  # Convert from percentage to decimal
-                # Base status on the place_id that will actually be stored
-                # (use metadata.place_id to avoid downgrading stored place_ids
-                # when match.place_id is None)
-                has_place_id = bool(metadata.place_id)
+                confidence = match.confidence / 100.0
+                has_place_id = bool(existing_place.place_id)
 
-                # Determine appropriate validation status
-                if (
-                    has_place_id and confidence >= 0.8
-                ):  # 80% confidence threshold
+                if has_place_id and confidence >= 0.8:
                     new_status = MerchantValidationStatus.MATCHED.value
-                elif has_place_id and confidence >= 0.5:  # 50-80% confidence
+                elif has_place_id and confidence >= 0.5:
                     new_status = MerchantValidationStatus.UNSURE.value
                 elif not has_place_id:
                     new_status = MerchantValidationStatus.NO_MATCH.value
                 else:
                     new_status = MerchantValidationStatus.UNSURE.value
 
-                if metadata.validation_status != new_status:
-                    metadata.validation_status = new_status
+                if existing_place.validation_status != new_status:
+                    existing_place.validation_status = new_status
                     updated_fields.append("validation_status")
 
                 if updated_fields:
-                    self.dynamo.update_receipt_metadata(metadata)
+                    self.dynamo.update_receipt_place(existing_place)
                     result.total_updated += 1
 
                     logger.debug(
@@ -924,23 +867,6 @@ class ReceiptMetadataFinder:
                     )
                 else:
                     result.total_skipped += 1
-
-                # === DUAL-WRITE: Create ReceiptPlace if enabled and place_id found ===
-                if create_receipt_place and metadata.place_id:
-                    try:
-                        await self._create_receipt_place_from_match(
-                            match, metadata
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            (
-                                "Failed to create ReceiptPlace for "
-                                f"{match.receipt.image_id}#"
-                                f"{match.receipt.receipt_id}: {e!s}"
-                            )
-                        )
-                        # Don't fail the entire update if ReceiptPlace creation fails
-                        # The ReceiptMetadata update already succeeded
 
             except Exception as e:
                 logger.exception(
@@ -970,17 +896,16 @@ class ReceiptMetadataFinder:
         return result
 
     async def _create_receipt_place_from_match(
-        self, match: MetadataMatch, metadata: ReceiptMetadata
+        self, match: PlaceMatch
     ) -> None:
         """
         Create a ReceiptPlace entity from matched metadata and API data.
 
-        Calls Google Places API v1 to get rich data (coordinates, hours, ratings,
-        business status) and creates a ReceiptPlace entity with this data.
+        Calls Google Places API v1 to get rich data (coordinates, hours,
+        ratings, business status) and creates a ReceiptPlace entity.
 
         Args:
-            match: MetadataMatch with found metadata
-            metadata: ReceiptMetadata that was just created/updated
+            match: PlaceMatch with found place data
 
         Raises:
             Exception: If places API fails or ReceiptPlace creation fails
@@ -995,27 +920,48 @@ class ReceiptMetadataFinder:
 
         if not self.places:
             logger.debug(
-                "Places API client not available, skipping ReceiptPlace creation"
+                "Places API client not available, "
+                "skipping ReceiptPlace creation"
             )
             return
 
-        if not metadata.place_id:
+        if not match.place_id:
             logger.debug("No place_id found, skipping ReceiptPlace creation")
             return
 
         try:
             # Get rich place data from v1 API
             logger.debug(
-                f"Fetching place details for {metadata.place_id} "
+                f"Fetching place details for {match.place_id} "
                 f"({match.merchant_name})"
             )
             place_v1 = await self.places.get_place_details(
-                metadata.place_id
+                match.place_id
             )
 
             if not place_v1:
                 logger.warning(
-                    f"v1 API returned no data for place_id {metadata.place_id}"
+                    f"v1 API returned no data for place_id {match.place_id}"
+                )
+                return
+
+            display_name = ""
+            if place_v1.display_name:
+                display_name = place_v1.display_name.text
+
+            merchant_name = (
+                match.merchant_name
+                or match.receipt.merchant_name
+                or display_name
+                or place_v1.formatted_address
+                or ""
+            )
+            if not merchant_name.strip():
+                logger.warning(
+                    "Skipping ReceiptPlace creation due to empty "
+                    "merchant_name for %s#%s",
+                    match.receipt.image_id,
+                    match.receipt.receipt_id,
                 )
                 return
 
@@ -1082,10 +1028,10 @@ class ReceiptMetadataFinder:
 
             # Create ReceiptPlace entity with rich data
             receipt_place = ReceiptPlace(
-                image_id=metadata.image_id,
-                receipt_id=metadata.receipt_id,
-                place_id=metadata.place_id,
-                merchant_name=metadata.merchant_name or "",
+                image_id=match.receipt.image_id,
+                receipt_id=match.receipt.receipt_id,
+                place_id=match.place_id,
+                merchant_name=merchant_name,
                 merchant_category=place_v1.primary_type or "",
                 merchant_types=place_v1.types or [],
                 formatted_address=place_v1.formatted_address or "",
@@ -1099,7 +1045,7 @@ class ReceiptMetadataFinder:
                 viewport_sw_lat=viewport_sw_lat,
                 viewport_sw_lng=viewport_sw_lng,
                 plus_code=plus_code,
-                phone_number=metadata.phone_number or "",
+                phone_number=match.phone_number or "",
                 phone_intl=place_v1.international_phone_number or "",
                 website=place_v1.website_uri or "",
                 maps_url=place_v1.google_maps_uri or "",
@@ -1114,7 +1060,7 @@ class ReceiptMetadataFinder:
                 validated_by=ValidationMethod.INFERENCE.value,
                 validation_status=(
                     MerchantValidationStatus.MATCHED.value
-                    if metadata.place_id
+                    if match.place_id
                     else MerchantValidationStatus.UNSURE.value
                 ),
                 confidence=(
@@ -1122,7 +1068,7 @@ class ReceiptMetadataFinder:
                 ),  # Convert from percentage to decimal
                 reasoning=(
                     match.reasoning
-                    or "Created by receipt_metadata_finder with v1 API data"
+                    or "Created by receipt_place_finder with v1 API data"
                 ),
                 timestamp=datetime.now(timezone.utc),
                 places_api_version="v1",
@@ -1134,7 +1080,7 @@ class ReceiptMetadataFinder:
             logger.debug(
                 f"Created ReceiptPlace for {match.receipt.image_id[:8]}..."
                 f"#{match.receipt.receipt_id} "
-                f"(place_id={metadata.place_id}, "
+                f"(place_id={match.place_id}, "
                 f"lat={latitude}, lng={longitude})"
             )
 
@@ -1152,12 +1098,12 @@ class ReceiptMetadataFinder:
 
         if not report:
             print(
-                "No report available. Run find_all_metadata_agentic() first."
+                "No report available. Run find_all_place_data_agentic() first."
             )
             return
 
         print("=" * 70)
-        print("RECEIPT METADATA FINDER REPORT")
+        print("RECEIPT PLACE FINDER REPORT")
         print("=" * 70)
         print(
             f"Total receipts with missing metadata: {report.total_processed}"

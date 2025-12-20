@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 from .change_detector import get_chromadb_relevant_changes
@@ -308,7 +308,7 @@ def build_entity_change_message(
 
 def _extract_entity_data(
     entity_type: str,
-    entity: ReceiptMetadata | ReceiptWordLabel,
+    entity: ReceiptPlace | ReceiptWordLabel,
 ) -> Tuple[Dict[str, Any], List[ChromaDBCollection]]:
     """
     Extract entity data and determine target collections.
@@ -320,8 +320,8 @@ def _extract_entity_data(
     Returns:
         Tuple of (entity_data dict, list of target collections)
     """
-    if entity_type == "RECEIPT_METADATA":
-        # Metadata changes affect both collections
+    if entity_type == "RECEIPT_PLACE":
+        # Place changes affect both collections
         entity_data = {
             "entity_type": entity_type,
             "image_id": entity.image_id,

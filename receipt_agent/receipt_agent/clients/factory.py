@@ -21,7 +21,7 @@ def create_dynamo_client(
     Create a DynamoDB client for receipt operations.
 
     The client provides access to:
-    - Receipt metadata (ReceiptMetadata)
+    - Receipt place data (ReceiptPlace)
     - Receipt details (lines, words, labels)
     - Places cache (PlacesCache) for cost optimization
 

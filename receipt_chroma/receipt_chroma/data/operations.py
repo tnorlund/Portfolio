@@ -9,7 +9,7 @@ from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 
-def update_receipt_metadata(
+def update_receipt_place(
     collection: Any,
     image_id: str,
     receipt_id: int,
@@ -19,7 +19,7 @@ def update_receipt_metadata(
     OBSERVABILITY_AVAILABLE: bool = False,
     get_dynamo_client_func: Any = None,
 ) -> int:
-    """Update metadata for all embeddings of a receipt.
+    """Update place metadata for all embeddings of a receipt.
 
     Builds exact ChromaDB IDs via DynamoDB instead of scanning the collection.
     """
@@ -27,14 +27,14 @@ def update_receipt_metadata(
 
     if OBSERVABILITY_AVAILABLE:
         logger.info(
-            "Starting metadata update",
+            "Starting place update",
             image_id=image_id,
             receipt_id=receipt_id,
             changes=changes,
         )
     else:
         logger.info(
-            "Starting metadata update",
+            "Starting place update",
             image_id=image_id,
             receipt_id=receipt_id,
         )
@@ -55,7 +55,6 @@ def update_receipt_metadata(
     chromadb_ids = []
 
     if "words" in collection_name:
-        # Get all words for this receipt from DynamoDB
         try:
             words = dynamo_client.list_receipt_words_from_receipt(
                 image_id, receipt_id
@@ -65,7 +64,6 @@ def update_receipt_metadata(
             if OBSERVABILITY_AVAILABLE and metrics:
                 metrics.gauge("CompactionDynamoDBWords", len(words))
 
-            # Construct exact ChromaDB IDs for words
             chromadb_ids = [
                 (
                     f"IMAGE#{word.image_id}"
@@ -87,7 +85,6 @@ def update_receipt_metadata(
             return 0
 
     elif "lines" in collection_name:
-        # Get all lines for this receipt from DynamoDB
         try:
             lines = dynamo_client.list_receipt_lines_from_receipt(
                 image_id, receipt_id
@@ -97,7 +94,6 @@ def update_receipt_metadata(
             if OBSERVABILITY_AVAILABLE and metrics:
                 metrics.gauge("CompactionDynamoDBLines", len(lines))
 
-            # Construct exact ChromaDB IDs for lines
             chromadb_ids = [
                 (
                     f"IMAGE#{line.image_id}"
@@ -139,7 +135,7 @@ def update_receipt_metadata(
         )
         return 0
 
-    # Use direct ID lookup - much faster than scanning entire collection
+    # Use direct ID lookup
     try:
         results = collection.get(ids=chromadb_ids, include=["metadatas"])
         found_count = len(results.get("ids", []))
@@ -154,14 +150,14 @@ def update_receipt_metadata(
 
         if found_count == 0:
             logger.error(
-                "No matching embeddings found in ChromaDB for metadata update",
+                "No matching embeddings found in ChromaDB for place update",
                 receipt_id=receipt_id,
                 image_id=image_id,
                 expected=len(chromadb_ids),
             )
             if metrics:
                 metrics.count(
-                    "CompactionMetadataEmbeddingNotFound",
+                    "CompactionPlaceEmbeddingNotFound",
                     1,
                     {
                         "image_id": image_id,
@@ -186,13 +182,11 @@ def update_receipt_metadata(
     matching_metadatas = []
 
     for i, _ in enumerate(matching_ids):
-        # Get existing metadata and apply changes
         existing_metadata = results["metadatas"][i] or {}
         updated_metadata = existing_metadata.copy()
 
-        # Apply field changes
+        # Apply field changes, mapping ReceiptPlace fields to ChromaDB fields
         for field, change in changes.items():
-            # Handle both FieldChange objects and plain dicts
             if hasattr(change, "new"):
                 new_value = change.new
             else:
@@ -200,14 +194,18 @@ def update_receipt_metadata(
                     change.get("new") if isinstance(change, dict) else change
                 )
 
+            # Map ReceiptPlace field names to ChromaDB metadata field names
+            chromadb_field = field
+            if field == "formatted_address":
+                chromadb_field = "address"
+
             if new_value is not None:
-                updated_metadata[field] = new_value
-            elif field in updated_metadata:
-                # Remove field if new value is None
-                del updated_metadata[field]
+                updated_metadata[chromadb_field] = new_value
+            elif chromadb_field in updated_metadata:
+                del updated_metadata[chromadb_field]
 
         # Add update timestamp
-        updated_metadata["last_metadata_update"] = datetime.now(
+        updated_metadata["last_place_update"] = datetime.now(
             timezone.utc
         ).isoformat()
         matching_metadatas.append(updated_metadata)
@@ -220,23 +218,23 @@ def update_receipt_metadata(
 
             if OBSERVABILITY_AVAILABLE:
                 logger.info(
-                    "Successfully updated metadata",
+                    "Successfully updated place metadata",
                     updated_count=len(matching_ids),
                     elapsed_seconds=elapsed_time,
                 )
                 if metrics:
-                    metrics.timer("CompactionMetadataUpdateTime", elapsed_time)
+                    metrics.timer("CompactionPlaceUpdateTime", elapsed_time)
                     metrics.count(
-                        "CompactionMetadataUpdatedRecords", len(matching_ids)
+                        "CompactionPlaceUpdatedRecords", len(matching_ids)
                     )
             else:
                 logger.info(
-                    "Successfully updated metadata for embeddings",
+                    "Successfully updated place metadata for embeddings",
                     embedding_count=len(matching_ids),
                     elapsed_seconds=elapsed_time,
                 )
         except Exception as e:
-            logger.error("Failed to update ChromaDB metadata", error=str(e))
+            logger.error("Failed to update ChromaDB place metadata", error=str(e))
 
             if OBSERVABILITY_AVAILABLE and metrics:
                 metrics.count(
@@ -251,32 +249,23 @@ def update_receipt_metadata(
             dynamodb_ids=len(chromadb_ids),
         )
 
-        # DynamoDB has entities but embeddings may not exist yet
-        if chromadb_ids:
-            logger.info(
-                (
-                    "DynamoDB entities exist but no ChromaDB embeddings "
-                    "found - embeddings may not be created yet"
-                )
-            )
-
     elapsed_time = time.time() - start_time
 
     if OBSERVABILITY_AVAILABLE:
         logger.info(
-            "Metadata update completed",
+            "Place update completed",
             elapsed_seconds=elapsed_time,
             approach="DynamoDB-driven",
         )
     else:
         logger.info(
-            "Metadata update completed (DynamoDB-driven approach)",
+            "Place update completed (DynamoDB-driven approach)",
             elapsed_seconds=elapsed_time,
         )
     return len(matching_ids)
 
 
-def remove_receipt_metadata(
+def remove_receipt_place(
     collection: Any,
     image_id: str,
     receipt_id: int,
@@ -285,7 +274,7 @@ def remove_receipt_metadata(
     OBSERVABILITY_AVAILABLE: bool = False,
     get_dynamo_client_func: Any = None,
 ) -> int:
-    """Remove merchant metadata fields for a receipt.
+    """Remove place metadata fields for a receipt.
 
     Uses DynamoDB to build exact ChromaDB IDs instead of scanning the
     collection.
@@ -294,13 +283,13 @@ def remove_receipt_metadata(
 
     if OBSERVABILITY_AVAILABLE:
         logger.info(
-            "Starting metadata removal",
+            "Starting place removal",
             image_id=image_id,
             receipt_id=receipt_id,
         )
     else:
         logger.info(
-            "Starting metadata removal",
+            "Starting place removal",
             image_id=image_id,
             receipt_id=receipt_id,
         )
@@ -318,7 +307,6 @@ def remove_receipt_metadata(
     chromadb_ids = []
 
     if "words" in collection_name:
-        # Get all words for this receipt from DynamoDB
         try:
             words = dynamo_client.list_receipt_words_from_receipt(
                 image_id, receipt_id
@@ -337,7 +325,6 @@ def remove_receipt_metadata(
             return 0
 
     elif "lines" in collection_name:
-        # Get all lines for this receipt from DynamoDB
         try:
             lines = dynamo_client.list_receipt_lines_from_receipt(
                 image_id, receipt_id
@@ -367,12 +354,13 @@ def remove_receipt_metadata(
         )
         return 0
 
-    # Fields to remove when metadata is deleted
+    # Fields to remove when place data is deleted
+    # Same as receipt_metadata plus any additional ReceiptPlace fields
     fields_to_remove = [
         "canonical_merchant_name",
         "merchant_name",
         "merchant_category",
-        "address",
+        "address",  # Maps from formatted_address
         "phone_number",
         "place_id",
     ]
@@ -387,7 +375,7 @@ def remove_receipt_metadata(
         )
     except Exception as e:
         logger.error(
-            "Failed to query ChromaDB for metadata removal", error=str(e)
+            "Failed to query ChromaDB for place removal", error=str(e)
         )
         return 0
 
@@ -395,18 +383,16 @@ def remove_receipt_metadata(
     matching_metadatas = []
 
     for i, _ in enumerate(matching_ids):
-        # Remove merchant fields from metadata
         existing_metadata = results["metadatas"][i] or {}
         updated_metadata = existing_metadata.copy()
 
-        # Set fields to None to remove them (ChromaDB merges metadata, not
-        # replace)
+        # Set fields to None to remove them
         for field in fields_to_remove:
             if field in updated_metadata:
                 updated_metadata[field] = None
 
         # Add removal timestamp
-        updated_metadata["metadata_removed_at"] = datetime.now(
+        updated_metadata["place_removed_at"] = datetime.now(
             timezone.utc
         ).isoformat()
         matching_metadatas.append(updated_metadata)
@@ -419,25 +405,25 @@ def remove_receipt_metadata(
 
             if OBSERVABILITY_AVAILABLE:
                 logger.info(
-                    "Removed metadata",
+                    "Removed place metadata",
                     removed_count=len(matching_ids),
                     elapsed_seconds=elapsed_time,
                 )
                 if metrics:
                     metrics.timer(
-                        "CompactionMetadataRemovalTime", elapsed_time
+                        "CompactionPlaceRemovalTime", elapsed_time
                     )
                     metrics.count(
-                        "CompactionMetadataRemovedRecords", len(matching_ids)
+                        "CompactionPlaceRemovedRecords", len(matching_ids)
                     )
             else:
                 logger.info(
-                    "Removed metadata from embeddings",
+                    "Removed place metadata from embeddings",
                     embedding_count=len(matching_ids),
                     elapsed_seconds=elapsed_time,
                 )
         except Exception as e:
-            logger.error("Failed to remove ChromaDB metadata", error=str(e))
+            logger.error("Failed to remove ChromaDB place metadata", error=str(e))
             return 0
     else:
         logger.warning(
@@ -449,13 +435,13 @@ def remove_receipt_metadata(
 
     if OBSERVABILITY_AVAILABLE:
         logger.info(
-            "Metadata removal completed",
+            "Place removal completed",
             elapsed_seconds=elapsed_time,
             approach="DynamoDB-driven",
         )
     else:
         logger.info(
-            "Metadata removal completed (DynamoDB-driven approach)",
+            "Place removal completed (DynamoDB-driven approach)",
             elapsed_seconds=elapsed_time,
         )
     return len(matching_ids)
