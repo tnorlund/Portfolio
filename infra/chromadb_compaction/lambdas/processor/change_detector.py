@@ -6,18 +6,18 @@ Identifies which field changes require ChromaDB metadata updates.
 
 from typing import Dict, Optional, Union
 
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 from .models import FieldChange
 
 # Define ChromaDB-relevant fields for each entity type
 CHROMADB_RELEVANT_FIELDS = {
-    "RECEIPT_METADATA": [
+    "RECEIPT_PLACE": [
         "canonical_merchant_name",
         "merchant_name",
         "merchant_category",
-        "address",
+        "formatted_address",
         "phone_number",
         "place_id",
     ],
@@ -33,8 +33,8 @@ CHROMADB_RELEVANT_FIELDS = {
 
 def get_chromadb_relevant_changes(
     entity_type: str,
-    old_entity: Optional[Union[ReceiptMetadata, ReceiptWordLabel]],
-    new_entity: Optional[Union[ReceiptMetadata, ReceiptWordLabel]],
+    old_entity: Optional[Union[ReceiptPlace, ReceiptWordLabel]],
+    new_entity: Optional[Union[ReceiptPlace, ReceiptWordLabel]],
 ) -> Dict[str, FieldChange]:
     """
     Identify changes to fields that affect ChromaDB metadata.
@@ -42,7 +42,7 @@ def get_chromadb_relevant_changes(
     Uses typed entity objects for robust field access and comparison.
 
     Args:
-        entity_type: Type of entity (RECEIPT_METADATA or RECEIPT_WORD_LABEL)
+        entity_type: Type of entity (RECEIPT_PLACE or RECEIPT_WORD_LABEL)
         old_entity: Previous entity state
         new_entity: Current entity state (None for REMOVE events)
 

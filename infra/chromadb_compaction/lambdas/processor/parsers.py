@@ -7,9 +7,9 @@ Handles parsing of stream records into typed entities using receipt_dynamo parse
 import logging
 from typing import Any, Dict, Optional, Union
 
-from receipt_dynamo.entities.receipt_metadata import (
-    ReceiptMetadata,
-    item_to_receipt_metadata,
+from receipt_dynamo.entities.receipt_place import (
+    ReceiptPlace,
+    item_to_receipt_place,
 )
 from receipt_dynamo.entities.receipt_word_label import (
     ReceiptWordLabel,
@@ -32,8 +32,8 @@ def detect_entity_type(sk: str) -> Optional[str]:
     Returns:
         Entity type string or None if not relevant
     """
-    if "#METADATA" in sk:
-        return "RECEIPT_METADATA"
+    if "#PLACE" in sk:
+        return "RECEIPT_PLACE"
     if "#LABEL#" in sk:
         return "RECEIPT_WORD_LABEL"
     if "#COMPACTION_RUN#" in sk:
@@ -48,7 +48,7 @@ def parse_entity(
     pk: str,
     sk: str,
     metrics=None,
-) -> Optional[Union[ReceiptMetadata, ReceiptWordLabel]]:
+) -> Optional[Union[ReceiptPlace, ReceiptWordLabel]]:
     """
     Parse DynamoDB image into typed entity.
 
@@ -88,8 +88,8 @@ def parse_entity(
                 },
             )
 
-        if entity_type == "RECEIPT_METADATA":
-            return item_to_receipt_metadata(complete_item)
+        if entity_type == "RECEIPT_PLACE":
+            return item_to_receipt_place(complete_item)
         if entity_type == "RECEIPT_WORD_LABEL":
             return item_to_receipt_word_label(complete_item)
 
@@ -138,7 +138,7 @@ def parse_stream_record(
 
     Uses receipt_dynamo entity parsers for proper validation and type safety.
     Only processes entities that affect ChromaDB metadata:
-    - RECEIPT_METADATA: merchant info that affects all embeddings
+    - RECEIPT_PLACE: merchant info that affects all embeddings
     - RECEIPT_WORD_LABEL: labels that affect specific word embeddings
 
     Args:
