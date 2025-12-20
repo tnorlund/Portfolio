@@ -122,11 +122,15 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
 
     if not other_receipt_data:
         # No training data - save empty patterns
-        patterns_s3_key = f"patterns/{execution_id}/{_hash_merchant(merchant_name)}.json"
+        patterns_s3_key = (
+            f"patterns/{execution_id}/{_hash_merchant(merchant_name)}.json"
+        )
         s3.put_object(
             Bucket=batch_bucket,
             Key=patterns_s3_key,
-            Body=json.dumps({"patterns": None, "merchant_name": merchant_name}),
+            Body=json.dumps(
+                {"patterns": None, "merchant_name": merchant_name}
+            ),
             ContentType="application/json",
         )
         return {
@@ -140,7 +144,9 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
     logger.info("Computing merchant patterns...")
     compute_start = time.time()
 
-    from receipt_agent.agents.label_evaluator.helpers import compute_merchant_patterns
+    from receipt_agent.agents.label_evaluator.helpers import (
+        compute_merchant_patterns,
+    )
 
     patterns = compute_merchant_patterns(
         other_receipt_data,
@@ -153,7 +159,9 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
     logger.info(f"Pattern computation completed in {compute_time:.2f}s")
 
     # Serialize patterns to S3
-    patterns_s3_key = f"patterns/{execution_id}/{_hash_merchant(merchant_name)}.json"
+    patterns_s3_key = (
+        f"patterns/{execution_id}/{_hash_merchant(merchant_name)}.json"
+    )
     patterns_data = _serialize_patterns(patterns, merchant_name)
 
     s3.put_object(
@@ -206,7 +214,9 @@ def _serialize_patterns(patterns, merchant_name: str) -> dict[str, Any]:
     for label, y_positions in patterns.label_positions.items():
         if y_positions:
             mean_y = statistics.mean(y_positions)
-            std_y = statistics.stdev(y_positions) if len(y_positions) > 1 else 0.0
+            std_y = (
+                statistics.stdev(y_positions) if len(y_positions) > 1 else 0.0
+            )
             label_position_stats[label] = {
                 "mean_y": mean_y,
                 "std_y": std_y,
@@ -216,18 +226,20 @@ def _serialize_patterns(patterns, merchant_name: str) -> dict[str, Any]:
     # Serialize label pair geometry (Dict[tuple, LabelPairGeometry])
     label_pair_geometry_list = []
     for pair_tuple, geom in patterns.label_pair_geometry.items():
-        label_pair_geometry_list.append({
-            "labels": list(pair_tuple),
-            "mean_angle": geom.mean_angle,
-            "std_angle": geom.std_angle,
-            "mean_distance": geom.mean_distance,
-            "std_distance": geom.std_distance,
-            "mean_dx": geom.mean_dx,
-            "mean_dy": geom.mean_dy,
-            "std_dx": geom.std_dx,
-            "std_dy": geom.std_dy,
-            "count": len(geom.observations) if geom.observations else 0,
-        })
+        label_pair_geometry_list.append(
+            {
+                "labels": list(pair_tuple),
+                "mean_angle": geom.mean_angle,
+                "std_angle": geom.std_angle,
+                "mean_distance": geom.mean_distance,
+                "std_distance": geom.std_distance,
+                "mean_dx": geom.mean_dx,
+                "mean_dy": geom.mean_dy,
+                "std_dx": geom.std_dx,
+                "std_dy": geom.std_dy,
+                "count": len(geom.observations) if geom.observations else 0,
+            }
+        )
 
     # Serialize constellation geometry (Dict[Tuple[str, ...], ConstellationGeometry])
     constellation_geometry_list = []
@@ -241,11 +253,13 @@ def _serialize_patterns(patterns, merchant_name: str) -> dict[str, Any]:
                 "std_dx": rel_pos.std_dx,
                 "std_dy": rel_pos.std_dy,
             }
-        constellation_geometry_list.append({
-            "labels": list(labels_tuple),
-            "observation_count": cg.observation_count,
-            "relative_positions": relative_positions_dict,
-        })
+        constellation_geometry_list.append(
+            {
+                "labels": list(labels_tuple),
+                "observation_count": cg.observation_count,
+                "relative_positions": relative_positions_dict,
+            }
+        )
 
     return {
         "merchant_name": merchant_name,

@@ -44,7 +44,9 @@ def serialize_label(label: ReceiptWordLabel) -> "SerializedLabel":
     """Serialize ReceiptWordLabel for S3 storage using asdict."""
     data = asdict(label)
     # Convert timestamp_added to ISO string for JSON serialization
-    if data.get("timestamp_added") and hasattr(data["timestamp_added"], "isoformat"):
+    if data.get("timestamp_added") and hasattr(
+        data["timestamp_added"], "isoformat"
+    ):
         data["timestamp_added"] = data["timestamp_added"].isoformat()
     return data  # type: ignore[return-value]
 
@@ -106,12 +108,16 @@ def deserialize_words(data: "list[SerializedWord]") -> list[ReceiptWord]:
     return [deserialize_word(d) for d in data]
 
 
-def serialize_labels(labels: list[ReceiptWordLabel]) -> "list[SerializedLabel]":
+def serialize_labels(
+    labels: list[ReceiptWordLabel],
+) -> "list[SerializedLabel]":
     """Serialize a list of ReceiptWordLabel objects."""
     return [serialize_label(label) for label in labels]
 
 
-def deserialize_labels(data: "list[SerializedLabel]") -> list[ReceiptWordLabel]:
+def deserialize_labels(
+    data: "list[SerializedLabel]",
+) -> list[ReceiptWordLabel]:
     """Deserialize a list of ReceiptWordLabel objects."""
     return [deserialize_label(d) for d in data]
 
@@ -192,9 +198,9 @@ def deserialize_patterns(data: "PatternsFile | None"):
         all_observed_pairs.add(tuple(pair))
 
     # Reconstruct batch_classification
-    batch_classification = p.get("batch_classification", {
-        "HAPPY": 0, "AMBIGUOUS": 0, "ANTI_PATTERN": 0
-    })
+    batch_classification = p.get(
+        "batch_classification", {"HAPPY": 0, "AMBIGUOUS": 0, "ANTI_PATTERN": 0}
+    )
 
     # Reconstruct labels_with_same_line_multiplicity
     labels_with_multiplicity = set(

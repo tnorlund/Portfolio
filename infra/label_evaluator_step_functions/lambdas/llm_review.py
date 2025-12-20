@@ -38,7 +38,9 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 s3 = boto3.client("s3")
 
 
-def download_chromadb_snapshot(bucket: str, collection: str, cache_path: str) -> str:
+def download_chromadb_snapshot(
+    bucket: str, collection: str, cache_path: str
+) -> str:
     """Download ChromaDB snapshot from S3 using atomic pointer pattern."""
     chroma_db_file = os.path.join(cache_path, "chroma.sqlite3")
     if os.path.exists(chroma_db_file):
@@ -67,7 +69,7 @@ def download_chromadb_snapshot(bucket: str, collection: str, cache_path: str) ->
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
         for obj in page.get("Contents", []):
             key = obj["Key"]
-            relative_path = key[len(prefix):]
+            relative_path = key[len(prefix) :]
             if not relative_path or key.endswith(".snapshot_hash"):
                 continue
 
@@ -129,7 +131,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
 
     try:
         # 1. Load evaluation results from S3
-        logger.info(f"Loading results from s3://{batch_bucket}/{results_s3_key}")
+        logger.info(
+            f"Loading results from s3://{batch_bucket}/{results_s3_key}"
+        )
         eval_results = load_json_from_s3(batch_bucket, results_s3_key)
 
         image_id = eval_results.get("image_id")
@@ -145,7 +149,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
                 "decisions": {},
             }
 
-        logger.info(f"Reviewing {len(issues)} issues for {image_id}#{receipt_id}")
+        logger.info(
+            f"Reviewing {len(issues)} issues for {image_id}#{receipt_id}"
+        )
 
         # 2. Setup ChromaDB (optional)
         # TODO: Wire ChromaDB into the LLM review prompt to provide similarity
@@ -160,8 +166,12 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
                 chroma_path = os.environ.get(
                     "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY", "/tmp/chromadb"
                 )
-                download_chromadb_snapshot(chromadb_bucket, "words", chroma_path)
-                os.environ["RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"] = chroma_path
+                download_chromadb_snapshot(
+                    chromadb_bucket, "words", chroma_path
+                )
+                os.environ["RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"] = (
+                    chroma_path
+                )
 
                 from receipt_chroma import ChromaClient
 
@@ -217,10 +227,12 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
                 review_result = _parse_llm_response(response_text)
                 decisions[review_result["decision"]] += 1
 
-                reviewed_issues.append({
-                    **issue,
-                    "llm_review": review_result,
-                })
+                reviewed_issues.append(
+                    {
+                        **issue,
+                        "llm_review": review_result,
+                    }
+                )
 
                 logger.debug(
                     f"Reviewed '{issue.get('word_text')}': {review_result['decision']}"
@@ -228,14 +240,16 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
 
             except Exception as e:
                 logger.warning(f"Error reviewing issue: {e}")
-                reviewed_issues.append({
-                    **issue,
-                    "llm_review": {
-                        "decision": "NEEDS_REVIEW",
-                        "reasoning": f"LLM review failed: {e}",
-                        "error": True,
-                    },
-                })
+                reviewed_issues.append(
+                    {
+                        **issue,
+                        "llm_review": {
+                            "decision": "NEEDS_REVIEW",
+                            "reasoning": f"LLM review failed: {e}",
+                            "error": True,
+                        },
+                    }
+                )
                 decisions["NEEDS_REVIEW"] += 1
 
         logger.info(f"Reviewed {len(issues)} issues: {dict(decisions)}")
@@ -250,7 +264,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
         reviewed_s3_key = results_s3_key.replace("results/", "reviewed/")
         upload_json_to_s3(batch_bucket, reviewed_s3_key, reviewed_results)
 
-        logger.info(f"Uploaded reviewed results to s3://{batch_bucket}/{reviewed_s3_key}")
+        logger.info(
+            f"Uploaded reviewed results to s3://{batch_bucket}/{reviewed_s3_key}"
+        )
 
         # 6. Log metrics
         from utils.emf_metrics import emf_metrics

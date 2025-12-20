@@ -32,9 +32,6 @@ except ImportError:
     HAS_OLLAMA = False
     ChatOllama = None  # type: ignore
 
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import ReceiptWordLabel
-
 from receipt_agent.agents.label_evaluator.helpers import (
     assemble_visual_lines,
     build_review_context,
@@ -50,6 +47,8 @@ from receipt_agent.agents.label_evaluator.state import (
     OtherReceiptData,
     ReviewResult,
 )
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptWordLabel
 
 # Import CORE_LABELS definitions
 try:
@@ -298,11 +297,9 @@ def create_label_evaluator_graph(
                 if MAX_OTHER_RECEIPTS is not None
                 else None
             )
-            other_places, _ = (
-                _dynamo_client.get_receipt_places_by_merchant(
-                    merchant_name,
-                    limit=limit,  # None means fetch all available
-                )
+            other_places, _ = _dynamo_client.get_receipt_places_by_merchant(
+                merchant_name,
+                limit=limit,  # None means fetch all available
             )
 
             # Filter out current receipt
@@ -407,11 +404,7 @@ def create_label_evaluator_graph(
         if not state.other_receipt_data:
             return {"merchant_patterns": None}
 
-        merchant_name = (
-            state.place.merchant_name
-            if state.place
-            else "Unknown"
-        )
+        merchant_name = state.place.merchant_name if state.place else "Unknown"
 
         patterns = compute_merchant_patterns(
             state.other_receipt_data,
@@ -1006,7 +999,9 @@ def create_compute_only_graph(
             return {}  # Don't overwrite existing patterns
 
         if not state.other_receipt_data:
-            logger.info("compute_patterns: no other_receipt_data, returning None")
+            logger.info(
+                "compute_patterns: no other_receipt_data, returning None"
+            )
             return {"merchant_patterns": None}
 
         merchant_name = "Unknown"

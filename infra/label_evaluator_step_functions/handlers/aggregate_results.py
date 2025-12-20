@@ -94,9 +94,7 @@ def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
     successful_receipts = sum(
         1 for r in all_results if r.get("status") == "completed"
     )
-    failed_receipts = sum(
-        1 for r in all_results if r.get("status") == "error"
-    )
+    failed_receipts = sum(1 for r in all_results if r.get("status") == "error")
 
     # Aggregate issues
     all_issues: list[IssueDetail] = []
@@ -116,16 +114,22 @@ def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
                 issues = detailed.get("issues", [])
 
                 for issue in issues:
-                    all_issues.append({
-                        "image_id": result.get("image_id"),
-                        "receipt_id": result.get("receipt_id"),
-                        **issue,
-                    })
+                    all_issues.append(
+                        {
+                            "image_id": result.get("image_id"),
+                            "receipt_id": result.get("receipt_id"),
+                            **issue,
+                        }
+                    )
                     issue_type_counter[issue.get("type", "unknown")] += 1
-                    status_counter[issue.get("suggested_status", "unknown")] += 1
+                    status_counter[
+                        issue.get("suggested_status", "unknown")
+                    ] += 1
 
             except Exception as e:
-                logger.warning(f"Could not load results from {results_key}: {e}")
+                logger.warning(
+                    f"Could not load results from {results_key}: {e}"
+                )
                 # Fall back to summary in result
                 issues_found = result.get("issues_found", 0)
                 issue_type_counter["unknown"] += issues_found
@@ -181,7 +185,9 @@ def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
             Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
             ContentType="application/json",
         )
-        logger.info(f"Uploaded summary report to s3://{batch_bucket}/{report_key}")
+        logger.info(
+            f"Uploaded summary report to s3://{batch_bucket}/{report_key}"
+        )
     except Exception as e:
         logger.error(f"Failed to upload summary report to {report_key}: {e}")
         raise
@@ -195,7 +201,9 @@ def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
             Body=json.dumps(all_issues, indent=2, default=str).encode("utf-8"),
             ContentType="application/json",
         )
-        logger.info(f"Uploaded issues report to s3://{batch_bucket}/{issues_key}")
+        logger.info(
+            f"Uploaded issues report to s3://{batch_bucket}/{issues_key}"
+        )
     except Exception as e:
         logger.error(f"Failed to upload issues report to {issues_key}: {e}")
         raise

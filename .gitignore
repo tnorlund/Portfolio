@@ -259,3 +259,4 @@ dev_*.py
 FUTURE_WORK.md
 *_MIGRATION.md
 PR_*.md
+.lint-venv/

@@ -103,7 +103,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     other_places = [
         p
         for p in other_places
-        if not (p.image_id == exclude_image_id and p.receipt_id == exclude_receipt_id)
+        if not (
+            p.image_id == exclude_image_id
+            and p.receipt_id == exclude_receipt_id
+        )
     ][:max_receipts]
 
     if not other_places:
@@ -194,11 +197,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 place.image_id, place.receipt_id
             )
 
-            receipts_data.append({
-                "place": serialize_place(place),
-                "words": [serialize_word(w) for w in words],
-                "labels": [serialize_label(label) for label in labels],
-            })
+            receipts_data.append(
+                {
+                    "place": serialize_place(place),
+                    "words": [serialize_word(w) for w in words],
+                    "labels": [serialize_label(label) for label in labels],
+                }
+            )
         except Exception as e:
             logger.warning(
                 f"Error fetching receipt {place.image_id}#{place.receipt_id}: {e}"
@@ -220,7 +225,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         ContentType="application/json",
     )
 
-    logger.info(f"Uploaded training data to s3://{batch_bucket}/{training_key}")
+    logger.info(
+        f"Uploaded training data to s3://{batch_bucket}/{training_key}"
+    )
 
     return {
         "training_s3_key": training_key,

@@ -67,9 +67,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ListMerchantsOutput":
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
 
-    logger.info(
-        f"Listing merchants with min_receipts={min_receipts}"
-    )
+    logger.info(f"Listing merchants with min_receipts={min_receipts}")
 
     # Import DynamoDB client
     from receipt_dynamo import DynamoClient
@@ -137,7 +135,9 @@ def handler(event: dict[str, Any], _context: Any) -> "ListMerchantsOutput":
         ContentType="application/json",
     )
 
-    logger.info(f"Created merchant manifest at s3://{batch_bucket}/{manifest_key}")
+    logger.info(
+        f"Created merchant manifest at s3://{batch_bucket}/{manifest_key}"
+    )
 
     return {
         "merchants": qualifying_merchants,

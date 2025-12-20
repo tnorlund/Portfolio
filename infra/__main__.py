@@ -8,10 +8,11 @@ from pathlib import Path
 # Add parent directory to path so 'infra' package can be imported
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import api_gateway
 import pulumi
 import pulumi_aws as aws
 from pulumi import Output
+
+import api_gateway
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
@@ -31,6 +32,8 @@ if config.get_bool("docker-buildkit") != False:  # Default to True if not set
 
 from typing import Optional
 
+from pulumi import ResourceOptions
+
 # Import our infrastructure components
 import s3_website  # noqa: F401
 from billing_alerts import BillingAlerts
@@ -40,8 +43,8 @@ from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
 from embedding_step_functions import EmbeddingInfrastructure
-from label_harmonizer_step_functions import LabelHarmonizerV3StepFunction
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
+from label_harmonizer_step_functions import LabelHarmonizerV3StepFunction
 from label_suggestion_step_functions import LabelSuggestionStepFunction
 from label_validation_agent_step_functions import (
     LabelValidationAgentStepFunction,
@@ -51,7 +54,6 @@ from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
 from notifications import NotificationSystem
-from pulumi import ResourceOptions
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from security import ChromaSecurity

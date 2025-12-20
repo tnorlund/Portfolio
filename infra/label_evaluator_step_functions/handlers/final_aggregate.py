@@ -104,12 +104,14 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                     for s, count in by_status.items():
                         status_counter[s] += count
 
-                by_merchant.append({
-                    "merchant_name": merchant_name,
-                    "total_receipts": receipt_count,
-                    "total_issues": merchant_issues,
-                    "status": status,
-                })
+                by_merchant.append(
+                    {
+                        "merchant_name": merchant_name,
+                        "total_receipts": receipt_count,
+                        "total_issues": merchant_issues,
+                        "status": status,
+                    }
+                )
 
     logger.info(
         f"Grand total: {total_merchants} merchants, "
@@ -137,10 +139,14 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         s3.put_object(
             Bucket=batch_bucket,
             Key=report_key,
-            Body=json.dumps(grand_summary, indent=2, default=str).encode("utf-8"),
+            Body=json.dumps(grand_summary, indent=2, default=str).encode(
+                "utf-8"
+            ),
             ContentType="application/json",
         )
-        logger.info(f"Uploaded grand summary to s3://{batch_bucket}/{report_key}")
+        logger.info(
+            f"Uploaded grand summary to s3://{batch_bucket}/{report_key}"
+        )
     except Exception as e:
         logger.error(f"Failed to upload grand summary: {e}")
         raise

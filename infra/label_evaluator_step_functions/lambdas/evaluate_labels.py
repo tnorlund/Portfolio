@@ -102,7 +102,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
 
     try:
         # 1. Load target receipt data from S3
-        logger.info(f"Loading receipt data from s3://{batch_bucket}/{data_s3_key}")
+        logger.info(
+            f"Loading receipt data from s3://{batch_bucket}/{data_s3_key}"
+        )
         target_data = load_json_from_s3(batch_bucket, data_s3_key)
 
         image_id = target_data.get("image_id")
@@ -174,7 +176,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         results_s3_key = f"results/{execution_id}/{image_id}_{receipt_id}.json"
         upload_json_to_s3(batch_bucket, results_s3_key, result)
 
-        logger.info(f"Uploaded results to s3://{batch_bucket}/{results_s3_key}")
+        logger.info(
+            f"Uploaded results to s3://{batch_bucket}/{results_s3_key}"
+        )
 
         # 6. Log metrics
         from utils.emf_metrics import emf_metrics
@@ -246,4 +250,3 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             "receipt_id": receipt_id,
             "issues_found": 0,
         }
-

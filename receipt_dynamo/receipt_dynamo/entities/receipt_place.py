@@ -588,7 +588,8 @@ def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
 
     # Filter to only valid ReceiptPlace fields (handles legacy records)
     valid_item = {
-        k: v for k, v in filtered_item.items()
+        k: v
+        for k, v in filtered_item.items()
         if k in VALID_RECEIPT_PLACE_FIELDS
     }
 

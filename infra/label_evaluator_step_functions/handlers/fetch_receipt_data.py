@@ -52,7 +52,9 @@ def handler(event: dict[str, Any], _context: Any) -> "FetchReceiptDataOutput":
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
 
     if not image_id or receipt_id is None:
-        raise ValueError("receipt.image_id and receipt.receipt_id are required")
+        raise ValueError(
+            "receipt.image_id and receipt.receipt_id are required"
+        )
 
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
@@ -74,7 +76,9 @@ def handler(event: dict[str, Any], _context: Any) -> "FetchReceiptDataOutput":
         words = words[0]
 
     # Fetch labels
-    labels, _ = dynamo.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+    labels, _ = dynamo.list_receipt_word_labels_for_receipt(
+        image_id, receipt_id
+    )
 
     # Fetch place data (replaces metadata)
     try:

@@ -105,7 +105,9 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
         for p in places
     ]
 
-    logger.info(f"Found {len(receipts)} receipts for merchant '{merchant_name}'")
+    logger.info(
+        f"Found {len(receipts)} receipts for merchant '{merchant_name}'"
+    )
 
     # Create batches for distributed map
     batches: list[list[ReceiptRef]] = []
