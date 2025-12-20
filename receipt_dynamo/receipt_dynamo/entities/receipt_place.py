@@ -228,7 +228,7 @@ class ReceiptPlace(SerializationMixin):
             self.photo_references = list(dict.fromkeys(self.photo_references))
 
         # Validate confidence score
-        if not (0.0 <= self.confidence <= 1.0):
+        if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(
                 f"confidence must be between 0.0 and 1.0, got {self.confidence}"
             )
@@ -247,21 +247,21 @@ class ReceiptPlace(SerializationMixin):
 
         # Validate coordinates if present
         if self.latitude is not None:
-            if not (-90.0 <= self.latitude <= 90.0):
+            if not -90.0 <= self.latitude <= 90.0:
                 raise ValueError(f"latitude out of range: {self.latitude}")
         if self.longitude is not None:
-            if not (-180.0 <= self.longitude <= 180.0):
+            if not -180.0 <= self.longitude <= 180.0:
                 raise ValueError(f"longitude out of range: {self.longitude}")
 
         # Validate viewport coordinates if present
         for attr in ["viewport_ne_lat", "viewport_sw_lat"]:
             val = getattr(self, attr, None)
-            if val is not None and not (-90.0 <= val <= 90.0):
+            if val is not None and not -90.0 <= val <= 90.0:
                 raise ValueError(f"{attr} out of range: {val}")
 
         for attr in ["viewport_ne_lng", "viewport_sw_lng"]:
             val = getattr(self, attr, None)
-            if val is not None and not (-180.0 <= val <= 180.0):
+            if val is not None and not -180.0 <= val <= 180.0:
                 raise ValueError(f"{attr} out of range: {val}")
 
         # Auto-calculate geohash from coordinates if not provided

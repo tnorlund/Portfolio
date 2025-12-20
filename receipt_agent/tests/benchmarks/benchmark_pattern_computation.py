@@ -492,7 +492,7 @@ def main() -> None:
 
         # Run profiling with Scalene
         logger.info("Starting Scalene profiling...")
-        html_path, elapsed_time = run_with_scalene(
+        html_path, _elapsed_time = run_with_scalene(
             args.merchant,
             other_receipt_data,
             args.skip_batching,

@@ -395,13 +395,13 @@ def _select_top_label_pairs(
     other_pairs.sort(key=lambda x: -x[1])
 
     # Pass 1: Add priority pairs (these are important regardless of frequency)
-    for pair, freq in within_group_pairs:
+    for pair, _freq in within_group_pairs:
         if len(selected) >= max_pairs:
             break
         if pair in WITHIN_GROUP_PRIORITY_PAIRS and pair not in selected:
             selected.add(pair)
 
-    for pair, freq in cross_group_pairs:
+    for pair, _freq in cross_group_pairs:
         if len(selected) >= max_pairs:
             break
         if pair in CROSS_GROUP_PRIORITY_PAIRS and pair not in selected:
@@ -418,7 +418,7 @@ def _select_top_label_pairs(
         key=lambda x: -x[1],
     )
 
-    for pair, freq in combined:
+    for pair, _freq in combined:
         if len(selected) >= max_pairs:
             break
         if pair not in selected:
@@ -1240,7 +1240,7 @@ def compute_merchant_patterns(
                 words_by_text[word.text].append((word, cur_label.label))
 
         # For each text value that appears multiple times with different labels
-        for text, word_label_pairs in words_by_text.items():
+        for _text, word_label_pairs in words_by_text.items():
             if len(word_label_pairs) > 1:
                 # Check for same text with different labels
                 unique_label_pairs: Set[Tuple[str, str]] = set()
@@ -1249,7 +1249,7 @@ def compute_merchant_patterns(
                 for w, lbl_name in word_label_pairs:
                     y = w.calculate_centroid()[1]
                     label_positions_by_label[lbl_name] = y
-                    for other_word, other_lbl in word_label_pairs:
+                    for _other_word, other_lbl in word_label_pairs:
                         if lbl_name != other_lbl:
                             pair = (
                                 min(lbl_name, other_lbl),
@@ -1743,10 +1743,9 @@ def _get_adaptive_threshold(geometry: "LabelPairGeometry") -> float:
     # Classify based on standard deviation
     if geometry.std_deviation < 0.1:
         return 1.5  # TIGHT pattern - be strict
-    elif geometry.std_deviation < 0.2:
+    if geometry.std_deviation < 0.2:
         return 2.0  # MODERATE pattern - balanced
-    else:
-        return 2.5  # LOOSE pattern - be lenient
+    return 2.5  # LOOSE pattern - be lenient
 
 
 def check_geometric_anomaly(

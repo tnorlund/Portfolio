@@ -160,7 +160,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
         #   1. Query similar words from ChromaDB and include in prompt
         #   2. Use embeddings for semantic similarity scoring
         #   3. Remove ChromaDB setup if not needed for this use case
-        chroma_client = None
+        _chroma_client = None  # Reserved for future ChromaDB integration
         if chromadb_bucket:
             try:
                 chroma_path = os.environ.get(
@@ -175,7 +175,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewOutput":
 
                 from receipt_chroma import ChromaClient
 
-                chroma_client = ChromaClient(persist_directory=chroma_path)
+                _chroma_client = ChromaClient(persist_directory=chroma_path)
                 logger.info("ChromaDB client initialized")
             except Exception as e:
                 logger.warning(f"Could not initialize ChromaDB: {e}")
@@ -379,7 +379,6 @@ Respond with ONLY a JSON object:
 
 def _parse_llm_response(response_text: str) -> dict[str, Any]:
     """Parse LLM JSON response."""
-    import json
 
     # Handle markdown code blocks
     if response_text.startswith("```"):

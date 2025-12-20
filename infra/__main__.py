@@ -31,7 +31,7 @@ if (
     else:
         print("✓ Docker BuildKit enabled for faster builds")
 
-from typing import Optional
+from typing import Optional  # pylint: disable=wrong-import-order
 
 from pulumi import ResourceOptions
 
@@ -455,7 +455,7 @@ if layoutlm_training_bucket_name is not None:
     # Create API Gateway route for layoutlm_inference
     # This must be done here after Lambda is created, not in api_gateway.py
     # because api_gateway.py is imported before the Lambda exists
-    import api_gateway
+    import api_gateway  # pylint: disable=reimported
 
     if hasattr(api_gateway, "api"):
         integration_layoutlm_inference = aws.apigatewayv2.Integration(
