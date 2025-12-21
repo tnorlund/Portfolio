@@ -70,7 +70,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     merchant_name = event.get("merchant_name", "Unknown")
     merchant_receipt_count = event.get("merchant_receipt_count", 0)
     issues_s3_key = event.get("issues_s3_key")
-    batch_size = event.get("batch_size", 50)
+    batch_size = event.get("batch_size", 25)  # Reduced from 50 to avoid Lambda timeout
     dry_run = event.get("dry_run", False)
 
     if not batch_bucket:
