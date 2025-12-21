@@ -207,6 +207,200 @@ CURRENCY_LABELS = {
 }
 
 
+# =============================================================================
+# Receipt Text Assembly
+# =============================================================================
+
+
+def _group_words_into_ocr_lines(
+    words: list[dict],
+) -> list[dict]:
+    """
+    Group words by line_id into OCR lines with computed geometry.
+
+    Returns list of line dicts with:
+    - line_id: OCR line ID
+    - words: list of words in this line (sorted by x)
+    - centroid_y: average Y of word centroids
+    - top_y: max top_left Y (top of line)
+    - bottom_y: min bottom_left Y (bottom of line)
+    - min_x: leftmost X
+    """
+    from collections import defaultdict
+
+    lines_by_id: dict[int, list[dict]] = defaultdict(list)
+    for w in words:
+        lines_by_id[w.get("line_id", 0)].append(w)
+
+    ocr_lines = []
+    for line_id, line_words in lines_by_id.items():
+        # Sort words by X position
+        line_words.sort(key=lambda w: w.get("top_left", {}).get("x", 0))
+
+        # Compute geometry from word corners
+        top_ys = []
+        bottom_ys = []
+        centroid_ys = []
+
+        for w in line_words:
+            tl = w.get("top_left", {})
+            bl = w.get("bottom_left", {})
+            if tl.get("y") is not None:
+                top_ys.append(tl["y"])
+            if bl.get("y") is not None:
+                bottom_ys.append(bl["y"])
+            # Centroid Y is average of top and bottom
+            if tl.get("y") is not None and bl.get("y") is not None:
+                centroid_ys.append((tl["y"] + bl["y"]) / 2)
+
+        ocr_lines.append({
+            "line_id": line_id,
+            "words": line_words,
+            "centroid_y": sum(centroid_ys) / len(centroid_ys) if centroid_ys else 0,
+            "top_y": max(top_ys) if top_ys else 0,
+            "bottom_y": min(bottom_ys) if bottom_ys else 0,
+            "min_x": min(w.get("top_left", {}).get("x", 0) for w in line_words),
+        })
+
+    return ocr_lines
+
+
+def assemble_receipt_text(
+    words: list[dict],
+    labels: list[dict],
+    highlight_words: Optional[list[tuple[int, int]]] = None,
+    max_lines: int = 60,
+) -> str:
+    """
+    Reassemble receipt text in reading order with labels.
+
+    Uses the same logic as format_receipt_text_receipt_space:
+    - Sort OCR lines by centroid Y descending (top first, Y=0 is bottom)
+    - Merge lines whose centroid falls within previous line's vertical span
+    - Sort words within each visual line by X (left to right)
+
+    Args:
+        words: List of word dicts with text, line_id, word_id, corners
+        labels: List of label dicts with line_id, word_id, label, validation_status
+        highlight_words: Optional list of (line_id, word_id) tuples to mark with []
+        max_lines: Maximum visual lines to include (truncate middle if needed)
+
+    Returns:
+        Receipt text in reading order, with labels shown inline
+    """
+    # Debug: Log input types
+    if words is None:
+        logger.warning("assemble_receipt_text: words is None")
+        return "(empty receipt - words is None)"
+    if not isinstance(words, list):
+        logger.warning(
+            f"assemble_receipt_text: words is {type(words).__name__}, not list"
+        )
+        return f"(invalid receipt - words is {type(words).__name__})"
+    if not words:
+        return "(empty receipt)"
+
+    # Build label lookup: (line_id, word_id) -> label info
+    label_map: dict[tuple[int, int], dict] = {}
+    for lbl in labels:
+        key = (lbl.get("line_id"), lbl.get("word_id"))
+        # Keep only VALID labels, or the most recent if no VALID
+        if key not in label_map or lbl.get("validation_status") == "VALID":
+            label_map[key] = lbl
+
+    # Build highlight set
+    highlight_set = set(highlight_words) if highlight_words else set()
+
+    # Group words into OCR lines with geometry
+    ocr_lines = _group_words_into_ocr_lines(words)
+    if not ocr_lines:
+        return "(empty receipt)"
+
+    # Sort by centroid Y descending (top first, since Y=0 is bottom)
+    ocr_lines.sort(key=lambda line: -line["centroid_y"])
+
+    # Merge OCR lines into visual lines using vertical span logic
+    # (same as format_receipt_text_receipt_space)
+    # Track visual line geometry for proper merging after accumulation
+    visual_lines: list[dict] = []  # Each has: words, top_y, bottom_y
+
+    for ocr_line in ocr_lines:
+        if visual_lines:
+            prev = visual_lines[-1]
+            centroid_y = ocr_line["centroid_y"]
+            # Check if this line's centroid falls within prev visual line's span
+            if prev["bottom_y"] < centroid_y < prev["top_y"]:
+                # Merge with previous visual line
+                prev["words"].extend(ocr_line["words"])
+                # Update visual line geometry to encompass both
+                prev["top_y"] = max(prev["top_y"], ocr_line["top_y"])
+                prev["bottom_y"] = min(prev["bottom_y"], ocr_line["bottom_y"])
+                continue
+
+        # Start new visual line with this OCR line's geometry
+        visual_lines.append({
+            "words": list(ocr_line["words"]),
+            "top_y": ocr_line["top_y"],
+            "bottom_y": ocr_line["bottom_y"],
+        })
+
+    # Sort words within each visual line by X (left to right)
+    for vl in visual_lines:
+        vl["words"].sort(key=lambda w: w.get("top_left", {}).get("x", 0))
+
+    # Truncate if too many lines (keep top and bottom, skip middle)
+    if len(visual_lines) > max_lines:
+        keep_top = max_lines // 2
+        keep_bottom = max_lines - keep_top - 1
+        omitted = len(visual_lines) - max_lines + 1
+        placeholder = {
+            "words": [{"text": f"... ({omitted} lines omitted) ...",
+                       "line_id": -1, "word_id": -1}],
+            "top_y": 0,
+            "bottom_y": 0,
+        }
+        visual_lines = (
+            visual_lines[:keep_top]
+            + [placeholder]
+            + visual_lines[-keep_bottom:]
+        )
+
+    # Format each visual line with labels
+    formatted_lines = []
+    for vl in visual_lines:
+        line_words = vl["words"]
+        line_parts = []
+        line_labels = []
+
+        for w in line_words:
+            text = w.get("text", "")
+            key = (w.get("line_id"), w.get("word_id"))
+
+            # Mark highlighted words
+            if key in highlight_set:
+                text = f"[{text}]"
+
+            line_parts.append(text)
+
+            # Collect label if exists
+            if key in label_map:
+                lbl = label_map[key]
+                label_name = lbl.get("label", "?")
+                status = lbl.get("validation_status", "")
+                if status == "INVALID":
+                    line_labels.append(f"~~{label_name}~~")
+                else:
+                    line_labels.append(label_name)
+
+        line_text = " ".join(line_parts)
+        if line_labels:
+            line_text += f"  ({', '.join(line_labels)})"
+
+        formatted_lines.append(line_text)
+
+    return "\n".join(formatted_lines)
+
+
 def extract_receipt_currency_context(
     words: list[dict],
     labels: list[dict],
@@ -1292,6 +1486,413 @@ def parse_batched_llm_response(
 
 
 # =============================================================================
+# Receipt-Context Prompt Builder
+# =============================================================================
+
+
+def build_receipt_context_prompt(
+    receipt_words: list[dict],
+    receipt_labels: list[dict],
+    issues_with_context: list[dict[str, Any]],
+    merchant_name: str,
+    merchant_receipt_count: int,
+    line_item_patterns: Optional[dict] = None,
+) -> str:
+    """
+    Build a prompt with full receipt context for a single receipt's issues.
+
+    Shows the complete receipt text with issue words highlighted, then
+    details each issue with similar word evidence including reasoning.
+
+    Args:
+        receipt_words: All words from the receipt
+        receipt_labels: All labels for the receipt
+        issues_with_context: List of issue dicts for THIS receipt, each with:
+            - issue: The issue dict (line_id, word_id, current_label, etc.)
+            - similar_evidence: List of SimilarWordEvidence with reasoning
+        merchant_name: The merchant name
+        merchant_receipt_count: Number of receipts for this merchant
+        line_item_patterns: Optional line item patterns
+
+    Returns:
+        Prompt with receipt context and issues
+    """
+    # Debug: Log input summary
+    logger.debug(
+        f"build_receipt_context_prompt: {len(receipt_words)} words, "
+        f"{len(receipt_labels)} labels, {len(issues_with_context)} issues"
+    )
+
+    # Build list of issue word positions for highlighting
+    highlight_words = []
+    for item in issues_with_context:
+        issue = item.get("issue", {})
+        line_id = issue.get("line_id")
+        word_id = issue.get("word_id")
+        if line_id is not None and word_id is not None:
+            highlight_words.append((line_id, word_id))
+
+    # Assemble receipt text with highlighted issue words
+    receipt_text = assemble_receipt_text(
+        words=receipt_words,
+        labels=receipt_labels,
+        highlight_words=highlight_words,
+        max_lines=50,
+    )
+
+    # Build issue details with similar word reasoning
+    issues_text = []
+    for idx, item in enumerate(issues_with_context):
+        issue = item.get("issue", {})
+        similar_evidence = item.get("similar_evidence")
+
+        # Debug: Log the type and content of similar_evidence
+        if similar_evidence is None:
+            logger.warning(
+                f"Issue {idx}: similar_evidence is None "
+                f"(item keys: {list(item.keys())})"
+            )
+            similar_evidence = []
+        elif not isinstance(similar_evidence, list):
+            logger.warning(
+                f"Issue {idx}: similar_evidence is {type(similar_evidence).__name__}, "
+                f"not list. Value: {str(similar_evidence)[:200]}"
+            )
+            similar_evidence = []
+
+        word_text = issue.get("word_text", "")
+        current_label = issue.get("current_label") or "NONE (unlabeled)"
+        issue_type = issue.get("type", "unknown")
+        evaluator_reasoning = issue.get("reasoning", "No reasoning provided")
+
+        # Build similar words with reasoning (top 10)
+        similar_lines = []
+        for e_idx, e in enumerate(similar_evidence[:10]):
+            if e is None:
+                logger.warning(f"Issue {idx}: evidence[{e_idx}] is None")
+                continue
+            if not isinstance(e, dict):
+                logger.warning(
+                    f"Issue {idx}: evidence[{e_idx}] is {type(e).__name__}, not dict"
+                )
+                continue
+
+            sim_score = e.get("similarity_score", 0)
+            sim_word = e.get("word_text", "")
+            is_same = "same merchant" if e.get("is_same_merchant") else "other"
+
+            # Get validation reasoning - with null safety
+            validated_info = []
+            validated_as = e.get("validated_as")
+            if validated_as is None:
+                logger.debug(f"Issue {idx}: evidence[{e_idx}] validated_as is None")
+            elif not isinstance(validated_as, list):
+                logger.warning(
+                    f"Issue {idx}: evidence[{e_idx}] validated_as is "
+                    f"{type(validated_as).__name__}, not list"
+                )
+            elif validated_as:
+                for v in validated_as[:2]:
+                    if not isinstance(v, dict):
+                        continue
+                    label = v.get("label", "?")
+                    reasoning = (v.get("reasoning") or "no reasoning")[:80]
+                    validated_info.append(f"{label}: \"{reasoning}\"")
+
+            invalidated_info = []
+            invalidated_as = e.get("invalidated_as")
+            if invalidated_as is None:
+                logger.debug(f"Issue {idx}: evidence[{e_idx}] invalidated_as is None")
+            elif not isinstance(invalidated_as, list):
+                logger.warning(
+                    f"Issue {idx}: evidence[{e_idx}] invalidated_as is "
+                    f"{type(invalidated_as).__name__}, not list"
+                )
+            elif invalidated_as:
+                for v in invalidated_as[:1]:
+                    if not isinstance(v, dict):
+                        continue
+                    label = v.get("label", "?")
+                    reasoning = (v.get("reasoning") or "no reasoning")[:60]
+                    invalidated_info.append(f"~~{label}~~: \"{reasoning}\"")
+
+            # Format line
+            line = f'- "{sim_word}" ({sim_score:.0%}, {is_same})'
+            if validated_info:
+                line += f" → {'; '.join(validated_info)}"
+            if invalidated_info:
+                line += f" | {'; '.join(invalidated_info)}"
+            similar_lines.append(line)
+
+        similar_text = "\n".join(similar_lines) if similar_lines else "No similar words found"
+
+        issue_block = f"""
+### Issue {idx}: "{word_text}" - {current_label}
+
+**Issue Type**: {issue_type}
+**Evaluator's Concern**: {evaluator_reasoning}
+
+**Similar Words with Reasoning**:
+{similar_text}
+"""
+        issues_text.append(issue_block)
+
+    # Sparsity note
+    sparsity_note = ""
+    if merchant_receipt_count < 10:
+        sparsity_note = (
+            f"\n**NOTE**: Only {merchant_receipt_count} receipts available "
+            f"for {merchant_name}. Evidence may be limited.\n"
+        )
+
+    prompt = f"""# Receipt Label Validation
+
+You are reviewing {len(issues_with_context)} potential labeling issues on a receipt from **{merchant_name}**.
+{sparsity_note}
+## Label Definitions
+
+{CORE_LABELS}
+
+## Line Item Patterns for {merchant_name}
+
+{format_line_item_patterns(line_item_patterns)}
+
+## Full Receipt Text
+
+Words marked with [brackets] are the issues to review. Labels shown in (parentheses).
+
+```
+{receipt_text}
+```
+
+## Issues to Review
+
+{"".join(issues_text)}
+
+---
+
+## Your Task
+
+For EACH issue (0 to {len(issues_with_context) - 1}), analyze the receipt context and similar word evidence to determine:
+
+1. **Decision**: VALID (label is correct), INVALID (label is wrong), or NEEDS_REVIEW (insufficient evidence)
+2. **Reasoning**: Brief justification referencing the receipt context and/or similar word patterns
+3. **Suggested Label**: If INVALID, the correct label (or null if unsure)
+4. **Confidence**: low / medium / high
+
+Respond with ONLY a JSON object:
+```json
+{{
+  "reviews": [
+    {{
+      "issue_index": 0,
+      "decision": "VALID | INVALID | NEEDS_REVIEW",
+      "reasoning": "Brief reasoning citing receipt context or similar patterns...",
+      "suggested_label": "LABEL_NAME or null",
+      "confidence": "low | medium | high"
+    }}
+  ]
+}}
+```
+
+IMPORTANT: Provide exactly {len(issues_with_context)} reviews, one for each issue index.
+"""
+    return prompt
+
+
+# =============================================================================
+# Apply Decisions to DynamoDB
+# =============================================================================
+
+
+def apply_llm_decisions(
+    reviewed_issues: list[dict[str, Any]],
+    dynamo_client: Any,
+    execution_id: str,
+) -> dict[str, int]:
+    """
+    Apply LLM review decisions to DynamoDB.
+
+    For each reviewed issue:
+    - VALID: Confirm the current label, invalidate conflicting labels
+    - INVALID: Invalidate the current label, confirm/add suggested label
+    - NEEDS_REVIEW: No changes
+
+    Args:
+        reviewed_issues: List of reviewed issue dicts with llm_review results
+        dynamo_client: DynamoClient instance
+        execution_id: Execution ID for audit trail
+
+    Returns:
+        Dict with counts of actions taken
+    """
+    from datetime import datetime
+    from receipt_dynamo import ReceiptWordLabel
+
+    stats = {
+        "labels_confirmed": 0,
+        "labels_invalidated": 0,
+        "labels_created": 0,
+        "conflicts_resolved": 0,
+        "skipped_needs_review": 0,
+        "errors": 0,
+    }
+
+    for item in reviewed_issues:
+        try:
+            image_id = item.get("image_id")
+            receipt_id = item.get("receipt_id")
+            issue = item.get("issue", {})
+            llm_review = item.get("llm_review", {})
+
+            line_id = issue.get("line_id")
+            word_id = issue.get("word_id")
+            current_label = issue.get("current_label")
+            decision = llm_review.get("decision")
+            reasoning = llm_review.get("reasoning", "")
+            suggested_label = llm_review.get("suggested_label")
+            confidence = llm_review.get("confidence", "medium")
+
+            if not all([image_id, receipt_id, line_id, word_id, current_label]):
+                logger.warning(f"Missing required fields for issue: {item}")
+                stats["errors"] += 1
+                continue
+
+            # Build audit reasoning
+            audit_reasoning = (
+                f"[label-evaluator {execution_id}] "
+                f"Decision: {decision} ({confidence}). {reasoning[:200]}"
+            )
+            timestamp = datetime.utcnow().isoformat()
+
+            if decision == "VALID":
+                # 1. Confirm the current label (update reasoning if desired)
+                # 2. Invalidate any conflicting labels on the same word
+
+                # Get all labels for this word (returns tuple: list, last_key)
+                all_labels, _ = dynamo_client.list_receipt_word_labels_for_word(
+                    image_id, receipt_id, line_id, word_id
+                )
+
+                for label in all_labels:
+                    if label.label == current_label:
+                        # This is the confirmed label - optionally update reasoning
+                        # For now, we leave it as-is since it's already VALID
+                        stats["labels_confirmed"] += 1
+                    elif label.validation_status == "VALID":
+                        # Conflicting VALID label - invalidate it
+                        updated_label = ReceiptWordLabel(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            line_id=line_id,
+                            word_id=word_id,
+                            label=label.label,
+                            reasoning=f"Invalidated: {current_label} confirmed. {audit_reasoning}",
+                            timestamp_added=label.timestamp_added,
+                            validation_status="INVALID",
+                            label_proposed_by=label.label_proposed_by,
+                            label_consolidated_from=label.label_consolidated_from,
+                        )
+                        dynamo_client.update_receipt_word_label(updated_label)
+                        stats["labels_invalidated"] += 1
+                        stats["conflicts_resolved"] += 1
+                        logger.info(
+                            f"Invalidated conflicting {label.label} on "
+                            f"{image_id}:{receipt_id}:{line_id}:{word_id}"
+                        )
+
+            elif decision == "INVALID":
+                # 1. Invalidate the current label
+                # 2. If suggested_label provided, confirm or create it
+
+                # Get all labels for this word (returns tuple: list, last_key)
+                all_labels, _ = dynamo_client.list_receipt_word_labels_for_word(
+                    image_id, receipt_id, line_id, word_id
+                )
+
+                # Find and invalidate the current label
+                for label in all_labels:
+                    if label.label == current_label:
+                        updated_label = ReceiptWordLabel(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            line_id=line_id,
+                            word_id=word_id,
+                            label=label.label,
+                            reasoning=audit_reasoning,
+                            timestamp_added=label.timestamp_added,
+                            validation_status="INVALID",
+                            label_proposed_by=label.label_proposed_by,
+                            label_consolidated_from=label.label_consolidated_from,
+                        )
+                        dynamo_client.update_receipt_word_label(updated_label)
+                        stats["labels_invalidated"] += 1
+                        logger.info(
+                            f"Invalidated {current_label} on "
+                            f"{image_id}:{receipt_id}:{line_id}:{word_id}"
+                        )
+                        break
+
+                # Handle suggested label
+                if suggested_label:
+                    # Check if suggested label already exists
+                    existing_suggested = None
+                    for label in all_labels:
+                        if label.label == suggested_label:
+                            existing_suggested = label
+                            break
+
+                    if existing_suggested:
+                        # Confirm the existing suggested label
+                        if existing_suggested.validation_status != "VALID":
+                            updated_label = ReceiptWordLabel(
+                                image_id=image_id,
+                                receipt_id=receipt_id,
+                                line_id=line_id,
+                                word_id=word_id,
+                                label=suggested_label,
+                                reasoning=f"Confirmed as replacement. {audit_reasoning}",
+                                timestamp_added=existing_suggested.timestamp_added,
+                                validation_status="VALID",
+                                label_proposed_by=existing_suggested.label_proposed_by,
+                                label_consolidated_from=existing_suggested.label_consolidated_from,
+                            )
+                            dynamo_client.update_receipt_word_label(updated_label)
+                            stats["labels_confirmed"] += 1
+                    else:
+                        # Create new label
+                        new_label = ReceiptWordLabel(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            line_id=line_id,
+                            word_id=word_id,
+                            label=suggested_label,
+                            reasoning=f"Added by LLM review. {audit_reasoning}",
+                            timestamp_added=timestamp,
+                            validation_status="VALID",
+                            label_proposed_by="label-evaluator-llm",
+                            label_consolidated_from=None,
+                        )
+                        dynamo_client.add_receipt_word_label(new_label)
+                        stats["labels_created"] += 1
+                        logger.info(
+                            f"Created new {suggested_label} on "
+                            f"{image_id}:{receipt_id}:{line_id}:{word_id}"
+                        )
+
+            elif decision == "NEEDS_REVIEW":
+                # No changes - leave for human review
+                stats["skipped_needs_review"] += 1
+
+        except Exception as e:
+            logger.error(f"Error applying decision: {e}")
+            stats["errors"] += 1
+
+    logger.info(f"Applied decisions: {stats}")
+    return stats
+
+
+# =============================================================================
 # Main Handler
 # =============================================================================
 
@@ -1489,10 +2090,10 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             f"circuit breaker threshold: {circuit_breaker_threshold})"
         )
 
-        # 5. Review issues in batches for efficiency
-        # Get batch size from env (default 10 issues per LLM call)
-        issues_per_llm_call = int(
-            os.environ.get("ISSUES_PER_LLM_CALL", str(DEFAULT_ISSUES_PER_LLM_CALL))
+        # 5. Group issues by receipt and process with full receipt context
+        # Max issues per LLM call (even within a single receipt)
+        max_issues_per_call = int(
+            os.environ.get("MAX_ISSUES_PER_LLM_CALL", "15")
         )
 
         decisions: Counter = Counter()
@@ -1501,208 +2102,200 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
         # Cache for similar word queries
         similar_cache: dict[str, list["SimilarWordEvidence"]] = {}
 
-        # Cache for receipt data and currency context
-        receipt_data_cache: dict[str, dict[str, Any]] = {}
-        currency_context_cache: dict[str, list[dict]] = {}
+        # Group issues by receipt
+        from collections import defaultdict
+        issues_by_receipt: dict[str, list[dict]] = defaultdict(list)
+        for collected in collected_issues:
+            image_id = collected.get("image_id")
+            receipt_id = collected.get("receipt_id")
+            receipt_key = f"{image_id}:{receipt_id}"
+            issues_by_receipt[receipt_key].append(collected)
+
+        logger.info(
+            f"Processing {total_issues} issues across "
+            f"{len(issues_by_receipt)} receipts"
+        )
 
         # Import HumanMessage once
         from langchain_core.messages import HumanMessage
 
-        # Process issues in batches
-        for batch_start in range(0, total_issues, issues_per_llm_call):
-            batch_end = min(batch_start + issues_per_llm_call, total_issues)
-            batch_collected = collected_issues[batch_start:batch_end]
+        llm_call_count = 0
 
-            logger.info(
-                f"Processing batch {batch_start // issues_per_llm_call + 1}: "
-                f"issues {batch_start + 1}-{batch_end} of {total_issues}"
-            )
+        # Process each receipt
+        for receipt_key, receipt_issues in issues_by_receipt.items():
+            image_id, receipt_id_str = receipt_key.split(":", 1)
+            receipt_id = int(receipt_id_str)
 
-            # Phase 1: Gather context for all issues in this batch
-            issues_with_context = []
-            batch_metadata = []  # Store image_id, receipt_id for each issue
-
-            for collected in batch_collected:
-                issue = collected.get("issue", {})
-                image_id = collected.get("image_id")
-                receipt_id = collected.get("receipt_id")
-                word_text = issue.get("word_text", "")
-                word_id = issue.get("word_id", 0)
-                line_id = issue.get("line_id", 0)
-
-                batch_metadata.append({
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": issue,
-                })
-
-                try:
-                    # Load currency context (with caching)
-                    receipt_cache_key = f"{image_id}:{receipt_id}"
-                    if receipt_cache_key not in currency_context_cache:
-                        try:
-                            receipt_data_key = (
-                                f"data/{execution_id}/{image_id}_{receipt_id}.json"
-                            )
-                            receipt_data = load_json_from_s3(
-                                batch_bucket, receipt_data_key
-                            )
-                            receipt_data_cache[receipt_cache_key] = receipt_data
-
-                            words = receipt_data.get("words", [])
-                            labels = receipt_data.get("labels", [])
-                            currency_context = extract_receipt_currency_context(
-                                words, labels
-                            )
-                            currency_context_cache[receipt_cache_key] = currency_context
-                        except Exception as e:
-                            logger.debug(
-                                f"Could not load receipt data for {receipt_cache_key}: {e}"
-                            )
-                            currency_context_cache[receipt_cache_key] = []
-
-                    currency_context = currency_context_cache.get(
-                        receipt_cache_key, []
-                    )
-
-                    # Query similar words (with caching)
-                    cache_key = f"{image_id}:{receipt_id}:{line_id}:{word_id}"
-                    if cache_key in similar_cache:
-                        similar_evidence = similar_cache[cache_key]
-                    elif chroma_client:
-                        similar_evidence = query_similar_words(
-                            chroma_client=chroma_client,
-                            word_text=word_text,
-                            image_id=image_id,
-                            receipt_id=receipt_id,
-                            line_id=line_id,
-                            word_id=word_id,
-                            target_merchant=merchant_name,
-                        )
-
-                        if dynamo_client and similar_evidence:
-                            similar_evidence = enrich_evidence_with_dynamo_reasoning(
-                                similar_evidence, dynamo_client, limit=20
-                            )
-
-                        similar_cache[cache_key] = similar_evidence
-                    else:
-                        similar_evidence = []
-
-                    # Compute distributions
-                    similarity_dist = compute_similarity_distribution(similar_evidence)
-                    label_dist = compute_label_distribution(similar_evidence)
-                    merchant_breakdown = compute_merchant_breakdown(similar_evidence)
-
-                    issues_with_context.append({
-                        "issue": issue,
-                        "similar_evidence": similar_evidence,
-                        "similarity_dist": similarity_dist,
-                        "label_dist": label_dist,
-                        "merchant_breakdown": merchant_breakdown,
-                        "currency_context": currency_context,
-                    })
-
-                except Exception as e:
-                    logger.warning(f"Error gathering context for issue: {e}")
-                    # Still add issue but with empty context
-                    issues_with_context.append({
-                        "issue": issue,
-                        "similar_evidence": [],
-                        "similarity_dist": {"very_high": 0, "high": 0, "medium": 0, "low": 0},
-                        "label_dist": {},
-                        "merchant_breakdown": [],
-                        "currency_context": [],
-                        "context_error": str(e),
-                    })
-
-            # Phase 2: Make single LLM call for the batch
+            # Load receipt data (words, labels) from S3
+            receipt_data_key = f"data/{execution_id}/{image_id}_{receipt_id}.json"
             try:
-                prompt = build_batched_review_prompt(
-                    issues_with_context=issues_with_context,
-                    merchant_name=merchant_name,
-                    merchant_receipt_count=merchant_receipt_count,
-                    line_item_patterns=line_item_patterns,
-                )
+                receipt_data = load_json_from_s3(batch_bucket, receipt_data_key)
+                receipt_words = receipt_data.get("words", [])
+                receipt_labels = receipt_data.get("labels", [])
+            except Exception as e:
+                logger.warning(f"Could not load receipt data for {receipt_key}: {e}")
+                receipt_words = []
+                receipt_labels = []
 
-                response = llm_invoker.invoke([HumanMessage(content=prompt)])
-                batch_reviews = parse_batched_llm_response(
-                    response.content.strip(),
-                    expected_count=len(issues_with_context),
-                )
-
-                # Phase 3: Store results
-                for i, review_result in enumerate(batch_reviews):
-                    meta = batch_metadata[i]
-                    ctx = issues_with_context[i]
-
-                    decisions[review_result["decision"]] += 1
-
-                    reviewed_issues.append({
-                        "image_id": meta["image_id"],
-                        "receipt_id": meta["receipt_id"],
-                        "issue": meta["issue"],
-                        "llm_review": review_result,
-                        "similar_word_count": len(ctx.get("similar_evidence", [])),
-                    })
+            # Process issues in chunks if receipt has too many
+            for chunk_start in range(0, len(receipt_issues), max_issues_per_call):
+                chunk_end = min(chunk_start + max_issues_per_call, len(receipt_issues))
+                chunk_issues = receipt_issues[chunk_start:chunk_end]
 
                 logger.info(
-                    f"Completed batch: {len(batch_reviews)} issues reviewed "
-                    f"({len(reviewed_issues)}/{total_issues} total)"
+                    f"Processing receipt {receipt_key}: issues "
+                    f"{chunk_start + 1}-{chunk_end} of {len(receipt_issues)}"
                 )
 
-            except OllamaRateLimitError:
-                # Save partial progress before re-raising
-                logger.warning(
-                    f"Rate limit hit after {len(reviewed_issues)}/{total_issues} issues. "
-                    f"Saving partial progress."
-                )
-                if reviewed_issues:
-                    merchant_hash = merchant_name.lower().replace(" ", "_")[:30]
-                    partial_s3_key = (
-                        f"partial/{execution_id}/{merchant_hash}_{batch_index}.json"
-                    )
-                    partial_data = {
-                        "execution_id": execution_id,
-                        "merchant_name": merchant_name,
-                        "batch_index": batch_index,
-                        "issues_processed": len(reviewed_issues),
-                        "total_issues": total_issues,
-                        "decisions": dict(decisions),
-                        "issues": reviewed_issues,
-                        "rate_limited": True,
-                    }
-                    upload_json_to_s3(batch_bucket, partial_s3_key, partial_data)
-                    logger.info(f"Saved partial progress to {partial_s3_key}")
-                raise  # Re-raise for Step Function retry
+                # Gather context (similar evidence) for each issue
+                issues_with_context = []
+                chunk_metadata = []
 
-            except Exception as e:
-                # If batch fails, mark all issues in batch as NEEDS_REVIEW
-                logger.warning(
-                    f"Batch LLM call failed: {e}. Marking {len(batch_metadata)} "
-                    f"issues as NEEDS_REVIEW."
-                )
-                for i, meta in enumerate(batch_metadata):
-                    ctx = issues_with_context[i] if i < len(issues_with_context) else {}
-                    decisions["NEEDS_REVIEW"] += 1
-                    reviewed_issues.append({
-                        "image_id": meta["image_id"],
-                        "receipt_id": meta["receipt_id"],
-                        "issue": meta["issue"],
-                        "llm_review": {
-                            "decision": "NEEDS_REVIEW",
-                            "reasoning": f"Batch LLM call failed: {e}",
-                            "suggested_label": None,
-                            "confidence": "low",
-                        },
-                        "similar_word_count": len(ctx.get("similar_evidence", [])),
-                        "error": str(e),
+                for collected in chunk_issues:
+                    issue = collected.get("issue", {})
+                    word_text = issue.get("word_text", "")
+                    word_id = issue.get("word_id", 0)
+                    line_id = issue.get("line_id", 0)
+
+                    chunk_metadata.append({
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "issue": issue,
                     })
 
+                    try:
+                        # Query similar words (with caching)
+                        cache_key = f"{image_id}:{receipt_id}:{line_id}:{word_id}"
+                        if cache_key in similar_cache:
+                            similar_evidence = similar_cache[cache_key]
+                        elif chroma_client:
+                            similar_evidence = query_similar_words(
+                                chroma_client=chroma_client,
+                                word_text=word_text,
+                                image_id=image_id,
+                                receipt_id=receipt_id,
+                                line_id=line_id,
+                                word_id=word_id,
+                                target_merchant=merchant_name,
+                            )
+
+                            if dynamo_client and similar_evidence:
+                                similar_evidence = enrich_evidence_with_dynamo_reasoning(
+                                    similar_evidence, dynamo_client, limit=15
+                                )
+
+                            similar_cache[cache_key] = similar_evidence
+                        else:
+                            similar_evidence = []
+
+                        issues_with_context.append({
+                            "issue": issue,
+                            "similar_evidence": similar_evidence,
+                        })
+
+                    except Exception as e:
+                        logger.warning(f"Error gathering context for issue: {e}")
+                        issues_with_context.append({
+                            "issue": issue,
+                            "similar_evidence": [],
+                            "context_error": str(e),
+                        })
+
+                # Build receipt-context prompt and make LLM call
+                try:
+                    prompt = build_receipt_context_prompt(
+                        receipt_words=receipt_words,
+                        receipt_labels=receipt_labels,
+                        issues_with_context=issues_with_context,
+                        merchant_name=merchant_name,
+                        merchant_receipt_count=merchant_receipt_count,
+                        line_item_patterns=line_item_patterns,
+                    )
+
+                    response = llm_invoker.invoke([HumanMessage(content=prompt)])
+                    llm_call_count += 1
+
+                    chunk_reviews = parse_batched_llm_response(
+                        response.content.strip(),
+                        expected_count=len(issues_with_context),
+                    )
+
+                    # Store results
+                    for i, review_result in enumerate(chunk_reviews):
+                        meta = chunk_metadata[i]
+                        ctx = issues_with_context[i]
+
+                        decisions[review_result["decision"]] += 1
+
+                        reviewed_issues.append({
+                            "image_id": meta["image_id"],
+                            "receipt_id": meta["receipt_id"],
+                            "issue": meta["issue"],
+                            "llm_review": review_result,
+                            "similar_word_count": len(ctx.get("similar_evidence", [])),
+                        })
+
+                    logger.info(
+                        f"Completed receipt chunk: {len(chunk_reviews)} issues "
+                        f"({len(reviewed_issues)}/{total_issues} total)"
+                    )
+
+                except OllamaRateLimitError:
+                    # Save partial progress before re-raising
+                    logger.warning(
+                        f"Rate limit hit after {len(reviewed_issues)}/{total_issues} "
+                        f"issues. Saving partial progress."
+                    )
+                    if reviewed_issues:
+                        merchant_hash = merchant_name.lower().replace(" ", "_")[:30]
+                        partial_s3_key = (
+                            f"partial/{execution_id}/{merchant_hash}_{batch_index}.json"
+                        )
+                        partial_data = {
+                            "execution_id": execution_id,
+                            "merchant_name": merchant_name,
+                            "batch_index": batch_index,
+                            "issues_processed": len(reviewed_issues),
+                            "total_issues": total_issues,
+                            "decisions": dict(decisions),
+                            "issues": reviewed_issues,
+                            "rate_limited": True,
+                        }
+                        upload_json_to_s3(batch_bucket, partial_s3_key, partial_data)
+                        logger.info(f"Saved partial progress to {partial_s3_key}")
+                    raise  # Re-raise for Step Function retry
+
+                except Exception as e:
+                    # If LLM call fails, mark all issues in chunk as NEEDS_REVIEW
+                    import traceback
+                    tb_str = traceback.format_exc()
+                    logger.error(
+                        f"LLM call failed for receipt {receipt_key}: {e}\n"
+                        f"Traceback:\n{tb_str}"
+                    )
+                    logger.warning(
+                        f"Marking {len(chunk_metadata)} issues as NEEDS_REVIEW."
+                    )
+                    for i, meta in enumerate(chunk_metadata):
+                        ctx = issues_with_context[i] if i < len(issues_with_context) else {}
+                        decisions["NEEDS_REVIEW"] += 1
+                        reviewed_issues.append({
+                            "image_id": meta["image_id"],
+                            "receipt_id": meta["receipt_id"],
+                            "issue": meta["issue"],
+                            "llm_review": {
+                                "decision": "NEEDS_REVIEW",
+                                "reasoning": f"LLM call failed: {e}",
+                                "suggested_label": None,
+                                "confidence": "low",
+                            },
+                            "similar_word_count": len(ctx.get("similar_evidence", [])),
+                            "error": str(e),
+                        })
+
         logger.info(
-            f"Reviewed {total_issues} issues in "
-            f"{(total_issues + issues_per_llm_call - 1) // issues_per_llm_call} "
-            f"LLM calls: {dict(decisions)}"
+            f"Reviewed {total_issues} issues across {len(issues_by_receipt)} receipts "
+            f"in {llm_call_count} LLM calls: {dict(decisions)}"
         )
 
         # 6. Upload reviewed results to S3
@@ -1731,28 +2324,54 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             f"Uploaded reviewed results to s3://{batch_bucket}/{reviewed_s3_key}"
         )
 
-        # 7. Log metrics
+        # 7. Apply decisions to DynamoDB (if not dry_run)
+        apply_stats = None
+        if not dry_run and dynamo_client and reviewed_issues:
+            logger.info(
+                f"Applying {len(reviewed_issues)} LLM decisions to DynamoDB..."
+            )
+            apply_stats = apply_llm_decisions(
+                reviewed_issues=reviewed_issues,
+                dynamo_client=dynamo_client,
+                execution_id=execution_id,
+            )
+            logger.info(f"Applied decisions: {apply_stats}")
+        elif dry_run:
+            logger.info("Skipping DynamoDB writes (dry_run=true)")
+
+        # 8. Log metrics
         from utils.emf_metrics import emf_metrics
 
         processing_time = time.time() - start_time
+        metrics = {
+            "IssuesReviewed": total_issues,
+            "DecisionsValid": decisions.get("VALID", 0),
+            "DecisionsInvalid": decisions.get("INVALID", 0),
+            "DecisionsNeedsReview": decisions.get("NEEDS_REVIEW", 0),
+            "ProcessingTimeSeconds": round(processing_time, 2),
+            "SimilarWordsCached": len(similar_cache),
+        }
+        # Add apply_stats metrics if we wrote to DynamoDB
+        if apply_stats:
+            metrics["LabelsConfirmed"] = apply_stats.get("labels_confirmed", 0)
+            metrics["LabelsInvalidated"] = apply_stats.get(
+                "labels_invalidated", 0
+            )
+            metrics["LabelsCreated"] = apply_stats.get("labels_created", 0)
+            metrics["ConflictsResolved"] = apply_stats.get(
+                "conflicts_resolved", 0
+            )
         emf_metrics.log_metrics(
-            metrics={
-                "IssuesReviewed": total_issues,
-                "DecisionsValid": decisions.get("VALID", 0),
-                "DecisionsInvalid": decisions.get("INVALID", 0),
-                "DecisionsNeedsReview": decisions.get("NEEDS_REVIEW", 0),
-                "ProcessingTimeSeconds": round(processing_time, 2),
-                "SimilarWordsCached": len(similar_cache),
-            },
+            metrics=metrics,
             dimensions={"Merchant": merchant_name[:50]},
-            properties={"execution_id": execution_id},
+            properties={"execution_id": execution_id, "dry_run": dry_run},
             units={"ProcessingTimeSeconds": "Seconds"},
         )
 
         # Flush LangSmith traces
         flush_langsmith_traces()
 
-        return {
+        result = {
             "status": "completed",
             "execution_id": execution_id,
             "merchant_name": merchant_name,
@@ -1762,7 +2381,11 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             "decisions": dict(decisions),
             "reviewed_issues_s3_key": reviewed_s3_key,
             "rate_limit_stats": rate_limit_stats,
+            "dry_run": dry_run,
         }
+        if apply_stats:
+            result["apply_stats"] = apply_stats
+        return result
 
     except Exception as e:
         logger.error(f"Error in LLM review batch: {e}", exc_info=True)
