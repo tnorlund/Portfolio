@@ -19,11 +19,11 @@ Usage:
     # Create circuit breaker
     circuit_breaker = OllamaCircuitBreaker(threshold=5)
 
-    # Create rate-limited invoker
+    # Create rate-limited invoker with random jitter
     invoker = RateLimitedLLMInvoker(
         llm=my_langchain_llm,
         circuit_breaker=circuit_breaker,
-        delay_seconds=0.5,
+        max_jitter_seconds=0.25,  # Random jitter 0-0.25s between calls
     )
 
     # Make LLM calls with automatic rate limiting
@@ -36,6 +36,7 @@ Usage:
 """
 
 import logging
+import random
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, TypeVar
@@ -271,14 +272,14 @@ class RateLimitedLLMInvoker:
     Wrapper for LangChain LLM with automatic rate limiting.
 
     Provides:
-    - Configurable delay between calls
+    - Random jitter between calls to prevent thundering herd
     - Circuit breaker integration
     - Automatic error classification and handling
 
     Attributes:
         llm: The LangChain LLM instance (ChatOllama, etc.)
         circuit_breaker: Optional circuit breaker instance
-        delay_seconds: Delay between LLM calls (default 0.5s)
+        max_jitter_seconds: Maximum random jitter between calls (default 0.25s)
         call_count: Number of calls made
 
     Usage:
@@ -289,7 +290,7 @@ class RateLimitedLLMInvoker:
         invoker = RateLimitedLLMInvoker(
             llm=llm,
             circuit_breaker=circuit_breaker,
-            delay_seconds=0.5,
+            max_jitter_seconds=0.25,
         )
 
         for prompt in prompts:
@@ -298,17 +299,16 @@ class RateLimitedLLMInvoker:
 
     llm: Any  # LangChain LLM instance
     circuit_breaker: Optional[OllamaCircuitBreaker] = None
-    delay_seconds: float = 0.5
+    max_jitter_seconds: float = 0.25
     call_count: int = field(default=0, init=False)
     _last_call_time: float = field(default=0.0, init=False)
 
-    def _apply_delay(self) -> None:
-        """Apply delay between calls if needed."""
-        if self.call_count > 0 and self.delay_seconds > 0:
-            elapsed = time.time() - self._last_call_time
-            if elapsed < self.delay_seconds:
-                sleep_time = self.delay_seconds - elapsed
-                time.sleep(sleep_time)
+    def _apply_jitter(self) -> None:
+        """Apply random jitter between calls to prevent thundering herd."""
+        if self.call_count > 0 and self.max_jitter_seconds > 0:
+            jitter = random.uniform(0, self.max_jitter_seconds)
+            if jitter > 0:
+                time.sleep(jitter)
 
     def invoke(self, messages: Any) -> Any:
         """
@@ -323,7 +323,7 @@ class RateLimitedLLMInvoker:
         Raises:
             OllamaRateLimitError: If rate limit hit or circuit breaker triggers
         """
-        self._apply_delay()
+        self._apply_jitter()
         self._last_call_time = time.time()
         self.call_count += 1
 
@@ -373,7 +373,7 @@ class RateLimitedLLMInvoker:
         """Get invoker statistics."""
         stats = {
             "call_count": self.call_count,
-            "delay_seconds": self.delay_seconds,
+            "max_jitter_seconds": self.max_jitter_seconds,
         }
         if self.circuit_breaker:
             stats["circuit_breaker"] = self.circuit_breaker.get_stats()

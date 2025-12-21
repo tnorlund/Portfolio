@@ -1039,6 +1039,259 @@ def parse_llm_response(response_text: str) -> "LLMDecision":
 
 
 # =============================================================================
+# Multi-Issue Batching
+# =============================================================================
+
+# Default number of issues to batch in a single LLM call
+DEFAULT_ISSUES_PER_LLM_CALL = 10
+
+
+def build_batched_review_prompt(
+    issues_with_context: list[dict[str, Any]],
+    merchant_name: str,
+    merchant_receipt_count: int,
+    line_item_patterns: Optional[dict] = None,
+) -> str:
+    """
+    Build a batched LLM review prompt for multiple issues.
+
+    Args:
+        issues_with_context: List of dicts, each containing:
+            - issue: The issue dict
+            - similar_evidence: List of SimilarWordEvidence
+            - similarity_dist: SimilarityDistribution
+            - label_dist: Label distribution stats
+            - merchant_breakdown: Merchant breakdown list
+            - currency_context: Currency amounts from receipt
+        merchant_name: The merchant name
+        merchant_receipt_count: Number of receipts for this merchant
+        line_item_patterns: Optional line item patterns
+
+    Returns:
+        Combined prompt for all issues
+    """
+    issues_text = []
+
+    for idx, item in enumerate(issues_with_context):
+        issue = item["issue"]
+        similar_evidence = item.get("similar_evidence", [])
+        similarity_dist = item.get("similarity_dist", {})
+        label_dist = item.get("label_dist", {})
+        merchant_breakdown = item.get("merchant_breakdown", [])
+        currency_context = item.get("currency_context", [])
+
+        word_text = issue.get("word_text", "")
+        current_label = issue.get("current_label") or "NONE (unlabeled)"
+        issue_type = issue.get("type", "unknown")
+        evaluator_reasoning = issue.get("reasoning", "No reasoning provided")
+
+        # Build condensed similar words section
+        same_merchant = []
+        other_merchant = []
+
+        for e in similar_evidence[:15]:  # Reduced from 30 for batching
+            line = f'"{e["word_text"]}" ({e["similarity_score"]:.0%})'
+            if e.get("validated_as"):
+                labels = [v["label"] for v in e["validated_as"][:2]]
+                line += f" → {', '.join(labels)}"
+            if e["is_same_merchant"]:
+                same_merchant.append(line)
+            else:
+                other_merchant.append(line)
+
+        # Condensed distribution
+        dist_str = (
+            f"Very high (>=90%): {similarity_dist.get('very_high', 0)}, "
+            f"High (70-90%): {similarity_dist.get('high', 0)}, "
+            f"Medium (50-70%): {similarity_dist.get('medium', 0)}"
+        )
+
+        # Condensed label distribution
+        label_lines = []
+        for label, stats in sorted(
+            label_dist.items(), key=lambda x: -x[1]["count"]
+        )[:5]:
+            label_lines.append(
+                f"{label}: {stats['count']} ({stats['valid_count']} valid)"
+            )
+        label_str = ", ".join(label_lines) if label_lines else "None"
+
+        # Currency context (condensed)
+        currency_str = ""
+        if currency_context:
+            amounts = [
+                f"{c.get('label', '?')}: {c.get('text', '?')}"
+                for c in currency_context[:8]
+            ]
+            currency_str = f"\n  Currency amounts: {', '.join(amounts)}"
+
+        issue_block = f"""
+---
+## Issue {idx}
+
+**Word**: "{word_text}"
+**Current Label**: {current_label}
+**Issue Type**: {issue_type}
+**Evaluator's Concern**: {evaluator_reasoning}
+
+**Similarity Distribution**: {dist_str}
+**Label Distribution**: {label_str}
+**Same Merchant Examples**: {', '.join(same_merchant[:5]) if same_merchant else 'None'}
+**Other Merchant Examples**: {', '.join(other_merchant[:5]) if other_merchant else 'None'}{currency_str}
+"""
+        issues_text.append(issue_block)
+
+    # Data sparsity note
+    sparsity_note = ""
+    if merchant_receipt_count < 10:
+        sparsity_note = (
+            f"\n**NOTE**: Only {merchant_receipt_count} receipts available "
+            f"for {merchant_name}. Cross-merchant examples shown for context.\n"
+        )
+
+    prompt = f"""# Batch Receipt Label Validation
+
+You are reviewing {len(issues_with_context)} potential labeling issues for
+receipts from **{merchant_name}**. Analyze each issue and provide decisions.
+{sparsity_note}
+## Label Definitions
+
+{CORE_LABELS}
+
+## Line Item Patterns for {merchant_name}
+
+{format_line_item_patterns(line_item_patterns)}
+
+## Issues to Review
+
+{"".join(issues_text)}
+
+---
+
+## Your Task
+
+For EACH issue above (0 to {len(issues_with_context) - 1}), determine:
+
+1. **Decision**: VALID (label is correct), INVALID (label is wrong), or NEEDS_REVIEW
+2. **Reasoning**: Brief justification citing evidence
+3. **Suggested Label**: If INVALID, the correct label (or null)
+4. **Confidence**: low / medium / high
+
+Respond with ONLY a JSON object containing a "reviews" array:
+```json
+{{
+  "reviews": [
+    {{
+      "issue_index": 0,
+      "decision": "VALID | INVALID | NEEDS_REVIEW",
+      "reasoning": "Brief reasoning...",
+      "suggested_label": "LABEL_NAME or null",
+      "confidence": "low | medium | high"
+    }},
+    {{
+      "issue_index": 1,
+      "decision": "...",
+      "reasoning": "...",
+      "suggested_label": "...",
+      "confidence": "..."
+    }}
+  ]
+}}
+```
+
+IMPORTANT: You MUST provide exactly {len(issues_with_context)} reviews, one for each issue index from 0 to {len(issues_with_context) - 1}.
+"""
+    return prompt
+
+
+def parse_batched_llm_response(
+    response_text: str, expected_count: int
+) -> list["LLMDecision"]:
+    """
+    Parse batched LLM JSON response.
+
+    Args:
+        response_text: Raw LLM response
+        expected_count: Expected number of reviews
+
+    Returns:
+        List of LLMDecision dicts, one per issue
+    """
+    # Handle markdown code blocks
+    if "```" in response_text:
+        match = re.search(r"```(?:json)?\s*(.*?)\s*```", response_text, re.S)
+        if match:
+            response_text = match.group(1)
+
+    response_text = response_text.strip()
+
+    # Default fallback for all issues
+    fallback = {
+        "decision": "NEEDS_REVIEW",
+        "reasoning": "Failed to parse batched LLM response",
+        "suggested_label": None,
+        "confidence": "low",
+    }
+
+    try:
+        result = json.loads(response_text)
+        reviews = result.get("reviews", [])
+
+        if not isinstance(reviews, list):
+            logger.warning("Batched response 'reviews' is not a list")
+            return [fallback.copy() for _ in range(expected_count)]
+
+        # Build a map by issue_index
+        reviews_by_index: dict[int, "LLMDecision"] = {}
+
+        for review in reviews:
+            if not isinstance(review, dict):
+                continue
+
+            idx = review.get("issue_index")
+            if idx is None or not isinstance(idx, int):
+                continue
+
+            decision = review.get("decision", "NEEDS_REVIEW")
+            if decision not in ("VALID", "INVALID", "NEEDS_REVIEW"):
+                decision = "NEEDS_REVIEW"
+
+            confidence = review.get("confidence", "medium")
+            if confidence not in ("low", "medium", "high"):
+                confidence = "medium"
+
+            reviews_by_index[idx] = {
+                "decision": decision,
+                "reasoning": review.get("reasoning", "No reasoning provided"),
+                "suggested_label": review.get("suggested_label"),
+                "confidence": confidence,
+            }
+
+        # Build ordered list, using fallback for missing indices
+        ordered_reviews = []
+        for i in range(expected_count):
+            if i in reviews_by_index:
+                ordered_reviews.append(reviews_by_index[i])
+            else:
+                logger.warning(f"Missing review for issue index {i}")
+                ordered_reviews.append(
+                    {
+                        "decision": "NEEDS_REVIEW",
+                        "reasoning": f"LLM did not provide review for issue {i}",
+                        "suggested_label": None,
+                        "confidence": "low",
+                    }
+                )
+
+        return ordered_reviews
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse batched response: {e}")
+        logger.error(f"Response preview: {response_text[:500]}")
+        return [fallback.copy() for _ in range(expected_count)]
+
+
+# =============================================================================
 # Main Handler
 # =============================================================================
 
@@ -1108,7 +1361,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     circuit_breaker_threshold = int(
         os.environ.get("CIRCUIT_BREAKER_THRESHOLD", "5")
     )
-    delay_seconds = float(os.environ.get("LLM_DELAY_SECONDS", "0.5"))
+    max_jitter_seconds = float(os.environ.get("LLM_MAX_JITTER_SECONDS", "0.25"))
 
     chromadb_bucket = os.environ.get("CHROMADB_BUCKET")
     table_name = os.environ.get(
@@ -1228,149 +1481,187 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
         llm_invoker = RateLimitedLLMInvoker(
             llm=base_llm,
             circuit_breaker=circuit_breaker,
-            delay_seconds=delay_seconds,
+            max_jitter_seconds=max_jitter_seconds,
         )
 
         logger.info(
-            f"LLM initialized: {ollama_model} (delay: {delay_seconds}s, "
+            f"LLM initialized: {ollama_model} (max jitter: {max_jitter_seconds}s, "
             f"circuit breaker threshold: {circuit_breaker_threshold})"
         )
 
-        # 5. Review each issue with full context
+        # 5. Review issues in batches for efficiency
+        # Get batch size from env (default 10 issues per LLM call)
+        issues_per_llm_call = int(
+            os.environ.get("ISSUES_PER_LLM_CALL", str(DEFAULT_ISSUES_PER_LLM_CALL))
+        )
+
         decisions: Counter = Counter()
         reviewed_issues: list[dict[str, Any]] = []
 
-        # Cache for similar word queries (same word text might appear multiple times)
+        # Cache for similar word queries
         similar_cache: dict[str, list["SimilarWordEvidence"]] = {}
 
-        # Cache for receipt data (keyed by image_id:receipt_id)
+        # Cache for receipt data and currency context
         receipt_data_cache: dict[str, dict[str, Any]] = {}
-
-        # Cache for currency context (keyed by image_id:receipt_id)
         currency_context_cache: dict[str, list[dict]] = {}
 
-        for idx, collected in enumerate(collected_issues):
-            issue = collected.get("issue", {})
-            image_id = collected.get("image_id")
-            receipt_id = collected.get("receipt_id")
-            word_text = issue.get("word_text", "")
-            word_id = issue.get("word_id", 0)
-            line_id = issue.get("line_id", 0)
+        # Import HumanMessage once
+        from langchain_core.messages import HumanMessage
 
-            try:
-                # Load receipt data and extract currency context (with caching)
-                receipt_cache_key = f"{image_id}:{receipt_id}"
-                if receipt_cache_key not in currency_context_cache:
-                    try:
-                        receipt_data_key = (
-                            f"data/{execution_id}/{image_id}_{receipt_id}.json"
-                        )
-                        receipt_data = load_json_from_s3(
-                            batch_bucket, receipt_data_key
-                        )
-                        receipt_data_cache[receipt_cache_key] = receipt_data
+        # Process issues in batches
+        for batch_start in range(0, total_issues, issues_per_llm_call):
+            batch_end = min(batch_start + issues_per_llm_call, total_issues)
+            batch_collected = collected_issues[batch_start:batch_end]
 
-                        # Extract currency context
-                        words = receipt_data.get("words", [])
-                        labels = receipt_data.get("labels", [])
-                        currency_context = extract_receipt_currency_context(
-                            words, labels
-                        )
-                        currency_context_cache[receipt_cache_key] = (
-                            currency_context
-                        )
-                    except Exception as e:
-                        logger.debug(
-                            f"Could not load receipt data for {receipt_cache_key}: {e}"
-                        )
-                        currency_context_cache[receipt_cache_key] = []
+            logger.info(
+                f"Processing batch {batch_start // issues_per_llm_call + 1}: "
+                f"issues {batch_start + 1}-{batch_end} of {total_issues}"
+            )
 
-                currency_context = currency_context_cache.get(
-                    receipt_cache_key, []
-                )
+            # Phase 1: Gather context for all issues in this batch
+            issues_with_context = []
+            batch_metadata = []  # Store image_id, receipt_id for each issue
 
-                # Query similar words (with caching)
-                cache_key = f"{image_id}:{receipt_id}:{line_id}:{word_id}"
-                if cache_key in similar_cache:
-                    similar_evidence = similar_cache[cache_key]
-                elif chroma_client:
-                    similar_evidence = query_similar_words(
-                        chroma_client=chroma_client,
-                        word_text=word_text,
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                        line_id=line_id,
-                        word_id=word_id,
-                        target_merchant=merchant_name,
+            for collected in batch_collected:
+                issue = collected.get("issue", {})
+                image_id = collected.get("image_id")
+                receipt_id = collected.get("receipt_id")
+                word_text = issue.get("word_text", "")
+                word_id = issue.get("word_id", 0)
+                line_id = issue.get("line_id", 0)
+
+                batch_metadata.append({
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "issue": issue,
+                })
+
+                try:
+                    # Load currency context (with caching)
+                    receipt_cache_key = f"{image_id}:{receipt_id}"
+                    if receipt_cache_key not in currency_context_cache:
+                        try:
+                            receipt_data_key = (
+                                f"data/{execution_id}/{image_id}_{receipt_id}.json"
+                            )
+                            receipt_data = load_json_from_s3(
+                                batch_bucket, receipt_data_key
+                            )
+                            receipt_data_cache[receipt_cache_key] = receipt_data
+
+                            words = receipt_data.get("words", [])
+                            labels = receipt_data.get("labels", [])
+                            currency_context = extract_receipt_currency_context(
+                                words, labels
+                            )
+                            currency_context_cache[receipt_cache_key] = currency_context
+                        except Exception as e:
+                            logger.debug(
+                                f"Could not load receipt data for {receipt_cache_key}: {e}"
+                            )
+                            currency_context_cache[receipt_cache_key] = []
+
+                    currency_context = currency_context_cache.get(
+                        receipt_cache_key, []
                     )
 
-                    # Enrich with DynamoDB reasoning
-                    if dynamo_client and similar_evidence:
-                        similar_evidence = (
-                            enrich_evidence_with_dynamo_reasoning(
-                                similar_evidence, dynamo_client, limit=20
-                            )
+                    # Query similar words (with caching)
+                    cache_key = f"{image_id}:{receipt_id}:{line_id}:{word_id}"
+                    if cache_key in similar_cache:
+                        similar_evidence = similar_cache[cache_key]
+                    elif chroma_client:
+                        similar_evidence = query_similar_words(
+                            chroma_client=chroma_client,
+                            word_text=word_text,
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            line_id=line_id,
+                            word_id=word_id,
+                            target_merchant=merchant_name,
                         )
 
-                    similar_cache[cache_key] = similar_evidence
-                else:
-                    similar_evidence = []
+                        if dynamo_client and similar_evidence:
+                            similar_evidence = enrich_evidence_with_dynamo_reasoning(
+                                similar_evidence, dynamo_client, limit=20
+                            )
 
-                # Compute distributions
-                similarity_dist = compute_similarity_distribution(
-                    similar_evidence
-                )
-                label_dist = compute_label_distribution(similar_evidence)
-                merchant_breakdown = compute_merchant_breakdown(
-                    similar_evidence
-                )
+                        similar_cache[cache_key] = similar_evidence
+                    else:
+                        similar_evidence = []
 
-                # Build prompt
-                prompt = build_review_prompt(
-                    issue=issue,
-                    similar_evidence=similar_evidence,
-                    similarity_dist=similarity_dist,
-                    label_dist=label_dist,
-                    merchant_breakdown=merchant_breakdown,
+                    # Compute distributions
+                    similarity_dist = compute_similarity_distribution(similar_evidence)
+                    label_dist = compute_label_distribution(similar_evidence)
+                    merchant_breakdown = compute_merchant_breakdown(similar_evidence)
+
+                    issues_with_context.append({
+                        "issue": issue,
+                        "similar_evidence": similar_evidence,
+                        "similarity_dist": similarity_dist,
+                        "label_dist": label_dist,
+                        "merchant_breakdown": merchant_breakdown,
+                        "currency_context": currency_context,
+                    })
+
+                except Exception as e:
+                    logger.warning(f"Error gathering context for issue: {e}")
+                    # Still add issue but with empty context
+                    issues_with_context.append({
+                        "issue": issue,
+                        "similar_evidence": [],
+                        "similarity_dist": {"very_high": 0, "high": 0, "medium": 0, "low": 0},
+                        "label_dist": {},
+                        "merchant_breakdown": [],
+                        "currency_context": [],
+                        "context_error": str(e),
+                    })
+
+            # Phase 2: Make single LLM call for the batch
+            try:
+                prompt = build_batched_review_prompt(
+                    issues_with_context=issues_with_context,
                     merchant_name=merchant_name,
                     merchant_receipt_count=merchant_receipt_count,
-                    currency_context=currency_context,
                     line_item_patterns=line_item_patterns,
                 )
 
-                # Call LLM for review using rate-limited invoker
-                from langchain_core.messages import HumanMessage
-
                 response = llm_invoker.invoke([HumanMessage(content=prompt)])
-                review_result = parse_llm_response(response.content.strip())
-
-                decisions[review_result["decision"]] += 1
-
-                reviewed_issues.append(
-                    {
-                        "image_id": image_id,
-                        "receipt_id": receipt_id,
-                        "issue": issue,
-                        "llm_review": review_result,
-                        "similar_word_count": len(similar_evidence),
-                    }
+                batch_reviews = parse_batched_llm_response(
+                    response.content.strip(),
+                    expected_count=len(issues_with_context),
                 )
 
-                if (idx + 1) % 10 == 0:
-                    logger.info(f"Reviewed {idx + 1}/{total_issues} issues")
+                # Phase 3: Store results
+                for i, review_result in enumerate(batch_reviews):
+                    meta = batch_metadata[i]
+                    ctx = issues_with_context[i]
+
+                    decisions[review_result["decision"]] += 1
+
+                    reviewed_issues.append({
+                        "image_id": meta["image_id"],
+                        "receipt_id": meta["receipt_id"],
+                        "issue": meta["issue"],
+                        "llm_review": review_result,
+                        "similar_word_count": len(ctx.get("similar_evidence", [])),
+                    })
+
+                logger.info(
+                    f"Completed batch: {len(batch_reviews)} issues reviewed "
+                    f"({len(reviewed_issues)}/{total_issues} total)"
+                )
 
             except OllamaRateLimitError:
-                # Rate limit errors should propagate up for Step Function retry
-                # First, save partial progress so we don't lose work
+                # Save partial progress before re-raising
                 logger.warning(
-                    f"Rate limit hit after {idx}/{total_issues} issues. "
+                    f"Rate limit hit after {len(reviewed_issues)}/{total_issues} issues. "
                     f"Saving partial progress."
                 )
                 if reviewed_issues:
-                    merchant_hash = merchant_name.lower().replace(" ", "_")[
-                        :30
-                    ]
-                    partial_s3_key = f"partial/{execution_id}/{merchant_hash}_{batch_index}.json"
+                    merchant_hash = merchant_name.lower().replace(" ", "_")[:30]
+                    partial_s3_key = (
+                        f"partial/{execution_id}/{merchant_hash}_{batch_index}.json"
+                    )
                     partial_data = {
                         "execution_id": execution_id,
                         "merchant_name": merchant_name,
@@ -1381,31 +1672,38 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                         "issues": reviewed_issues,
                         "rate_limited": True,
                     }
-                    upload_json_to_s3(
-                        batch_bucket, partial_s3_key, partial_data
-                    )
+                    upload_json_to_s3(batch_bucket, partial_s3_key, partial_data)
                     logger.info(f"Saved partial progress to {partial_s3_key}")
                 raise  # Re-raise for Step Function retry
 
             except Exception as e:
-                logger.warning(f"Error reviewing issue {idx}: {e}")
-                reviewed_issues.append(
-                    {
-                        "image_id": image_id,
-                        "receipt_id": receipt_id,
-                        "issue": issue,
+                # If batch fails, mark all issues in batch as NEEDS_REVIEW
+                logger.warning(
+                    f"Batch LLM call failed: {e}. Marking {len(batch_metadata)} "
+                    f"issues as NEEDS_REVIEW."
+                )
+                for i, meta in enumerate(batch_metadata):
+                    ctx = issues_with_context[i] if i < len(issues_with_context) else {}
+                    decisions["NEEDS_REVIEW"] += 1
+                    reviewed_issues.append({
+                        "image_id": meta["image_id"],
+                        "receipt_id": meta["receipt_id"],
+                        "issue": meta["issue"],
                         "llm_review": {
                             "decision": "NEEDS_REVIEW",
-                            "reasoning": f"LLM review failed: {e}",
+                            "reasoning": f"Batch LLM call failed: {e}",
                             "suggested_label": None,
                             "confidence": "low",
                         },
+                        "similar_word_count": len(ctx.get("similar_evidence", [])),
                         "error": str(e),
-                    }
-                )
-                decisions["NEEDS_REVIEW"] += 1
+                    })
 
-        logger.info(f"Reviewed {total_issues} issues: {dict(decisions)}")
+        logger.info(
+            f"Reviewed {total_issues} issues in "
+            f"{(total_issues + issues_per_llm_call - 1) // issues_per_llm_call} "
+            f"LLM calls: {dict(decisions)}"
+        )
 
         # 6. Upload reviewed results to S3
         merchant_hash = merchant_name.lower().replace(" ", "_")[:30]
