@@ -201,7 +201,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # DynamoDB access policy
+        # DynamoDB access policy (read + write for label updates)
         RolePolicy(
             f"{name}-lambda-dynamo-policy",
             role=lambda_role.id,
@@ -213,11 +213,17 @@ class LabelEvaluatorStepFunction(ComponentResource):
                             {
                                 "Effect": "Allow",
                                 "Action": [
+                                    # Read operations
                                     "dynamodb:DescribeTable",
                                     "dynamodb:GetItem",
                                     "dynamodb:Query",
                                     "dynamodb:Scan",
                                     "dynamodb:BatchGetItem",
+                                    # Write operations (for applying LLM decisions)
+                                    "dynamodb:PutItem",
+                                    "dynamodb:UpdateItem",
+                                    "dynamodb:DeleteItem",
+                                    "dynamodb:BatchWriteItem",
                                 ],
                                 "Resource": [
                                     args[0],
