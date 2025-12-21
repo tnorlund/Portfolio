@@ -483,6 +483,92 @@ class LabelEvaluatorStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # collect_issues Lambda (gather issues for batched LLM review)
+        collect_issues_lambda = Function(
+            f"{name}-collect-issues",
+            name=f"{name}-collect-issues",
+            role=lambda_role.arn,
+            runtime="python3.12",
+            architectures=["arm64"],
+            handler="collect_issues.handler",
+            code=AssetArchive(
+                {
+                    "collect_issues.py": FileAsset(
+                        os.path.join(HANDLERS_DIR, "collect_issues.py")
+                    ),
+                }
+            ),
+            timeout=120,
+            memory_size=512,
+            tags={"environment": stack},
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "BATCH_BUCKET": self.batch_bucket.bucket,
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # batch_issues Lambda (split issues into parallel batches for LLM review)
+        batch_issues_lambda = Function(
+            f"{name}-batch-issues",
+            name=f"{name}-batch-issues",
+            role=lambda_role.arn,
+            runtime="python3.12",
+            architectures=["arm64"],
+            handler="batch_issues.handler",
+            code=AssetArchive(
+                {
+                    "batch_issues.py": FileAsset(
+                        os.path.join(HANDLERS_DIR, "batch_issues.py")
+                    ),
+                }
+            ),
+            timeout=120,
+            memory_size=512,
+            tags={"environment": stack},
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "BATCH_BUCKET": self.batch_bucket.bucket,
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # discover_patterns Lambda (LLM-based line item pattern discovery)
+        discover_patterns_lambda = Function(
+            f"{name}-discover-patterns",
+            name=f"{name}-discover-patterns",
+            role=lambda_role.arn,
+            runtime="python3.12",
+            architectures=["arm64"],
+            handler="discover_patterns.handler",
+            code=AssetArchive(
+                {
+                    "discover_patterns.py": FileAsset(
+                        os.path.join(HANDLERS_DIR, "discover_patterns.py")
+                    ),
+                }
+            ),
+            timeout=180,  # 3 minutes for LLM call
+            memory_size=512,
+            layers=[dynamo_layer.arn] if dynamo_layer else [],
+            tags={"environment": stack},
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                    "BATCH_BUCKET": self.batch_bucket.bucket,
+                    "OLLAMA_API_KEY": ollama_api_key,
+                    "OLLAMA_BASE_URL": "https://ollama.com",
+                    "OLLAMA_MODEL": "gpt-oss:20b-cloud",
+                }
+            ),
+            opts=ResourceOptions(
+                parent=self,
+                ignore_changes=["layers"],
+            ),
+        )
+
         # ============================================================
         # Container Lambda: evaluate_labels
         # ============================================================
@@ -586,6 +672,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 llm_review_lambda.arn,
                 aggregate_results_lambda.arn,
                 final_aggregate_lambda.arn,
+                collect_issues_lambda.arn,
+                batch_issues_lambda.arn,
+                discover_patterns_lambda.arn,
             ).apply(
                 lambda arns: json.dumps(
                     {
@@ -667,6 +756,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 llm_review_lambda.arn,
                 aggregate_results_lambda.arn,
                 final_aggregate_lambda.arn,
+                collect_issues_lambda.arn,
+                batch_issues_lambda.arn,
+                discover_patterns_lambda.arn,
                 self.batch_bucket.bucket,
             ).apply(
                 lambda args: self._create_step_function_definition(
@@ -678,7 +770,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     llm_review_arn=args[5],
                     aggregate_results_arn=args[6],
                     final_aggregate_arn=args[7],
-                    batch_bucket=args[8],
+                    collect_issues_arn=args[8],
+                    batch_issues_arn=args[9],
+                    discover_patterns_arn=args[10],
+                    batch_bucket=args[11],
                     max_concurrency=self.max_concurrency,
                     batch_size=self.batch_size,
                 )
@@ -703,6 +798,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "llm_review_lambda_arn": llm_review_lambda.arn,
                 "aggregate_results_lambda_arn": aggregate_results_lambda.arn,
                 "final_aggregate_lambda_arn": final_aggregate_lambda.arn,
+                "collect_issues_lambda_arn": collect_issues_lambda.arn,
+                "batch_issues_lambda_arn": batch_issues_lambda.arn,
+                "discover_patterns_lambda_arn": discover_patterns_lambda.arn,
             }
         )
 
@@ -716,6 +814,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
         llm_review_arn: str,
         aggregate_results_arn: str,
         final_aggregate_arn: str,
+        collect_issues_arn: str,
+        batch_issues_arn: str,
+        discover_patterns_arn: str,
         batch_bucket: str,
         max_concurrency: int,
         batch_size: int,
@@ -757,9 +858,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "batch_size": batch_size,
                         "merchant_name.$": "$.merchant_name",
                         "skip_llm_review.$": "$.skip_llm_review",
+                        "dry_run.$": "$.dry_run",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
-                        "limit": 1000,
+                        "limit.$": "$.limit",
                         "original_input.$": "$",
                     },
                     "ResultPath": "$.init",
@@ -775,9 +877,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "batch_size": batch_size,
                         "merchant_name": None,
                         "skip_llm_review.$": "$.skip_llm_review",
+                        "dry_run.$": "$.dry_run",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
-                        "limit": 1000,
+                        "limit.$": "$.limit",
                         "original_input.$": "$",
                     },
                     "ResultPath": "$.init",
@@ -857,6 +960,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "batch_bucket.$": "$.init.batch_bucket",
                         "batch_size.$": "$.init.batch_size",
                         "skip_llm_review.$": "$.init.skip_llm_review",
+                        "dry_run.$": "$.init.dry_run",
                         "max_training_receipts.$": "$.init.max_training_receipts",
                         "limit.$": "$.init.limit",
                     },
@@ -900,7 +1004,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     {
                                         "Variable": "$.receipts_data.total_receipts",
                                         "NumericGreaterThan": 0,
-                                        "Next": "ComputePatterns",
+                                        "Next": "DiscoverLineItemPatterns",
                                     }
                                 ],
                                 "Default": "NoReceiptsForMerchant",
@@ -915,7 +1019,32 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                 },
                                 "End": True,
                             },
-                            # Compute patterns for this merchant
+                            # Discover line item patterns for this merchant
+                            # (one-time, cached in S3)
+                            "DiscoverLineItemPatterns": {
+                                "Type": "Task",
+                                "Resource": discover_patterns_arn,
+                                "TimeoutSeconds": 180,
+                                "Parameters": {
+                                    "execution_id.$": "$.execution_id",
+                                    "batch_bucket.$": "$.batch_bucket",
+                                    "merchant_name.$": "$.merchant.merchant_name",
+                                },
+                                "ResultPath": "$.line_item_patterns",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": [
+                                            "States.TaskFailed",
+                                            "Lambda.ServiceException",
+                                        ],
+                                        "IntervalSeconds": 5,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                                "Next": "ComputePatterns",
+                            },
+                            # Compute spatial patterns for this merchant
                             "ComputePatterns": {
                                 "Type": "Task",
                                 "Resource": compute_patterns_arn,
@@ -955,6 +1084,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     "skip_llm_review.$": "$.skip_llm_review",
                                     "patterns_s3_key.$": (
                                         "$.patterns_result.patterns_s3_key"
+                                    ),
+                                    "line_item_patterns_s3_key.$": (
+                                        "$.line_item_patterns.patterns_s3_key"
                                     ),
                                 },
                                 "ItemProcessor": {
@@ -1043,50 +1175,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                 "BackoffRate": 2.0,
                                                             }
                                                         ],
-                                                        "Next": "CheckSkipLLM",
-                                                    },
-                                                    "CheckSkipLLM": {
-                                                        "Type": "Choice",
-                                                        "Choices": [
-                                                            {
-                                                                "Variable": (
-                                                                    "$.skip_llm_review"
-                                                                ),
-                                                                "BooleanEquals": False,
-                                                                "Next": "LLMReview",
-                                                            }
-                                                        ],
-                                                        "Default": "ReturnResult",
-                                                    },
-                                                    "LLMReview": {
-                                                        "Type": "Task",
-                                                        "Resource": llm_review_arn,
-                                                        "TimeoutSeconds": 900,
-                                                        "Parameters": {
-                                                            "results_s3_key.$": (
-                                                                "$.eval_result"
-                                                                ".results_s3_key"
-                                                            ),
-                                                            "execution_id.$": (
-                                                                "$.execution_id"
-                                                            ),
-                                                            "batch_bucket.$": (
-                                                                "$.batch_bucket"
-                                                            ),
-                                                        },
-                                                        "ResultPath": "$.llm_result",
-                                                        "Retry": [
-                                                            {
-                                                                "ErrorEquals": [
-                                                                    "States.TaskFailed"
-                                                                ],
-                                                                "IntervalSeconds": 5,
-                                                                "MaxAttempts": 2,
-                                                                "BackoffRate": 2.0,
-                                                            }
-                                                        ],
                                                         "Next": "ReturnResult",
                                                     },
+                                                    # LLM review happens at merchant
+                                                    # level (batched) not per-receipt
                                                     "ReturnResult": {
                                                         "Type": "Pass",
                                                         "Parameters": {
@@ -1119,6 +1211,185 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     },
                                 },
                                 "ResultPath": "$.batch_results",
+                                "Next": "CheckSkipLLMBatch",
+                            },
+                            # Check if LLM review is enabled
+                            "CheckSkipLLMBatch": {
+                                "Type": "Choice",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.skip_llm_review",
+                                        "BooleanEquals": False,
+                                        "Next": "CollectIssues",
+                                    }
+                                ],
+                                "Default": "AggregateMerchantResults",
+                            },
+                            # Collect all issues for this merchant
+                            "CollectIssues": {
+                                "Type": "Task",
+                                "Resource": collect_issues_arn,
+                                "TimeoutSeconds": 120,
+                                "Parameters": {
+                                    "execution_id.$": "$.execution_id",
+                                    "batch_bucket.$": "$.batch_bucket",
+                                    "merchant_name.$": (
+                                        "$.merchant.merchant_name"
+                                    ),
+                                    "process_results.$": "$.batch_results",
+                                },
+                                "ResultPath": "$.collected_issues",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": [
+                                            "States.TaskFailed",
+                                            "Lambda.ServiceException",
+                                        ],
+                                        "IntervalSeconds": 2,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                                "Next": "CheckHasIssues",
+                            },
+                            # Skip LLM if no issues to review
+                            "CheckHasIssues": {
+                                "Type": "Choice",
+                                "Choices": [
+                                    {
+                                        "Variable": (
+                                            "$.collected_issues.total_issues"
+                                        ),
+                                        "NumericGreaterThan": 0,
+                                        "Next": "BatchIssues",
+                                    }
+                                ],
+                                "Default": "AggregateMerchantResults",
+                            },
+                            # Split issues into parallel batches
+                            "BatchIssues": {
+                                "Type": "Task",
+                                "Resource": batch_issues_arn,
+                                "TimeoutSeconds": 120,
+                                "Parameters": {
+                                    "execution_id.$": "$.execution_id",
+                                    "batch_bucket.$": "$.batch_bucket",
+                                    "merchant_name.$": (
+                                        "$.merchant.merchant_name"
+                                    ),
+                                    "merchant_receipt_count.$": (
+                                        "$.receipts_data.total_receipts"
+                                    ),
+                                    "issues_s3_key.$": (
+                                        "$.collected_issues.issues_s3_key"
+                                    ),
+                                    "batch_size": 50,
+                                    "dry_run.$": "$.dry_run",
+                                },
+                                "ResultPath": "$.batches_data",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": [
+                                            "States.TaskFailed",
+                                            "Lambda.ServiceException",
+                                        ],
+                                        "IntervalSeconds": 2,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                                "Next": "CheckHasBatches",
+                            },
+                            # Skip if no batches (edge case)
+                            "CheckHasBatches": {
+                                "Type": "Choice",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.batches_data.batch_count",
+                                        "NumericGreaterThan": 0,
+                                        "Next": "ProcessLLMBatches",
+                                    }
+                                ],
+                                "Default": "AggregateMerchantResults",
+                            },
+                            # Process LLM review batches in parallel
+                            "ProcessLLMBatches": {
+                                "Type": "Map",
+                                "ItemsPath": "$.batches_data.batches",
+                                "MaxConcurrency": 2,  # Limit concurrency for rate limits
+                                "Parameters": {
+                                    "batch.$": "$$.Map.Item.Value",
+                                    "execution_id.$": "$.execution_id",
+                                    "batch_bucket.$": "$.batch_bucket",
+                                    "merchant_name.$": (
+                                        "$.merchant.merchant_name"
+                                    ),
+                                    "merchant_receipt_count.$": (
+                                        "$.receipts_data.total_receipts"
+                                    ),
+                                    "dry_run.$": "$.dry_run",
+                                    "line_item_patterns_s3_key.$": (
+                                        "$.line_item_patterns.patterns_s3_key"
+                                    ),
+                                },
+                                "ItemProcessor": {
+                                    "ProcessorConfig": {"Mode": "INLINE"},
+                                    "StartAt": "LLMReviewBatch",
+                                    "States": {
+                                        "LLMReviewBatch": {
+                                            "Type": "Task",
+                                            "Resource": llm_review_arn,
+                                            "TimeoutSeconds": 900,
+                                            "Parameters": {
+                                                "execution_id.$": (
+                                                    "$.execution_id"
+                                                ),
+                                                "batch_bucket.$": (
+                                                    "$.batch_bucket"
+                                                ),
+                                                "merchant_name.$": (
+                                                    "$.merchant_name"
+                                                ),
+                                                "merchant_receipt_count.$": (
+                                                    "$.merchant_receipt_count"
+                                                ),
+                                                "batch_s3_key.$": (
+                                                    "$.batch.batch_s3_key"
+                                                ),
+                                                "batch_index.$": (
+                                                    "$.batch.batch_index"
+                                                ),
+                                                "dry_run.$": "$.dry_run",
+                                                "line_item_patterns_s3_key.$": (
+                                                    "$.line_item_patterns_s3_key"
+                                                ),
+                                            },
+                                            "Retry": [
+                                                # Rate limit errors - longer delay
+                                                {
+                                                    "ErrorEquals": [
+                                                        "OllamaRateLimitError"
+                                                    ],
+                                                    "IntervalSeconds": 30,
+                                                    "MaxAttempts": 5,
+                                                    "BackoffRate": 1.5,
+                                                },
+                                                # Standard errors
+                                                {
+                                                    "ErrorEquals": [
+                                                        "States.TaskFailed",
+                                                        "Lambda.ServiceException",
+                                                    ],
+                                                    "IntervalSeconds": 5,
+                                                    "MaxAttempts": 2,
+                                                    "BackoffRate": 2.0,
+                                                },
+                                            ],
+                                            "End": True,
+                                        },
+                                    },
+                                },
+                                "ResultPath": "$.llm_review_results",
                                 "Next": "AggregateMerchantResults",
                             },
                             # Aggregate results for this merchant

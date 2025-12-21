@@ -328,3 +328,194 @@ class PatternsFile(TypedDict, total=False):
 
     merchant_name: str
     patterns: dict | None  # MerchantPatterns serialized
+
+
+# =============================================================================
+# LLM Review Types - Similar Word Evidence
+# =============================================================================
+
+
+class LabelValidation(TypedDict):
+    """A single label validation record."""
+
+    label: str
+    reasoning: str | None
+    proposed_by: str | None
+    timestamp: str  # ISO format
+
+
+class SimilarWordEvidence(TypedDict):
+    """Rich evidence for a semantically similar word from ChromaDB."""
+
+    # Core identification
+    word_text: str
+    similarity_score: float
+    chroma_id: str
+
+    # Position context
+    position_x: float  # Normalized 0-1
+    position_y: float  # Normalized 0-1
+    position_description: str  # "top-left", "middle-center", etc.
+
+    # Neighbor context (from embedding)
+    left_neighbor: str  # Word to the left or "<EDGE>"
+    right_neighbor: str  # Word to the right or "<EDGE>"
+
+    # Current label info
+    current_label: str | None
+    label_status: str  # "validated", "auto_suggested", "unvalidated"
+
+    # Validation history with reasoning (fetched from DynamoDB)
+    validated_as: list[LabelValidation]
+    invalidated_as: list[LabelValidation]
+
+    # Merchant context
+    merchant_name: str
+    is_same_merchant: bool
+
+
+class LabelDistributionStats(TypedDict):
+    """Statistics for a label across similar words."""
+
+    count: int
+    valid_count: int
+    invalid_count: int
+    example_words: list[str]
+
+
+class SimilarityDistribution(TypedDict):
+    """Distribution of similar words by similarity score."""
+
+    very_high: int  # >= 0.9
+    high: int  # 0.7 - 0.9
+    medium: int  # 0.5 - 0.7
+    low: int  # < 0.5
+
+
+class MerchantBreakdown(TypedDict):
+    """Label counts broken down by merchant."""
+
+    merchant_name: str
+    is_same_merchant: bool
+    labels: dict[str, int]  # {label: count}
+
+
+class LLMReviewContext(TypedDict):
+    """Complete context for LLM to review a flagged issue."""
+
+    # The flagged issue
+    issue_type: str
+    word_text: str
+    word_id: int
+    line_id: int
+    current_label: str | None
+    evaluator_reasoning: str
+
+    # Local context (this receipt)
+    receipt_text_with_target: str  # Full receipt, target in [brackets]
+    same_line_text: str  # Just the line containing the word
+    same_line_labels: dict[str, str]  # {word: label} on same line
+    position_description: (
+        str  # "top", "middle", "bottom" + "left", "center", "right"
+    )
+    text_pattern: str | None  # "5-digit number", "currency", "date-like", etc.
+
+    # Semantic evidence (from ChromaDB)
+    similar_words: list[SimilarWordEvidence]
+    similarity_distribution: SimilarityDistribution
+    label_distribution: dict[str, LabelDistributionStats]
+    merchant_breakdown: list[MerchantBreakdown]
+
+    # Merchant context
+    merchant_name: str
+    merchant_receipt_count: int
+    is_sparse_data: bool  # < 10 receipts
+
+
+class LLMDecision(TypedDict):
+    """Decision from LLM review."""
+
+    decision: str  # "VALID", "INVALID", "NEEDS_REVIEW"
+    reasoning: str
+    suggested_label: str | None
+    confidence: str  # "low", "medium", "high"
+
+
+class ReviewedIssue(TypedDict):
+    """An issue after LLM review."""
+
+    # Original issue fields
+    type: str
+    word_text: str
+    word_id: NotRequired[int]
+    line_id: NotRequired[int]
+    current_label: str | None
+    suggested_status: str
+    suggested_label: str | None
+    reasoning: str
+
+    # LLM review result
+    llm_review: LLMDecision
+
+
+# =============================================================================
+# Batched LLM Review Types
+# =============================================================================
+
+
+class CollectedIssue(TypedDict):
+    """Issue collected from a receipt for batch LLM review."""
+
+    # Receipt identification
+    image_id: str
+    receipt_id: int
+    results_s3_key: str
+
+    # Issue details
+    issue: IssueDetail
+
+    # Receipt context (for building prompt)
+    receipt_text: NotRequired[str]
+    same_line_text: NotRequired[str]
+    same_line_labels: NotRequired[dict[str, str]]
+
+
+class CollectIssuesInput(TypedDict):
+    """Input for collect_issues Lambda."""
+
+    execution_id: str
+    batch_bucket: str
+    merchant_name: str
+    process_results: list  # Nested batch results from ProcessBatches
+
+
+class CollectIssuesOutput(TypedDict):
+    """Output from collect_issues Lambda."""
+
+    execution_id: str
+    merchant_name: str
+    total_issues: int
+    issues_s3_key: str  # S3 key for collected issues JSON
+
+
+class LLMReviewBatchInput(TypedDict):
+    """Input for batched LLM review Lambda."""
+
+    execution_id: str
+    batch_bucket: str
+    merchant_name: str
+    merchant_receipt_count: int
+    issues_s3_key: str  # From CollectIssuesOutput
+
+
+class LLMReviewBatchOutput(TypedDict):
+    """Output from batched LLM review Lambda."""
+
+    status: str  # "completed", "error", "skipped"
+    execution_id: str
+    merchant_name: str
+    total_issues: int
+    issues_reviewed: int
+    decisions: dict[str, int]  # {"VALID": 5, "INVALID": 3, "NEEDS_REVIEW": 2}
+    reviewed_issues_s3_key: NotRequired[str]
+    error: NotRequired[str]
