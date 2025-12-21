@@ -535,39 +535,46 @@ class LabelEvaluatorStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # discover_patterns Lambda (LLM-based line item pattern discovery)
-        discover_patterns_lambda = Function(
-            f"{name}-discover-patterns",
-            name=f"{name}-discover-patterns",
-            role=lambda_role.arn,
-            runtime="python3.12",
-            architectures=["arm64"],
-            handler="discover_patterns.handler",
-            code=AssetArchive(
-                {
-                    "discover_patterns.py": FileAsset(
-                        os.path.join(HANDLERS_DIR, "discover_patterns.py")
-                    ),
-                }
+        # ============================================================
+        # Container Lambda: discover_patterns (LLM-based pattern discovery)
+        # Uses httpx for Ollama API calls - requires container for dependencies
+        # ============================================================
+        discover_patterns_config = {
+            "role_arn": lambda_role.arn,
+            "timeout": 180,  # 3 minutes for LLM call
+            "memory_size": 512,
+            "tags": {"environment": stack},
+            "ephemeral_storage": 512,
+            "environment": {
+                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                "BATCH_BUCKET": self.batch_bucket.bucket,
+                "OLLAMA_API_KEY": ollama_api_key,
+                "OLLAMA_BASE_URL": "https://ollama.com",
+                "OLLAMA_MODEL": "gpt-oss:20b-cloud",
+            },
+        }
+
+        discover_patterns_docker_image = CodeBuildDockerImage(
+            f"{name}-discover-patterns-img",
+            dockerfile_path=(
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.discover_patterns"
             ),
-            timeout=180,  # 3 minutes for LLM call
-            memory_size=512,
-            layers=[dynamo_layer.arn] if dynamo_layer else [],
-            tags={"environment": stack},
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "DYNAMODB_TABLE_NAME": dynamodb_table_name,
-                    "BATCH_BUCKET": self.batch_bucket.bucket,
-                    "OLLAMA_API_KEY": ollama_api_key,
-                    "OLLAMA_BASE_URL": "https://ollama.com",
-                    "OLLAMA_MODEL": "gpt-oss:20b-cloud",
-                }
-            ),
-            opts=ResourceOptions(
-                parent=self,
-                ignore_changes=["layers"],
-            ),
+            build_context_path=".",
+            source_paths=[
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
+                "receipt_chroma",
+                "receipt_places",
+                "receipt_agent",
+            ],
+            lambda_function_name=f"{name}-discover-patterns",
+            lambda_config=discover_patterns_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
         )
+
+        discover_patterns_lambda = discover_patterns_docker_image.lambda_function
 
         # ============================================================
         # Container Lambda: evaluate_labels
