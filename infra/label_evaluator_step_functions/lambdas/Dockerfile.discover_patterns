@@ -31,8 +31,8 @@ RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
 # Stage 2: Copy Lambda-specific code (changes frequently)
 FROM dependencies
 
-# Copy the discover patterns handler from handlers directory
-COPY infra/label_evaluator_step_functions/handlers/discover_patterns.py ${LAMBDA_TASK_ROOT}/handler.py
+# Copy the discover patterns handler
+COPY infra/label_evaluator_step_functions/lambdas/discover_patterns.py ${LAMBDA_TASK_ROOT}/handler.py
 
 # Set the handler
 CMD ["handler.handler"]
