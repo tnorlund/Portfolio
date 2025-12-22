@@ -456,7 +456,7 @@ def review_all_issues(
             )
 
         # Combine issue with its review result
-        for item, result in zip(batch, batch_results):
+        for item, result in zip(batch, batch_results, strict=True):
             all_results.append(
                 {
                     "issue": item["issue"],

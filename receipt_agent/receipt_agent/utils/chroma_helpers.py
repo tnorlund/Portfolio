@@ -10,7 +10,8 @@ import logging
 import os
 import tempfile
 from collections import Counter, defaultdict
-from typing import Any, Callable, Optional, Tuple, TypedDict
+from collections.abc import Callable
+from typing import Any, Optional, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ def load_dual_chroma_from_s3(
     chromadb_bucket: str,
     base_chroma_path: Optional[str] = None,
     verify_integrity: bool = False,
-) -> Tuple[Any, Callable[[list[str]], list[list[float]]]]:
+) -> tuple[Any, Callable[[list[str]], list[list[float]]]]:
     """
     Load ChromaDB snapshots for both lines and words collections from S3.
 
@@ -296,6 +297,8 @@ def query_similar_words(
     )
 
     try:
+        logger.debug("Querying similar words for '%s' (%s)", word_text, word_chroma_id)
+
         # First, get the target word's embedding
         word_result = chroma_client.get(
             collection_name="words",

@@ -18,8 +18,15 @@ try:
     HAS_LANGSMITH = True
 except ImportError:
     HAS_LANGSMITH = False
-    traceable = lambda **kwargs: lambda f: f  # No-op decorator
     RunTree = None
+
+    def traceable(**_kwargs):
+        """No-op fallback when LangSmith is unavailable."""
+
+        def decorator(f):
+            return f
+
+        return decorator
 
 
 def _serialize_issue(issue: Any) -> dict:
