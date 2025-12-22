@@ -22,8 +22,18 @@ WHY: ChromaDB doesn't expose close(). ChromaClient.close() handles complex
       guarantee this happens at the right moment.
 
 Reference: ChromaDB issue #5868, ChromaClient class docstring.
+
+CHROMADB GLOBAL STATE RESET:
+============================
+
+ChromaDB's _system.stop() (called by PersistentClient.close()) corrupts global
+Rust bindings state. The reset_chromadb_state fixture reimports chromadb modules
+after each test to clear this corruption, allowing subsequent tests to create
+new clients successfully.
 """
 
+import gc
+import sys
 import tempfile
 
 import boto3
@@ -33,6 +43,27 @@ from receipt_chroma import ChromaClient
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ChromaDBCollection
+
+
+def reset_chromadb_modules():
+    """Reset ChromaDB global state by reimporting modules.
+
+    ChromaDB's _system.stop() (called when closing PersistentClient) corrupts
+    global Rust bindings state. This helper reimports chromadb modules to clear
+    the corrupted state.
+
+    Use this BETWEEN PersistentClient instances in the same test when you need
+    to test data persistence across client sessions.
+
+    See GitHub issue #5868 for context on ChromaDB cleanup challenges.
+    """
+    # Remove chromadb modules from sys.modules
+    chromadb_modules = [mod for mod in list(sys.modules.keys()) if "chroma" in mod.lower()]
+    for mod in chromadb_modules:
+        del sys.modules[mod]
+
+    # Force garbage collection to fully release resources
+    gc.collect()
 
 
 @pytest.fixture

@@ -318,13 +318,23 @@ class ChromaClient:
             if hasattr(self, "_collections"):
                 self._collections.clear()
 
-            # Clear the client reference
-            # NOTE: We intentionally do NOT call _system.stop() here because:
-            # 1. It corrupts global ChromaDB state (Rust bindings)
-            # 2. Multiple clients in the same process will fail after stop()
-            # 3. Memory cleanup is handled by gc.collect() and Lambda's 10GB limit
-            # See GitHub issue #5868 for context on ChromaDB cleanup challenges.
+            # For PersistentClient, call _system.stop() to flush SQLite before S3 upload.
+            # This is CRITICAL - without it, snapshots uploaded to S3 may be corrupted.
+            #
+            # WARNING: _system.stop() corrupts global ChromaDB Rust bindings state.
+            # Tests that create multiple PersistentClients must run in separate
+            # processes or use proper test isolation fixtures.
+            # See GitHub issue #5868 and conftest.py for test setup details.
             if self._client is not None:
+                if self.use_persistent_client and hasattr(self._client, "_system"):
+                    try:
+                        self._client._system.stop()  # pylint: disable=protected-access
+                        logger.info(
+                            "Called _system.stop() to close ChromaDB connections"
+                        )
+                    except Exception as e:  # pylint: disable=broad-exception-caught
+                        logger.warning("Error calling _system.stop(): %s", e)
+
                 self._client = None
 
             # Force garbage collection to ensure SQLite connections are closed
