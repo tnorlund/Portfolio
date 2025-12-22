@@ -20,6 +20,19 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import boto3
+from botocore.exceptions import ClientError
+
+# Module-level SQS client for reuse across Lambda warm starts
+_sqs_client = None
+
+
+def _get_sqs_client():
+    """Get or create SQS client (reused across warm starts)."""
+    global _sqs_client  # pylint: disable=global-statement
+    if _sqs_client is None:
+        _sqs_client = boto3.client("sqs")
+    return _sqs_client
+
 
 # Use receipt_chroma package for compaction logic
 from receipt_chroma import ChromaClient, LockManager
@@ -280,7 +293,7 @@ def fetch_additional_messages(
     if current_count >= max_messages:
         return [], []
 
-    sqs = boto3.client("sqs")
+    sqs = _get_sqs_client()
     additional_records = []
     receipt_handles = []
     remaining = max_messages - current_count
@@ -297,7 +310,7 @@ def fetch_additional_messages(
                 WaitTimeSeconds=0,  # Don't wait, just grab what's available
                 MessageAttributeNames=["All"],
             )
-        except Exception as e:
+        except ClientError as e:
             logger.warning(
                 "Failed to fetch additional messages",
                 error=str(e),
@@ -350,7 +363,7 @@ def delete_messages_batch(
     if not receipt_handles:
         return []
 
-    sqs = boto3.client("sqs")
+    sqs = _get_sqs_client()
     failed_handles = []
 
     # SQS delete_message_batch allows max 10 entries
@@ -376,7 +389,7 @@ def delete_messages_batch(
                     error=failure.get("Message"),
                 )
 
-        except Exception as e:
+        except ClientError as e:
             logger.error(
                 "Batch delete failed",
                 error=str(e),
