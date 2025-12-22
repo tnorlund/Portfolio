@@ -167,7 +167,11 @@ class HybridLambdaDeployment(ComponentResource):
                 "memory_size": 4096,  # 4GB to handle large snapshots without OOM kills
                 # Increased ephemeral storage from 5GB to 10GB for large snapshot operations
                 "ephemeral_storage": 10240,  # 10GB for ChromaDB snapshots (largest seen: 552MB)
-                "reserved_concurrent_executions": 10,  # Prevent throttling
+                # Phase 1 optimization: Single concurrent execution eliminates
+                # race conditions where Lambda B could read stale snapshot
+                # before Lambda A writes the pointer. Also eliminates wasted
+                # invocations from lock contention.
+                "reserved_concurrent_executions": 1,
                 "description": (
                     "Enhanced ChromaDB compaction handler for stream and "
                     "delta message processing"
@@ -642,11 +646,15 @@ class HybridLambdaDeployment(ComponentResource):
         )
 
         # SQS queues to enhanced compaction handler
+        # Note: FIFO queues do NOT support maximum_batching_window_in_seconds
+        # (that parameter only works with standard queues).
+        # Phase 2 in-Lambda batching compensates by fetching additional messages
+        # within the handler after receiving the initial batch of 10.
         self.lines_event_source_mapping = aws.lambda_.EventSourceMapping(
             f"{name}-lines-event-source-mapping",
             event_source_arn=chromadb_queues.lines_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
-            batch_size=10,  # FIFO queues support batch size up to 10
+            batch_size=10,  # FIFO queues max batch size is 10
             function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(parent=self),
         )
@@ -655,7 +663,7 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-words-event-source-mapping",
             event_source_arn=chromadb_queues.words_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
-            batch_size=10,  # FIFO queues support batch size up to 10
+            batch_size=10,  # FIFO queues max batch size is 10
             function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(parent=self),
         )

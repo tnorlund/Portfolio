@@ -109,18 +109,17 @@ Self-hosted has flat costs regardless of query volume since queries run in-memor
 ```python
 # In Pulumi infrastructure
 lambda_function.reserved_concurrent_executions = 1
-
-# In SQS event source mapping
-event_source_mapping.maximum_batching_window_in_seconds = 30
 ```
 
 **Benefits:**
 - Eliminates race condition (no concurrent Lambdas)
 - Eliminates wasted invocations (no lock contention)
-- Better batching (accumulates messages during compaction)
 - FIFO ordering fully preserved
 
-**Throughput:** ~30 messages/min
+**Note:** `maximum_batching_window_in_seconds` does NOT work with FIFO queues
+(only standard queues support this parameter). Phase 2 compensates for this.
+
+**Throughput:** ~30 messages/min (limited by FIFO batch size of 10)
 
 ### Phase 2: In-Lambda Batching (If More Throughput Needed)
 
