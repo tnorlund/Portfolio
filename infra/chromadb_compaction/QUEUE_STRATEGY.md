@@ -141,9 +141,68 @@ Lambda Concurrency: 5-10
 | Scenario | FIFO (Current) | Standard (Proposed) |
 |----------|----------------|---------------------|
 | 10K updates | ~7 hours | ~10 minutes |
-| Cost per 10K | ~$20 | ~$0.40 |
+| Cost per 10K | ~$3.70 | ~$0.25 |
 | Messages/invocation | 10 | Up to 500 |
 | Recovery from failure | 10 min wait | Immediate retry |
+
+### Detailed Cost Breakdown (10,000 messages)
+
+Based on observed metrics:
+- **Lambda memory**: 10,240 MB (10.24 GB)
+- **Duration per FIFO invocation**: ~21 seconds
+- **Snapshot size**: ~600 MB (7 files)
+
+#### AWS Pricing (us-east-1, as of 2025-12)
+
+| Service | Metric | Price |
+|---------|--------|-------|
+| Lambda compute | GB-second | $0.0000166667 |
+| Lambda requests | per 1M | $0.20 |
+| SQS FIFO | per 1M requests | $0.50 |
+| SQS Standard | per 1M requests | $0.40 |
+| S3 PUT/COPY/POST | per 1K requests | $0.005 |
+| S3 GET/SELECT | per 1K requests | $0.0004 |
+
+#### FIFO Queue (Current)
+
+| Component | Calculation | Cost |
+|-----------|-------------|------|
+| **Lambda invocations** | 10K msgs ÷ 10 msgs/invocation = 1,000 invocations | |
+| Lambda compute | 10.24 GB × 21s × 1,000 = 215,040 GB-s | $3.58 |
+| Lambda requests | 1,000 × $0.20/1M | $0.0002 |
+| SQS requests | 30K (send+receive+delete) × $0.50/1M | $0.015 |
+| S3 PUTs | 1,000 × 7 files × $0.005/1K | $0.035 |
+| S3 GETs | 1,000 × 14 files (download+validate) × $0.0004/1K | $0.006 |
+| **Total** | | **$3.64** |
+
+#### Standard Queue (Proposed)
+
+| Component | Calculation | Cost |
+|-----------|-------------|------|
+| **Lambda invocations** | 10K msgs ÷ 500 msgs/invocation = 20 invocations | |
+| Lambda compute | 10.24 GB × 60s × 20 = 12,288 GB-s | $0.20 |
+| Lambda requests | 20 × $0.20/1M | $0.000004 |
+| SQS requests | 30K (send+receive+delete) × $0.40/1M | $0.012 |
+| S3 PUTs | 20 × 7 files × $0.005/1K | $0.0007 |
+| S3 GETs | 20 × 14 files × $0.0004/1K | $0.0001 |
+| **Total** | | **$0.21** |
+
+#### Cost Savings Analysis
+
+| Component | FIFO | Standard | Savings |
+|-----------|------|----------|---------|
+| Lambda compute | $3.58 | $0.20 | $3.38 (94%) |
+| Lambda requests | $0.0002 | ~$0 | negligible |
+| SQS requests | $0.015 | $0.012 | $0.003 (20%) |
+| S3 requests | $0.041 | $0.001 | $0.040 (98%) |
+| **Total** | **$3.64** | **$0.21** | **$3.43 (94%)** |
+
+**Key insight**: The 17x cost reduction comes almost entirely from **Lambda compute savings**.
+With FIFO, each 10-message batch incurs the full ~21s snapshot download/upload overhead.
+With Standard queues, 500 messages share that overhead, reducing invocations by 50x.
+
+> **Note**: S3 data transfer within the same region is free. The ~600 MB snapshot
+> downloads/uploads don't incur transfer costs, only request costs.
 
 ## Related Configuration
 
