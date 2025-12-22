@@ -108,10 +108,6 @@ def run_compute_only_traced(
     Returns:
         Evaluation result dict with issues found
     """
-    import asyncio
-
-    from receipt_agent.agents.label_evaluator.state import EvaluatorState
-
     # Log initial state
     logger.info(
         "Starting traced evaluation for %s#%s",
@@ -126,8 +122,9 @@ def run_compute_only_traced(
         config["metadata"] = {"execution_id": execution_id}
 
     # Run graph and capture all states
-    final_state = None
     step_states = []
+    # Accumulate state updates from streaming
+    accumulated_state: dict = {}
 
     try:
         # Stream through the graph to capture each step
@@ -137,8 +134,10 @@ def run_compute_only_traced(
             stream_mode="updates",
         ):
             step_states.append(step_output)
-            # The last state is the final one
+            # Each step_output is {node_name: node_output_dict}
             for node_name, node_output in step_output.items():
+                # Merge node output into accumulated state
+                accumulated_state.update(node_output)
                 logger.info(
                     "Step '%s' completed: %s",
                     node_name,
@@ -149,13 +148,9 @@ def run_compute_only_traced(
                     },
                 )
 
-        # Get final state from graph
-        # The stream updates the state, so we need to get the final result
-        final_state_dict = graph.invoke(initial_state, config=config)
-
-        # Build result
-        issues_found = final_state_dict.get("issues_found", [])
-        merchant_patterns = final_state_dict.get("merchant_patterns")
+        # Build result from accumulated state (no second graph execution needed)
+        issues_found = accumulated_state.get("issues_found", [])
+        merchant_patterns = accumulated_state.get("merchant_patterns")
 
         result = {
             "image_id": initial_state.image_id,
@@ -163,7 +158,7 @@ def run_compute_only_traced(
             "issues_found": len(issues_found),
             "issues": [_serialize_issue(issue) for issue in issues_found],
             "patterns": _serialize_patterns(merchant_patterns),
-            "error": final_state_dict.get("error"),
+            "error": accumulated_state.get("error"),
             "steps_completed": len(step_states),
         }
 

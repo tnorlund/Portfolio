@@ -453,8 +453,8 @@ def enrich_evidence_with_dynamo_reasoning(
                 evidence["chroma_id"]
             )
 
-            # Fetch labels from DynamoDB
-            labels = dynamo_client.list_receipt_word_labels_for_word(
+            # Fetch labels from DynamoDB (returns tuple: labels, pagination_key)
+            labels, _ = dynamo_client.list_receipt_word_labels_for_word(
                 image_id=image_id,
                 receipt_id=receipt_id,
                 line_id=line_id,

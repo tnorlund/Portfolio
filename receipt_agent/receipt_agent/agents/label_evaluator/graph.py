@@ -612,7 +612,7 @@ def create_label_evaluator_graph(
         review_results: list[ReviewResult] = []
         new_labels: list[ReceiptWordLabel] = []
 
-        for issue, result in zip(state.issues_found, llm_results):
+        for issue, result in zip(state.issues_found, llm_results, strict=True):
             # Validate suggested_label is from CORE_LABELS
             suggested_label = result.get("suggested_label")
             if suggested_label and suggested_label not in CORE_LABELS:
