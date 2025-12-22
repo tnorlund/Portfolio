@@ -469,3 +469,227 @@ def review_all_issues(
 
     logger.info("Completed LLM review of %d issues", len(all_results))
     return all_results
+
+
+# =============================================================================
+# Apply Decisions to DynamoDB
+# =============================================================================
+
+
+def apply_llm_decisions(
+    reviewed_issues: list[dict[str, Any]],
+    dynamo_client: Any,
+    execution_id: str,
+) -> dict[str, int]:
+    """
+    Apply LLM review decisions to DynamoDB.
+
+    For each reviewed issue:
+    - VALID: Confirm the current label, invalidate conflicting labels
+    - INVALID: Invalidate the current label, confirm/add suggested label
+    - NEEDS_REVIEW: No changes
+
+    Args:
+        reviewed_issues: List of reviewed issue dicts with llm_review results.
+            Each dict should have:
+            - image_id: str
+            - receipt_id: int
+            - issue: dict with line_id, word_id, current_label
+            - llm_review: dict with decision, reasoning, suggested_label, confidence
+        dynamo_client: DynamoClient instance
+        execution_id: Execution ID for audit trail
+
+    Returns:
+        Dict with counts of actions taken:
+        - labels_confirmed: Labels marked as VALID
+        - labels_invalidated: Labels marked as INVALID
+        - labels_created: New labels created
+        - conflicts_resolved: Conflicting labels invalidated
+        - skipped_needs_review: Issues left for human review
+        - errors: Number of errors encountered
+    """
+    from datetime import datetime, timezone
+
+    from receipt_dynamo import ReceiptWordLabel
+
+    stats = {
+        "labels_confirmed": 0,
+        "labels_invalidated": 0,
+        "labels_created": 0,
+        "conflicts_resolved": 0,
+        "skipped_needs_review": 0,
+        "errors": 0,
+    }
+
+    for item in reviewed_issues:
+        try:
+            image_id = item.get("image_id")
+            receipt_id = item.get("receipt_id")
+            issue = item.get("issue", {})
+            llm_review = item.get("llm_review", {})
+
+            line_id = issue.get("line_id")
+            word_id = issue.get("word_id")
+            current_label = issue.get("current_label")
+            decision = llm_review.get("decision")
+            reasoning = llm_review.get("reasoning", "")
+            suggested_label = llm_review.get("suggested_label")
+            confidence = llm_review.get("confidence", "medium")
+
+            if not all(
+                [image_id, receipt_id is not None, line_id, word_id, current_label]
+            ):
+                logger.warning("Missing required fields for issue: %s", item)
+                stats["errors"] += 1
+                continue
+
+            # Build audit reasoning
+            audit_reasoning = (
+                f"[label-evaluator {execution_id}] "
+                f"Decision: {decision} ({confidence}). {reasoning[:200]}"
+            )
+            timestamp = datetime.now(timezone.utc).isoformat()
+
+            if decision == "VALID":
+                # 1. Confirm the current label (update reasoning if desired)
+                # 2. Invalidate any conflicting labels on the same word
+
+                # Get all labels for this word (returns tuple: list, last_key)
+                all_labels, _ = dynamo_client.list_receipt_word_labels_for_word(
+                    image_id, receipt_id, line_id, word_id
+                )
+
+                for label in all_labels:
+                    if label.label == current_label:
+                        # This is the confirmed label - already VALID, count it
+                        stats["labels_confirmed"] += 1
+                    elif label.validation_status == "VALID":
+                        # Conflicting VALID label - invalidate it
+                        updated_label = ReceiptWordLabel(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            line_id=line_id,
+                            word_id=word_id,
+                            label=label.label,
+                            reasoning=(
+                                f"Invalidated: {current_label} confirmed. "
+                                f"{audit_reasoning}"
+                            ),
+                            timestamp_added=label.timestamp_added,
+                            validation_status="INVALID",
+                            label_proposed_by=label.label_proposed_by,
+                            label_consolidated_from=label.label_consolidated_from,
+                        )
+                        dynamo_client.update_receipt_word_label(updated_label)
+                        stats["labels_invalidated"] += 1
+                        stats["conflicts_resolved"] += 1
+                        logger.info(
+                            "Invalidated conflicting %s on %s:%s:%s:%s",
+                            label.label,
+                            image_id,
+                            receipt_id,
+                            line_id,
+                            word_id,
+                        )
+
+            elif decision == "INVALID":
+                # 1. Invalidate the current label
+                # 2. If suggested_label provided, confirm or create it
+
+                # Get all labels for this word (returns tuple: list, last_key)
+                all_labels, _ = dynamo_client.list_receipt_word_labels_for_word(
+                    image_id, receipt_id, line_id, word_id
+                )
+
+                # Find and invalidate the current label
+                for label in all_labels:
+                    if label.label == current_label:
+                        updated_label = ReceiptWordLabel(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            line_id=line_id,
+                            word_id=word_id,
+                            label=label.label,
+                            reasoning=audit_reasoning,
+                            timestamp_added=label.timestamp_added,
+                            validation_status="INVALID",
+                            label_proposed_by=label.label_proposed_by,
+                            label_consolidated_from=label.label_consolidated_from,
+                        )
+                        dynamo_client.update_receipt_word_label(updated_label)
+                        stats["labels_invalidated"] += 1
+                        logger.info(
+                            "Invalidated %s on %s:%s:%s:%s",
+                            current_label,
+                            image_id,
+                            receipt_id,
+                            line_id,
+                            word_id,
+                        )
+                        break
+
+                # Handle suggested label
+                if suggested_label:
+                    # Check if suggested label already exists
+                    existing_suggested = None
+                    for label in all_labels:
+                        if label.label == suggested_label:
+                            existing_suggested = label
+                            break
+
+                    if existing_suggested:
+                        # Confirm the existing suggested label
+                        if existing_suggested.validation_status != "VALID":
+                            updated_label = ReceiptWordLabel(
+                                image_id=image_id,
+                                receipt_id=receipt_id,
+                                line_id=line_id,
+                                word_id=word_id,
+                                label=suggested_label,
+                                reasoning=(
+                                    f"Confirmed as replacement. {audit_reasoning}"
+                                ),
+                                timestamp_added=existing_suggested.timestamp_added,
+                                validation_status="VALID",
+                                label_proposed_by=existing_suggested.label_proposed_by,
+                                label_consolidated_from=(
+                                    existing_suggested.label_consolidated_from
+                                ),
+                            )
+                            dynamo_client.update_receipt_word_label(updated_label)
+                            stats["labels_confirmed"] += 1
+                    else:
+                        # Create new label
+                        new_label = ReceiptWordLabel(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            line_id=line_id,
+                            word_id=word_id,
+                            label=suggested_label,
+                            reasoning=f"Added by LLM review. {audit_reasoning}",
+                            timestamp_added=timestamp,
+                            validation_status="VALID",
+                            label_proposed_by="label-evaluator-llm",
+                            label_consolidated_from=None,
+                        )
+                        dynamo_client.add_receipt_word_label(new_label)
+                        stats["labels_created"] += 1
+                        logger.info(
+                            "Created new %s on %s:%s:%s:%s",
+                            suggested_label,
+                            image_id,
+                            receipt_id,
+                            line_id,
+                            word_id,
+                        )
+
+            elif decision == "NEEDS_REVIEW":
+                # No changes - leave for human review
+                stats["skipped_needs_review"] += 1
+
+        except Exception as e:
+            logger.error("Error applying decision: %s", e)
+            stats["errors"] += 1
+
+    logger.info("Applied decisions: %s", stats)
+    return stats

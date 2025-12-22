@@ -102,6 +102,7 @@ from receipt_agent.agents.label_evaluator.helpers import (
     query_similar_validated_words,
 )
 from receipt_agent.agents.label_evaluator.llm_review import (
+    apply_llm_decisions,
     gather_evidence_for_issue,
     review_all_issues,
     review_issues_batch,
@@ -172,6 +173,7 @@ __all__ = [
     "is_currency_amount",
     "parse_currency_value",
     # LLM review functions
+    "apply_llm_decisions",
     "gather_evidence_for_issue",
     "review_all_issues",
     "review_issues_batch",
