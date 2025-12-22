@@ -52,23 +52,23 @@ def build_receipt_structure(
     """Build structured receipt data for LLM analysis."""
     from receipt_dynamo import DynamoClient
 
-    result = dynamo_client.get_receipt_metadatas_by_merchant(
+    result = dynamo_client.get_receipt_places_by_merchant(
         merchant_name, limit=limit
     )
-    receipt_metas = result[0] if result else []
+    receipt_places = result[0] if result else []
 
-    if not receipt_metas:
+    if not receipt_places:
         return []
 
     receipts_data = []
 
-    for meta in receipt_metas:
+    for place in receipt_places:
         try:
             words = dynamo_client.list_receipt_words_from_receipt(
-                meta.image_id, meta.receipt_id
+                place.image_id, place.receipt_id
             )
             labels_result = dynamo_client.list_receipt_word_labels_for_receipt(
-                meta.image_id, meta.receipt_id
+                place.image_id, place.receipt_id
             )
             labels = labels_result[0] if labels_result else []
         except Exception as e:
@@ -132,7 +132,7 @@ def build_receipt_structure(
         if receipt_lines:
             receipts_data.append(
                 {
-                    "receipt_id": f"{meta.image_id[:8]}_{meta.receipt_id}",
+                    "receipt_id": f"{place.image_id[:8]}_{place.receipt_id}",
                     "line_count": len(receipt_lines),
                     "lines": receipt_lines[:50],  # Limit lines per receipt
                 }
