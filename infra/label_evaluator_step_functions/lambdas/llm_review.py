@@ -952,8 +952,8 @@ SAVINGS: Amount saved
 
 PRODUCT_NAME: Name of product being purchased
 QUANTITY: Number of units purchased
-UNIT_PRICE: Price per unit
-LINE_TOTAL: Total for a line item
+UNIT_PRICE: Price per single unit (before multiplying by quantity). Example: "2 @ 3.99" → 3.99 is UNIT_PRICE
+LINE_TOTAL: Final amount for the line (UNIT_PRICE × QUANTITY). This is what gets summed to SUBTOTAL. Example: "2 @ 3.99 = 7.98" → 7.98 is LINE_TOTAL
 WEIGHT: Weight measurement for weighted items
 
 SUBTOTAL: Subtotal before tax
@@ -972,6 +972,42 @@ BARCODE: Barcode number
 
 OTHER: Miscellaneous text not fitting other categories
 """
+
+# Set of valid labels for validation (extracted from CORE_LABELS)
+CORE_LABELS_SET = {
+    "MERCHANT_NAME",
+    "STORE_NUMBER",
+    "STORE_HOURS",
+    "PHONE_NUMBER",
+    "WEBSITE",
+    "LOYALTY_ID",
+    "ADDRESS_LINE",
+    "DATE",
+    "TIME",
+    "PAYMENT_METHOD",
+    "CARD_LAST_4",
+    "COUPON",
+    "DISCOUNT",
+    "SAVINGS",
+    "PRODUCT_NAME",
+    "QUANTITY",
+    "UNIT_PRICE",
+    "LINE_TOTAL",
+    "WEIGHT",
+    "SUBTOTAL",
+    "TAX",
+    "TAX_RATE",
+    "GRAND_TOTAL",
+    "TENDER",
+    "CHANGE",
+    "CASH_BACK",
+    "REFUND",
+    "RECEIPT_NUMBER",
+    "CASHIER",
+    "REGISTER",
+    "BARCODE",
+    "OTHER",
+}
 
 
 def format_line_item_patterns(patterns: Optional[dict]) -> str:
@@ -1218,10 +1254,23 @@ def parse_llm_response(response_text: str) -> "LLMDecision":
         if confidence not in ("low", "medium", "high"):
             confidence = "medium"
 
+        # Validate suggested_label is in CORE_LABELS
+        suggested_label = result.get("suggested_label")
+        if suggested_label:
+            suggested_upper = suggested_label.upper()
+            if suggested_upper not in CORE_LABELS_SET:
+                logger.warning(
+                    "Rejecting invalid suggested_label '%s' (not in CORE_LABELS)",
+                    suggested_label,
+                )
+                suggested_label = None
+            else:
+                suggested_label = suggested_upper  # Normalize to uppercase
+
         return {
             "decision": decision,
             "reasoning": result.get("reasoning", "No reasoning provided"),
-            "suggested_label": result.get("suggested_label"),
+            "suggested_label": suggested_label,
             "confidence": confidence,
         }
     except json.JSONDecodeError:
@@ -1454,10 +1503,23 @@ def parse_batched_llm_response(
             if confidence not in ("low", "medium", "high"):
                 confidence = "medium"
 
+            # Validate suggested_label is in CORE_LABELS
+            suggested_label = review.get("suggested_label")
+            if suggested_label:
+                suggested_upper = suggested_label.upper()
+                if suggested_upper not in CORE_LABELS_SET:
+                    logger.warning(
+                        "Rejecting invalid suggested_label '%s' (not in CORE_LABELS)",
+                        suggested_label,
+                    )
+                    suggested_label = None
+                else:
+                    suggested_label = suggested_upper  # Normalize to uppercase
+
             reviews_by_index[idx] = {
                 "decision": decision,
                 "reasoning": review.get("reasoning", "No reasoning provided"),
-                "suggested_label": review.get("suggested_label"),
+                "suggested_label": suggested_label,
                 "confidence": confidence,
             }
 

@@ -556,7 +556,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "BATCH_BUCKET": self.batch_bucket.bucket,
                 "OLLAMA_API_KEY": ollama_api_key,
                 "OLLAMA_BASE_URL": "https://ollama.com",
-                "OLLAMA_MODEL": "gpt-oss:20b-cloud",
+                "OLLAMA_MODEL": "gpt-oss:120b-cloud",
             },
         }
 
@@ -639,7 +639,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
                 "RECEIPT_AGENT_OLLAMA_API_KEY": ollama_api_key,
                 "RECEIPT_AGENT_OLLAMA_BASE_URL": "https://ollama.com",
-                "RECEIPT_AGENT_OLLAMA_MODEL": "gpt-oss:20b-cloud",
+                "RECEIPT_AGENT_OLLAMA_MODEL": "gpt-oss:120b-cloud",
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
