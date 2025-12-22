@@ -248,14 +248,13 @@ class ChromaClient:
                     self.persist_directory,
                 )
             else:
-                # In-memory client for testing
-                self._client = chromadb.Client(
-                    Settings(
+                # In-memory client for testing - use EphemeralClient for ChromaDB 1.3.x+
+                # EphemeralClient doesn't require tenant validation
+                self._client = chromadb.EphemeralClient(
+                    settings=Settings(
                         anonymized_telemetry=False,
-                        allow_reset=True,  # Allow reset for in-memory clients
-                    ),
-                    tenant=DEFAULT_TENANT,
-                    database=DEFAULT_DATABASE,
+                        allow_reset=True,
+                    )
                 )
                 logger.debug("Created in-memory ChromaDB client")
 
@@ -319,20 +318,13 @@ class ChromaClient:
             if hasattr(self, "_collections"):
                 self._collections.clear()
 
-            # For PersistentClient, we need to close the underlying
-            # SQLite connections using _system.stop() as suggested by
-            # ChromaDB maintainer in issue #5868
+            # Clear the client reference
+            # NOTE: We intentionally do NOT call _system.stop() here because:
+            # 1. It corrupts global ChromaDB state (Rust bindings)
+            # 2. Multiple clients in the same process will fail after stop()
+            # 3. Memory cleanup is handled by gc.collect() and Lambda's 10GB limit
+            # See GitHub issue #5868 for context on ChromaDB cleanup challenges.
             if self._client is not None:
-                # Use _system.stop() to properly close all connections
-                # This is the official workaround from ChromaDB maintainers
-                if hasattr(self._client, "_system"):
-                    try:
-                        self._client._system.stop()  # pylint: disable=protected-access
-                        logger.info("Called _system.stop() to close ChromaDB connections")
-                    except Exception as e:  # pylint: disable=broad-exception-caught
-                        logger.warning("Error calling _system.stop(): %s", e)
-
-                # Clear the client reference
                 self._client = None
 
             # Force garbage collection to ensure SQLite connections are closed
