@@ -319,9 +319,9 @@ class ChromaClient:
                 if hasattr(self._client, "_system"):
                     try:
                         self._client._system.stop()  # pylint: disable=protected-access
-                        logger.debug("Called _system.stop() to close connections")
+                        logger.info("Called _system.stop() to close ChromaDB connections")
                     except Exception as e:  # pylint: disable=broad-exception-caught
-                        logger.debug("Error calling _system.stop(): %s", e)
+                        logger.warning("Error calling _system.stop(): %s", e)
 
                 # Clear the client reference
                 self._client = None
