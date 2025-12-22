@@ -160,11 +160,11 @@ class HybridLambdaDeployment(ComponentResource):
                 # - Snapshot operations (400-550MB) require more time
                 # - Evidence shows operations taking 300-516 seconds
                 "timeout": 900,  # 15 minutes to handle large snapshot operations
-                # Increased memory to 8192MB (8GB) based on production observations:
-                # - Snapshot operations with large ChromaDB collections need headroom
+                # Increased memory to 10240MB (10GB, Lambda max) due to OOM errors:
+                # - ChromaDB collection with ~70K embeddings uses ~8GB
+                # - Snapshot validation downloads and loads full collection
                 # - Phase 2 batching can process up to 500 messages per invocation
-                # - More memory enables faster in-memory operations
-                "memory_size": 8192,  # 8GB for large batch processing
+                "memory_size": 10240,  # 10GB (Lambda max) for large collections
                 # Increased ephemeral storage from 5GB to 10GB for large snapshot operations
                 "ephemeral_storage": 10240,  # 10GB for ChromaDB snapshots (largest seen: 552MB)
                 # Phase 1 optimization: Single concurrent execution eliminates

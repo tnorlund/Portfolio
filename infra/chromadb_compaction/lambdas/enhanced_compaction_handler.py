@@ -10,6 +10,7 @@ Business logic has been moved to receipt_chroma package for reusability and test
 """
 
 # pylint: disable=duplicate-code
+import gc
 import json
 import logging
 import os
@@ -604,6 +605,13 @@ def process_collection(
         # Cleanup temp directory
         shutil.rmtree(temp_dir, ignore_errors=True)
 
+        # Aggressive memory cleanup to prevent OOM on warm container reuse
+        # ChromaDB collections with 70K+ embeddings use ~8GB RAM
+        # Without explicit cleanup, warm starts can accumulate memory
+        gc.collect()
+        gc.collect()
+        gc.collect()
+
 
 def process_sqs_messages(
     records: List[Dict[str, Any]], logger: Any, metrics: Any = None
@@ -936,3 +944,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     finally:
         # Stop monitoring
         stop_compaction_lambda_monitoring()
+
+        # Final memory cleanup before warm container reuse
+        # This ensures ChromaDB data doesn't accumulate across invocations
+        gc.collect()
+        gc.collect()
+        gc.collect()
