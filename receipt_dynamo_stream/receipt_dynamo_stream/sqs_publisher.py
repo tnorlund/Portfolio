@@ -115,31 +115,11 @@ def send_batch_to_queue(  # pylint: disable=too-many-locals
         entries = []
 
         for j, (message_dict, _) in enumerate(batch):
-            entity_type = message_dict.get("entity_type", "UNKNOWN")
-            entity_data = cast(
-                dict[str, object], message_dict.get("entity_data", {})
-            )
-
-            if entity_type == "COMPACTION_RUN":
-                image_id = entity_data.get("image_id") or "unknown"
-                message_group_id = (
-                    f"COMPACTION_RUN:{image_id}:{collection.value}"
-                )
-            elif entity_type in {"RECEIPT_PLACE", "RECEIPT_WORD_LABEL"}:
-                image_id = entity_data.get("image_id") or "unknown"
-                message_group_id = (
-                    f"{entity_type}:{image_id}:{collection.value}"
-                )
-            else:
-                group_key = (
-                    entity_data.get("run_id")
-                    or entity_data.get("receipt_id")
-                    or entity_data.get("image_id")
-                    or "default"
-                )
-                message_group_id = (
-                    f"{entity_type}:{group_key}:{collection.value}"
-                )
+            # Single message group per collection for optimal batching.
+            # This allows Phase 2 batching in the compaction Lambda to fetch
+            # up to 500 messages per invocation instead of being limited
+            # by per-image message group locks in FIFO queues.
+            message_group_id = f"compaction:{collection.value}"
 
             entries.append(
                 {
