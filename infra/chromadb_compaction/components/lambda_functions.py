@@ -207,6 +207,9 @@ class HybridLambdaDeployment(ComponentResource):
                     # access via NAT instance. If timeouts occur, consider adding a
                     # CloudWatch Metrics Interface VPC Endpoint (~$7/month).
                     "ENABLE_METRICS": "true",
+                    # Phase 2 batching: max messages to process per compaction cycle
+                    # Higher = better throughput (amortizes snapshot overhead)
+                    "MAX_MESSAGES_PER_COMPACTION": "500",
                 },
                 "vpc_config": {
                     "subnet_ids": vpc_subnet_ids,

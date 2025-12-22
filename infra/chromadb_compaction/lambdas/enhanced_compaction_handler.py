@@ -251,7 +251,10 @@ def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
 
 
 # Phase 2: In-Lambda batching configuration
-MAX_MESSAGES_PER_COMPACTION = 100  # Maximum messages to process in one cycle
+# Configurable via environment variable for tuning without code deployment
+MAX_MESSAGES_PER_COMPACTION = int(
+    os.environ.get("MAX_MESSAGES_PER_COMPACTION", "500")
+)
 ADDITIONAL_FETCH_VISIBILITY_TIMEOUT = 900  # 15 minutes (matches Lambda timeout)
 
 
