@@ -311,31 +311,17 @@ class ChromaClient:
                 self._collections.clear()
 
             # For PersistentClient, we need to close the underlying
-            # SQLite connections
+            # SQLite connections using _system.stop() as suggested by
+            # ChromaDB maintainer in issue #5868
             if self._client is not None:
-                # Try to access the internal client if it exists
-                # ChromaDB doesn't expose close(), so we must access
-                # internal _client attribute (issue #5868)
-                if (
-                    hasattr(self._client, "_client")
-                    and self._client._client
-                    is not None  # pylint: disable=protected-access,no-member
-                ):
-                    # Try to close SQLite connections if accessible
-                    internal_client = (
-                        self._client._client
-                    )  # pylint: disable=protected-access,no-member
-                    if hasattr(internal_client, "close"):
-                        try:
-                            internal_client.close()
-                        except (
-                            Exception
-                        ) as e:  # pylint: disable=broad-exception-caught
-                            # Catch all exceptions during cleanup to ensure
-                            # we don't fail silently
-                            logger.debug(
-                                "Error closing internal client: %s", e
-                            )
+                # Use _system.stop() to properly close all connections
+                # This is the official workaround from ChromaDB maintainers
+                if hasattr(self._client, "_system"):
+                    try:
+                        self._client._system.stop()  # pylint: disable=protected-access
+                        logger.debug("Called _system.stop() to close connections")
+                    except Exception as e:  # pylint: disable=broad-exception-caught
+                        logger.debug("Error calling _system.stop(): %s", e)
 
                 # Clear the client reference
                 self._client = None
