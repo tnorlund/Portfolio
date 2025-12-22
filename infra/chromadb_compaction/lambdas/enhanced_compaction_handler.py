@@ -269,7 +269,7 @@ def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
 MAX_MESSAGES_PER_COMPACTION = int(
     os.environ.get("MAX_MESSAGES_PER_COMPACTION", "500")
 )
-ADDITIONAL_FETCH_VISIBILITY_TIMEOUT = 900  # 15 minutes (matches Lambda timeout)
+ADDITIONAL_FETCH_VISIBILITY_TIMEOUT = 120  # 2 minutes (matches Lambda timeout)
 
 
 def fetch_additional_messages(

@@ -155,11 +155,9 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-docker",
             lambda_config={
                 "role_arn": self.lambda_role.arn,
-                # Increased timeout from 300s to 900s (15 min) based on log analysis:
-                # - Multiple timeouts at 300s with operations still running
-                # - Snapshot operations (400-550MB) require more time
-                # - Evidence shows operations taking 300-516 seconds
-                "timeout": 900,  # 15 minutes to handle large snapshot operations
+                # Lambda typically completes in ~25s with 10 messages (FIFO limit).
+                # Set to 120s for headroom. Must match SQS visibility timeout.
+                "timeout": 120,  # 2 minutes - faster failure detection
                 # Increased memory to 10240MB (10GB, Lambda max) due to OOM errors:
                 # - ChromaDB collection with ~70K embeddings uses ~8GB
                 # - Snapshot validation downloads and loads full collection

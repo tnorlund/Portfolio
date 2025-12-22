@@ -85,10 +85,9 @@ class ChromaDBQueues(ComponentResource):
             fifo_queue=True,
             content_based_deduplication=True,
             message_retention_seconds=345600,
-            # Visibility timeout must be >= Lambda timeout (900s) per AWS requirements.
-            # AWS recommends 6x function timeout for retries, but we use 900s minimum
-            # since FIFO with concurrency=1 means no concurrent processing anyway.
-            visibility_timeout_seconds=900,
+            # Visibility timeout must be >= Lambda timeout per AWS requirements.
+            # Lambda typically completes in ~25s, timeout set to 120s for headroom.
+            visibility_timeout_seconds=120,
             receive_wait_time_seconds=20,
             redrive_policy=Output.all(self.lines_dlq.arn).apply(
                 lambda args: json.dumps(
@@ -113,10 +112,9 @@ class ChromaDBQueues(ComponentResource):
             fifo_queue=True,
             content_based_deduplication=True,
             message_retention_seconds=345600,
-            # Visibility timeout must be >= Lambda timeout (900s) per AWS requirements.
-            # AWS recommends 6x function timeout for retries, but we use 900s minimum
-            # since FIFO with concurrency=1 means no concurrent processing anyway.
-            visibility_timeout_seconds=900,
+            # Visibility timeout must be >= Lambda timeout per AWS requirements.
+            # Lambda typically completes in ~25s, timeout set to 120s for headroom.
+            visibility_timeout_seconds=120,
             receive_wait_time_seconds=20,
             redrive_policy=Output.all(self.words_dlq.arn).apply(
                 lambda args: json.dumps(
