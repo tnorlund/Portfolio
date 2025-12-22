@@ -332,7 +332,7 @@ def query_similar_words(
         evidence_list: list[SimilarWordEvidence] = []
         distances = results.get("distances", [[]])[0]
 
-        for metadata, distance in zip(metadatas[0], distances):
+        for metadata, distance in zip(metadatas[0], distances, strict=True):
             # Convert L2 distance to similarity score (0-1)
             similarity = max(0.0, 1.0 - (distance / 2.0))
 
@@ -468,23 +468,16 @@ def enrich_evidence_with_dynamo_reasoning(
             }
 
             for label in labels:
-                if label.validation_status == "VALID":
-                    if label.label in validated_map:
-                        validated_map[label.label]["reasoning"] = label.reasoning
-                        validated_map[label.label][
-                            "proposed_by"
-                        ] = label.label_proposed_by
-                        validated_map[label.label][
-                            "timestamp"
-                        ] = label.timestamp_added
-                elif label.validation_status == "INVALID":
-                    if label.label in invalidated_map:
-                        invalidated_map[label.label][
-                            "reasoning"
-                        ] = label.reasoning
-                        invalidated_map[label.label][
-                            "proposed_by"
-                        ] = label.label_proposed_by
+                if label.validation_status == "VALID" and label.label in validated_map:
+                    validated_map[label.label]["reasoning"] = label.reasoning
+                    validated_map[label.label]["proposed_by"] = label.label_proposed_by
+                    validated_map[label.label]["timestamp"] = label.timestamp_added
+                elif (
+                    label.validation_status == "INVALID"
+                    and label.label in invalidated_map
+                ):
+                    invalidated_map[label.label]["reasoning"] = label.reasoning
+                    invalidated_map[label.label]["proposed_by"] = label.label_proposed_by
 
         except Exception as e:
             logger.debug("Could not enrich evidence: %s", e)
