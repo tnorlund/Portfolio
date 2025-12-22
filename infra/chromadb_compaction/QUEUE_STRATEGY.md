@@ -22,7 +22,7 @@ FIFO queues were selected to prevent a race condition:
 Queue Type: FIFO
 MessageGroupId: "compaction:{collection}" (single group per collection)
 Batch Size: 10 (AWS maximum for FIFO)
-Visibility Timeout: 600 seconds (10 minutes)
+Visibility Timeout: 900 seconds (must be >= Lambda timeout)
 Lambda Concurrency: 1
 ```
 
@@ -210,9 +210,14 @@ With Standard queues, 500 messages share that overhead, reducing invocations by 
 
 - **Lambda Memory**: 10,240 MB (10GB) - increased due to OOM with 70K+ embeddings
 - **Lambda Timeout**: 900 seconds (15 minutes)
-- **Visibility Timeout**: 600 seconds (10 minutes) - reduced from 1200s for faster failure recovery
+- **Visibility Timeout**: 900 seconds (15 minutes) - must be >= Lambda timeout per AWS requirements
 - **Reserved Concurrency**: 1 - prevents race conditions on snapshot updates
 - **gc.collect()**: Added to handler for memory cleanup between warm starts
+
+> **AWS Requirement**: SQS visibility timeout must be >= Lambda function timeout.
+> AWS recommends 6x function timeout (5400s) for retry headroom, but with
+> FIFO queues and concurrency=1, 900s is sufficient since there's no
+> concurrent processing that could cause visibility conflicts.
 
 ### Files
 
