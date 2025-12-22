@@ -629,6 +629,12 @@ def process_sqs_messages(
 
         # Phase 2: Fetch additional messages if queue URL is available
         if queue_url:
+            logger.info(
+                "Phase 2: attempting to fetch additional messages",
+                queue_url=queue_url[-50:],  # Last 50 chars for brevity
+                current_count=len(records),
+                max_messages=MAX_MESSAGES_PER_COMPACTION,
+            )
             additional_records, manually_fetched_handles = (
                 fetch_additional_messages(
                     queue_url=queue_url,
@@ -651,6 +657,11 @@ def process_sqs_messages(
                         "CompactionAdditionalMessagesFetched",
                         len(additional_records),
                     )
+            else:
+                logger.info(
+                    "Phase 2: no additional messages available",
+                    initial_count=len(records),
+                )
 
     # Parse StreamMessage objects from SQS records
     try:
