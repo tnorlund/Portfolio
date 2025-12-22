@@ -20,7 +20,7 @@ from types import TracebackType
 from typing import Any, Dict, Generator, List, Optional, Protocol, Type
 
 import chromadb
-from chromadb.config import Settings
+from chromadb.config import DEFAULT_DATABASE, DEFAULT_TENANT, Settings
 from chromadb.errors import NotFoundError
 from chromadb.utils import embedding_functions
 
@@ -214,7 +214,11 @@ class ChromaClient:
                     except (ValueError, TypeError):
                         port = None
 
-                http_kwargs: Dict[str, Any] = {"host": host}
+                http_kwargs: Dict[str, Any] = {
+                    "host": host,
+                    "tenant": DEFAULT_TENANT,
+                    "database": DEFAULT_DATABASE,
+                }
                 if port is not None:
                     http_kwargs["port"] = port
 
@@ -234,7 +238,10 @@ class ChromaClient:
                     allow_reset=True,
                 )
                 self._client = chromadb.PersistentClient(
-                    path=self.persist_directory, settings=settings
+                    path=self.persist_directory,
+                    settings=settings,
+                    tenant=DEFAULT_TENANT,
+                    database=DEFAULT_DATABASE,
                 )
                 logger.debug(
                     "Created persistent ChromaDB client at: %s",
@@ -246,7 +253,9 @@ class ChromaClient:
                     Settings(
                         anonymized_telemetry=False,
                         allow_reset=True,  # Allow reset for in-memory clients
-                    )
+                    ),
+                    tenant=DEFAULT_TENANT,
+                    database=DEFAULT_DATABASE,
                 )
                 logger.debug("Created in-memory ChromaDB client")
 
