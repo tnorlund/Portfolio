@@ -209,6 +209,9 @@ class HybridLambdaDeployment(ComponentResource):
                     "ENABLE_METRICS": "true",
                     # Phase 2 batching: max messages to process per compaction cycle
                     # Higher = better throughput (amortizes snapshot overhead)
+                    # NOTE: With FIFO queues, actual batch size is limited to ~10 msgs
+                    # due to AWS message group locking. See QUEUE_STRATEGY.md for details
+                    # on FIFO limitations and alternative approaches.
                     "MAX_MESSAGES_PER_COMPACTION": "500",
                 },
                 "vpc_config": {
