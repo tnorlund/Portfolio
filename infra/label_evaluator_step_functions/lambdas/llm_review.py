@@ -800,8 +800,8 @@ def enrich_evidence_with_dynamo_reasoning(
             line_id = int(parts[5])
             word_id = int(parts[7])
 
-            # Fetch labels from DynamoDB
-            labels = dynamo_client.list_receipt_word_labels_for_word(
+            # Fetch labels from DynamoDB (returns tuple: labels, pagination_key)
+            labels, _ = dynamo_client.list_receipt_word_labels_for_word(
                 image_id=image_id,
                 receipt_id=receipt_id,
                 line_id=line_id,
@@ -2217,5 +2217,6 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             "total_issues": 0,
             "issues_reviewed": 0,
             "decisions": {},
+            "reviewed_issues_s3_key": None,
             "error": str(e),
         }
