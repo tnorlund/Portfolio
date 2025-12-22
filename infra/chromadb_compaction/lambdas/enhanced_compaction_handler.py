@@ -330,7 +330,9 @@ def process_collection(
 
         # Phase 2: Open ChromaDB client and apply updates
         with logger.operation_timer("in_memory_updates"):
-            client = ChromaClient(persist_directory=temp_dir, mode="write")
+            client = ChromaClient(
+                persist_directory=temp_dir, mode="write", metadata_only=True
+            )
 
             # Call receipt_chroma package for business logic
             result = process_collection_updates(
