@@ -82,8 +82,8 @@ def download_chromadb_snapshot(
         response = s3.get_object(Bucket=bucket, Key=pointer_key)
         timestamp = response["Body"].read().decode().strip()
         logger.info(f"Latest snapshot: {timestamp}")
-    except Exception as e:
-        logger.error(f"Failed to get pointer: {e}")
+    except Exception:
+        logger.exception("Failed to get pointer")
         raise
 
     prefix = f"{collection}/snapshot/timestamped/{timestamp}/"
@@ -227,8 +227,6 @@ def _group_words_into_ocr_lines(
     - bottom_y: min bottom_left Y (bottom of line)
     - min_x: leftmost X
     """
-    from collections import defaultdict
-
     lines_by_id: dict[int, list[dict]] = defaultdict(list)
     for w in words:
         lines_by_id[w.get("line_id", 0)].append(w)
@@ -657,6 +655,8 @@ def query_similar_words(
     )
 
     try:
+        logger.debug("Querying similar words for '%s' (%s)", word_text, word_chroma_id)
+
         # First, get the target word's embedding
         word_result = chroma_client.get(
             collection_name="words",
@@ -690,7 +690,7 @@ def query_similar_words(
         evidence_list: list["SimilarWordEvidence"] = []
         distances = results.get("distances", [[]])[0]
 
-        for metadata, distance in zip(metadatas[0], distances):
+        for metadata, distance in zip(metadatas[0], distances, strict=True):
             # Convert L2 distance to similarity score (0-1)
             similarity = max(0.0, 1.0 - (distance / 2.0))
 
@@ -716,10 +716,10 @@ def query_similar_words(
             invalid_labels_str = metadata.get("invalid_labels", "")
 
             valid_labels = [
-                l for l in valid_labels_str.split(",") if l.strip()
+                lbl for lbl in valid_labels_str.split(",") if lbl.strip()
             ]
             invalid_labels = [
-                l for l in invalid_labels_str.split(",") if l.strip()
+                lbl for lbl in invalid_labels_str.split(",") if lbl.strip()
             ]
 
             evidence: "SimilarWordEvidence" = {
@@ -1090,7 +1090,7 @@ def build_review_prompt(
     for m in merchant_breakdown[:5]:
         marker = " (SAME MERCHANT)" if m["is_same_merchant"] else ""
         labels_str = ", ".join(
-            f"{l}: {c}" for l, c in list(m["labels"].items())[:3]
+            f"{lbl}: {cnt}" for lbl, cnt in list(m["labels"].items())[:3]
         )
         merchant_lines.append(f"- {m['merchant_name']}{marker}: {labels_str}")
     merchant_summary = "\n".join(merchant_lines) or "No merchant data"
@@ -1224,7 +1224,7 @@ def parse_llm_response(response_text: str) -> "LLMDecision":
             "suggested_label": result.get("suggested_label"),
             "confidence": confidence,
         }
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError:
         return {
             "decision": "NEEDS_REVIEW",
             "reasoning": f"Failed to parse LLM response: {response_text[:200]}",
@@ -1272,7 +1272,6 @@ def build_batched_review_prompt(
         similar_evidence = item.get("similar_evidence", [])
         similarity_dist = item.get("similarity_dist", {})
         label_dist = item.get("label_dist", {})
-        merchant_breakdown = item.get("merchant_breakdown", [])
         currency_context = item.get("currency_context", [])
 
         word_text = issue.get("word_text", "")
@@ -1480,9 +1479,10 @@ def parse_batched_llm_response(
 
         return ordered_reviews
 
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse batched response: {e}")
-        logger.error(f"Response preview: {response_text[:500]}")
+    except json.JSONDecodeError:
+        logger.exception(
+            "Failed to parse batched response (preview: %s)", response_text[:500]
+        )
         return [fallback.copy() for _ in range(expected_count)]
 
 
@@ -1913,7 +1913,6 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
         similar_cache: dict[str, list["SimilarWordEvidence"]] = {}
 
         # Group issues by receipt
-        from collections import defaultdict
         issues_by_receipt: dict[str, list[dict]] = defaultdict(list)
         for collected in collected_issues:
             image_id = collected.get("image_id")
@@ -2075,16 +2074,11 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                         logger.info(f"Saved partial progress to {partial_s3_key}")
                     raise  # Re-raise for Step Function retry
 
-                except Exception as e:
+                except Exception:
                     # If LLM call fails, mark all issues in chunk as NEEDS_REVIEW
-                    import traceback
-                    tb_str = traceback.format_exc()
-                    logger.error(
-                        f"LLM call failed for receipt {receipt_key}: {e}\n"
-                        f"Traceback:\n{tb_str}"
-                    )
+                    logger.exception("LLM call failed for receipt %s", receipt_key)
                     logger.warning(
-                        f"Marking {len(chunk_metadata)} issues as NEEDS_REVIEW."
+                        "Marking %d issues as NEEDS_REVIEW.", len(chunk_metadata)
                     )
                     for i, meta in enumerate(chunk_metadata):
                         ctx = issues_with_context[i] if i < len(issues_with_context) else {}
