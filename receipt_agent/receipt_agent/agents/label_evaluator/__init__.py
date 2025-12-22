@@ -78,7 +78,9 @@ from receipt_agent.agents.label_evaluator.graph import (
     run_label_evaluator_sync,
 )
 from receipt_agent.agents.label_evaluator.helpers import (
+    CURRENCY_LABELS,
     SimilarWordResult,
+    assemble_receipt_text,
     assemble_visual_lines,
     build_review_context,
     build_word_chroma_id,
@@ -92,9 +94,24 @@ from receipt_agent.agents.label_evaluator.helpers import (
     check_unexpected_label_pair,
     compute_merchant_patterns,
     evaluate_word_contexts,
+    extract_receipt_currency_context,
     format_receipt_text,
     format_similar_words_for_prompt,
+    is_currency_amount,
+    parse_currency_value,
     query_similar_validated_words,
+)
+from receipt_agent.agents.label_evaluator.llm_review import (
+    gather_evidence_for_issue,
+    review_all_issues,
+    review_issues_batch,
+    review_issues_with_receipt_context,
+    review_single_issue,
+)
+from receipt_agent.agents.label_evaluator.traced_runner import (
+    create_traced_run_tree,
+    run_batch_traced,
+    run_compute_only_traced,
 )
 from receipt_agent.agents.label_evaluator.state import (
     ConstellationGeometry,
@@ -148,4 +165,20 @@ __all__ = [
     "build_word_chroma_id",
     "query_similar_validated_words",
     "format_similar_words_for_prompt",
+    # Receipt text assembly for LLM review
+    "CURRENCY_LABELS",
+    "assemble_receipt_text",
+    "extract_receipt_currency_context",
+    "is_currency_amount",
+    "parse_currency_value",
+    # LLM review functions
+    "gather_evidence_for_issue",
+    "review_all_issues",
+    "review_issues_batch",
+    "review_issues_with_receipt_context",
+    "review_single_issue",
+    # Traced runners for LangSmith visibility
+    "create_traced_run_tree",
+    "run_batch_traced",
+    "run_compute_only_traced",
 ]

@@ -47,6 +47,9 @@ from receipt_agent.agents.label_evaluator.helpers import (
     format_similar_words_for_prompt,
     query_similar_validated_words,
 )
+from receipt_agent.agents.label_evaluator.llm_review import (
+    review_all_issues,
+)
 from receipt_agent.agents.label_evaluator.state import (
     EvaluationIssue,
     EvaluatorState,
@@ -496,7 +499,6 @@ def create_label_evaluator_graph(
         # Skip LLM review if configured
         if state.skip_llm_review:
             logger.info("Skipping LLM review (skip_llm_review=True)")
-            # Use evaluator results directly
             skip_labels: list[ReceiptWordLabel] = []
             for issue in state.issues_found:
                 eval_label = _create_evaluation_label(issue, None)
@@ -515,155 +517,129 @@ def create_label_evaluator_graph(
             return {"review_results": [], "new_labels": fallback_labels}
 
         merchant_name = "Unknown"
+        merchant_receipt_count = 0
         if state.place:
             merchant_name = state.place.merchant_name or "Unknown"
+        if state.other_receipt_data:
+            merchant_receipt_count = len(state.other_receipt_data)
 
+        # Convert EvaluationIssue objects to dicts for the new module
+        issues_as_dicts = []
+        for issue in state.issues_found:
+            issues_as_dicts.append(
+                {
+                    "word_text": issue.word.text,
+                    "line_id": issue.word.line_id,
+                    "word_id": issue.word.word_id,
+                    "image_id": issue.word.image_id,
+                    "receipt_id": issue.word.receipt_id,
+                    "current_label": issue.current_label,
+                    "type": issue.issue_type,
+                    "reasoning": issue.reasoning,
+                    "suggested_label": issue.suggested_label,
+                    "suggested_status": issue.suggested_status,
+                }
+            )
+
+        # Convert words and labels to dicts for the new module
+        words_as_dicts = []
+        for word in state.words:
+            words_as_dicts.append(
+                {
+                    "text": word.text,
+                    "line_id": word.line_id,
+                    "word_id": word.word_id,
+                    "top_left": {"x": word.top_left.x, "y": word.top_left.y}
+                    if word.top_left
+                    else {},
+                    "bottom_left": {
+                        "x": word.bottom_left.x,
+                        "y": word.bottom_left.y,
+                    }
+                    if word.bottom_left
+                    else {},
+                    "bounding_box": {
+                        "x": word.top_left.x if word.top_left else 0.5,
+                        "y": word.top_left.y if word.top_left else 0.5,
+                    },
+                }
+            )
+
+        labels_as_dicts = []
+        for label in state.labels:
+            labels_as_dicts.append(
+                {
+                    "line_id": label.line_id,
+                    "word_id": label.word_id,
+                    "label": label.label,
+                    "validation_status": label.validation_status,
+                }
+            )
+
+        # Get line item patterns from merchant_patterns if available
+        line_item_patterns = None
+        if state.merchant_patterns:
+            line_item_patterns = {
+                "merchant": state.merchant_patterns.merchant_name,
+                "receipt_count": state.merchant_patterns.receipt_count,
+            }
+
+        # Call the new review_all_issues function
+        try:
+            llm_results = review_all_issues(
+                issues=issues_as_dicts,
+                receipt_words=words_as_dicts,
+                receipt_labels=labels_as_dicts,
+                merchant_name=merchant_name,
+                merchant_receipt_count=merchant_receipt_count,
+                llm=_llm,
+                chroma_client=_chroma_client,
+                dynamo_client=_dynamo_client,
+                line_item_patterns=line_item_patterns,
+                max_issues_per_call=10,
+                use_receipt_context=True,
+            )
+        except Exception as e:
+            logger.error("LLM review failed: %s", e, exc_info=True)
+            # Fall back to evaluator results
+            fallback_labels: list[ReceiptWordLabel] = []
+            for issue in state.issues_found:
+                eval_label = _create_evaluation_label(issue, None)
+                fallback_labels.append(eval_label)
+            return {"review_results": [], "new_labels": fallback_labels}
+
+        # Convert results back to ReviewResult objects
         review_results: list[ReviewResult] = []
         new_labels: list[ReceiptWordLabel] = []
 
-        for issue in state.issues_found:
-            try:
-                # Build context for this issue
-                review_ctx = build_review_context(
-                    issue, state.visual_lines, merchant_name
+        for issue, result in zip(state.issues_found, llm_results):
+            # Validate suggested_label is from CORE_LABELS
+            suggested_label = result.get("suggested_label")
+            if suggested_label and suggested_label not in CORE_LABELS:
+                logger.warning(
+                    "LLM suggested label '%s' not in CORE_LABELS, ignoring",
+                    suggested_label,
                 )
+                suggested_label = None
 
-                # Query ChromaDB for similar validated words (scoped to same
-                # merchant).
-                similar_words_text = (
-                    "ChromaDB not configured - no similar words available."
-                )
-                if _chroma_client:
-                    try:
-                        similar_words = query_similar_validated_words(
-                            word=issue.word,
-                            chroma_client=_chroma_client,
-                            n_results=10,
-                            min_similarity=0.6,
-                            merchant_name=merchant_name,
-                        )
-                        similar_words_text = format_similar_words_for_prompt(
-                            similar_words, max_examples=5
-                        )
-                        logger.debug(
-                            "Found %s similar words for '%s'",
-                            len(similar_words),
-                            issue.word.text,
-                        )
-                    except Exception as e:
-                        logger.warning("Error querying similar words: %s", e)
-                        similar_words_text = (
-                            f"Error querying similar words: {e}"
-                        )
+            review_result = ReviewResult(
+                issue=issue,
+                decision=result.get("decision", "NEEDS_REVIEW"),
+                reasoning=result.get("reasoning", "No reasoning provided"),
+                suggested_label=suggested_label,
+            )
+            review_results.append(review_result)
 
-                # Format label history
-                if review_ctx.label_history:
-                    history_text = "\n".join(
-                        f"- {h['label']} ({h['status']}) by {h['proposed_by']}"
-                        for h in review_ctx.label_history
-                    )
-                else:
-                    history_text = "No previous labels"
+            # Create label based on review result
+            label = _create_evaluation_label(issue, review_result)
+            new_labels.append(label)
 
-                # Format prompt
-                prompt = LLM_REVIEW_PROMPT.format(
-                    core_labels=_format_core_labels(),
-                    word_text=review_ctx.word_text,
-                    current_label=review_ctx.current_label or "None",
-                    issue_type=review_ctx.issue_type,
-                    evaluator_reasoning=review_ctx.evaluator_reasoning,
-                    receipt_text=review_ctx.receipt_text,
-                    visual_line_text=review_ctx.visual_line_text,
-                    visual_line_labels=review_ctx.visual_line_labels,
-                    similar_words=similar_words_text,
-                    label_history=history_text,
-                )
-
-                # Call LLM
-                response = _llm.invoke([HumanMessage(content=prompt)])
-                response_text = response.content.strip()
-
-                # Parse JSON response
-                try:
-                    # Handle potential markdown code blocks
-                    if response_text.startswith("```"):
-                        response_text = response_text.split("```")[1]
-                        if response_text.startswith("json"):
-                            response_text = response_text[4:]
-                        response_text = response_text.strip()
-
-                    result_json = json.loads(response_text)
-                    decision = result_json.get("decision", "NEEDS_REVIEW")
-                    reasoning = result_json.get(
-                        "reasoning", "No reasoning provided"
-                    )
-                    suggested_label = result_json.get("suggested_label")
-
-                    # Validate decision
-                    if decision not in ("VALID", "INVALID", "NEEDS_REVIEW"):
-                        decision = "NEEDS_REVIEW"
-
-                    # Validate suggested_label is from CORE_LABELS (or None)
-                    if suggested_label and suggested_label not in CORE_LABELS:
-                        logger.warning(
-                            "LLM suggested label '%s' not in CORE_LABELS, "
-                            "ignoring suggestion",
-                            suggested_label,
-                        )
-                        suggested_label = None
-
-                    review_result = ReviewResult(
-                        issue=issue,
-                        decision=decision,
-                        reasoning=reasoning,
-                        suggested_label=suggested_label,
-                    )
-
-                except json.JSONDecodeError as e:
-                    logger.warning("Failed to parse LLM response: %s", e)
-                    review_result = ReviewResult(
-                        issue=issue,
-                        decision="NEEDS_REVIEW",
-                        reasoning=(
-                            "LLM response parsing failed: "
-                            f"{response_text[:100]}"
-                        ),
-                        review_completed=False,
-                        review_error=str(e),
-                    )
-
-                review_results.append(review_result)
-
-                # Create label based on review result
-                label = _create_evaluation_label(issue, review_result)
-                new_labels.append(label)
-
-                logger.info(
-                    "Reviewed '%s': %s - %s...",
-                    issue.word.text,
-                    review_result.decision,
-                    reasoning[:50],
-                )
-
-            except Exception as e:
-                logger.error(
-                    "Error reviewing issue for '%s': %s",
-                    issue.word.text,
-                    e,
-                )
-                # Fall back to evaluator result
-                review_result = ReviewResult(
-                    issue=issue,
-                    decision=issue.suggested_status,
-                    reasoning=(
-                        f"LLM review failed: {e}. Using evaluator result."
-                    ),
-                    review_completed=False,
-                    review_error=str(e),
-                )
-                review_results.append(review_result)
-                label = _create_evaluation_label(issue, review_result)
-                new_labels.append(label)
+            logger.info(
+                "Reviewed '%s': %s - %s...",
+                issue.word.text,
+                review_result.decision,
+                result.get("reasoning", "")[:50],
+            )
 
         logger.info("LLM reviewed %s issues", len(review_results))
 
