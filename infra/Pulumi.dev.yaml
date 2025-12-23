@@ -38,4 +38,4 @@ config:
   docker-build:sync-mode: "false" # Async mode for faster pulumi up in dev
   docker-build:force-rebuild: "false"
   docker-build:debug-mode: "false"
-  portfolio:force-rebuild: "true"
+  portfolio:force-rebuild: "false"
