@@ -155,19 +155,21 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-docker",
             lambda_config={
                 "role_arn": self.lambda_role.arn,
-                # Increased timeout from 300s to 900s (15 min) based on log analysis:
-                # - Multiple timeouts at 300s with operations still running
-                # - Snapshot operations (400-550MB) require more time
-                # - Evidence shows operations taking 300-516 seconds
-                "timeout": 900,  # 15 minutes to handle large snapshot operations
-                # Increased memory from 2048MB to 4096MB (4GB) based on log analysis:
-                # - Multiple failures showing "Max Memory Used: 2048 MB" (hitting limit)
-                # - Snapshot uploads average 446MB, largest 552MB
-                # - Need headroom for runtime + ChromaDB + snapshot operations
-                "memory_size": 4096,  # 4GB to handle large snapshots without OOM kills
+                # Lambda typically completes in ~25s with 10 messages (FIFO limit).
+                # Set to 120s for headroom. Must match SQS visibility timeout.
+                "timeout": 120,  # 2 minutes - faster failure detection
+                # Increased memory to 10240MB (10GB, Lambda max) due to OOM errors:
+                # - ChromaDB collection with ~70K embeddings uses ~8GB
+                # - Snapshot validation downloads and loads full collection
+                # - Phase 2 batching can process up to 500 messages per invocation
+                "memory_size": 10240,  # 10GB (Lambda max) for large collections
                 # Increased ephemeral storage from 5GB to 10GB for large snapshot operations
                 "ephemeral_storage": 10240,  # 10GB for ChromaDB snapshots (largest seen: 552MB)
-                "reserved_concurrent_executions": 10,  # Prevent throttling
+                # Phase 1 optimization: Single concurrent execution eliminates
+                # race conditions where Lambda B could read stale snapshot
+                # before Lambda A writes the pointer. Also eliminates wasted
+                # invocations from lock contention.
+                "reserved_concurrent_executions": 1,
                 "description": (
                     "Enhanced ChromaDB compaction handler for stream and "
                     "delta message processing"
@@ -203,6 +205,12 @@ class HybridLambdaDeployment(ComponentResource):
                     # access via NAT instance. If timeouts occur, consider adding a
                     # CloudWatch Metrics Interface VPC Endpoint (~$7/month).
                     "ENABLE_METRICS": "true",
+                    # Phase 2 batching: max messages to process per compaction cycle
+                    # Higher = better throughput (amortizes snapshot overhead)
+                    # NOTE: With FIFO queues, actual batch size is limited to ~10 msgs
+                    # due to AWS message group locking. See QUEUE_STRATEGY.md for details
+                    # on FIFO limitations and alternative approaches.
+                    "MAX_MESSAGES_PER_COMPACTION": "500",
                 },
                 "vpc_config": {
                     "subnet_ids": vpc_subnet_ids,
@@ -642,11 +650,15 @@ class HybridLambdaDeployment(ComponentResource):
         )
 
         # SQS queues to enhanced compaction handler
+        # Note: FIFO queues do NOT support maximum_batching_window_in_seconds
+        # (that parameter only works with standard queues).
+        # Phase 2 in-Lambda batching compensates by fetching additional messages
+        # within the handler after receiving the initial batch of 10.
         self.lines_event_source_mapping = aws.lambda_.EventSourceMapping(
             f"{name}-lines-event-source-mapping",
             event_source_arn=chromadb_queues.lines_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
-            batch_size=10,  # FIFO queues support batch size up to 10
+            batch_size=10,  # FIFO queues max batch size is 10
             function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(parent=self),
         )
@@ -655,7 +667,7 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-words-event-source-mapping",
             event_source_arn=chromadb_queues.words_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
-            batch_size=10,  # FIFO queues support batch size up to 10
+            batch_size=10,  # FIFO queues max batch size is 10
             function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(parent=self),
         )

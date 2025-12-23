@@ -20,7 +20,7 @@ from types import TracebackType
 from typing import Any, Dict, Generator, List, Optional, Protocol, Type
 
 import chromadb
-from chromadb.config import Settings
+from chromadb.config import DEFAULT_DATABASE, DEFAULT_TENANT, Settings
 from chromadb.errors import NotFoundError
 from chromadb.utils import embedding_functions
 
@@ -214,7 +214,11 @@ class ChromaClient:
                     except (ValueError, TypeError):
                         port = None
 
-                http_kwargs: Dict[str, Any] = {"host": host}
+                http_kwargs: Dict[str, Any] = {
+                    "host": host,
+                    "tenant": DEFAULT_TENANT,
+                    "database": DEFAULT_DATABASE,
+                }
                 if port is not None:
                     http_kwargs["port"] = port
 
@@ -234,18 +238,22 @@ class ChromaClient:
                     allow_reset=True,
                 )
                 self._client = chromadb.PersistentClient(
-                    path=self.persist_directory, settings=settings
+                    path=self.persist_directory,
+                    settings=settings,
+                    tenant=DEFAULT_TENANT,
+                    database=DEFAULT_DATABASE,
                 )
                 logger.debug(
                     "Created persistent ChromaDB client at: %s",
                     self.persist_directory,
                 )
             else:
-                # In-memory client for testing
-                self._client = chromadb.Client(
-                    Settings(
+                # In-memory client for testing - use EphemeralClient for ChromaDB 1.3.x+
+                # EphemeralClient doesn't require tenant validation
+                self._client = chromadb.EphemeralClient(
+                    settings=Settings(
                         anonymized_telemetry=False,
-                        allow_reset=True,  # Allow reset for in-memory clients
+                        allow_reset=True,
                     )
                 )
                 logger.debug("Created in-memory ChromaDB client")
@@ -310,34 +318,23 @@ class ChromaClient:
             if hasattr(self, "_collections"):
                 self._collections.clear()
 
-            # For PersistentClient, we need to close the underlying
-            # SQLite connections
+            # For PersistentClient, call _system.stop() to flush SQLite before S3 upload.
+            # This is CRITICAL - without it, snapshots uploaded to S3 may be corrupted.
+            #
+            # WARNING: _system.stop() corrupts global ChromaDB Rust bindings state.
+            # Tests that create multiple PersistentClients must run in separate
+            # processes or use proper test isolation fixtures.
+            # See GitHub issue #5868 and conftest.py for test setup details.
             if self._client is not None:
-                # Try to access the internal client if it exists
-                # ChromaDB doesn't expose close(), so we must access
-                # internal _client attribute (issue #5868)
-                if (
-                    hasattr(self._client, "_client")
-                    and self._client._client
-                    is not None  # pylint: disable=protected-access,no-member
-                ):
-                    # Try to close SQLite connections if accessible
-                    internal_client = (
-                        self._client._client
-                    )  # pylint: disable=protected-access,no-member
-                    if hasattr(internal_client, "close"):
-                        try:
-                            internal_client.close()
-                        except (
-                            Exception
-                        ) as e:  # pylint: disable=broad-exception-caught
-                            # Catch all exceptions during cleanup to ensure
-                            # we don't fail silently
-                            logger.debug(
-                                "Error closing internal client: %s", e
-                            )
+                if self.use_persistent_client and hasattr(self._client, "_system"):
+                    try:
+                        self._client._system.stop()  # pylint: disable=protected-access
+                        logger.info(
+                            "Called _system.stop() to close ChromaDB connections"
+                        )
+                    except Exception as e:  # pylint: disable=broad-exception-caught
+                        logger.warning("Error calling _system.stop(): %s", e)
 
-                # Clear the client reference
                 self._client = None
 
             # Force garbage collection to ensure SQLite connections are closed

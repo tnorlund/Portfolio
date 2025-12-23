@@ -239,9 +239,7 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
     for idx, current_chunk_index in enumerate(chunk_indices):
         logger.info(
-            "Processing chunk %d of %d",
-            idx + 1,
-            len(chunk_indices),
+            f"Processing chunk {idx + 1} of {len(chunk_indices)}",
             chunk_index=current_chunk_index,
         )
 
@@ -258,9 +256,7 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             # Skip empty chunks (None return value)
             if intermediate_key is None:
                 logger.info(
-                    "Skipping empty chunk %d of %d",
-                    idx + 1,
-                    len(chunk_indices),
+                    f"Skipping empty chunk {idx + 1} of {len(chunk_indices)}",
                     chunk_index=current_chunk_index,
                 )
                 continue
@@ -268,17 +264,13 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             intermediate_results.append({"intermediate_key": intermediate_key})
 
             logger.info(
-                "Completed chunk %d of %d",
-                idx + 1,
-                len(chunk_indices),
+                f"Completed chunk {idx + 1} of {len(chunk_indices)}",
                 chunk_index=current_chunk_index,
                 intermediate_key=intermediate_key,
             )
         except Exception as e:
             logger.exception(
-                "Failed to process chunk %d of %d",
-                idx + 1,
-                len(chunk_indices),
+                f"Failed to process chunk {idx + 1} of {len(chunk_indices)}",
                 chunk_index=current_chunk_index,
                 error=str(e),
             )
@@ -307,8 +299,7 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
     # Multiple chunks: merge them into a single intermediate
     logger.info(
-        "Merging %d chunk intermediates into single result",
-        len(intermediate_results),
+        f"Merging {len(intermediate_results)} chunk intermediates into single result",
         batch_id=batch_id,
     )
 
