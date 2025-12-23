@@ -6,7 +6,7 @@ This document outlines the architecture, current issues, and optimization strate
 
 ## Architecture
 
-```
+```text
 DynamoDB Stream → SQS FIFO → Lambda → Lock → Download Snapshot → Apply Updates → Upload Snapshot
                                 ↓
                          (Lock contention)
@@ -40,7 +40,7 @@ DynamoDB Stream → SQS FIFO → Lambda → Lock → Download Snapshot → Apply
 
 There's a window where updates can be lost:
 
-```
+```text
 Time    Lambda A                          Lambda B
 ────    ────────                          ────────
 T1      Acquire lock
@@ -154,7 +154,7 @@ def handler(event, context):
 
 If throughput still insufficient, shard the collection:
 
-```
+```text
 words → hash(word_id) % 4 → words-0, words-1, words-2, words-3
 ```
 
