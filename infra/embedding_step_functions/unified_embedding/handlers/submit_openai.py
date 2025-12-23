@@ -23,14 +23,14 @@ from receipt_chroma.embedding.openai import (
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
-from ..embedding_ingest import (
+from embedding_ingest import (  # pylint: disable=import-error
     deserialize_receipt_lines,
     download_serialized_file,
     query_receipt_lines,
     set_pending_and_update_lines,
     write_ndjson,
 )
-from ..utils.env_vars import get_required_env
+from utils.env_vars import get_required_env  # pylint: disable=import-error
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger

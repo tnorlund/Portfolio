@@ -197,7 +197,7 @@ def test_send_batch_to_queue_missing_queue_url() -> None:
 def test_send_batch_to_queue_compaction_run_message_group(
     env_test_queue: None,
 ) -> None:
-    """Test message group ID for COMPACTION_RUN."""
+    """Test message group ID for COMPACTION_RUN uses single group per collection."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -221,13 +221,14 @@ def test_send_batch_to_queue_compaction_run_message_group(
     assert sent == 1
     call_args = mock_sqs.send_message_batch.call_args
     entries = call_args[1]["Entries"]
-    assert entries[0]["MessageGroupId"] == "COMPACTION_RUN:img-456:lines"
+    # All messages use single group per collection for optimal batching
+    assert entries[0]["MessageGroupId"] == "compaction:lines"
 
 
 def test_send_batch_to_queue_receipt_place_message_group(
     env_test_queue: None,
 ) -> None:
-    """Test message group ID for RECEIPT_PLACE."""
+    """Test message group ID for RECEIPT_PLACE uses single group per collection."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -247,13 +248,14 @@ def test_send_batch_to_queue_receipt_place_message_group(
     assert sent == 1
     call_args = mock_sqs.send_message_batch.call_args
     entries = call_args[1]["Entries"]
-    assert entries[0]["MessageGroupId"] == "RECEIPT_PLACE:img-789:words"
+    # All messages use single group per collection for optimal batching
+    assert entries[0]["MessageGroupId"] == "compaction:words"
 
 
-def test_send_batch_to_queue_unknown_entity_type_fallback(
+def test_send_batch_to_queue_unknown_entity_type_message_group(
     env_test_queue: None,
 ) -> None:
-    """Test message group ID fallback for unknown entity type."""
+    """Test message group ID for unknown entity type uses single group."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -273,14 +275,14 @@ def test_send_batch_to_queue_unknown_entity_type_fallback(
     assert sent == 1
     call_args = mock_sqs.send_message_batch.call_args
     entries = call_args[1]["Entries"]
-    # Should use image_id as fallback
-    assert entries[0]["MessageGroupId"] == "UNKNOWN_TYPE:img-abc:lines"
+    # All messages use single group per collection for optimal batching
+    assert entries[0]["MessageGroupId"] == "compaction:lines"
 
 
 def test_send_batch_to_queue_missing_entity_data_fields(
     env_test_queue: None,
 ) -> None:
-    """Test message group ID when entity_data is missing expected fields."""
+    """Test message group ID when entity_data is missing uses single group."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -300,8 +302,8 @@ def test_send_batch_to_queue_missing_entity_data_fields(
     assert sent == 1
     call_args = mock_sqs.send_message_batch.call_args
     entries = call_args[1]["Entries"]
-    # Should use 'default' as final fallback
-    assert entries[0]["MessageGroupId"] == "UNKNOWN_TYPE:default:lines"
+    # All messages use single group per collection for optimal batching
+    assert entries[0]["MessageGroupId"] == "compaction:lines"
 
 
 def test_send_batch_to_queue_batching(
