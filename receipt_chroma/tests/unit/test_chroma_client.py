@@ -202,13 +202,26 @@ def test_custom_embedding_function():
 @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-123"})
 def test_openai_embedding_function_setup():
     """Test that OpenAI embedding function is set up when not metadata_only."""
+    # Import dynamically to get fresh module after potential resets
+    # This ensures the patch is applied to the current module, not a stale one
+    import importlib
+
+    import receipt_chroma.data.chroma_client
+
+    importlib.reload(receipt_chroma.data.chroma_client)
+
     with patch(
         "receipt_chroma.data.chroma_client.embedding_functions"
     ) as mock_ef:
         mock_openai_fn = MagicMock()
         mock_ef.OpenAIEmbeddingFunction.return_value = mock_openai_fn
 
-        with ChromaClient(mode="write", metadata_only=False) as client:
+        # Import ChromaClient after patching
+        from receipt_chroma.data.chroma_client import (
+            ChromaClient as FreshChromaClient,
+        )
+
+        with FreshChromaClient(mode="write", metadata_only=False) as client:
             # Verify OpenAI embedding function was created
             mock_ef.OpenAIEmbeddingFunction.assert_called_once()
             call_kwargs = mock_ef.OpenAIEmbeddingFunction.call_args[1]
@@ -221,13 +234,25 @@ def test_openai_embedding_function_setup():
 @patch.dict("os.environ", {}, clear=True)
 def test_openai_embedding_function_with_placeholder_key():
     """Test that OpenAI embedding function uses placeholder when no API key."""
+    # Import dynamically to get fresh module after potential resets
+    import importlib
+
+    import receipt_chroma.data.chroma_client
+
+    importlib.reload(receipt_chroma.data.chroma_client)
+
     with patch(
         "receipt_chroma.data.chroma_client.embedding_functions"
     ) as mock_ef:
         mock_openai_fn = MagicMock()
         mock_ef.OpenAIEmbeddingFunction.return_value = mock_openai_fn
 
-        with ChromaClient(mode="write", metadata_only=False) as client:
+        # Import ChromaClient after patching
+        from receipt_chroma.data.chroma_client import (
+            ChromaClient as FreshChromaClient,
+        )
+
+        with FreshChromaClient(mode="write", metadata_only=False) as client:
             # Verify OpenAI embedding function was created with placeholder
             mock_ef.OpenAIEmbeddingFunction.assert_called_once()
             call_kwargs = mock_ef.OpenAIEmbeddingFunction.call_args[1]
@@ -373,11 +398,25 @@ def test_closed_client_raises_error():
 @pytest.mark.unit
 def test_http_client_creation():
     """Test HTTP client creation when http_url is provided."""
+    # Import dynamically to get fresh module after potential resets
+    import importlib
+
+    import receipt_chroma.data.chroma_client
+
+    importlib.reload(receipt_chroma.data.chroma_client)
+
     with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
         mock_http_client = MagicMock()
         mock_chromadb.HttpClient.return_value = mock_http_client
 
-        client = ChromaClient(http_url="http://localhost:8000", mode="write")
+        # Import ChromaClient after patching
+        from receipt_chroma.data.chroma_client import (
+            ChromaClient as FreshChromaClient,
+        )
+
+        client = FreshChromaClient(
+            http_url="http://localhost:8000", mode="write"
+        )
         # Trigger client creation
         _ = client.client
 
@@ -391,11 +430,23 @@ def test_http_client_creation():
 @pytest.mark.unit
 def test_http_client_creation_with_url():
     """Test HTTP client creation with full URL."""
+    # Import dynamically to get fresh module after potential resets
+    import importlib
+
+    import receipt_chroma.data.chroma_client
+
+    importlib.reload(receipt_chroma.data.chroma_client)
+
     with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
         mock_http_client = MagicMock()
         mock_chromadb.HttpClient.return_value = mock_http_client
 
-        client = ChromaClient(
+        # Import ChromaClient after patching
+        from receipt_chroma.data.chroma_client import (
+            ChromaClient as FreshChromaClient,
+        )
+
+        client = FreshChromaClient(
             http_url="https://chromadb.example.com:9000", mode="write"
         )
         _ = client.client
@@ -432,12 +483,24 @@ def test_closed_client_context_manager_raises_error():
 @pytest.mark.unit
 def test_http_client_invalid_port():
     """HTTP client creation with invalid port is handled."""
+    # Import dynamically to get fresh module after potential resets
+    import importlib
+
+    import receipt_chroma.data.chroma_client
+
+    importlib.reload(receipt_chroma.data.chroma_client)
+
     with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
         mock_http_client = MagicMock()
         mock_chromadb.HttpClient.return_value = mock_http_client
 
+        # Import ChromaClient after patching
+        from receipt_chroma.data.chroma_client import (
+            ChromaClient as FreshChromaClient,
+        )
+
         # URL with invalid port (non-numeric)
-        client = ChromaClient(
+        client = FreshChromaClient(
             http_url="http://localhost:invalid", mode="write"
         )
         _ = client.client

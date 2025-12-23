@@ -10,6 +10,7 @@ Business logic has been moved to receipt_chroma package for reusability and test
 """
 
 # pylint: disable=duplicate-code
+import gc
 import json
 import logging
 import os
@@ -17,7 +18,22 @@ import shutil
 import tempfile
 import time
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import boto3
+from botocore.exceptions import ClientError
+
+# Module-level SQS client for reuse across Lambda warm starts
+_sqs_client = None
+
+
+def _get_sqs_client():
+    """Get or create SQS client (reused across warm starts)."""
+    global _sqs_client  # pylint: disable=global-statement
+    if _sqs_client is None:
+        _sqs_client = boto3.client("sqs")
+    return _sqs_client
+
 
 # Use receipt_chroma package for compaction logic
 from receipt_chroma import ChromaClient, LockManager
@@ -248,6 +264,143 @@ def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
     return messages
 
 
+# Phase 2: In-Lambda batching configuration
+# Configurable via environment variable for tuning without code deployment
+MAX_MESSAGES_PER_COMPACTION = int(
+    os.environ.get("MAX_MESSAGES_PER_COMPACTION", "500")
+)
+ADDITIONAL_FETCH_VISIBILITY_TIMEOUT = 120  # 2 minutes (matches Lambda timeout)
+
+
+def fetch_additional_messages(
+    queue_url: str,
+    current_count: int,
+    max_messages: int = MAX_MESSAGES_PER_COMPACTION,
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Greedily fetch additional messages from SQS queue.
+
+    Phase 2 optimization: Since FIFO queues limit batch size to 10,
+    we fetch more messages within the handler to process them in
+    a single compaction cycle, amortizing the S3 transfer cost.
+
+    Args:
+        queue_url: The SQS queue URL to fetch from
+        current_count: Number of messages already received
+        max_messages: Maximum total messages to process
+
+    Returns:
+        Tuple of (additional_records, receipt_handles_to_delete)
+    """
+    if current_count >= max_messages:
+        return [], []
+
+    sqs = _get_sqs_client()
+    additional_records = []
+    receipt_handles = []
+    remaining = max_messages - current_count
+
+    while remaining > 0:
+        # FIFO queues allow max 10 messages per receive
+        batch_size = min(10, remaining)
+
+        try:
+            response = sqs.receive_message(
+                QueueUrl=queue_url,
+                MaxNumberOfMessages=batch_size,
+                VisibilityTimeout=ADDITIONAL_FETCH_VISIBILITY_TIMEOUT,
+                WaitTimeSeconds=0,  # Don't wait, just grab what's available
+                MessageAttributeNames=["All"],
+            )
+        except ClientError as e:
+            logger.warning(
+                "Failed to fetch additional messages",
+                error=str(e),
+                fetched_so_far=len(additional_records),
+            )
+            break
+
+        messages = response.get("Messages", [])
+        if not messages:
+            # No more messages available
+            break
+
+        for msg in messages:
+            # Convert to the same format as Lambda event records
+            record = {
+                "messageId": msg["MessageId"],
+                "receiptHandle": msg["ReceiptHandle"],
+                "body": msg["Body"],
+                "messageAttributes": {
+                    k: {"stringValue": v.get("StringValue", "")}
+                    for k, v in msg.get("MessageAttributes", {}).items()
+                },
+            }
+            additional_records.append(record)
+            receipt_handles.append(msg["ReceiptHandle"])
+
+        remaining -= len(messages)
+
+        logger.debug(
+            "Fetched additional messages",
+            batch_count=len(messages),
+            total_additional=len(additional_records),
+        )
+
+    return additional_records, receipt_handles
+
+
+def delete_messages_batch(
+    queue_url: str, receipt_handles: List[str]
+) -> List[str]:
+    """Delete messages from SQS in batches.
+
+    Args:
+        queue_url: The SQS queue URL
+        receipt_handles: List of receipt handles to delete
+
+    Returns:
+        List of receipt handles that failed to delete
+    """
+    if not receipt_handles:
+        return []
+
+    sqs = _get_sqs_client()
+    failed_handles = []
+
+    # SQS delete_message_batch allows max 10 entries
+    for i in range(0, len(receipt_handles), 10):
+        batch = receipt_handles[i : i + 10]
+        entries = [
+            {"Id": str(idx), "ReceiptHandle": handle}
+            for idx, handle in enumerate(batch)
+        ]
+
+        try:
+            response = sqs.delete_message_batch(
+                QueueUrl=queue_url, Entries=entries
+            )
+
+            # Track failed deletions
+            for failure in response.get("Failed", []):
+                idx = int(failure["Id"])
+                failed_handles.append(batch[idx])
+                logger.warning(
+                    "Failed to delete message",
+                    receipt_handle=batch[idx][:50],
+                    error=failure.get("Message"),
+                )
+
+        except ClientError as e:
+            logger.error(
+                "Batch delete failed",
+                error=str(e),
+                batch_size=len(batch),
+            )
+            failed_handles.extend(batch)
+
+    return failed_handles
+
+
 def process_collection(
     collection: ChromaDBCollection,
     messages: List[StreamMessage],
@@ -330,7 +483,9 @@ def process_collection(
 
         # Phase 2: Open ChromaDB client and apply updates
         with logger.operation_timer("in_memory_updates"):
-            client = ChromaClient(persist_directory=temp_dir, mode="write")
+            client = ChromaClient(
+                persist_directory=temp_dir, mode="write", metadata_only=True
+            )
 
             # Call receipt_chroma package for business logic
             result = process_collection_updates(
@@ -450,11 +605,22 @@ def process_collection(
         # Cleanup temp directory
         shutil.rmtree(temp_dir, ignore_errors=True)
 
+        # Aggressive memory cleanup to prevent OOM on warm container reuse
+        # ChromaDB collections with 70K+ embeddings use ~8GB RAM
+        # Without explicit cleanup, warm starts can accumulate memory
+        gc.collect()
+        gc.collect()
+        gc.collect()
+
 
 def process_sqs_messages(
     records: List[Dict[str, Any]], logger: Any, metrics: Any = None
 ) -> Dict[str, Any]:
     """Parse SQS messages and route to collection processors.
+
+    Phase 2 optimization: After receiving initial batch from Lambda trigger,
+    greedily fetch more messages from the same queue to process in one
+    compaction cycle, amortizing S3 transfer costs.
 
     Args:
         records: List of SQS record dicts
@@ -464,6 +630,60 @@ def process_sqs_messages(
     Returns:
         Dict with batchItemFailures for partial batch retry
     """
+    # Determine which queue we're processing from the first record
+    # Each Lambda invocation only processes messages from ONE queue
+    # (separate event source mappings for lines vs words)
+    queue_url = None
+    manually_fetched_handles: List[str] = []
+
+    if records:
+        first_record = records[0]
+        collection_attr = first_record.get("messageAttributes", {}).get(
+            "collection", {}
+        )
+        collection_value = collection_attr.get("stringValue", "words")
+
+        if collection_value == "lines":
+            queue_url = os.environ.get("LINES_QUEUE_URL")
+        else:
+            queue_url = os.environ.get("WORDS_QUEUE_URL")
+
+        # Phase 2: Fetch additional messages if queue URL is available
+        if queue_url:
+            logger.info(
+                "Phase 2: attempting to fetch additional messages",
+                queue_url=queue_url[-50:],  # Last 50 chars for brevity
+                current_count=len(records),
+                max_messages=MAX_MESSAGES_PER_COMPACTION,
+            )
+            additional_records, manually_fetched_handles = (
+                fetch_additional_messages(
+                    queue_url=queue_url,
+                    current_count=len(records),
+                    max_messages=MAX_MESSAGES_PER_COMPACTION,
+                )
+            )
+
+            if additional_records:
+                logger.info(
+                    "Phase 2 batching: fetched additional messages",
+                    initial_count=len(records),
+                    additional_count=len(additional_records),
+                    total_count=len(records) + len(additional_records),
+                )
+                records = records + additional_records
+
+                if metrics:
+                    metrics.count(
+                        "CompactionAdditionalMessagesFetched",
+                        len(additional_records),
+                    )
+            else:
+                logger.info(
+                    "Phase 2: no additional messages available",
+                    initial_count=len(records),
+                )
+
     # Parse StreamMessage objects from SQS records
     try:
         stream_messages = parse_sqs_messages(records)
@@ -472,6 +692,8 @@ def process_sqs_messages(
         if metrics:
             metrics.count("CompactionMessageParseError", 1)
         # Return all as failures for retry
+        # Note: manually fetched messages will become visible again after
+        # visibility timeout expires
         return {
             "batchItemFailures": [
                 {"itemIdentifier": r["messageId"]} for r in records
@@ -500,6 +722,8 @@ def process_sqs_messages(
 
     # Process each collection
     failed_message_ids = []
+    processing_successful = True
+
     for collection, msgs in messages_by_collection.items():
         try:
             result = process_collection(
@@ -511,6 +735,7 @@ def process_sqs_messages(
             # Collect failures
             if result.get("failed_message_ids"):
                 failed_message_ids.extend(result["failed_message_ids"])
+                processing_successful = False
         except Exception:
             logger.exception(
                 "Collection processing failed",
@@ -520,6 +745,45 @@ def process_sqs_messages(
                 metrics.count("CompactionCollectionProcessingError", 1)
             # Mark all messages for this collection as failed
             failed_message_ids.extend([m.stream_record_id for m in msgs])
+            processing_successful = False
+
+    # Phase 2: Delete manually-fetched messages after successful processing
+    # Lambda-triggered messages are auto-deleted by the event source mapping
+    # but manually-fetched messages must be explicitly deleted
+    if manually_fetched_handles and queue_url:
+        if processing_successful and not failed_message_ids:
+            # All processing succeeded - delete all manually-fetched messages
+            failed_deletes = delete_messages_batch(
+                queue_url, manually_fetched_handles
+            )
+            if failed_deletes:
+                logger.warning(
+                    "Some manually-fetched messages failed to delete",
+                    failed_count=len(failed_deletes),
+                    total_fetched=len(manually_fetched_handles),
+                )
+                if metrics:
+                    metrics.count(
+                        "CompactionMessageDeleteFailures", len(failed_deletes)
+                    )
+            else:
+                logger.info(
+                    "Deleted manually-fetched messages",
+                    count=len(manually_fetched_handles),
+                )
+                if metrics:
+                    metrics.count(
+                        "CompactionManualMessagesDeleted",
+                        len(manually_fetched_handles),
+                    )
+        else:
+            # Processing had failures - let manually-fetched messages
+            # become visible again for retry (visibility timeout will expire)
+            logger.info(
+                "Skipping delete of manually-fetched messages due to failures",
+                failed_count=len(failed_message_ids),
+                manual_count=len(manually_fetched_handles),
+            )
 
     return {
         "batchItemFailures": [
@@ -680,3 +944,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     finally:
         # Stop monitoring
         stop_compaction_lambda_monitoring()
+
+        # Final memory cleanup before warm container reuse
+        # This ensures ChromaDB data doesn't accumulate across invocations
+        gc.collect()
+        gc.collect()
+        gc.collect()
