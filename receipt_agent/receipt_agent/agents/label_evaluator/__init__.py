@@ -67,6 +67,28 @@ The agent detects:
 
 Results are written as new ReceiptWordLabel entries with validation_status and
 reasoning, creating an audit trail of label changes.
+
+For LangSmith evaluations:
+    from langsmith import evaluate
+    from receipt_agent.agents.label_evaluator import (
+        create_label_evaluator,
+        label_accuracy_evaluator,
+    )
+
+    # Simple accuracy evaluation
+    results = evaluate(
+        my_label_prediction_model,
+        data="receipt-labels-test-dataset",
+        evaluators=[label_accuracy_evaluator],
+    )
+
+    # With pattern-based quality evaluation
+    evaluator = create_label_evaluator(patterns=merchant_patterns)
+    results = evaluate(
+        my_label_prediction_model,
+        data="receipt-labels-test-dataset",
+        evaluators=[evaluator],
+    )
 """
 
 from receipt_agent.agents.label_evaluator.graph import (
@@ -126,6 +148,13 @@ from receipt_agent.agents.label_evaluator.traced_runner import (
     run_batch_traced,
     run_compute_only_traced,
 )
+from receipt_agent.agents.label_evaluator.langsmith_evaluator import (
+    EvaluationQualityMetrics,
+    LabelComparisonMetrics,
+    create_label_evaluator,
+    label_accuracy_evaluator,
+    label_quality_evaluator,
+)
 
 __all__ = [
     # Graph and runners (full workflow with I/O)
@@ -183,4 +212,10 @@ __all__ = [
     "create_traced_run_tree",
     "run_batch_traced",
     "run_compute_only_traced",
+    # LangSmith custom evaluators
+    "create_label_evaluator",
+    "label_accuracy_evaluator",
+    "label_quality_evaluator",
+    "LabelComparisonMetrics",
+    "EvaluationQualityMetrics",
 ]
