@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import boto3
-import utils.logging  # pylint: disable=import-error
 from receipt_chroma import LockManager  # type: ignore[attr-defined]
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.s3 import (
@@ -22,11 +21,13 @@ from receipt_chroma.s3 import (
     upload_snapshot_atomic,
 )
 from receipt_chroma.s3.helpers import upload_snapshot_with_hash
-from utils.metrics import emf_metrics
 
 # Import receipt_dynamo for proper DynamoDB operations
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
+
+import utils.logging  # pylint: disable=import-error
+from utils.metrics import emf_metrics
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -201,7 +202,9 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Processing chunk compaction (batched mode supported)")
 
     batch_id = event.get("batch_id")
-    chunk_index = event.get("chunk_index")  # Single chunk (backward compatible)
+    chunk_index = event.get(
+        "chunk_index"
+    )  # Single chunk (backward compatible)
     chunk_indices = event.get("chunk_indices")  # Multiple chunks (batched)
     delta_results = event.get("delta_results", [])
     database_name = event.get("database")  # Track database for this chunk
@@ -239,7 +242,9 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
     for idx, current_chunk_index in enumerate(chunk_indices):
         logger.info(
-            f"Processing chunk {idx + 1} of {len(chunk_indices)}",
+            "Processing chunk",
+            chunk_number=idx + 1,
+            total_chunks=len(chunk_indices),
             chunk_index=current_chunk_index,
         )
 
@@ -248,7 +253,9 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             intermediate_key = _process_single_chunk(
                 batch_id=batch_id,
                 chunk_index=current_chunk_index,
-                delta_results=delta_results if idx == 0 else [],  # Only use inline delta_results for first chunk
+                delta_results=(
+                    delta_results if idx == 0 else []
+                ),  # Only use inline delta_results for first chunk
                 chunks_s3_key=chunks_s3_key,
                 chunks_s3_bucket=chunks_s3_bucket,
             )
@@ -256,7 +263,9 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             # Skip empty chunks (None return value)
             if intermediate_key is None:
                 logger.info(
-                    f"Skipping empty chunk {idx + 1} of {len(chunk_indices)}",
+                    "Skipping empty chunk",
+                    chunk_number=idx + 1,
+                    total_chunks=len(chunk_indices),
                     chunk_index=current_chunk_index,
                 )
                 continue
@@ -264,13 +273,17 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             intermediate_results.append({"intermediate_key": intermediate_key})
 
             logger.info(
-                f"Completed chunk {idx + 1} of {len(chunk_indices)}",
+                "Completed chunk",
+                chunk_number=idx + 1,
+                total_chunks=len(chunk_indices),
                 chunk_index=current_chunk_index,
                 intermediate_key=intermediate_key,
             )
         except Exception as e:
             logger.exception(
-                f"Failed to process chunk {idx + 1} of {len(chunk_indices)}",
+                "Failed to process chunk",
+                chunk_number=idx + 1,
+                total_chunks=len(chunk_indices),
                 chunk_index=current_chunk_index,
                 error=str(e),
             )
@@ -299,12 +312,15 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
     # Multiple chunks: merge them into a single intermediate
     logger.info(
-        f"Merging {len(intermediate_results)} chunk intermediates into single result",
+        "Merging chunk intermediates into single result",
         batch_id=batch_id,
+        chunk_count=len(intermediate_results),
     )
 
     # Extract intermediate keys for merging
-    intermediate_keys = [result["intermediate_key"] for result in intermediate_results]
+    intermediate_keys = [
+        result["intermediate_key"] for result in intermediate_results
+    ]
 
     # Merge all intermediates using the existing merge logic
     merge_result = perform_intermediate_merge(
@@ -373,7 +389,9 @@ def _process_single_chunk(
                         break
 
                 if not chunk_found:
-                    raise ValueError(f"Chunk {chunk_index} not found in S3 chunks file")
+                    raise ValueError(
+                        f"Chunk {chunk_index} not found in S3 chunks file"
+                    )
 
                 # Extract delta_results from the chunk
                 delta_results = chunk_found.get("delta_results", [])

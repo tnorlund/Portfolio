@@ -18,10 +18,10 @@ DynamoDB Stream → SQS FIFO → Lambda → Lock → Download Snapshot → Apply
 
 | Component | Configuration |
 |-----------|---------------|
-| Lambda Memory | 4096 MB |
-| Lambda Timeout | 900s (15 min) |
+| Lambda Memory | 10240 MB |
+| Lambda Timeout | 120s (2 min) |
 | Ephemeral Storage | 10 GB |
-| Lock Duration | 5 min |
+| Lock Duration | 3 min |
 | SQS Message Retention | 4 days (main), 14 days (DLQ) |
 | Max Receive Count | 3 (then → DLQ) |
 
