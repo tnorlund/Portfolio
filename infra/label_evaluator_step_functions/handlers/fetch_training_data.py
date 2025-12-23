@@ -41,7 +41,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     Output:
     {
-        "training_s3_key": "training/{exec}/{merchant_hash}.json",
+        "training_s3_key": "training/{exec}/{merchant_hash}_{max_receipts}.json",
         "merchant_name": "Sprouts Farmers Market",
         "receipt_count": 47
     }
@@ -59,9 +59,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
 
-    # Create cache key from merchant name
+    # Create cache key from merchant name and max_receipts
     merchant_hash = get_merchant_hash(merchant_name)
-    training_key = f"training/{execution_id}/{merchant_hash}.json"
+    training_key = f"training/{execution_id}/{merchant_hash}_{max_receipts}.json"
 
     # Check if training data already exists (cached from another receipt)
     try:
