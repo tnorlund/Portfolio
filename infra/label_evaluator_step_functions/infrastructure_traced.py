@@ -58,10 +58,9 @@ except ImportError as e:
 
 # Load secrets from Pulumi config
 config = Config("portfolio")
-langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
+openai_api_key = config.require_secret("OPENAI_API_KEY")
 ollama_api_key = config.require_secret("OLLAMA_API_KEY")
-ollama_base_url = config.get("OLLAMA_BASE_URL") or "https://api.ollama.com"
-ollama_model = config.get("OLLAMA_MODEL") or "llama3.1:70b"
+langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 
 # Label evaluator specific config
 evaluator_config = Config("label-evaluator")
@@ -83,7 +82,8 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         *,
         dynamodb_table_name: pulumi.Input[str],
         dynamodb_table_arn: pulumi.Input[str],
-        chromadb_bucket: Optional[pulumi.Input[str]] = None,
+        chromadb_bucket_name: Optional[pulumi.Input[str]] = None,
+        chromadb_bucket_arn: Optional[pulumi.Input[str]] = None,
         max_concurrency: Optional[int] = None,
         batch_size: Optional[int] = None,
         opts: Optional[ResourceOptions] = None,
@@ -95,7 +95,8 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
 
         self.max_concurrency = max_concurrency or max_concurrency_default
         self.batch_size = batch_size or batch_size_default
-        self.chromadb_bucket = chromadb_bucket
+        self.chromadb_bucket_name = chromadb_bucket_name
+        self.chromadb_bucket_arn = chromadb_bucket_arn
 
         # ============================================================
         # S3 Bucket for batch files and results
@@ -226,31 +227,64 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # S3 access policy
-        RolePolicy(
-            f"{name}-lambda-s3-policy",
-            role=lambda_role.id,
-            policy=self.batch_bucket.arn.apply(
-                lambda arn: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:PutObject",
-                                    "s3:DeleteObject",
-                                    "s3:ListBucket",
-                                ],
-                                "Resource": [arn, f"{arn}/*"],
-                            }
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=lambda_role),
-        )
+        # S3 access policy (includes ChromaDB bucket if provided)
+        if chromadb_bucket_arn:
+            RolePolicy(
+                f"{name}-lambda-s3-policy",
+                role=lambda_role.id,
+                policy=Output.all(
+                    self.batch_bucket.arn, chromadb_bucket_arn
+                ).apply(
+                    lambda args: json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:GetObject",
+                                        "s3:PutObject",
+                                        "s3:DeleteObject",
+                                        "s3:ListBucket",
+                                    ],
+                                    "Resource": [
+                                        args[0],
+                                        f"{args[0]}/*",
+                                        args[1],
+                                        f"{args[1]}/*",
+                                    ],
+                                }
+                            ],
+                        }
+                    )
+                ),
+                opts=ResourceOptions(parent=lambda_role),
+            )
+        else:
+            RolePolicy(
+                f"{name}-lambda-s3-policy",
+                role=lambda_role.id,
+                policy=self.batch_bucket.arn.apply(
+                    lambda arn: json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:GetObject",
+                                        "s3:PutObject",
+                                        "s3:DeleteObject",
+                                        "s3:ListBucket",
+                                    ],
+                                    "Resource": [arn, f"{arn}/*"],
+                                }
+                            ],
+                        }
+                    )
+                ),
+                opts=ResourceOptions(parent=lambda_role),
+            )
 
         # ============================================================
         # Paths
@@ -595,19 +629,20 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
 
         # ============================================================
         # Container Lambda: discover_patterns_traced (LLM)
+        # Uses httpx for Ollama API calls - requires container for dependencies
         # ============================================================
         discover_patterns_config = {
             "role_arn": lambda_role.arn,
-            "timeout": 600,
-            "memory_size": 2048,
+            "timeout": 180,  # 3 minutes for LLM call
+            "memory_size": 512,
             "tags": {"environment": stack},
             "ephemeral_storage": 512,
             "environment": {
-                "BATCH_BUCKET": self.batch_bucket.bucket,
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                "BATCH_BUCKET": self.batch_bucket.bucket,
                 "OLLAMA_API_KEY": ollama_api_key,
-                "OLLAMA_BASE_URL": ollama_base_url,
-                "OLLAMA_MODEL": ollama_model,
+                "OLLAMA_BASE_URL": "https://ollama.com",
+                "OLLAMA_MODEL": "gpt-oss:120b-cloud",
                 **tracing_env,
             },
         }
@@ -639,22 +674,27 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         # ============================================================
         llm_review_lambda_config = {
             "role_arn": lambda_role.arn,
-            "timeout": 900,  # 15 minutes for batch review
-            "memory_size": 4096,
+            "timeout": 900,  # 15 minutes
+            "memory_size": 3072,  # 3 GB for ChromaDB + LLM
             "tags": {"environment": stack},
-            "ephemeral_storage": 2048,  # For ChromaDB snapshot
+            "ephemeral_storage": 10240,  # 10 GB for ChromaDB
             "environment": {
                 "BATCH_BUCKET": self.batch_bucket.bucket,
-                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                "CHROMADB_BUCKET": chromadb_bucket_name or "",
                 "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
+                "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
                 "RECEIPT_AGENT_OLLAMA_API_KEY": ollama_api_key,
-                "RECEIPT_AGENT_OLLAMA_BASE_URL": ollama_base_url,
-                "RECEIPT_AGENT_OLLAMA_MODEL": ollama_model,
-                "CHROMADB_BUCKET": chromadb_bucket or "",
+                "RECEIPT_AGENT_OLLAMA_BASE_URL": "https://ollama.com",
+                "RECEIPT_AGENT_OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
+                "LANGCHAIN_API_KEY": langchain_api_key,
+                "LANGCHAIN_TRACING_V2": "true",
+                "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
+                "LANGCHAIN_PROJECT": config.get("langchain_project")
+                or "label-evaluator-llm",
                 "MAX_ISSUES_PER_LLM_CALL": "15",
                 "CIRCUIT_BREAKER_THRESHOLD": "5",
                 "LLM_MAX_JITTER_SECONDS": "0.25",
-                **tracing_env,
             },
         }
 
@@ -662,7 +702,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
             f"{name}-llm-review-img",
             dockerfile_path=(
                 "infra/label_evaluator_step_functions/lambdas/"
-                "Dockerfile.llm_review"
+                "Dockerfile.llm"
             ),
             build_context_path=".",
             source_paths=[
@@ -815,6 +855,15 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
             {
                 "state_machine_arn": self.state_machine.arn,
                 "batch_bucket_name": self.batch_bucket.bucket,
+                "list_merchants_lambda_arn": list_merchants_lambda.arn,
+                "list_receipts_lambda_arn": list_receipts_lambda.arn,
+                "evaluate_labels_lambda_arn": evaluate_labels_lambda.arn,
+                "llm_review_lambda_arn": llm_review_lambda.arn,
+                "aggregate_results_lambda_arn": aggregate_results_lambda.arn,
+                "final_aggregate_lambda_arn": final_aggregate_lambda.arn,
+                "collect_issues_lambda_arn": collect_issues_lambda.arn,
+                "batch_issues_lambda_arn": batch_issues_lambda.arn,
+                "discover_patterns_lambda_arn": discover_patterns_lambda.arn,
             }
         )
 
