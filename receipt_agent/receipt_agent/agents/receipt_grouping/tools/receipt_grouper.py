@@ -176,7 +176,7 @@ def create_receipt_grouper_tools(
                     )
                 # Sort by Y position (top to bottom), then X (left to right)
                 ctx.lines.sort(
-                    key=lambda l: (l["centroid_y"], l["centroid_x"])
+                    key=lambda line: (line["centroid_y"], line["centroid_x"])
                 )
             except Exception as e:
                 logger.error("Error loading lines: %s", e)
@@ -862,7 +862,7 @@ def create_receipt_grouper_tools(
 
             # Merge line IDs
             merged_line_ids = sorted(
-                list(set(receipt_1["line_ids"] + receipt_2["line_ids"]))
+                set(receipt_1["line_ids"] + receipt_2["line_ids"])
             )
 
             # Get lines for merged receipt
@@ -977,10 +977,11 @@ def create_receipt_grouper_tools(
                 coherence += 0.2
 
             # Check for duplicate merchant names (bad sign)
-            merchant_names_1 = receipt_1.get("metadata", {}).get(
+            # Use `or {}` to handle case where metadata is explicitly None
+            merchant_names_1 = (receipt_1.get("metadata") or {}).get(
                 "merchant_name", ""
             )
-            merchant_names_2 = receipt_2.get("metadata", {}).get(
+            merchant_names_2 = (receipt_2.get("metadata") or {}).get(
                 "merchant_name", ""
             )
             has_duplicate_merchants = (
@@ -990,8 +991,8 @@ def create_receipt_grouper_tools(
             )
 
             # Check for duplicate addresses (bad sign)
-            address_1 = receipt_1.get("metadata", {}).get("address", "")
-            address_2 = receipt_2.get("metadata", {}).get("address", "")
+            address_1 = (receipt_1.get("metadata") or {}).get("address", "")
+            address_2 = (receipt_2.get("metadata") or {}).get("address", "")
             has_duplicate_addresses = (
                 address_1
                 and address_2
@@ -999,8 +1000,8 @@ def create_receipt_grouper_tools(
             )
 
             # Check for duplicate phones (bad sign)
-            phone_1 = receipt_1.get("metadata", {}).get("phone", "")
-            phone_2 = receipt_2.get("metadata", {}).get("phone", "")
+            phone_1 = (receipt_1.get("metadata") or {}).get("phone", "")
+            phone_2 = (receipt_2.get("metadata") or {}).get("phone", "")
             has_duplicate_phones = (
                 phone_1
                 and phone_2

@@ -5,6 +5,7 @@ Provides basic combinatorial logic for creating pairwise combinations
 of receipt IDs, used across multiple receipt processing handlers.
 """
 
+from itertools import combinations
 from typing import List, Tuple
 
 
@@ -22,13 +23,4 @@ def generate_receipt_combinations(
     Returns:
         List of tuples representing all possible pairs
     """
-    if len(receipt_ids) < 2:
-        return []
-
-    # Generate all pairs using nested loops
-    combinations = []
-    for i in range(len(receipt_ids)):
-        for j in range(i + 1, len(receipt_ids)):
-            combinations.append((receipt_ids[i], receipt_ids[j]))
-
-    return combinations
+    return list(combinations(receipt_ids, 2))

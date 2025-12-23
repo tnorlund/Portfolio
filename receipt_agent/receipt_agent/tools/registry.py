@@ -167,7 +167,9 @@ class ToolRegistry:
                 )
             )
         else:
-            logger.warning("Places API not configured - places tools disabled")
+            logger.warning(
+                "Places API not configured - places tools disabled"
+            )
 
         # compare_place_with_google doesn't need external deps
         tools.append(compare_place_with_google)

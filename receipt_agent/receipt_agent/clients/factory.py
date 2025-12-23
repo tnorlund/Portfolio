@@ -123,7 +123,26 @@ def create_chroma_client(
 
             # Create DualChromaClient wrapper
             class DualChromaClient:
-                """Routes queries to separate line and word clients."""
+                """
+                Routes queries to separate line and word ChromaDB clients.
+
+                This wrapper provides a unified interface when lines and words
+                are stored in separate ChromaDB directories. It routes operations
+                based on collection_name parameter.
+
+                Supported operations (read-only):
+                - query: Search for similar embeddings
+                - get: Retrieve embeddings by ID
+                - list_collections: Returns ["lines", "words"]
+                - get_collection: Get collection handle
+
+                Note: Write operations (add, delete, update) are not supported.
+                This wrapper is intended for read-only similarity search workflows.
+
+                Attributes:
+                    lines_client: ChromaClient for the "lines" collection
+                    words_client: ChromaClient for the "words" collection
+                """
 
                 def __init__(self, lines_client, words_client):
                     self.lines_client = lines_client

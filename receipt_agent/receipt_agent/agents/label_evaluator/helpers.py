@@ -30,6 +30,7 @@ from receipt_agent.agents.label_evaluator.state import (
     VisualLine,
     WordContext,
 )
+from receipt_agent.utils.chroma_helpers import build_word_chroma_id
 
 logger = logging.getLogger(__name__)
 
@@ -3210,30 +3211,6 @@ class SimilarWordResult:
     valid_labels: List[str] = field(default_factory=list)
     invalid_labels: List[str] = field(default_factory=list)
     merchant_name: Optional[str] = None
-
-
-def build_word_chroma_id(
-    image_id: str,
-    receipt_id: int,
-    line_id: int,
-    word_id: int,
-) -> str:
-    """
-    Build the ChromaDB document ID for a word.
-
-    Args:
-        image_id: Image UUID
-        receipt_id: Receipt number
-        line_id: Line number
-        word_id: Word number
-
-    Returns:
-        ChromaDB document ID in format IMAGE#...#RECEIPT#...#LINE#...#WORD#...
-    """
-    return (
-        f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
-        f"#WORD#{word_id:05d}"
-    )
 
 
 def query_similar_validated_words(

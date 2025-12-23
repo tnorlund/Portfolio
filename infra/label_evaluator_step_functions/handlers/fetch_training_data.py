@@ -147,15 +147,15 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     receipts_data = []
     for place in other_places:
         try:
-            words = dynamo.list_receipt_words_from_receipt(
+            words_result = dynamo.list_receipt_words_from_receipt(
                 place.image_id, place.receipt_id
             )
-            if isinstance(words, tuple):
-                words = words[0]
+            words = words_result[0] if isinstance(words_result, tuple) else words_result
 
-            labels, _ = dynamo.list_receipt_word_labels_for_receipt(
+            labels_result = dynamo.list_receipt_word_labels_for_receipt(
                 place.image_id, place.receipt_id
             )
+            labels = labels_result[0] if isinstance(labels_result, tuple) else labels_result
 
             receipts_data.append(
                 {

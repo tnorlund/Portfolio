@@ -83,7 +83,6 @@ from receipt_agent.agents.label_evaluator.helpers import (
     assemble_receipt_text,
     assemble_visual_lines,
     build_review_context,
-    build_word_chroma_id,
     build_word_contexts,
     check_constellation_anomaly,
     check_geometric_anomaly,
@@ -101,6 +100,7 @@ from receipt_agent.agents.label_evaluator.helpers import (
     parse_currency_value,
     query_similar_validated_words,
 )
+from receipt_agent.utils.chroma_helpers import build_word_chroma_id
 from receipt_agent.agents.label_evaluator.llm_review import (
     apply_llm_decisions,
     gather_evidence_for_issue,

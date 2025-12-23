@@ -1064,9 +1064,7 @@ def create_agentic_tools(
                     f"Place ID: '{my_place.place_id}' vs '{other_place.place_id}'"
                 )
 
-            same_address = (
-                my_place.formatted_address == other_place.formatted_address
-            )
+            same_address = my_place.formatted_address == other_place.formatted_address
             if not same_address:
                 differences.append(
                     f"Address: '{my_place.formatted_address}' vs '{other_place.formatted_address}'"

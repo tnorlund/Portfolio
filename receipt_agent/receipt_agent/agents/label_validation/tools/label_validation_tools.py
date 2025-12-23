@@ -196,7 +196,7 @@ def create_label_validation_tools(
             surrounding_lines = None
             if all_lines and line:
                 sorted_lines = sorted(
-                    all_lines, key=lambda l: l.calculate_centroid()[1]
+                    all_lines, key=lambda line: line.calculate_centroid()[1]
                 )
                 target_idx = None
                 for i, receipt_line in enumerate(sorted_lines):
@@ -446,7 +446,7 @@ def create_label_validation_tools(
             distances = query_results.get("distances", [[]])[0]
 
             for _doc_id, doc, meta, dist in zip(
-                ids, documents, metadatas, distances
+                ids, documents, metadatas, distances, strict=True
             ):
                 # Skip if same word
                 if (
@@ -551,7 +551,7 @@ def create_label_validation_tools(
                             # Sort lines by Y-coordinate (top to bottom)
                             sorted_lines = sorted(
                                 all_similar_lines,
-                                key=lambda l: l.calculate_centroid()[1],
+                                key=lambda line: line.calculate_centroid()[1],
                             )
 
                             # Find the index of the target line
@@ -722,7 +722,7 @@ def create_label_validation_tools(
                             if all_similar_labels:
                                 # Sort by timestamp
                                 all_similar_labels.sort(
-                                    key=lambda l: l.timestamp_added
+                                    key=lambda label: label.timestamp_added
                                 )
                                 similar_audit_trail = []
                                 for label in all_similar_labels:

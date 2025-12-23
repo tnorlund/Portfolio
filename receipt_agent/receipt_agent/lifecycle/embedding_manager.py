@@ -84,6 +84,10 @@ def create_embeddings_and_compaction_run(
         logger.info("OPENAI_API_KEY not set; skipping embeddings")
         return None
 
+    if chroma_create_embeddings is None:
+        logger.warning("receipt_chroma embedding orchestration unavailable")
+        return None
+
     # Fetch data from DynamoDB if not provided
     if receipt_lines is None:
         receipt_lines = client.list_receipt_lines_from_receipt(
@@ -103,10 +107,6 @@ def create_embeddings_and_compaction_run(
             "No lines/words found for receipt %s; skipping embedding",
             receipt_id,
         )
-        return None
-
-    if chroma_create_embeddings is None:
-        logger.warning("Embedding dependencies unavailable")
         return None
 
     try:

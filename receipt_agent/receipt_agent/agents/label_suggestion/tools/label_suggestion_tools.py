@@ -8,7 +8,7 @@ using ChromaDB similarity search, minimizing LLM calls.
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 from langchain_core.tools import tool
@@ -411,6 +411,7 @@ def create_label_suggestion_tools(
                 documents,
                 metadatas,
                 distances,
+                strict=True,
             ):
                 # Skip if same word
                 if doc_id == chroma_id:
@@ -426,8 +427,6 @@ def create_label_suggestion_tools(
                 if not valid_labels_str or not valid_labels_str.strip(","):
                     words_without_valid_labels += 1
                     continue
-
-                words_with_valid_labels += 1
 
                 words_with_valid_labels += 1
 
@@ -605,7 +604,7 @@ def create_label_suggestion_tools(
                         label=label_type,
                         validation_status="PENDING",
                         reasoning=reasoning,
-                        timestamp_added=datetime.utcnow(),
+                        timestamp_added=datetime.now(timezone.utc),
                         label_proposed_by="label-suggestion-agent",
                     )
 

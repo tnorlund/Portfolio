@@ -7,7 +7,6 @@ different combinations and evaluating which makes the most sense.
 
 import asyncio
 import logging
-import traceback
 from typing import Any, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -282,13 +281,12 @@ async def run_receipt_grouping(
         config = {"recursion_limit": 100}
         _final_state = await graph.ainvoke(initial_state, config=config)
     except Exception as e:
-        logger.error("Error in receipt grouping: %s", e)
-        traceback.print_exc()
+        logger.exception("Error in receipt grouping")
         return {
             "image_id": image_id,
             "status": "ERROR",
             "confidence": 0.0,
-            "reasoning": f"Error during analysis: {str(e)}",
+            "reasoning": f"Error during analysis: {e!s}",
             "grouping": None,
         }
 

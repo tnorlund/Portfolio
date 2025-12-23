@@ -41,6 +41,7 @@ from receipt_agent import (
 )
 from receipt_agent.agents.label_evaluator import apply_llm_decisions
 from receipt_agent.constants import CORE_LABELS, CORE_LABELS_SET
+from receipt_agent.utils.chroma_helpers import build_word_chroma_id
 
 from utils.tracing import flush_langsmith_traces
 
@@ -640,16 +641,6 @@ def describe_position(x: float, y: float) -> str:
 # =============================================================================
 # ChromaDB Similar Word Query
 # =============================================================================
-
-
-def build_word_chroma_id(
-    image_id: str, receipt_id: int, line_id: int, word_id: int
-) -> str:
-    """Build ChromaDB ID for a word."""
-    return (
-        f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-        f"#LINE#{line_id:05d}#WORD#{word_id:05d}"
-    )
 
 
 def query_similar_words(

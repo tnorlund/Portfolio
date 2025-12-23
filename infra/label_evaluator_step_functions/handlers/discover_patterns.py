@@ -294,7 +294,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             logger=logger,
         )
         if existing:
-            logger.info(f"Using cached patterns for {merchant_name}")
+            logger.info("Using cached patterns for %s", merchant_name)
             return {
                 "execution_id": execution_id,
                 "merchant_name": merchant_name,
@@ -305,7 +305,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             }
 
     # Build receipt structure for analysis
-    logger.info(f"Discovering patterns for {merchant_name}")
+    logger.info("Discovering patterns for %s", merchant_name)
     table_name = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable")
     dynamo_client = DynamoClient(table_name=table_name)
 
@@ -314,7 +314,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     )
 
     if not receipts_data:
-        logger.warning(f"No receipt data found for {merchant_name}")
+        logger.warning("No receipt data found for %s", merchant_name)
         # Return default patterns
         default_patterns = {
             "merchant": merchant_name,
@@ -349,7 +349,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     patterns = discover_patterns_with_llm(prompt)
 
     if not patterns:
-        logger.warning(f"LLM pattern discovery failed for {merchant_name}")
+        logger.warning("LLM pattern discovery failed for %s", merchant_name)
         # Return default patterns
         default_patterns = {
             "merchant": merchant_name,
@@ -385,7 +385,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     # Store patterns
     upload_json_to_s3(s3, batch_bucket, patterns_s3_key, patterns)
-    logger.info(f"Stored patterns for {merchant_name} at {patterns_s3_key}")
+    logger.info("Stored patterns for %s at %s", merchant_name, patterns_s3_key)
 
     return {
         "execution_id": execution_id,

@@ -351,7 +351,7 @@ async def search_similar_receipts(
 
                 matches_found = 0
                 for doc_id, doc, meta, dist in zip(
-                    ids, documents, metadatas, distances
+                    ids, documents, metadatas, distances, strict=True
                 ):
                     similarity = max(0.0, 1.0 - (dist / 2))
 
