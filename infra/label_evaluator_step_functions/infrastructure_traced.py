@@ -8,9 +8,14 @@ The trace hierarchy:
 - ListMerchants: Root trace for the workflow
   - ProcessMerchant: Child trace per merchant
     - ListReceipts: List receipts for merchant
+    - DiscoverLineItemPatterns: LLM discovers line item patterns
     - ComputePatterns: Compute spatial patterns (visible sub-spans)
     - EvaluateLabels: Per-receipt evaluation (each as child span)
+    - CollectIssues: Collect flagged issues
+    - BatchIssues: Batch issues for LLM review
+    - LLMReviewBatch: LLM reviews each batch (visible LLM calls)
     - AggregateResults: Aggregate merchant results
+  - FinalAggregate: Aggregate across all merchants
 
 All business logic is identical to the non-traced version. The only
 difference is trace context propagation via `langsmith_headers`.
@@ -54,6 +59,9 @@ except ImportError as e:
 # Load secrets from Pulumi config
 config = Config("portfolio")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
+ollama_api_key = config.require_secret("OLLAMA_API_KEY")
+ollama_base_url = config.get("OLLAMA_BASE_URL") or "https://api.ollama.com"
+ollama_model = config.get("OLLAMA_MODEL") or "llama3.1:70b"
 
 # Label evaluator specific config
 evaluator_config = Config("label-evaluator")
@@ -75,8 +83,10 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         *,
         dynamodb_table_name: pulumi.Input[str],
         dynamodb_table_arn: pulumi.Input[str],
+        chromadb_bucket: Optional[pulumi.Input[str]] = None,
         max_concurrency: Optional[int] = None,
         batch_size: Optional[int] = None,
+        skip_llm_review: bool = False,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -86,6 +96,8 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
 
         self.max_concurrency = max_concurrency or max_concurrency_default
         self.batch_size = batch_size or batch_size_default
+        self.skip_llm_review = skip_llm_review
+        self.chromadb_bucket = chromadb_bucket
 
         # ============================================================
         # S3 Bucket for batch files and results
@@ -412,6 +424,102 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # collect_issues_traced Lambda
+        collect_issues_lambda = Function(
+            f"{name}-collect-issues",
+            name=f"{name}-collect-issues",
+            role=lambda_role.arn,
+            runtime="python3.12",
+            architectures=["arm64"],
+            handler="collect_issues_traced.handler",
+            code=AssetArchive(
+                {
+                    "collect_issues_traced.py": FileAsset(
+                        os.path.join(HANDLERS_TRACED_DIR, "collect_issues_traced.py")
+                    ),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
+                    "s3_helpers.py": FileAsset(
+                        os.path.join(UTILS_DIR, "s3_helpers.py")
+                    ),
+                }
+            ),
+            timeout=300,
+            memory_size=512,
+            tags={"environment": stack},
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "BATCH_BUCKET": self.batch_bucket.bucket,
+                    **tracing_env,
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # batch_issues_traced Lambda
+        batch_issues_lambda = Function(
+            f"{name}-batch-issues",
+            name=f"{name}-batch-issues",
+            role=lambda_role.arn,
+            runtime="python3.12",
+            architectures=["arm64"],
+            handler="batch_issues_traced.handler",
+            code=AssetArchive(
+                {
+                    "batch_issues_traced.py": FileAsset(
+                        os.path.join(HANDLERS_TRACED_DIR, "batch_issues_traced.py")
+                    ),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
+                    "s3_helpers.py": FileAsset(
+                        os.path.join(UTILS_DIR, "s3_helpers.py")
+                    ),
+                }
+            ),
+            timeout=300,
+            memory_size=512,
+            tags={"environment": stack},
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "BATCH_BUCKET": self.batch_bucket.bucket,
+                    **tracing_env,
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # final_aggregate_traced Lambda
+        final_aggregate_lambda = Function(
+            f"{name}-final-aggregate",
+            name=f"{name}-final-aggregate",
+            role=lambda_role.arn,
+            runtime="python3.12",
+            architectures=["arm64"],
+            handler="final_aggregate_traced.handler",
+            code=AssetArchive(
+                {
+                    "final_aggregate_traced.py": FileAsset(
+                        os.path.join(HANDLERS_TRACED_DIR, "final_aggregate_traced.py")
+                    ),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
+                }
+            ),
+            timeout=300,
+            memory_size=512,
+            tags={"environment": stack},
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "BATCH_BUCKET": self.batch_bucket.bucket,
+                    **tracing_env,
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
         # ============================================================
         # Container Lambda: compute_patterns_traced
         # ============================================================
@@ -488,6 +596,93 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         evaluate_labels_lambda = evaluate_docker_image.lambda_function
 
         # ============================================================
+        # Container Lambda: discover_patterns_traced (LLM)
+        # ============================================================
+        discover_patterns_config = {
+            "role_arn": lambda_role.arn,
+            "timeout": 600,
+            "memory_size": 2048,
+            "tags": {"environment": stack},
+            "ephemeral_storage": 512,
+            "environment": {
+                "BATCH_BUCKET": self.batch_bucket.bucket,
+                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                "OLLAMA_API_KEY": ollama_api_key,
+                "OLLAMA_BASE_URL": ollama_base_url,
+                "OLLAMA_MODEL": ollama_model,
+                **tracing_env,
+            },
+        }
+
+        discover_patterns_docker_image = CodeBuildDockerImage(
+            f"{name}-discover-patterns-img",
+            dockerfile_path=(
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.discover_patterns"
+            ),
+            build_context_path=".",
+            source_paths=[
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
+                "receipt_chroma",
+                "receipt_places",
+                "receipt_agent",
+            ],
+            lambda_function_name=f"{name}-discover-patterns",
+            lambda_config=discover_patterns_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
+        )
+
+        discover_patterns_lambda = discover_patterns_docker_image.lambda_function
+
+        # ============================================================
+        # Container Lambda: llm_review_traced (LLM)
+        # ============================================================
+        llm_review_lambda_config = {
+            "role_arn": lambda_role.arn,
+            "timeout": 900,  # 15 minutes for batch review
+            "memory_size": 4096,
+            "tags": {"environment": stack},
+            "ephemeral_storage": 2048,  # For ChromaDB snapshot
+            "environment": {
+                "BATCH_BUCKET": self.batch_bucket.bucket,
+                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
+                "RECEIPT_AGENT_OLLAMA_API_KEY": ollama_api_key,
+                "RECEIPT_AGENT_OLLAMA_BASE_URL": ollama_base_url,
+                "RECEIPT_AGENT_OLLAMA_MODEL": ollama_model,
+                "CHROMADB_BUCKET": chromadb_bucket or "",
+                "MAX_ISSUES_PER_LLM_CALL": "15",
+                "CIRCUIT_BREAKER_THRESHOLD": "5",
+                "LLM_MAX_JITTER_SECONDS": "0.25",
+                **tracing_env,
+            },
+        }
+
+        llm_review_docker_image = CodeBuildDockerImage(
+            f"{name}-llm-review-img",
+            dockerfile_path=(
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.llm_review"
+            ),
+            build_context_path=".",
+            source_paths=[
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
+                "receipt_chroma",
+                "receipt_places",
+                "receipt_agent",
+            ],
+            lambda_function_name=f"{name}-llm-review",
+            lambda_config=llm_review_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
+        )
+
+        llm_review_lambda = llm_review_docker_image.lambda_function
+
+        # ============================================================
         # Step Function role policies
         # ============================================================
         RolePolicy(
@@ -500,6 +695,11 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                 compute_patterns_lambda.arn,
                 evaluate_labels_lambda.arn,
                 aggregate_results_lambda.arn,
+                collect_issues_lambda.arn,
+                batch_issues_lambda.arn,
+                final_aggregate_lambda.arn,
+                discover_patterns_lambda.arn,
+                llm_review_lambda.arn,
             ).apply(
                 lambda arns: json.dumps(
                     {
@@ -579,6 +779,11 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                 compute_patterns_lambda.arn,
                 evaluate_labels_lambda.arn,
                 aggregate_results_lambda.arn,
+                collect_issues_lambda.arn,
+                batch_issues_lambda.arn,
+                final_aggregate_lambda.arn,
+                discover_patterns_lambda.arn,
+                llm_review_lambda.arn,
                 self.batch_bucket.bucket,
             ).apply(
                 lambda args: self._create_step_function_definition(
@@ -588,9 +793,15 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                     compute_patterns_arn=args[3],
                     evaluate_labels_arn=args[4],
                     aggregate_results_arn=args[5],
-                    batch_bucket=args[6],
+                    collect_issues_arn=args[6],
+                    batch_issues_arn=args[7],
+                    final_aggregate_arn=args[8],
+                    discover_patterns_arn=args[9],
+                    llm_review_arn=args[10],
+                    batch_bucket=args[11],
                     max_concurrency=self.max_concurrency,
                     batch_size=self.batch_size,
+                    skip_llm_review=self.skip_llm_review,
                 )
             ),
             logging_configuration=logging_config,
@@ -618,9 +829,15 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         compute_patterns_arn: str,
         evaluate_labels_arn: str,
         aggregate_results_arn: str,
+        collect_issues_arn: str,
+        batch_issues_arn: str,
+        final_aggregate_arn: str,
+        discover_patterns_arn: str,
+        llm_review_arn: str,
         batch_bucket: str,
         max_concurrency: int,
         batch_size: int,
+        skip_llm_review: bool,
     ) -> str:
         """Create Step Function definition with trace propagation.
 
@@ -641,7 +858,8 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                         "batch_bucket": batch_bucket,
                         "batch_size": batch_size,
                         "merchant_name.$": "$.merchant_name",
-                        "skip_llm_review": True,
+                        "skip_llm_review": skip_llm_review,
+                        "dry_run.$": "$.dry_run",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
                         "limit.$": "$.limit",
@@ -726,6 +944,8 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                         "batch_size.$": "$.init.batch_size",
                         "max_training_receipts.$": "$.init.max_training_receipts",
                         "limit.$": "$.init.limit",
+                        "skip_llm_review.$": "$.init.skip_llm_review",
+                        "dry_run.$": "$.init.dry_run",
                         # Propagate trace headers from ListMerchants
                         "langsmith_headers.$": "$.merchants_data.langsmith_headers",
                     },
@@ -764,7 +984,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     {
                                         "Variable": "$.receipts_data.total_receipts",
                                         "NumericGreaterThan": 0,
-                                        "Next": "ComputePatterns",
+                                        "Next": "DiscoverLineItemPatterns",
                                     }
                                 ],
                                 "Default": "NoReceipts",
@@ -778,7 +998,29 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                 },
                                 "End": True,
                             },
-                            # Compute patterns - resumes trace
+                            # Discover line item patterns with LLM
+                            "DiscoverLineItemPatterns": {
+                                "Type": "Task",
+                                "Resource": discover_patterns_arn,
+                                "TimeoutSeconds": 600,
+                                "Parameters": {
+                                    "execution_id.$": "$.execution_id",
+                                    "batch_bucket.$": "$.batch_bucket",
+                                    "merchant_name.$": "$.merchant.merchant_name",
+                                    "langsmith_headers.$": "$.receipts_data.langsmith_headers",
+                                },
+                                "ResultPath": "$.line_item_patterns",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": ["States.TaskFailed"],
+                                        "IntervalSeconds": 5,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                                "Next": "ComputePatterns",
+                            },
+                            # Compute spatial patterns - resumes trace
                             "ComputePatterns": {
                                 "Type": "Task",
                                 "Resource": compute_patterns_arn,
@@ -788,8 +1030,8 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "batch_bucket.$": "$.batch_bucket",
                                     "merchant.$": "$.merchant",
                                     "max_training_receipts.$": "$.max_training_receipts",
-                                    # Propagate trace from ListReceipts
-                                    "langsmith_headers.$": "$.receipts_data.langsmith_headers",
+                                    # Propagate trace from DiscoverLineItemPatterns
+                                    "langsmith_headers.$": "$.line_item_patterns.langsmith_headers",
                                 },
                                 "ResultPath": "$.patterns_result",
                                 "Retry": [
@@ -895,6 +1137,143 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     },
                                 },
                                 "ResultPath": "$.batch_results",
+                                "Next": "CollectIssues",
+                            },
+                            # Collect all issues from evaluations
+                            "CollectIssues": {
+                                "Type": "Task",
+                                "Resource": collect_issues_arn,
+                                "TimeoutSeconds": 300,
+                                "Parameters": {
+                                    "execution_id.$": "$.execution_id",
+                                    "batch_bucket.$": "$.batch_bucket",
+                                    "merchant_name.$": "$.merchant.merchant_name",
+                                    "process_results.$": "$.batch_results",
+                                    "langsmith_headers.$": "$.patterns_result.langsmith_headers",
+                                },
+                                "ResultPath": "$.collected_issues",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": ["States.TaskFailed"],
+                                        "IntervalSeconds": 2,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                                "Next": "CheckSkipLLMReview",
+                            },
+                            # Check if we should skip LLM review
+                            "CheckSkipLLMReview": {
+                                "Type": "Choice",
+                                "Choices": [
+                                    {
+                                        "Or": [
+                                            {
+                                                "Variable": "$.skip_llm_review",
+                                                "BooleanEquals": True,
+                                            },
+                                            {
+                                                "Variable": "$.collected_issues.total_issues",
+                                                "NumericEquals": 0,
+                                            },
+                                        ],
+                                        "Next": "AggregateResults",
+                                    }
+                                ],
+                                "Default": "BatchIssues",
+                            },
+                            # Batch issues for parallel LLM review
+                            "BatchIssues": {
+                                "Type": "Task",
+                                "Resource": batch_issues_arn,
+                                "TimeoutSeconds": 300,
+                                "Parameters": {
+                                    "execution_id.$": "$.execution_id",
+                                    "batch_bucket.$": "$.batch_bucket",
+                                    "merchant_name.$": "$.merchant.merchant_name",
+                                    "merchant_receipt_count.$": "$.receipts_data.total_receipts",
+                                    "issues_s3_key.$": "$.collected_issues.issues_s3_key",
+                                    "batch_size": 25,
+                                    "dry_run.$": "$.dry_run",
+                                    "langsmith_headers.$": "$.collected_issues.langsmith_headers",
+                                },
+                                "ResultPath": "$.batched_issues",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": ["States.TaskFailed"],
+                                        "IntervalSeconds": 2,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                                "Next": "CheckHasBatches",
+                            },
+                            "CheckHasBatches": {
+                                "Type": "Choice",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.batched_issues.batch_count",
+                                        "NumericGreaterThan": 0,
+                                        "Next": "ProcessLLMBatches",
+                                    }
+                                ],
+                                "Default": "AggregateResults",
+                            },
+                            # Process LLM review batches in parallel
+                            "ProcessLLMBatches": {
+                                "Type": "Map",
+                                "ItemsPath": "$.batched_issues.batches",
+                                "MaxConcurrency": 3,
+                                "Parameters": {
+                                    "batch_info.$": "$$.Map.Item.Value",
+                                    "execution_id.$": "$.execution_id",
+                                    "batch_bucket.$": "$.batch_bucket",
+                                    "merchant_name.$": "$.merchant.merchant_name",
+                                    "merchant_receipt_count.$": "$.receipts_data.total_receipts",
+                                    "line_item_patterns_s3_key.$": "$.line_item_patterns.patterns_s3_key",
+                                    "dry_run.$": "$.dry_run",
+                                    "langsmith_headers.$": "$.batched_issues.langsmith_headers",
+                                },
+                                "ItemProcessor": {
+                                    "ProcessorConfig": {"Mode": "INLINE"},
+                                    "StartAt": "LLMReviewBatch",
+                                    "States": {
+                                        "LLMReviewBatch": {
+                                            "Type": "Task",
+                                            "Resource": llm_review_arn,
+                                            "TimeoutSeconds": 900,
+                                            "Parameters": {
+                                                "execution_id.$": "$.execution_id",
+                                                "batch_bucket.$": "$.batch_bucket",
+                                                "merchant_name.$": "$.merchant_name",
+                                                "merchant_receipt_count.$": "$.merchant_receipt_count",
+                                                "batch_s3_key.$": "$.batch_info.batch_s3_key",
+                                                "batch_index.$": "$.batch_info.batch_index",
+                                                "line_item_patterns_s3_key.$": "$.line_item_patterns_s3_key",
+                                                "dry_run.$": "$.dry_run",
+                                                "langsmith_headers.$": "$.langsmith_headers",
+                                            },
+                                            "Retry": [
+                                                {
+                                                    "ErrorEquals": [
+                                                        "OllamaRateLimitError"
+                                                    ],
+                                                    "IntervalSeconds": 30,
+                                                    "MaxAttempts": 5,
+                                                    "BackoffRate": 2.0,
+                                                },
+                                                {
+                                                    "ErrorEquals": ["States.TaskFailed"],
+                                                    "IntervalSeconds": 5,
+                                                    "MaxAttempts": 2,
+                                                    "BackoffRate": 2.0,
+                                                },
+                                            ],
+                                            "End": True,
+                                        },
+                                    },
+                                },
+                                "ResultPath": "$.llm_review_results",
                                 "Next": "AggregateResults",
                             },
                             # Aggregate results
@@ -907,6 +1286,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "batch_bucket.$": "$.batch_bucket",
                                     "process_results.$": "$.batch_results",
                                     "merchant_name.$": "$.merchant.merchant_name",
+                                    "dry_run.$": "$.dry_run",
                                     "langsmith_headers.$": "$.patterns_result.langsmith_headers",
                                 },
                                 "ResultPath": "$.summary",
@@ -919,19 +1299,25 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "status": "completed",
                                     "total_receipts.$": "$.receipts_data.total_receipts",
                                     "total_issues.$": "$.summary.total_issues",
+                                    "summary.$": "$.summary",
                                 },
                                 "End": True,
                             },
                         },
                     },
                     "ResultPath": "$.all_results",
-                    "Next": "FinalSummary",
+                    "Next": "FinalAggregate",
                 },
-                "FinalSummary": {
-                    "Type": "Pass",
+                # Final aggregation across all merchants
+                "FinalAggregate": {
+                    "Type": "Task",
+                    "Resource": final_aggregate_arn,
+                    "TimeoutSeconds": 300,
                     "Parameters": {
-                        "status": "completed",
-                        "results.$": "$.all_results",
+                        "execution_id.$": "$.init.execution_id",
+                        "batch_bucket.$": "$.init.batch_bucket",
+                        "all_merchant_results.$": "$.all_results",
+                        "langsmith_headers.$": "$.merchants_data.langsmith_headers",
                     },
                     "End": True,
                 },
