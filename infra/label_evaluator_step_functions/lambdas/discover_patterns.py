@@ -8,7 +8,6 @@ are stored in S3 for use during LLM review.
 import json
 import logging
 import os
-import re
 from typing import Any
 
 import boto3
@@ -47,8 +46,10 @@ def upload_json_to_s3(bucket: str, key: str, data: Any) -> None:
 
 
 def get_merchant_hash(merchant_name: str) -> str:
-    """Create a safe hash for merchant name."""
-    return re.sub(r"[^a-z0-9]", "_", merchant_name.lower())[:50]
+    """Create a short, stable hash for merchant name S3 keys."""
+    import hashlib
+
+    return hashlib.sha256(merchant_name.encode("utf-8")).hexdigest()[:12]
 
 
 def build_receipt_structure(
@@ -74,8 +75,8 @@ def build_receipt_structure(
                 place.image_id, place.receipt_id
             )
             labels = labels_result[0] if labels_result else []
-        except Exception as e:
-            logger.warning(f"Error fetching receipt data: {e}")
+        except Exception:
+            logger.exception("Error fetching receipt data")
             continue
 
         if not words or not labels:
@@ -122,7 +123,7 @@ def build_receipt_structure(
                     }
                 )
 
-            # Include lines that have labeled words or are near labeled lines
+            # Include lines that have labeled words
             if any(w["labels"] for w in words_data):
                 receipt_lines.append(
                     {
@@ -216,6 +217,7 @@ def discover_patterns_with_llm(prompt: str) -> dict | None:
         logger.error("OLLAMA_API_KEY not set")
         return None
 
+    content = ""
     try:
         with httpx.Client(timeout=120.0) as client:
             response = client.post(

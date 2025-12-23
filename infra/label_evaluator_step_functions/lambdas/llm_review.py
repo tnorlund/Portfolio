@@ -256,14 +256,20 @@ def _group_words_into_ocr_lines(
             if tl.get("y") is not None and bl.get("y") is not None:
                 centroid_ys.append((tl["y"] + bl["y"]) / 2)
 
-        ocr_lines.append({
-            "line_id": line_id,
-            "words": line_words,
-            "centroid_y": sum(centroid_ys) / len(centroid_ys) if centroid_ys else 0,
-            "top_y": max(top_ys) if top_ys else 0,
-            "bottom_y": min(bottom_ys) if bottom_ys else 0,
-            "min_x": min(w.get("top_left", {}).get("x", 0) for w in line_words),
-        })
+        ocr_lines.append(
+            {
+                "line_id": line_id,
+                "words": line_words,
+                "centroid_y": (
+                    sum(centroid_ys) / len(centroid_ys) if centroid_ys else 0
+                ),
+                "top_y": max(top_ys) if top_ys else 0,
+                "bottom_y": min(bottom_ys) if bottom_ys else 0,
+                "min_x": min(
+                    w.get("top_left", {}).get("x", 0) for w in line_words
+                ),
+            }
+        )
 
     return ocr_lines
 
@@ -341,11 +347,13 @@ def assemble_receipt_text(
                 continue
 
         # Start new visual line with this OCR line's geometry
-        visual_lines.append({
-            "words": list(ocr_line["words"]),
-            "top_y": ocr_line["top_y"],
-            "bottom_y": ocr_line["bottom_y"],
-        })
+        visual_lines.append(
+            {
+                "words": list(ocr_line["words"]),
+                "top_y": ocr_line["top_y"],
+                "bottom_y": ocr_line["bottom_y"],
+            }
+        )
 
     # Sort words within each visual line by X (left to right)
     for vl in visual_lines:
@@ -357,16 +365,21 @@ def assemble_receipt_text(
         keep_bottom = max_lines - keep_top - 1
         omitted = len(visual_lines) - max_lines + 1
         placeholder = {
-            "words": [{"text": f"... ({omitted} lines omitted) ...",
-                       "line_id": -1, "word_id": -1}],
+            "words": [
+                {
+                    "text": f"... ({omitted} lines omitted) ...",
+                    "line_id": -1,
+                    "word_id": -1,
+                }
+            ],
             "top_y": 0,
             "bottom_y": 0,
         }
-        visual_lines = (
-            visual_lines[:keep_top]
-            + [placeholder]
-            + visual_lines[-keep_bottom:]
-        )
+        visual_lines = [
+            *visual_lines[:keep_top],
+            placeholder,
+            *visual_lines[-keep_bottom:],
+        ]
 
     # Format each visual line with labels
     formatted_lines = []
@@ -659,7 +672,9 @@ def query_similar_words(
     )
 
     try:
-        logger.debug("Querying similar words for '%s' (%s)", word_text, word_chroma_id)
+        logger.debug(
+            "Querying similar words for '%s' (%s)", word_text, word_chroma_id
+        )
 
         # First, get the target word's embedding
         word_result = chroma_client.get(
@@ -1547,7 +1562,8 @@ def parse_batched_llm_response(
 
     except json.JSONDecodeError:
         logger.exception(
-            "Failed to parse batched response (preview: %s)", response_text[:500]
+            "Failed to parse batched response (preview: %s)",
+            response_text[:500],
         )
         return [fallback.copy() for _ in range(expected_count)]
 
@@ -1652,7 +1668,9 @@ def build_receipt_context_prompt(
             validated_info = []
             validated_as = e.get("validated_as")
             if validated_as is None:
-                logger.debug(f"Issue {idx}: evidence[{e_idx}] validated_as is None")
+                logger.debug(
+                    f"Issue {idx}: evidence[{e_idx}] validated_as is None"
+                )
             elif not isinstance(validated_as, list):
                 logger.warning(
                     f"Issue {idx}: evidence[{e_idx}] validated_as is "
@@ -1664,12 +1682,14 @@ def build_receipt_context_prompt(
                         continue
                     label = v.get("label", "?")
                     reasoning = (v.get("reasoning") or "no reasoning")[:80]
-                    validated_info.append(f"{label}: \"{reasoning}\"")
+                    validated_info.append(f'{label}: "{reasoning}"')
 
             invalidated_info = []
             invalidated_as = e.get("invalidated_as")
             if invalidated_as is None:
-                logger.debug(f"Issue {idx}: evidence[{e_idx}] invalidated_as is None")
+                logger.debug(
+                    f"Issue {idx}: evidence[{e_idx}] invalidated_as is None"
+                )
             elif not isinstance(invalidated_as, list):
                 logger.warning(
                     f"Issue {idx}: evidence[{e_idx}] invalidated_as is "
@@ -1681,7 +1701,7 @@ def build_receipt_context_prompt(
                         continue
                     label = v.get("label", "?")
                     reasoning = (v.get("reasoning") or "no reasoning")[:60]
-                    invalidated_info.append(f"~~{label}~~: \"{reasoning}\"")
+                    invalidated_info.append(f'~~{label}~~: "{reasoning}"')
 
             # Format line
             line = f'- "{sim_word}" ({sim_score:.0%}, {is_same})'
@@ -1691,7 +1711,11 @@ def build_receipt_context_prompt(
                 line += f" | {'; '.join(invalidated_info)}"
             similar_lines.append(line)
 
-        similar_text = "\n".join(similar_lines) if similar_lines else "No similar words found"
+        similar_text = (
+            "\n".join(similar_lines)
+            if similar_lines
+            else "No similar words found"
+        )
 
         issue_block = f"""
 ### Issue {idx}: "{word_text}" - {current_label}
@@ -1838,7 +1862,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     circuit_breaker_threshold = int(
         os.environ.get("CIRCUIT_BREAKER_THRESHOLD", "5")
     )
-    max_jitter_seconds = float(os.environ.get("LLM_MAX_JITTER_SECONDS", "0.25"))
+    max_jitter_seconds = float(
+        os.environ.get("LLM_MAX_JITTER_SECONDS", "0.25")
+    )
 
     chromadb_bucket = os.environ.get("CHROMADB_BUCKET")
     table_name = os.environ.get(
@@ -2002,19 +2028,48 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             receipt_id = int(receipt_id_str)
 
             # Load receipt data (words, labels) from S3
-            receipt_data_key = f"data/{execution_id}/{image_id}_{receipt_id}.json"
+            receipt_data_key = (
+                f"data/{execution_id}/{image_id}_{receipt_id}.json"
+            )
             try:
-                receipt_data = load_json_from_s3(batch_bucket, receipt_data_key)
+                receipt_data = load_json_from_s3(
+                    batch_bucket, receipt_data_key
+                )
                 receipt_words = receipt_data.get("words", [])
                 receipt_labels = receipt_data.get("labels", [])
             except Exception as e:
-                logger.warning(f"Could not load receipt data for {receipt_key}: {e}")
-                receipt_words = []
-                receipt_labels = []
+                logger.exception(
+                    "Could not load receipt data for %s",
+                    receipt_key,
+                )
+                for collected in receipt_issues:
+                    issue = collected.get("issue", {})
+                    decisions["NEEDS_REVIEW"] += 1
+                    reviewed_issues.append(
+                        {
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                            "issue": issue,
+                            "llm_review": {
+                                "decision": "NEEDS_REVIEW",
+                                "reasoning": (
+                                    f"Receipt data unavailable: {e}"
+                                ),
+                                "suggested_label": None,
+                                "confidence": "low",
+                            },
+                            "data_load_error": str(e),
+                        }
+                    )
+                continue
 
             # Process issues in chunks if receipt has too many
-            for chunk_start in range(0, len(receipt_issues), max_issues_per_call):
-                chunk_end = min(chunk_start + max_issues_per_call, len(receipt_issues))
+            for chunk_start in range(
+                0, len(receipt_issues), max_issues_per_call
+            ):
+                chunk_end = min(
+                    chunk_start + max_issues_per_call, len(receipt_issues)
+                )
                 chunk_issues = receipt_issues[chunk_start:chunk_end]
 
                 logger.info(
@@ -2032,15 +2087,19 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     word_id = issue.get("word_id", 0)
                     line_id = issue.get("line_id", 0)
 
-                    chunk_metadata.append({
-                        "image_id": image_id,
-                        "receipt_id": receipt_id,
-                        "issue": issue,
-                    })
+                    chunk_metadata.append(
+                        {
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                            "issue": issue,
+                        }
+                    )
 
                     try:
                         # Query similar words (with caching)
-                        cache_key = f"{image_id}:{receipt_id}:{line_id}:{word_id}"
+                        cache_key = (
+                            f"{image_id}:{receipt_id}:{line_id}:{word_id}"
+                        )
                         if cache_key in similar_cache:
                             similar_evidence = similar_cache[cache_key]
                         elif chroma_client:
@@ -2055,26 +2114,36 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                             )
 
                             if dynamo_client and similar_evidence:
-                                similar_evidence = enrich_evidence_with_dynamo_reasoning(
-                                    similar_evidence, dynamo_client, limit=15
+                                similar_evidence = (
+                                    enrich_evidence_with_dynamo_reasoning(
+                                        similar_evidence,
+                                        dynamo_client,
+                                        limit=15,
+                                    )
                                 )
 
                             similar_cache[cache_key] = similar_evidence
                         else:
                             similar_evidence = []
 
-                        issues_with_context.append({
-                            "issue": issue,
-                            "similar_evidence": similar_evidence,
-                        })
+                        issues_with_context.append(
+                            {
+                                "issue": issue,
+                                "similar_evidence": similar_evidence,
+                            }
+                        )
 
                     except Exception as e:
-                        logger.warning(f"Error gathering context for issue: {e}")
-                        issues_with_context.append({
-                            "issue": issue,
-                            "similar_evidence": [],
-                            "context_error": str(e),
-                        })
+                        logger.warning(
+                            f"Error gathering context for issue: {e}"
+                        )
+                        issues_with_context.append(
+                            {
+                                "issue": issue,
+                                "similar_evidence": [],
+                                "context_error": str(e),
+                            }
+                        )
 
                 # Build receipt-context prompt and make LLM call
                 try:
@@ -2087,7 +2156,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                         line_item_patterns=line_item_patterns,
                     )
 
-                    response = llm_invoker.invoke([HumanMessage(content=prompt)])
+                    response = llm_invoker.invoke(
+                        [HumanMessage(content=prompt)]
+                    )
                     llm_call_count += 1
 
                     chunk_reviews = parse_batched_llm_response(
@@ -2102,13 +2173,17 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
                         decisions[review_result["decision"]] += 1
 
-                        reviewed_issues.append({
-                            "image_id": meta["image_id"],
-                            "receipt_id": meta["receipt_id"],
-                            "issue": meta["issue"],
-                            "llm_review": review_result,
-                            "similar_word_count": len(ctx.get("similar_evidence", [])),
-                        })
+                        reviewed_issues.append(
+                            {
+                                "image_id": meta["image_id"],
+                                "receipt_id": meta["receipt_id"],
+                                "issue": meta["issue"],
+                                "llm_review": review_result,
+                                "similar_word_count": len(
+                                    ctx.get("similar_evidence", [])
+                                ),
+                            }
+                        )
 
                     logger.info(
                         f"Completed receipt chunk: {len(chunk_reviews)} issues "
@@ -2122,10 +2197,10 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                         f"issues. Saving partial progress."
                     )
                     if reviewed_issues:
-                        merchant_hash = merchant_name.lower().replace(" ", "_")[:30]
-                        partial_s3_key = (
-                            f"partial/{execution_id}/{merchant_hash}_{batch_index}.json"
-                        )
+                        merchant_hash = merchant_name.lower().replace(
+                            " ", "_"
+                        )[:30]
+                        partial_s3_key = f"partial/{execution_id}/{merchant_hash}_{batch_index}.json"
                         partial_data = {
                             "execution_id": execution_id,
                             "merchant_name": merchant_name,
@@ -2136,15 +2211,22 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                             "issues": reviewed_issues,
                             "rate_limited": True,
                         }
-                        upload_json_to_s3(batch_bucket, partial_s3_key, partial_data)
-                        logger.info(f"Saved partial progress to {partial_s3_key}")
+                        upload_json_to_s3(
+                            batch_bucket, partial_s3_key, partial_data
+                        )
+                        logger.info(
+                            f"Saved partial progress to {partial_s3_key}"
+                        )
                     raise  # Re-raise for Step Function retry
 
                 except Exception as e:
                     # If LLM call fails, mark all issues in chunk as NEEDS_REVIEW
-                    logger.exception("LLM call failed for receipt %s", receipt_key)
+                    logger.exception(
+                        "LLM call failed for receipt %s", receipt_key
+                    )
                     logger.warning(
-                        "Marking %d issues as NEEDS_REVIEW.", len(chunk_metadata)
+                        "Marking %d issues as NEEDS_REVIEW.",
+                        len(chunk_metadata),
                     )
                     for i, meta in enumerate(chunk_metadata):
                         ctx = (

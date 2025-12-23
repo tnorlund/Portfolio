@@ -5,10 +5,9 @@ learning and uploads the serialized data to S3. Uses caching to avoid
 redundant fetches across receipts from the same merchant.
 """
 
-# pylint: disable=import-outside-toplevel
+# pylint: disable=import-outside-toplevel,import-error
 # Lambda handlers delay imports until runtime for cold start optimization
 
-import hashlib
 import json
 import logging
 import os
@@ -16,6 +15,9 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
+from serialization import serialize_label, serialize_place, serialize_word
+
+from .utils.s3_helpers import get_merchant_hash
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -58,7 +60,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         raise ValueError("batch_bucket is required")
 
     # Create cache key from merchant name
-    merchant_hash = hashlib.md5(merchant_name.encode()).hexdigest()[:12]
+    merchant_hash = get_merchant_hash(merchant_name)
     training_key = f"training/{execution_id}/{merchant_hash}.json"
 
     # Check if training data already exists (cached from another receipt)
@@ -82,7 +84,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "cached": True,
         }
     except ClientError as e:
-        if e.response["Error"]["Code"] != "404":
+        if e.response["Error"]["Code"] not in {"404", "NoSuchKey"}:
             raise
         # Not cached, need to fetch
 
@@ -140,56 +142,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "Fetching words/labels for %s training receipts",
         len(other_places),
     )
-
-    # Serialization helpers
-    def serialize_word(w):
-        return {
-            "image_id": w.image_id,
-            "receipt_id": w.receipt_id,
-            "line_id": w.line_id,
-            "word_id": w.word_id,
-            "text": w.text,
-            "bounding_box": w.bounding_box,
-            "top_right": w.top_right,
-            "top_left": w.top_left,
-            "bottom_right": w.bottom_right,
-            "bottom_left": w.bottom_left,
-            "angle_degrees": w.angle_degrees,
-            "angle_radians": w.angle_radians,
-            "confidence": w.confidence,
-            "extracted_data": w.extracted_data,
-            "embedding_status": (
-                str(w.embedding_status) if w.embedding_status else None
-            ),
-            "is_noise": w.is_noise,
-        }
-
-    def serialize_label(label):
-        ts = label.timestamp_added
-        ts_str = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
-        return {
-            "image_id": label.image_id,
-            "receipt_id": label.receipt_id,
-            "line_id": label.line_id,
-            "word_id": label.word_id,
-            "label": label.label,
-            "reasoning": label.reasoning,
-            "timestamp_added": ts_str,
-            "validation_status": label.validation_status,
-            "label_proposed_by": label.label_proposed_by,
-            "label_consolidated_from": label.label_consolidated_from,
-        }
-
-    def serialize_place(p):
-        """Serialize ReceiptPlace to JSON-compatible dict."""
-        return {
-            "image_id": p.image_id,
-            "receipt_id": p.receipt_id,
-            "merchant_name": p.merchant_name,
-            "place_id": p.place_id,
-            "formatted_address": p.formatted_address,
-            "validation_status": p.validation_status,
-        }
 
     # Fetch and serialize each receipt
     receipts_data = []

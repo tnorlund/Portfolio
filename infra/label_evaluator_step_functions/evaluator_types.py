@@ -5,7 +5,11 @@ Lambda handlers and stored in S3. Using TypedDicts instead of dict[str, Any]
 improves type safety, IDE support, and documentation.
 
 Usage:
-    from evaluator_types import ReceiptRef, EvaluationResult, IssueDetail
+    from infra.label_evaluator_step_functions.evaluator_types import (
+        ReceiptRef,
+        EvaluationResult,
+        IssueDetail,
+    )
 """
 
 from typing import NotRequired, TypedDict
@@ -336,6 +340,9 @@ class PatternsFile(TypedDict, total=False):
 # =============================================================================
 
 
+# NOTE: These validation types intentionally differ from
+# receipt_agent.utils.chroma_helpers. The Step Functions definitions are
+# stricter (required keys, fewer Optionals) to enforce stable S3 contracts.
 class LabelValidation(TypedDict):
     """A single label validation record."""
 

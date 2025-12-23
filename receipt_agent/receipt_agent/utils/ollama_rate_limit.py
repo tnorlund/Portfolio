@@ -126,12 +126,21 @@ def is_server_error(error: Exception) -> bool:
     Returns:
         True if this appears to be a 5xx server error
     """
-    error_str = str(error)
+    error_str = str(error).lower()
     return (
-        "500" in error_str
-        or "502" in error_str
-        or "503" in error_str
-        or "504" in error_str
+        "status 500" in error_str
+        or "status 502" in error_str
+        or "status 503" in error_str
+        or "status 504" in error_str
+        or "http 500" in error_str
+        or "http 502" in error_str
+        or "http 503" in error_str
+        or "http 504" in error_str
+        or "server error" in error_str
+        or "internal server error" in error_str
+        or "bad gateway" in error_str
+        or "service unavailable" in error_str
+        or "gateway timeout" in error_str
     )
 
 
@@ -243,7 +252,7 @@ class OllamaCircuitBreaker:
             self.total_timeout_errors += 1
             # Timeouts should be retried by Step Function
             logger.warning("Timeout error: %s", error)
-            raise  # Re-raise for Step Function retry
+            raise error  # Re-raise for Step Function retry
 
         else:
             # Other errors - reset consecutive count but don't trigger
@@ -302,7 +311,6 @@ class RateLimitedLLMInvoker:
     circuit_breaker: Optional[OllamaCircuitBreaker] = None
     max_jitter_seconds: float = 0.25
     call_count: int = field(default=0, init=False)
-    _last_call_time: float = field(default=0.0, init=False)
 
     def _apply_jitter(self) -> None:
         """Apply random jitter between calls to prevent thundering herd."""
@@ -325,7 +333,6 @@ class RateLimitedLLMInvoker:
             OllamaRateLimitError: If rate limit hit or circuit breaker triggers
         """
         self._apply_jitter()
-        self._last_call_time = time.time()
         self.call_count += 1
 
         try:

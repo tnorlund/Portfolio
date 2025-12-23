@@ -111,12 +111,16 @@ def handler(event: dict[str, Any], _context: Any) -> "FetchReceiptDataOutput":
 
     # Upload to S3
     data_key = f"data/{execution_id}/{image_id}_{receipt_id}.json"
-    s3.put_object(
-        Bucket=batch_bucket,
-        Key=data_key,
-        Body=json.dumps(data).encode("utf-8"),
-        ContentType="application/json",
-    )
+    try:
+        s3.put_object(
+            Bucket=batch_bucket,
+            Key=data_key,
+            Body=json.dumps(data).encode("utf-8"),
+            ContentType="application/json",
+        )
+    except Exception:
+        logger.exception("Failed to upload receipt data to %s", data_key)
+        raise
 
     logger.info(
         "Uploaded receipt data to s3://%s/%s",

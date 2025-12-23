@@ -47,8 +47,8 @@ def build_receipt_structure(
                 meta.image_id, meta.receipt_id
             )
             labels = labels_result[0] if labels_result else []
-        except Exception as e:
-            logger.warning(f"Error fetching receipt data: {e}")
+        except Exception:
+            logger.exception("Error fetching receipt data")
             continue
 
         if not words or not labels:
@@ -95,7 +95,7 @@ def build_receipt_structure(
                     }
                 )
 
-            # Include lines that have labeled words or are near labeled lines
+            # Include lines that have labeled words
             if any(w["labels"] for w in words_data):
                 receipt_lines.append(
                     {

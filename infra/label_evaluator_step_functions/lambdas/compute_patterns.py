@@ -113,12 +113,11 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
                         labels=labels,
                     )
                 )
-            except Exception as e:
-                logger.warning(
-                    "Error loading receipt %s#%s: %s",
+            except Exception:
+                logger.exception(
+                    "Error loading receipt %s#%s",
                     place.image_id,
                     place.receipt_id,
-                    e,
                 )
                 continue
 
@@ -211,7 +210,7 @@ def _hash_merchant(merchant_name: str) -> str:
     """Create a short hash for merchant name (for S3 key)."""
     import hashlib
 
-    return hashlib.md5(merchant_name.encode()).hexdigest()[:12]
+    return hashlib.sha256(merchant_name.encode("utf-8")).hexdigest()[:12]
 
 
 def _serialize_patterns(patterns, merchant_name: str) -> dict[str, Any]:

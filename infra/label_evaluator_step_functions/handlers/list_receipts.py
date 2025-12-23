@@ -13,7 +13,6 @@ import os
 from typing import TYPE_CHECKING, Any
 
 import boto3
-
 from evaluator_types import ReceiptRef
 
 if TYPE_CHECKING:
@@ -96,11 +95,11 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
 
     # Create receipt list with typed references
     receipts: list[ReceiptRef] = [
-        ReceiptRef(
-            image_id=p.image_id,
-            receipt_id=p.receipt_id,
-            merchant_name=p.merchant_name,
-        )
+        {
+            "image_id": p.image_id,
+            "receipt_id": p.receipt_id,
+            "merchant_name": p.merchant_name,
+        }
         for p in places
     ]
 
@@ -126,12 +125,16 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
     }
 
     manifest_key = f"manifests/{execution_id}/receipts.json"
-    s3.put_object(
-        Bucket=batch_bucket,
-        Key=manifest_key,
-        Body=json.dumps(manifest, indent=2).encode("utf-8"),
-        ContentType="application/json",
-    )
+    try:
+        s3.put_object(
+            Bucket=batch_bucket,
+            Key=manifest_key,
+            Body=json.dumps(manifest, indent=2).encode("utf-8"),
+            ContentType="application/json",
+        )
+    except Exception:
+        logger.exception("Failed to upload manifest to %s", manifest_key)
+        raise
 
     logger.info(
         "Created manifest at s3://%s/%s with %s batches",

@@ -80,7 +80,15 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             issues_s3_key,
         )
         raise
-    all_issues = issues_data.get("issues", [])
+    if issues_data is None:
+        logger.warning(
+            "No issues data found at s3://%s/%s",
+            batch_bucket,
+            issues_s3_key,
+        )
+        all_issues = []
+    else:
+        all_issues = issues_data.get("issues", [])
     total_issues = len(all_issues)
 
     if total_issues == 0:

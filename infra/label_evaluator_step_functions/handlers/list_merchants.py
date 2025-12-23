@@ -14,7 +14,6 @@ from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 import boto3
-
 from evaluator_types import MerchantInfo
 
 if TYPE_CHECKING:
@@ -130,12 +129,18 @@ def handler(event: dict[str, Any], _context: Any) -> "ListMerchantsOutput":
     }
 
     manifest_key = f"manifests/{execution_id}/merchants.json"
-    s3.put_object(
-        Bucket=batch_bucket,
-        Key=manifest_key,
-        Body=json.dumps(manifest, indent=2).encode("utf-8"),
-        ContentType="application/json",
-    )
+    try:
+        s3.put_object(
+            Bucket=batch_bucket,
+            Key=manifest_key,
+            Body=json.dumps(manifest, indent=2).encode("utf-8"),
+            ContentType="application/json",
+        )
+    except Exception:
+        logger.exception(
+            "Failed to upload merchant manifest to %s", manifest_key
+        )
+        raise
 
     logger.info(
         "Created merchant manifest at s3://%s/%s",

@@ -193,29 +193,31 @@ class MerchantPatterns:
 
     # Text examples per label (for text-based validation)
     # Example: {"MERCHANT_NAME": {"Sprouts", "SPROUTS"}}
-    label_texts: dict[str, set] = field(default_factory=dict)
+    label_texts: dict[str, set[str]] = field(default_factory=dict)
 
     # Labels that commonly appear together on same visual line
     # Example: {("PRODUCT_NAME", "LINE_TOTAL"): 47}
-    same_line_pairs: dict[tuple, int] = field(default_factory=dict)
+    same_line_pairs: dict[tuple[str, str], int] = field(default_factory=dict)
 
     # Label pairs that share the same value (learned from receipt patterns)
     # Example: {("SUBTOTAL", "GRAND_TOTAL"): 42, ("LINE_TOTAL", "SUBTOTAL"): 3}
     # Used to identify valid co-occurring values (e.g., no-tax receipts) vs
     # errors
-    value_pairs: dict[tuple, int] = field(default_factory=dict)
+    value_pairs: dict[tuple[str, str], int] = field(default_factory=dict)
 
     # Y-position relationships for label pairs
     # Example: {("SUBTOTAL", "GRAND_TOTAL"): (0.28, 0.15)} - SUBTOTAL at
     # y=0.28, GRAND_TOTAL at y=0.15
     # Helps validate spatial ordering (GRAND_TOTAL should be below/after
     # SUBTOTAL)
-    value_pair_positions: dict[tuple, tuple] = field(default_factory=dict)
+    value_pair_positions: dict[tuple[str, str], tuple[float, float]] = field(
+        default_factory=dict
+    )
 
     # Geometric relationships between label pairs
     # Example: {("ADDRESS_LINE", "UNIT_PRICE"): LabelPairGeometry(...)}
     # Tracks angle and distance between label centroids across receipts
-    label_pair_geometry: dict[tuple, LabelPairGeometry] = field(
+    label_pair_geometry: dict[tuple[str, str], LabelPairGeometry] = field(
         default_factory=dict
     )
 
@@ -239,19 +241,19 @@ class MerchantPatterns:
     # Geometric patterns learned from HAPPY batch (high confidence,
     # conflict-free receipts)
     # Use strictest thresholds (1.5σ) for evaluation
-    happy_label_pair_geometry: dict[tuple, LabelPairGeometry] = field(
-        default_factory=dict
+    happy_label_pair_geometry: dict[tuple[str, str], LabelPairGeometry] = (
+        field(default_factory=dict)
     )
 
     # Geometric patterns learned from AMBIGUOUS batch (format variations)
     # Use moderate thresholds (2.0σ) for evaluation
-    ambiguous_label_pair_geometry: dict[tuple, LabelPairGeometry] = field(
-        default_factory=dict
+    ambiguous_label_pair_geometry: dict[tuple[str, str], LabelPairGeometry] = (
+        field(default_factory=dict)
     )
 
     # Geometric patterns learned from ANTI_PATTERN batch (problematic receipts)
     # Use lenient thresholds (3.0σ) or flag for review
-    anti_label_pair_geometry: dict[tuple, LabelPairGeometry] = field(
+    anti_label_pair_geometry: dict[tuple[str, str], LabelPairGeometry] = field(
         default_factory=dict
     )
 

@@ -855,7 +855,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "Type": "Pass",
                     "Parameters": {
                         "original_input.$": "$",
-                        "merged_input.$": "States.JsonMerge({'skip_llm_review': false, 'dry_run': false}, $)",
+                    "merged_input.$": "States.JsonMerge({\"skip_llm_review\": false, \"dry_run\": false}, $)",
                     },
                     "ResultPath": "$.normalized",
                     "Next": "CheckInputMode",

@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         SerializedPlace,
         SerializedWord,
     )
+    from receipt_agent.agents.label_evaluator.state import MerchantPatterns
 
 
 def serialize_word(word: ReceiptWord) -> "SerializedWord":

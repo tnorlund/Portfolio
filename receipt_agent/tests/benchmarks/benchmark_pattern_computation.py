@@ -52,12 +52,10 @@ import logging
 import subprocess
 import sys
 import time
+from contextlib import contextmanager, nullcontext
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-
-from receipt_dynamo.data._pulumi import load_env
-from receipt_dynamo.data.dynamo_client import DynamoClient
 
 from receipt_agent.agents.label_evaluator.helpers import (
     compute_merchant_patterns,
@@ -66,6 +64,8 @@ from receipt_agent.agents.label_evaluator.state import (
     MerchantPatterns,
     OtherReceiptData,
 )
+from receipt_dynamo.data._pulumi import load_env
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +197,26 @@ def load_receipt_data(
         raise
 
 
+@contextmanager
+def mock_batch_classification() -> None:
+    """Temporarily skip LLM batch classification during benchmarking."""
+    import receipt_agent.agents.label_evaluator.helpers as helpers
+
+    def mock_batch_classification_fn(*_args, **_kwargs):  # type: ignore
+        return {
+            "HAPPY": [],
+            "AMBIGUOUS": [],
+            "ANTI_PATTERN": [],
+        }
+
+    original_fn = helpers.batch_receipts_by_quality
+    helpers.batch_receipts_by_quality = mock_batch_classification_fn
+    try:
+        yield
+    finally:
+        helpers.batch_receipts_by_quality = original_fn
+
+
 def run_pattern_computation(
     other_receipt_data: list[OtherReceiptData],
     merchant_name: str,
@@ -219,22 +239,11 @@ def run_pattern_computation(
         (MerchantPatterns result, elapsed time in seconds)
     """
     # Optionally skip LLM batch classification
+    context = mock_batch_classification() if skip_batching else nullcontext()
     if skip_batching:
-        import receipt_agent.agents.label_evaluator.helpers as helpers
-
-        def mock_batch_classification(*_args, **_kwargs):  # type: ignore
-            """Skip LLM calls by returning empty batches."""
-            return {
-                "HAPPY": [],
-                "AMBIGUOUS": [],
-                "ANTI_PATTERN": [],
-            }
-
-        original_fn = helpers.batch_receipts_by_quality
-        helpers.batch_receipts_by_quality = mock_batch_classification
         logger.info("LLM batch classification skipped (mock enabled)")
 
-    try:
+    with context:
         start_time = time.perf_counter()
         result = compute_merchant_patterns(
             other_receipt_data,
@@ -247,10 +256,6 @@ def run_pattern_computation(
         logger.info("✓ Pattern computation completed in %.2fs", elapsed)
         return result, elapsed
 
-    finally:
-        if skip_batching:
-            helpers.batch_receipts_by_quality = original_fn
-
 
 def build_metrics(
     data: list[OtherReceiptData],
@@ -260,7 +265,7 @@ def build_metrics(
     skip_batching: bool,
     max_pair_patterns: int = 4,
     max_relationship_dimension: int = 2,
-) -> Dict:
+) -> dict:
     """
     Build comprehensive metrics dictionary.
 
@@ -322,6 +327,8 @@ def run_with_scalene(
     data: list[OtherReceiptData],
     skip_batching: bool,
     output_dir: Path,
+    max_pair_patterns: int = 4,
+    max_relationship_dimension: int = 2,
 ) -> tuple[Path, float]:
     """
     Run pattern computation with Scalene CLI profiler.
@@ -335,6 +342,18 @@ def run_with_scalene(
     Returns:
         (HTML report path, elapsed time)
     """
+    scalene_check = subprocess.run(
+        ["python", "-m", "scalene", "--version"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    if scalene_check.returncode != 0:
+        raise RuntimeError(
+            "Scalene not found. Install with: "
+            "pip install -e 'receipt_agent[perf]'"
+        )
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     html_path = output_dir / f"pattern_computation_{timestamp}.html"
     repo_root = find_repo_root()
@@ -367,7 +386,12 @@ if skip_batching:
 
 # Run computation
 start = time.perf_counter()
-result = compute_merchant_patterns(other_receipt_data, {repr(merchant_name)})
+result = compute_merchant_patterns(
+    other_receipt_data,
+    {repr(merchant_name)},
+    max_pair_patterns={max_pair_patterns},
+    max_relationship_dimension={max_relationship_dimension},
+)
 elapsed = time.perf_counter() - start
 
 # Save only the elapsed time (result is not picklable due to lambda functions)
@@ -524,6 +548,8 @@ def main() -> None:
             other_receipt_data,
             args.skip_batching,
             output_dir,
+            max_pair_patterns=args.max_pairs,
+            max_relationship_dimension=args.dimension,
         )
 
         # Run once more without Scalene for metrics (avoids Scalene overhead)

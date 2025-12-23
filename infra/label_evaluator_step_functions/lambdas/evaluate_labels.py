@@ -15,7 +15,6 @@ Environment Variables:
 # pylint: disable=import-outside-toplevel,wrong-import-position
 # Lambda handlers delay imports until runtime for cold start optimization
 
-import json
 import logging
 import os
 import time
@@ -24,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 import boto3
 
 # Import shared tracing utility
+from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
 from utils.tracing import flush_langsmith_traces
 
 if TYPE_CHECKING:
@@ -37,22 +37,6 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 s3 = boto3.client("s3")
-
-
-def load_json_from_s3(bucket: str, key: str) -> dict[str, Any]:
-    """Load JSON data from S3."""
-    response = s3.get_object(Bucket=bucket, Key=key)
-    return json.loads(response["Body"].read().decode("utf-8"))
-
-
-def upload_json_to_s3(bucket: str, key: str, data: Any) -> None:
-    """Upload JSON data to S3."""
-    s3.put_object(
-        Bucket=bucket,
-        Key=key,
-        Body=json.dumps(data, indent=2, default=str).encode("utf-8"),
-        ContentType="application/json",
-    )
 
 
 def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
@@ -109,7 +93,7 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             batch_bucket,
             data_s3_key,
         )
-        target_data = load_json_from_s3(batch_bucket, data_s3_key)
+        target_data = load_json_from_s3(s3, batch_bucket, data_s3_key)
 
         image_id = target_data.get("image_id")
         receipt_id = target_data.get("receipt_id")
@@ -141,7 +125,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 batch_bucket,
                 patterns_s3_key,
             )
-            patterns_data = load_json_from_s3(batch_bucket, patterns_s3_key)
+            patterns_data = load_json_from_s3(
+                s3, batch_bucket, patterns_s3_key
+            )
             merchant_patterns = deserialize_patterns(patterns_data)
 
             if merchant_patterns:
@@ -188,7 +174,7 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
 
         # 5. Upload results to S3
         results_s3_key = f"results/{execution_id}/{image_id}_{receipt_id}.json"
-        upload_json_to_s3(batch_bucket, results_s3_key, result)
+        upload_json_to_s3(s3, batch_bucket, results_s3_key, result)
 
         logger.info(
             "Uploaded results to s3://%s/%s",
