@@ -8,9 +8,11 @@ with robust error handling and fallback methods.
 import logging
 from typing import TYPE_CHECKING, Any, Optional
 
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities.receipt_details import ReceiptDetails
+
 if TYPE_CHECKING:
     from receipt_dynamo.data.dynamo_client import DynamoClient
-    from receipt_dynamo.entities.receipt_details import ReceiptDetails
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +39,6 @@ def fetch_receipt_details_with_fallback(
         ReceiptDetails if successful, None otherwise
     """
     try:
-        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-        from receipt_dynamo.entities.receipt_details import ReceiptDetails
-
         # Sanitize image_id - remove trailing whitespace and special characters
         # Some image_ids may have trailing '?' or other characters
         sanitized_image_id = image_id.rstrip("? \t\n\r")
@@ -49,7 +48,9 @@ def fetch_receipt_details_with_fallback(
         if sanitized_image_id != image_id:
             image_ids_to_try.append(image_id)
             logger.debug(
-                f"Sanitized image_id '{image_id}' to '{sanitized_image_id}'"
+                "Sanitized image_id '%s' to '%s'",
+                image_id,
+                sanitized_image_id,
             )
 
         # Try to get receipt entity
@@ -65,7 +66,10 @@ def fetch_receipt_details_with_fallback(
                 continue
             except Exception as e:
                 logger.debug(
-                    f"Error fetching receipt for {img_id}#{receipt_id}: {e}"
+                    "Error fetching receipt for %s#%s: %s",
+                    img_id,
+                    receipt_id,
+                    e,
                 )
                 continue
 
@@ -86,11 +90,17 @@ def fetch_receipt_details_with_fallback(
                     if lines:
                         image_id = img_id  # Use working image_id
                         logger.debug(
-                            f"Fetched {len(lines)} lines for {img_id}#{receipt_id} via fallback"
+                            "Fetched %s lines for %s#%s via fallback",
+                            len(lines),
+                            img_id,
+                            receipt_id,
                         )
                 except Exception as e:
                     logger.debug(
-                        f"Could not fetch lines for {img_id}#{receipt_id}: {e}"
+                        "Could not fetch lines for %s#%s: %s",
+                        img_id,
+                        receipt_id,
+                        e,
                     )
 
             if not words:
@@ -101,11 +111,17 @@ def fetch_receipt_details_with_fallback(
                     if words:
                         image_id = img_id  # Use working image_id
                         logger.debug(
-                            f"Fetched {len(words)} words for {img_id}#{receipt_id} via fallback"
+                            "Fetched %s words for %s#%s via fallback",
+                            len(words),
+                            img_id,
+                            receipt_id,
                         )
                 except Exception as e:
                     logger.debug(
-                        f"Could not fetch words for {img_id}#{receipt_id}: {e}"
+                        "Could not fetch words for %s#%s: %s",
+                        img_id,
+                        receipt_id,
+                        e,
                     )
 
         # If we have lines or words, we can still work with them
@@ -124,8 +140,12 @@ def fetch_receipt_details_with_fallback(
                 # Note: Receipt fetch was already attempted in the loop above (lines 56-69),
                 # so if it failed there, it will fail here too. Return None and let tools handle it.
                 logger.warning(
-                    f"Found {len(lines)} lines and {len(words)} words for {image_id}#{receipt_id} "
-                    f"but no receipt entity. Tools will work with lines/words only."
+                    "Found %s lines and %s words for %s#%s but no receipt entity. "
+                    "Tools will work with lines/words only.",
+                    len(lines),
+                    len(words),
+                    image_id,
+                    receipt_id,
                 )
                 # Return None - tools will handle this case
                 return None
@@ -133,5 +153,10 @@ def fetch_receipt_details_with_fallback(
         return None
 
     except Exception as e:
-        logger.debug(f"Fallback fetch failed for {image_id}#{receipt_id}: {e}")
+        logger.debug(
+            "Fallback fetch failed for %s#%s: %s",
+            image_id,
+            receipt_id,
+            e,
+        )
         return None

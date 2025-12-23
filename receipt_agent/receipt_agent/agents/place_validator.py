@@ -16,6 +16,7 @@ from typing import Any, Callable, Literal, Optional
 import structlog
 from langsmith import Client as LangSmithClient
 from langsmith import traceable
+from openai import OpenAI
 
 from receipt_agent.agents.agentic import (
     create_agentic_validation_graph,
@@ -154,8 +155,6 @@ class PlaceValidatorAgent:
         self,
     ) -> Callable[[list[str]], list[list[float]]]:
         """Create default OpenAI embedding function."""
-        from openai import OpenAI
-
         api_key = self._settings.openai_api_key.get_secret_value()
         if not api_key:
             raise ValueError(
@@ -195,7 +194,7 @@ class PlaceValidatorAgent:
                 project=self._settings.langsmith_project,
             )
         except Exception as e:
-            logger.warning(f"Failed to initialize LangSmith: {e}")
+            logger.warning("Failed to initialize LangSmith: %s", e)
             self._enable_tracing = False
 
     @traceable(name="validate_place")

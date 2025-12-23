@@ -729,7 +729,7 @@ async def run_enhanced_financial_validation(
             "table_structure_used": table_structure is not None,
         }
     except Exception as e:
-        logger.exception(f"Enhanced financial validation failed: {e}")
+        logger.exception("Enhanced financial validation failed: %s", e)
         return {
             "currency": None,
             "is_valid": False,

@@ -6,9 +6,15 @@ from receipt coordinate space back to the original image coordinate space,
 allowing comparison of different receipts in the same image.
 """
 
+import copy
 from typing import Any, List, Tuple
 
-from receipt_upload.geometry.transformations import find_perspective_coeffs
+from receipt_dynamo.entities.receipt_line import ReceiptLine
+from receipt_upload.geometry.transformations import (
+    find_perspective_coeffs,
+    invert_affine,
+    invert_warp,
+)
 
 
 def get_receipt_to_image_transform(
@@ -80,8 +86,6 @@ def get_receipt_to_image_transform(
         # Fallback to affine if perspective fails
         # For affine, we can compute from 3 points
         # Use top-left, top-right, bottom-left
-        from receipt_upload.geometry.transformations import invert_affine
-
         # Compute affine transform from receipt space to image space
         # Receipt space: (0,0) -> src_tl, (w-1,0) -> src_tr, (0,h-1) -> src_bl
         if receipt_width > 1:
@@ -100,7 +104,9 @@ def get_receipt_to_image_transform(
         f = src_tl[1]
 
         # Invert to get receipt -> image transform
-        a_inv, b_inv, c_inv, d_inv, e_inv, f_inv = invert_affine(a, b, c, d, e, f)
+        a_inv, b_inv, c_inv, d_inv, e_inv, f_inv = invert_affine(
+            a, b, c, d, e, f
+        )
 
         # Convert to perspective coefficients (affine is perspective with g=h=0)
         transform_coeffs = [a_inv, b_inv, c_inv, d_inv, e_inv, f_inv, 0.0, 0.0]
@@ -127,14 +133,11 @@ def transform_receipt_line_to_image_coords(
         Dictionary with transformed coordinates in image space
     """
     # Get transform coefficients
-    transform_coeffs, receipt_width, receipt_height = get_receipt_to_image_transform(
-        receipt, image_width, image_height
+    transform_coeffs, receipt_width, receipt_height = (
+        get_receipt_to_image_transform(receipt, image_width, image_height)
     )
 
     # Create a copy of the line to transform (don't modify original)
-    from receipt_dynamo.entities.receipt_line import ReceiptLine
-    import copy
-
     line_copy = copy.deepcopy(receipt_line)
 
     # Apply inverse perspective transform
@@ -146,8 +149,6 @@ def transform_receipt_line_to_image_coords(
     # and it will invert them for us
 
     # But wait - we computed receipt -> image, so we need to invert again
-    from receipt_upload.geometry.transformations import invert_warp
-
     # Invert the transform to get image -> receipt (which warp_transform expects)
     forward_coeffs = invert_warp(*transform_coeffs)
 

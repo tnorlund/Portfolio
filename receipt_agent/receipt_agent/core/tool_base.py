@@ -69,12 +69,18 @@ class BaseTool(ABC):
                 last_error = e
                 if attempt < self.max_retries - 1:
                     logger.warning(
-                        f"Tool {self.name} failed (attempt {attempt + 1}/{self.max_retries}): {e}"
+                        "Tool %s failed (attempt %s/%s): %s",
+                        self.name,
+                        attempt + 1,
+                        self.max_retries,
+                        e,
                     )
                     continue
                 else:
                     logger.error(
-                        f"Tool {self.name} failed after {self.max_retries} attempts"
+                        "Tool %s failed after %s attempts",
+                        self.name,
+                        self.max_retries,
                     )
                     raise
 
@@ -111,7 +117,11 @@ def create_tool_with_retry(
                 should_retry = retry_on(e) if retry_on else True
                 if should_retry and attempt < max_retries - 1:
                     logger.warning(
-                        f"Tool {tool_func.__name__} failed (attempt {attempt + 1}/{max_retries}): {e}"
+                        "Tool %s failed (attempt %s/%s): %s",
+                        tool_func.__name__,
+                        attempt + 1,
+                        max_retries,
+                        e,
                     )
                     continue
                 else:
@@ -122,6 +132,3 @@ def create_tool_with_retry(
         ) from last_error
 
     return wrapped
-
-
-

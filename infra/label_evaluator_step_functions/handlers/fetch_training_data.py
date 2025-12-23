@@ -164,12 +164,11 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "labels": [serialize_label(label) for label in labels],
                 }
             )
-        except Exception as e:
-            logger.warning(
-                "Error fetching receipt %s#%s: %s",
+        except Exception:
+            logger.exception(
+                "Error fetching receipt %s#%s",
                 place.image_id,
                 place.receipt_id,
-                e,
             )
             continue
 

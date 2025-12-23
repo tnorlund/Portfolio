@@ -40,6 +40,7 @@ from receipt_agent import (
     RateLimitedLLMInvoker,
 )
 from receipt_agent.agents.label_evaluator import apply_llm_decisions
+from receipt_agent.constants import CORE_LABELS, CORE_LABELS_SET
 
 from utils.tracing import flush_langsmith_traces
 
@@ -949,84 +950,6 @@ def compute_merchant_breakdown(
 # =============================================================================
 # Prompt Building
 # =============================================================================
-
-CORE_LABELS = """
-MERCHANT_NAME: Trading name or brand of the store (e.g., "Sprouts", "Costco")
-STORE_NUMBER: Store/location identifier number
-STORE_HOURS: Business hours printed on receipt
-PHONE_NUMBER: Store telephone number
-WEBSITE: Web address or email
-LOYALTY_ID: Customer loyalty/rewards ID
-ADDRESS_LINE: Full or partial address line (street, city, state, zip)
-
-DATE: Transaction date
-TIME: Transaction time
-
-PAYMENT_METHOD: Payment instrument type (VISA, CASH, MASTERCARD, etc.)
-CARD_LAST_4: Last 4 digits of payment card
-
-COUPON: Coupon code or description
-DISCOUNT: Non-coupon discount line
-SAVINGS: Amount saved
-
-PRODUCT_NAME: Name of product being purchased
-QUANTITY: Number of units purchased
-UNIT_PRICE: Price per single unit (before multiplying by quantity). Example: "2 @ 3.99" → 3.99 is UNIT_PRICE
-LINE_TOTAL: Final amount for the line (UNIT_PRICE × QUANTITY). This is what gets summed to SUBTOTAL. Example: "2 @ 3.99 = 7.98" → 7.98 is LINE_TOTAL
-WEIGHT: Weight measurement for weighted items
-
-SUBTOTAL: Subtotal before tax
-TAX: Tax amount or description
-TAX_RATE: Tax percentage
-GRAND_TOTAL: Final total paid
-TENDER: Amount tendered by customer
-CHANGE: Change returned to customer
-CASH_BACK: Cash back amount
-REFUND: Refund amount or description
-
-RECEIPT_NUMBER: Transaction/receipt identifier
-CASHIER: Cashier name or ID
-REGISTER: Register/terminal number
-BARCODE: Barcode number
-
-OTHER: Miscellaneous text not fitting other categories
-"""
-
-# Set of valid labels for validation (extracted from CORE_LABELS)
-CORE_LABELS_SET = {
-    "MERCHANT_NAME",
-    "STORE_NUMBER",
-    "STORE_HOURS",
-    "PHONE_NUMBER",
-    "WEBSITE",
-    "LOYALTY_ID",
-    "ADDRESS_LINE",
-    "DATE",
-    "TIME",
-    "PAYMENT_METHOD",
-    "CARD_LAST_4",
-    "COUPON",
-    "DISCOUNT",
-    "SAVINGS",
-    "PRODUCT_NAME",
-    "QUANTITY",
-    "UNIT_PRICE",
-    "LINE_TOTAL",
-    "WEIGHT",
-    "SUBTOTAL",
-    "TAX",
-    "TAX_RATE",
-    "GRAND_TOTAL",
-    "TENDER",
-    "CHANGE",
-    "CASH_BACK",
-    "REFUND",
-    "RECEIPT_NUMBER",
-    "CASHIER",
-    "REGISTER",
-    "BARCODE",
-    "OTHER",
-}
 
 
 def format_line_item_patterns(patterns: Optional[dict]) -> str:

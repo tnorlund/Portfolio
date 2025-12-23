@@ -5,7 +5,9 @@ This workflow finds unlabeled words on a receipt and suggests labels using
 ChromaDB similarity search, minimizing LLM calls.
 """
 
+import json
 import logging
+import re
 import time
 from typing import Any, Callable, Optional
 
@@ -171,7 +173,7 @@ async def suggest_labels_for_receipt(
                             receipt_ids.add(str(meta["receipt_id"]))
                 merchant_receipt_count = len(receipt_ids)
         except Exception as e:
-            logger.debug(f"Could not count merchant receipts: {e}")
+            logger.debug("Could not count merchant receipts: %s", e)
             merchant_receipt_count = None
 
     # Set context in state holder
@@ -197,7 +199,7 @@ async def suggest_labels_for_receipt(
             "message": "All words on this receipt already have labels",
         }
 
-    logger.info(f"Found {len(unlabeled_words)} unlabeled words")
+    logger.info("Found %s unlabeled words", len(unlabeled_words))
 
     # Process each unlabeled word
     search_tool = tools[1]  # search_label_candidates
@@ -262,8 +264,9 @@ async def suggest_labels_for_receipt(
 
         if "error" in candidates_result:
             logger.debug(
-                f"Error searching candidates for word '{word_text}': "
-                f"{candidates_result['error']}"
+                "Error searching candidates for word '%s': %s",
+                word_text,
+                candidates_result["error"],
             )
             continue
 
@@ -297,8 +300,9 @@ async def suggest_labels_for_receipt(
                 }
             )
             logger.debug(
-                f"No candidates found for word '{word_text}' "
-                f"(word_id: {word_id})"
+                "No candidates found for word '%s' (word_id: %s)",
+                word_text,
+                word_id,
             )
             continue
 
@@ -309,10 +313,14 @@ async def suggest_labels_for_receipt(
         label_type = top_candidate["label_type"]
 
         logger.debug(
-            f"Word '{word_text}': top candidate {label_type} "
-            f"(similarity: {avg_similarity:.2f}, "
-            f"confidence: {confidence:.2f}, matches: {match_count}, "
-            f"candidates: {len(candidates)})"
+            "Word '%s': top candidate %s (similarity: %.2f, confidence: %.2f, "
+            "matches: %s, candidates: %s)",
+            word_text,
+            label_type,
+            avg_similarity,
+            confidence,
+            match_count,
+            len(candidates),
         )
 
         # CASE 1: High similarity - suggest directly (NO LLM)
@@ -335,8 +343,11 @@ async def suggest_labels_for_receipt(
                 }
             )
             logger.debug(
-                f"High similarity suggestion: {word_text} -> {label_type} "
-                f"(similarity: {avg_similarity:.2f}, matches: {match_count})"
+                "High similarity suggestion: %s -> %s (similarity: %.2f, matches: %s)",
+                word_text,
+                label_type,
+                avg_similarity,
+                match_count,
             )
             continue
 
@@ -359,10 +370,12 @@ async def suggest_labels_for_receipt(
                 }
             )
             logger.debug(
-                f"Medium-high suggestion: {word_text} -> {label_type} "
-                f"(similarity: {avg_similarity:.2f}, "
-                f"confidence: {confidence:.2f}, "
-                f"matches: {match_count})"
+                "Medium-high suggestion: %s -> %s (similarity: %.2f, confidence: %.2f, matches: %s)",
+                word_text,
+                label_type,
+                avg_similarity,
+                confidence,
+                match_count,
             )
             continue
 
@@ -456,9 +469,6 @@ Respond with JSON:
                     )
 
                     # Try to extract JSON from response
-                    import json
-                    import re
-
                     json_match = re.search(r"\{[^}]+\}", content, re.DOTALL)
                     if json_match:
                         llm_result = json.loads(json_match.group())
@@ -483,7 +493,9 @@ Respond with JSON:
                             )
                 except Exception as e:
                     logger.debug(
-                        f"LLM call failed for word '{word_text}': {e}"
+                        "LLM call failed for word '%s': %s",
+                        word_text,
+                        e,
                     )
                     # Fall back to top candidate if LLM fails.
                     # Similarity must be decent.
@@ -507,13 +519,19 @@ Respond with JSON:
         if avg_similarity < 0.65 or match_count < 2:
             skipped_low_confidence += 1
             logger.debug(
-                f"Skipped '{word_text}': similarity={avg_similarity:.2f} "
-                f"< 0.65 or matches={match_count} < 2"
+                "Skipped '%s': similarity=%.2f < 0.65 or matches=%s < 2",
+                word_text,
+                avg_similarity,
+                match_count,
             )
 
         word_time = time.time() - word_start
         if word_time > 1.0:  # Log slow words
-            logger.debug(f"Slow word '{word_text}': {word_time:.2f}s")
+            logger.debug(
+                "Slow word '%s': %.2fs",
+                word_text,
+                word_time,
+            )
 
     total_processing_time = time.time() - start_time
 

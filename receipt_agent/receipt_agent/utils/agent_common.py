@@ -11,6 +11,7 @@ import time
 from typing import Any, Callable, Optional
 
 from langchain_ollama import ChatOllama
+
 from receipt_agent.config.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -87,10 +88,15 @@ def create_agent_node_with_retry(
                 response = llm.invoke(messages)
 
                 if hasattr(response, "tool_calls") and response.tool_calls:
-                    logger.debug(
-                        f"{agent_name} tool calls: "
-                        f"{[tc.get('name') if isinstance(tc, dict) else getattr(tc, 'name', str(tc)) for tc in response.tool_calls]}"
-                    )
+                    tool_names = [
+                        (
+                            tc.get("name")
+                            if isinstance(tc, dict)
+                            else getattr(tc, "name", str(tc))
+                        )
+                        for tc in response.tool_calls
+                    ]
+                    logger.debug("%s tool calls: %s", agent_name, tool_names)
 
                 return {"messages": [response]}
 
@@ -110,8 +116,11 @@ def create_agent_node_with_retry(
 
                 if is_rate_limit:
                     logger.warning(
-                        f"Rate limit detected in {agent_name} (attempt {attempt + 1}): "
-                        f"{error_str[:200]}. Failing immediately to trigger circuit breaker."
+                        "Rate limit detected in %s (attempt %s): %s. "
+                        "Failing immediately to trigger circuit breaker.",
+                        agent_name,
+                        attempt + 1,
+                        error_str[:200],
                     )
                     raise RuntimeError(
                         f"Rate limit error in {agent_name}: {error_str}"
@@ -162,9 +171,14 @@ def create_agent_node_with_retry(
                         "connection" if is_connection_error else "server"
                     )
                     logger.warning(
-                        f"Ollama {error_type} error in {agent_name} "
-                        f"(attempt {attempt + 1}/{max_retries}): {error_str[:200]}. "
-                        f"Retrying in {wait_time:.1f}s..."
+                        "Ollama %s error in %s (attempt %s/%s): %s. "
+                        "Retrying in %.1fs...",
+                        error_type,
+                        agent_name,
+                        attempt + 1,
+                        max_retries,
+                        error_str[:200],
+                        wait_time,
                     )
                     # Note: This is a sync function executed in a thread pool by LangGraph
                     # Using time.sleep is appropriate here
@@ -174,8 +188,10 @@ def create_agent_node_with_retry(
                     # Not retryable or max retries reached
                     if attempt >= max_retries - 1:
                         logger.exception(
-                            f"Ollama LLM call failed after {max_retries} attempts "
-                            f"in {agent_name}: {error_str}"
+                            "Ollama LLM call failed after %s attempts in %s: %s",
+                            max_retries,
+                            agent_name,
+                            error_str,
                         )
                     raise RuntimeError(
                         f"Failed to get LLM response in {agent_name}: {error_str}"

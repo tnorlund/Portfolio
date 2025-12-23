@@ -1,7 +1,8 @@
 """Tests for state models."""
 
-import pytest
 from datetime import datetime
+
+import pytest
 
 from receipt_agent.state.models import (
     ChromaSearchResult,
@@ -209,4 +210,3 @@ class TestValidationState:
 
         assert len(state.chroma_line_results) == 1
         assert state.chroma_line_results[0].similarity_score == 0.8
-

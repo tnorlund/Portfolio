@@ -109,11 +109,6 @@ from receipt_agent.agents.label_evaluator.llm_review import (
     review_issues_with_receipt_context,
     review_single_issue,
 )
-from receipt_agent.agents.label_evaluator.traced_runner import (
-    create_traced_run_tree,
-    run_batch_traced,
-    run_compute_only_traced,
-)
 from receipt_agent.agents.label_evaluator.state import (
     ConstellationGeometry,
     EvaluationIssue,
@@ -125,6 +120,11 @@ from receipt_agent.agents.label_evaluator.state import (
     ReviewResult,
     VisualLine,
     WordContext,
+)
+from receipt_agent.agents.label_evaluator.traced_runner import (
+    create_traced_run_tree,
+    run_batch_traced,
+    run_compute_only_traced,
 )
 
 __all__ = [

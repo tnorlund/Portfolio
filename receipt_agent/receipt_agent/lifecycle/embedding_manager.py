@@ -21,6 +21,13 @@ from receipt_dynamo.entities import (
     ReceiptWordLabel,
 )
 
+try:
+    from receipt_chroma.embedding.orchestration import (
+        create_embeddings_and_compaction_run as chroma_create_embeddings,
+    )
+except ImportError:  # pragma: no cover
+    chroma_create_embeddings = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -98,10 +105,9 @@ def create_embeddings_and_compaction_run(
         )
         return None
 
-    # Import and call receipt_chroma implementation
-    from receipt_chroma.embedding.orchestration import (
-        create_embeddings_and_compaction_run as chroma_create_embeddings,
-    )
+    if chroma_create_embeddings is None:
+        logger.warning("Embedding dependencies unavailable")
+        return None
 
     try:
         # Use real client if add_to_dynamo, otherwise no-op client

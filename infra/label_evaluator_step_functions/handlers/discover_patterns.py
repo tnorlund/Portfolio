@@ -78,6 +78,7 @@ def build_receipt_structure(
             )
             line_words.sort(key=lambda w: w.bounding_box["x"])
             sorted_lines.append((line_id, avg_y, line_words))
+        # OCR coordinates use y=0 at bottom, so higher y means higher on receipt.
         sorted_lines.sort(key=lambda x: -x[1])
 
         # Build structured representation

@@ -8,24 +8,21 @@ across DynamoDB and ChromaDB. It's designed to be used by:
 - Receipt agent workflows
 """
 
-from receipt_agent.lifecycle.receipt_manager import (
-    create_receipt,
-    delete_receipt,
-    ReceiptCreationResult,
-    ReceiptDeletionResult,
+from receipt_agent.lifecycle.compaction_manager import (
+    check_compaction_status,
+    wait_for_compaction,
 )
-
 from receipt_agent.lifecycle.embedding_manager import (
     create_embeddings,
 )
-
-from receipt_agent.lifecycle.compaction_manager import (
-    wait_for_compaction,
-    check_compaction_status,
-)
-
 from receipt_agent.lifecycle.ndjson_manager import (
     export_receipt_ndjson,
+)
+from receipt_agent.lifecycle.receipt_manager import (
+    ReceiptCreationResult,
+    ReceiptDeletionResult,
+    create_receipt,
+    delete_receipt,
 )
 
 __all__ = [
@@ -38,4 +35,3 @@ __all__ = [
     "check_compaction_status",
     "export_receipt_ndjson",
 ]
-

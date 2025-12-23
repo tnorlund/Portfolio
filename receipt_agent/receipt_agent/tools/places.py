@@ -17,6 +17,7 @@ Access Patterns (PlacesCache in DynamoDB):
 """
 
 import logging
+from difflib import SequenceMatcher
 from typing import Any, Optional, Union
 
 from langchain_core.tools import tool
@@ -25,6 +26,7 @@ from pydantic import BaseModel, Field
 # Import PlacesClient from receipt_places (standalone package)
 try:
     from receipt_places import PlacesClient
+
     PLACES_CLIENT_AVAILABLE = True
 except ImportError:
     PlacesClient = None  # type: ignore
@@ -87,7 +89,9 @@ def verify_with_google_places(
     Use this as ground truth when validating metadata.
     """
     if _places_client is None:
-        return {"error": "Google Places client not configured. Install receipt_places."}
+        return {
+            "error": "Google Places client not configured. Install receipt_places."
+        }
 
     try:
         result: dict[str, Any] = {
@@ -119,7 +123,9 @@ def verify_with_google_places(
         # Try address geocoding (uses DynamoDB cache via PlacesClient)
         if address and not result["found"]:
             result["search_method"] = "address"
-            logger.info("🔍 Places lookup by address: %s... (cached)", address[:50])
+            logger.info(
+                "🔍 Places lookup by address: %s... (cached)", address[:50]
+            )
             place_data = _places_client.search_by_address(address)
             if place_data and place_data.get("name"):
                 result["found"] = True
@@ -129,7 +135,9 @@ def verify_with_google_places(
         # Try text search with merchant name (not cached)
         if merchant_name and not result["found"]:
             result["search_method"] = "text_search"
-            logger.info("🔍 Places text search: %s (NOT cached)", merchant_name)
+            logger.info(
+                "🔍 Places text search: %s (NOT cached)", merchant_name
+            )
             place_data = _places_client.search_by_text(merchant_name)
             if place_data and place_data.get("name"):
                 result["found"] = True
@@ -182,13 +190,17 @@ def find_businesses_at_address(
     - Phone number matching receipt phone
     """
     if _places_client is None:
-        return {"error": "Google Places client not configured. Install receipt_places."}
+        return {
+            "error": "Google Places client not configured. Install receipt_places."
+        }
 
     if not address:
         return {"error": "Address is required"}
 
     try:
-        logger.info("🔍 Places search for businesses at address: %s...", address[:50])
+        logger.info(
+            "🔍 Places search for businesses at address: %s...", address[:50]
+        )
 
         # First, geocode the address to get lat/lng
         geocode_result = _places_client.search_by_address(address)
@@ -304,7 +316,6 @@ def compare_place_with_google(
     - Similarity scores for each field
     - Recommendations for updates
     """
-    from difflib import SequenceMatcher
 
     def similarity(a: Optional[str], b: Optional[str]) -> float:
         if not a or not b:
@@ -342,9 +353,7 @@ def compare_place_with_google(
             f"Consider updating address to '{places_address}'"
         )
     if phone_match is False:
-        recommendations.append(
-            f"Consider updating phone to '{places_phone}'"
-        )
+        recommendations.append(f"Consider updating phone to '{places_phone}'")
 
     # Overall assessment
     matched_fields: list[str] = []
@@ -385,4 +394,3 @@ def compare_place_with_google(
     }
 
     return result
-

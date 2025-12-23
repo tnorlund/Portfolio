@@ -9,13 +9,13 @@ Validates financial consistency on receipts:
 - Identifies which labels need correction
 """
 
-from receipt_agent.subagents.financial_validation.graph import (
-    create_financial_validation_graph,
-    run_financial_validation,
-)
 from receipt_agent.subagents.financial_validation.enhanced_graph import (
     create_enhanced_financial_validation_graph,
     run_enhanced_financial_validation,
+)
+from receipt_agent.subagents.financial_validation.graph import (
+    create_financial_validation_graph,
+    run_financial_validation,
 )
 from receipt_agent.subagents.financial_validation.state import (
     FinancialValidationState,
@@ -28,6 +28,3 @@ __all__ = [
     "create_enhanced_financial_validation_graph",
     "run_enhanced_financial_validation",
 ]
-
-
-

@@ -88,7 +88,7 @@ def get_receipt_place(
         }
 
     except Exception as e:
-        logger.error(f"Error getting receipt place: {e}")
+        logger.error("Error getting receipt place: %s", e)
         return {"error": str(e)}
 
 
@@ -181,7 +181,7 @@ def get_receipt_context(
         }
 
     except Exception as e:
-        logger.error(f"Error getting receipt context: {e}")
+        logger.error("Error getting receipt context: %s", e)
         return {"error": str(e)}
 
 
@@ -228,12 +228,14 @@ def get_receipts_by_merchant(
 
         receipts = []
         for place in places:
-            receipts.append({
-                "image_id": place.image_id,
-                "receipt_id": place.receipt_id,
-                "place_id": place.place_id,
-                "validation_status": place.validation_status,
-            })
+            receipts.append(
+                {
+                    "image_id": place.image_id,
+                    "receipt_id": place.receipt_id,
+                    "place_id": place.place_id,
+                    "validation_status": place.validation_status,
+                }
+            )
 
             if place.place_id:
                 pid = place.place_id
@@ -286,5 +288,5 @@ def get_receipts_by_merchant(
         }
 
     except Exception as e:
-        logger.error(f"Error getting receipts by merchant: {e}")
+        logger.error("Error getting receipts by merchant: %s", e)
         return {"error": str(e)}

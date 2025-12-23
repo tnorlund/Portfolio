@@ -84,17 +84,17 @@ class SerializedLabel(TypedDict):
     label_consolidated_from: NotRequired[str | None]
 
 
-class SerializedPlace(TypedDict, total=False):
-    """ReceiptPlace serialized for S3/JSON storage.
+class _SerializedPlaceRequired(TypedDict):
+    """Required fields for SerializedPlace."""
 
-    Uses total=False since most fields are optional.
-    """
-
-    # Required
     image_id: str
     receipt_id: int
     place_id: str
     merchant_name: str
+
+
+class SerializedPlace(_SerializedPlaceRequired, total=False):
+    """ReceiptPlace serialized for S3/JSON storage."""
 
     # Optional location
     formatted_address: str

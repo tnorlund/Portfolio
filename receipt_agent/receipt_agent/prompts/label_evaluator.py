@@ -264,9 +264,7 @@ def build_review_prompt(
         if e["invalidated_as"]:
             for v in e["invalidated_as"][:2]:
                 reasoning = v.get("reasoning") or "no reasoning recorded"
-                line += (
-                    f"\n  INVALIDATED as **{v['label']}**: \"{reasoning[:100]}\""
-                )
+                line += f"\n  INVALIDATED as **{v['label']}**: \"{reasoning[:100]}\""
 
         if e["is_same_merchant"]:
             same_merchant_examples.append(line)

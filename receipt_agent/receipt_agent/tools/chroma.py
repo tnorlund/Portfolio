@@ -21,8 +21,7 @@ class QuerySimilarLinesInput(BaseModel):
 
     query_text: str = Field(
         description=(
-            "Text to search for similar lines "
-            "(e.g., address or phone line)"
+            "Text to search for similar lines " "(e.g., address or phone line)"
         )
     )
     n_results: int = Field(
@@ -46,9 +45,7 @@ class QuerySimilarLinesInput(BaseModel):
 class QuerySimilarWordsInput(BaseModel):
     """Input schema for query_similar_words tool."""
 
-    word_text: str = Field(
-        description="Word text to search for similar words"
-    )
+    word_text: str = Field(description="Word text to search for similar words")
     label_type: Optional[str] = Field(
         default=None,
         description=(
@@ -66,9 +63,7 @@ class QuerySimilarWordsInput(BaseModel):
 class SearchByMerchantInput(BaseModel):
     """Input schema for search_by_merchant_name tool."""
 
-    merchant_name: str = Field(
-        description="Merchant name to search for"
-    )
+    merchant_name: str = Field(description="Merchant name to search for")
     n_results: int = Field(
         default=20,
         description="Maximum number of receipts to return",
@@ -80,9 +75,7 @@ class SearchByMerchantInput(BaseModel):
 class SearchByPlaceIdInput(BaseModel):
     """Input schema for search_by_place_id tool."""
 
-    place_id: str = Field(
-        description="Google Place ID to search for"
-    )
+    place_id: str = Field(description="Google Place ID to search for")
 
 
 @tool(args_schema=QuerySimilarLinesInput)
@@ -150,27 +143,30 @@ def query_similar_lines(
             if similarity < min_similarity:
                 continue
 
-            output.append({
-                "rank": idx + 1,
-                "chroma_id": doc_id,
-                "text": doc,
-                "similarity_score": round(similarity, 4),
-                "image_id": meta.get("image_id"),
-                "receipt_id": meta.get("receipt_id"),
-                "line_id": meta.get("line_id"),
-                "merchant_name": meta.get("merchant_name"),
-                "normalized_phone": meta.get("normalized_phone_10"),
-                "normalized_address": meta.get("normalized_full_address"),
-            })
+            output.append(
+                {
+                    "rank": idx + 1,
+                    "chroma_id": doc_id,
+                    "text": doc,
+                    "similarity_score": round(similarity, 4),
+                    "image_id": meta.get("image_id"),
+                    "receipt_id": meta.get("receipt_id"),
+                    "line_id": meta.get("line_id"),
+                    "merchant_name": meta.get("merchant_name"),
+                    "normalized_phone": meta.get("normalized_phone_10"),
+                    "normalized_address": meta.get("normalized_full_address"),
+                }
+            )
 
         logger.info(
-            f"Found {len(output)} similar lines above threshold "
-            f"{min_similarity}"
+            "Found %s similar lines above threshold %s",
+            len(output),
+            min_similarity,
         )
         return output
 
     except Exception as e:
-        logger.error(f"Error querying ChromaDB: {e}")
+        logger.error("Error querying ChromaDB: %s", e)
         return [{"error": str(e)}]
 
 
@@ -226,23 +222,25 @@ def query_similar_words(
         ):
             similarity = max(0.0, 1.0 - (dist / 2))
 
-            output.append({
-                "rank": idx + 1,
-                "chroma_id": doc_id,
-                "word_text": doc,
-                "similarity_score": round(similarity, 4),
-                "image_id": meta.get("image_id"),
-                "receipt_id": meta.get("receipt_id"),
-                "line_id": meta.get("line_id"),
-                "word_id": meta.get("word_id"),
-                "label": meta.get("label"),
-                "validation_status": meta.get("validation_status"),
-            })
+            output.append(
+                {
+                    "rank": idx + 1,
+                    "chroma_id": doc_id,
+                    "word_text": doc,
+                    "similarity_score": round(similarity, 4),
+                    "image_id": meta.get("image_id"),
+                    "receipt_id": meta.get("receipt_id"),
+                    "line_id": meta.get("line_id"),
+                    "word_id": meta.get("word_id"),
+                    "label": meta.get("label"),
+                    "validation_status": meta.get("validation_status"),
+                }
+            )
 
         return output
 
     except Exception as e:
-        logger.error(f"Error querying ChromaDB words: {e}")
+        logger.error("Error querying ChromaDB words: %s", e)
         return [{"error": str(e)}]
 
 
@@ -333,7 +331,7 @@ def search_by_merchant_name(
         }
 
     except Exception as e:
-        logger.error(f"Error searching by merchant: {e}")
+        logger.error("Error searching by merchant: %s", e)
         return {"error": str(e)}
 
 
@@ -384,9 +382,7 @@ def search_by_place_id(
 
         # Determine canonical name (most common)
         canonical_name = max(
-            merchant_names.items(),
-            key=lambda x: x[1],
-            default=(None, 0)
+            merchant_names.items(), key=lambda x: x[1], default=(None, 0)
         )[0]
 
         return {
@@ -401,5 +397,5 @@ def search_by_place_id(
         }
 
     except Exception as e:
-        logger.error(f"Error searching by place_id: {e}")
+        logger.error("Error searching by place_id: %s", e)
         return {"error": str(e)}

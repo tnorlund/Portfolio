@@ -41,6 +41,6 @@ def upload_json_to_s3(
     s3_client.put_object(
         Bucket=bucket,
         Key=key,
-        Body=json.dumps(data, indent=2).encode("utf-8"),
+        Body=json.dumps(data, indent=2, default=str).encode("utf-8"),
         ContentType="application/json",
     )

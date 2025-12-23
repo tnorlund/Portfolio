@@ -40,5 +40,3 @@ class FinancialValidationState(BaseModel):
     messages: Annotated[list[Any], add_messages] = Field(default_factory=list)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-

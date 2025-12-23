@@ -49,6 +49,7 @@ in dev:
 import argparse
 import json
 import logging
+import pickle
 import subprocess
 import sys
 import time
@@ -57,6 +58,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from receipt_dynamo.data._pulumi import load_env
+from receipt_dynamo.data.dynamo_client import DynamoClient
+
 from receipt_agent.agents.label_evaluator.helpers import (
     compute_merchant_patterns,
 )
@@ -64,8 +68,6 @@ from receipt_agent.agents.label_evaluator.state import (
     MerchantPatterns,
     OtherReceiptData,
 )
-from receipt_dynamo.data._pulumi import load_env
-from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger(__name__)
 
@@ -405,8 +407,6 @@ with open("{output_dir}/_result_{timestamp}.json", "w") as f:
     # Save data to pickle file
     data_file = output_dir / f"_data_{timestamp}.pkl"
     with open(data_file, "wb") as f:
-        import pickle
-
         pickle.dump(data, f)
 
     # Run with Scalene

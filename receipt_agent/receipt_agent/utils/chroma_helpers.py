@@ -136,7 +136,8 @@ def load_dual_chroma_from_s3(
                 )
 
             logger.info(
-                f"ChromaDB lines snapshot downloaded: version={lines_result.get('version_id')}"
+                "ChromaDB lines snapshot downloaded: version=%s",
+                lines_result.get("version_id"),
             )
         else:
             logger.info("ChromaDB lines already cached at %s", lines_path)
@@ -160,7 +161,8 @@ def load_dual_chroma_from_s3(
                 )
 
             logger.info(
-                f"ChromaDB words snapshot downloaded: version={words_result.get('version_id')}"
+                "ChromaDB words snapshot downloaded: version=%s",
+                words_result.get("version_id"),
             )
         else:
             logger.info("ChromaDB words already cached at %s", words_path)

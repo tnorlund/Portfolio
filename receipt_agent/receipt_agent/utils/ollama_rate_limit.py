@@ -202,6 +202,7 @@ class OllamaCircuitBreaker:
     def record_success(self) -> None:
         """Record a successful API call, resetting consecutive error count."""
         self.consecutive_errors = 0
+        self.triggered = False
 
     def record_error(self, error: Exception) -> None:
         """
@@ -212,20 +213,25 @@ class OllamaCircuitBreaker:
 
         Raises:
             OllamaRateLimitError: If circuit breaker threshold is reached
+            Exception: Timeout errors are re-raised for Step Function retry
+            None: Server/other errors are logged but not raised
         """
         if is_rate_limit_error(error):
             self.consecutive_errors += 1
             self.total_rate_limit_errors += 1
             logger.warning(
-                f"Rate limit error {self.consecutive_errors}/{self.threshold}: "
-                f"{error}"
+                "Rate limit error %d/%d: %s",
+                self.consecutive_errors,
+                self.threshold,
+                error,
             )
 
             if self.consecutive_errors >= self.threshold:
                 self.triggered = True
                 logger.error(
-                    f"Circuit breaker triggered: {self.consecutive_errors} "
-                    f"consecutive rate limit errors. Stopping to prevent API spam."
+                    "Circuit breaker triggered: %d consecutive rate limit "
+                    "errors. Stopping to prevent API spam.",
+                    self.consecutive_errors,
                 )
                 raise OllamaRateLimitError(
                     f"Circuit breaker triggered after {self.consecutive_errors} "
@@ -245,7 +251,7 @@ class OllamaCircuitBreaker:
             self.total_server_errors += 1
             # Don't count toward circuit breaker, but log it
             logger.warning(
-                f"Server error (not counted for circuit breaker): {error}"
+                "Server error (not counted for circuit breaker): %s", error
             )
 
         elif is_timeout_error(error):

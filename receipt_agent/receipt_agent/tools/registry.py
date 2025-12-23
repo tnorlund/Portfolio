@@ -10,7 +10,7 @@ import logging
 from functools import partial
 from typing import Any, Callable, Optional
 
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, StructuredTool
 
 from receipt_agent.tools.chroma import (
     query_similar_lines,
@@ -85,8 +85,6 @@ class ToolRegistry:
 
         # Create new tool with bound function
         # We need to preserve the tool's metadata while using the bound function
-        from langchain_core.tools import StructuredTool
-
         return StructuredTool(
             name=tool_fn.name,
             description=tool_fn.description,
@@ -99,29 +97,33 @@ class ToolRegistry:
         tools = []
 
         if self._chroma_client is not None:
-            tools.extend([
-                self._bind_tool(
-                    query_similar_lines,
-                    _chroma_client=self._chroma_client,
-                    _embed_fn=self._embed_fn,
-                ),
-                self._bind_tool(
-                    query_similar_words,
-                    _chroma_client=self._chroma_client,
-                    _embed_fn=self._embed_fn,
-                ),
-                self._bind_tool(
-                    search_by_merchant_name,
-                    _chroma_client=self._chroma_client,
-                    _embed_fn=self._embed_fn,
-                ),
-                self._bind_tool(
-                    search_by_place_id,
-                    _chroma_client=self._chroma_client,
-                ),
-            ])
+            tools.extend(
+                [
+                    self._bind_tool(
+                        query_similar_lines,
+                        _chroma_client=self._chroma_client,
+                        _embed_fn=self._embed_fn,
+                    ),
+                    self._bind_tool(
+                        query_similar_words,
+                        _chroma_client=self._chroma_client,
+                        _embed_fn=self._embed_fn,
+                    ),
+                    self._bind_tool(
+                        search_by_merchant_name,
+                        _chroma_client=self._chroma_client,
+                        _embed_fn=self._embed_fn,
+                    ),
+                    self._bind_tool(
+                        search_by_place_id,
+                        _chroma_client=self._chroma_client,
+                    ),
+                ]
+            )
         else:
-            logger.warning("ChromaDB client not configured - chroma tools disabled")
+            logger.warning(
+                "ChromaDB client not configured - chroma tools disabled"
+            )
 
         return tools
 
@@ -130,22 +132,26 @@ class ToolRegistry:
         tools = []
 
         if self._dynamo_client is not None:
-            tools.extend([
-                self._bind_tool(
-                    get_receipt_place,
-                    _dynamo_client=self._dynamo_client,
-                ),
-                self._bind_tool(
-                    get_receipt_context,
-                    _dynamo_client=self._dynamo_client,
-                ),
-                self._bind_tool(
-                    get_receipts_by_merchant,
-                    _dynamo_client=self._dynamo_client,
-                ),
-            ])
+            tools.extend(
+                [
+                    self._bind_tool(
+                        get_receipt_place,
+                        _dynamo_client=self._dynamo_client,
+                    ),
+                    self._bind_tool(
+                        get_receipt_context,
+                        _dynamo_client=self._dynamo_client,
+                    ),
+                    self._bind_tool(
+                        get_receipts_by_merchant,
+                        _dynamo_client=self._dynamo_client,
+                    ),
+                ]
+            )
         else:
-            logger.warning("DynamoDB client not configured - dynamo tools disabled")
+            logger.warning(
+                "DynamoDB client not configured - dynamo tools disabled"
+            )
 
         return tools
 
@@ -209,4 +215,3 @@ def create_tool_registry(
         places_api=places_api,
         embed_fn=embed_fn,
     )
-

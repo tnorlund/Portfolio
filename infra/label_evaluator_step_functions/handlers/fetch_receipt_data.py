@@ -76,8 +76,6 @@ def handler(event: dict[str, Any], _context: Any) -> "FetchReceiptDataOutput":
 
     # Fetch words
     words = dynamo.list_receipt_words_from_receipt(image_id, receipt_id)
-    if isinstance(words, tuple):
-        words = words[0]
 
     # Fetch labels
     labels, _ = dynamo.list_receipt_word_labels_for_receipt(

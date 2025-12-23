@@ -48,10 +48,18 @@ results = await harmonizer.harmonize_receipts(receipt_keys)
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from langchain_ollama import ChatOllama
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities import ReceiptWordLabel
 
+from receipt_agent.agents.label_harmonizer import (
+    create_label_harmonizer_graph,
+    run_label_harmonizer_agent,
+)
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.constants import CORE_LABELS
 
@@ -200,10 +208,6 @@ class LabelHarmonizerV3:
         """
         # Initialize agent if needed
         if self._agent_graph is None:
-            from receipt_agent.agents.label_harmonizer import (
-                create_label_harmonizer_graph,
-            )
-
             self._agent_graph, self._agent_state_holder = (
                 create_label_harmonizer_graph(
                     dynamo_client=self.dynamo,
@@ -214,10 +218,6 @@ class LabelHarmonizerV3:
             )
 
         # Run agent
-        from receipt_agent.agents.label_harmonizer import (
-            run_label_harmonizer_agent,
-        )
-
         result = await run_label_harmonizer_agent(
             graph=self._agent_graph,
             state_holder=self._agent_state_holder,
@@ -252,7 +252,9 @@ class LabelHarmonizerV3:
         for i, (image_id, receipt_id) in enumerate(receipt_keys):
             if (i + 1) % 10 == 0:
                 logger.info(
-                    f"Processed {i + 1}/{len(receipt_keys)} receipts..."
+                    "Processed %s/%s receipts...",
+                    i + 1,
+                    len(receipt_keys),
                 )
 
             try:
@@ -264,7 +266,10 @@ class LabelHarmonizerV3:
                 results.append(result)
             except Exception as e:
                 logger.exception(
-                    f"Failed to harmonize {image_id}#{receipt_id}: {e}"
+                    "Failed to harmonize %s#%s: %s",
+                    image_id,
+                    receipt_id,
+                    e,
                 )
                 results.append(
                     ReceiptLabelResult(
@@ -311,8 +316,11 @@ class LabelHarmonizerV3:
 
             if receipt_result.confidence < min_confidence:
                 logger.debug(
-                    f"Skipping {receipt_result.image_id}#{receipt_result.receipt_id}: "
-                    f"confidence {receipt_result.confidence} < {min_confidence}"
+                    "Skipping %s#%s: confidence %s < %s",
+                    receipt_result.image_id,
+                    receipt_result.receipt_id,
+                    receipt_result.confidence,
+                    min_confidence,
                 )
                 update_result.total_skipped += 1
                 continue
@@ -325,14 +333,6 @@ class LabelHarmonizerV3:
             # Apply updates with safeguards for add vs update
             for update in receipt_result.updates:
                 try:
-                    from datetime import datetime
-
-                    from receipt_dynamo.constants import ValidationStatus
-                    from receipt_dynamo.data.shared_exceptions import (
-                        EntityNotFoundError,
-                    )
-                    from receipt_dynamo.entities import ReceiptWordLabel
-
                     image_id = update["image_id"]
                     receipt_id = update["receipt_id"]
                     line_id = update["line_id"]
@@ -400,8 +400,12 @@ class LabelHarmonizerV3:
                         self.dynamo.update_receipt_word_label(existing_label)
                         update_result.total_updated += 1
                         logger.debug(
-                            f"Updated existing label {new_label_type} for "
-                            f"{image_id[:8]}...#{receipt_id}#{line_id}#{word_id}"
+                            "Updated existing label %s for %s...#%s#%s#%s",
+                            new_label_type,
+                            image_id[:8],
+                            receipt_id,
+                            line_id,
+                            word_id,
                         )
 
                     elif (
@@ -440,8 +444,14 @@ class LabelHarmonizerV3:
                         self.dynamo.add_receipt_word_label(new_label)
                         update_result.total_updated += 1
                         logger.debug(
-                            f"Added new label {new_label_type} (consolidated from {current_label.label if current_label else 'none'}) "
-                            f"for {image_id[:8]}...#{receipt_id}#{line_id}#{word_id}"
+                            "Added new label %s (consolidated from %s) "
+                            "for %s...#%s#%s#%s",
+                            new_label_type,
+                            (current_label.label if current_label else "none"),
+                            image_id[:8],
+                            receipt_id,
+                            line_id,
+                            word_id,
                         )
 
                     else:
@@ -461,12 +471,16 @@ class LabelHarmonizerV3:
                         self.dynamo.add_receipt_word_label(new_label)
                         update_result.total_updated += 1
                         logger.debug(
-                            f"Added new label {new_label_type} for "
-                            f"{image_id[:8]}...#{receipt_id}#{line_id}#{word_id}"
+                            "Added new label %s for %s...#%s#%s#%s",
+                            new_label_type,
+                            image_id[:8],
+                            receipt_id,
+                            line_id,
+                            word_id,
                         )
 
                 except Exception as e:
-                    logger.exception(f"Failed to apply label update: {e}")
+                    logger.exception("Failed to apply label update: %s", e)
                     update_result.total_failed += 1
                     update_result.errors.append(
                         f"{update.get('image_id', 'unknown')}#{update.get('receipt_id', 'unknown')}#{update.get('line_id', 'unknown')}#{update.get('word_id', 'unknown')}: {str(e)}"
@@ -475,8 +489,10 @@ class LabelHarmonizerV3:
             update_result.total_processed += 1
 
         logger.info(
-            f"Update complete: {update_result.total_updated} updated, "
-            f"{update_result.total_skipped} skipped, {update_result.total_failed} failed"
+            "Update complete: %s updated, %s skipped, %s failed",
+            update_result.total_updated,
+            update_result.total_skipped,
+            update_result.total_failed,
         )
 
         return update_result

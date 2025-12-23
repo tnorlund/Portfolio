@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from itertools import combinations
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
+
 from receipt_agent.agents.label_evaluator.state import (
     ConstellationGeometry,
     EvaluationIssue,
@@ -28,7 +30,6 @@ from receipt_agent.agents.label_evaluator.state import (
     VisualLine,
     WordContext,
 )
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 

@@ -430,7 +430,7 @@ async def run_financial_validation(
     try:
         await graph.ainvoke(initial_state)
     except Exception as e:
-        logger.exception(f"Financial validation failed: {e}")
+        logger.exception("Financial validation failed: %s", e)
         return {
             "currency": None,
             "is_valid": False,
