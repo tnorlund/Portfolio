@@ -55,11 +55,24 @@ def reset_chromadb_modules():
     Use this BETWEEN PersistentClient instances in the same test when you need
     to test data persistence across client sessions.
 
+    IMPORTANT: This resets BOTH chromadb and receipt_chroma modules to ensure
+    the receipt_chroma.data.chroma_client module gets a fresh chromadb reference.
+    After calling this, you MUST re-import ChromaClient.
+
     See GitHub issue #5868 for context on ChromaDB cleanup challenges.
     """
-    # Remove chromadb modules from sys.modules
-    chromadb_modules = [mod for mod in list(sys.modules.keys()) if "chroma" in mod.lower()]
-    for mod in chromadb_modules:
+    # Remove chromadb modules AND receipt_chroma modules from sys.modules
+    # Both need to be reset so receipt_chroma.data.chroma_client gets a fresh
+    # chromadb reference
+    modules_to_reset = [
+        mod
+        for mod in list(sys.modules.keys())
+        if mod == "chromadb"
+        or mod.startswith("chromadb.")
+        or mod == "receipt_chroma"
+        or mod.startswith("receipt_chroma.")
+    ]
+    for mod in modules_to_reset:
         del sys.modules[mod]
 
     # Force garbage collection to fully release resources
