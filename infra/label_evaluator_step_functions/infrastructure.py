@@ -855,9 +855,18 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "Type": "Pass",
                     "Parameters": {
                         "original_input.$": "$",
-                    "merged_input.$": "States.JsonMerge({\"skip_llm_review\": false, \"dry_run\": false}, $)",
+                        "merged_input.$": "$",
                     },
                     "ResultPath": "$.normalized",
+                    "Next": "SetDefaults",
+                },
+                "SetDefaults": {
+                    "Type": "Pass",
+                    "Result": {
+                        "skip_llm_review": False,
+                        "dry_run": False,
+                    },
+                    "ResultPath": "$.defaults",
                     "Next": "CheckInputMode",
                 },
                 # Check if merchant_name is in input (before Initialize)
