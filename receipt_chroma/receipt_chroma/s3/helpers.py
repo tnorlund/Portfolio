@@ -120,7 +120,8 @@ def download_snapshot_from_s3(
                 # Create parent directories
                 local_file.parent.mkdir(parents=True, exist_ok=True)
 
-                # Download file - handle checksum errors that can occur with moto
+                # Download file - handle checksum errors that can occur with
+                # moto.
                 try:
                     s3_client.download_file(bucket, s3_key, str(local_file))
                 except Exception as e:
@@ -146,6 +147,16 @@ def download_snapshot_from_s3(
                                 if not chunk:
                                     break
                                 f.write(chunk)
+                        expected_size = obj.get("Size", 0)
+                        actual_size = local_file.stat().st_size
+                        if expected_size and actual_size != expected_size:
+                            logger.warning(
+                                "Fallback download size mismatch for %s: "
+                                "expected %s, got %s",
+                                s3_key,
+                                expected_size,
+                                actual_size,
+                            )
                     else:
                         raise
 

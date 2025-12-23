@@ -38,6 +38,10 @@ def _get_sqs_client():
 # Use receipt_chroma package for compaction logic
 from receipt_chroma import ChromaClient, LockManager
 from receipt_chroma.compaction import process_collection_updates
+from receipt_dynamo.constants import ChromaDBCollection
+
+# DynamoDB and ChromaDB imports
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
 # Enhanced observability imports
 from utils import (
@@ -49,11 +53,6 @@ from utils import (
     trace_function,
     with_compaction_timeout_protection,
 )
-
-from receipt_dynamo.constants import ChromaDBCollection
-
-# DynamoDB and ChromaDB imports
-from receipt_dynamo.data.dynamo_client import DynamoClient
 
 # Import StreamMessage from receipt_dynamo_stream
 try:
@@ -390,10 +389,9 @@ def delete_messages_batch(
                     error=failure.get("Message"),
                 )
 
-        except ClientError as e:
-            logger.error(
+        except ClientError:
+            logger.exception(
                 "Batch delete failed",
-                error=str(e),
                 batch_size=len(batch),
             )
             failed_handles.extend(batch)
@@ -605,9 +603,8 @@ def process_collection(
         # Cleanup temp directory
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-        # Aggressive memory cleanup to prevent OOM on warm container reuse
-        # ChromaDB collections with 70K+ embeddings use ~8GB RAM
-        # Without explicit cleanup, warm starts can accumulate memory
+        # Aggressive memory cleanup to prevent OOM on warm container reuse.
+        # Repeated gc.collect() helps release cyclic references with finalizers.
         gc.collect()
         gc.collect()
         gc.collect()

@@ -1,20 +1,29 @@
 """Integration tests for S3 snapshot operations using moto."""
 
+# pylint: disable=redefined-outer-name
+
+import importlib
+import shutil
 import tempfile
-from pathlib import Path
 
 import boto3
 import pytest
 from moto import mock_aws
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import ChromaDBCollection
+
 from receipt_chroma import ChromaClient, LockManager
 from receipt_chroma.s3 import (
     download_snapshot_atomic,
     initialize_empty_snapshot,
     upload_snapshot_atomic,
 )
+from tests.integration.conftest import reset_chromadb_modules
 
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import ChromaDBCollection
+
+def get_chroma_client():
+    """Return a fresh ChromaClient class after module resets."""
+    return importlib.import_module("receipt_chroma").ChromaClient
 
 
 @pytest.fixture
@@ -146,7 +155,7 @@ class TestS3SnapshotOperations:
         assert len(objects["Contents"]) > 0
 
         # Verify pointer file exists
-        pointer_key = f"test/snapshot/latest-pointer.txt"
+        pointer_key = "test/snapshot/latest-pointer.txt"
         pointer_obj = s3_client.get_object(Bucket=s3_bucket, Key=pointer_key)
         pointer_value = pointer_obj["Body"].read().decode("utf-8").strip()
         assert pointer_value == result["version_id"]
@@ -201,8 +210,6 @@ class TestS3SnapshotOperations:
                 collection = client.get_collection("test")
                 assert collection.count() == 2
         finally:
-            import shutil
-
             shutil.rmtree(download_dir, ignore_errors=True)
 
     @pytest.mark.parametrize(
@@ -251,8 +258,6 @@ class TestS3SnapshotOperations:
         self, s3_bucket, temp_chromadb_dir
     ):
         """Test that downloading nonexistent snapshot initializes empty one."""
-        from tests.integration.conftest import reset_chromadb_modules
-
         download_result = download_snapshot_atomic(
             bucket=s3_bucket,
             collection="new_collection",
@@ -267,11 +272,10 @@ class TestS3SnapshotOperations:
         # corrupting global Rust bindings state
         reset_chromadb_modules()
 
-        # Re-import after reset
-        from receipt_chroma import ChromaClient as ChromaClientReloaded
+        chroma_client_reloaded = get_chroma_client()
 
         # Verify snapshot can be opened
-        with ChromaClientReloaded(
+        with chroma_client_reloaded(
             persist_directory=temp_chromadb_dir, mode="read"
         ) as client:
             collection = client.get_collection("new_collection")
@@ -282,8 +286,6 @@ class TestS3SnapshotOperations:
     )
     def test_atomic_pointer_pattern(self, s3_bucket, temp_chromadb_dir):
         """Test that atomic pointer pattern works correctly."""
-        from tests.integration.conftest import reset_chromadb_modules
-
         # Upload first version
         with ChromaClient(
             persist_directory=temp_chromadb_dir,
@@ -304,14 +306,14 @@ class TestS3SnapshotOperations:
             bucket=s3_bucket,
             collection="test",
         )
-        # version1 not checked - only verifying upload succeeds
+        assert upload1["status"] == "uploaded"
 
         # Reset after upload_snapshot_atomic uses clients internally
         reset_chromadb_modules()
-        from receipt_chroma import ChromaClient as ChromaClientReloaded
+        chroma_client_reloaded = get_chroma_client()
 
         # Upload second version
-        with ChromaClientReloaded(
+        with chroma_client_reloaded(
             persist_directory=temp_chromadb_dir,
             mode="write",
             metadata_only=True,
@@ -355,15 +357,13 @@ class TestS3SnapshotOperations:
 
             # Reset after download_snapshot_atomic uses clients internally
             reset_chromadb_modules()
-            from receipt_chroma import ChromaClient as ChromaClientFinal
+            chroma_client_final = get_chroma_client()
 
             # Verify it has both documents
-            with ChromaClientFinal(
+            with chroma_client_final(
                 persist_directory=download_dir, mode="read"
             ) as client:
                 collection = client.get_collection("test")
                 assert collection.count() == 2
         finally:
-            import shutil
-
             shutil.rmtree(download_dir, ignore_errors=True)
