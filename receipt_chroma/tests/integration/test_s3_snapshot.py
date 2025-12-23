@@ -304,7 +304,7 @@ class TestS3SnapshotOperations:
             bucket=s3_bucket,
             collection="test",
         )
-        version1 = upload1["version_id"]
+        # version1 not checked - only verifying upload succeeds
 
         # Reset after upload_snapshot_atomic uses clients internally
         reset_chromadb_modules()
