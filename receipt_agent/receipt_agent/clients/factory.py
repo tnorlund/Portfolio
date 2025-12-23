@@ -7,7 +7,8 @@ the correct configuration for caching and performance optimization.
 
 import logging
 import os
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any, Optional
 
 from receipt_agent.config.settings import Settings, get_settings
 

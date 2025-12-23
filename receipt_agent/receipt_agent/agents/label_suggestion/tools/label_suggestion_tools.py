@@ -9,7 +9,8 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any, Optional
 
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
