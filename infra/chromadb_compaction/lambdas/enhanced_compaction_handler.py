@@ -264,12 +264,22 @@ def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
 
 
 # Phase 2: In-Lambda batching configuration
-# Configurable via environment variable for tuning without code deployment
-MAX_MESSAGES_PER_COMPACTION = int(
-    os.environ.get("MAX_MESSAGES_PER_COMPACTION", "500")
+# Configurable via environment variable for tuning without code deployment.
+def _parse_int_env(name: str, default: int) -> int:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+MAX_MESSAGES_PER_COMPACTION = _parse_int_env(
+    "MAX_MESSAGES_PER_COMPACTION", 500
 )
-ADDITIONAL_FETCH_VISIBILITY_TIMEOUT = int(
-    os.environ.get("ADDITIONAL_FETCH_VISIBILITY_TIMEOUT", "120")
+ADDITIONAL_FETCH_VISIBILITY_TIMEOUT = _parse_int_env(
+    "ADDITIONAL_FETCH_VISIBILITY_TIMEOUT", 120
 )  # Should match Lambda timeout
 
 
@@ -327,14 +337,26 @@ def fetch_additional_messages(
 
         for msg in messages:
             # Convert to the same format as Lambda event records
+            message_attributes = {}
+            for key, attr in msg.get("MessageAttributes", {}).items():
+                if "StringValue" in attr:
+                    message_attributes[key] = {
+                        "stringValue": attr.get("StringValue", "")
+                    }
+                elif "NumberValue" in attr:
+                    message_attributes[key] = {
+                        "numberValue": attr.get("NumberValue", "")
+                    }
+                elif "BinaryValue" in attr:
+                    message_attributes[key] = {
+                        "binaryValue": attr.get("BinaryValue", b"")
+                    }
+
             record = {
                 "messageId": msg["MessageId"],
                 "receiptHandle": msg["ReceiptHandle"],
                 "body": msg["Body"],
-                "messageAttributes": {
-                    k: {"stringValue": v.get("StringValue", "")}
-                    for k, v in msg.get("MessageAttributes", {}).items()
-                },
+                "messageAttributes": message_attributes,
             }
             additional_records.append(record)
             receipt_handles.append(msg["ReceiptHandle"])
@@ -483,21 +505,18 @@ def process_collection(
 
         # Phase 2: Open ChromaDB client and apply updates
         with logger.operation_timer("in_memory_updates"):
-            client = ChromaClient(
+            with ChromaClient(
                 persist_directory=temp_dir, mode="write", metadata_only=True
-            )
-
-            # Call receipt_chroma package for business logic
-            result = process_collection_updates(
-                stream_messages=messages,
-                collection=collection,
-                chroma_client=client,
-                logger=logger,
-                metrics=metrics,
-                dynamo_client=dynamo_client,
-            )
-
-            client.close()
+            ) as client:
+                # Call receipt_chroma package for business logic
+                result = process_collection_updates(
+                    stream_messages=messages,
+                    collection=collection,
+                    chroma_client=client,
+                    logger=logger,
+                    metrics=metrics,
+                    dynamo_client=dynamo_client,
+                )
 
         logger.info(
             "Updates applied",
