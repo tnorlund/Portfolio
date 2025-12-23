@@ -1,20 +1,29 @@
 """Integration tests for S3 snapshot operations using moto."""
 
+# pylint: disable=redefined-outer-name
+
+import importlib
+import shutil
 import tempfile
-from pathlib import Path
 
 import boto3
 import pytest
 from moto import mock_aws
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import ChromaDBCollection
+
 from receipt_chroma import ChromaClient, LockManager
 from receipt_chroma.s3 import (
     download_snapshot_atomic,
     initialize_empty_snapshot,
     upload_snapshot_atomic,
 )
+from tests.integration.conftest import reset_chromadb_modules
 
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import ChromaDBCollection
+
+def get_chroma_client():
+    """Return a fresh ChromaClient class after module resets."""
+    return importlib.import_module("receipt_chroma").ChromaClient
 
 
 @pytest.fixture
@@ -146,7 +155,7 @@ class TestS3SnapshotOperations:
         assert len(objects["Contents"]) > 0
 
         # Verify pointer file exists
-        pointer_key = f"test/snapshot/latest-pointer.txt"
+        pointer_key = "test/snapshot/latest-pointer.txt"
         pointer_obj = s3_client.get_object(Bucket=s3_bucket, Key=pointer_key)
         pointer_value = pointer_obj["Body"].read().decode("utf-8").strip()
         assert pointer_value == result["version_id"]
@@ -201,8 +210,6 @@ class TestS3SnapshotOperations:
                 collection = client.get_collection("test")
                 assert collection.count() == 2
         finally:
-            import shutil
-
             shutil.rmtree(download_dir, ignore_errors=True)
 
     @pytest.mark.parametrize(
@@ -260,8 +267,15 @@ class TestS3SnapshotOperations:
         assert download_result["status"] == "downloaded"
         assert download_result.get("initialized") is True
 
+        # Reset chromadb modules before creating new client (issue #5868)
+        # download_snapshot_atomic creates/closes clients internally,
+        # corrupting global Rust bindings state
+        reset_chromadb_modules()
+
+        chroma_client_reloaded = get_chroma_client()
+
         # Verify snapshot can be opened
-        with ChromaClient(
+        with chroma_client_reloaded(
             persist_directory=temp_chromadb_dir, mode="read"
         ) as client:
             collection = client.get_collection("new_collection")
@@ -284,15 +298,22 @@ class TestS3SnapshotOperations:
                 documents=["doc1"],
             )
 
+        # Reset after first client closes (issue #5868)
+        reset_chromadb_modules()
+
         upload1 = upload_snapshot_atomic(
             local_path=temp_chromadb_dir,
             bucket=s3_bucket,
             collection="test",
         )
-        version1 = upload1["version_id"]
+        assert upload1["status"] == "uploaded"
+
+        # Reset after upload_snapshot_atomic uses clients internally
+        reset_chromadb_modules()
+        chroma_client_reloaded = get_chroma_client()
 
         # Upload second version
-        with ChromaClient(
+        with chroma_client_reloaded(
             persist_directory=temp_chromadb_dir,
             mode="write",
             metadata_only=True,
@@ -302,6 +323,9 @@ class TestS3SnapshotOperations:
                 ids=["1", "2"],
                 documents=["doc1", "doc2"],
             )
+
+        # Reset after second client closes
+        reset_chromadb_modules()
 
         upload2 = upload_snapshot_atomic(
             local_path=temp_chromadb_dir,
@@ -317,6 +341,9 @@ class TestS3SnapshotOperations:
         pointer_value = pointer_obj["Body"].read().decode("utf-8").strip()
         assert pointer_value == version2
 
+        # Reset before download
+        reset_chromadb_modules()
+
         # Download should get latest version
         download_dir = tempfile.mkdtemp(prefix="chromadb_download_")
         try:
@@ -328,13 +355,15 @@ class TestS3SnapshotOperations:
 
             assert download_result["version_id"] == version2
 
+            # Reset after download_snapshot_atomic uses clients internally
+            reset_chromadb_modules()
+            chroma_client_final = get_chroma_client()
+
             # Verify it has both documents
-            with ChromaClient(
+            with chroma_client_final(
                 persist_directory=download_dir, mode="read"
             ) as client:
                 collection = client.get_collection("test")
                 assert collection.count() == 2
         finally:
-            import shutil
-
             shutil.rmtree(download_dir, ignore_errors=True)

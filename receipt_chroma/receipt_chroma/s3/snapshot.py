@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import boto3
-import chromadb
 from botocore.exceptions import ClientError
 from receipt_chroma import ChromaClient
 from receipt_chroma.s3.helpers import (
@@ -89,45 +88,40 @@ def _validate_snapshot_after_upload(
             )
             return False, validation_duration
 
-        # Try to open with ChromaDB
+        # Try to open with ChromaDB using our wrapper for proper cleanup
         try:
-            test_client = chromadb.PersistentClient(path=temp_dir)
-            collections = test_client.list_collections()
+            # Use ChromaClient wrapper for proper close() handling (issue #5868)
+            with ChromaClient(
+                persist_directory=temp_dir, mode="read"
+            ) as test_client:
+                collections = test_client.list_collections()
 
-            if not collections:
-                validation_duration = time.time() - validation_start_time
-                logger.error(
-                    "No collections found in snapshot (duration: %.2fs)",
-                    validation_duration,
-                )
-                return False, validation_duration
+                if not collections:
+                    validation_duration = time.time() - validation_start_time
+                    logger.error(
+                        "No collections found in snapshot (duration: %.2fs)",
+                        validation_duration,
+                    )
+                    return False, validation_duration
 
-            # Verify expected collection exists
-            collection_names = [c.name for c in collections]
-            if collection_name not in collection_names:
-                validation_duration = time.time() - validation_start_time
-                logger.error(
-                    "Expected collection '%s' not found in snapshot "
-                    "(found: %s, duration: %.2fs)",
-                    collection_name,
-                    collection_names,
-                    validation_duration,
-                )
-                return False, validation_duration
+                # Verify expected collection exists
+                if collection_name not in collections:
+                    validation_duration = time.time() - validation_start_time
+                    logger.error(
+                        "Expected collection '%s' not found in snapshot "
+                        "(found: %s, duration: %.2fs)",
+                        collection_name,
+                        collections,
+                        validation_duration,
+                    )
+                    return False, validation_duration
 
-            # Lightweight check: verify collection can be accessed
-            test_collection = test_client.get_collection(collection_name)
-            count = test_collection.count()  # Lightweight operation
+                # Lightweight check: verify collection can be accessed
+                test_collection = test_client.get_collection(collection_name)
+                count = test_collection.count()  # Lightweight operation
 
-            # Clean up test client properly (issue #5868)
-            # ChromaDB doesn't expose close(), so we need to clear references
-            # and force GC multiple times
-            del test_client
-            for _ in range(3):
-                gc.collect()
-            time.sleep(
-                0.1
-            )  # Small delay to ensure SQLite connections are released
+            # ChromaClient's close() handles proper cleanup including
+            # _system.stop() and gc.collect() (issue #5868)
 
             validation_duration = time.time() - validation_start_time
             logger.info(

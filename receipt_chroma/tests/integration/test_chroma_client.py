@@ -19,6 +19,8 @@ from receipt_chroma import ChromaClient
 @pytest.mark.integration
 def test_client_persistence(temp_chromadb_dir):
     """Test that data persists across client instances."""
+    from tests.integration.conftest import reset_chromadb_modules
+
     # Create and populate a client
     with ChromaClient(
         persist_directory=temp_chromadb_dir, mode="write", metadata_only=True
@@ -30,10 +32,18 @@ def test_client_persistence(temp_chromadb_dir):
             metadatas=[{"key": "value1"}, {"key": "value2"}],
         )
 
+    # Reset ChromaDB global state before creating second client.
+    # The first client's close() calls _system.stop() which corrupts global
+    # Rust bindings state. Reimporting chromadb modules clears this.
+    reset_chromadb_modules()
+
+    # Re-import ChromaClient after module reset
+    from receipt_chroma import ChromaClient as ChromaClientReloaded
+
     # Create a new client and verify data persists
     # For read mode, we need to use query_embeddings or get the collection
     # directly
-    with ChromaClient(
+    with ChromaClientReloaded(
         persist_directory=temp_chromadb_dir, mode="read"
     ) as client:
         collection = client.get_collection("test")
@@ -255,6 +265,8 @@ def test_delete_operations(chroma_client_write):
 @pytest.mark.integration
 def test_read_only_mode_prevents_writes(temp_chromadb_dir):
     """Test that read-only mode prevents writes."""
+    from tests.integration.conftest import reset_chromadb_modules
+
     # First create a collection with write mode
     with ChromaClient(
         persist_directory=temp_chromadb_dir, mode="write", metadata_only=True
@@ -263,8 +275,12 @@ def test_read_only_mode_prevents_writes(temp_chromadb_dir):
             collection_name="readonly_test", ids=["1"], documents=["test"]
         )
 
+    # Reset ChromaDB global state before creating second client
+    reset_chromadb_modules()
+    from receipt_chroma import ChromaClient as ChromaClientReloaded
+
     # Now try to write in read mode
-    with ChromaClient(
+    with ChromaClientReloaded(
         persist_directory=temp_chromadb_dir, mode="read"
     ) as client:
         with pytest.raises(RuntimeError, match="read-only"):
