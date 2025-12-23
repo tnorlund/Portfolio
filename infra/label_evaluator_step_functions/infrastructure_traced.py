@@ -86,7 +86,6 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         chromadb_bucket: Optional[pulumi.Input[str]] = None,
         max_concurrency: Optional[int] = None,
         batch_size: Optional[int] = None,
-        skip_llm_review: bool = False,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -96,7 +95,6 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
 
         self.max_concurrency = max_concurrency or max_concurrency_default
         self.batch_size = batch_size or batch_size_default
-        self.skip_llm_review = skip_llm_review
         self.chromadb_bucket = chromadb_bucket
 
         # ============================================================
@@ -801,7 +799,6 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                     batch_bucket=args[11],
                     max_concurrency=self.max_concurrency,
                     batch_size=self.batch_size,
-                    skip_llm_review=self.skip_llm_review,
                 )
             ),
             logging_configuration=logging_config,
@@ -837,7 +834,6 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         batch_bucket: str,
         max_concurrency: int,
         batch_size: int,
-        skip_llm_review: bool,
     ) -> str:
         """Create Step Function definition with trace propagation.
 
@@ -845,40 +841,88 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         - Each Lambda receives `langsmith_headers` from previous step
         - Each Lambda returns `langsmith_headers` for next step
         - Parameters include `langsmith_headers.$` for propagation
+
+        Runtime inputs (from Step Function execution input):
+        - dry_run: bool (default: False) - Don't write to DynamoDB
+        - merchant_name: str (optional) - Process single merchant
+        - limit: int (optional) - Limit receipts per merchant
+
+        Note: Unlike the original Step Function, this traced version always
+        runs the full LLM workflow (no skip_llm_review option) since the
+        purpose is LangSmith observability of LLM calls.
         """
         definition = {
             "Comment": "Label Evaluator with LangSmith Trace Propagation",
-            "StartAt": "Initialize",
+            "StartAt": "NormalizeInput",
             "States": {
-                "Initialize": {
+                # Capture original input
+                "NormalizeInput": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "original_input.$": "$",
+                        "merged_input.$": "$",
+                    },
+                    "ResultPath": "$.normalized",
+                    "Next": "SetDefaults",
+                },
+                # Set defaults
+                "SetDefaults": {
+                    "Type": "Pass",
+                    "Result": {
+                        "dry_run": False,
+                    },
+                    "ResultPath": "$.defaults",
+                    "Next": "CheckInputMode",
+                },
+                # Check if merchant_name is in input
+                "CheckInputMode": {
+                    "Type": "Choice",
+                    "Choices": [
+                        {
+                            "Variable": "$.normalized.merged_input.merchant_name",
+                            "IsPresent": True,
+                            "Next": "InitializeSingleMerchant",
+                        }
+                    ],
+                    "Default": "InitializeAllMerchants",
+                },
+                # Initialize for single merchant mode
+                "InitializeSingleMerchant": {
                     "Type": "Pass",
                     "Parameters": {
                         "execution_id.$": "$$.Execution.Name",
                         "start_time.$": "$$.Execution.StartTime",
                         "batch_bucket": batch_bucket,
                         "batch_size": batch_size,
-                        "merchant_name.$": "$.merchant_name",
-                        "skip_llm_review": skip_llm_review,
-                        "dry_run.$": "$.dry_run",
+                        "merchant_name.$": "$.normalized.merged_input.merchant_name",
+                        "dry_run.$": "$.normalized.merged_input.dry_run",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
-                        "limit.$": "$.limit",
+                        "limit.$": "$.normalized.merged_input.limit",
+                        "original_input.$": "$.normalized.original_input",
                     },
                     "ResultPath": "$.init",
-                    "Next": "CheckInputMode",
+                    "Next": "SingleMerchantMode",
                 },
-                "CheckInputMode": {
-                    "Type": "Choice",
-                    "Choices": [
-                        {
-                            "Variable": "$.init.merchant_name",
-                            "IsPresent": True,
-                            "Next": "SingleMerchantMode",
-                        }
-                    ],
-                    "Default": "ListMerchants",
+                # Initialize for all merchants mode
+                "InitializeAllMerchants": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "execution_id.$": "$$.Execution.Name",
+                        "start_time.$": "$$.Execution.StartTime",
+                        "batch_bucket": batch_bucket,
+                        "batch_size": batch_size,
+                        "merchant_name": None,
+                        "dry_run.$": "$.normalized.merged_input.dry_run",
+                        "max_training_receipts": 50,
+                        "min_receipts": 5,
+                        "limit.$": "$.normalized.merged_input.limit",
+                        "original_input.$": "$.normalized.original_input",
+                    },
+                    "ResultPath": "$.init",
+                    "Next": "ListMerchants",
                 },
-                # Single merchant - create merchant list with one entry
+                # Single merchant mode - process just one merchant
                 "SingleMerchantMode": {
                     "Type": "Pass",
                     "Parameters": {
@@ -889,7 +933,8 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                             }
                         ],
                         "total_merchants": 1,
-                        "langsmith_headers": None,  # Will be set by ListMerchants
+                        "mode": "single",
+                        "langsmith_headers": None,
                     },
                     "ResultPath": "$.merchants_data",
                     "Next": "ProcessMerchants",
@@ -944,7 +989,6 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                         "batch_size.$": "$.init.batch_size",
                         "max_training_receipts.$": "$.init.max_training_receipts",
                         "limit.$": "$.init.limit",
-                        "skip_llm_review.$": "$.init.skip_llm_review",
                         "dry_run.$": "$.init.dry_run",
                         # Propagate trace headers from ListMerchants
                         "langsmith_headers.$": "$.merchants_data.langsmith_headers",
@@ -1160,27 +1204,19 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                         "BackoffRate": 2.0,
                                     }
                                 ],
-                                "Next": "CheckSkipLLMReview",
+                                "Next": "CheckHasIssues",
                             },
-                            # Check if we should skip LLM review
-                            "CheckSkipLLMReview": {
+                            # Check if there are issues to review
+                            "CheckHasIssues": {
                                 "Type": "Choice",
                                 "Choices": [
                                     {
-                                        "Or": [
-                                            {
-                                                "Variable": "$.skip_llm_review",
-                                                "BooleanEquals": True,
-                                            },
-                                            {
-                                                "Variable": "$.collected_issues.total_issues",
-                                                "NumericEquals": 0,
-                                            },
-                                        ],
-                                        "Next": "AggregateResults",
+                                        "Variable": "$.collected_issues.total_issues",
+                                        "NumericGreaterThan": 0,
+                                        "Next": "BatchIssues",
                                     }
                                 ],
-                                "Default": "BatchIssues",
+                                "Default": "AggregateResults",
                             },
                             # Batch issues for parallel LLM review
                             "BatchIssues": {
