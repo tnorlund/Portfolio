@@ -5,7 +5,7 @@ Lambda handlers and stored in S3. Using TypedDicts instead of dict[str, Any]
 improves type safety, IDE support, and documentation.
 
 Usage:
-    from types import ReceiptRef, EvaluationResult, IssueDetail
+    from evaluator_types import ReceiptRef, EvaluationResult, IssueDetail
 """
 
 from typing import NotRequired, TypedDict
@@ -263,6 +263,7 @@ class FetchReceiptDataOutput(TypedDict):
     receipt_id: int
     word_count: int
     label_count: int
+    merchant_name: str
 
 
 class EvaluateLabelsOutput(TypedDict):

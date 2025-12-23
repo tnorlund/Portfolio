@@ -177,7 +177,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
     s3.put_object(
         Bucket=batch_bucket,
         Key=patterns_s3_key,
-        Body=json.dumps(patterns_data, indent=2, default=str).encode("utf-8"),
+        Body=json.dumps(patterns_data, indent=2).encode("utf-8"),
         ContentType="application/json",
     )
 

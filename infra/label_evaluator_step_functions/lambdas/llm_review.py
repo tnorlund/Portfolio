@@ -33,6 +33,7 @@ from collections import Counter, defaultdict
 from typing import TYPE_CHECKING, Any, Optional
 
 import boto3
+from botocore.config import Config
 from receipt_agent import (
     OllamaCircuitBreaker,
     OllamaRateLimitError,
@@ -58,7 +59,10 @@ logger.setLevel(logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
-s3 = boto3.client("s3")
+s3 = boto3.client(
+    "s3",
+    config=Config(connect_timeout=10, read_timeout=120),
+)
 
 
 # =============================================================================
@@ -1891,7 +1895,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             except Exception as e:
                 logger.warning(f"Could not load line item patterns: {e}")
 
-        # 3. Setup ChromaDB (was step 2)
+        # 3. Setup ChromaDB
         chroma_client = None
         if chromadb_bucket:
             try:
@@ -1912,7 +1916,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             except Exception as e:
                 logger.warning(f"Could not initialize ChromaDB: {e}")
 
-        # 3. Setup DynamoDB client
+        # 4. Setup DynamoDB client
         dynamo_client = None
         if table_name:
             try:
@@ -1923,7 +1927,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             except Exception as e:
                 logger.warning(f"Could not initialize DynamoDB: {e}")
 
-        # 4. Setup Ollama LLM
+        # 5. Setup Ollama LLM
         ollama_api_key = os.environ.get("RECEIPT_AGENT_OLLAMA_API_KEY")
         ollama_base_url = os.environ.get(
             "RECEIPT_AGENT_OLLAMA_BASE_URL", "https://ollama.com"
@@ -2136,28 +2140,36 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                         logger.info(f"Saved partial progress to {partial_s3_key}")
                     raise  # Re-raise for Step Function retry
 
-                except Exception:
+                except Exception as e:
                     # If LLM call fails, mark all issues in chunk as NEEDS_REVIEW
                     logger.exception("LLM call failed for receipt %s", receipt_key)
                     logger.warning(
                         "Marking %d issues as NEEDS_REVIEW.", len(chunk_metadata)
                     )
                     for i, meta in enumerate(chunk_metadata):
-                        ctx = issues_with_context[i] if i < len(issues_with_context) else {}
+                        ctx = (
+                            issues_with_context[i]
+                            if i < len(issues_with_context)
+                            else {}
+                        )
                         decisions["NEEDS_REVIEW"] += 1
-                        reviewed_issues.append({
-                            "image_id": meta["image_id"],
-                            "receipt_id": meta["receipt_id"],
-                            "issue": meta["issue"],
-                            "llm_review": {
-                                "decision": "NEEDS_REVIEW",
-                                "reasoning": f"LLM call failed: {e}",
-                                "suggested_label": None,
-                                "confidence": "low",
-                            },
-                            "similar_word_count": len(ctx.get("similar_evidence", [])),
-                            "error": str(e),
-                        })
+                        reviewed_issues.append(
+                            {
+                                "image_id": meta["image_id"],
+                                "receipt_id": meta["receipt_id"],
+                                "issue": meta["issue"],
+                                "llm_review": {
+                                    "decision": "NEEDS_REVIEW",
+                                    "reasoning": f"LLM call failed: {e}",
+                                    "suggested_label": None,
+                                    "confidence": "low",
+                                },
+                                "similar_word_count": len(
+                                    ctx.get("similar_evidence", [])
+                                ),
+                                "error": str(e),
+                            }
+                        )
 
         logger.info(
             f"Reviewed {total_issues} issues across {len(issues_by_receipt)} receipts "

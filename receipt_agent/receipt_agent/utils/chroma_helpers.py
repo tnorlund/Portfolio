@@ -13,6 +13,11 @@ from collections import Counter, defaultdict
 from collections.abc import Callable
 from typing import Any, Optional, TypedDict
 
+from receipt_chroma.s3 import download_snapshot_atomic
+
+from receipt_agent.clients.factory import create_chroma_client, create_embed_fn
+from receipt_agent.config.settings import get_settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -98,8 +103,6 @@ def load_dual_chroma_from_s3(
     Raises:
         RuntimeError: If snapshot download or client creation fails
     """
-    from receipt_chroma.s3 import download_snapshot_atomic
-
     if base_chroma_path is None:
         base_chroma_path = os.environ.get(
             "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
@@ -117,7 +120,8 @@ def load_dual_chroma_from_s3(
         # Download lines collection to separate directory
         if not os.path.exists(lines_db_file):
             logger.info(
-                f"Downloading ChromaDB lines snapshot from s3://{chromadb_bucket}/lines/"
+                "Downloading ChromaDB lines snapshot from s3://%s/lines/",
+                chromadb_bucket,
             )
             lines_result = download_snapshot_atomic(
                 bucket=chromadb_bucket,
@@ -135,12 +139,13 @@ def load_dual_chroma_from_s3(
                 f"ChromaDB lines snapshot downloaded: version={lines_result.get('version_id')}"
             )
         else:
-            logger.info(f"ChromaDB lines already cached at {lines_path}")
+            logger.info("ChromaDB lines already cached at %s", lines_path)
 
         # Download words collection to separate directory
         if not os.path.exists(words_db_file):
             logger.info(
-                f"Downloading ChromaDB words snapshot from s3://{chromadb_bucket}/words/"
+                "Downloading ChromaDB words snapshot from s3://%s/words/",
+                chromadb_bucket,
             )
             words_result = download_snapshot_atomic(
                 bucket=chromadb_bucket,
@@ -158,21 +163,15 @@ def load_dual_chroma_from_s3(
                 f"ChromaDB words snapshot downloaded: version={words_result.get('version_id')}"
             )
         else:
-            logger.info(f"ChromaDB words already cached at {words_path}")
+            logger.info("ChromaDB words already cached at %s", words_path)
     else:
-        logger.info(f"ChromaDB already cached at {base_chroma_path}")
+        logger.info("ChromaDB already cached at %s", base_chroma_path)
 
     # Set environment variables for DualChromaClient (separate directories)
     os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = lines_path
     os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = words_path
 
     # Create clients using the receipt_agent factory
-    from receipt_agent.clients.factory import (
-        create_chroma_client,
-        create_embed_fn,
-    )
-    from receipt_agent.config.settings import get_settings
-
     settings = get_settings()
 
     # Verify OpenAI API key is available for embeddings
@@ -248,8 +247,13 @@ def parse_chroma_id(chroma_id: str) -> tuple[str, int, int, int]:
 
     Returns:
         Tuple of (image_id, receipt_id, line_id, word_id)
+
+    Raises:
+        ValueError: If the ID format is invalid
     """
     parts = chroma_id.split("#")
+    if len(parts) < 8:
+        raise ValueError(f"Invalid chroma_id format: {chroma_id}")
     return (
         parts[1],  # image_id
         int(parts[3]),  # receipt_id
@@ -297,7 +301,9 @@ def query_similar_words(
     )
 
     try:
-        logger.debug("Querying similar words for '%s' (%s)", word_text, word_chroma_id)
+        logger.debug(
+            "Querying similar words for '%s' (%s)", word_text, word_chroma_id
+        )
 
         # First, get the target word's embedding
         word_result = chroma_client.get(
@@ -468,16 +474,25 @@ def enrich_evidence_with_dynamo_reasoning(
             }
 
             for label in labels:
-                if label.validation_status == "VALID" and label.label in validated_map:
+                if (
+                    label.validation_status == "VALID"
+                    and label.label in validated_map
+                ):
                     validated_map[label.label]["reasoning"] = label.reasoning
-                    validated_map[label.label]["proposed_by"] = label.label_proposed_by
-                    validated_map[label.label]["timestamp"] = label.timestamp_added
+                    validated_map[label.label][
+                        "proposed_by"
+                    ] = label.label_proposed_by
+                    validated_map[label.label][
+                        "timestamp"
+                    ] = label.timestamp_added
                 elif (
                     label.validation_status == "INVALID"
                     and label.label in invalidated_map
                 ):
                     invalidated_map[label.label]["reasoning"] = label.reasoning
-                    invalidated_map[label.label]["proposed_by"] = label.label_proposed_by
+                    invalidated_map[label.label][
+                        "proposed_by"
+                    ] = label.label_proposed_by
 
         except Exception as e:
             logger.debug("Could not enrich evidence: %s", e)
@@ -536,13 +551,17 @@ def compute_label_distribution(
     Returns:
         Dict mapping label names to their statistics
     """
-    label_stats: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {
+
+    def _new_label_stats() -> LabelDistributionStats:
+        return {
             "count": 0,
             "valid_count": 0,
             "invalid_count": 0,
             "example_words": [],
         }
+
+    label_stats: defaultdict[str, LabelDistributionStats] = defaultdict(
+        _new_label_stats
     )
 
     for e in evidence_list:

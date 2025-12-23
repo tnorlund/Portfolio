@@ -38,6 +38,8 @@ except ImportError:
     HAS_OLLAMA = False
     ChatOllama = None  # type: ignore
 
+from receipt_dynamo.entities import ReceiptWordLabel
+
 from receipt_agent.agents.label_evaluator.helpers import (
     assemble_visual_lines,
     build_review_context,
@@ -56,56 +58,22 @@ from receipt_agent.agents.label_evaluator.state import (
     OtherReceiptData,
     ReviewResult,
 )
-from receipt_dynamo.entities import ReceiptWordLabel
-
-# Import CORE_LABELS definitions
-try:
-    from receipt_label.constants import CORE_LABELS
-except ImportError:
-    # Fallback if receipt_label is not available
-    CORE_LABELS = {
-        "MERCHANT_NAME": (
-            "Trading name or brand of the store issuing the receipt."
-        ),
-        "STORE_HOURS": (
-            "Printed business hours or opening times for the merchant."
-        ),
-        "PHONE_NUMBER": (
-            "Telephone number printed on the receipt (store's main line)."
-        ),
-        "WEBSITE": (
-            "Web or email address printed on the receipt (e.g., sprouts.com)."
-        ),
-        "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
-        "ADDRESS_LINE": (
-            "Full address line (street + city etc.) printed on the receipt."
-        ),
-        "DATE": "Calendar date of the transaction.",
-        "TIME": "Time of the transaction.",
-        "PAYMENT_METHOD": (
-            "Payment instrument summary (e.g., VISA ••••1234, CASH)."
-        ),
-        "COUPON": "Coupon code or description that reduces price.",
-        "DISCOUNT": "Any non-coupon discount line item (e.g., '10% OFF').",
-        "PRODUCT_NAME": "Name of a product or item being purchased.",
-        "QUANTITY": "Number of units purchased (e.g., '2', '1.5 lbs').",
-        "UNIT_PRICE": "Price per unit of the product.",
-        "LINE_TOTAL": "Total price for a line item (quantity × unit_price).",
-        "SUBTOTAL": "Subtotal before tax and discounts.",
-        "TAX": "Tax amount (sales tax, VAT, etc.).",
-        "GRAND_TOTAL": (
-            "Final total amount paid (after all discounts and taxes)."
-        ),
-        # Payment-related labels (added 2025-12-18)
-        # These were missing from original schema and caused mislabeling in
-        # training data. When these values appeared on receipts, they were
-        # incorrectly labeled as LINE_TOTAL.
-        "CHANGE": "Change amount returned to the customer after transaction.",
-        "CASH_BACK": "Cash back amount dispensed from purchase.",
-        "REFUND": "Refund amount (full or partial return).",
-    }
+from receipt_agent.constants import CORE_LABELS
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Coordinate Helpers
+# =============================================================================
+
+
+def _coord_value(coord: Any, key: str, default: float = 0.5) -> float:
+    if coord is None:
+        return default
+    if isinstance(coord, dict):
+        return float(coord.get(key, default))
+    return float(getattr(coord, key, default))
+
 
 # Maximum number of other receipts to fetch for pattern learning
 # Pattern computation itself is fast (<0.1s for 150 receipts).
@@ -544,23 +512,32 @@ def create_label_evaluator_graph(
         # Convert words and labels to dicts for the new module
         words_as_dicts = []
         for word in state.words:
+            top_left = word.top_left
+            bottom_left = word.bottom_left
             words_as_dicts.append(
                 {
                     "text": word.text,
                     "line_id": word.line_id,
                     "word_id": word.word_id,
-                    "top_left": {"x": word.top_left.x, "y": word.top_left.y}
-                    if word.top_left
-                    else {},
-                    "bottom_left": {
-                        "x": word.bottom_left.x,
-                        "y": word.bottom_left.y,
-                    }
-                    if word.bottom_left
-                    else {},
+                    "top_left": (
+                        {
+                            "x": _coord_value(top_left, "x"),
+                            "y": _coord_value(top_left, "y"),
+                        }
+                        if top_left
+                        else {}
+                    ),
+                    "bottom_left": (
+                        {
+                            "x": _coord_value(bottom_left, "x"),
+                            "y": _coord_value(bottom_left, "y"),
+                        }
+                        if bottom_left
+                        else {}
+                    ),
                     "bounding_box": {
-                        "x": word.top_left.x if word.top_left else 0.5,
-                        "y": word.top_left.y if word.top_left else 0.5,
+                        "x": _coord_value(top_left, "x"),
+                        "y": _coord_value(top_left, "y"),
                     },
                 }
             )
@@ -602,11 +579,14 @@ def create_label_evaluator_graph(
         except Exception as e:
             logger.error("LLM review failed: %s", e, exc_info=True)
             # Fall back to evaluator results
-            fallback_labels: list[ReceiptWordLabel] = []
+            fallback_labels_on_error: list[ReceiptWordLabel] = []
             for issue in state.issues_found:
                 eval_label = _create_evaluation_label(issue, None)
-                fallback_labels.append(eval_label)
-            return {"review_results": [], "new_labels": fallback_labels}
+                fallback_labels_on_error.append(eval_label)
+            return {
+                "review_results": [],
+                "new_labels": fallback_labels_on_error,
+            }
 
         # Convert results back to ReviewResult objects
         review_results: list[ReviewResult] = []

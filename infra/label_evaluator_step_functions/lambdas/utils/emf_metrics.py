@@ -41,7 +41,7 @@ class EmbeddedMetricsFormatter:
 
     def create_metric_log(
         self,
-        metrics: dict[str, float],
+        metrics: dict[str, int | float],
         dimensions: Optional[dict[str, str]] = None,
         properties: Optional[dict[str, Any]] = None,
         units: Optional[dict[str, str]] = None,
@@ -95,7 +95,7 @@ class EmbeddedMetricsFormatter:
 
     def log_metrics(
         self,
-        metrics: dict[str, float],
+        metrics: dict[str, int | float],
         dimensions: Optional[dict[str, str]] = None,
         properties: Optional[dict[str, Any]] = None,
         units: Optional[dict[str, str]] = None,

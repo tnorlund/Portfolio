@@ -10,20 +10,14 @@ and creates a manifest file in S3 for the distributed map to process.
 import json
 import logging
 import os
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any
 
 import boto3
 
+from evaluator_types import ReceiptRef
+
 if TYPE_CHECKING:
     from evaluator_types import ListReceiptsOutput
-
-
-class ReceiptRef(TypedDict):
-    """Reference to a receipt for processing."""
-
-    image_id: str
-    receipt_id: int
-    merchant_name: str
 
 
 logger = logging.getLogger()

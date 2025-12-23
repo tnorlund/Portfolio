@@ -6,27 +6,40 @@ logging the full state at each step for visibility in the LangSmith dashboard.
 """
 
 import logging
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from langsmith.run_trees import RunTree as RunTreeType
+else:
+    RunTreeType = Any
+
+TraceableFn = Callable[..., Any]
+
+
+def _noop_traceable(**_kwargs: Any) -> Callable[[Callable[..., Any]], Any]:
+    """No-op fallback when LangSmith is unavailable."""
+
+    def decorator(f: Callable[..., Any]) -> Callable[..., Any]:
+        return f
+
+    return decorator
+
+
+_traceable: TraceableFn = _noop_traceable
+RunTree = None
+
 # LangSmith tracing
 try:
-    from langsmith import traceable
-    from langsmith.run_trees import RunTree
+    from langsmith import traceable as _langsmith_traceable
+    from langsmith.run_trees import RunTree as _RunTree
 
+    _traceable = _langsmith_traceable
+    RunTree = _RunTree
     HAS_LANGSMITH = True
 except ImportError:
     HAS_LANGSMITH = False
-    RunTree = None
-
-    def traceable(**_kwargs):
-        """No-op fallback when LangSmith is unavailable."""
-
-        def decorator(f):
-            return f
-
-        return decorator
 
 
 def _serialize_issue(issue: Any) -> dict:
@@ -50,12 +63,14 @@ def _serialize_patterns(patterns: Any) -> Optional[dict]:
     return {
         "merchant_name": patterns.merchant_name,
         "receipt_count": patterns.receipt_count,
-        "label_pair_count": len(patterns.label_pair_geometry)
-        if patterns.label_pair_geometry
-        else 0,
-        "constellation_count": len(patterns.constellation_geometries)
-        if patterns.constellation_geometries
-        else 0,
+        "label_pair_count": (
+            len(patterns.label_pair_geometry)
+            if patterns.label_pair_geometry
+            else 0
+        ),
+        "constellation_count": len(
+            getattr(patterns, "constellation_geometry", {})
+        ),
     }
 
 
@@ -66,22 +81,22 @@ def _serialize_state_summary(state: Any) -> dict:
         "receipt_id": state.receipt_id,
         "words_count": len(state.words) if state.words else 0,
         "labels_count": len(state.labels) if state.labels else 0,
-        "visual_lines_count": len(state.visual_lines)
-        if state.visual_lines
-        else 0,
-        "word_contexts_count": len(state.word_contexts)
-        if state.word_contexts
-        else 0,
-        "issues_found_count": len(state.issues_found)
-        if state.issues_found
-        else 0,
+        "visual_lines_count": (
+            len(state.visual_lines) if state.visual_lines else 0
+        ),
+        "word_contexts_count": (
+            len(state.word_contexts) if state.word_contexts else 0
+        ),
+        "issues_found_count": (
+            len(state.issues_found) if state.issues_found else 0
+        ),
         "has_patterns": state.merchant_patterns is not None,
         "patterns": _serialize_patterns(state.merchant_patterns),
         "error": state.error,
     }
 
 
-@traceable(
+@_traceable(
     name="label_evaluator",
     run_type="chain",
     tags=["label-evaluator", "receipt"],
@@ -116,7 +131,7 @@ def run_compute_only_traced(
     )
 
     # Run the graph with streaming to capture intermediate states
-    config = {"recursion_limit": 10}
+    config: dict[str, Any] = {"recursion_limit": 10}
 
     if execution_id:
         config["metadata"] = {"execution_id": execution_id}
@@ -181,7 +196,7 @@ def run_compute_only_traced(
         }
 
 
-@traceable(
+@_traceable(
     name="label_evaluator_batch",
     run_type="chain",
     tags=["label-evaluator", "batch"],
@@ -237,7 +252,7 @@ def create_traced_run_tree(
     name: str,
     run_type: str = "chain",
     metadata: Optional[dict] = None,
-) -> Optional["RunTree"]:
+) -> Optional["RunTreeType"]:
     """
     Create a LangSmith RunTree for manual trace management.
 

@@ -55,15 +55,6 @@ def upload_json_to_s3(bucket: str, key: str, data: Any) -> None:
     )
 
 
-# Import shared deserialization utilities
-from utils.serialization import (
-    deserialize_label,
-    deserialize_patterns,
-    deserialize_place,
-    deserialize_word,
-)
-
-
 def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
     """
     Run compute-only label evaluator with pre-loaded state and patterns.
@@ -104,6 +95,14 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
     receipt_id = None
 
     try:
+        # Import shared deserialization utilities
+        from utils.serialization import (
+            deserialize_label,
+            deserialize_patterns,
+            deserialize_place,
+            deserialize_word,
+        )
+
         # 1. Load target receipt data from S3
         logger.info(
             "Loading receipt data from s3://%s/%s",
@@ -260,10 +259,12 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         # Flush LangSmith traces even on error
         flush_langsmith_traces()
 
+        safe_image_id = image_id or ""
+        safe_receipt_id = receipt_id if receipt_id is not None else -1
         return {
             "status": "error",
             "error": str(e),
-            "image_id": image_id,
-            "receipt_id": receipt_id,
+            "image_id": safe_image_id,
+            "receipt_id": safe_receipt_id,
             "issues_found": 0,
         }

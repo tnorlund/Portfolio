@@ -5,12 +5,17 @@ for batch LLM review. It reads individual receipt results from S3
 and consolidates them into a single file for efficient processing.
 """
 
-import json
 import logging
 import os
 from typing import TYPE_CHECKING, Any
 
 import boto3
+
+from .utils.s3_helpers import (
+    get_merchant_hash,
+    load_json_from_s3,
+    upload_json_to_s3,
+)
 
 if TYPE_CHECKING:
     from evaluator_types import CollectIssuesOutput
@@ -19,22 +24,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3")
-
-
-def load_json_from_s3(bucket: str, key: str) -> dict[str, Any]:
-    """Load JSON data from S3."""
-    response = s3.get_object(Bucket=bucket, Key=key)
-    return json.loads(response["Body"].read().decode("utf-8"))
-
-
-def upload_json_to_s3(bucket: str, key: str, data: Any) -> None:
-    """Upload JSON data to S3."""
-    s3.put_object(
-        Bucket=bucket,
-        Key=key,
-        Body=json.dumps(data, indent=2, default=str).encode("utf-8"),
-        ContentType="application/json",
-    )
 
 
 def handler(event: dict[str, Any], _context: Any) -> "CollectIssuesOutput":
@@ -110,7 +99,9 @@ def handler(event: dict[str, Any], _context: Any) -> "CollectIssuesOutput":
 
         try:
             # Load the full evaluation results from S3
-            eval_results = load_json_from_s3(batch_bucket, results_s3_key)
+            eval_results = load_json_from_s3(
+                s3, batch_bucket, results_s3_key, logger=logger
+            )
             issues = eval_results.get("issues", [])
 
             if not issues:
@@ -143,7 +134,7 @@ def handler(event: dict[str, Any], _context: Any) -> "CollectIssuesOutput":
     )
 
     # Upload collected issues to S3
-    merchant_hash = merchant_name.lower().replace(" ", "_")[:30]
+    merchant_hash = get_merchant_hash(merchant_name)
     issues_s3_key = f"issues/{execution_id}/{merchant_hash}.json"
 
     issues_data = {
@@ -155,7 +146,7 @@ def handler(event: dict[str, Any], _context: Any) -> "CollectIssuesOutput":
         "issues": collected_issues,
     }
 
-    upload_json_to_s3(batch_bucket, issues_s3_key, issues_data)
+    upload_json_to_s3(s3, batch_bucket, issues_s3_key, issues_data)
 
     logger.info(f"Uploaded issues to s3://{batch_bucket}/{issues_s3_key}")
 

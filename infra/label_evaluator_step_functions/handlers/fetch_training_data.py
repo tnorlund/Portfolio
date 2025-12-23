@@ -15,6 +15,7 @@ import os
 from typing import Any
 
 import boto3
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -80,7 +81,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "receipt_count": receipt_count,
             "cached": True,
         }
-    except s3.exceptions.ClientError as e:
+    except ClientError as e:
         if e.response["Error"]["Code"] != "404":
             raise
         # Not cached, need to fetch

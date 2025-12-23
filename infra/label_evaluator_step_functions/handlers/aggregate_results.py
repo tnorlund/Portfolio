@@ -8,35 +8,14 @@ import json
 import logging
 import os
 from collections import Counter
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any
 
 import boto3
 
+from evaluator_types import IssueDetail, ReceiptResultSummary
+
 if TYPE_CHECKING:
     from evaluator_types import AggregateResultsOutput
-
-
-class ReceiptResultSummary(TypedDict, total=False):
-    """Summary of a single receipt evaluation."""
-
-    status: str
-    image_id: str
-    receipt_id: int
-    issues_found: int
-    results_s3_key: str
-    error: str
-
-
-class IssueDetail(TypedDict, total=False):
-    """Details of a detected labeling issue."""
-
-    image_id: str
-    receipt_id: int
-    type: str
-    word_text: str
-    current_label: str | None
-    suggested_status: str
-    reasoning: str
 
 
 logger = logging.getLogger()
@@ -196,8 +175,10 @@ def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
             batch_bucket,
             report_key,
         )
-    except Exception as e:
-        logger.error("Failed to upload summary report to %s: %s", report_key, e)
+    except Exception:
+        logger.exception(
+            "Failed to upload summary report to %s", report_key
+        )
         raise
 
     # Also upload issues-only report for easy analysis
@@ -214,8 +195,8 @@ def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
             batch_bucket,
             issues_key,
         )
-    except Exception as e:
-        logger.error("Failed to upload issues report to %s: %s", issues_key, e)
+    except Exception:
+        logger.exception("Failed to upload issues report to %s", issues_key)
         raise
 
     return {

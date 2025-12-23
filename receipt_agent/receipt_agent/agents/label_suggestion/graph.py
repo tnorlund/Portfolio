@@ -17,43 +17,9 @@ from receipt_agent.agents.label_suggestion.tools import (
     create_label_suggestion_tools,
 )
 from receipt_agent.config.settings import Settings, get_settings
+from receipt_agent.constants import CORE_LABELS
 
 logger = logging.getLogger(__name__)
-
-# CORE_LABELS definitions (same as validation agent)
-CORE_LABELS = {
-    "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
-    "STORE_HOURS": "Printed business hours or opening times for the merchant.",
-    "PHONE_NUMBER": (
-        "Telephone number printed on the receipt "
-        "(store's main line)."
-    ),
-    "WEBSITE": (
-        "Web or email address printed on the receipt "
-        "(e.g., sprouts.com)."
-    ),
-    "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
-    "ADDRESS_LINE": (
-        "Full address line (street + city etc.) printed on the receipt."
-    ),
-    "DATE": "Calendar date of the transaction.",
-    "TIME": "Time of the transaction.",
-    "PAYMENT_METHOD": (
-        "Payment instrument summary (e.g., VISA ••••1234, CASH)."
-    ),
-    "COUPON": "Coupon code or description that reduces price.",
-    "DISCOUNT": (
-        "Any non-coupon discount line item "
-        "(e.g., '10% member discount')."
-    ),
-    "PRODUCT_NAME": "Name of a product or item being purchased.",
-    "QUANTITY": "Number of units purchased (e.g., '2', '1.5 lbs').",
-    "UNIT_PRICE": "Price per unit of the product.",
-    "LINE_TOTAL": "Total price for a line item (quantity × unit_price).",
-    "SUBTOTAL": "Subtotal before tax and discounts.",
-    "TAX": "Tax amount (sales tax, VAT, etc.).",
-    "GRAND_TOTAL": "Final total amount paid (after all discounts and taxes).",
-}
 
 LABEL_SUGGESTION_PROMPT = """You are a label suggestion agent for
 receipt processing.

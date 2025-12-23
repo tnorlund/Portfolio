@@ -121,7 +121,7 @@ If you tell me what your "shared data" is (S3 files? DynamoDB query results? Chr
 
 ## Question 2
 
-You misunderstood me. The state I'm trying to inject into is the langsmith state. I want to see the initial LLM query of getting similar documents, and finding patterns, and then the evaluator LLM calls, all in the respective trace in langsmith, but I'm programatically splitting this up in the step function for efficiency. Can I do this?
+You misunderstood me. The state I'm trying to inject into is the langsmith state. I want to see the initial LLM query of getting similar documents, and finding patterns, and then the evaluator LLM calls, all in the respective trace in langsmith, but I'm programmatically splitting this up in the step function for efficiency. Can I do this?
 
 ---
 

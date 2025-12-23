@@ -106,7 +106,7 @@ def handler(event: dict[str, Any], _context: Any) -> "FetchReceiptDataOutput":
         "merchant_name": merchant_name,
         "words": [serialize_word(w) for w in words],
         "labels": [serialize_label(label) for label in labels],
-        "place": serialize_place(place),
+        "place": serialize_place(place) if place else None,
     }
 
     # Upload to S3

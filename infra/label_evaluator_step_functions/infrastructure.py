@@ -100,7 +100,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
         batch_size: Optional[int] = None,
         opts: Optional[ResourceOptions] = None,
     ):
-        super().__init__(f"{__name__}-{name}", name, None, opts)
+        super().__init__(
+            f"label-evaluator-step-function:{name}", name, None, opts
+        )
         stack = pulumi.get_stack()
 
         self.max_concurrency = max_concurrency or max_concurrency_default
@@ -847,14 +849,23 @@ class LabelEvaluatorStepFunction(ComponentResource):
         """
         definition = {
             "Comment": "Label Evaluator - Validate receipt labels using spatial patterns",
-            "StartAt": "CheckInputMode",
+            "StartAt": "NormalizeInput",
             "States": {
+                "NormalizeInput": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "original_input.$": "$",
+                        "merged_input.$": "States.JsonMerge({'skip_llm_review': false, 'dry_run': false}, $)",
+                    },
+                    "ResultPath": "$.normalized",
+                    "Next": "CheckInputMode",
+                },
                 # Check if merchant_name is in input (before Initialize)
                 "CheckInputMode": {
                     "Type": "Choice",
                     "Choices": [
                         {
-                            "Variable": "$.merchant_name",
+                            "Variable": "$.normalized.merged_input.merchant_name",
                             "IsPresent": True,
                             "Next": "InitializeSingleMerchant",
                         }
@@ -869,13 +880,13 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "start_time.$": "$$.Execution.StartTime",
                         "batch_bucket": batch_bucket,
                         "batch_size": batch_size,
-                        "merchant_name.$": "$.merchant_name",
-                        "skip_llm_review.$": "$.skip_llm_review",
-                        "dry_run.$": "$.dry_run",
+                        "merchant_name.$": "$.normalized.merged_input.merchant_name",
+                        "skip_llm_review.$": "$.normalized.merged_input.skip_llm_review",
+                        "dry_run.$": "$.normalized.merged_input.dry_run",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
-                        "limit.$": "$.limit",
-                        "original_input.$": "$",
+                        "limit.$": "$.normalized.merged_input.limit",
+                        "original_input.$": "$.normalized.original_input",
                     },
                     "ResultPath": "$.init",
                     "Next": "SingleMerchantMode",
@@ -889,12 +900,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "batch_bucket": batch_bucket,
                         "batch_size": batch_size,
                         "merchant_name": None,
-                        "skip_llm_review.$": "$.skip_llm_review",
-                        "dry_run.$": "$.dry_run",
+                        "skip_llm_review.$": "$.normalized.merged_input.skip_llm_review",
+                        "dry_run.$": "$.normalized.merged_input.dry_run",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
-                        "limit.$": "$.limit",
-                        "original_input.$": "$",
+                        "limit.$": "$.normalized.merged_input.limit",
+                        "original_input.$": "$.normalized.original_input",
                     },
                     "ResultPath": "$.init",
                     "Next": "ListMerchants",

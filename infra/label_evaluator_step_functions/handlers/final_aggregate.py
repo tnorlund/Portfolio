@@ -83,8 +83,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         elif status in ("error", "failed"):
             failed_merchants += 1
 
-        # Get summary from merchant result
-        # Handle both nested (summary.summary) and flat (summary) structures
+        # Get summary from merchant result.
+        # Nested summaries are produced by aggregate_results; flat summaries
+        # come from earlier/alternate outputs.
         summary = result.get("summary", {})
         if isinstance(summary, dict):
             # Check for nested structure (summary.summary.total_issues)
@@ -152,8 +153,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             batch_bucket,
             report_key,
         )
-    except Exception as e:
-        logger.error("Failed to upload grand summary: %s", e)
+    except Exception:
+        logger.exception("Failed to upload grand summary")
         raise
 
     return {

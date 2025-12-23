@@ -68,14 +68,11 @@ from upload_images import UploadImages
 
 # Import other necessary components
 try:
-    # pylint: disable=unused-import
-    from infra.components import lambda_layer  # noqa: F401 - side effects
-    from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
+    from infra.components import lambda_layer  # side effects
+    from lambda_functions.label_count_cache_updater.infra import (
         label_count_cache_updater_lambda,
     )
-    from routes.health_check.infra import health_check_lambda  # noqa: F401
-
-    # pylint: enable=unused-import
+    from routes.health_check.infra import health_check_lambda
 
     print("✓ Successfully imported label_count_cache_updater_lambda")
 except ImportError as e:

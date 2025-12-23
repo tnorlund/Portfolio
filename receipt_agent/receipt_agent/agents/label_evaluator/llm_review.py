@@ -10,9 +10,11 @@ This module provides functions that can be used by both:
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage
+from receipt_dynamo import ReceiptWordLabel
 
 from receipt_agent.prompts.label_evaluator import (
     build_batched_review_prompt,
@@ -214,23 +216,28 @@ def review_issues_batch(
     if not issues_with_context:
         return []
 
-    # Ensure each item has computed distributions
+    # Ensure each item has computed distributions without mutating inputs
+    normalized_issues: list[dict[str, Any]] = []
     for item in issues_with_context:
         similar_evidence = item.get("similar_evidence", [])
-        if "similarity_dist" not in item:
-            item["similarity_dist"] = compute_similarity_distribution(
+        normalized = dict(item)
+        if "similarity_dist" not in normalized:
+            normalized["similarity_dist"] = compute_similarity_distribution(
                 similar_evidence
             )
-        if "label_dist" not in item:
-            item["label_dist"] = compute_label_distribution(similar_evidence)
-        if "merchant_breakdown" not in item:
-            item["merchant_breakdown"] = compute_merchant_breakdown(
+        if "label_dist" not in normalized:
+            normalized["label_dist"] = compute_label_distribution(
                 similar_evidence
             )
+        if "merchant_breakdown" not in normalized:
+            normalized["merchant_breakdown"] = compute_merchant_breakdown(
+                similar_evidence
+            )
+        normalized_issues.append(normalized)
 
     # Build batched prompt
     prompt = build_batched_review_prompt(
-        issues_with_context=issues_with_context,
+        issues_with_context=normalized_issues,
         merchant_name=merchant_name,
         merchant_receipt_count=merchant_receipt_count,
         line_item_patterns=line_item_patterns,
@@ -245,7 +252,7 @@ def review_issues_batch(
 
         response_text = response.content.strip()
         return parse_batched_llm_response(
-            response_text, len(issues_with_context)
+            response_text, len(normalized_issues)
         )
 
     except Exception as e:
@@ -508,10 +515,6 @@ def apply_llm_decisions(
         - skipped_needs_review: Issues left for human review
         - errors: Number of errors encountered
     """
-    from datetime import datetime, timezone
-
-    from receipt_dynamo import ReceiptWordLabel
-
     stats = {
         "labels_confirmed": 0,
         "labels_invalidated": 0,
@@ -537,11 +540,22 @@ def apply_llm_decisions(
             confidence = llm_review.get("confidence", "medium")
 
             if not all(
-                [image_id, receipt_id is not None, line_id, word_id, current_label]
+                [
+                    image_id,
+                    receipt_id is not None,
+                    line_id,
+                    word_id,
+                    current_label,
+                ]
             ):
                 logger.warning("Missing required fields for issue: %s", item)
                 stats["errors"] += 1
                 continue
+            assert isinstance(image_id, str)
+            assert isinstance(receipt_id, int)
+            assert isinstance(line_id, int)
+            assert isinstance(word_id, int)
+            assert isinstance(current_label, str)
 
             # Build audit reasoning
             audit_reasoning = (
@@ -555,8 +569,10 @@ def apply_llm_decisions(
                 # 2. Invalidate any conflicting labels on the same word
 
                 # Get all labels for this word (returns tuple: list, last_key)
-                all_labels, _ = dynamo_client.list_receipt_word_labels_for_word(
-                    image_id, receipt_id, line_id, word_id
+                all_labels, _ = (
+                    dynamo_client.list_receipt_word_labels_for_word(
+                        image_id, receipt_id, line_id, word_id
+                    )
                 )
 
                 for label in all_labels:
@@ -597,8 +613,10 @@ def apply_llm_decisions(
                 # 2. If suggested_label provided, confirm or create it
 
                 # Get all labels for this word (returns tuple: list, last_key)
-                all_labels, _ = dynamo_client.list_receipt_word_labels_for_word(
-                    image_id, receipt_id, line_id, word_id
+                all_labels, _ = (
+                    dynamo_client.list_receipt_word_labels_for_word(
+                        image_id, receipt_id, line_id, word_id
+                    )
                 )
 
                 # Find and invalidate the current label
@@ -656,7 +674,9 @@ def apply_llm_decisions(
                                     existing_suggested.label_consolidated_from
                                 ),
                             )
-                            dynamo_client.update_receipt_word_label(updated_label)
+                            dynamo_client.update_receipt_word_label(
+                                updated_label
+                            )
                             stats["labels_confirmed"] += 1
                     else:
                         # Create new label

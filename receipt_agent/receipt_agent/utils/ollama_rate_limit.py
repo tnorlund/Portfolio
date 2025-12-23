@@ -38,8 +38,9 @@ Usage:
 import logging
 import random
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Optional, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -241,13 +242,13 @@ class OllamaCircuitBreaker:
         elif is_timeout_error(error):
             self.total_timeout_errors += 1
             # Timeouts should be retried by Step Function
-            logger.warning(f"Timeout error: {error}")
+            logger.warning("Timeout error: %s", error)
             raise  # Re-raise for Step Function retry
 
         else:
             # Other errors - reset consecutive count but don't trigger
             self.consecutive_errors = 0
-            logger.warning(f"Other error (consecutive count reset): {error}")
+            logger.warning("Other error (consecutive count reset): %s", error)
 
     def get_stats(self) -> dict[str, Any]:
         """Get circuit breaker statistics."""
@@ -366,12 +367,12 @@ class RateLimitedLLMInvoker:
             # Rate limits should propagate up for Step Function retry
             raise
         except Exception as e:
-            logger.warning(f"LLM call failed, using fallback: {e}")
+            logger.warning("LLM call failed, using fallback: %s", e)
             return fallback_fn()
 
     def get_stats(self) -> dict[str, Any]:
         """Get invoker statistics."""
-        stats = {
+        stats: dict[str, Any] = {
             "call_count": self.call_count,
             "max_jitter_seconds": self.max_jitter_seconds,
         }

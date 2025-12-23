@@ -8,10 +8,15 @@ are stored in S3 for use during LLM review.
 import json
 import logging
 import os
-import re
 from typing import Any
 
 import boto3
+
+from .utils.s3_helpers import (
+    get_merchant_hash,
+    load_json_from_s3,
+    upload_json_to_s3,
+)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -19,39 +24,10 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
-def load_json_from_s3(bucket: str, key: str) -> dict[str, Any] | None:
-    """Load JSON data from S3, return None if not found."""
-    try:
-        response = s3.get_object(Bucket=bucket, Key=key)
-        return json.loads(response["Body"].read().decode("utf-8"))
-    except s3.exceptions.NoSuchKey:
-        return None
-    except Exception as e:
-        logger.warning(f"Error loading {key}: {e}")
-        return None
-
-
-def upload_json_to_s3(bucket: str, key: str, data: Any) -> None:
-    """Upload JSON data to S3."""
-    s3.put_object(
-        Bucket=bucket,
-        Key=key,
-        Body=json.dumps(data, indent=2, default=str).encode("utf-8"),
-        ContentType="application/json",
-    )
-
-
-def get_merchant_hash(merchant_name: str) -> str:
-    """Create a safe hash for merchant name."""
-    return re.sub(r"[^a-z0-9]", "_", merchant_name.lower())[:50]
-
-
 def build_receipt_structure(
     dynamo_client, merchant_name: str, limit: int = 3
 ) -> list[dict]:
     """Build structured receipt data for LLM analysis."""
-    from receipt_dynamo import DynamoClient
-
     result = dynamo_client.get_receipt_metadatas_by_merchant(
         merchant_name, limit=limit
     )
@@ -254,12 +230,14 @@ def discover_patterns_with_llm(prompt: str) -> dict | None:
 
             return json.loads(content)
 
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse LLM response as JSON: {e}")
-        logger.error(f"Raw content: {content[:500]}")
+    except json.JSONDecodeError:
+        logger.exception("Failed to parse LLM response as JSON")
+        content_preview = locals().get("content")
+        if content_preview:
+            logger.debug("Raw content: %s", str(content_preview)[:500])
         return None
-    except Exception as e:
-        logger.error(f"LLM call failed: {e}")
+    except Exception:
+        logger.exception("LLM call failed")
         return None
 
 
@@ -307,7 +285,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     # Check if patterns already exist
     if not force_rediscovery:
-        existing = load_json_from_s3(batch_bucket, patterns_s3_key)
+        existing = load_json_from_s3(
+            s3,
+            batch_bucket,
+            patterns_s3_key,
+            allow_missing=True,
+            logger=logger,
+        )
         if existing:
             logger.info(f"Using cached patterns for {merchant_name}")
             return {
@@ -349,7 +333,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "auto_generated": True,
             "reason": "no_receipt_data",
         }
-        upload_json_to_s3(batch_bucket, patterns_s3_key, default_patterns)
+        upload_json_to_s3(s3, batch_bucket, patterns_s3_key, default_patterns)
         return {
             "execution_id": execution_id,
             "merchant_name": merchant_name,
@@ -384,7 +368,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "auto_generated": True,
             "reason": "llm_discovery_failed",
         }
-        upload_json_to_s3(batch_bucket, patterns_s3_key, default_patterns)
+        upload_json_to_s3(s3, batch_bucket, patterns_s3_key, default_patterns)
         return {
             "execution_id": execution_id,
             "merchant_name": merchant_name,
@@ -399,7 +383,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     patterns["auto_generated"] = False
 
     # Store patterns
-    upload_json_to_s3(batch_bucket, patterns_s3_key, patterns)
+    upload_json_to_s3(s3, batch_bucket, patterns_s3_key, patterns)
     logger.info(f"Stored patterns for {merchant_name} at {patterns_s3_key}")
 
     return {

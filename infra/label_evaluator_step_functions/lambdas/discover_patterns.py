@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 import boto3
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -24,8 +25,12 @@ def load_json_from_s3(bucket: str, key: str) -> dict[str, Any] | None:
     try:
         response = s3.get_object(Bucket=bucket, Key=key)
         return json.loads(response["Body"].read().decode("utf-8"))
-    except s3.exceptions.NoSuchKey:
-        return None
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code")
+        if error_code in {"NoSuchKey", "404"}:
+            return None
+        logger.warning("Error loading %s: %s", key, e)
+        raise
     except Exception as e:
         logger.warning(f"Error loading {key}: {e}")
         return None
@@ -50,8 +55,6 @@ def build_receipt_structure(
     dynamo_client, merchant_name: str, limit: int = 3
 ) -> list[dict]:
     """Build structured receipt data for LLM analysis."""
-    from receipt_dynamo import DynamoClient
-
     result = dynamo_client.get_receipt_places_by_merchant(
         merchant_name, limit=limit
     )
@@ -254,12 +257,12 @@ def discover_patterns_with_llm(prompt: str) -> dict | None:
 
             return json.loads(content)
 
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse LLM response as JSON: {e}")
-        logger.error(f"Raw content: {content[:500]}")
+    except json.JSONDecodeError:
+        logger.exception("Failed to parse LLM response as JSON")
+        logger.debug("Raw content: %s", content[:500])
         return None
-    except Exception as e:
-        logger.error(f"LLM call failed: {e}")
+    except Exception:
+        logger.exception("LLM call failed")
         return None
 
 

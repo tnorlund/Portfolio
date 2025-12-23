@@ -53,6 +53,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from langchain_ollama import ChatOllama
 
 from receipt_agent.config.settings import Settings, get_settings
+from receipt_agent.constants import CORE_LABELS
 
 try:
     import langsmith as ls
@@ -66,30 +67,6 @@ except ImportError:
     def traceable(func):
         return func
 
-
-try:
-    from receipt_label.constants import CORE_LABELS
-except ImportError:
-    CORE_LABELS = {
-        "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
-        "STORE_HOURS": "Printed business hours or opening times for the merchant.",
-        "PHONE_NUMBER": "Telephone number printed on the receipt (store's main line).",
-        "WEBSITE": "Web or email address printed on the receipt.",
-        "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
-        "ADDRESS_LINE": "Full address line (street + city etc.) printed on the receipt.",
-        "DATE": "Calendar date of the transaction.",
-        "TIME": "Time of the transaction.",
-        "PAYMENT_METHOD": "Payment instrument summary (e.g., VISA ••••1234, CASH).",
-        "COUPON": "Coupon code or description that reduces price.",
-        "DISCOUNT": "Any non-coupon discount line item.",
-        "PRODUCT_NAME": "Descriptive text of a purchased product (item name).",
-        "QUANTITY": "Numeric count or weight of the item.",
-        "UNIT_PRICE": "Price per single unit / weight before tax.",
-        "LINE_TOTAL": "Extended price for that line (quantity x unit price).",
-        "SUBTOTAL": "Sum of all line totals before tax and discounts.",
-        "TAX": "Any tax line (sales tax, VAT, bottle deposit).",
-        "GRAND_TOTAL": "Final amount due after all discounts, taxes and fees.",
-    }
 
 logger = logging.getLogger(__name__)
 

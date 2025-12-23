@@ -5,33 +5,22 @@ smaller batches for parallel processing. Each batch will be processed by a
 separate Lambda invocation in a Distributed Map.
 """
 
-import json
 import logging
 import os
 from typing import Any
 
 import boto3
 
+from .utils.s3_helpers import (
+    get_merchant_hash,
+    load_json_from_s3,
+    upload_json_to_s3,
+)
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3")
-
-
-def load_json_from_s3(bucket: str, key: str) -> dict[str, Any]:
-    """Load JSON data from S3."""
-    response = s3.get_object(Bucket=bucket, Key=key)
-    return json.loads(response["Body"].read().decode("utf-8"))
-
-
-def upload_json_to_s3(bucket: str, key: str, data: Any) -> None:
-    """Upload JSON data to S3."""
-    s3.put_object(
-        Bucket=bucket,
-        Key=key,
-        Body=json.dumps(data, indent=2, default=str).encode("utf-8"),
-        ContentType="application/json",
-    )
 
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
@@ -80,7 +69,17 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     # Load collected issues
     logger.info(f"Loading issues from s3://{batch_bucket}/{issues_s3_key}")
-    issues_data = load_json_from_s3(batch_bucket, issues_s3_key)
+    try:
+        issues_data = load_json_from_s3(
+            s3, batch_bucket, issues_s3_key, logger=logger
+        )
+    except Exception:
+        logger.exception(
+            "Failed to load issues from s3://%s/%s",
+            batch_bucket,
+            issues_s3_key,
+        )
+        raise
     all_issues = issues_data.get("issues", [])
     total_issues = len(all_issues)
 
@@ -99,7 +98,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     # Split into batches
     batches_info = []
-    merchant_hash = merchant_name.lower().replace(" ", "_")[:30]
+    merchant_hash = get_merchant_hash(merchant_name)
 
     for batch_idx in range(0, total_issues, batch_size):
         batch_issues = all_issues[batch_idx : batch_idx + batch_size]
@@ -118,7 +117,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "issues": batch_issues,
             "dry_run": dry_run,
         }
-        upload_json_to_s3(batch_bucket, batch_s3_key, batch_data)
+        upload_json_to_s3(s3, batch_bucket, batch_s3_key, batch_data)
 
         batches_info.append(
             {
@@ -146,7 +145,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "batches": batches_info,
         "dry_run": dry_run,
     }
-    upload_json_to_s3(batch_bucket, manifest_s3_key, manifest_data)
+    upload_json_to_s3(s3, batch_bucket, manifest_s3_key, manifest_data)
 
     logger.info(f"Uploaded manifest to s3://{batch_bucket}/{manifest_s3_key}")
 

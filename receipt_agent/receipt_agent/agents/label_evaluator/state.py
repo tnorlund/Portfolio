@@ -7,7 +7,7 @@ and across receipts from the same merchant.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Optional
 
 from receipt_dynamo.entities import (
     ReceiptPlace,
@@ -31,7 +31,7 @@ class WordContext:
     current_label: Optional[ReceiptWordLabel] = None
 
     # All historical labels for audit trail awareness
-    label_history: List[ReceiptWordLabel] = field(default_factory=list)
+    label_history: list[ReceiptWordLabel] = field(default_factory=list)
 
     # Computed spatial context
     normalized_y: float = 0.0  # 0=bottom, 1=top (receipt coordinate system)
@@ -53,10 +53,10 @@ class VisualLine:
     """
 
     line_index: int
-    words: List[WordContext]
+    words: list[WordContext]
     y_center: float  # Average y of words in this line
 
-    def get_labels(self) -> List[str]:
+    def get_labels(self) -> list[str]:
         """Get all labels present on this visual line."""
         return [
             w.current_label.label
@@ -83,7 +83,7 @@ class LabelPairGeometry:
     """Statistics about geometric relationships between two label types."""
 
     # List of observed (angle, distance) pairs from receipts
-    observations: List[GeometricRelationship] = field(default_factory=list)
+    observations: list[GeometricRelationship] = field(default_factory=list)
 
     # Mean angle and distance (for quick comparison)
     mean_angle: Optional[float] = None
@@ -143,14 +143,14 @@ class ConstellationGeometry:
 
     # The labels in this constellation, sorted for consistent lookup
     # Example: ("ADDRESS_LINE", "MERCHANT_NAME", "PHONE_NUMBER")
-    labels: Tuple[str, ...] = field(default_factory=tuple)
+    labels: tuple[str, ...] = field(default_factory=tuple)
 
     # Number of receipts this constellation was observed in
     observation_count: int = 0
 
     # Relative positions from constellation centroid for each label
     # Key: label name, Value: LabelRelativePosition
-    relative_positions: Dict[str, LabelRelativePosition] = field(
+    relative_positions: dict[str, LabelRelativePosition] = field(
         default_factory=dict
     )
 
@@ -189,69 +189,69 @@ class MerchantPatterns:
     # receipts)
     # Example: {"MERCHANT_NAME": [0.95, 0.93, 0.94], "GRAND_TOTAL": [0.08,
     # 0.10]}
-    label_positions: Dict[str, List[float]] = field(default_factory=dict)
+    label_positions: dict[str, list[float]] = field(default_factory=dict)
 
     # Text examples per label (for text-based validation)
     # Example: {"MERCHANT_NAME": {"Sprouts", "SPROUTS"}}
-    label_texts: Dict[str, set] = field(default_factory=dict)
+    label_texts: dict[str, set] = field(default_factory=dict)
 
     # Labels that commonly appear together on same visual line
     # Example: {("PRODUCT_NAME", "LINE_TOTAL"): 47}
-    same_line_pairs: Dict[tuple, int] = field(default_factory=dict)
+    same_line_pairs: dict[tuple, int] = field(default_factory=dict)
 
     # Label pairs that share the same value (learned from receipt patterns)
     # Example: {("SUBTOTAL", "GRAND_TOTAL"): 42, ("LINE_TOTAL", "SUBTOTAL"): 3}
     # Used to identify valid co-occurring values (e.g., no-tax receipts) vs
     # errors
-    value_pairs: Dict[tuple, int] = field(default_factory=dict)
+    value_pairs: dict[tuple, int] = field(default_factory=dict)
 
     # Y-position relationships for label pairs
     # Example: {("SUBTOTAL", "GRAND_TOTAL"): (0.28, 0.15)} - SUBTOTAL at
     # y=0.28, GRAND_TOTAL at y=0.15
     # Helps validate spatial ordering (GRAND_TOTAL should be below/after
     # SUBTOTAL)
-    value_pair_positions: Dict[tuple, tuple] = field(default_factory=dict)
+    value_pair_positions: dict[tuple, tuple] = field(default_factory=dict)
 
     # Geometric relationships between label pairs
     # Example: {("ADDRESS_LINE", "UNIT_PRICE"): LabelPairGeometry(...)}
     # Tracks angle and distance between label centroids across receipts
-    label_pair_geometry: Dict[tuple, LabelPairGeometry] = field(
+    label_pair_geometry: dict[tuple, LabelPairGeometry] = field(
         default_factory=dict
     )
 
     # All label pairs observed across receipts (for unexpected pair detection)
     # This is a complete set, unlike label_pair_geometry which is limited to
     # top 4
-    all_observed_pairs: Set[Tuple[str, str]] = field(default_factory=set)
+    all_observed_pairs: set[tuple[str, str]] = field(default_factory=set)
 
     # Label types that appear multiple times on the same line (tracked from
     # training data)
     # Example: {"PRODUCT_NAME"} if we see multiple products on the same line
     # This helps distinguish between normal multiplicity and errors
-    labels_with_same_line_multiplicity: Set[str] = field(default_factory=set)
+    labels_with_same_line_multiplicity: set[str] = field(default_factory=set)
 
     # Batch-specific pattern learning (added 2025-12-18)
     # Separates receipts by data quality and learns specialized patterns
-    batch_classification: Dict[str, int] = field(
+    batch_classification: dict[str, int] = field(
         default_factory=lambda: {"HAPPY": 0, "AMBIGUOUS": 0, "ANTI_PATTERN": 0}
     )  # Count of receipts in each batch
 
     # Geometric patterns learned from HAPPY batch (high confidence,
     # conflict-free receipts)
     # Use strictest thresholds (1.5σ) for evaluation
-    happy_label_pair_geometry: Dict[tuple, LabelPairGeometry] = field(
+    happy_label_pair_geometry: dict[tuple, LabelPairGeometry] = field(
         default_factory=dict
     )
 
     # Geometric patterns learned from AMBIGUOUS batch (format variations)
     # Use moderate thresholds (2.0σ) for evaluation
-    ambiguous_label_pair_geometry: Dict[tuple, LabelPairGeometry] = field(
+    ambiguous_label_pair_geometry: dict[tuple, LabelPairGeometry] = field(
         default_factory=dict
     )
 
     # Geometric patterns learned from ANTI_PATTERN batch (problematic receipts)
     # Use lenient thresholds (3.0σ) or flag for review
-    anti_label_pair_geometry: Dict[tuple, LabelPairGeometry] = field(
+    anti_label_pair_geometry: dict[tuple, LabelPairGeometry] = field(
         default_factory=dict
     )
 
@@ -259,7 +259,7 @@ class MerchantPatterns:
     # Example: {("ADDRESS_LINE", "MERCHANT_NAME", "PHONE_NUMBER"):
     # ConstellationGeometry(...)}
     # Captures holistic spatial relationships within label groups
-    constellation_geometry: Dict[Tuple[str, ...], "ConstellationGeometry"] = (
+    constellation_geometry: dict[tuple[str, ...], "ConstellationGeometry"] = (
         field(default_factory=dict)
     )
 
@@ -308,10 +308,10 @@ class ReviewContext:
     receipt_text: str  # Full receipt in reading order, target word marked with
     # [brackets]
     visual_line_text: str  # The line containing the word
-    visual_line_labels: List[str]  # Labels of other words on same line
+    visual_line_labels: list[str]  # Labels of other words on same line
 
     # Label history for this word
-    label_history: List[Dict[str, Any]]
+    label_history: list[dict[str, Any]]
 
     # Merchant
     merchant_name: str
@@ -341,8 +341,8 @@ class OtherReceiptData:
     """Data fetched from another receipt of the same merchant."""
 
     place: Optional[ReceiptPlace]
-    words: List[ReceiptWord]
-    labels: List[ReceiptWordLabel]
+    words: list[ReceiptWord]
+    labels: list[ReceiptWordLabel]
 
 
 @dataclass
@@ -359,26 +359,26 @@ class EvaluatorState:
     receipt_id: int
 
     # Fetched data for this receipt
-    words: List[ReceiptWord] = field(default_factory=list)
-    labels: List[ReceiptWordLabel] = field(default_factory=list)
+    words: list[ReceiptWord] = field(default_factory=list)
+    labels: list[ReceiptWordLabel] = field(default_factory=list)
     place: Optional[ReceiptPlace] = None
 
     # Fetched data from other receipts of same merchant
-    other_receipt_data: List[OtherReceiptData] = field(default_factory=list)
+    other_receipt_data: list[OtherReceiptData] = field(default_factory=list)
 
     # Computed structures
-    word_contexts: List[WordContext] = field(default_factory=list)
-    visual_lines: List[VisualLine] = field(default_factory=list)
+    word_contexts: list[WordContext] = field(default_factory=list)
+    visual_lines: list[VisualLine] = field(default_factory=list)
     merchant_patterns: Optional[MerchantPatterns] = None
 
     # Output: new labels to write (with evaluation results)
-    new_labels: List[ReceiptWordLabel] = field(default_factory=list)
+    new_labels: list[ReceiptWordLabel] = field(default_factory=list)
 
     # Evaluation summary
-    issues_found: List[EvaluationIssue] = field(default_factory=list)
+    issues_found: list[EvaluationIssue] = field(default_factory=list)
 
     # LLM review results
-    review_results: List["ReviewResult"] = field(default_factory=list)
+    review_results: list["ReviewResult"] = field(default_factory=list)
 
     # Configuration
     skip_llm_review: bool = (

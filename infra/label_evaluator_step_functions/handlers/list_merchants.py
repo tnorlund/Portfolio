@@ -11,19 +11,14 @@ import json
 import logging
 import os
 from collections import Counter
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any
 
 import boto3
 
+from evaluator_types import MerchantInfo
+
 if TYPE_CHECKING:
     from evaluator_types import ListMerchantsOutput
-
-
-class MerchantInfo(TypedDict):
-    """Merchant info from list_merchants."""
-
-    merchant_name: str
-    receipt_count: int
 
 
 logger = logging.getLogger()

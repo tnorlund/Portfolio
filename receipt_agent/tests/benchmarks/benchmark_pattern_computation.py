@@ -54,7 +54,10 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
+
+from receipt_dynamo.data._pulumi import load_env
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
 from receipt_agent.agents.label_evaluator.helpers import (
     compute_merchant_patterns,
@@ -63,8 +66,6 @@ from receipt_agent.agents.label_evaluator.state import (
     MerchantPatterns,
     OtherReceiptData,
 )
-from receipt_dynamo.data._pulumi import load_env
-from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ def load_receipt_data(
     dynamo_client: DynamoClient,
     merchant_name: str,
     limit: int = 10,
-) -> List[OtherReceiptData]:
+) -> list[OtherReceiptData]:
     """
     Load receipt data from DynamoDB and convert to OtherReceiptData format.
 
@@ -197,12 +198,12 @@ def load_receipt_data(
 
 
 def run_pattern_computation(
-    other_receipt_data: List[OtherReceiptData],
+    other_receipt_data: list[OtherReceiptData],
     merchant_name: str,
     skip_batching: bool = True,
     max_pair_patterns: int = 4,
     max_relationship_dimension: int = 2,
-) -> Tuple[Optional[MerchantPatterns], float]:
+) -> tuple[Optional[MerchantPatterns], float]:
     """
     Run compute_merchant_patterns() and return result with timing.
 
@@ -252,7 +253,7 @@ def run_pattern_computation(
 
 
 def build_metrics(
-    data: List[OtherReceiptData],
+    data: list[OtherReceiptData],
     result: Optional[MerchantPatterns],
     elapsed_time: float,
     merchant_name: str,
@@ -318,10 +319,10 @@ def build_metrics(
 
 def run_with_scalene(
     merchant_name: str,
-    data: List[OtherReceiptData],
+    data: list[OtherReceiptData],
     skip_batching: bool,
     output_dir: Path,
-) -> Tuple[Path, float]:
+) -> tuple[Path, float]:
     """
     Run pattern computation with Scalene CLI profiler.
 

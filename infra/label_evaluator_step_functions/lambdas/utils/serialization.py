@@ -65,7 +65,7 @@ def deserialize_label(data: "SerializedLabel") -> ReceiptWordLabel:
                 label_data["timestamp_added"]
             )
         except ValueError:
-            label_data["timestamp_added"] = None
+            label_data["timestamp_added"] = datetime.now(timezone.utc)
     return ReceiptWordLabel(**label_data)
 
 
@@ -88,11 +88,11 @@ def deserialize_place(data: "SerializedPlace | None") -> ReceiptPlace | None:
     # Parse timestamp string back to datetime
     if isinstance(place_data.get("timestamp"), str):
         try:
-            # Handle both with and without timezone
             ts = place_data["timestamp"]
-            if ts.endswith("+00:00"):
-                ts = ts.replace("+00:00", "")
-            place_data["timestamp"] = datetime.fromisoformat(ts)
+            parsed = datetime.fromisoformat(ts)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            place_data["timestamp"] = parsed
         except ValueError:
             place_data["timestamp"] = datetime.now(timezone.utc)
     elif place_data.get("timestamp") is None:
@@ -125,7 +125,9 @@ def deserialize_labels(
     return [deserialize_label(d) for d in data]
 
 
-def deserialize_patterns(data: "PatternsFile | None"):
+def deserialize_patterns(
+    data: "PatternsFile | None",
+) -> "MerchantPatterns | None":
     """
     Deserialize pre-computed MerchantPatterns from S3.
 
