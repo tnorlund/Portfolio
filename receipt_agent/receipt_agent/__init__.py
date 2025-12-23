@@ -20,6 +20,14 @@ from receipt_agent.state.models import (
     ValidationStatus,
     VerificationStep,
 )
+from receipt_agent.utils.ollama_rate_limit import (
+    OllamaCircuitBreaker,
+    OllamaRateLimitError,
+    RateLimitedLLMInvoker,
+    is_rate_limit_error,
+    is_server_error,
+    is_timeout_error,
+)
 
 __version__ = "0.1.0"
 
@@ -39,4 +47,11 @@ __all__ = [
     "create_dynamo_client",
     "create_embed_fn",
     "create_places_api",
+    # Rate limit utilities
+    "OllamaRateLimitError",
+    "OllamaCircuitBreaker",
+    "RateLimitedLLMInvoker",
+    "is_rate_limit_error",
+    "is_server_error",
+    "is_timeout_error",
 ]
