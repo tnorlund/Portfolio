@@ -151,24 +151,30 @@ class CodeBuildDockerImage(ComponentResource):
 
         # Add ECR repository policy to allow Lambda to pull images
         if self.lambda_config:
+            account_id = get_caller_identity().account_id
             RepositoryPolicy(
                 f"{self.name}-repo-policy",
                 repository=self.ecr_repo.name,
-                policy=json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Sid": "LambdaECRImageRetrievalPolicy",
-                                "Effect": "Allow",
-                                "Principal": {"Service": "lambda.amazonaws.com"},
-                                "Action": [
-                                    "ecr:BatchGetImage",
-                                    "ecr:GetDownloadUrlForLayer",
-                                ],
-                            }
-                        ],
-                    }
+                policy=account_id.apply(
+                    lambda acct: json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Sid": "LambdaECRImageRetrievalPolicy",
+                                    "Effect": "Allow",
+                                    "Principal": {"Service": "lambda.amazonaws.com"},
+                                    "Action": [
+                                        "ecr:BatchGetImage",
+                                        "ecr:GetDownloadUrlForLayer",
+                                    ],
+                                    "Condition": {
+                                        "StringEquals": {"aws:SourceAccount": acct}
+                                    },
+                                }
+                            ],
+                        }
+                    )
                 ),
                 opts=ResourceOptions(parent=self, depends_on=[self.ecr_repo]),
             )

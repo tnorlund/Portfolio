@@ -82,8 +82,17 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         logger.warning("No ReceiptPlace found for %s#%s", image_id, receipt_id)
         place = None
 
-    words = dynamo.list_receipt_words_from_receipt(image_id, receipt_id)
-    labels, _ = dynamo.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+    try:
+        words = dynamo.list_receipt_words_from_receipt(image_id, receipt_id)
+    except Exception:
+        logger.warning("Failed to fetch words for %s#%s", image_id, receipt_id)
+        words = []
+
+    try:
+        labels, _ = dynamo.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+    except Exception:
+        logger.warning("Failed to fetch labels for %s#%s", image_id, receipt_id)
+        labels = []
 
     logger.info(
         "Fetched %s words, %s labels for %s#%s",

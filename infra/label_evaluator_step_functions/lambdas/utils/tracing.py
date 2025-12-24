@@ -276,7 +276,7 @@ def start_trace(
     if "merchant" in event and isinstance(event["merchant"], dict):
         trace_metadata["merchant_name"] = event["merchant"].get("merchant_name")
 
-    trace_tags = tags or []
+    trace_tags = list(tags) if tags else []
     trace_tags.extend(["step-function", "label-evaluator"])
 
     # Use provided inputs or sanitize event for trace inputs
@@ -373,7 +373,7 @@ def resume_trace(
         trace_metadata["image_id"] = event["receipt"].get("image_id")
         trace_metadata["receipt_id"] = event["receipt"].get("receipt_id")
 
-    trace_tags = tags or []
+    trace_tags = list(tags) if tags else []
     trace_tags.append("step-function")
 
     # Use provided inputs or sanitize event for trace inputs

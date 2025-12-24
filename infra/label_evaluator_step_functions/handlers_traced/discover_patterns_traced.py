@@ -44,8 +44,8 @@ def load_json_from_s3(bucket: str, key: str) -> dict[str, Any] | None:
             return None
         logger.warning("Error loading %s: %s", key, e)
         raise
-    except Exception as e:
-        logger.warning(f"Error loading {key}: {e}")
+    except json.JSONDecodeError as e:
+        logger.warning("Invalid JSON in %s: %s", key, e)
         return None
 
 

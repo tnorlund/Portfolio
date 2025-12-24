@@ -122,6 +122,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
     )[:50]
     manifest_key = f"manifests/{execution_id}/{safe_merchant}_receipts.json"
 
+    manifest_s3_key: str | None = manifest_key
     try:
         s3.put_object(
             Bucket=batch_bucket,
@@ -131,12 +132,13 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
         )
     except Exception:
         logger.exception("Failed to upload manifest")
+        manifest_s3_key = None
 
     return {
         "receipt_batches": receipt_batches,
         "total_receipts": len(all_receipts),
-        "batch_count": len(receipt_batches),
+        "total_batches": len(receipt_batches),
         "merchant_name": merchant_name,
         "max_training_receipts": max_training_receipts,
-        "manifest_s3_key": manifest_key,
+        "manifest_s3_key": manifest_s3_key,
     }

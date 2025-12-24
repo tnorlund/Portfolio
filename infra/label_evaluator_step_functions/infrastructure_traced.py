@@ -101,9 +101,10 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         # ============================================================
         # S3 Bucket for batch files and results
         # ============================================================
+        is_prod = stack in ("prod", "production")
         self.batch_bucket = Bucket(
             f"{name}-batch-bucket",
-            force_destroy=True,
+            force_destroy=not is_prod,
             tags={"environment": stack, "purpose": "label-evaluator-traced"},
             opts=ResourceOptions(parent=self),
         )
@@ -180,13 +181,17 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                     "Statement": [
                         {
                             "Effect": "Allow",
+                            "Action": ["ecr:GetAuthorizationToken"],
+                            "Resource": "*",
+                        },
+                        {
+                            "Effect": "Allow",
                             "Action": [
-                                "ecr:GetAuthorizationToken",
                                 "ecr:BatchGetImage",
                                 "ecr:GetDownloadUrlForLayer",
                             ],
-                            "Resource": "*",
-                        }
+                            "Resource": f"arn:aws:ecr:*:*:repository/{name}-*",
+                        },
                     ],
                 }
             ),

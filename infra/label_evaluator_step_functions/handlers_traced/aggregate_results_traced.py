@@ -68,7 +68,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     total_issues = 0
     successful = 0
     failed = 0
-    issues_by_type: dict[str, int] = {}
 
     for result in all_results:
         if result.get("status") == "completed":
@@ -99,7 +98,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "successful_evaluations": successful,
         "failed_evaluations": failed,
         "total_issues": total_issues,
-        "issues_by_type": issues_by_type,
         "results": all_results,
     }
 
@@ -117,6 +115,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         )
     except Exception:
         logger.exception("Failed to save summary")
+        raise
 
     return {
         "total_receipts": total_receipts,
