@@ -7,6 +7,7 @@ Tracing is handled by the container-based Lambdas.
 import logging
 import os
 import sys
+from collections import defaultdict
 from typing import Any
 
 import boto3
@@ -26,7 +27,9 @@ s3 = boto3.client("s3")
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
-    Batch issues for parallel LLM review.
+    Batch issues by receipt for parallel LLM review.
+
+    Each receipt with issues gets its own batch, enabling one LLM call per receipt.
 
     Input:
     {
@@ -35,7 +38,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "merchant_name": "Sprouts Farmers Market",
         "merchant_receipt_count": 50,
         "issues_s3_key": "issues/{exec}/{merchant_hash}.json",
-        "batch_size": 50,
         "dry_run": false
     }
 
@@ -45,9 +47,18 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "merchant_name": "Sprouts Farmers Market",
         "merchant_receipt_count": 50,
         "total_issues": 150,
-        "batch_count": 3,
+        "batch_count": 8,
         "batch_manifest_s3_key": "batches/{exec}/{merchant_hash}_manifest.json",
-        "batches": [...],
+        "batches": [
+            {
+                "batch_index": 0,
+                "batch_s3_key": "batches/{exec}/{merchant_hash}_r0.json",
+                "image_id": "img_abc",
+                "receipt_id": 1,
+                "issue_count": 5
+            },
+            ...
+        ],
         "dry_run": false
     }
     """
@@ -56,7 +67,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     merchant_name = event.get("merchant_name", "Unknown")
     merchant_receipt_count = event.get("merchant_receipt_count", 0)
     issues_s3_key = event.get("issues_s3_key")
-    batch_size = event.get("batch_size", 25)
     dry_run = event.get("dry_run", False)
 
     if not batch_bucket:
@@ -103,40 +113,53 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "dry_run": dry_run,
         }
 
-    # Split into batches
+    # Group issues by receipt (one batch per receipt)
+    issues_by_receipt: dict[str, list[dict]] = defaultdict(list)
+    for issue in all_issues:
+        image_id = issue.get("image_id", "unknown")
+        receipt_id = issue.get("receipt_id", 0)
+        receipt_key = f"{image_id}:{receipt_id}"
+        issues_by_receipt[receipt_key].append(issue)
+
     batches_info = []
     merchant_hash = get_merchant_hash(merchant_name)
 
-    for batch_idx in range(0, total_issues, batch_size):
-        batch_issues = all_issues[batch_idx : batch_idx + batch_size]
-        batch_num = batch_idx // batch_size
+    for receipt_idx, (receipt_key, receipt_issues) in enumerate(
+        issues_by_receipt.items()
+    ):
+        image_id, receipt_id_str = receipt_key.split(":", 1)
+        receipt_id = int(receipt_id_str)
 
-        # Upload batch to S3
+        # Upload batch for this receipt to S3
         batch_s3_key = (
-            f"batches/{execution_id}/{merchant_hash}_{batch_num}.json"
+            f"batches/{execution_id}/{merchant_hash}_r{receipt_idx}.json"
         )
         batch_data = {
             "execution_id": execution_id,
             "merchant_name": merchant_name,
             "merchant_receipt_count": merchant_receipt_count,
-            "batch_index": batch_num,
-            "issue_count": len(batch_issues),
-            "issues": batch_issues,
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "batch_index": receipt_idx,
+            "issue_count": len(receipt_issues),
+            "issues": receipt_issues,
             "dry_run": dry_run,
         }
         upload_json_to_s3(s3, batch_bucket, batch_s3_key, batch_data)
 
         batches_info.append(
             {
-                "batch_index": batch_num,
+                "batch_index": receipt_idx,
                 "batch_s3_key": batch_s3_key,
-                "issue_count": len(batch_issues),
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "issue_count": len(receipt_issues),
             }
         )
 
     batch_count = len(batches_info)
     logger.info(
-        f"Created {batch_count} batches of ~{batch_size} issues each "
+        f"Created {batch_count} receipt batches ({total_issues} issues) "
         f"for {merchant_name}"
     )
 
@@ -148,7 +171,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "merchant_receipt_count": merchant_receipt_count,
         "total_issues": total_issues,
         "batch_count": batch_count,
-        "batch_size": batch_size,
+        "receipts_with_issues": batch_count,  # One batch per receipt
         "batches": batches_info,
         "dry_run": dry_run,
     }

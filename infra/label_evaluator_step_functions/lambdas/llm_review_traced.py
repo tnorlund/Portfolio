@@ -1,10 +1,12 @@
 """LLM Review with trace propagation.
 
-This handler creates a child trace using deterministic UUIDs based on
-execution ARN and llm_batch_index. The trace_id and root_run_id are passed
-from the upstream DiscoverLineItemPatterns Lambda.
+This handler reviews flagged issues for a single receipt. Each Lambda
+invocation handles exactly one receipt's issues, making the trace hierarchy
+cleaner (one trace per receipt).
 
-LangChain's ChatOllama calls will appear as children in the unified trace.
+The trace_id and root_run_id are passed from the upstream
+DiscoverLineItemPatterns Lambda. LangChain's ChatOllama calls will appear
+as children in the unified trace.
 """
 
 import json
@@ -13,7 +15,7 @@ import os
 import re
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import Counter
 from typing import TYPE_CHECKING, Any, Optional
 
 import boto3
@@ -96,7 +98,9 @@ from llm_review import (
 
 def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     """
-    Review a batch of flagged issues using LLM with trace propagation.
+    Review flagged issues for a single receipt using LLM with trace propagation.
+
+    Each Lambda invocation handles exactly one receipt's issues.
 
     Input:
     {
@@ -105,9 +109,11 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
         "batch_bucket": "bucket-name",
         "merchant_name": "Sprouts Farmers Market",
         "merchant_receipt_count": 50,
-        "batch_s3_key": "batches/{exec}/{merchant_hash}_0.json",
+        "batch_s3_key": "batches/{exec}/{merchant_hash}_r0.json",
         "batch_index": 0,
         "llm_batch_index": 0,    # From Map state
+        "image_id": "img_abc",   # Receipt identification
+        "receipt_id": 1,         # Receipt identification
         "dry_run": false,
         "trace_id": "...",       # From upstream Lambda
         "root_run_id": "..."     # From upstream Lambda
@@ -119,9 +125,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
         "execution_id": "abc123",
         "merchant_name": "Sprouts Farmers Market",
         "batch_index": 0,
-        "total_issues": 50,
-        "issues_reviewed": 50,
-        "decisions": {"VALID": 10, "INVALID": 25, "NEEDS_REVIEW": 15},
+        "total_issues": 5,
+        "issues_reviewed": 5,
+        "decisions": {"VALID": 2, "INVALID": 2, "NEEDS_REVIEW": 1},
         "reviewed_issues_s3_key": "reviewed/{exec}/{merchant_hash}_0.json"
     }
     """
@@ -141,6 +147,10 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     llm_batch_index = event.get("llm_batch_index", 0)
     dry_run = event.get("dry_run", False)
     line_item_patterns_s3_key = event.get("line_item_patterns_s3_key")
+
+    # Receipt identification (one batch per receipt)
+    image_id = event.get("image_id")
+    receipt_id = event.get("receipt_id")
 
     # Get trace IDs from upstream Lambda
     trace_id = event.get("trace_id", "")
@@ -312,7 +322,8 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     f"LLM initialized: {ollama_model} (max jitter: {max_jitter_seconds}s)"
                 )
 
-            # 6. Process issues by receipt with tracing
+            # 6. Process issues for this receipt with tracing
+            # Note: Each Lambda invocation now handles exactly one receipt
             max_issues_per_call = int(
                 os.environ.get("MAX_ISSUES_PER_LLM_CALL", "15")
             )
@@ -321,234 +332,220 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             reviewed_issues: list[dict[str, Any]] = []
             similar_cache: dict[str, list] = {}
 
-            # Group issues by receipt
-            issues_by_receipt: dict[str, list[dict]] = defaultdict(list)
-            for collected in collected_issues:
-                image_id = collected.get("image_id")
-                receipt_id = collected.get("receipt_id")
-                receipt_key = f"{image_id}:{receipt_id}"
-                issues_by_receipt[receipt_key].append(collected)
+            # All issues in this batch are for the same receipt
+            receipt_issues = collected_issues
 
             logger.info(
-                f"Processing {total_issues} issues across "
-                f"{len(issues_by_receipt)} receipts"
+                f"Processing {total_issues} issues for receipt "
+                f"{image_id}:{receipt_id}"
             )
 
             from langchain_core.messages import HumanMessage
 
             llm_call_count = 0
 
-            # Process each receipt
-            for receipt_key, receipt_issues in issues_by_receipt.items():
-                image_id, receipt_id_str = receipt_key.split(":", 1)
-                receipt_id = int(receipt_id_str)
-
-                with child_trace(
-                    f"process_receipt:{image_id[:8]}#{receipt_id}",
-                    trace_ctx,
-                    metadata={
-                        "image_id": image_id,
-                        "receipt_id": receipt_id,
-                        "issue_count": len(receipt_issues),
-                    },
-                ):
-                    # Load receipt data
-                    receipt_data_key = (
-                        f"data/{execution_id}/{image_id}_{receipt_id}.json"
+            # Load receipt data once (all issues are from this receipt)
+            receipt_data_key = (
+                f"data/{execution_id}/{image_id}_{receipt_id}.json"
+            )
+            try:
+                receipt_data = load_json_from_s3(
+                    batch_bucket, receipt_data_key
+                )
+                receipt_words = receipt_data.get("words", [])
+                receipt_labels = receipt_data.get("labels", [])
+            except Exception as e:
+                logger.exception(
+                    "Could not load receipt data for %s:%s",
+                    image_id,
+                    receipt_id,
+                )
+                # Mark all issues as NEEDS_REVIEW
+                for collected in receipt_issues:
+                    issue = collected.get("issue", {})
+                    decisions["NEEDS_REVIEW"] += 1
+                    reviewed_issues.append(
+                        {
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                            "issue": issue,
+                            "llm_review": {
+                                "decision": "NEEDS_REVIEW",
+                                "reasoning": f"Receipt data unavailable: {e}",
+                                "suggested_label": None,
+                                "confidence": "low",
+                            },
+                            "data_load_error": str(e),
+                        }
                     )
-                    try:
-                        receipt_data = load_json_from_s3(
-                            batch_bucket, receipt_data_key
+                # Skip to results upload
+                receipt_data = None
+
+            if receipt_data is not None:
+                # Process issues in chunks (if receipt has many issues)
+                for chunk_start in range(
+                    0, len(receipt_issues), max_issues_per_call
+                ):
+                    chunk_end = min(
+                        chunk_start + max_issues_per_call, len(receipt_issues)
+                    )
+                    chunk_issues = receipt_issues[chunk_start:chunk_end]
+
+                    # Gather context for each issue
+                    issues_with_context = []
+                    chunk_metadata = []
+
+                    for collected in chunk_issues:
+                        issue = collected.get("issue", {})
+                        word_text = issue.get("word_text", "")
+                        word_id = issue.get("word_id", 0)
+                        line_id = issue.get("line_id", 0)
+
+                        chunk_metadata.append(
+                            {
+                                "image_id": image_id,
+                                "receipt_id": receipt_id,
+                                "issue": issue,
+                            }
                         )
-                        receipt_words = receipt_data.get("words", [])
-                        receipt_labels = receipt_data.get("labels", [])
+
+                        try:
+                            # Query similar words (with caching)
+                            cache_key = (
+                                f"{image_id}:{receipt_id}:{line_id}:{word_id}"
+                            )
+                            if cache_key in similar_cache:
+                                similar_evidence = similar_cache[cache_key]
+                            elif chroma_client:
+                                similar_evidence = query_similar_words(
+                                    chroma_client=chroma_client,
+                                    word_text=word_text,
+                                    image_id=image_id,
+                                    receipt_id=receipt_id,
+                                    line_id=line_id,
+                                    word_id=word_id,
+                                    target_merchant=merchant_name,
+                                )
+
+                                if dynamo_client and similar_evidence:
+                                    similar_evidence = (
+                                        enrich_evidence_with_dynamo_reasoning(
+                                            similar_evidence,
+                                            dynamo_client,
+                                            limit=15,
+                                        )
+                                    )
+
+                                similar_cache[cache_key] = similar_evidence
+                            else:
+                                similar_evidence = []
+
+                            issues_with_context.append(
+                                {
+                                    "issue": issue,
+                                    "similar_evidence": similar_evidence,
+                                }
+                            )
+
+                        except Exception as e:
+                            logger.warning(
+                                f"Error gathering context for issue: {e}"
+                            )
+                            issues_with_context.append(
+                                {
+                                    "issue": issue,
+                                    "similar_evidence": [],
+                                    "context_error": str(e),
+                                }
+                            )
+
+                    # Build prompt and make LLM call with child trace
+                    try:
+                        prompt = build_receipt_context_prompt(
+                            receipt_words=receipt_words,
+                            receipt_labels=receipt_labels,
+                            issues_with_context=issues_with_context,
+                            merchant_name=merchant_name,
+                            merchant_receipt_count=merchant_receipt_count,
+                            line_item_patterns=line_item_patterns,
+                        )
+
+                        # LLM call with child trace
+                        with child_trace(
+                            f"llm_call:{len(issues_with_context)}_issues",
+                            trace_ctx,
+                            run_type="llm",
+                            metadata={
+                                "issue_count": len(issues_with_context),
+                                "prompt_length": len(prompt),
+                            },
+                        ):
+                            response = llm_invoker.invoke(
+                                [HumanMessage(content=prompt)]
+                            )
+                            llm_call_count += 1
+
+                        chunk_reviews = parse_batched_llm_response(
+                            response.content.strip(),
+                            expected_count=len(issues_with_context),
+                        )
+
+                        # Store results
+                        for i, review_result in enumerate(chunk_reviews):
+                            meta = chunk_metadata[i]
+                            ctx = issues_with_context[i]
+
+                            decisions[review_result["decision"]] += 1
+
+                            reviewed_issues.append(
+                                {
+                                    "image_id": meta["image_id"],
+                                    "receipt_id": meta["receipt_id"],
+                                    "issue": meta["issue"],
+                                    "llm_review": review_result,
+                                    "similar_word_count": len(
+                                        ctx.get("similar_evidence", [])
+                                    ),
+                                }
+                            )
+
+                    except OllamaRateLimitError:
+                        logger.warning(
+                            f"Rate limit hit after {len(reviewed_issues)}/{total_issues} "
+                            f"issues. Saving partial progress."
+                        )
+                        raise  # Re-raise for Step Function retry
+
                     except Exception as e:
                         logger.exception(
-                            "Could not load receipt data for %s",
-                            receipt_key,
+                            "LLM call failed for receipt %s:%s",
+                            image_id,
+                            receipt_id,
                         )
-                        for collected in receipt_issues:
-                            issue = collected.get("issue", {})
+                        for i, meta in enumerate(chunk_metadata):
+                            ctx = (
+                                issues_with_context[i]
+                                if i < len(issues_with_context)
+                                else {}
+                            )
                             decisions["NEEDS_REVIEW"] += 1
                             reviewed_issues.append(
                                 {
-                                    "image_id": image_id,
-                                    "receipt_id": receipt_id,
-                                    "issue": issue,
+                                    "image_id": meta["image_id"],
+                                    "receipt_id": meta["receipt_id"],
+                                    "issue": meta["issue"],
                                     "llm_review": {
                                         "decision": "NEEDS_REVIEW",
-                                        "reasoning": f"Receipt data unavailable: {e}",
+                                        "reasoning": f"LLM call failed: {e}",
                                         "suggested_label": None,
                                         "confidence": "low",
                                     },
-                                    "data_load_error": str(e),
+                                    "similar_word_count": len(
+                                        ctx.get("similar_evidence", [])
+                                    ),
+                                    "error": str(e),
                                 }
                             )
-                        continue
-
-                    # Process issues in chunks
-                    for chunk_start in range(
-                        0, len(receipt_issues), max_issues_per_call
-                    ):
-                        chunk_end = min(
-                            chunk_start + max_issues_per_call, len(receipt_issues)
-                        )
-                        chunk_issues = receipt_issues[chunk_start:chunk_end]
-
-                        # Gather context for each issue
-                        issues_with_context = []
-                        chunk_metadata = []
-
-                        for collected in chunk_issues:
-                            issue = collected.get("issue", {})
-                            word_text = issue.get("word_text", "")
-                            word_id = issue.get("word_id", 0)
-                            line_id = issue.get("line_id", 0)
-
-                            chunk_metadata.append(
-                                {
-                                    "image_id": image_id,
-                                    "receipt_id": receipt_id,
-                                    "issue": issue,
-                                }
-                            )
-
-                            try:
-                                # Query similar words (with caching)
-                                cache_key = (
-                                    f"{image_id}:{receipt_id}:{line_id}:{word_id}"
-                                )
-                                if cache_key in similar_cache:
-                                    similar_evidence = similar_cache[cache_key]
-                                elif chroma_client:
-                                    similar_evidence = query_similar_words(
-                                        chroma_client=chroma_client,
-                                        word_text=word_text,
-                                        image_id=image_id,
-                                        receipt_id=receipt_id,
-                                        line_id=line_id,
-                                        word_id=word_id,
-                                        target_merchant=merchant_name,
-                                    )
-
-                                    if dynamo_client and similar_evidence:
-                                        similar_evidence = (
-                                            enrich_evidence_with_dynamo_reasoning(
-                                                similar_evidence,
-                                                dynamo_client,
-                                                limit=15,
-                                            )
-                                        )
-
-                                    similar_cache[cache_key] = similar_evidence
-                                else:
-                                    similar_evidence = []
-
-                                issues_with_context.append(
-                                    {
-                                        "issue": issue,
-                                        "similar_evidence": similar_evidence,
-                                    }
-                                )
-
-                            except Exception as e:
-                                logger.warning(
-                                    f"Error gathering context for issue: {e}"
-                                )
-                                issues_with_context.append(
-                                    {
-                                        "issue": issue,
-                                        "similar_evidence": [],
-                                        "context_error": str(e),
-                                    }
-                                )
-
-                        # Build prompt and make LLM call with child trace
-                        try:
-                            prompt = build_receipt_context_prompt(
-                                receipt_words=receipt_words,
-                                receipt_labels=receipt_labels,
-                                issues_with_context=issues_with_context,
-                                merchant_name=merchant_name,
-                                merchant_receipt_count=merchant_receipt_count,
-                                line_item_patterns=line_item_patterns,
-                            )
-
-                            # LLM call with child trace
-                            # child_trace sets up tracing_context which LangChain auto-tracing uses
-                            with child_trace(
-                                f"llm_call:{len(issues_with_context)}_issues",
-                                trace_ctx,
-                                run_type="llm",
-                                metadata={
-                                    "issue_count": len(issues_with_context),
-                                    "prompt_length": len(prompt),
-                                },
-                            ):
-                                response = llm_invoker.invoke(
-                                    [HumanMessage(content=prompt)]
-                                )
-                                llm_call_count += 1
-
-                            chunk_reviews = parse_batched_llm_response(
-                                response.content.strip(),
-                                expected_count=len(issues_with_context),
-                            )
-
-                            # Store results
-                            for i, review_result in enumerate(chunk_reviews):
-                                meta = chunk_metadata[i]
-                                ctx = issues_with_context[i]
-
-                                decisions[review_result["decision"]] += 1
-
-                                reviewed_issues.append(
-                                    {
-                                        "image_id": meta["image_id"],
-                                        "receipt_id": meta["receipt_id"],
-                                        "issue": meta["issue"],
-                                        "llm_review": review_result,
-                                        "similar_word_count": len(
-                                            ctx.get("similar_evidence", [])
-                                        ),
-                                    }
-                                )
-
-                        except OllamaRateLimitError:
-                            logger.warning(
-                                f"Rate limit hit after {len(reviewed_issues)}/{total_issues} "
-                                f"issues. Saving partial progress."
-                            )
-                            raise  # Re-raise for Step Function retry
-
-                        except Exception as e:
-                            logger.exception(
-                                "LLM call failed for receipt %s", receipt_key
-                            )
-                            for i, meta in enumerate(chunk_metadata):
-                                ctx = (
-                                    issues_with_context[i]
-                                    if i < len(issues_with_context)
-                                    else {}
-                                )
-                                decisions["NEEDS_REVIEW"] += 1
-                                reviewed_issues.append(
-                                    {
-                                        "image_id": meta["image_id"],
-                                        "receipt_id": meta["receipt_id"],
-                                        "issue": meta["issue"],
-                                        "llm_review": {
-                                            "decision": "NEEDS_REVIEW",
-                                            "reasoning": f"LLM call failed: {e}",
-                                            "suggested_label": None,
-                                            "confidence": "low",
-                                        },
-                                        "similar_word_count": len(
-                                            ctx.get("similar_evidence", [])
-                                        ),
-                                        "error": str(e),
-                                    }
-                                )
 
             logger.info(
                 f"Reviewed {total_issues} issues in {llm_call_count} LLM calls: "

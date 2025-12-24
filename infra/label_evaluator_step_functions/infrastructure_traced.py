@@ -1339,11 +1339,11 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                 ],
                                 "Default": "AggregateResults",
                             },
-                            # Process LLM review batches in parallel
+                            # Process LLM review batches in parallel (one per receipt)
                             "ProcessLLMBatches": {
                                 "Type": "Map",
                                 "ItemsPath": "$.batched_issues.batches",
-                                "MaxConcurrency": 3,
+                                "MaxConcurrency": 5,
                                 "Parameters": {
                                     "batch_info.$": "$$.Map.Item.Value",
                                     "llm_batch_index.$": "$$.Map.Item.Index",
@@ -1353,6 +1353,9 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "merchant_receipt_count.$": "$.receipts_data.total_receipts",
                                     "line_item_patterns_s3_key.$": "$.line_item_patterns.patterns_s3_key",
                                     "dry_run.$": "$.dry_run",
+                                    # Receipt identification (one batch per receipt)
+                                    "image_id.$": "$$.Map.Item.Value.image_id",
+                                    "receipt_id.$": "$$.Map.Item.Value.receipt_id",
                                     # Deterministic trace propagation
                                     "execution_arn.$": "$$.Execution.Id",
                                     "trace_id.$": "$.line_item_patterns.trace_id",
@@ -1377,6 +1380,9 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                                 "llm_batch_index.$": "$.llm_batch_index",
                                                 "line_item_patterns_s3_key.$": "$.line_item_patterns_s3_key",
                                                 "dry_run.$": "$.dry_run",
+                                                # Receipt identification (one batch per receipt)
+                                                "image_id.$": "$.image_id",
+                                                "receipt_id.$": "$.receipt_id",
                                                 # Deterministic trace propagation
                                                 "execution_arn.$": "$.execution_arn",
                                                 "trace_id.$": "$.trace_id",
