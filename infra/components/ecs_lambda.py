@@ -20,7 +20,10 @@ import glob
 import json
 import os
 import shlex
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
+
+# Cache to prevent duplicate dependency log messages
+_logged_dependencies: Set[str] = set()
 
 import pulumi
 import pulumi_command as command
@@ -331,9 +334,13 @@ done
                         local_path = os.path.join(PROJECT_DIR, dir_name)
                         if os.path.exists(local_path):
                             local_deps.append(dir_name)
-                            pulumi.log.info(
-                                f"📦 Found local dependency: {dir_name} for {self.name}"
-                            )
+                            # Only log each dependency once per function
+                            cache_key = f"{self.name}:{dir_name}"
+                            if cache_key not in _logged_dependencies:
+                                _logged_dependencies.add(cache_key)
+                                pulumi.log.info(
+                                    f"📦 Found local dependency: {dir_name} for {self.name}"
+                                )
             except (OSError, ValueError) as e:
                 pulumi.log.warn(
                     f"Could not parse pyproject.toml for deps: {e}"
