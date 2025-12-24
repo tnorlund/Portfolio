@@ -424,7 +424,7 @@ echo "🎉 Parallel function updates completed!"'''
         """Set up the fast build process with CodePipeline and per-version CodeBuild projects."""
 
         # Create S3 bucket for artifacts - let Pulumi auto-generate unique name
-        build_bucket, _bucket_versioning = make_artifact_bucket(
+        build_bucket, bucket_versioning, encryption = make_artifact_bucket(
             self.name, parent=self
         )
 
@@ -971,9 +971,8 @@ echo "🎉 Parallel function updates completed!"'''
             opts=pulumi.ResourceOptions(
                 parent=self,
                 depends_on=(
-                    [_bucket_versioning]
-                    if _bucket_versioning is not None
-                    else None
+                    [r for r in [bucket_versioning, encryption] if r is not None]
+                    or None
                 ),
             ),
         )

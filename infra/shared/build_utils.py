@@ -20,11 +20,10 @@ from pulumi import ResourceOptions
 from pulumi_aws.cloudwatch import LogGroup
 from pulumi_aws.s3 import (
     Bucket,
-    BucketServerSideEncryptionConfigurationArgs,
+    BucketServerSideEncryptionConfiguration,
     BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs,
     BucketServerSideEncryptionConfigurationRuleArgs,
     BucketVersioning,
-    BucketVersioningArgs,
     BucketVersioningVersioningConfigurationArgs,
 )
 
@@ -108,7 +107,7 @@ def make_artifact_bucket(
     force_destroy: bool = True,
     enable_versioning: bool = True,
     tags: Optional[Mapping[str, str]] = None,
-) -> Tuple[Bucket, Optional[BucketVersioning]]:
+) -> Tuple[Bucket, Optional[BucketVersioning], BucketServerSideEncryptionConfiguration]:
     """
     Create an S3 bucket for build artifacts with sensible defaults:
     - Force destroy by default to keep dev stacks clean.
@@ -118,16 +117,24 @@ def make_artifact_bucket(
     bucket = Bucket(
         f"{name}-artifacts",
         force_destroy=force_destroy,
-        server_side_encryption_configuration=BucketServerSideEncryptionConfigurationArgs(
-            rule=BucketServerSideEncryptionConfigurationRuleArgs(
-                apply_server_side_encryption_by_default=BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                    sse_algorithm="AES256"
-                )
-            )
-        ),
-        # Note: versioning is configured via separate BucketVersioning resource below
-        # to comply with AWS provider v4+ requirements
         tags=tags,
+        opts=ResourceOptions(parent=parent),
+    )
+
+    # Configure server-side encryption as a separate resource
+    # to comply with AWS provider v4+ requirements
+    encryption = BucketServerSideEncryptionConfiguration(
+        f"{name}-artifacts-encryption",
+        bucket=bucket.id,
+        rules=[
+            BucketServerSideEncryptionConfigurationRuleArgs(
+                apply_server_side_encryption_by_default=(
+                    BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                        sse_algorithm="AES256",
+                    )
+                ),
+            ),
+        ],
         opts=ResourceOptions(parent=parent),
     )
 
@@ -142,7 +149,7 @@ def make_artifact_bucket(
             opts=ResourceOptions(parent=parent),
         )
 
-    return bucket, versioning
+    return bucket, versioning, encryption
 
 
 def make_log_group(
