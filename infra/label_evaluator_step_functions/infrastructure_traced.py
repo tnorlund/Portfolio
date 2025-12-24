@@ -1049,7 +1049,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                 "ProcessMerchants": {
                     "Type": "Map",
                     "ItemsPath": "$.merchants_data.merchants",
-                    "MaxConcurrency": 3,
+                    "MaxConcurrency": max_concurrency,
                     "Parameters": {
                         "merchant.$": "$$.Map.Item.Value",
                         "execution_id.$": "$.init.execution_id",
