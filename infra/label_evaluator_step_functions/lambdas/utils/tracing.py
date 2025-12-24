@@ -394,19 +394,19 @@ def resume_trace(
             )
             child_run.post()
 
-            # Use OUR child_run's headers as the context for nested operations
-            # This ensures LangChain operations become children of our run
+            # Use headers for tracing_context (consistent across all helpers)
+            child_headers = child_run.to_headers()
             if _tracing_context is not None:
-                with _tracing_context(parent=child_run.to_headers()):
+                with _tracing_context(parent=child_headers):
                     ctx = TraceContext(
                         run_tree=child_run,
-                        headers=child_run.to_headers(),
+                        headers=child_headers,
                     )
                     yield ctx
             else:
                 ctx = TraceContext(
                     run_tree=child_run,
-                    headers=child_run.to_headers(),
+                    headers=child_headers,
                 )
                 yield ctx
 
@@ -465,10 +465,19 @@ def child_trace(
             )
             child.post()
 
-            yield TraceContext(
-                run_tree=child,
-                headers=child.to_headers(),
-            )
+            # Use headers for tracing_context (consistent across all helpers)
+            child_headers = child.to_headers()
+            if _tracing_context is not None:
+                with _tracing_context(parent=child_headers):
+                    yield TraceContext(
+                        run_tree=child,
+                        headers=child_headers,
+                    )
+            else:
+                yield TraceContext(
+                    run_tree=child,
+                    headers=child_headers,
+                )
 
             child.end()
             child.patch()
@@ -702,12 +711,13 @@ def state_trace(
         run_tree = _RunTree(**run_tree_kwargs)
         run_tree.post()
 
-        # Set up tracing context for LangChain operations
+        # Use headers for tracing_context (consistent across all helpers)
+        run_tree_headers = run_tree.to_headers()
         if _tracing_context is not None:
-            with _tracing_context(parent=run_tree.to_headers()):
+            with _tracing_context(parent=run_tree_headers):
                 ctx = TraceContext(
                     run_tree=run_tree,
-                    headers=run_tree.to_headers(),
+                    headers=run_tree_headers,
                     trace_id=trace_id,
                     root_run_id=root_run_id,
                 )
@@ -715,7 +725,7 @@ def state_trace(
         else:
             ctx = TraceContext(
                 run_tree=run_tree,
-                headers=run_tree.to_headers(),
+                headers=run_tree_headers,
                 trace_id=trace_id,
                 root_run_id=root_run_id,
             )

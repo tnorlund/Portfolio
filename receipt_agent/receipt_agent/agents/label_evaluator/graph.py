@@ -1104,6 +1104,7 @@ def create_compute_only_graph(
 async def run_compute_only(
     graph: Any,
     state: EvaluatorState,
+    config: dict | None = None,
 ) -> dict:
     """
     Run the compute-only label evaluator with pre-loaded state.
@@ -1112,6 +1113,7 @@ async def run_compute_only(
         graph: Compiled compute-only workflow graph
         state: Pre-populated EvaluatorState with words, labels,
             other_receipt_data
+        config: Optional LangChain config dict (for callbacks/tracing)
 
     Returns:
         Evaluation result dict with issues found
@@ -1123,14 +1125,17 @@ async def run_compute_only(
     )
 
     try:
-        config = {
+        invoke_config = {
             "recursion_limit": 10,
             "configurable": {
                 "thread_id": f"{state.image_id}#{state.receipt_id}"
             },
         }
+        # Merge in provided config (e.g., callbacks for tracing)
+        if config:
+            invoke_config.update(config)
 
-        final_state = await graph.ainvoke(state, config=config)
+        final_state = await graph.ainvoke(state, config=invoke_config)
 
         # LangGraph returns a dict
         issues_found = final_state.get("issues_found", [])
@@ -1186,6 +1191,7 @@ async def run_compute_only(
 def run_compute_only_sync(
     graph: Any,
     state: EvaluatorState,
+    config: dict | None = None,
 ) -> dict:
     """
     Synchronous wrapper for run_compute_only.
@@ -1193,10 +1199,11 @@ def run_compute_only_sync(
     Args:
         graph: Compiled compute-only workflow graph
         state: Pre-populated EvaluatorState
+        config: Optional LangChain config dict (for callbacks/tracing)
 
     Returns:
         Evaluation result dict
     """
     import asyncio
 
-    return asyncio.run(run_compute_only(graph, state))
+    return asyncio.run(run_compute_only(graph, state, config=config))

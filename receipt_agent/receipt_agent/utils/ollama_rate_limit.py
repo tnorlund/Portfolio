@@ -325,12 +325,13 @@ class RateLimitedLLMInvoker:
             if jitter > 0:
                 time.sleep(jitter)
 
-    def invoke(self, messages: Any) -> Any:
+    def invoke(self, messages: Any, config: Optional[dict] = None) -> Any:
         """
         Invoke the LLM with rate limiting and circuit breaker protection.
 
         Args:
             messages: Messages to send to the LLM (LangChain format)
+            config: Optional LangChain config dict (for callbacks/tracing)
 
         Returns:
             LLM response
@@ -342,7 +343,10 @@ class RateLimitedLLMInvoker:
         self.call_count += 1
 
         try:
-            response = self.llm.invoke(messages)
+            if config:
+                response = self.llm.invoke(messages, config=config)
+            else:
+                response = self.llm.invoke(messages)
             if self.circuit_breaker:
                 self.circuit_breaker.record_success()
             return response

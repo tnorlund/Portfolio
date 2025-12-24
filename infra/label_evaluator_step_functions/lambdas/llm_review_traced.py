@@ -453,6 +453,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                             )
 
                             # LLM call with child trace
+                            # child_trace sets up tracing_context which LangChain auto-tracing uses
                             with child_trace(
                                 f"llm_call:{len(issues_with_context)}_issues",
                                 trace_ctx,

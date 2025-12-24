@@ -192,6 +192,7 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             )
 
             # 4. Run compute-only graph with child trace
+            # child_trace sets up tracing_context which LangGraph auto-tracing uses
             with child_trace(
                 f"run_evaluation:{image_id[:8]}#{receipt_id}",
                 trace_ctx,
