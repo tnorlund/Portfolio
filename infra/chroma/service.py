@@ -91,9 +91,7 @@ class ChromaEcsService(ComponentResource):
                 ],
                 routing_policy="MULTIVALUE",
             ),
-            health_check_custom_config=aws.servicediscovery.ServiceHealthCheckCustomConfigArgs(
-                failure_threshold=1
-            ),
+            health_check_custom_config=aws.servicediscovery.ServiceHealthCheckCustomConfigArgs(),
             opts=ResourceOptions(parent=self),
         )
 
