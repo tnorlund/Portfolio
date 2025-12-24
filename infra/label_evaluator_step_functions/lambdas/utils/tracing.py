@@ -3,25 +3,48 @@
 Provides trace propagation across Step Function Lambda invocations,
 allowing a unified trace to span the entire workflow.
 
+Key concept: Deterministic trace IDs based on Step Function execution ARN.
+This ensures:
+- One trace per execution (no collisions between executions)
+- Safe retries (same IDs regenerated on retry)
+- Proper parent-child relationships across Lambda invocations
+
 Usage:
-    # In a Lambda handler that starts a trace:
+    # In the FIRST Lambda (creates root trace):
     def handler(event, context):
-        with start_trace("fetch_training_data", event) as trace_ctx:
-            # ... your business logic ...
-            result = {"data": "..."}
-            return trace_ctx.wrap_output(result)
+        execution_arn = event["execution_arn"]  # From Step Function
+
+        trace_info = create_execution_trace(
+            execution_arn=execution_arn,
+            state_name="DiscoverPatterns",
+            name="label_evaluator",
+        )
+
+        # ... your business logic ...
+
+        return {
+            "result": "...",
+            "trace_id": trace_info["trace_id"],
+            "root_run_id": trace_info["root_run_id"],
+        }
 
     # In subsequent Lambda handlers:
     def handler(event, context):
-        with resume_trace("evaluate_labels", event) as trace_ctx:
+        with state_trace(
+            execution_arn=event["execution_arn"],
+            state_name="ComputePatterns",
+            trace_id=event["trace_id"],
+            root_run_id=event["root_run_id"],
+        ) as trace_ctx:
             # ... your business logic ...
-            result = {"issues_found": 3}
+            result = {"patterns": "..."}
             return trace_ctx.wrap_output(result)
 """
 
 import logging
+import uuid
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -47,8 +70,61 @@ except ImportError:
     HAS_LANGSMITH = False
 
 
-# Header keys for trace propagation
+# Namespace for deterministic UUID generation (UUID5)
+# This ensures consistent trace IDs across retries
+TRACE_NAMESPACE = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+
+# Keys for trace propagation through Step Function
+TRACE_ID_KEY = "trace_id"
+ROOT_RUN_ID_KEY = "root_run_id"
+ROOT_DOTTED_ORDER_KEY = "root_dotted_order"
+
+# Legacy header key (for backwards compatibility)
 LANGSMITH_HEADERS_KEY = "langsmith_headers"
+
+
+def generate_trace_id(execution_arn: str) -> str:
+    """Generate a deterministic trace ID from Step Function execution ARN.
+
+    The same execution ARN always produces the same trace ID, ensuring:
+    - One trace per execution
+    - Safe retries (same ID regenerated)
+    """
+    return str(uuid.uuid5(TRACE_NAMESPACE, execution_arn))
+
+
+def generate_root_run_id(execution_arn: str) -> str:
+    """Generate a deterministic root run ID for the execution.
+
+    IMPORTANT: For LangSmith, the root run's ID MUST equal the trace_id.
+    This is because LangSmith uses dotted_order which must start with trace_id.
+    """
+    # Root run ID must equal trace_id for LangSmith compatibility
+    return generate_trace_id(execution_arn)
+
+
+def generate_state_run_id(
+    execution_arn: str,
+    state_name: str,
+    map_index: Optional[int] = None,
+    attempt: int = 0,
+) -> str:
+    """Generate a deterministic run ID for a state invocation.
+
+    Args:
+        execution_arn: Step Function execution ARN
+        state_name: Name of the state (Lambda task)
+        map_index: Index in Map state (None if not in a Map)
+        attempt: Retry attempt number (0 for first attempt)
+
+    Returns:
+        Deterministic UUID string for this state invocation
+    """
+    parts = [execution_arn, state_name]
+    if map_index is not None:
+        parts.append(str(map_index))
+    parts.append(str(attempt))
+    return str(uuid.uuid5(TRACE_NAMESPACE, ":".join(parts)))
 
 
 @dataclass
@@ -57,11 +133,22 @@ class TraceContext:
 
     run_tree: Optional[Any] = None
     headers: Optional[dict] = None
+    # New fields for deterministic tracing
+    trace_id: Optional[str] = None
+    root_run_id: Optional[str] = None
 
     def wrap_output(self, output: dict) -> dict:
-        """Add trace headers to Lambda output for propagation."""
-        if self.headers:
-            output[LANGSMITH_HEADERS_KEY] = self.headers
+        """Add trace info to Lambda output for propagation.
+
+        Adds both legacy headers and new deterministic IDs.
+        """
+        # Legacy headers (for backwards compatibility)
+        output[LANGSMITH_HEADERS_KEY] = self.headers
+        # New deterministic IDs
+        if self.trace_id:
+            output[TRACE_ID_KEY] = self.trace_id
+        if self.root_run_id:
+            output[ROOT_RUN_ID_KEY] = self.root_run_id
         return output
 
     def get_child_headers(self) -> Optional[dict]:
@@ -69,6 +156,17 @@ class TraceContext:
         if self.run_tree and hasattr(self.run_tree, "to_headers"):
             return self.run_tree.to_headers()
         return self.headers
+
+    def set_outputs(self, outputs: dict) -> None:
+        """Set the outputs on the current run tree.
+
+        Call this before the trace context exits to capture outputs.
+        """
+        if self.run_tree is not None:
+            try:
+                self.run_tree.outputs = outputs
+            except Exception as e:
+                logger.warning("Failed to set trace outputs: %s", e)
 
 
 def flush_langsmith_traces() -> None:
@@ -91,6 +189,42 @@ def extract_trace_headers(event: dict) -> Optional[dict]:
     return event.get(LANGSMITH_HEADERS_KEY)
 
 
+def _sanitize_event_for_trace(event: dict, max_str_len: int = 1000) -> dict:
+    """Create a sanitized copy of event for trace inputs.
+
+    Excludes sensitive fields and truncates large values.
+    """
+    # Fields to exclude entirely
+    exclude_keys = {
+        LANGSMITH_HEADERS_KEY,
+        "langsmith_headers",
+        "api_key",
+        "secret",
+        "password",
+        "token",
+    }
+
+    # Fields to summarize (show count/type instead of full data)
+    summarize_keys = {"words", "labels", "issues", "receipts", "patterns"}
+
+    result = {}
+    for key, value in event.items():
+        if key.lower() in exclude_keys or key in exclude_keys:
+            continue
+
+        if key in summarize_keys and isinstance(value, list):
+            result[key] = f"<list of {len(value)} items>"
+        elif isinstance(value, str) and len(value) > max_str_len:
+            result[key] = value[:max_str_len] + "..."
+        elif isinstance(value, dict):
+            # Recursively sanitize nested dicts (one level)
+            result[key] = _sanitize_event_for_trace(value, max_str_len)
+        else:
+            result[key] = value
+
+    return result
+
+
 @contextmanager
 def start_trace(
     name: str,
@@ -98,6 +232,7 @@ def start_trace(
     run_type: str = "chain",
     metadata: Optional[dict] = None,
     tags: Optional[list[str]] = None,
+    inputs: Optional[dict] = None,
 ):
     """Start a new LangSmith trace (root of trace hierarchy).
 
@@ -109,20 +244,24 @@ def start_trace(
         run_type: Type of run ("chain", "llm", "tool", etc.)
         metadata: Optional metadata to attach
         tags: Optional tags for filtering in LangSmith
+        inputs: Optional inputs to capture in the trace (defaults to event)
 
     Yields:
         TraceContext with run_tree and headers for propagation
 
     Example:
         def handler(event, context):
-            with start_trace("fetch_training_data", event) as trace_ctx:
+            with start_trace("fetch_training_data", event, inputs={"key": "value"}) as trace_ctx:
                 result = do_work()
+                trace_ctx.set_outputs(result)
                 return trace_ctx.wrap_output(result)
     """
     if not HAS_LANGSMITH or _RunTree is None:
-        logger.debug("LangSmith not available, skipping trace")
+        logger.info("LangSmith not available (HAS_LANGSMITH=%s, _RunTree=%s)", HAS_LANGSMITH, _RunTree)
         yield TraceContext()
         return
+
+    logger.info("Starting trace: %s (HAS_LANGSMITH=%s)", name, HAS_LANGSMITH)
 
     # Build metadata from event
     trace_metadata = {
@@ -140,10 +279,17 @@ def start_trace(
     trace_tags = tags or []
     trace_tags.extend(["step-function", "label-evaluator"])
 
+    # Use provided inputs or sanitize event for trace inputs
+    trace_inputs = inputs
+    if trace_inputs is None:
+        # Create a sanitized copy of the event (exclude large/sensitive fields)
+        trace_inputs = _sanitize_event_for_trace(event)
+
     try:
         run_tree = _RunTree(
             name=name,
             run_type=run_type,
+            inputs=trace_inputs,
             extra={"metadata": trace_metadata},
             tags=trace_tags,
         )
@@ -154,14 +300,16 @@ def start_trace(
             headers=run_tree.to_headers(),
         )
 
+        logger.info("Trace started, yielding context (run_id=%s)", run_tree.id)
         yield ctx
 
         # End the run successfully
         run_tree.end()
         run_tree.patch()
+        logger.info("Trace ended and patched (run_id=%s)", run_tree.id)
 
     except Exception as e:
-        logger.warning("Failed to create trace: %s", e)
+        logger.warning("Failed to create trace: %s", e, exc_info=True)
         yield TraceContext()
 
 
@@ -172,6 +320,7 @@ def resume_trace(
     run_type: str = "chain",
     metadata: Optional[dict] = None,
     tags: Optional[list[str]] = None,
+    inputs: Optional[dict] = None,
 ):
     """Resume an existing trace as a child (or start new if no parent).
 
@@ -183,6 +332,7 @@ def resume_trace(
         run_type: Type of run ("chain", "llm", "tool", etc.)
         metadata: Optional metadata to attach
         tags: Optional tags for filtering
+        inputs: Optional inputs to capture in the trace (defaults to sanitized event)
 
     Yields:
         TraceContext with headers for further propagation
@@ -191,6 +341,7 @@ def resume_trace(
         def handler(event, context):
             with resume_trace("evaluate_labels", event) as trace_ctx:
                 result = do_evaluation()
+                trace_ctx.set_outputs(result)
                 return trace_ctx.wrap_output(result)
     """
     parent_headers = extract_trace_headers(event)
@@ -202,7 +353,7 @@ def resume_trace(
 
     if not parent_headers:
         # No parent trace - start a new one
-        with start_trace(name, event, run_type, metadata, tags) as ctx:
+        with start_trace(name, event, run_type, metadata, tags, inputs) as ctx:
             yield ctx
         return
 
@@ -225,31 +376,46 @@ def resume_trace(
     trace_tags = tags or []
     trace_tags.append("step-function")
 
-    try:
-        if _tracing_context is not None:
-            # Use tracing_context to resume the parent trace
-            with _tracing_context(parent=parent_headers):
-                # Create a child run for this step
-                if _RunTree is not None:
-                    child_run = _RunTree(
-                        name=name,
-                        run_type=run_type,
-                        extra={"metadata": trace_metadata},
-                        tags=trace_tags,
-                    )
-                    child_run.post()
+    # Use provided inputs or sanitize event for trace inputs
+    trace_inputs = inputs
+    if trace_inputs is None:
+        trace_inputs = _sanitize_event_for_trace(event)
 
+    try:
+        if _RunTree is not None:
+            # Create a child run for this step, linked to parent via headers
+            child_run = _RunTree(
+                name=name,
+                run_type=run_type,
+                inputs=trace_inputs,
+                extra={"metadata": trace_metadata},
+                tags=trace_tags,
+                parent=parent_headers,  # Link to parent via headers
+            )
+            child_run.post()
+
+            # Use OUR child_run's headers as the context for nested operations
+            # This ensures LangChain operations become children of our run
+            if _tracing_context is not None:
+                with _tracing_context(parent=child_run.to_headers()):
                     ctx = TraceContext(
                         run_tree=child_run,
                         headers=child_run.to_headers(),
                     )
-
                     yield ctx
+            else:
+                ctx = TraceContext(
+                    run_tree=child_run,
+                    headers=child_run.to_headers(),
+                )
+                yield ctx
 
-                    child_run.end()
-                    child_run.patch()
-                else:
-                    yield TraceContext(headers=parent_headers)
+            child_run.end()
+            child_run.patch()
+        elif _tracing_context is not None:
+            # Fallback: just set up tracing context without RunTree
+            with _tracing_context(parent=parent_headers):
+                yield TraceContext(headers=parent_headers)
         else:
             yield TraceContext(headers=parent_headers)
 
@@ -264,6 +430,7 @@ def child_trace(
     parent_ctx: TraceContext,
     run_type: str = "chain",
     metadata: Optional[dict] = None,
+    inputs: Optional[dict] = None,
 ):
     """Create a child trace within an existing trace context.
 
@@ -274,9 +441,15 @@ def child_trace(
         parent_ctx: Parent TraceContext
         run_type: Type of run
         metadata: Optional metadata
+        inputs: Optional inputs to capture in the trace
 
     Yields:
         TraceContext for the child span
+
+    Example:
+        with child_trace("llm_call", trace_ctx, run_type="llm", inputs={"prompt": prompt}) as child_ctx:
+            response = llm.invoke(prompt)
+            child_ctx.set_outputs({"response": response})
     """
     if not HAS_LANGSMITH or parent_ctx.run_tree is None:
         yield TraceContext(headers=parent_ctx.headers)
@@ -287,6 +460,7 @@ def child_trace(
             child = parent_ctx.run_tree.create_child(
                 name=name,
                 run_type=run_type,
+                inputs=inputs or {},
                 extra={"metadata": metadata or {}},
             )
             child.post()
@@ -326,3 +500,231 @@ def log_trace_event(
             ctx.run_tree.add_event(event_name, data or {})
     except Exception as e:
         logger.warning("Failed to log trace event: %s", e)
+
+
+# =============================================================================
+# NEW: Deterministic trace management for Step Functions
+# =============================================================================
+
+
+@dataclass
+class ExecutionTraceInfo:
+    """Information about the execution-level trace."""
+
+    trace_id: str
+    root_run_id: str
+    root_dotted_order: Optional[str] = None
+    run_tree: Optional[Any] = None
+
+    def to_dict(self) -> dict:
+        """Return trace info for passing through Step Function."""
+        result = {
+            TRACE_ID_KEY: self.trace_id,
+            ROOT_RUN_ID_KEY: self.root_run_id,
+        }
+        if self.root_dotted_order:
+            result[ROOT_DOTTED_ORDER_KEY] = self.root_dotted_order
+        return result
+
+
+def create_execution_trace(
+    execution_arn: str,
+    name: str,
+    inputs: Optional[dict] = None,
+    metadata: Optional[dict] = None,
+    tags: Optional[list[str]] = None,
+) -> ExecutionTraceInfo:
+    """Create the root trace for a Step Function execution.
+
+    Call this ONCE in the FIRST Lambda of the workflow. The returned
+    trace_id and root_run_id should be passed through the Step Function
+    to all subsequent Lambdas.
+
+    Args:
+        execution_arn: Step Function execution ARN (from $$.Execution.Id)
+        name: Name for the root trace (e.g., "label_evaluator")
+        inputs: Optional inputs to capture
+        metadata: Optional metadata
+        tags: Optional tags
+
+    Returns:
+        ExecutionTraceInfo with trace_id, root_run_id, and run_tree
+    """
+    trace_id = generate_trace_id(execution_arn)
+    root_run_id = generate_root_run_id(execution_arn)
+
+    if not HAS_LANGSMITH or _RunTree is None:
+        logger.info("LangSmith not available, returning empty trace info")
+        return ExecutionTraceInfo(trace_id=trace_id, root_run_id=root_run_id)
+
+    logger.info(
+        "Creating execution trace: %s (trace_id=%s, root_run_id=%s)",
+        name,
+        trace_id[:8],
+        root_run_id[:8],
+    )
+
+    try:
+        run_tree = _RunTree(
+            id=root_run_id,
+            trace_id=trace_id,
+            name=name,
+            run_type="chain",
+            inputs=inputs or {},
+            extra={"metadata": metadata or {}},
+            tags=tags or [],
+        )
+        run_tree.post()
+
+        # Capture the root run's dotted_order for propagation to child runs
+        root_dotted_order = getattr(run_tree, "dotted_order", None)
+        logger.info(
+            "Root trace created with dotted_order=%s",
+            root_dotted_order[:30] if root_dotted_order else "None",
+        )
+
+        return ExecutionTraceInfo(
+            trace_id=trace_id,
+            root_run_id=root_run_id,
+            root_dotted_order=root_dotted_order,
+            run_tree=run_tree,
+        )
+
+    except Exception as e:
+        logger.warning("Failed to create execution trace: %s", e, exc_info=True)
+        return ExecutionTraceInfo(trace_id=trace_id, root_run_id=root_run_id)
+
+
+def end_execution_trace(trace_info: ExecutionTraceInfo, outputs: Optional[dict] = None) -> None:
+    """End the root execution trace.
+
+    Call this at the end of the FIRST Lambda, after all work is done.
+    """
+    if trace_info.run_tree is None:
+        return
+
+    try:
+        if outputs:
+            trace_info.run_tree.outputs = outputs
+        trace_info.run_tree.end()
+        trace_info.run_tree.patch()
+        logger.info("Execution trace ended (root_run_id=%s)", trace_info.root_run_id[:8])
+    except Exception as e:
+        logger.warning("Failed to end execution trace: %s", e)
+
+
+def _generate_child_dotted_order(parent_dotted_order: str, child_run_id: str) -> str:
+    """Generate a dotted_order for a child run.
+
+    LangSmith dotted_order format: {parent_dotted_order}.{timestamp}{run_id}
+    The timestamp is in format: YYYYMMDDTHHMMSSssssssZ (microseconds, UTC)
+    """
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    # Format: 20251224T072227945197Z (timestamp with microseconds)
+    timestamp = now.strftime("%Y%m%dT%H%M%S") + f"{now.microsecond:06d}Z"
+    # Remove hyphens from UUID for dotted_order
+    run_id_clean = child_run_id.replace("-", "")
+    return f"{parent_dotted_order}.{timestamp}{run_id_clean}"
+
+
+@contextmanager
+def state_trace(
+    execution_arn: str,
+    state_name: str,
+    trace_id: str,
+    root_run_id: str,
+    root_dotted_order: Optional[str] = None,
+    map_index: Optional[int] = None,
+    attempt: int = 0,
+    inputs: Optional[dict] = None,
+    metadata: Optional[dict] = None,
+    tags: Optional[list[str]] = None,
+):
+    """Create a child trace for a Lambda state invocation.
+
+    Use this in all Lambdas AFTER the first one. The trace will be a child
+    of the root execution trace.
+
+    Args:
+        execution_arn: Step Function execution ARN
+        state_name: Name of this state (used in trace name and ID generation)
+        trace_id: Trace ID from first Lambda (via Step Function input)
+        root_run_id: Root run ID from first Lambda (via Step Function input)
+        root_dotted_order: Parent's dotted_order for proper child linking
+        map_index: Index in Map state (None if not in a Map)
+        attempt: Retry attempt number
+        inputs: Optional inputs to capture
+        metadata: Optional metadata
+        tags: Optional tags
+
+    Yields:
+        TraceContext with run_tree for this state
+    """
+    state_run_id = generate_state_run_id(execution_arn, state_name, map_index, attempt)
+
+    if not HAS_LANGSMITH or _RunTree is None:
+        logger.info("LangSmith not available, skipping state trace")
+        yield TraceContext()
+        return
+
+    logger.info(
+        "Creating state trace: %s (run_id=%s, parent=%s, dotted_order=%s)",
+        state_name,
+        state_run_id[:8],
+        root_run_id[:8],
+        root_dotted_order[:30] if root_dotted_order else "None",
+    )
+
+    # Generate child's dotted_order from parent's
+    child_dotted_order = None
+    if root_dotted_order:
+        child_dotted_order = _generate_child_dotted_order(root_dotted_order, state_run_id)
+        logger.info("Child dotted_order: %s", child_dotted_order[:50] if child_dotted_order else "None")
+
+    try:
+        # Build RunTree kwargs
+        run_tree_kwargs = {
+            "id": state_run_id,
+            "trace_id": trace_id,
+            "parent_run_id": root_run_id,
+            "name": state_name,
+            "run_type": "chain",
+            "inputs": inputs or {},
+            "extra": {"metadata": metadata or {}},
+            "tags": tags or [],
+        }
+        # Add dotted_order if we have it
+        if child_dotted_order:
+            run_tree_kwargs["dotted_order"] = child_dotted_order
+
+        run_tree = _RunTree(**run_tree_kwargs)
+        run_tree.post()
+
+        # Set up tracing context for LangChain operations
+        if _tracing_context is not None:
+            with _tracing_context(parent=run_tree.to_headers()):
+                ctx = TraceContext(
+                    run_tree=run_tree,
+                    headers=run_tree.to_headers(),
+                    trace_id=trace_id,
+                    root_run_id=root_run_id,
+                )
+                yield ctx
+        else:
+            ctx = TraceContext(
+                run_tree=run_tree,
+                headers=run_tree.to_headers(),
+                trace_id=trace_id,
+                root_run_id=root_run_id,
+            )
+            yield ctx
+
+        run_tree.end()
+        run_tree.patch()
+        logger.info("State trace ended (run_id=%s)", state_run_id[:8])
+
+    except Exception as e:
+        logger.warning("Failed to create state trace: %s", e, exc_info=True)
+        yield TraceContext()

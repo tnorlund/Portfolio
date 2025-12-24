@@ -398,14 +398,14 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                     "fetch_receipt_data_traced.py": FileAsset(
                         os.path.join(HANDLERS_TRACED_DIR, "fetch_receipt_data_traced.py")
                     ),
-                    "tracing.py": FileAsset(
-                        os.path.join(UTILS_DIR, "tracing.py")
-                    ),
                     "utils/__init__.py": FileAsset(
                         os.path.join(UTILS_DIR, "__init__.py")
                     ),
                     "utils/serialization.py": FileAsset(
                         os.path.join(UTILS_DIR, "serialization.py")
+                    ),
+                    "utils/emf_metrics.py": FileAsset(
+                        os.path.join(UTILS_DIR, "emf_metrics.py")
                     ),
                 }
             ),
@@ -572,7 +572,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
             f"{name}-compute-patterns-img",
             dockerfile_path=(
                 "infra/label_evaluator_step_functions/lambdas/"
-                "Dockerfile.compute_patterns"
+                "Dockerfile.compute_patterns_traced"
             ),
             build_context_path=".",
             source_paths=[
@@ -581,6 +581,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                 "receipt_chroma",
                 "receipt_places",
                 "receipt_agent",
+                "infra/label_evaluator_step_functions/lambdas",
             ],
             lambda_function_name=f"{name}-compute-patterns",
             lambda_config=compute_patterns_config,
@@ -609,7 +610,8 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         evaluate_docker_image = CodeBuildDockerImage(
             f"{name}-evaluate-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/Dockerfile"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.evaluate_traced"
             ),
             build_context_path=".",
             source_paths=[
@@ -618,6 +620,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                 "receipt_chroma",
                 "receipt_places",
                 "receipt_agent",
+                "infra/label_evaluator_step_functions/lambdas",
             ],
             lambda_function_name=f"{name}-evaluate-labels",
             lambda_config=evaluate_lambda_config,
@@ -651,7 +654,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
             f"{name}-discover-patterns-img",
             dockerfile_path=(
                 "infra/label_evaluator_step_functions/lambdas/"
-                "Dockerfile.discover_patterns"
+                "Dockerfile.discover_patterns_traced"
             ),
             build_context_path=".",
             source_paths=[
@@ -660,6 +663,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                 "receipt_chroma",
                 "receipt_places",
                 "receipt_agent",
+                "infra/label_evaluator_step_functions/lambdas",
             ],
             lambda_function_name=f"{name}-discover-patterns",
             lambda_config=discover_patterns_config,
@@ -687,11 +691,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                 "RECEIPT_AGENT_OLLAMA_BASE_URL": "https://ollama.com",
                 "RECEIPT_AGENT_OLLAMA_MODEL": "gpt-oss:120b-cloud",
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
-                "LANGCHAIN_API_KEY": langchain_api_key,
-                "LANGCHAIN_TRACING_V2": "true",
-                "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-                "LANGCHAIN_PROJECT": config.get("langchain_project")
-                or "label-evaluator-llm",
+                **tracing_env,
                 "MAX_ISSUES_PER_LLM_CALL": "15",
                 "CIRCUIT_BREAKER_THRESHOLD": "5",
                 "LLM_MAX_JITTER_SECONDS": "0.25",
@@ -702,7 +702,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
             f"{name}-llm-review-img",
             dockerfile_path=(
                 "infra/label_evaluator_step_functions/lambdas/"
-                "Dockerfile.llm"
+                "Dockerfile.llm_traced"
             ),
             build_context_path=".",
             source_paths=[
@@ -711,6 +711,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                 "receipt_chroma",
                 "receipt_places",
                 "receipt_agent",
+                "infra/label_evaluator_step_functions/lambdas",
             ],
             lambda_function_name=f"{name}-llm-review",
             lambda_config=llm_review_lambda_config,
@@ -887,9 +888,10 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         """Create Step Function definition with trace propagation.
 
         Key difference from non-traced version:
-        - Each Lambda receives `langsmith_headers` from previous step
-        - Each Lambda returns `langsmith_headers` for next step
-        - Parameters include `langsmith_headers.$` for propagation
+        - Container-based Lambdas handle LangSmith tracing
+        - DiscoverLineItemPatterns STARTS the trace (first container Lambda)
+        - Other container Lambdas receive `langsmith_headers` from trace origin
+        - Zip-based Lambdas don't have langsmith access, no headers needed
 
         Runtime inputs (from Step Function execution input):
         - dry_run: bool (default: False) - Don't write to DynamoDB
@@ -919,8 +921,19 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                     "Type": "Pass",
                     "Result": {
                         "dry_run": False,
+                        "force_rediscovery": False,
+                        "limit": None,
                     },
                     "ResultPath": "$.defaults",
+                    "Next": "MergeInputWithDefaults",
+                },
+                # Merge user input with defaults (input takes precedence)
+                "MergeInputWithDefaults": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "merged.$": "States.JsonMerge($.defaults, $.normalized.merged_input, false)",
+                    },
+                    "ResultPath": "$.config",
                     "Next": "CheckInputMode",
                 },
                 # Check if merchant_name is in input
@@ -928,7 +941,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                     "Type": "Choice",
                     "Choices": [
                         {
-                            "Variable": "$.normalized.merged_input.merchant_name",
+                            "Variable": "$.config.merged.merchant_name",
                             "IsPresent": True,
                             "Next": "InitializeSingleMerchant",
                         }
@@ -943,11 +956,12 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                         "start_time.$": "$$.Execution.StartTime",
                         "batch_bucket": batch_bucket,
                         "batch_size": batch_size,
-                        "merchant_name.$": "$.normalized.merged_input.merchant_name",
-                        "dry_run.$": "$.normalized.merged_input.dry_run",
+                        "merchant_name.$": "$.config.merged.merchant_name",
+                        "dry_run.$": "$.config.merged.dry_run",
+                        "force_rediscovery.$": "$.config.merged.force_rediscovery",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
-                        "limit.$": "$.normalized.merged_input.limit",
+                        "limit.$": "$.config.merged.limit",
                         "original_input.$": "$.normalized.original_input",
                     },
                     "ResultPath": "$.init",
@@ -962,10 +976,11 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                         "batch_bucket": batch_bucket,
                         "batch_size": batch_size,
                         "merchant_name": None,
-                        "dry_run.$": "$.normalized.merged_input.dry_run",
+                        "dry_run.$": "$.config.merged.dry_run",
+                        "force_rediscovery.$": "$.config.merged.force_rediscovery",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
-                        "limit.$": "$.normalized.merged_input.limit",
+                        "limit.$": "$.config.merged.limit",
                         "original_input.$": "$.normalized.original_input",
                     },
                     "ResultPath": "$.init",
@@ -983,12 +998,11 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                         ],
                         "total_merchants": 1,
                         "mode": "single",
-                        "langsmith_headers": None,
                     },
                     "ResultPath": "$.merchants_data",
                     "Next": "ProcessMerchants",
                 },
-                # List all merchants - starts the root trace
+                # List all merchants (zip-based, no tracing)
                 "ListMerchants": {
                     "Type": "Task",
                     "Resource": list_merchants_arn,
@@ -1039,14 +1053,13 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                         "max_training_receipts.$": "$.init.max_training_receipts",
                         "limit.$": "$.init.limit",
                         "dry_run.$": "$.init.dry_run",
-                        # Propagate trace headers from ListMerchants
-                        "langsmith_headers.$": "$.merchants_data.langsmith_headers",
+                        "force_rediscovery.$": "$.init.force_rediscovery",
                     },
                     "ItemProcessor": {
                         "ProcessorConfig": {"Mode": "INLINE"},
                         "StartAt": "ListReceipts",
                         "States": {
-                            # List receipts - resumes trace as child
+                            # List receipts (zip-based, no tracing)
                             "ListReceipts": {
                                 "Type": "Task",
                                 "Resource": list_receipts_arn,
@@ -1058,7 +1071,6 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "merchant.$": "$.merchant",
                                     "max_training_receipts.$": "$.max_training_receipts",
                                     "limit.$": "$.limit",
-                                    "langsmith_headers.$": "$.langsmith_headers",
                                 },
                                 "ResultPath": "$.receipts_data",
                                 "Retry": [
@@ -1091,7 +1103,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                 },
                                 "End": True,
                             },
-                            # Discover line item patterns with LLM
+                            # Discover line item patterns with LLM - STARTS trace
                             "DiscoverLineItemPatterns": {
                                 "Type": "Task",
                                 "Resource": discover_patterns_arn,
@@ -1100,7 +1112,9 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "execution_id.$": "$.execution_id",
                                     "batch_bucket.$": "$.batch_bucket",
                                     "merchant_name.$": "$.merchant.merchant_name",
-                                    "langsmith_headers.$": "$.receipts_data.langsmith_headers",
+                                    "force_rediscovery.$": "$.force_rediscovery",
+                                    # Pass execution ARN for deterministic trace ID
+                                    "execution_arn.$": "$$.Execution.Id",
                                 },
                                 "ResultPath": "$.line_item_patterns",
                                 "Retry": [
@@ -1123,8 +1137,11 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "batch_bucket.$": "$.batch_bucket",
                                     "merchant.$": "$.merchant",
                                     "max_training_receipts.$": "$.max_training_receipts",
-                                    # Propagate trace from DiscoverLineItemPatterns
-                                    "langsmith_headers.$": "$.line_item_patterns.langsmith_headers",
+                                    # Deterministic trace propagation
+                                    "execution_arn.$": "$$.Execution.Id",
+                                    "trace_id.$": "$.line_item_patterns.trace_id",
+                                    "root_run_id.$": "$.line_item_patterns.root_run_id",
+                                    "root_dotted_order.$": "$.line_item_patterns.root_dotted_order",
                                 },
                                 "ResultPath": "$.patterns_result",
                                 "Retry": [
@@ -1144,11 +1161,15 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                 "MaxConcurrency": max_concurrency,
                                 "Parameters": {
                                     "batch.$": "$$.Map.Item.Value",
+                                    "batch_index.$": "$$.Map.Item.Index",
                                     "execution_id.$": "$.execution_id",
                                     "batch_bucket.$": "$.batch_bucket",
                                     "patterns_s3_key.$": "$.patterns_result.patterns_s3_key",
-                                    # Propagate trace from ComputePatterns
-                                    "langsmith_headers.$": "$.patterns_result.langsmith_headers",
+                                    # Deterministic trace propagation
+                                    "execution_arn.$": "$$.Execution.Id",
+                                    "trace_id.$": "$.line_item_patterns.trace_id",
+                                    "root_run_id.$": "$.line_item_patterns.root_run_id",
+                                    "root_dotted_order.$": "$.line_item_patterns.root_dotted_order",
                                 },
                                 "ItemProcessor": {
                                     "ProcessorConfig": {"Mode": "INLINE"},
@@ -1160,10 +1181,16 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                             "MaxConcurrency": 5,
                                             "Parameters": {
                                                 "receipt.$": "$$.Map.Item.Value",
+                                                "receipt_index.$": "$$.Map.Item.Index",
+                                                "batch_index.$": "$.batch_index",
                                                 "execution_id.$": "$.execution_id",
                                                 "batch_bucket.$": "$.batch_bucket",
                                                 "patterns_s3_key.$": "$.patterns_s3_key",
-                                                "langsmith_headers.$": "$.langsmith_headers",
+                                                # Deterministic trace propagation
+                                                "execution_arn.$": "$.execution_arn",
+                                                "trace_id.$": "$.trace_id",
+                                                "root_run_id.$": "$.root_run_id",
+                                                "root_dotted_order.$": "$.root_dotted_order",
                                             },
                                             "ItemProcessor": {
                                                 "ProcessorConfig": {"Mode": "INLINE"},
@@ -1177,7 +1204,6 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                                             "receipt.$": "$.receipt",
                                                             "execution_id.$": "$.execution_id",
                                                             "batch_bucket.$": "$.batch_bucket",
-                                                            "langsmith_headers.$": "$.langsmith_headers",
                                                         },
                                                         "ResultPath": "$.receipt_data",
                                                         "Retry": [
@@ -1199,8 +1225,13 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                                             "patterns_s3_key.$": "$.patterns_s3_key",
                                                             "execution_id.$": "$.execution_id",
                                                             "batch_bucket.$": "$.batch_bucket",
-                                                            # Propagate trace from FetchReceiptData
-                                                            "langsmith_headers.$": "$.receipt_data.langsmith_headers",
+                                                            # Deterministic trace propagation
+                                                            "execution_arn.$": "$.execution_arn",
+                                                            "trace_id.$": "$.trace_id",
+                                                            "root_run_id.$": "$.root_run_id",
+                                                            "root_dotted_order.$": "$.root_dotted_order",
+                                                            "batch_index.$": "$.batch_index",
+                                                            "receipt_index.$": "$.receipt_index",
                                                         },
                                                         "ResultPath": "$.eval_result",
                                                         "Retry": [
@@ -1220,6 +1251,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                                             "image_id.$": "$.eval_result.image_id",
                                                             "receipt_id.$": "$.eval_result.receipt_id",
                                                             "issues_found.$": "$.eval_result.issues_found",
+                                                            "results_s3_key.$": "$.eval_result.results_s3_key",
                                                         },
                                                         "End": True,
                                                     },
@@ -1242,7 +1274,6 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "batch_bucket.$": "$.batch_bucket",
                                     "merchant_name.$": "$.merchant.merchant_name",
                                     "process_results.$": "$.batch_results",
-                                    "langsmith_headers.$": "$.patterns_result.langsmith_headers",
                                 },
                                 "ResultPath": "$.collected_issues",
                                 "Retry": [
@@ -1280,7 +1311,6 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "issues_s3_key.$": "$.collected_issues.issues_s3_key",
                                     "batch_size": 25,
                                     "dry_run.$": "$.dry_run",
-                                    "langsmith_headers.$": "$.collected_issues.langsmith_headers",
                                 },
                                 "ResultPath": "$.batched_issues",
                                 "Retry": [
@@ -1311,13 +1341,18 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                 "MaxConcurrency": 3,
                                 "Parameters": {
                                     "batch_info.$": "$$.Map.Item.Value",
+                                    "llm_batch_index.$": "$$.Map.Item.Index",
                                     "execution_id.$": "$.execution_id",
                                     "batch_bucket.$": "$.batch_bucket",
                                     "merchant_name.$": "$.merchant.merchant_name",
                                     "merchant_receipt_count.$": "$.receipts_data.total_receipts",
                                     "line_item_patterns_s3_key.$": "$.line_item_patterns.patterns_s3_key",
                                     "dry_run.$": "$.dry_run",
-                                    "langsmith_headers.$": "$.batched_issues.langsmith_headers",
+                                    # Deterministic trace propagation
+                                    "execution_arn.$": "$$.Execution.Id",
+                                    "trace_id.$": "$.line_item_patterns.trace_id",
+                                    "root_run_id.$": "$.line_item_patterns.root_run_id",
+                                    "root_dotted_order.$": "$.line_item_patterns.root_dotted_order",
                                 },
                                 "ItemProcessor": {
                                     "ProcessorConfig": {"Mode": "INLINE"},
@@ -1334,9 +1369,14 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                                 "merchant_receipt_count.$": "$.merchant_receipt_count",
                                                 "batch_s3_key.$": "$.batch_info.batch_s3_key",
                                                 "batch_index.$": "$.batch_info.batch_index",
+                                                "llm_batch_index.$": "$.llm_batch_index",
                                                 "line_item_patterns_s3_key.$": "$.line_item_patterns_s3_key",
                                                 "dry_run.$": "$.dry_run",
-                                                "langsmith_headers.$": "$.langsmith_headers",
+                                                # Deterministic trace propagation
+                                                "execution_arn.$": "$.execution_arn",
+                                                "trace_id.$": "$.trace_id",
+                                                "root_run_id.$": "$.root_run_id",
+                                                "root_dotted_order.$": "$.root_dotted_order",
                                             },
                                             "Retry": [
                                                 {
@@ -1372,7 +1412,6 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "process_results.$": "$.batch_results",
                                     "merchant_name.$": "$.merchant.merchant_name",
                                     "dry_run.$": "$.dry_run",
-                                    "langsmith_headers.$": "$.patterns_result.langsmith_headers",
                                 },
                                 "ResultPath": "$.summary",
                                 "Next": "ReturnMerchantResult",
@@ -1402,7 +1441,6 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                         "execution_id.$": "$.init.execution_id",
                         "batch_bucket.$": "$.init.batch_bucket",
                         "all_merchant_results.$": "$.all_results",
-                        "langsmith_headers.$": "$.merchants_data.langsmith_headers",
                     },
                     "End": True,
                 },
