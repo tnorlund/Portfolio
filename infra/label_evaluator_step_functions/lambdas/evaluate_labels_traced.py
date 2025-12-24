@@ -15,20 +15,37 @@ from typing import TYPE_CHECKING, Any
 
 import boto3
 
-# Import tracing utilities
+# Import tracing utilities - works in both container and local environments
 import sys
-sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "lambdas", "utils"
-))
-from tracing import child_trace, flush_langsmith_traces, state_trace
 
-# Import shared utilities from lambdas
-sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "lambdas"
-))
-from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+try:
+    # Container environment: tracing.py is in same directory
+    from tracing import (
+        TRACING_VERSION,
+        child_trace,
+        flush_langsmith_traces,
+        state_trace,
+    )
+    from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+    _tracing_import_source = "container"
+except ImportError:
+    # Local/development environment: use path relative to this file
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "lambdas", "utils"
+    ))
+    from tracing import (
+        TRACING_VERSION,
+        child_trace,
+        flush_langsmith_traces,
+        state_trace,
+    )
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "lambdas"
+    ))
+    from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+    _tracing_import_source = "local"
 
 if TYPE_CHECKING:
     from handlers.evaluator_types import EvaluateLabelsOutput
@@ -69,6 +86,13 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         "issues_found": 3
     }
     """
+    # Log tracing module info to verify correct version is loaded
+    logger.info(
+        "[EvaluateLabels] Tracing module loaded: version=%s, source=%s",
+        TRACING_VERSION,
+        _tracing_import_source,
+    )
+
     data_s3_key = event.get("data_s3_key")
     patterns_s3_key = event.get("patterns_s3_key")
     execution_id = event.get("execution_id", "unknown")

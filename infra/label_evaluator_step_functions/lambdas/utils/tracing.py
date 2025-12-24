@@ -47,6 +47,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+# Version identifier for debugging - helps verify correct module is loaded in Lambda
+TRACING_VERSION = "2024-12-24-v2"
+
 logger = logging.getLogger(__name__)
 
 # LangSmith tracing - flush before Lambda exits
@@ -451,7 +454,16 @@ def child_trace(
             response = llm.invoke(prompt)
             child_ctx.set_outputs({"response": response})
     """
+    logger.info(
+        "[child_trace v%s] Creating child '%s' (has_langsmith=%s, parent_run_tree=%s)",
+        TRACING_VERSION,
+        name,
+        HAS_LANGSMITH,
+        parent_ctx.run_tree is not None,
+    )
+
     if not HAS_LANGSMITH or parent_ctx.run_tree is None:
+        logger.warning("[child_trace] No LangSmith or no parent run_tree - yielding empty context")
         yield TraceContext(headers=parent_ctx.headers)
         return
 
@@ -467,13 +479,23 @@ def child_trace(
 
             # Use headers for tracing_context (consistent across all helpers)
             child_headers = child.to_headers()
+            logger.info(
+                "[child_trace] Created child id=%s, trace_id=%s, headers=%s, using_tracing_context=%s",
+                child.id,
+                child.trace_id,
+                list(child_headers.keys()) if child_headers else None,
+                _tracing_context is not None,
+            )
+
             if _tracing_context is not None:
+                logger.info("[child_trace] Activating tracing_context with parent=headers")
                 with _tracing_context(parent=child_headers):
                     yield TraceContext(
                         run_tree=child,
                         headers=child_headers,
                     )
             else:
+                logger.warning("[child_trace] _tracing_context is None - LangGraph/LLM calls may not be nested")
                 yield TraceContext(
                     run_tree=child,
                     headers=child_headers,
@@ -481,7 +503,9 @@ def child_trace(
 
             child.end()
             child.patch()
+            logger.info("[child_trace] Child '%s' completed and patched", name)
         else:
+            logger.warning("[child_trace] Parent run_tree has no create_child method")
             yield TraceContext(headers=parent_ctx.headers)
 
     except Exception as e:
@@ -673,13 +697,22 @@ def state_trace(
     """
     state_run_id = generate_state_run_id(execution_arn, state_name, map_index, attempt)
 
+    logger.info(
+        "[state_trace v%s] Starting trace for '%s' (has_langsmith=%s, has_RunTree=%s, has_tracing_context=%s)",
+        TRACING_VERSION,
+        state_name,
+        HAS_LANGSMITH,
+        _RunTree is not None,
+        _tracing_context is not None,
+    )
+
     if not HAS_LANGSMITH or _RunTree is None:
         logger.info("LangSmith not available, skipping state trace")
         yield TraceContext()
         return
 
     logger.info(
-        "Creating state trace: %s (run_id=%s, parent=%s, dotted_order=%s)",
+        "[state_trace] Creating state trace: %s (run_id=%s, parent=%s, dotted_order=%s)",
         state_name,
         state_run_id[:8],
         root_run_id[:8],
@@ -710,10 +743,22 @@ def state_trace(
 
         run_tree = _RunTree(**run_tree_kwargs)
         run_tree.post()
+        logger.info(
+            "[state_trace] RunTree posted: id=%s, trace_id=%s",
+            run_tree.id,
+            run_tree.trace_id,
+        )
 
         # Use headers for tracing_context (consistent across all helpers)
         run_tree_headers = run_tree.to_headers()
+        logger.info(
+            "[state_trace] Headers created: %s, activating tracing_context=%s",
+            list(run_tree_headers.keys()) if run_tree_headers else None,
+            _tracing_context is not None,
+        )
+
         if _tracing_context is not None:
+            logger.info("[state_trace] Activating tracing_context with parent=headers")
             with _tracing_context(parent=run_tree_headers):
                 ctx = TraceContext(
                     run_tree=run_tree,
@@ -723,6 +768,7 @@ def state_trace(
                 )
                 yield ctx
         else:
+            logger.warning("[state_trace] _tracing_context is None - nested calls may not be linked")
             ctx = TraceContext(
                 run_tree=run_tree,
                 headers=run_tree_headers,

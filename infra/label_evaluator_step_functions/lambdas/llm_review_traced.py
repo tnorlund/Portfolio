@@ -19,18 +19,33 @@ from typing import TYPE_CHECKING, Any, Optional
 import boto3
 from botocore.config import Config
 
-# Import tracing utilities
-sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "lambdas", "utils"
-))
-from tracing import child_trace, flush_langsmith_traces, state_trace
-
-# Import from the original llm_review module for utility functions
-sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "lambdas"
-))
+# Import tracing utilities - works in both container and local environments
+try:
+    # Container environment: tracing.py is in same directory
+    from tracing import (
+        TRACING_VERSION,
+        child_trace,
+        flush_langsmith_traces,
+        state_trace,
+    )
+    _tracing_import_source = "container"
+except ImportError:
+    # Local/development environment: use path relative to this file
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "lambdas", "utils"
+    ))
+    from tracing import (
+        TRACING_VERSION,
+        child_trace,
+        flush_langsmith_traces,
+        state_trace,
+    )
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "lambdas"
+    ))
+    _tracing_import_source = "local"
 
 from receipt_agent import (
     OllamaCircuitBreaker,
@@ -110,6 +125,13 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
         "reviewed_issues_s3_key": "reviewed/{exec}/{merchant_hash}_0.json"
     }
     """
+    # Log tracing module info to verify correct version is loaded
+    logger.info(
+        "[LLMReviewBatch] Tracing module loaded: version=%s, source=%s",
+        TRACING_VERSION,
+        _tracing_import_source,
+    )
+
     execution_id = event.get("execution_id", "unknown")
     execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
