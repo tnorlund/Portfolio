@@ -48,7 +48,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 # Version identifier for debugging - helps verify correct module is loaded in Lambda
-TRACING_VERSION = "2024-12-24-v2"
+TRACING_VERSION = "2024-12-24-v3"
 
 logger = logging.getLogger(__name__)
 
@@ -646,13 +646,31 @@ def end_execution_trace(trace_info: ExecutionTraceInfo, outputs: Optional[dict] 
         logger.warning("Failed to end execution trace: %s", e)
 
 
+def _generate_child_dotted_order(parent_dotted_order: str, child_run_id: str) -> str:
+    """Generate a dotted_order for a child run.
+
+    LangSmith dotted_order format: {parent_dotted_order}.{timestamp}{run_id}
+    - Timestamp: YYYYMMDDTHHMMSSffffffZ (22 chars: 8+1+6+6+1)
+    - Run ID: UUID with dashes (36 chars)
+
+    Example: 20251224T174151682753Z3fec4059-46c3-48e7-9abb-18a3de8277ca.20251224T175029523772Z019b517b-d893-7051-af16-c083cae44a11
+    """
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    # Format: 20251224T072227945197Z (22 chars)
+    timestamp = now.strftime("%Y%m%dT%H%M%S") + f"{now.microsecond:06d}Z"
+    # Keep UUID with dashes (36 chars)
+    return f"{parent_dotted_order}.{timestamp}{child_run_id}"
+
+
 @contextmanager
 def state_trace(
     execution_arn: str,
     state_name: str,
     trace_id: str,
     root_run_id: str,
-    root_dotted_order: Optional[str] = None,  # Deprecated: not used
+    root_dotted_order: Optional[str] = None,
     map_index: Optional[int] = None,
     attempt: int = 0,
     inputs: Optional[dict] = None,
@@ -664,15 +682,15 @@ def state_trace(
     Use this in all Lambdas AFTER the first one. The trace will be a child
     of the root execution trace.
 
-    The hierarchy is maintained via trace_id + parent_run_id. LangSmith
-    generates its own dotted_order for UI ordering.
+    IMPORTANT: root_dotted_order is required for proper trace linking.
+    LangSmith validates that the first segment of dotted_order matches trace_id.
 
     Args:
         execution_arn: Step Function execution ARN
         state_name: Name of this state (used in trace name and ID generation)
         trace_id: Trace ID from first Lambda (via Step Function input)
         root_run_id: Root run ID from first Lambda (via Step Function input)
-        root_dotted_order: DEPRECATED - no longer used, kept for compatibility
+        root_dotted_order: Parent's dotted_order - REQUIRED for cross-Lambda traces
         map_index: Index in Map state (None if not in a Map)
         attempt: Retry attempt number
         inputs: Optional inputs to capture
@@ -682,7 +700,6 @@ def state_trace(
     Yields:
         TraceContext with run_tree for this state
     """
-    # Note: root_dotted_order is intentionally not used - LangSmith handles ordering
     state_run_id = generate_state_run_id(execution_arn, state_name, map_index, attempt)
 
     logger.info(
@@ -699,27 +716,42 @@ def state_trace(
         yield TraceContext()
         return
 
-    logger.info(
-        "[state_trace v%s] Creating state trace: %s (run_id=%s, parent=%s)",
-        TRACING_VERSION,
-        state_name,
-        state_run_id[:8],
-        root_run_id[:8],
-    )
+    # Generate child dotted_order from parent's (required for cross-Lambda trace linking)
+    child_dotted_order = None
+    if root_dotted_order:
+        child_dotted_order = _generate_child_dotted_order(root_dotted_order, state_run_id)
+        logger.info(
+            "[state_trace v%s] Creating state trace: %s (run_id=%s, parent=%s, dotted_order_len=%d)",
+            TRACING_VERSION,
+            state_name,
+            state_run_id[:8],
+            root_run_id[:8],
+            len(child_dotted_order),
+        )
+    else:
+        logger.warning(
+            "[state_trace v%s] No root_dotted_order provided for %s - trace linking may fail!",
+            TRACING_VERSION,
+            state_name,
+        )
 
     try:
-        # Build RunTree - let LangSmith generate its own dotted_order
-        # We only need trace_id + parent_run_id for proper hierarchy
-        run_tree = _RunTree(
-            id=state_run_id,
-            trace_id=trace_id,
-            parent_run_id=root_run_id,
-            name=state_name,
-            run_type="chain",
-            inputs=inputs or {},
-            extra={"metadata": metadata or {}},
-            tags=tags or [],
-        )
+        # Build RunTree with our generated dotted_order
+        # LangSmith validates first segment matches trace_id
+        run_tree_kwargs = {
+            "id": state_run_id,
+            "trace_id": trace_id,
+            "parent_run_id": root_run_id,
+            "name": state_name,
+            "run_type": "chain",
+            "inputs": inputs or {},
+            "extra": {"metadata": metadata or {}},
+            "tags": tags or [],
+        }
+        if child_dotted_order:
+            run_tree_kwargs["dotted_order"] = child_dotted_order
+
+        run_tree = _RunTree(**run_tree_kwargs)
         run_tree.post()
         logger.info(
             "[state_trace] RunTree posted: id=%s, trace_id=%s",

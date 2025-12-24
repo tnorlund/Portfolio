@@ -16,9 +16,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lambdas", "utils"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lambdas"))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-# Set LangSmith env vars
+# Set LangSmith env vars (API key must be set in environment)
+if not os.environ.get("LANGCHAIN_API_KEY"):
+    print("ERROR: LANGCHAIN_API_KEY environment variable must be set")
+    print("Run: export LANGCHAIN_API_KEY=your_api_key_here")
+    sys.exit(1)
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
-os.environ["LANGCHAIN_API_KEY"] = "${LANGCHAIN_API_KEY}"
 os.environ["LANGCHAIN_PROJECT"] = "dev-trace-test"
 
 from langsmith import tracing_context
