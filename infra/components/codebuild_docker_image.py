@@ -488,14 +488,16 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
         """Setup S3, CodeBuild, and CodePipeline for Docker builds."""
 
         # Artifact bucket
-        build_bucket, bucket_versioning, _encryption = make_artifact_bucket(
+        build_bucket, bucket_versioning, encryption = make_artifact_bucket(
             self.name, parent=self
         )
 
-        # Upload context command - depends on versioning to ensure bucket is ready for CodePipeline
+        # Upload context command - depends on versioning and encryption to ensure bucket is ready
         upload_cmd_deps = [build_bucket]
         if bucket_versioning:
             upload_cmd_deps.append(bucket_versioning)
+        if encryption:
+            upload_cmd_deps.append(encryption)
 
         upload_cmd = command.local.Command(
             f"{self.name}-upload-context",
@@ -866,7 +868,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
             opts=ResourceOptions(
                 parent=self,
                 depends_on=(
-                    [bucket_versioning] if bucket_versioning else None
+                    [r for r in [bucket_versioning, encryption] if r] or None
                 ),
             ),
         )
@@ -884,10 +886,12 @@ echo "✅ Pipeline triggered: $EXEC_ID"
 echo "   View logs: https://console.aws.amazon.com/codesuite/codepipeline/pipelines/{pn}/view"
 """
             )
-            # Async trigger also depends on versioning
+            # Async trigger also depends on versioning and encryption
             trigger_deps = [upload_cmd, pipeline]
             if bucket_versioning:
                 trigger_deps.append(bucket_versioning)
+            if encryption:
+                trigger_deps.append(encryption)
 
             pipeline_trigger_cmd = command.local.Command(
                 f"{self.name}-trigger-pipeline",
@@ -922,10 +926,12 @@ while true; do
 done
 """
             )
-            # Sync pipeline command also depends on versioning
+            # Sync pipeline command also depends on versioning and encryption
             sync_deps = [upload_cmd, pipeline]
             if bucket_versioning:
                 sync_deps.append(bucket_versioning)
+            if encryption:
+                sync_deps.append(encryption)
 
             pipeline_trigger_cmd = command.local.Command(
                 f"{self.name}-sync-pipeline",

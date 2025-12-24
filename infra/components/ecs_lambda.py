@@ -494,7 +494,7 @@ echo "✅ Uploaded source.zip"
 
     def _setup_pipeline(self, package_hash: str):
         # Artifact bucket
-        build_bucket, _bucket_versioning, _encryption = make_artifact_bucket(
+        build_bucket, bucket_versioning, encryption = make_artifact_bucket(
             f"{self.name}-fn", parent=self
         )
 
@@ -790,9 +790,7 @@ echo "✅ Uploaded source.zip"
             ],
             opts=pulumi.ResourceOptions(
                 parent=self,
-                depends_on=(
-                    [_bucket_versioning] if _bucket_versioning else None
-                ),
+                depends_on=[r for r in [bucket_versioning, encryption] if r] or None,
             ),
         )
 
