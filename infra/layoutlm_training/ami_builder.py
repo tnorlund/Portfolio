@@ -476,6 +476,13 @@ class LayoutLMAMIBuilder(ComponentResource):
                       fi
                       sleep 20
                     done
+                    # Fail build if setup didn't complete successfully within timeout
+                    if [ "$STATUS" != "Success" ]; then
+                      echo "ERROR: Setup did not complete successfully within timeout. Final status: $STATUS"
+                      aws ssm get-command-invocation --command-id $COMMAND_ID --instance-id $INSTANCE_ID || true
+                      aws ec2 terminate-instances --instance-ids $INSTANCE_ID
+                      exit 1
+                    fi
 
                   # Stop the instance before creating AMI (cleaner state)
                   - echo "Stopping instance before creating AMI..."

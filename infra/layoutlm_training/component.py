@@ -46,9 +46,6 @@ class LayoutLMTrainingInfra(ComponentResource):
 
         stack = pulumi.get_stack()
 
-        # Determine if we're using a custom AMI
-        self._use_custom_ami = ami_id is not None or ami_ssm_param is not None
-
         # S3 bucket for models/artifacts/wheels
         self.bucket = aws.s3.Bucket(
             f"{name}-models",
@@ -153,6 +150,50 @@ class LayoutLMTrainingInfra(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Determine AMI ID and whether we're using a custom AMI
+        # This must be computed BEFORE user data generation because SSM lookup may fail
+        if ami_id:
+            # Direct AMI ID provided
+            resolved_ami_id = ami_id
+            self._use_custom_ami = True
+            pulumi.log.info(f"Using provided AMI ID: {ami_id}")
+        elif ami_ssm_param:
+            # Look up AMI ID from SSM parameter
+            try:
+                ssm_param = aws.ssm.get_parameter(name=ami_ssm_param)
+                resolved_ami_id = ssm_param.value
+                self._use_custom_ami = True
+                pulumi.log.info(
+                    f"Using AMI from SSM param {ami_ssm_param}: {resolved_ami_id}"
+                )
+            except Exception:
+                # SSM param doesn't exist yet, fall back to base AMI
+                # IMPORTANT: Use full user data since base AMI has no pre-installed deps
+                pulumi.log.warn(
+                    f"SSM param {ami_ssm_param} not found, using base AMI with full setup. "
+                    "Run `pulumi up` again after AMI build completes."
+                )
+                resolved_ami_id = aws.ec2.get_ami(
+                    most_recent=True,
+                    owners=["amazon"],
+                    filters=[
+                        {"name": "name", "values": ["Deep Learning * AMI GPU PyTorch*"]},
+                        {"name": "architecture", "values": ["x86_64"]},
+                    ],
+                ).id
+                self._use_custom_ami = False
+        else:
+            # No custom AMI, use base Deep Learning AMI
+            resolved_ami_id = aws.ec2.get_ami(
+                most_recent=True,
+                owners=["amazon"],
+                filters=[
+                    {"name": "name", "values": ["Deep Learning * AMI GPU PyTorch*"]},
+                    {"name": "architecture", "values": ["x86_64"]},
+                ],
+            ).id
+            self._use_custom_ami = False
+
         # Generate user data based on whether we're using custom AMI
         if self._use_custom_ami:
             user_data = Output.all(
@@ -185,44 +226,6 @@ class LayoutLMTrainingInfra(ComponentResource):
         user_data_b64 = user_data.apply(
             lambda s: base64.b64encode(s.encode("utf-8")).decode("utf-8")
         )
-
-        # Determine AMI ID
-        if ami_id:
-            # Direct AMI ID provided
-            resolved_ami_id = ami_id
-            pulumi.log.info(f"Using provided AMI ID: {ami_id}")
-        elif ami_ssm_param:
-            # Look up AMI ID from SSM parameter
-            try:
-                ssm_param = aws.ssm.get_parameter(name=ami_ssm_param)
-                resolved_ami_id = ssm_param.value
-                pulumi.log.info(
-                    f"Using AMI from SSM param {ami_ssm_param}: {resolved_ami_id}"
-                )
-            except Exception:
-                # SSM param doesn't exist yet, fall back to base AMI
-                pulumi.log.warn(
-                    f"SSM param {ami_ssm_param} not found, using base AMI. "
-                    "Run `pulumi up` again after AMI build completes."
-                )
-                resolved_ami_id = aws.ec2.get_ami(
-                    most_recent=True,
-                    owners=["amazon"],
-                    filters=[
-                        {"name": "name", "values": ["Deep Learning * AMI GPU PyTorch*"]},
-                        {"name": "architecture", "values": ["x86_64"]},
-                    ],
-                ).id
-        else:
-            # No custom AMI, use base Deep Learning AMI
-            resolved_ami_id = aws.ec2.get_ami(
-                most_recent=True,
-                owners=["amazon"],
-                filters=[
-                    {"name": "name", "values": ["Deep Learning * AMI GPU PyTorch*"]},
-                    {"name": "architecture", "values": ["x86_64"]},
-                ],
-            ).id
 
         # Launch template
         self.launch_template = aws.ec2.LaunchTemplate(
