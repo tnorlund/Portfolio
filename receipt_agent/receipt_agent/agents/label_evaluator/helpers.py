@@ -10,7 +10,6 @@ computing label patterns across receipts, and applying validation rules.
 
 import logging
 import math
-import os
 import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -2780,6 +2779,9 @@ def detect_label_conflicts(
     contradictions appear (e.g., same price labeled as both UNIT_PRICE and
     LINE_TOTAL).
 
+    Labels with validation_status=INVALID are excluded since they've already
+    been rejected in the audit trail.
+
     Args:
         labels: All ReceiptWordLabel objects for a receipt
 
@@ -2787,9 +2789,12 @@ def detect_label_conflicts(
         List of (line_id, word_id, conflicting_labels) tuples where labels
         conflict
     """
-    # Group labels by position
+    # Group labels by position, excluding INVALID labels
     labels_by_position = defaultdict(set)
     for label in labels:
+        # Skip labels already marked as INVALID in the audit trail
+        if label.validation_status == "INVALID":
+            continue
         position = (label.line_id, label.word_id)
         labels_by_position[position].add(label.label)
 
@@ -2819,87 +2824,21 @@ def classify_conflicts_with_llm(
     receipt_label: str,
 ) -> Dict[Tuple[int, int], str]:
     """
-    Use LLM to classify each conflict as REAL_ERROR or FORMAT_VARIATION.
+    Classify each conflict as REAL_ERROR or FORMAT_VARIATION.
 
-    This distinguishes between:
-    - REAL_ERROR: Labeling mistake or parsing error (should flag)
-    - FORMAT_VARIATION: Expected format ambiguity in this merchant's receipts
+    Uses deterministic heuristics based on known label pair semantics:
+    - UNIT_PRICE + LINE_TOTAL: FORMAT_VARIATION (expected ambiguity)
+    - PRODUCT_NAME + anything: REAL_ERROR (semantic impossibility)
 
     Args:
         conflicts: List of (line_id, word_id, labels_set) tuples
-        receipt_label: Name of merchant/receipt type
+        receipt_label: Name of merchant/receipt type (unused, kept for API compat)
 
     Returns:
         Dict mapping (line_id, word_id) to classification
     """
-    try:
-        from langchain_ollama import ChatOllama
-    except ImportError:
-        logger.warning(
-            "ChatOllama not available, using heuristic classification"
-        )
-        return _heuristic_conflict_classification(conflicts)
-
-    classifications = {}
-
-    for line_id, word_id, label_set in conflicts:
-        labels_str = ", ".join(sorted(label_set))
-        conflicting_pairs = []
-
-        for label1, label2 in CONFLICTING_LABEL_PAIRS:
-            if label1 in label_set and label2 in label_set:
-                conflicting_pairs.append(f"{label1} & {label2}")
-
-        prompt = f"""
-You are analyzing label conflicts in a {receipt_label} receipt.
-
-At line {line_id}, word {word_id}, we found these conflicting labels:
-{labels_str}
-
-Conflicting pairs:
-{", ".join(conflicting_pairs)}
-
-Question: Is this a data quality issue or an expected format variation for
-{receipt_label}?
-
-Consider:
-- UNIT_PRICE ↔ LINE_TOTAL: Sprouts often shows both (FORMAT_VARIATION)
-- PRODUCT_NAME ↔ QUANTITY: Products aren't quantities (REAL_ERROR)
-- QUANTITY ↔ UNIT_PRICE: Quantity confusion (REAL_ERROR)
-
-Answer with ONLY one word: REAL_ERROR or FORMAT_VARIATION
-"""
-
-        try:
-            ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com")
-            ollama_model = os.environ.get("OLLAMA_MODEL", "gpt-oss:120b-cloud")
-            llm = ChatOllama(model=ollama_model, base_url=ollama_base_url)
-            response = llm.invoke(prompt)
-            classification = response.content.strip().upper()
-
-            if classification not in ("REAL_ERROR", "FORMAT_VARIATION"):
-                # Fallback if LLM didn't give clean answer
-                classification = _classify_conflict_heuristic(label_set)
-
-            classifications[(line_id, word_id)] = classification
-            logger.debug(
-                "Conflict at line %s, word %s: %s",
-                line_id,
-                word_id,
-                classification,
-            )
-
-        except Exception as e:
-            logger.warning(
-                "LLM classification failed for line %s: %s, using heuristic",
-                line_id,
-                e,
-            )
-            classifications[(line_id, word_id)] = _classify_conflict_heuristic(
-                label_set
-            )
-
-    return classifications
+    # Use heuristics - they're deterministic and match the known patterns
+    return _heuristic_conflict_classification(conflicts)
 
 
 def _classify_conflict_heuristic(label_set: Set[str]) -> str:
