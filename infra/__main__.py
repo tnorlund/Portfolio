@@ -1,8 +1,14 @@
 """Main Pulumi program for AWS infrastructure."""
 
-import base64
 import os
 import sys
+
+# Suppress gRPC fork handler warnings before any gRPC imports
+# These warnings are benign but noisy during multiprocess operations
+os.environ.setdefault("GRPC_ENABLE_FORK_SUPPORT", "0")
+os.environ.setdefault("GRPC_VERBOSITY", "ERROR")
+
+import base64
 from pathlib import Path
 
 # Add parent directory to path so 'infra' package can be imported
