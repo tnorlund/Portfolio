@@ -16,7 +16,6 @@ from typing import Any
 
 import boto3
 import httpx
-from botocore.exceptions import ClientError
 
 # Import tracing utilities - works in both container and local environments
 try:
@@ -46,22 +45,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3")
-
-
-def load_json_from_s3(bucket: str, key: str) -> dict[str, Any] | None:
-    """Load JSON data from S3, return None if not found."""
-    try:
-        response = s3.get_object(Bucket=bucket, Key=key)
-        return json.loads(response["Body"].read().decode("utf-8"))
-    except ClientError as e:
-        error_code = e.response.get("Error", {}).get("Code")
-        if error_code in {"NoSuchKey", "404"}:
-            return None
-        logger.warning("Error loading %s: %s", key, e)
-        raise
-    except Exception as e:
-        logger.warning(f"Error loading {key}: {e}")
-        return None
 
 
 def upload_json_to_s3(bucket: str, key: str, data: Any) -> None:
@@ -329,8 +312,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "execution_id": "abc123",
         "execution_arn": "arn:aws:states:...",  # From $$.Execution.Id
         "batch_bucket": "bucket-name",
-        "merchant_name": "Home Depot",
-        "force_rediscovery": false
+        "merchant_name": "Home Depot"
     }
 
     Output:
@@ -339,7 +321,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "merchant_name": "Home Depot",
         "patterns_s3_key": "patterns/home_depot.json",
         "patterns": { ... discovered patterns ... },
-        "cached": true/false,
         "error": null or "error message",
         "trace_id": "...",       # For downstream Lambdas
         "root_run_id": "..."     # For downstream Lambdas
@@ -351,7 +332,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     merchant_name = event.get("merchant_name", "Unknown")
-    force_rediscovery = event.get("force_rediscovery", False)
 
     if not batch_bucket:
         return {
@@ -359,7 +339,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "merchant_name": merchant_name,
             "patterns_s3_key": None,
             "patterns": None,
-            "cached": False,
             "error": "batch_bucket is required",
         }
 
@@ -374,7 +353,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         inputs={
             "execution_id": execution_id,
             "merchant_name": merchant_name,
-            "force_rediscovery": force_rediscovery,
         },
         metadata={
             "execution_id": execution_id,
@@ -395,43 +373,64 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     result = None
 
     try:
-        # Check if patterns already exist
-        if not force_rediscovery:
-            with child_trace("check_cache", trace_ctx):
-                existing = load_json_from_s3(batch_bucket, patterns_s3_key)
-                if existing:
-                    logger.info(f"Using cached patterns for {merchant_name}")
-                    result = {
-                        "execution_id": execution_id,
-                        "merchant_name": merchant_name,
-                        "patterns_s3_key": patterns_s3_key,
-                        "patterns": existing,
-                        "cached": True,
-                        "error": None,
-                    }
+        # Always run pattern discovery (no caching)
+        logger.info(f"Discovering patterns for {merchant_name}")
+        table_name = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable")
+        dynamo_client = DynamoClient(table_name=table_name)
 
-        # Only proceed if we don't have a cached result
-        if result is None:
-            # Build receipt structure for analysis
-            logger.info(f"Discovering patterns for {merchant_name}")
-            table_name = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable")
-            dynamo_client = DynamoClient(table_name=table_name)
+        with child_trace("load_sample_receipts", trace_ctx):
+            receipts_data = build_receipt_structure(
+                dynamo_client, merchant_name, limit=3
+            )
 
-            with child_trace("load_sample_receipts", trace_ctx):
-                receipts_data = build_receipt_structure(
-                    dynamo_client, merchant_name, limit=3
+        if not receipts_data:
+            logger.warning(f"No receipt data found for {merchant_name}")
+            # Return default patterns
+            default_patterns = {
+                "merchant": merchant_name,
+                "item_structure": "unknown",
+                "lines_per_item": {"typical": 1, "min": 1, "max": 3},
+                "item_start_marker": "PRODUCT_NAME label",
+                "item_end_marker": "LINE_TOTAL label",
+                "barcode_pattern": None,
+                "label_positions": {
+                    "PRODUCT_NAME": "left",
+                    "LINE_TOTAL": "right",
+                    "UNIT_PRICE": "right",
+                    "QUANTITY": "varies",
+                },
+                "grouping_rule": "Group all words between consecutive LINE_TOTAL labels",
+                "special_markers": [],
+                "auto_generated": True,
+                "reason": "no_receipt_data",
+            }
+            upload_json_to_s3(batch_bucket, patterns_s3_key, default_patterns)
+            result = {
+                "execution_id": execution_id,
+                "merchant_name": merchant_name,
+                "patterns_s3_key": patterns_s3_key,
+                "patterns": default_patterns,
+                                "error": None,
+            }
+        else:
+            # Build prompt and call LLM
+            with child_trace("build_prompt", trace_ctx):
+                prompt = build_discovery_prompt(merchant_name, receipts_data)
+
+            patterns = discover_patterns_with_llm(prompt, trace_ctx)
+
+            if not patterns:
+                logger.warning(
+                    f"LLM pattern discovery failed for {merchant_name}"
                 )
-
-            if not receipts_data:
-                logger.warning(f"No receipt data found for {merchant_name}")
                 # Return default patterns
                 default_patterns = {
                     "merchant": merchant_name,
                     "item_structure": "unknown",
-                    "lines_per_item": {"typical": 1, "min": 1, "max": 3},
-                    "item_start_marker": "PRODUCT_NAME label",
+                    "lines_per_item": {"typical": 2, "min": 1, "max": 5},
+                    "item_start_marker": "PRODUCT_NAME or barcode",
                     "item_end_marker": "LINE_TOTAL label",
-                    "barcode_pattern": None,
+                    "barcode_pattern": r"\d{10,14}",
                     "label_positions": {
                         "PRODUCT_NAME": "left",
                         "LINE_TOTAL": "right",
@@ -441,78 +440,37 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "grouping_rule": "Group all words between consecutive LINE_TOTAL labels",
                     "special_markers": [],
                     "auto_generated": True,
-                    "reason": "no_receipt_data",
+                    "reason": "llm_discovery_failed",
                 }
-                upload_json_to_s3(batch_bucket, patterns_s3_key, default_patterns)
+                upload_json_to_s3(
+                    batch_bucket, patterns_s3_key, default_patterns
+                )
                 result = {
                     "execution_id": execution_id,
                     "merchant_name": merchant_name,
                     "patterns_s3_key": patterns_s3_key,
                     "patterns": default_patterns,
-                    "cached": False,
-                    "error": None,
+                                        "error": "LLM discovery failed, using defaults",
                 }
             else:
-                # Build prompt and call LLM
-                with child_trace("build_prompt", trace_ctx):
-                    prompt = build_discovery_prompt(merchant_name, receipts_data)
+                # Add metadata
+                patterns["discovered_from_receipts"] = len(receipts_data)
+                patterns["auto_generated"] = False
 
-                patterns = discover_patterns_with_llm(prompt, trace_ctx)
-
-                if not patterns:
-                    logger.warning(
-                        f"LLM pattern discovery failed for {merchant_name}"
+                # Store patterns
+                with child_trace("upload_patterns", trace_ctx):
+                    upload_json_to_s3(batch_bucket, patterns_s3_key, patterns)
+                    logger.info(
+                        f"Stored patterns for {merchant_name} at {patterns_s3_key}"
                     )
-                    # Return default patterns
-                    default_patterns = {
-                        "merchant": merchant_name,
-                        "item_structure": "unknown",
-                        "lines_per_item": {"typical": 2, "min": 1, "max": 5},
-                        "item_start_marker": "PRODUCT_NAME or barcode",
-                        "item_end_marker": "LINE_TOTAL label",
-                        "barcode_pattern": r"\d{10,14}",
-                        "label_positions": {
-                            "PRODUCT_NAME": "left",
-                            "LINE_TOTAL": "right",
-                            "UNIT_PRICE": "right",
-                            "QUANTITY": "varies",
-                        },
-                        "grouping_rule": "Group all words between consecutive LINE_TOTAL labels",
-                        "special_markers": [],
-                        "auto_generated": True,
-                        "reason": "llm_discovery_failed",
-                    }
-                    upload_json_to_s3(
-                        batch_bucket, patterns_s3_key, default_patterns
-                    )
-                    result = {
-                        "execution_id": execution_id,
-                        "merchant_name": merchant_name,
-                        "patterns_s3_key": patterns_s3_key,
-                        "patterns": default_patterns,
-                        "cached": False,
-                        "error": "LLM discovery failed, using defaults",
-                    }
-                else:
-                    # Add metadata
-                    patterns["discovered_from_receipts"] = len(receipts_data)
-                    patterns["auto_generated"] = False
 
-                    # Store patterns
-                    with child_trace("upload_patterns", trace_ctx):
-                        upload_json_to_s3(batch_bucket, patterns_s3_key, patterns)
-                        logger.info(
-                            f"Stored patterns for {merchant_name} at {patterns_s3_key}"
-                        )
-
-                    result = {
-                        "execution_id": execution_id,
-                        "merchant_name": merchant_name,
-                        "patterns_s3_key": patterns_s3_key,
-                        "patterns": patterns,
-                        "cached": False,
-                        "error": None,
-                    }
+                result = {
+                    "execution_id": execution_id,
+                    "merchant_name": merchant_name,
+                    "patterns_s3_key": patterns_s3_key,
+                    "patterns": patterns,
+                                        "error": None,
+                }
 
     finally:
         # End the root trace and flush
