@@ -4,14 +4,12 @@ This handler resumes the trace and creates child spans for LLM review.
 LangChain's ChatOllama calls will appear as children in the unified trace.
 """
 
-import json
 import logging
 import os
-import re
 import sys
 import time
 from collections import Counter, defaultdict
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import boto3
 from botocore.config import Config
@@ -60,18 +58,24 @@ s3 = boto3.client(
 )
 
 
-# Import utility functions from the original llm_review module
-from llm_review import (
-    assemble_receipt_text,
+# Import from receipt_agent instead of duplicate llm_review module
+from receipt_agent.agents.label_evaluator.helpers import assemble_receipt_text
+from receipt_agent.prompts.label_evaluator import (
     build_receipt_context_prompt,
+    parse_batched_llm_response,
+)
+from receipt_agent.utils.chroma_helpers import (
     compute_label_distribution,
     compute_merchant_breakdown,
     compute_similarity_distribution,
-    download_chromadb_snapshot,
     enrich_evidence_with_dynamo_reasoning,
-    load_json_from_s3,
-    parse_batched_llm_response,
     query_similar_words,
+)
+
+# Lambda-specific S3 utilities
+from utils.s3_helpers import (
+    download_chromadb_snapshot,
+    load_json_from_s3,
     upload_json_to_s3,
 )
 
@@ -155,7 +159,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             # 1. Load collected issues from S3
             with child_trace("load_issues", trace_ctx):
                 logger.info(f"Loading issues from s3://{batch_bucket}/{data_s3_key}")
-                issues_data = load_json_from_s3(batch_bucket, data_s3_key)
+                issues_data = load_json_from_s3(s3, batch_bucket, data_s3_key)
                 collected_issues = issues_data.get("issues", [])
 
             total_issues = len(collected_issues)
@@ -188,7 +192,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                             f"s3://{batch_bucket}/{line_item_patterns_s3_key}"
                         )
                         line_item_patterns = load_json_from_s3(
-                            batch_bucket, line_item_patterns_s3_key
+                            s3, batch_bucket, line_item_patterns_s3_key
                         )
                         logger.info(
                             f"Loaded patterns: {line_item_patterns.get('item_structure', 'unknown')} "
@@ -206,7 +210,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                             "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY", "/tmp/chromadb"
                         )
                         download_chromadb_snapshot(
-                            chromadb_bucket, "words", chroma_path
+                            s3, chromadb_bucket, "words", chroma_path
                         )
                         os.environ["RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"] = (
                             chroma_path
@@ -315,7 +319,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     )
                     try:
                         receipt_data = load_json_from_s3(
-                            batch_bucket, receipt_data_key
+                            s3, batch_bucket, receipt_data_key
                         )
                         receipt_words = receipt_data.get("words", [])
                         receipt_labels = receipt_data.get("labels", [])
@@ -532,7 +536,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     "rate_limit_stats": rate_limit_stats,
                 }
 
-                upload_json_to_s3(batch_bucket, reviewed_s3_key, reviewed_data)
+                upload_json_to_s3(s3, batch_bucket, reviewed_s3_key, reviewed_data)
                 logger.info(
                     f"Uploaded reviewed results to s3://{batch_bucket}/{reviewed_s3_key}"
                 )
