@@ -32,8 +32,8 @@ from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.s3 import (
     Bucket,
-    BucketVersioningV2,
-    BucketVersioningV2VersioningConfigurationArgs,
+    BucketVersioning,
+    BucketVersioningVersioningConfigurationArgs,
 )
 from pulumi_aws.sfn import StateMachine, StateMachineLoggingConfigurationArgs
 
@@ -111,10 +111,10 @@ class LabelSuggestionStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        BucketVersioningV2(
+        BucketVersioning(
             f"{name}-batch-bucket-versioning",
             bucket=self.batch_bucket.id,
-            versioning_configuration=BucketVersioningV2VersioningConfigurationArgs(
+            versioning_configuration=BucketVersioningVersioningConfigurationArgs(
                 status="Enabled"
             ),
             opts=ResourceOptions(parent=self.batch_bucket),
