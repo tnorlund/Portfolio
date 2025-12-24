@@ -494,7 +494,7 @@ echo "✅ Uploaded source.zip"
 
     def _setup_pipeline(self, package_hash: str):
         # Artifact bucket
-        build_bucket, _bucket_versioning = make_artifact_bucket(
+        build_bucket, _bucket_versioning, _encryption = make_artifact_bucket(
             f"{self.name}-fn", parent=self
         )
 

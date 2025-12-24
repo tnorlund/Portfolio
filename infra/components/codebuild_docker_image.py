@@ -488,7 +488,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
         """Setup S3, CodeBuild, and CodePipeline for Docker builds."""
 
         # Artifact bucket
-        build_bucket, bucket_versioning = make_artifact_bucket(
+        build_bucket, bucket_versioning, _encryption = make_artifact_bucket(
             self.name, parent=self
         )
 
