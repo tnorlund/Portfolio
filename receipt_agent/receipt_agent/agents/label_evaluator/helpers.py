@@ -10,6 +10,7 @@ computing label patterns across receipts, and applying validation rules.
 
 import logging
 import math
+import os
 import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -2870,7 +2871,9 @@ Answer with ONLY one word: REAL_ERROR or FORMAT_VARIATION
 """
 
         try:
-            llm = ChatOllama(model="gpt-oss:20b-cloud", temperature=0.3)
+            ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com")
+            ollama_model = os.environ.get("OLLAMA_MODEL", "gpt-oss:120b-cloud")
+            llm = ChatOllama(model=ollama_model, base_url=ollama_base_url)
             response = llm.invoke(prompt)
             classification = response.content.strip().upper()
 

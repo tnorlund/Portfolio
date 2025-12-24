@@ -569,6 +569,9 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
             "environment": {
                 "BATCH_BUCKET": self.batch_bucket.bucket,
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                "OLLAMA_API_KEY": ollama_api_key,
+                "OLLAMA_BASE_URL": "https://ollama.com",
+                "OLLAMA_MODEL": "gpt-oss:120b-cloud",
                 **tracing_env,
             },
         }
