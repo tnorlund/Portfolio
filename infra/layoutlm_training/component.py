@@ -44,8 +44,6 @@ class LayoutLMTrainingInfra(ComponentResource):
     ) -> None:
         super().__init__("custom:ml:LayoutLMTrainingInfra", name, None, opts)
 
-        stack = pulumi.get_stack()
-
         # S3 bucket for models/artifacts/wheels
         self.bucket = aws.s3.Bucket(
             f"{name}-models",
@@ -166,11 +164,11 @@ class LayoutLMTrainingInfra(ComponentResource):
                 pulumi.log.info(
                     f"Using AMI from SSM param {ami_ssm_param}: {resolved_ami_id}"
                 )
-            except Exception:
+            except Exception as e:
                 # SSM param doesn't exist yet, fall back to base AMI
                 # IMPORTANT: Use full user data since base AMI has no pre-installed deps
                 pulumi.log.warn(
-                    f"SSM param {ami_ssm_param} not found, using base AMI with full setup. "
+                    f"SSM param {ami_ssm_param} lookup failed ({e}), using base AMI with full setup. "
                     "Run `pulumi up` again after AMI build completes."
                 )
                 resolved_ami_id = aws.ec2.get_ami(

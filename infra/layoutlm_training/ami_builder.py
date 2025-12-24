@@ -64,7 +64,6 @@ class LayoutLMAMIBuilder(ComponentResource):
         super().__init__("custom:ml:LayoutLMAMIBuilder", name, None, opts)
 
         stack = pulumi.get_stack()
-        region = aws.config.region or "us-east-1"
 
         # Get the directory containing this file
         this_dir = Path(__file__).parent
