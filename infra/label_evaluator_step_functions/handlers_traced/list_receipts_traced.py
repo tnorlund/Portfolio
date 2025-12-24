@@ -1,7 +1,7 @@
-"""List receipts for a merchant with trace propagation.
+"""List receipts for a merchant for the traced Step Function.
 
-This handler resumes the trace from ListMerchants and creates a
-child trace for processing this specific merchant.
+This is a zip-based Lambda that doesn't have access to langsmith.
+Tracing is handled by the container-based Lambdas.
 """
 
 # pylint: disable=import-outside-toplevel
@@ -14,14 +14,6 @@ from typing import TYPE_CHECKING, Any
 
 import boto3
 
-# Import tracing utilities
-import sys
-sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "lambdas", "utils"
-))
-from tracing import flush_langsmith_traces, resume_trace
-
 if TYPE_CHECKING:
     from handlers.evaluator_types import ListReceiptsOutput
 
@@ -33,7 +25,7 @@ s3 = boto3.client("s3")
 
 def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
     """
-    List receipts for a specific merchant with trace propagation.
+    List receipts for a specific merchant.
 
     Input:
     {
@@ -42,15 +34,13 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
         "batch_size": 10,
         "merchant_name": "Sprouts Farmers Market",
         "max_training_receipts": 50,
-        "limit": null,
-        "langsmith_headers": {...}  # From previous step
+        "limit": null
     }
 
     Output:
     {
         "receipt_batches": [[{image_id, receipt_id}, ...], ...],
-        "total_receipts": 184,
-        "langsmith_headers": {...}  # For propagation
+        "total_receipts": 184
     }
     """
     execution_id = event.get("execution_id", "unknown")
@@ -68,104 +58,85 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
 
-    # Resume the trace as a child
-    with resume_trace(
-        f"list_receipts:{merchant_name[:20]}",
-        event,
-        metadata={
-            "merchant_name": merchant_name,
-            "batch_size": batch_size,
-        },
-        tags=["list-receipts"],
-    ) as trace_ctx:
+    logger.info(
+        "Listing receipts for merchant '%s' (batch_size=%s, limit=%s)",
+        merchant_name,
+        batch_size,
+        limit,
+    )
 
-        logger.info(
-            "Listing receipts for merchant '%s' (batch_size=%s, limit=%s)",
+    # Import DynamoDB client
+    from receipt_dynamo import DynamoClient
+
+    table_name = os.environ.get("DYNAMODB_TABLE_NAME")
+    if not table_name:
+        raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
+
+    dynamo = DynamoClient(table_name=table_name)
+
+    # Get receipts for this merchant
+    all_receipts = []
+    last_key = None
+    query_limit = min(limit, 1000) if limit else 1000
+
+    while True:
+        places, last_key = dynamo.get_receipt_places_by_merchant(
             merchant_name,
-            batch_size,
-            limit,
+            limit=query_limit,
+            last_evaluated_key=last_key,
         )
 
-        # Import DynamoDB client
-        from receipt_dynamo import DynamoClient
+        for place in places:
+            all_receipts.append({
+                "image_id": place.image_id,
+                "receipt_id": place.receipt_id,
+                "merchant_name": place.merchant_name,
+            })
 
-        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
-        if not table_name:
-            raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
-
-        dynamo = DynamoClient(table_name=table_name)
-
-        # Get receipts for this merchant
-        all_receipts = []
-        last_key = None
-        query_limit = min(limit, 1000) if limit else 1000
-
-        while True:
-            places, last_key = dynamo.get_receipt_places_by_merchant(
-                merchant_name,
-                limit=query_limit,
-                last_evaluated_key=last_key,
-            )
-
-            for place in places:
-                all_receipts.append({
-                    "image_id": place.image_id,
-                    "receipt_id": place.receipt_id,
-                    "merchant_name": place.merchant_name,
-                })
-
-                if limit and len(all_receipts) >= limit:
-                    break
-
-            if not last_key or (limit and len(all_receipts) >= limit):
+            if limit and len(all_receipts) >= limit:
                 break
 
-        logger.info("Found %s receipts for merchant '%s'", len(all_receipts), merchant_name)
+        if not last_key or (limit and len(all_receipts) >= limit):
+            break
 
-        # Split into batches
-        receipt_batches = []
-        for i in range(0, len(all_receipts), batch_size):
-            receipt_batches.append(all_receipts[i:i + batch_size])
+    logger.info("Found %s receipts for merchant '%s'", len(all_receipts), merchant_name)
 
-        # Save batch manifest to S3
-        manifest = {
-            "execution_id": execution_id,
-            "merchant_name": merchant_name,
-            "total_receipts": len(all_receipts),
-            "batch_count": len(receipt_batches),
-            "batch_size": batch_size,
-            "max_training_receipts": max_training_receipts,
-        }
+    # Split into batches
+    receipt_batches = []
+    for i in range(0, len(all_receipts), batch_size):
+        receipt_batches.append(all_receipts[i:i + batch_size])
 
-        # Create safe merchant key
-        safe_merchant = "".join(
-            c if c.isalnum() else "_" for c in merchant_name
-        )[:50]
-        manifest_key = f"manifests/{execution_id}/{safe_merchant}_receipts.json"
+    # Save batch manifest to S3
+    manifest = {
+        "execution_id": execution_id,
+        "merchant_name": merchant_name,
+        "total_receipts": len(all_receipts),
+        "batch_count": len(receipt_batches),
+        "batch_size": batch_size,
+        "max_training_receipts": max_training_receipts,
+    }
 
-        try:
-            s3.put_object(
-                Bucket=batch_bucket,
-                Key=manifest_key,
-                Body=json.dumps(manifest, indent=2).encode("utf-8"),
-                ContentType="application/json",
-            )
-        except Exception:
-            logger.exception("Failed to upload manifest")
+    # Create safe merchant key
+    safe_merchant = "".join(
+        c if c.isalnum() else "_" for c in merchant_name
+    )[:50]
+    manifest_key = f"manifests/{execution_id}/{safe_merchant}_receipts.json"
 
-        result = {
-            "receipt_batches": receipt_batches,
-            "total_receipts": len(all_receipts),
-            "batch_count": len(receipt_batches),
-            "merchant_name": merchant_name,
-            "max_training_receipts": max_training_receipts,
-            "manifest_s3_key": manifest_key,
-        }
+    try:
+        s3.put_object(
+            Bucket=batch_bucket,
+            Key=manifest_key,
+            Body=json.dumps(manifest, indent=2).encode("utf-8"),
+            ContentType="application/json",
+        )
+    except Exception:
+        logger.exception("Failed to upload manifest")
 
-        # Add trace headers for propagation
-        output = trace_ctx.wrap_output(result)
-
-    # Flush traces before Lambda exits
-    flush_langsmith_traces()
-
-    return output
+    return {
+        "receipt_batches": receipt_batches,
+        "total_receipts": len(all_receipts),
+        "batch_count": len(receipt_batches),
+        "merchant_name": merchant_name,
+        "max_training_receipts": max_training_receipts,
+        "manifest_s3_key": manifest_key,
+    }

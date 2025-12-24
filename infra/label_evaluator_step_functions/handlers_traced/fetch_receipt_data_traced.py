@@ -1,7 +1,7 @@
-"""Fetch receipt data with trace propagation.
+"""Fetch receipt data for the traced Step Function.
 
-This handler resumes the trace and creates a child span for
-fetching individual receipt data from DynamoDB.
+This is a zip-based Lambda that doesn't have access to langsmith.
+Tracing is handled by the container-based Lambdas.
 """
 
 # pylint: disable=import-outside-toplevel
@@ -14,15 +14,8 @@ from typing import Any
 
 import boto3
 
-# Import tracing utilities
-import sys
-sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "lambdas", "utils"
-))
-from tracing import flush_langsmith_traces, resume_trace
-
 # Import serialization from lambdas
+import sys
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "lambdas"
@@ -37,14 +30,13 @@ s3 = boto3.client("s3")
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
-    Fetch receipt data from DynamoDB and save to S3 with trace propagation.
+    Fetch receipt data from DynamoDB and save to S3.
 
     Input:
     {
         "receipt": {"image_id": "img1", "receipt_id": 1, "merchant_name": "..."},
         "execution_id": "abc123",
-        "batch_bucket": "bucket-name",
-        "langsmith_headers": {...}
+        "batch_bucket": "bucket-name"
     }
 
     Output:
@@ -53,8 +45,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "image_id": "img1",
         "receipt_id": 1,
         "word_count": 50,
-        "label_count": 12,
-        "langsmith_headers": {...}
+        "label_count": 12
     }
     """
     receipt = event.get("receipt", {})
@@ -69,88 +60,68 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
 
-    # Resume the trace as a child
-    with resume_trace(
-        f"fetch_receipt:{image_id[:8]}#{receipt_id}",
-        event,
-        metadata={
-            "image_id": image_id,
-            "receipt_id": receipt_id,
-            "merchant_name": merchant_name,
-        },
-        tags=["fetch-receipt"],
-    ) as trace_ctx:
+    logger.info(
+        "Fetching data for receipt %s#%s",
+        image_id,
+        receipt_id,
+    )
 
-        logger.info(
-            "Fetching data for receipt %s#%s",
-            image_id,
-            receipt_id,
-        )
+    # Import DynamoDB client
+    from receipt_dynamo import DynamoClient
 
-        # Import DynamoDB client
-        from receipt_dynamo import DynamoClient
+    table_name = os.environ.get("DYNAMODB_TABLE_NAME")
+    if not table_name:
+        raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
 
-        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
-        if not table_name:
-            raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
+    dynamo = DynamoClient(table_name=table_name)
 
-        dynamo = DynamoClient(table_name=table_name)
+    # Fetch receipt data
+    try:
+        place = dynamo.get_receipt_place(image_id, receipt_id)
+    except Exception:
+        logger.warning("No ReceiptPlace found for %s#%s", image_id, receipt_id)
+        place = None
 
-        # Fetch receipt data
-        try:
-            place = dynamo.get_receipt_place(image_id, receipt_id)
-        except Exception:
-            logger.warning("No ReceiptPlace found for %s#%s", image_id, receipt_id)
-            place = None
+    words = dynamo.list_receipt_words_from_receipt(image_id, receipt_id)
+    labels, _ = dynamo.list_receipt_word_labels_for_receipt(image_id, receipt_id)
 
-        words = dynamo.list_receipt_words_from_receipt(image_id, receipt_id)
-        labels, _ = dynamo.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+    logger.info(
+        "Fetched %s words, %s labels for %s#%s",
+        len(words),
+        len(labels),
+        image_id,
+        receipt_id,
+    )
 
-        logger.info(
-            "Fetched %s words, %s labels for %s#%s",
-            len(words),
-            len(labels),
-            image_id,
-            receipt_id,
-        )
+    # Serialize and save to S3
+    data = {
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "merchant_name": merchant_name,
+        "place": serialize_place(place) if place else None,
+        "words": [serialize_word(w) for w in words],
+        "labels": [serialize_label(label) for label in labels],
+    }
 
-        # Serialize and save to S3
-        data = {
-            "image_id": image_id,
-            "receipt_id": receipt_id,
-            "merchant_name": merchant_name,
-            "place": serialize_place(place) if place else None,
-            "words": [serialize_word(w) for w in words],
-            "labels": [serialize_label(label) for label in labels],
-        }
+    data_s3_key = f"data/{execution_id}/{image_id}_{receipt_id}.json"
 
-        data_s3_key = f"data/{execution_id}/{image_id}_{receipt_id}.json"
+    s3.put_object(
+        Bucket=batch_bucket,
+        Key=data_s3_key,
+        Body=json.dumps(data).encode("utf-8"),
+        ContentType="application/json",
+    )
 
-        s3.put_object(
-            Bucket=batch_bucket,
-            Key=data_s3_key,
-            Body=json.dumps(data).encode("utf-8"),
-            ContentType="application/json",
-        )
+    logger.info(
+        "Saved receipt data to s3://%s/%s",
+        batch_bucket,
+        data_s3_key,
+    )
 
-        logger.info(
-            "Saved receipt data to s3://%s/%s",
-            batch_bucket,
-            data_s3_key,
-        )
-
-        result = {
-            "data_s3_key": data_s3_key,
-            "image_id": image_id,
-            "receipt_id": receipt_id,
-            "word_count": len(words),
-            "label_count": len(labels),
-        }
-
-        # Add trace headers for propagation
-        output = trace_ctx.wrap_output(result)
-
-    # Flush traces before Lambda exits
-    flush_langsmith_traces()
-
-    return output
+    return {
+        "data_s3_key": data_s3_key,
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "word_count": len(words),
+        "label_count": len(labels),
+    }

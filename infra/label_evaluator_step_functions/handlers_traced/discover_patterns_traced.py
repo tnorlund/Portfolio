@@ -1,14 +1,13 @@
 """Discover line item patterns with trace propagation.
 
-This handler resumes the trace and creates a child span for
-LLM-based pattern discovery. The LLM call will be visible in
-the unified LangSmith trace.
+This handler STARTS the trace since it's the first container-based Lambda
+in the traced Step Function. The LLM call will be visible in the unified
+LangSmith trace.
 """
 
 import json
 import logging
 import os
-import re
 import sys
 from typing import Any
 
@@ -16,12 +15,17 @@ import boto3
 import httpx
 from botocore.exceptions import ClientError
 
-# Import tracing utilities
-sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "lambdas", "utils"
-))
-from tracing import child_trace, flush_langsmith_traces, resume_trace
+# Import tracing utilities - works in both container and local environments
+try:
+    # Container environment: tracing.py is in same directory
+    from tracing import child_trace, flush_langsmith_traces, start_trace
+except ImportError:
+    # Local/development environment: use path relative to this file
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "lambdas", "utils"
+    ))
+    from tracing import child_trace, flush_langsmith_traces, start_trace
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -290,13 +294,14 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
     Discover line item patterns for a merchant with trace propagation.
 
+    This is the FIRST container-based Lambda, so it STARTS the trace.
+
     Input:
     {
         "execution_id": "abc123",
         "batch_bucket": "bucket-name",
         "merchant_name": "Home Depot",
-        "force_rediscovery": false,
-        "langsmith_headers": {...}
+        "force_rediscovery": false
     }
 
     Output:
@@ -330,15 +335,16 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     merchant_hash = get_merchant_hash(merchant_name)
     patterns_s3_key = f"line_item_patterns/{merchant_hash}.json"
 
-    # Resume the trace as a child
-    with resume_trace(
-        f"discover_patterns:{merchant_name[:20]}",
+    # START the trace - this is the first container Lambda
+    with start_trace(
+        f"label_evaluator:{merchant_name[:20]}",
         event,
         metadata={
+            "execution_id": execution_id,
             "merchant_name": merchant_name,
             "force_rediscovery": force_rediscovery,
         },
-        tags=["discover-patterns", "llm"],
+        tags=["label-evaluator-traced", "discover-patterns", "llm"],
     ) as trace_ctx:
 
         # Check if patterns already exist

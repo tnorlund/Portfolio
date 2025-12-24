@@ -1,10 +1,17 @@
 """Shared S3 helpers for label evaluator Lambdas."""
 
+import hashlib
 import json
 from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
+
+
+def get_merchant_hash(merchant_name: str) -> str:
+    """Create a short, stable hash for merchant name S3 keys."""
+    digest = hashlib.sha256(merchant_name.encode("utf-8")).hexdigest()
+    return digest[:12]
 
 
 def load_json_from_s3(

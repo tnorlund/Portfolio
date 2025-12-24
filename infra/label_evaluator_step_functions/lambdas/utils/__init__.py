@@ -1,4 +1,8 @@
-"""Utilities for label evaluator Lambda functions."""
+"""Utilities for label evaluator Lambda functions.
+
+Note: tracing utilities are imported directly where needed, not re-exported here,
+because langsmith is only available in container-based Lambdas.
+"""
 
 from utils.emf_metrics import emf_metrics
 from utils.serialization import (
@@ -10,7 +14,6 @@ from utils.serialization import (
     serialize_place,
     serialize_word,
 )
-from utils.tracing import flush_langsmith_traces
 
 __all__ = [
     "deserialize_label",
@@ -18,7 +21,6 @@ __all__ = [
     "deserialize_place",
     "deserialize_word",
     "emf_metrics",
-    "flush_langsmith_traces",
     "serialize_label",
     "serialize_place",
     "serialize_word",

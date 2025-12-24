@@ -44,6 +44,9 @@ from dynamo_db import (
 )
 from embedding_step_functions import EmbeddingInfrastructure
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
+from label_evaluator_step_functions.infrastructure_traced import (
+    LabelEvaluatorTracedStepFunction,
+)
 from label_harmonizer_step_functions import LabelHarmonizerV3StepFunction
 from label_suggestion_step_functions import LabelSuggestionStepFunction
 from label_validation_agent_step_functions import (
@@ -1225,4 +1228,23 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
 pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
 pulumi.export(
     "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
+)
+
+# Label Evaluator Traced Step Function (with LangSmith observability)
+label_evaluator_traced_sf = LabelEvaluatorTracedStepFunction(
+    f"label-evaluator-traced-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
+    max_concurrency=10,
+    batch_size=25,
+)
+
+pulumi.export(
+    "label_evaluator_traced_sf_arn", label_evaluator_traced_sf.state_machine_arn
+)
+pulumi.export(
+    "label_evaluator_traced_batch_bucket_name",
+    label_evaluator_traced_sf.batch_bucket_name,
 )

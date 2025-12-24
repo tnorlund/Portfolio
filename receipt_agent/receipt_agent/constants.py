@@ -33,3 +33,6 @@ CORE_LABELS = {
     "CASH_BACK": "Cash back amount dispensed from purchase.",
     "REFUND": "Refund amount (full or partial return).",
 }
+
+# Set of valid core label names for quick lookup
+CORE_LABELS_SET = set(CORE_LABELS.keys())
