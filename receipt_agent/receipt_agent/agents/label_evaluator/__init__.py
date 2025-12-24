@@ -155,6 +155,13 @@ from receipt_agent.agents.label_evaluator.langsmith_evaluator import (
     label_accuracy_evaluator,
     label_quality_evaluator,
 )
+from receipt_agent.agents.label_evaluator.pattern_discovery import (
+    PatternDiscoveryConfig,
+    build_discovery_prompt,
+    build_receipt_structure,
+    discover_patterns_with_llm,
+    get_default_patterns,
+)
 
 __all__ = [
     # Graph and runners (full workflow with I/O)
@@ -218,4 +225,10 @@ __all__ = [
     "label_quality_evaluator",
     "LabelComparisonMetrics",
     "EvaluationQualityMetrics",
+    # Pattern discovery (for line item structure analysis)
+    "PatternDiscoveryConfig",
+    "build_receipt_structure",
+    "build_discovery_prompt",
+    "discover_patterns_with_llm",
+    "get_default_patterns",
 ]
