@@ -330,7 +330,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                         os.path.join(HANDLERS_DIR, "__init__.py")
                     ),
                     "handlers/evaluator_types.py": FileAsset(
-                        os.path.join(HANDLERS_DIR, "evaluator_types.py")
+                        os.path.join(CURRENT_DIR, "evaluator_types.py")
                     ),
                     # Include tracing utilities
                     "tracing.py": FileAsset(
@@ -574,7 +574,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         }
 
         compute_patterns_docker_image = CodeBuildDockerImage(
-            f"{name}-compute-patterns-img",
+            f"{name}-cp-img",
             dockerfile_path=(
                 "infra/label_evaluator_step_functions/lambdas/"
                 "Dockerfile.compute_patterns_traced"
@@ -613,7 +613,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         }
 
         evaluate_docker_image = CodeBuildDockerImage(
-            f"{name}-evaluate-img",
+            f"{name}-eval-img",
             dockerfile_path=(
                 "infra/label_evaluator_step_functions/lambdas/"
                 "Dockerfile.evaluate_traced"
@@ -656,7 +656,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         }
 
         discover_patterns_docker_image = CodeBuildDockerImage(
-            f"{name}-discover-patterns-img",
+            f"{name}-dp-img",
             dockerfile_path=(
                 "infra/label_evaluator_step_functions/lambdas/"
                 "Dockerfile.discover_patterns_traced"
@@ -704,7 +704,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
         }
 
         llm_review_docker_image = CodeBuildDockerImage(
-            f"{name}-llm-review-img",
+            f"{name}-llm-img",
             dockerfile_path=(
                 "infra/label_evaluator_step_functions/lambdas/"
                 "Dockerfile.llm_traced"
