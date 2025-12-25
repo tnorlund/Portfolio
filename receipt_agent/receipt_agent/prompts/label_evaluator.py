@@ -10,7 +10,7 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, Optional
 
-from receipt_agent.constants import CORE_LABELS_SET
+from receipt_agent.constants import CORE_LABELS as CORE_LABELS_DICT, CORE_LABELS_SET
 
 if TYPE_CHECKING:
     from receipt_agent.agents.label_evaluator.state import (
@@ -24,50 +24,23 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Core Label Definitions
+# Core Label Definitions (generated from constants.CORE_LABELS)
 # =============================================================================
 
-CORE_LABELS = """
-MERCHANT_NAME: Trading name or brand of the store (e.g., "Sprouts", "Costco")
-STORE_NUMBER: Store/location identifier number
-STORE_HOURS: Business hours printed on receipt
-PHONE_NUMBER: Store telephone number
-WEBSITE: Web address or email
-LOYALTY_ID: Customer loyalty/rewards ID
-ADDRESS_LINE: Full or partial address line (street, city, state, zip)
 
-DATE: Transaction date
-TIME: Transaction time
+def _build_core_labels_prompt() -> str:
+    """Build the CORE_LABELS prompt string from the CORE_LABELS_DICT.
 
-PAYMENT_METHOD: Payment instrument type (VISA, CASH, MASTERCARD, etc.)
-CARD_LAST_4: Last 4 digits of payment card
+    This ensures the prompt always matches CORE_LABELS_SET for validation.
+    """
+    lines = []
+    for label, description in CORE_LABELS_DICT.items():
+        lines.append(f"{label}: {description}")
+    return "\n".join(lines)
 
-COUPON: Coupon code or description
-DISCOUNT: Non-coupon discount line
-SAVINGS: Amount saved
 
-PRODUCT_NAME: Name of product being purchased
-QUANTITY: Number of units purchased
-UNIT_PRICE: Price per unit
-LINE_TOTAL: Total for a line item
-WEIGHT: Weight measurement for weighted items
-
-SUBTOTAL: Subtotal before tax
-TAX: Tax amount or description
-TAX_RATE: Tax percentage
-GRAND_TOTAL: Final total paid
-TENDER: Amount tendered by customer
-CHANGE: Change returned to customer
-CASH_BACK: Cash back amount
-REFUND: Refund amount or description
-
-RECEIPT_NUMBER: Transaction/receipt identifier
-CASHIER: Cashier name or ID
-REGISTER: Register/terminal number
-BARCODE: Barcode number
-
-OTHER: Miscellaneous text not fitting other categories
-"""
+# Generated at module load time
+CORE_LABELS = _build_core_labels_prompt()
 
 
 # =============================================================================
