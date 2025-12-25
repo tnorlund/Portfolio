@@ -1,46 +1,36 @@
 #!/usr/bin/env python3
-"""
-Evaluate labels for a single receipt.
+"""Evaluate labels for a single receipt with LangSmith tracing.
 
-This dev script runs pattern discovery and optional LLM review for a receipt.
-It's useful for testing the pattern discovery and LLM prompts without running
-the full step function.
+This dev script runs the same pattern discovery and issue detection logic
+as the step function, but for a single receipt. Results are traced in LangSmith.
 
 Usage:
-    python scripts/evaluate_single_receipt.py <image_id> <receipt_id> [--llm-review] [--verbose]
+    python scripts/evaluate_single_receipt.py <image_id> <receipt_id> [--verbose]
 
 Examples:
-    # Just run pattern discovery
+    # Run pattern discovery for a receipt
     python scripts/evaluate_single_receipt.py abc123 0
 
-    # Run with LLM review
-    python scripts/evaluate_single_receipt.py abc123 0 --llm-review
-
-    # Verbose output with receipt text
+    # Verbose output
     python scripts/evaluate_single_receipt.py abc123 0 --verbose
 
 Requirements:
-    pip install receipt-dynamo httpx
+    pip install receipt-dynamo langsmith langchain-ollama
 """
 
 import argparse
+import importlib.util
 import json
 import logging
 import os
-import re
 import sys
 from collections import Counter, defaultdict
-from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
-import httpx
+# Add project root to path
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROJECT_ROOT)
 
-# Add parent directory to path for local imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from receipt_dynamo import DynamoClient
-
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -48,26 +38,52 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class PatternConfig:
-    """Configuration for pattern discovery LLM calls."""
-    ollama_base_url: str = "https://ollama.tylernorlund.com"
-    ollama_api_key: str = ""
-    ollama_model: str = "llama3.2"
+def load_config() -> dict[str, Any]:
+    """Load configuration from Pulumi stack outputs and secrets."""
+    from receipt_dynamo.data._pulumi import load_env, load_secrets
 
-    @classmethod
-    def from_env(cls) -> "PatternConfig":
-        return cls(
-            ollama_base_url=os.environ.get(
-                "OLLAMA_BASE_URL", "https://ollama.tylernorlund.com"
-            ),
-            ollama_api_key=os.environ.get("OLLAMA_API_KEY", ""),
-            ollama_model=os.environ.get("OLLAMA_MODEL", "llama3.2"),
-        )
+    outputs = load_env("dev")
+    secrets = load_secrets("dev")
+
+    config = {
+        "dynamodb_table_name": outputs.get("dynamodb_table_name"),
+        "ollama_api_key": secrets.get("portfolio:OLLAMA_API_KEY"),
+        "langchain_api_key": secrets.get("portfolio:LANGCHAIN_API_KEY"),
+    }
+
+    # Set environment variables for receipt_agent and langsmith
+    if config["ollama_api_key"]:
+        os.environ["OLLAMA_API_KEY"] = config["ollama_api_key"]
+        os.environ["RECEIPT_AGENT_OLLAMA_API_KEY"] = config["ollama_api_key"]
+
+    if config["langchain_api_key"]:
+        os.environ["LANGCHAIN_API_KEY"] = config["langchain_api_key"]
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_PROJECT"] = "label-evaluator-dev"
+
+    # Set Ollama settings (same as step function)
+    os.environ["OLLAMA_BASE_URL"] = "https://ollama.com"
+    os.environ["OLLAMA_MODEL"] = "gpt-oss:20b"
+    os.environ["RECEIPT_AGENT_OLLAMA_BASE_URL"] = "https://ollama.com"
+    os.environ["RECEIPT_AGENT_OLLAMA_MODEL"] = "gpt-oss:20b"
+
+    return config
+
+
+def load_pattern_discovery():
+    """Load pattern_discovery module using importlib to avoid chromadb issues."""
+    pattern_discovery_path = os.path.join(
+        PROJECT_ROOT,
+        "receipt_agent/receipt_agent/agents/label_evaluator/pattern_discovery.py"
+    )
+    spec = importlib.util.spec_from_file_location("pattern_discovery", pattern_discovery_path)
+    pattern_discovery = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pattern_discovery)
+    return pattern_discovery
 
 
 def load_receipt_data(
-    dynamo_client: DynamoClient,
+    dynamo_client: Any,
     image_id: str,
     receipt_id: int,
 ) -> dict[str, Any]:
@@ -94,230 +110,95 @@ def load_receipt_data(
     }
 
 
-def build_receipt_structure(
-    dynamo_client: DynamoClient,
-    merchant_name: str,
-    limit: int = 3,
+def find_potential_issues(
+    words: list,
+    labels: list,
+    patterns: dict[str, Any] | None = None,
 ) -> list[dict]:
-    """Build receipt structure for pattern discovery."""
-    places, _ = dynamo_client.get_receipt_places_by_merchant(merchant_name, limit=limit)
+    """Find potential labeling issues using heuristics.
 
-    receipts_data = []
-    for place in places[:limit]:
-        words = dynamo_client.list_receipt_words_from_receipt(place.image_id, place.receipt_id)
-        labels, _ = dynamo_client.list_receipt_word_labels_for_receipt(place.image_id, place.receipt_id)
+    This mimics the logic from the step function's evaluate_labels Lambda.
+    """
+    issues = []
 
-        if not words:
+    # Build label map
+    label_map: dict[tuple[int, int], list] = {}
+    for label in labels:
+        key = (label.line_id, label.word_id)
+        if key not in label_map:
+            label_map[key] = []
+        label_map[key].append(label)
+
+    # Check for unlabeled words that look like products or prices
+    for word in words:
+        key = (word.line_id, word.word_id)
+        word_labels = label_map.get(key, [])
+        text = word.text.strip()
+
+        # Skip if already labeled
+        if word_labels:
             continue
 
-        # Build label map
-        label_map = defaultdict(list)
-        for label in labels:
-            label_map[(label.line_id, label.word_id)].append(label.label)
-
-        # Build simplified structure
-        lines = defaultdict(list)
-        for word in words:
-            key = (word.line_id, word.word_id)
-            word_labels = label_map.get(key, [])
-            lines[word.line_id].append({
-                "text": word.text,
-                "labels": word_labels,
-                "y": word.y_min,
-                "x": word.x_min,
+        # Check for potential product names (uppercase words)
+        if len(text) >= 3 and text.isupper() and text.isalpha():
+            issues.append({
+                "type": "potential_unlabeled_product",
+                "image_id": word.image_id,
+                "receipt_id": word.receipt_id,
+                "line_id": word.line_id,
+                "word_id": word.word_id,
+                "word_text": text,
+                "current_labels": [],
+                "reasoning": "Unlabeled uppercase word that may be a product name",
             })
 
-        receipts_data.append({
-            "image_id": place.image_id,
-            "receipt_id": place.receipt_id,
-            "lines": dict(lines),
-        })
+        # Check for potential prices (dollar amounts)
+        if text.startswith("$") or (text.replace(".", "").isdigit() and "." in text):
+            issues.append({
+                "type": "potential_unlabeled_price",
+                "image_id": word.image_id,
+                "receipt_id": word.receipt_id,
+                "line_id": word.line_id,
+                "word_id": word.word_id,
+                "word_text": text,
+                "current_labels": [],
+                "reasoning": "Unlabeled price/dollar amount",
+            })
 
-    return receipts_data
-
-
-def build_discovery_prompt(merchant_name: str, receipts_data: list[dict]) -> str:
-    """Build the pattern discovery prompt."""
-    # Build simplified receipt text
-    simplified = []
-    for receipt in receipts_data:
-        lines = []
-        sorted_line_ids = sorted(
-            receipt["lines"].keys(),
-            key=lambda lid: min(w["y"] for w in receipt["lines"][lid]),
-        )
-        for line_id in sorted_line_ids[:50]:
-            line_words = sorted(receipt["lines"][line_id], key=lambda w: w["x"])
-            parts = []
-            for word in line_words:
-                if word["labels"]:
-                    labels_str = ",".join(word["labels"])
-                    parts.append(f"{word['text']}[{labels_str}]")
-                else:
-                    parts.append(word["text"])
-            lines.append(" ".join(parts))
-        simplified.append("\n".join(lines))
-
-    receipts_text = "\n\n---\n\n".join(simplified)
-
-    prompt = f"""Analyze the following receipt data from "{merchant_name}".
-
-Each line shows words with [LABELS] for labeled words.
-
-RECEIPT DATA:
-{receipts_text}
-
----
-
-STEP 1: Determine the receipt type:
-- ITEMIZED: Multiple products with individual prices (grocery, retail)
-- SERVICE: Single charge, non-itemized (medical, parking)
-
-STEP 2: If ITEMIZED, identify the line item patterns.
-
-Respond with ONLY a JSON object:
-
-If SERVICE receipt:
-{{
-  "merchant": "{merchant_name}",
-  "receipt_type": "service",
-  "receipt_type_reason": "brief explanation",
-  "item_structure": null,
-  "lines_per_item": null,
-  "item_start_marker": null,
-  "item_end_marker": null,
-  "grouping_rule": null,
-  "label_positions": null
-}}
-
-If ITEMIZED receipt:
-{{
-  "merchant": "{merchant_name}",
-  "receipt_type": "itemized",
-  "receipt_type_reason": "brief explanation",
-  "item_structure": "single-line" or "multi-line",
-  "lines_per_item": {{"typical": N, "min": N, "max": N}},
-  "item_start_marker": "what marks start of item",
-  "item_end_marker": "what marks end of item",
-  "grouping_rule": "how to group words into line items",
-  "label_positions": {{"PRODUCT_NAME": "left", "LINE_TOTAL": "right", ...}}
-}}"""
-
-    return prompt
-
-
-def discover_patterns(
-    dynamo_client: DynamoClient,
-    merchant_name: str,
-    config: PatternConfig,
-    verbose: bool = False,
-) -> dict[str, Any]:
-    """Discover line item patterns for the merchant."""
-    logger.info(f"Discovering patterns for {merchant_name}")
-
-    if not config.ollama_api_key:
-        logger.warning("OLLAMA_API_KEY not set, using defaults")
-        return get_default_patterns(merchant_name, "no_api_key")
-
-    receipts_data = build_receipt_structure(dynamo_client, merchant_name, limit=3)
-
-    if not receipts_data:
-        logger.warning("No receipt data found")
-        return get_default_patterns(merchant_name, "no_data")
-
-    prompt = build_discovery_prompt(merchant_name, receipts_data)
-
-    if verbose:
-        logger.info(f"Pattern prompt:\n{prompt[:800]}...")
-
-    try:
-        with httpx.Client(timeout=120.0) as client:
-            response = client.post(
-                f"{config.ollama_base_url}/api/chat",
-                headers={
-                    "Authorization": f"Bearer {config.ollama_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": config.ollama_model,
-                    "messages": [
-                        {"role": "system", "content": "You are a receipt analysis expert. Respond only with valid JSON."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "stream": False,
-                    "options": {"temperature": 0.1},
-                },
-            )
-            response.raise_for_status()
-            result = response.json()
-
-        content = result.get("message", {}).get("content", "")
-
-        # Parse JSON from response
-        json_match = re.search(r"\{.*\}", content, re.DOTALL)
-        if json_match:
-            patterns = json.loads(json_match.group())
-            patterns["discovered_from_receipts"] = len(receipts_data)
-            patterns["auto_generated"] = False
-            logger.info(f"  Receipt type: {patterns.get('receipt_type', 'unknown')}")
-            logger.info(f"  Item structure: {patterns.get('item_structure', 'unknown')}")
-            return patterns
-
-    except Exception as e:
-        logger.exception(f"Pattern discovery failed: {e}")
-
-    return get_default_patterns(merchant_name, "llm_failed")
-
-
-def get_default_patterns(merchant_name: str, reason: str) -> dict[str, Any]:
-    """Return default patterns."""
-    return {
-        "merchant": merchant_name,
-        "receipt_type": "unknown",
-        "receipt_type_reason": reason,
-        "item_structure": "unknown",
-        "lines_per_item": {"typical": 2, "min": 1, "max": 5},
-        "item_start_marker": "PRODUCT_NAME or barcode",
-        "item_end_marker": "LINE_TOTAL label",
-        "grouping_rule": "Group words between LINE_TOTAL labels",
-        "label_positions": {"PRODUCT_NAME": "left", "LINE_TOTAL": "right"},
-        "auto_generated": True,
-    }
+    # Limit to most relevant issues
+    return issues[:20]
 
 
 def format_patterns(patterns: dict[str, Any]) -> str:
     """Format patterns for display."""
     lines = []
-    lines.append(f"**Merchant**: {patterns.get('merchant', 'Unknown')}")
+    lines.append(f"Merchant: {patterns.get('merchant', 'Unknown')}")
 
     receipt_type = patterns.get("receipt_type")
     if receipt_type:
-        lines.append(f"**Receipt Type**: {receipt_type}")
+        lines.append(f"Receipt Type: {receipt_type}")
         if patterns.get("receipt_type_reason"):
-            lines.append(f"**Reason**: {patterns['receipt_type_reason']}")
+            lines.append(f"Reason: {patterns['receipt_type_reason']}")
 
     if receipt_type == "service":
         return "\n".join(lines)
 
     if patterns.get("item_structure"):
-        lines.append(f"**Item Structure**: {patterns['item_structure']}")
+        lines.append(f"Item Structure: {patterns['item_structure']}")
 
     lpi = patterns.get("lines_per_item")
     if lpi and isinstance(lpi, dict):
-        lines.append(f"**Lines per Item**: typical={lpi.get('typical')}, range=[{lpi.get('min')}, {lpi.get('max')}]")
-
-    if patterns.get("item_start_marker"):
-        lines.append(f"**Item Start**: {patterns['item_start_marker']}")
-
-    if patterns.get("item_end_marker"):
-        lines.append(f"**Item End**: {patterns['item_end_marker']}")
+        lines.append(
+            f"Lines per Item: typical={lpi.get('typical')}, "
+            f"range=[{lpi.get('min')}, {lpi.get('max')}]"
+        )
 
     if patterns.get("grouping_rule"):
-        lines.append(f"**Grouping Rule**: {patterns['grouping_rule']}")
+        lines.append(f"Grouping Rule: {patterns['grouping_rule']}")
 
     label_positions = patterns.get("label_positions")
     if label_positions and isinstance(label_positions, dict):
-        lines.append("**Label Positions**:")
+        lines.append("Label Positions:")
         for label, pos in label_positions.items():
             if pos:
                 lines.append(f"  - {label}: {pos}")
@@ -341,12 +222,13 @@ def assemble_receipt_text(
 
     sorted_line_ids = sorted(
         lines_dict.keys(),
-        key=lambda lid: min(w.y_min for w in lines_dict[lid]),
+        key=lambda lid: min(w.bounding_box["y"] for w in lines_dict[lid]),
+        reverse=True,  # Higher y = top of receipt
     )
 
     result_lines = []
     for line_id in sorted_line_ids[:max_lines]:
-        line_words = sorted(lines_dict[line_id], key=lambda w: w.x_min)
+        line_words = sorted(lines_dict[line_id], key=lambda w: w.bounding_box["x"])
         parts = []
         for word in line_words:
             key = (word.line_id, word.word_id)
@@ -358,36 +240,6 @@ def assemble_receipt_text(
         result_lines.append(" ".join(parts))
 
     return "\n".join(result_lines)
-
-
-def find_potential_issues(words: list, labels: list) -> list[dict]:
-    """Find potential labeling issues (simplified heuristics)."""
-    issues = []
-
-    label_map = {}
-    for label in labels:
-        key = (label.line_id, label.word_id)
-        if key not in label_map:
-            label_map[key] = []
-        label_map[key].append(label)
-
-    for word in words:
-        key = (word.line_id, word.word_id)
-        if label_map.get(key):
-            continue
-
-        text = word.text.strip()
-        if len(text) >= 3 and text.isupper() and not text.isdigit() and not text.startswith("$"):
-            issues.append({
-                "type": "potential_unlabeled_product",
-                "line_id": word.line_id,
-                "word_id": word.word_id,
-                "word_text": text,
-                "current_label": None,
-                "reasoning": "Unlabeled uppercase word that may be a product name",
-            })
-
-    return issues[:10]
 
 
 def print_results(
@@ -428,11 +280,12 @@ def print_results(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate labels for a single receipt")
+    parser = argparse.ArgumentParser(
+        description="Evaluate labels for a single receipt with LangSmith tracing"
+    )
     parser.add_argument("image_id", help="The image ID")
     parser.add_argument("receipt_id", type=int, help="The receipt ID (0, 1, 2, ...)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
-    parser.add_argument("--table-name", default=None, help="DynamoDB table name")
     parser.add_argument("--skip-patterns", action="store_true", help="Skip pattern discovery")
     parser.add_argument("--output-json", type=str, default=None, help="Output to JSON file")
 
@@ -441,21 +294,127 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    table_name = args.table_name or os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
-    dynamo_client = DynamoClient(table_name=table_name)
-    config = PatternConfig.from_env()
+    # Load config from Pulumi
+    logger.info("Loading configuration from Pulumi...")
+    config = load_config()
+
+    if not config["dynamodb_table_name"]:
+        logger.error("Could not load dynamodb_table_name from Pulumi outputs")
+        sys.exit(1)
+
+    if not config["langchain_api_key"]:
+        logger.warning("LANGCHAIN_API_KEY not found - traces will not be sent to LangSmith")
+
+    logger.info(f"Using DynamoDB table: {config['dynamodb_table_name']}")
+
+    # Import DynamoDB client
+    from receipt_dynamo import DynamoClient
+    dynamo_client = DynamoClient(table_name=config["dynamodb_table_name"])
+
+    # Load pattern_discovery module
+    pattern_discovery = load_pattern_discovery()
 
     # 1. Load receipt data
     receipt_data = load_receipt_data(dynamo_client, args.image_id, args.receipt_id)
 
-    # 2. Discover patterns
+    # 2. Discover patterns using the same code as step function
     if args.skip_patterns:
-        patterns = get_default_patterns(receipt_data["merchant_name"], "skipped")
+        patterns = pattern_discovery.get_default_patterns(
+            receipt_data["merchant_name"], "skipped"
+        )
     else:
-        patterns = discover_patterns(dynamo_client, receipt_data["merchant_name"], config, args.verbose)
+        # Use langsmith traceable for tracing
+        from langsmith import traceable
+        from langchain_ollama import ChatOllama
+        from langchain_core.messages import HumanMessage, SystemMessage
+        import json as json_mod
+
+        @traceable(
+            name="evaluate_single_receipt",
+            project_name="label-evaluator-dev",
+            metadata={
+                "image_id": args.image_id,
+                "receipt_id": args.receipt_id,
+                "merchant_name": receipt_data["merchant_name"],
+            },
+        )
+        def run_evaluation(dynamo_client, merchant_name, receipt_data):
+            """Run the full evaluation with tracing."""
+            # Build receipt structure
+            receipts_data = pattern_discovery.build_receipt_structure(
+                dynamo_client,
+                merchant_name,
+                limit=3,
+                focus_on_line_items=True,
+                max_lines=80,
+            )
+
+            if not receipts_data:
+                logger.warning("No receipt data found for pattern discovery")
+                return pattern_discovery.get_default_patterns(merchant_name, "no_data")
+
+            # Build prompt
+            prompt = pattern_discovery.build_discovery_prompt(merchant_name, receipts_data)
+
+            # Use LangChain ChatOllama for proper LangSmith tracing
+            logger.info("Calling LLM for pattern discovery...")
+            ollama_api_key = os.environ.get("OLLAMA_API_KEY", "")
+            ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "https://ollama.tylernorlund.com")
+            ollama_model = os.environ.get("OLLAMA_MODEL", "llama3.2")
+
+            try:
+                llm = ChatOllama(
+                    model=ollama_model,
+                    base_url=ollama_base_url,
+                    client_kwargs={
+                        "headers": {"Authorization": f"Bearer {ollama_api_key}"},
+                        "timeout": 120,
+                    },
+                    temperature=0,
+                )
+
+                messages = [
+                    SystemMessage(content="You are a receipt analysis expert. Respond only with valid JSON."),
+                    HumanMessage(content=prompt),
+                ]
+
+                response = llm.invoke(messages)
+                content = response.content.strip()
+
+                # Parse JSON from response
+                if content.startswith("```json"):
+                    content = content[7:]
+                if content.startswith("```"):
+                    content = content[3:]
+                if content.endswith("```"):
+                    content = content[:-3]
+                content = content.strip()
+
+                patterns = json_mod.loads(content)
+                patterns["discovered_from_receipts"] = len(receipts_data)
+                patterns["auto_generated"] = False
+
+                return patterns
+
+            except Exception as e:
+                logger.exception(f"LLM call failed: {e}")
+                return pattern_discovery.get_default_patterns(merchant_name, f"llm_failed: {e}")
+
+        patterns = run_evaluation(
+            dynamo_client,
+            receipt_data["merchant_name"],
+            receipt_data,
+        )
+
+    logger.info(f"Receipt type: {patterns.get('receipt_type', 'unknown')}")
+    logger.info(f"Item structure: {patterns.get('item_structure', 'unknown')}")
 
     # 3. Find potential issues
-    issues = find_potential_issues(receipt_data["words"], receipt_data["labels"])
+    issues = find_potential_issues(
+        receipt_data["words"],
+        receipt_data["labels"],
+        patterns,
+    )
     logger.info(f"Found {len(issues)} potential issues")
 
     # 4. Print results
@@ -473,6 +432,11 @@ def main():
         with open(args.output_json, "w") as f:
             json.dump(output, f, indent=2, default=str)
         logger.info(f"Results saved to {args.output_json}")
+
+    # Print LangSmith trace URL hint
+    if config["langchain_api_key"]:
+        print("\nTrace sent to LangSmith project: label-evaluator-dev")
+        print("View at: https://smith.langchain.com/")
 
 
 if __name__ == "__main__":
