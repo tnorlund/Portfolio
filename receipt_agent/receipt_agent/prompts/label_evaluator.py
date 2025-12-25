@@ -10,6 +10,8 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, Optional
 
+from receipt_agent.constants import CORE_LABELS_SET
+
 if TYPE_CHECKING:
     from receipt_agent.agents.label_evaluator.state import (
         LabelDistributionStats,
@@ -856,10 +858,23 @@ def parse_llm_response(response_text: str) -> dict[str, Any]:
         if confidence not in ("low", "medium", "high"):
             confidence = "medium"
 
+        # Validate suggested_label is in CORE_LABELS
+        suggested_label = result.get("suggested_label")
+        if suggested_label:
+            suggested_upper = suggested_label.upper()
+            if suggested_upper not in CORE_LABELS_SET:
+                logger.warning(
+                    "Rejecting invalid suggested_label '%s' (not in CORE_LABELS)",
+                    suggested_label,
+                )
+                suggested_label = None
+            else:
+                suggested_label = suggested_upper  # Normalize to uppercase
+
         return {
             "decision": decision,
             "reasoning": result.get("reasoning", "No reasoning provided"),
-            "suggested_label": result.get("suggested_label"),
+            "suggested_label": suggested_label,
             "confidence": confidence,
         }
     except json.JSONDecodeError:
@@ -928,10 +943,26 @@ def parse_batched_llm_response(
             if confidence not in ("low", "medium", "high"):
                 confidence = "medium"
 
+            # Validate suggested_label is in CORE_LABELS
+            # TODO: Try using ChatOllama.with_structured_output() with a Pydantic
+            # model that has suggested_label as Optional[LabelEnum] to constrain
+            # at the token level instead of post-hoc validation.
+            suggested_label = review.get("suggested_label")
+            if suggested_label:
+                suggested_upper = suggested_label.upper()
+                if suggested_upper not in CORE_LABELS_SET:
+                    logger.warning(
+                        "Rejecting invalid suggested_label '%s' (not in CORE_LABELS)",
+                        suggested_label,
+                    )
+                    suggested_label = None
+                else:
+                    suggested_label = suggested_upper  # Normalize to uppercase
+
             reviews_by_index[idx] = {
                 "decision": decision,
                 "reasoning": review.get("reasoning", "No reasoning provided"),
-                "suggested_label": review.get("suggested_label"),
+                "suggested_label": suggested_label,
                 "confidence": confidence,
             }
 
