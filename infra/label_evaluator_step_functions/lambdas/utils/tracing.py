@@ -566,6 +566,7 @@ def create_execution_trace(
     inputs: Optional[dict] = None,
     metadata: Optional[dict] = None,
     tags: Optional[list[str]] = None,
+    enable_tracing: bool = True,
 ) -> ExecutionTraceInfo:
     """Create the root trace for a Step Function execution.
 
@@ -579,12 +580,17 @@ def create_execution_trace(
         inputs: Optional inputs to capture
         metadata: Optional metadata
         tags: Optional tags
+        enable_tracing: If False, skip trace creation (default: True)
 
     Returns:
         ExecutionTraceInfo with trace_id, root_run_id, and run_tree
     """
     trace_id = generate_trace_id(execution_arn)
     root_run_id = generate_root_run_id(execution_arn)
+
+    if not enable_tracing:
+        logger.info("Tracing disabled, skipping trace creation")
+        return ExecutionTraceInfo(trace_id=trace_id, root_run_id=root_run_id)
 
     if not HAS_LANGSMITH or _RunTree is None:
         logger.info("LangSmith not available, returning empty trace info")
@@ -676,6 +682,7 @@ def state_trace(
     inputs: Optional[dict] = None,
     metadata: Optional[dict] = None,
     tags: Optional[list[str]] = None,
+    enable_tracing: bool = True,
 ):
     """Create a child trace for a Lambda state invocation.
 
@@ -696,10 +703,16 @@ def state_trace(
         inputs: Optional inputs to capture
         metadata: Optional metadata
         tags: Optional tags
+        enable_tracing: If False, skip trace creation (default: True)
 
     Yields:
         TraceContext with run_tree for this state
     """
+    if not enable_tracing:
+        logger.info("Tracing disabled for state '%s', skipping", state_name)
+        yield TraceContext()
+        return
+
     state_run_id = generate_state_run_id(execution_arn, state_name, map_index, attempt)
 
     logger.info(

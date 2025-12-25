@@ -104,6 +104,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     merchant_name = event.get("merchant_name", "Unknown")
+    enable_tracing = event.get("enable_tracing", False)
 
     if not batch_bucket:
         return {
@@ -132,6 +133,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "merchant_name": merchant_name,
         },
         tags=["label-evaluator-traced", "discover-patterns", "llm"],
+        enable_tracing=enable_tracing,
     )
 
     # Create a TraceContext for child_trace compatibility
@@ -221,9 +223,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         flush_langsmith_traces()
 
     # Add trace IDs to output for downstream Lambdas
+    # Always include all three fields (even if null) for Step Function JSONPath
     result["trace_id"] = trace_info.trace_id
     result["root_run_id"] = trace_info.root_run_id
-    if trace_info.root_dotted_order:
-        result["root_dotted_order"] = trace_info.root_dotted_order
+    result["root_dotted_order"] = trace_info.root_dotted_order  # Can be None
 
     return result

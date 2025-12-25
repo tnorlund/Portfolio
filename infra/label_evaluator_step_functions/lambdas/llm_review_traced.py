@@ -161,6 +161,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     root_run_id = event.get("root_run_id", "")
     root_dotted_order = event.get("root_dotted_order")
 
+    # Check if tracing is enabled
+    enable_tracing = event.get("enable_tracing", False)
+
     # Support both batch format and legacy format
     batch_s3_key = event.get("batch_s3_key")
     issues_s3_key = event.get("issues_s3_key")
@@ -206,6 +209,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             "llm_batch_index": llm_batch_index,
         },
         tags=["llm-review", "llm"],
+        enable_tracing=enable_tracing,
     ) as trace_ctx:
 
         try:

@@ -73,6 +73,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
     trace_id = event.get("trace_id", "")
     root_run_id = event.get("root_run_id", "")
     root_dotted_order = event.get("root_dotted_order")
+    enable_tracing = event.get("enable_tracing", False)
 
     if not merchant_name:
         raise ValueError("merchant_name is required")
@@ -97,6 +98,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
             "execution_id": execution_id,
         },
         tags=["compute-patterns"],
+        enable_tracing=enable_tracing,
     ) as trace_ctx:
 
         logger.info(

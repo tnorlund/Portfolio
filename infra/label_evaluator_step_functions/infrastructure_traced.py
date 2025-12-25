@@ -930,6 +930,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                     "Result": {
                         "dry_run": False,
                         "force_rediscovery": False,
+                        "enable_tracing": False,
                         "limit": None,
                     },
                     "ResultPath": "$.defaults",
@@ -967,6 +968,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                         "merchant_name.$": "$.config.merged.merchant_name",
                         "dry_run.$": "$.config.merged.dry_run",
                         "force_rediscovery.$": "$.config.merged.force_rediscovery",
+                        "enable_tracing.$": "$.config.merged.enable_tracing",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
                         "limit.$": "$.config.merged.limit",
@@ -986,6 +988,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                         "merchant_name": None,
                         "dry_run.$": "$.config.merged.dry_run",
                         "force_rediscovery.$": "$.config.merged.force_rediscovery",
+                        "enable_tracing.$": "$.config.merged.enable_tracing",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
                         "limit.$": "$.config.merged.limit",
@@ -1062,6 +1065,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                         "limit.$": "$.init.limit",
                         "dry_run.$": "$.init.dry_run",
                         "force_rediscovery.$": "$.init.force_rediscovery",
+                        "enable_tracing.$": "$.init.enable_tracing",
                     },
                     "ItemProcessor": {
                         "ProcessorConfig": {"Mode": "INLINE"},
@@ -1121,6 +1125,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "batch_bucket.$": "$.batch_bucket",
                                     "merchant_name.$": "$.merchant.merchant_name",
                                     "force_rediscovery.$": "$.force_rediscovery",
+                                    "enable_tracing.$": "$.enable_tracing",
                                     # Pass execution ARN for deterministic trace ID
                                     "execution_arn.$": "$$.Execution.Id",
                                 },
@@ -1145,6 +1150,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "batch_bucket.$": "$.batch_bucket",
                                     "merchant.$": "$.merchant",
                                     "max_training_receipts.$": "$.max_training_receipts",
+                                    "enable_tracing.$": "$.enable_tracing",
                                     # Deterministic trace propagation
                                     "execution_arn.$": "$$.Execution.Id",
                                     "trace_id.$": "$.line_item_patterns.trace_id",
@@ -1173,6 +1179,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "execution_id.$": "$.execution_id",
                                     "batch_bucket.$": "$.batch_bucket",
                                     "patterns_s3_key.$": "$.patterns_result.patterns_s3_key",
+                                    "enable_tracing.$": "$.enable_tracing",
                                     # Deterministic trace propagation
                                     "execution_arn.$": "$$.Execution.Id",
                                     "trace_id.$": "$.line_item_patterns.trace_id",
@@ -1194,6 +1201,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                                 "execution_id.$": "$.execution_id",
                                                 "batch_bucket.$": "$.batch_bucket",
                                                 "patterns_s3_key.$": "$.patterns_s3_key",
+                                                "enable_tracing.$": "$.enable_tracing",
                                                 # Deterministic trace propagation
                                                 "execution_arn.$": "$.execution_arn",
                                                 "trace_id.$": "$.trace_id",
@@ -1356,6 +1364,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                     "merchant_receipt_count.$": "$.receipts_data.total_receipts",
                                     "line_item_patterns_s3_key.$": "$.line_item_patterns.patterns_s3_key",
                                     "dry_run.$": "$.dry_run",
+                                    "enable_tracing.$": "$.enable_tracing",
                                     # Receipt identification (one batch per receipt)
                                     "image_id.$": "$$.Map.Item.Value.image_id",
                                     "receipt_id.$": "$$.Map.Item.Value.receipt_id",
@@ -1383,6 +1392,7 @@ class LabelEvaluatorTracedStepFunction(ComponentResource):
                                                 "llm_batch_index.$": "$.llm_batch_index",
                                                 "line_item_patterns_s3_key.$": "$.line_item_patterns_s3_key",
                                                 "dry_run.$": "$.dry_run",
+                                                "enable_tracing.$": "$.enable_tracing",
                                                 # Receipt identification (one batch per receipt)
                                                 "image_id.$": "$.image_id",
                                                 "receipt_id.$": "$.receipt_id",

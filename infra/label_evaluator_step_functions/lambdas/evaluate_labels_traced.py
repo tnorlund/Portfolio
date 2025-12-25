@@ -108,6 +108,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
     batch_index = event.get("batch_index", 0)
     receipt_index = event.get("receipt_index", 0)
 
+    # Check if tracing is enabled
+    enable_tracing = event.get("enable_tracing", False)
+
     if not data_s3_key:
         raise ValueError("data_s3_key is required")
     if not batch_bucket:
@@ -137,6 +140,7 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 "receipt_index": receipt_index,
             },
             tags=["evaluate-labels"],
+            enable_tracing=enable_tracing,
         ) as trace_ctx:
 
             # Import shared deserialization utilities
