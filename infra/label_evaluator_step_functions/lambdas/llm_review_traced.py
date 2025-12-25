@@ -491,20 +491,18 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                             line_item_patterns=line_item_patterns,
                         )
 
-                        # LLM call with child trace
-                        with child_trace(
-                            f"llm_call:{len(issues_with_context)}_issues",
-                            trace_ctx,
-                            run_type="llm",
-                            metadata={
-                                "issue_count": len(issues_with_context),
-                                "prompt_length": len(prompt),
+                        # LLM call with native LangChain tracing
+                        response = llm_invoker.invoke(
+                            [HumanMessage(content=prompt)],
+                            config={
+                                "run_name": f"llm_review:{len(issues_with_context)}_issues",
+                                "metadata": {
+                                    "issue_count": len(issues_with_context),
+                                    "prompt_length": len(prompt),
+                                },
                             },
-                        ):
-                            response = llm_invoker.invoke(
-                                [HumanMessage(content=prompt)]
-                            )
-                            llm_call_count += 1
+                        )
+                        llm_call_count += 1
 
                         chunk_reviews = parse_batched_llm_response(
                             response.content.strip(),
