@@ -74,18 +74,48 @@ OTHER: Miscellaneous text not fitting other categories
 
 
 def format_line_item_patterns(patterns: Optional[dict]) -> str:
-    """Format line item patterns for the LLM prompt."""
+    """Format line item patterns for the LLM prompt.
+
+    Handles both flat schema (new) and nested schema (legacy) for backwards
+    compatibility with existing S3 pattern files.
+    """
     if not patterns:
         return "No line item patterns available for this merchant."
 
-    lines = []
-    lines.append(f"**Merchant**: {patterns.get('merchant', 'Unknown')}")
-    lines.append(
-        f"**Item Structure**: {patterns.get('item_structure', 'unknown')}"
-    )
+    # Handle legacy nested structure: flatten if needed
+    if "patterns" in patterns and isinstance(patterns.get("patterns"), dict):
+        # Merge nested patterns into top level
+        nested = patterns["patterns"]
+        patterns = {
+            "merchant": patterns.get("merchant"),
+            "receipt_type": patterns.get("receipt_type"),
+            "receipt_type_reason": patterns.get("receipt_type_reason"),
+            "auto_generated": patterns.get("auto_generated", False),
+            "discovered_from_receipts": patterns.get("discovered_from_receipts"),
+            **nested,
+        }
 
-    lpi = patterns.get("lines_per_item", {})
-    if lpi:
+    lines = []
+
+    # Metadata
+    lines.append(f"**Merchant**: {patterns.get('merchant', 'Unknown')}")
+    receipt_type = patterns.get("receipt_type")
+    if receipt_type:
+        lines.append(f"**Receipt Type**: {receipt_type}")
+        if patterns.get("receipt_type_reason"):
+            lines.append(f"**Classification Reason**: {patterns['receipt_type_reason']}")
+
+    # For service receipts, don't show pattern details
+    if receipt_type == "service":
+        return "\n".join(lines)
+
+    # Structure
+    item_structure = patterns.get("item_structure")
+    if item_structure:
+        lines.append(f"**Item Structure**: {item_structure}")
+
+    lpi = patterns.get("lines_per_item")
+    if lpi and isinstance(lpi, dict):
         lines.append(
             f"**Lines per Item**: typical={lpi.get('typical', '?')}, "
             f"range=[{lpi.get('min', '?')}, {lpi.get('max', '?')}]"
@@ -100,14 +130,30 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
     if patterns.get("grouping_rule"):
         lines.append(f"**Grouping Rule**: {patterns['grouping_rule']}")
 
-    label_positions = patterns.get("label_positions", {})
-    if label_positions:
+    # Position info
+    label_positions = patterns.get("label_positions")
+    if label_positions and isinstance(label_positions, dict):
         pos_lines = []
         for label, position in label_positions.items():
-            pos_lines.append(f"  - {label}: {position}")
+            if position and position != "not_found":
+                pos_lines.append(f"  - {label}: {position}")
         if pos_lines:
             lines.append("**Typical Label Positions**:")
             lines.extend(pos_lines)
+
+    # Pattern matching
+    if patterns.get("barcode_pattern"):
+        lines.append(f"**Barcode Pattern**: `{patterns['barcode_pattern']}`")
+
+    special_markers = patterns.get("special_markers")
+    if special_markers and isinstance(special_markers, list) and special_markers:
+        lines.append(f"**Special Markers**: {', '.join(special_markers)}")
+
+    product_patterns = patterns.get("product_name_patterns")
+    if product_patterns and isinstance(product_patterns, list) and product_patterns:
+        lines.append("**Product Name Patterns**:")
+        for p in product_patterns[:3]:  # Limit to 3 for prompt size
+            lines.append(f"  - {p}")
 
     return "\n".join(lines)
 

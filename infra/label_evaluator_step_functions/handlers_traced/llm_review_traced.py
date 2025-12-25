@@ -426,9 +426,26 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
                         # Build prompt and make LLM call with child trace
                         try:
+                            # Extract words to highlight from issues
+                            highlight_words = [
+                                (
+                                    item["issue"].get("line_id"),
+                                    item["issue"].get("word_id"),
+                                )
+                                for item in issues_with_context
+                                if item.get("issue")
+                            ]
+
+                            # Assemble receipt text with highlighted issue words
+                            receipt_text = assemble_receipt_text(
+                                words=receipt_words,
+                                labels=receipt_labels,
+                                highlight_words=highlight_words,
+                                max_lines=60,
+                            )
+
                             prompt = build_receipt_context_prompt(
-                                receipt_words=receipt_words,
-                                receipt_labels=receipt_labels,
+                                receipt_text=receipt_text,
                                 issues_with_context=issues_with_context,
                                 merchant_name=merchant_name,
                                 merchant_receipt_count=merchant_receipt_count,

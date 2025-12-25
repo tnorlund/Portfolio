@@ -517,7 +517,16 @@ If SERVICE receipt:
   "merchant": "{merchant_name}",
   "receipt_type": "service",
   "receipt_type_reason": "brief explanation of why this is a service receipt",
-  "patterns": null
+  "item_structure": null,
+  "lines_per_item": null,
+  "item_start_marker": null,
+  "item_end_marker": null,
+  "barcode_pattern": null,
+  "x_position_zones": null,
+  "label_positions": null,
+  "grouping_rule": null,
+  "special_markers": null,
+  "product_name_patterns": null
 }}
 
 If ITEMIZED receipt:
@@ -525,27 +534,25 @@ If ITEMIZED receipt:
   "merchant": "{merchant_name}",
   "receipt_type": "itemized",
   "receipt_type_reason": "brief explanation of why this is an itemized receipt",
-  "patterns": {{
-    "item_structure": "single-line" or "multi-line",
-    "lines_per_item": {{"typical": N, "min": N, "max": N}},
-    "item_start_marker": "description of what marks the start of a new item",
-    "item_end_marker": "description of what marks the end of an item",
-    "barcode_pattern": "regex pattern for SKU/barcode if found, or null",
-    "x_position_zones": {{
-      "left": [0.0, 0.3],
-      "center": [0.3, 0.6],
-      "right": [0.6, 1.0]
-    }},
-    "label_positions": {{
-      "PRODUCT_NAME": "left" or "center" or "right" or "varies",
-      "LINE_TOTAL": "left" or "center" or "right",
-      "UNIT_PRICE": "left" or "center" or "right" or "not_found",
-      "QUANTITY": "left" or "center" or "right" or "varies"
-    }},
-    "grouping_rule": "plain english description of how to group words into line items",
-    "special_markers": ["list of special markers like <A>, *, etc. if found"],
-    "product_name_patterns": ["common patterns for product names"]
-  }}
+  "item_structure": "single-line" or "multi-line",
+  "lines_per_item": {{"typical": N, "min": N, "max": N}},
+  "item_start_marker": "description of what marks the start of a new item",
+  "item_end_marker": "description of what marks the end of an item",
+  "barcode_pattern": "regex pattern for SKU/barcode if found, or null",
+  "x_position_zones": {{
+    "left": [0.0, 0.3],
+    "center": [0.3, 0.6],
+    "right": [0.6, 1.0]
+  }},
+  "label_positions": {{
+    "PRODUCT_NAME": "left" or "center" or "right" or "varies",
+    "LINE_TOTAL": "left" or "center" or "right",
+    "UNIT_PRICE": "left" or "center" or "right" or "not_found",
+    "QUANTITY": "left" or "center" or "right" or "varies"
+  }},
+  "grouping_rule": "plain english description of how to group words into line items",
+  "special_markers": ["list of special markers like <A>, *, etc. if found"],
+  "product_name_patterns": ["common patterns for product names"]
 }}
 
 Respond with ONLY the JSON object, no markdown code blocks or other text."""
@@ -709,23 +716,34 @@ def get_default_patterns(merchant_name: str, reason: str = "unknown") -> dict:
         reason: Why default patterns are being used
 
     Returns:
-        Default pattern dictionary
+        Default pattern dictionary matching the flat schema
     """
     return {
+        # Metadata
         "merchant": merchant_name,
+        "receipt_type": "unknown",
+        "receipt_type_reason": reason,
+        "auto_generated": True,
+        # Structure
         "item_structure": "unknown",
         "lines_per_item": {"typical": 2, "min": 1, "max": 5},
         "item_start_marker": "PRODUCT_NAME or barcode",
         "item_end_marker": "LINE_TOTAL label",
-        "barcode_pattern": r"\d{10,14}",
+        "grouping_rule": "Group all words between consecutive LINE_TOTAL labels",
+        # Position info
         "label_positions": {
             "PRODUCT_NAME": "left",
             "LINE_TOTAL": "right",
             "UNIT_PRICE": "right",
             "QUANTITY": "varies",
         },
-        "grouping_rule": "Group all words between consecutive LINE_TOTAL labels",
+        "x_position_zones": {
+            "left": [0.0, 0.3],
+            "center": [0.3, 0.6],
+            "right": [0.6, 1.0],
+        },
+        # Pattern matching
+        "barcode_pattern": r"\d{10,14}",
         "special_markers": [],
-        "auto_generated": True,
-        "reason": reason,
+        "product_name_patterns": [],
     }

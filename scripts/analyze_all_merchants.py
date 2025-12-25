@@ -182,10 +182,11 @@ def analyze_merchant(
                     analysis.receipt_type = result.get("receipt_type", "")
                     analysis.receipt_type_reason = result.get("receipt_type_reason", "")
 
-                    patterns = result.get("patterns")
-                    if patterns:
+                    # Flat schema: item_structure is at top level
+                    item_structure = result.get("item_structure")
+                    if item_structure and item_structure != "null":
                         analysis.has_patterns = True
-                        analysis.item_structure = patterns.get("item_structure", "")
+                        analysis.item_structure = item_structure
                 else:
                     analysis.llm_error = "No response from LLM"
 
