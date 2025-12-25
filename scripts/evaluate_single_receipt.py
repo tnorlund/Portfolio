@@ -63,9 +63,9 @@ def load_config() -> dict[str, Any]:
 
     # Set Ollama settings (same as step function)
     os.environ["OLLAMA_BASE_URL"] = "https://ollama.com"
-    os.environ["OLLAMA_MODEL"] = "gpt-oss:20b"
+    os.environ["OLLAMA_MODEL"] = "gpt-oss:120b-cloud"
     os.environ["RECEIPT_AGENT_OLLAMA_BASE_URL"] = "https://ollama.com"
-    os.environ["RECEIPT_AGENT_OLLAMA_MODEL"] = "gpt-oss:20b"
+    os.environ["RECEIPT_AGENT_OLLAMA_MODEL"] = "gpt-oss:120b-cloud"
 
     return config
 
