@@ -677,3 +677,195 @@ def test_confidence_precision_preserved(dynamodb_table: str) -> None:
     retrieved = client.get_receipt_place(place.image_id, place.receipt_id)
     # Should preserve original value
     assert retrieved.confidence == 0.856789
+
+
+# =============================================================================
+# GSI TYPE FILTERING TESTS
+# =============================================================================
+# These tests verify that GSI queries correctly filter by entity TYPE to
+# ensure only ReceiptPlace records are returned, not ReceiptMetadata records
+# that may share the same GSI key patterns.
+
+
+@pytest.mark.integration
+def test_get_receipt_places_by_merchant_filters_out_metadata(
+    dynamodb_table: str,
+) -> None:
+    """
+    Tests that get_receipt_places_by_merchant only returns ReceiptPlace records.
+
+    When both ReceiptPlace and ReceiptMetadata records exist with the same
+    merchant name (using GSI1), only ReceiptPlace records should be returned.
+    This is critical because both entity types share the same GSI1PK pattern.
+    """
+    from receipt_dynamo import ReceiptMetadata
+
+    client = DynamoClient(dynamodb_table)
+    shared_merchant_name = "Shared Merchant Store"
+    shared_image_id = str(uuid4())
+
+    # Create a ReceiptPlace with the shared merchant name
+    place = ReceiptPlace(
+        image_id=shared_image_id,
+        receipt_id=1,
+        place_id="ChIJtest123",
+        merchant_name=shared_merchant_name,
+        latitude=47.6,
+        longitude=-122.3,
+        matched_fields=["name"],
+        validated_by=ValidationMethod.INFERENCE.value,
+        validation_status=MerchantValidationStatus.MATCHED.value,
+        confidence=0.85,
+        timestamp=datetime.now(timezone.utc),
+    )
+    client.add_receipt_place(place)
+
+    # Create a ReceiptMetadata with the same merchant name (uses same GSI1PK)
+    metadata = ReceiptMetadata(
+        image_id=shared_image_id,
+        receipt_id=2,  # Different receipt_id to avoid key collision
+        place_id="ChIJmetadata123",
+        merchant_name=shared_merchant_name,
+        matched_fields=["name"],
+        validated_by=ValidationMethod.INFERENCE.value,
+        timestamp=datetime.now(timezone.utc),
+        canonical_merchant_name=shared_merchant_name,
+        canonical_phone_number="555-123-4567",  # Field not in ReceiptPlace
+    )
+    client.add_receipt_metadata(metadata)
+
+    # Query by merchant name - should only return ReceiptPlace, not ReceiptMetadata
+    places, _ = client.get_receipt_places_by_merchant(shared_merchant_name)
+
+    # Verify only ReceiptPlace records are returned
+    assert len(places) == 1
+    assert places[0].image_id == shared_image_id
+    assert places[0].receipt_id == 1
+    assert places[0].place_id == "ChIJtest123"
+    # Verify it's actually a ReceiptPlace (has ReceiptPlace-specific fields)
+    assert hasattr(places[0], "latitude")
+    assert places[0].latitude == 47.6
+
+
+@pytest.mark.integration
+def test_list_receipt_places_with_place_id_filters_out_metadata(
+    dynamodb_table: str,
+) -> None:
+    """
+    Tests that list_receipt_places_with_place_id only returns ReceiptPlace records.
+
+    When both ReceiptPlace and ReceiptMetadata records exist with the same
+    place_id (using GSI2), only ReceiptPlace records should be returned.
+    This is critical because both entity types share the same GSI2PK pattern.
+    """
+    from receipt_dynamo import ReceiptMetadata
+
+    client = DynamoClient(dynamodb_table)
+    shared_place_id = "ChIJshared456"
+    shared_image_id = str(uuid4())
+
+    # Create a ReceiptPlace with the shared place_id
+    place = ReceiptPlace(
+        image_id=shared_image_id,
+        receipt_id=1,
+        place_id=shared_place_id,
+        merchant_name="Place Test Store",
+        latitude=47.6,
+        longitude=-122.3,
+        matched_fields=["name"],
+        validated_by=ValidationMethod.INFERENCE.value,
+        validation_status=MerchantValidationStatus.MATCHED.value,
+        confidence=0.85,
+        timestamp=datetime.now(timezone.utc),
+    )
+    client.add_receipt_place(place)
+
+    # Create a ReceiptMetadata with the same place_id (uses same GSI2PK)
+    metadata = ReceiptMetadata(
+        image_id=shared_image_id,
+        receipt_id=2,  # Different receipt_id to avoid key collision
+        merchant_name="Place Test Store",
+        place_id=shared_place_id,
+        matched_fields=["name"],
+        validated_by=ValidationMethod.INFERENCE.value,
+        timestamp=datetime.now(timezone.utc),
+        canonical_phone_number="555-987-6543",  # Field not in ReceiptPlace
+    )
+    client.add_receipt_metadata(metadata)
+
+    # Query by place_id - should only return ReceiptPlace, not ReceiptMetadata
+    places, _ = client.list_receipt_places_with_place_id(shared_place_id)
+
+    # Verify only ReceiptPlace records are returned
+    assert len(places) == 1
+    assert places[0].image_id == shared_image_id
+    assert places[0].receipt_id == 1
+    assert places[0].place_id == shared_place_id
+    # Verify it's actually a ReceiptPlace (has ReceiptPlace-specific fields)
+    assert hasattr(places[0], "latitude")
+    assert places[0].latitude == 47.6
+
+
+@pytest.mark.integration
+def test_gsi_queries_with_multiple_mixed_records(
+    dynamodb_table: str,
+) -> None:
+    """
+    Tests GSI queries with multiple ReceiptPlace and ReceiptMetadata records.
+
+    Creates a scenario with multiple records of each type sharing merchant name
+    and place_id values, verifying correct filtering in all cases.
+    """
+    from receipt_dynamo import ReceiptMetadata
+
+    client = DynamoClient(dynamodb_table)
+    shared_merchant = "Multi Record Store"
+    shared_place_id = "ChIJmulti789"
+
+    # Create 3 ReceiptPlace records
+    places_to_add = []
+    for i in range(3):
+        places_to_add.append(
+            ReceiptPlace(
+                image_id=str(uuid4()),
+                receipt_id=i + 1,
+                place_id=shared_place_id,
+                merchant_name=shared_merchant,
+                latitude=47.6 + (i * 0.01),
+                longitude=-122.3 - (i * 0.01),
+                matched_fields=["name"],
+                validated_by=ValidationMethod.INFERENCE.value,
+                validation_status=MerchantValidationStatus.MATCHED.value,
+                confidence=0.8 + (i * 0.05),
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+    client.add_receipt_places(places_to_add)
+
+    # Create 2 ReceiptMetadata records with same merchant/place_id
+    for i in range(2):
+        metadata = ReceiptMetadata(
+            image_id=str(uuid4()),
+            receipt_id=i + 10,
+            merchant_name=shared_merchant,
+            place_id=shared_place_id,
+            matched_fields=["name"],
+            validated_by=ValidationMethod.INFERENCE.value,
+            timestamp=datetime.now(timezone.utc),
+            canonical_phone_number=f"555-000-{i:04d}",
+        )
+        client.add_receipt_metadata(metadata)
+
+    # Query by merchant - should return exactly 3 ReceiptPlace records
+    places_by_merchant, _ = client.get_receipt_places_by_merchant(shared_merchant)
+    assert len(places_by_merchant) == 3
+    for p in places_by_merchant:
+        assert isinstance(p, ReceiptPlace)
+        assert p.merchant_name == shared_merchant
+
+    # Query by place_id - should return exactly 3 ReceiptPlace records
+    places_by_place_id, _ = client.list_receipt_places_with_place_id(shared_place_id)
+    assert len(places_by_place_id) == 3
+    for p in places_by_place_id:
+        assert isinstance(p, ReceiptPlace)
+        assert p.place_id == shared_place_id
