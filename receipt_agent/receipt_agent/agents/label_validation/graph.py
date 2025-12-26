@@ -763,7 +763,7 @@ All valid label types:
             }
 
     except Exception as e:
-        logger.error("Error in label validation: %s", e)
+        logger.exception("Error in label validation")
         return {
             "decision": "NEEDS_REVIEW",
             "confidence": 0.0,

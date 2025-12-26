@@ -83,16 +83,21 @@ Begin by detecting currency and extracting financial labels."""
 
 
 def create_financial_validation_tools(
-    receipt_data: dict,
-) -> tuple[list[Any], dict]:
-    """Create tools for financial validation sub-agent."""
-    state = {"receipt": receipt_data}
+    state_holder: dict,
+) -> list[Any]:
+    """Create tools for financial validation sub-agent.
+
+    Args:
+        state_holder: Mutable dict with "receipt" key that will be updated
+                      before running the graph. Tools access state_holder["receipt"]
+                      to get current receipt data, and write to state_holder["result"].
+    """
 
     @tool
     def get_financial_labels() -> dict:
         """Get all financial labels (GRAND_TOTAL, SUBTOTAL, TAX,
         LINE_TOTAL, etc.)."""
-        receipt = state["receipt"]
+        receipt = state_holder.get("receipt", {})
         labels = receipt.get("labels", [])
         words = receipt.get("words", [])
 
@@ -129,7 +134,7 @@ def create_financial_validation_tools(
     @tool
     def detect_currency() -> dict:
         """Detect currency from receipt text."""
-        receipt = state["receipt"]
+        receipt = state_holder.get("receipt", {})
         receipt_text = receipt.get("receipt_text", "")
 
         currency_symbols = {
@@ -178,7 +183,7 @@ def create_financial_validation_tools(
     @tool
     def extract_amounts() -> dict:
         """Extract numeric amounts from financial labels."""
-        receipt = state["receipt"]
+        receipt = state_holder.get("receipt", {})
         labels = receipt.get("labels", [])
         words = receipt.get("words", [])
 
@@ -312,7 +317,7 @@ def create_financial_validation_tools(
         Returns:
             Success status
         """
-        state["result"] = {
+        state_holder["result"] = {
             "corrections": corrections,
             "currency": currency,
         }
@@ -330,7 +335,7 @@ def create_financial_validation_tools(
         propose_corrections,
     ]
 
-    return tools, state
+    return tools
 
 
 # ================================================================
@@ -347,9 +352,9 @@ def create_financial_validation_graph(
 
     llm = create_ollama_llm(settings)
 
-    state_holder = {"receipt": {}}
+    state_holder = {"receipt": {}, "result": {}}
 
-    tools, _ = create_financial_validation_tools(state_holder["receipt"])
+    tools = create_financial_validation_tools(state_holder)
 
     # Bind tools to LLM
     llm_with_tools = llm.bind_tools(tools)
@@ -399,15 +404,12 @@ async def run_financial_validation(
     words: list[dict],
 ) -> dict:
     """Run financial validation sub-agent."""
-    # Update state
+    # Update state - tools access state_holder["receipt"] via closure
     state_holder["receipt"] = {
         "receipt_text": receipt_text,
         "labels": labels,
         "words": words,
     }
-
-    # Recreate tools with updated state
-    tools, _ = create_financial_validation_tools(state_holder["receipt"])
 
     # Create initial state with system prompt
     initial_state = FinancialValidationState(

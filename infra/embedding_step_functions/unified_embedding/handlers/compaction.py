@@ -2686,7 +2686,7 @@ def perform_final_merge(
             logger.warning("Atomic upload not available, using legacy method")
 
             # Create timestamped snapshot with dedicated prefix for lifecycle management
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
             # Use database-specific path if provided
             if database_name:

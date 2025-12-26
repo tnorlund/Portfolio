@@ -217,6 +217,13 @@ def create_chroma_client(
                     if hasattr(self.words_client, "__exit__"):
                         self.words_client.__exit__(exc_type, exc_val, exc_tb)
 
+                def close(self):
+                    """Close both underlying ChromaDB clients."""
+                    if hasattr(self.lines_client, "close"):
+                        self.lines_client.close()
+                    if hasattr(self.words_client, "close"):
+                        self.words_client.close()
+
             client = DualChromaClient(lines_client, words_client)
             logger.info("Created ChromaDB client at: %s", lines_dir)
             logger.info("Created ChromaDB client at: %s", words_dir)

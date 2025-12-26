@@ -18,6 +18,9 @@ from receipt_agent.agents.label_harmonizer.tools.factory import (
     create_label_harmonizer_tools,
 )
 from receipt_agent.agents.label_harmonizer.tools.helpers import label_to_dict
+from receipt_agent.agents.label_harmonizer.tools.label_harmonizer_v3 import (
+    ReceiptLabelResult,
+)
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.utils.agent_common import (
     create_agent_node_with_retry,
@@ -30,10 +33,6 @@ from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.dynamo_client import DynamoClient
-
-    from receipt_agent.agents.label_harmonizer.tools.label_harmonizer_v3 import (
-        ReceiptLabelResult,
-    )
 
 logger = logging.getLogger(__name__)
 

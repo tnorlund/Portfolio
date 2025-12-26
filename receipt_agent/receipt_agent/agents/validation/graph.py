@@ -257,15 +257,10 @@ async def run_validation(
         receipt_id,
     )
 
-    final_state = None
     async for event in graph.astream(initial_state, config):
         # event is a dict with node name -> output
         for node_name, output in event.items():
             logger.debug("Node '%s' completed", node_name)
-            if isinstance(output, dict):
-                # Merge output into state tracking
-                if "result" in output:
-                    final_state = output
 
     # Get final state from graph
     final_snapshot = graph.get_state(config)
