@@ -77,6 +77,8 @@ def handler(event: dict[str, Any], _context: Any) -> "CollectIssuesOutput":
     collected_issues: list[dict[str, Any]] = []
     receipts_with_issues = 0
     receipts_processed = 0
+    # Track per-receipt trace info for LLMReview to join
+    receipt_trace_info: dict[str, dict[str, Any]] = {}
 
     for result in receipt_results:
         if not isinstance(result, dict):
@@ -103,6 +105,14 @@ def handler(event: dict[str, Any], _context: Any) -> "CollectIssuesOutput":
             receipts_with_issues += 1
             image_id = eval_results.get("image_id")
             receipt_id = eval_results.get("receipt_id")
+
+            # Preserve per-receipt trace info (from EvaluateLabels output)
+            receipt_key = f"{image_id}:{receipt_id}"
+            receipt_trace_info[receipt_key] = {
+                "trace_id": result.get("trace_id"),
+                "root_run_id": result.get("root_run_id"),
+                "root_dotted_order": result.get("root_dotted_order"),
+            }
 
             # Collect each issue with receipt context
             for issue in issues:
@@ -137,6 +147,8 @@ def handler(event: dict[str, Any], _context: Any) -> "CollectIssuesOutput":
         "receipts_with_issues": receipts_with_issues,
         "receipts_processed": receipts_processed,
         "issues": collected_issues,
+        # Per-receipt trace info for LLMReview to join
+        "receipt_trace_info": receipt_trace_info,
     }
 
     upload_json_to_s3(s3, batch_bucket, issues_s3_key, issues_data)

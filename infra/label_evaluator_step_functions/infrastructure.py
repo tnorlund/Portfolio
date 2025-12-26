@@ -1,24 +1,28 @@
 """
 Pulumi infrastructure for Label Evaluator Step Function with LangSmith Tracing.
 
-This component creates a Step Function with full trace propagation across
-all Lambda invocations, providing unified visibility in LangSmith.
+This component creates a Step Function with per-receipt traces in LangSmith,
+providing complete visibility into each receipt's evaluation and LLM review.
 
-The trace hierarchy:
-- ListMerchants: Root trace for the workflow
-  - ProcessMerchant: Child trace per merchant
-    - ListReceipts: List receipts for merchant
-    - DiscoverLineItemPatterns: LLM discovers line item patterns
-    - ComputePatterns: Compute spatial patterns (visible sub-spans)
-    - EvaluateLabels: Per-receipt evaluation (each as child span)
-    - CollectIssues: Collect flagged issues
-    - BatchIssues: Batch issues for LLM review
-    - LLMReviewBatch: LLM reviews each batch (visible LLM calls)
-    - AggregateResults: Aggregate merchant results
-  - FinalAggregate: Aggregate across all merchants
+The trace hierarchy (per-receipt traces):
+- Execution-level trace (label_evaluator:{merchant_name}):
+  - DiscoverLineItemPatterns: LLM discovers line item patterns
+  - ComputePatterns: Compute spatial patterns
 
-All business logic is identical to the non-traced version. The only
-difference is trace context propagation via `langsmith_headers`.
+- Per-receipt trace (ReceiptEvaluation):
+  - DiscoverPatterns: Reference to line item patterns
+  - ComputePatterns: Reference to merchant patterns
+  - EvaluateLabels: Run 6 issue detection strategies
+  - LLMReview: LLM reviews issues for this receipt
+    - llm_call: Individual LLM call with ChromaDB similarity evidence
+
+Each receipt gets its own trace with metadata:
+  - image_id: Receipt image identifier
+  - receipt_id: Receipt number within image
+  - merchant_name: Merchant name for filtering
+
+This enables filtering by specific receipts in LangSmith and provides
+complete visibility into each receipt's evaluation process.
 """
 
 import json
@@ -1267,6 +1271,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                             "receipt_id.$": "$.eval_result.receipt_id",
                                                             "issues_found.$": "$.eval_result.issues_found",
                                                             "results_s3_key.$": "$.eval_result.results_s3_key",
+                                                            # Per-receipt trace info for LLMReview
+                                                            "trace_id.$": "$.eval_result.trace_id",
+                                                            "root_run_id.$": "$.eval_result.root_run_id",
+                                                            "root_dotted_order.$": "$.eval_result.root_dotted_order",
                                                         },
                                                         "End": True,
                                                     },
@@ -1367,11 +1375,11 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     # Receipt identification (one batch per receipt)
                                     "image_id.$": "$$.Map.Item.Value.image_id",
                                     "receipt_id.$": "$$.Map.Item.Value.receipt_id",
-                                    # Deterministic trace propagation
+                                    # Per-receipt trace propagation (from EvaluateLabels)
                                     "execution_arn.$": "$$.Execution.Id",
-                                    "trace_id.$": "$.line_item_patterns.trace_id",
-                                    "root_run_id.$": "$.line_item_patterns.root_run_id",
-                                    "root_dotted_order.$": "$.line_item_patterns.root_dotted_order",
+                                    "trace_id.$": "$$.Map.Item.Value.trace_id",
+                                    "root_run_id.$": "$$.Map.Item.Value.root_run_id",
+                                    "root_dotted_order.$": "$$.Map.Item.Value.root_dotted_order",
                                 },
                                 "ItemProcessor": {
                                     "ProcessorConfig": {"Mode": "INLINE"},

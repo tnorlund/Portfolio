@@ -95,8 +95,11 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             issues_s3_key,
         )
         all_issues = []
+        receipt_trace_info = {}
     else:
         all_issues = issues_data.get("issues", [])
+        # Per-receipt trace info for LLMReview to join
+        receipt_trace_info = issues_data.get("receipt_trace_info", {})
 
     total_issues = len(all_issues)
 
@@ -130,6 +133,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         image_id, receipt_id_str = receipt_key.split(":", 1)
         receipt_id = int(receipt_id_str)
 
+        # Get per-receipt trace info (from EvaluateLabels)
+        trace_info = receipt_trace_info.get(receipt_key, {})
+
         # Upload batch for this receipt to S3
         batch_s3_key = (
             f"batches/{execution_id}/{merchant_hash}_r{receipt_idx}.json"
@@ -154,6 +160,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "issue_count": len(receipt_issues),
+                # Per-receipt trace info for LLMReview to join
+                "trace_id": trace_info.get("trace_id"),
+                "root_run_id": trace_info.get("root_run_id"),
+                "root_dotted_order": trace_info.get("root_dotted_order"),
             }
         )
 
