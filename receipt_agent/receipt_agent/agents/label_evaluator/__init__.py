@@ -99,13 +99,16 @@ from receipt_agent.agents.label_evaluator.graph import (
     run_label_evaluator,
     run_label_evaluator_sync,
 )
+from receipt_agent.agents.label_evaluator.word_context import (
+    assemble_visual_lines,
+    build_word_contexts,
+    get_same_line_words,
+)
 from receipt_agent.agents.label_evaluator.helpers import (
     CURRENCY_LABELS,
     SimilarWordResult,
     assemble_receipt_text,
-    assemble_visual_lines,
     build_review_context,
-    build_word_contexts,
     check_constellation_anomaly,
     check_geometric_anomaly,
     check_missing_constellation_member,
@@ -187,6 +190,7 @@ __all__ = [
     # Helper functions (for testing and extension)
     "build_word_contexts",
     "assemble_visual_lines",
+    "get_same_line_words",
     "compute_merchant_patterns",
     "evaluate_word_contexts",
     "check_position_anomaly",

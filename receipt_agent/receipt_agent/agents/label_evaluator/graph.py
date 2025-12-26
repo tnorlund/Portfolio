@@ -40,10 +40,12 @@ except ImportError:
 
 from receipt_dynamo.entities import ReceiptWordLabel
 
-from receipt_agent.agents.label_evaluator.helpers import (
+from receipt_agent.agents.label_evaluator.word_context import (
     assemble_visual_lines,
-    build_review_context,
     build_word_contexts,
+)
+from receipt_agent.agents.label_evaluator.helpers import (
+    build_review_context,
     compute_merchant_patterns,
     evaluate_word_contexts,
     format_similar_words_for_prompt,
