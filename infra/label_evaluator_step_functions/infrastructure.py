@@ -929,7 +929,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "Result": {
                         "dry_run": False,
                         "force_rediscovery": False,
-                        "enable_tracing": False,
+                        "enable_tracing": True,
                         "limit": None,
                     },
                     "ResultPath": "$.defaults",
