@@ -39,7 +39,7 @@ from receipt_agent.agents.label_evaluator.word_context import (
     assemble_visual_lines,
     build_word_contexts,
 )
-from receipt_agent.agents.label_evaluator.helpers import (
+from receipt_agent.agents.label_evaluator.issue_detection import (
     evaluate_word_contexts,
 )
 from receipt_agent.agents.label_evaluator.state import (

@@ -104,11 +104,7 @@ from receipt_agent.agents.label_evaluator.word_context import (
     build_word_contexts,
     get_same_line_words,
 )
-from receipt_agent.agents.label_evaluator.helpers import (
-    CURRENCY_LABELS,
-    SimilarWordResult,
-    assemble_receipt_text,
-    build_review_context,
+from receipt_agent.agents.label_evaluator.issue_detection import (
     check_constellation_anomaly,
     check_geometric_anomaly,
     check_missing_constellation_member,
@@ -117,6 +113,12 @@ from receipt_agent.agents.label_evaluator.helpers import (
     check_text_label_conflict,
     check_unexpected_label_pair,
     evaluate_word_contexts,
+)
+from receipt_agent.agents.label_evaluator.helpers import (
+    CURRENCY_LABELS,
+    SimilarWordResult,
+    assemble_receipt_text,
+    build_review_context,
     extract_receipt_currency_context,
     format_receipt_text,
     format_similar_words_for_prompt,
