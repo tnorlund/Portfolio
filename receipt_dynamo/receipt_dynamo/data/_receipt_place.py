@@ -531,8 +531,12 @@ class _ReceiptPlace(FlattenedStandardMixin):
         return self._query_entities(
             index_name="GSI1",
             key_condition_expression="#pk = :pk",
-            expression_attribute_names={"#pk": "GSI1PK"},
-            expression_attribute_values={":pk": {"S": gsi1_pk}},
+            expression_attribute_names={"#pk": "GSI1PK", "#type": "TYPE"},
+            expression_attribute_values={
+                ":pk": {"S": gsi1_pk},
+                ":type_value": {"S": "RECEIPT_PLACE"},
+            },
+            filter_expression="#type = :type_value",
             converter_func=item_to_receipt_place,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -588,8 +592,12 @@ class _ReceiptPlace(FlattenedStandardMixin):
         return self._query_entities(
             index_name="GSI2",
             key_condition_expression="GSI2PK = :pk",
-            expression_attribute_names=None,
-            expression_attribute_values={":pk": {"S": f"PLACE#{place_id}"}},
+            expression_attribute_names={"#type": "TYPE"},
+            expression_attribute_values={
+                ":pk": {"S": f"PLACE#{place_id}"},
+                ":type_value": {"S": "RECEIPT_PLACE"},
+            },
+            filter_expression="#type = :type_value",
             converter_func=item_to_receipt_place,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
