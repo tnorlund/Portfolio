@@ -61,7 +61,7 @@ from typing import Optional
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
-from receipt_agent.agents.label_evaluator.helpers import (
+from receipt_agent.agents.label_evaluator.patterns import (
     compute_merchant_patterns,
 )
 from receipt_agent.agents.label_evaluator.state import (
@@ -374,17 +374,17 @@ with open("{output_dir}/_data_{timestamp}.pkl", "rb") as f:
     other_receipt_data = pickle.load(f)
 
 # Import function
-from receipt_agent.agents.label_evaluator.helpers import (
+from receipt_agent.agents.label_evaluator.patterns import (
     compute_merchant_patterns,
 )
 
 # Skip batching if requested
 skip_batching = {skip_batching}
 if skip_batching:
-    import receipt_agent.agents.label_evaluator.helpers as helpers
+    import receipt_agent.agents.label_evaluator.patterns as patterns
     def mock_batch(*args, **kwargs):
         return {{"HAPPY": [], "AMBIGUOUS": [], "ANTI_PATTERN": []}}
-    helpers.batch_receipts_by_quality = mock_batch
+    patterns.batch_receipts_by_quality = mock_batch
 
 # Run computation
 start = time.perf_counter()

@@ -46,10 +46,12 @@ from receipt_agent.agents.label_evaluator.word_context import (
 )
 from receipt_agent.agents.label_evaluator.helpers import (
     build_review_context,
-    compute_merchant_patterns,
     evaluate_word_contexts,
     format_similar_words_for_prompt,
     query_similar_validated_words,
+)
+from receipt_agent.agents.label_evaluator.patterns import (
+    compute_merchant_patterns,
 )
 from receipt_agent.agents.label_evaluator.llm_review import (
     review_all_issues,

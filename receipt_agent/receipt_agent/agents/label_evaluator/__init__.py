@@ -116,7 +116,6 @@ from receipt_agent.agents.label_evaluator.helpers import (
     check_position_anomaly,
     check_text_label_conflict,
     check_unexpected_label_pair,
-    compute_merchant_patterns,
     evaluate_word_contexts,
     extract_receipt_currency_context,
     format_receipt_text,
@@ -124,6 +123,12 @@ from receipt_agent.agents.label_evaluator.helpers import (
     is_currency_amount,
     parse_currency_value,
     query_similar_validated_words,
+)
+from receipt_agent.agents.label_evaluator.patterns import (
+    batch_receipts_by_quality,
+    classify_conflicts_with_llm,
+    compute_merchant_patterns,
+    detect_label_conflicts,
 )
 from receipt_agent.utils.chroma_helpers import build_word_chroma_id
 from receipt_agent.agents.label_evaluator.llm_review import (
@@ -192,6 +197,9 @@ __all__ = [
     "assemble_visual_lines",
     "get_same_line_words",
     "compute_merchant_patterns",
+    "batch_receipts_by_quality",
+    "detect_label_conflicts",
+    "classify_conflicts_with_llm",
     "evaluate_word_contexts",
     "check_position_anomaly",
     "check_geometric_anomaly",

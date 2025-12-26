@@ -1,8 +1,7 @@
 """Compute merchant patterns with trace propagation.
 
-This handler creates a child trace using deterministic UUIDs based on
-execution ARN. The trace_id and root_run_id are passed from the upstream
-DiscoverLineItemPatterns Lambda.
+This handler resumes the trace and creates a child span for
+pattern computation, which is one of the key steps visible in LangSmith.
 """
 
 # pylint: disable=import-outside-toplevel
@@ -11,23 +10,18 @@ DiscoverLineItemPatterns Lambda.
 import json
 import logging
 import os
-import sys
 import time
 from typing import TYPE_CHECKING, Any
 
 import boto3
 
-# Import tracing utilities - works in both container and local environments
-try:
-    # Container environment: tracing.py is in same directory
-    from tracing import child_trace, flush_langsmith_traces, state_trace
-except ImportError:
-    # Local/development environment: use path relative to this file
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "lambdas", "utils"
-    ))
-    from tracing import child_trace, flush_langsmith_traces, state_trace
+# Import tracing utilities
+import sys
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "lambdas", "utils"
+))
+from tracing import child_trace, flush_langsmith_traces, resume_trace
 
 if TYPE_CHECKING:
     from handlers.evaluator_types import ComputePatternsOutput
@@ -45,35 +39,27 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
     Input:
     {
         "execution_id": "abc123",
-        "execution_arn": "arn:aws:states:...",  # From $$.Execution.Id
         "batch_bucket": "bucket-name",
         "merchant_name": "Sprouts Farmers Market",
         "max_training_receipts": 50,
-        "trace_id": "...",       # From upstream Lambda
-        "root_run_id": "..."     # From upstream Lambda
+        "langsmith_headers": {...}
     }
 
     Output:
     {
         "patterns_s3_key": "patterns/{exec}/{hash}.json",
         "merchant_name": "Sprouts Farmers Market",
-        "receipt_count": 45
+        "receipt_count": 45,
+        "langsmith_headers": {...}
     }
     """
     execution_id = event.get("execution_id", "unknown")
-    execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     merchant_name = event.get("merchant_name")
     # Handle merchant_name from merchant object (Map state)
     if not merchant_name and "merchant" in event:
         merchant_name = event["merchant"].get("merchant_name")
     max_training_receipts = event.get("max_training_receipts", 50)
-
-    # Get trace IDs from upstream Lambda
-    trace_id = event.get("trace_id", "")
-    root_run_id = event.get("root_run_id", "")
-    root_dotted_order = event.get("root_dotted_order")
-    enable_tracing = event.get("enable_tracing", False)
 
     if not merchant_name:
         raise ValueError("merchant_name is required")
@@ -82,23 +68,15 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
 
     start_time = time.time()
 
-    # Create a child trace using deterministic UUID
-    with state_trace(
-        execution_arn=execution_arn,
-        state_name="ComputePatterns",
-        trace_id=trace_id,
-        root_run_id=root_run_id,
-        root_dotted_order=root_dotted_order,
-        inputs={
+    # Resume the trace as a child
+    with resume_trace(
+        f"compute_patterns:{merchant_name[:20]}",
+        event,
+        metadata={
             "merchant_name": merchant_name,
             "max_training_receipts": max_training_receipts,
         },
-        metadata={
-            "merchant_name": merchant_name,
-            "execution_id": execution_id,
-        },
         tags=["compute-patterns"],
-        enable_tracing=enable_tracing,
     ) as trace_ctx:
 
         logger.info(
@@ -188,9 +166,9 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
                 "receipt_count": 0,
                 "pattern_stats": None,
             }
-            trace_ctx.set_outputs(result)
+            output = trace_ctx.wrap_output(result)
             flush_langsmith_traces()
-            return result
+            return output
 
         # Create child trace for pattern computation
         with child_trace("compute_merchant_patterns", trace_ctx, metadata={
@@ -251,12 +229,13 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
             "compute_time_seconds": round(compute_time, 2),
         }
 
-        trace_ctx.set_outputs(result)
+        # Add trace headers for propagation
+        output = trace_ctx.wrap_output(result)
 
     # Flush traces before Lambda exits
     flush_langsmith_traces()
 
-    return result
+    return output
 
 
 def _hash_merchant(merchant_name: str) -> str:
