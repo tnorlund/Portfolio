@@ -1,24 +1,25 @@
-"""Collect issues from all receipts for a merchant.
+"""Collect issues for the traced Step Function.
 
-This handler gathers all flagged issues from the evaluation results
-for batch LLM review. It reads individual receipt results from S3
-and consolidates them into a single file for efficient processing.
+This is a zip-based Lambda that doesn't have access to langsmith.
+Tracing is handled by the container-based Lambdas.
 """
 
 import logging
 import os
+import sys
 from typing import TYPE_CHECKING, Any
 
 import boto3
 
-from .utils.s3_helpers import (
-    get_merchant_hash,
-    load_json_from_s3,
-    upload_json_to_s3,
-)
+# Import S3 helpers from lambdas
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "lambdas", "utils"
+))
+from s3_helpers import get_merchant_hash, load_json_from_s3, upload_json_to_s3
 
 if TYPE_CHECKING:
-    from evaluator_types import CollectIssuesOutput
+    from handlers.evaluator_types import CollectIssuesOutput
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -28,22 +29,14 @@ s3 = boto3.client("s3")
 
 def handler(event: dict[str, Any], _context: Any) -> "CollectIssuesOutput":
     """
-    Collect all issues from evaluated receipts for batch LLM review.
+    Collect all issues from evaluated receipts.
 
     Input:
     {
         "execution_id": "abc123",
         "batch_bucket": "bucket-name",
         "merchant_name": "Sprouts Farmers Market",
-        "process_results": [
-            [  # Batch 0
-                [  # Receipt results
-                    {"status": "completed", "results_s3_key": "...", ...},
-                    ...
-                ]
-            ],
-            ...
-        ]
+        "process_results": [...]
     }
 
     Output:
@@ -66,7 +59,7 @@ def handler(event: dict[str, Any], _context: Any) -> "CollectIssuesOutput":
         f"Collecting issues for {merchant_name} from {len(process_results)} batches"
     )
 
-    # Flatten the nested batch results to get individual receipt results
+    # Flatten the nested batch results
     receipt_results: list[dict[str, Any]] = []
     for batch in process_results:
         if isinstance(batch, list):
@@ -147,7 +140,6 @@ def handler(event: dict[str, Any], _context: Any) -> "CollectIssuesOutput":
     }
 
     upload_json_to_s3(s3, batch_bucket, issues_s3_key, issues_data)
-
     logger.info(f"Uploaded issues to s3://{batch_bucket}/{issues_s3_key}")
 
     return {

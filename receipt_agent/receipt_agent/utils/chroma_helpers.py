@@ -11,9 +11,11 @@ import os
 import tempfile
 from collections import Counter, defaultdict
 from collections.abc import Callable
-from typing import Any, Optional, TypedDict
+from dataclasses import dataclass, field
+from typing import Any, List, Optional, TypedDict
 
 from receipt_chroma.s3 import download_snapshot_atomic
+from receipt_dynamo.entities import ReceiptWord
 
 from receipt_agent.clients.factory import create_chroma_client, create_embed_fn
 from receipt_agent.config.settings import get_settings
@@ -619,3 +621,237 @@ def compute_merchant_breakdown(
         )
 
     return breakdown
+
+
+# =============================================================================
+# Simple Similar Word Query (from label_evaluator/helpers.py)
+# =============================================================================
+
+
+@dataclass
+class SimilarWordResult:
+    """Result from ChromaDB similarity search for a word."""
+
+    word_text: str
+    similarity_score: float
+    label: Optional[str]
+    validation_status: Optional[str]
+    valid_labels: List[str] = field(default_factory=list)
+    invalid_labels: List[str] = field(default_factory=list)
+    merchant_name: Optional[str] = None
+
+
+def query_similar_validated_words(
+    word: ReceiptWord,
+    chroma_client: Any,
+    n_results: int = 10,
+    min_similarity: float = 0.7,
+    merchant_name: Optional[str] = None,
+) -> List[SimilarWordResult]:
+    """
+    Query ChromaDB for similar words that have validated labels.
+
+    Uses the word's existing embedding from ChromaDB instead of generating
+    a new one. This ensures we use the same contextual embedding that was
+    created during the embedding pipeline.
+
+    Args:
+        word: The ReceiptWord to find similar words for
+        chroma_client: ChromaDB client (DualChromaClient or similar)
+        n_results: Maximum number of results to return
+        min_similarity: Minimum similarity score (0.0-1.0) to include
+        merchant_name: Optional merchant name to scope results to same merchant
+
+    Returns:
+        List of SimilarWordResult objects, sorted by similarity descending
+    """
+    if not chroma_client:
+        logger.warning("ChromaDB client not provided")
+        return []
+
+    try:
+        # Build the word's ChromaDB ID
+        word_chroma_id = build_word_chroma_id(
+            word.image_id, word.receipt_id, word.line_id, word.word_id
+        )
+
+        # Get the word's existing embedding from ChromaDB
+        get_result = chroma_client.get(
+            collection_name="words",
+            ids=[word_chroma_id],
+            include=["embeddings"],
+        )
+
+        if not get_result:
+            logger.warning("Word not found in ChromaDB: %s", word_chroma_id)
+            return []
+
+        embeddings = get_result.get("embeddings")
+        if embeddings is None or len(embeddings) == 0:
+            logger.warning("No embeddings found for word: %s", word_chroma_id)
+            return []
+
+        if embeddings[0] is None:
+            logger.warning("No embedding found for word: %s", word_chroma_id)
+            return []
+
+        # Convert numpy array to list
+        try:
+            query_embedding = list(embeddings[0])
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid embedding format for word: %s",
+                word_chroma_id,
+            )
+            return []
+
+        if not query_embedding:
+            logger.warning(
+                "Empty embedding found for word: %s",
+                word_chroma_id,
+            )
+            return []
+
+        # Query ChromaDB words collection using the existing embedding
+        results = chroma_client.query(
+            collection_name="words",
+            query_embeddings=[query_embedding],
+            n_results=n_results * 2
+            + 1,  # Fetch more, filter later (+1 for self)
+            include=["documents", "metadatas", "distances"],
+        )
+
+        if not results or not results.get("ids"):
+            return []
+
+        ids = list(results.get("ids", [[]])[0])
+        documents = list(results.get("documents", [[]])[0])
+        metadatas = list(results.get("metadatas", [[]])[0])
+        distances = list(results.get("distances", [[]])[0])
+
+        similar_words: List[SimilarWordResult] = []
+
+        for doc_id, doc, meta, dist in zip(
+            ids, documents, metadatas, distances
+        ):
+            # Skip self (the query word)
+            if doc_id == word_chroma_id:
+                continue
+
+            # Filter by merchant if specified
+            if merchant_name:
+                result_merchant = meta.get("merchant_name")
+                if result_merchant != merchant_name:
+                    continue
+
+            # Convert distance to Python float and compute similarity
+            try:
+                dist_float = float(dist)
+            except (TypeError, ValueError):
+                logger.debug("Invalid distance value: %s", dist)
+                continue
+
+            # Convert L2 distance to similarity (0.0-1.0)
+            similarity = max(0.0, 1.0 - (dist_float / 2))
+
+            if similarity < min_similarity:
+                continue
+
+            # Parse valid/invalid labels from metadata
+            valid_labels_str = meta.get("valid_labels", "")
+            invalid_labels_str = meta.get("invalid_labels", "")
+            valid_labels = (
+                [
+                    lbl.strip()
+                    for lbl in valid_labels_str.split(",")
+                    if lbl.strip()
+                ]
+                if valid_labels_str
+                else []
+            )
+            invalid_labels = (
+                [
+                    lbl.strip()
+                    for lbl in invalid_labels_str.split(",")
+                    if lbl.strip()
+                ]
+                if invalid_labels_str
+                else []
+            )
+
+            similar_words.append(
+                SimilarWordResult(
+                    word_text=doc or meta.get("text", ""),
+                    similarity_score=similarity,
+                    label=meta.get("label"),
+                    validation_status=meta.get("validation_status"),
+                    valid_labels=valid_labels,
+                    invalid_labels=invalid_labels,
+                    merchant_name=meta.get("merchant_name"),
+                )
+            )
+
+        # Sort by similarity descending and limit results
+        similar_words.sort(key=lambda w: -w.similarity_score)
+        return similar_words[:n_results]
+
+    except Exception as e:
+        logger.error(
+            "Error querying ChromaDB for similar words: %s",
+            e,
+            exc_info=True,
+        )
+        return []
+
+
+def format_similar_words_for_prompt(
+    similar_words: List[SimilarWordResult],
+    max_examples: int = 5,
+) -> str:
+    """
+    Format similar validated words for inclusion in LLM prompt.
+
+    Prioritizes words with VALID validation status and groups by label.
+
+    Args:
+        similar_words: Results from query_similar_validated_words()
+        max_examples: Maximum number of examples to include
+
+    Returns:
+        Formatted string for LLM prompt
+    """
+    if not similar_words:
+        return "No similar validated words found in database."
+
+    # Prioritize validated words
+    validated = [w for w in similar_words if w.validation_status == "VALID"]
+    other = [w for w in similar_words if w.validation_status != "VALID"]
+
+    # Take validated first, then fill with others
+    examples = validated[:max_examples]
+    if len(examples) < max_examples:
+        examples.extend(other[: max_examples - len(examples)])
+
+    if not examples:
+        return "No similar validated words found in database."
+
+    lines = []
+    for w in examples:
+        status = (
+            f"[{w.validation_status}]"
+            if w.validation_status
+            else "[unvalidated]"
+        )
+        label = w.label or "no label"
+        lines.append(
+            f'- "{w.word_text}" → {label} {status} '
+            f"(similarity: {w.similarity_score:.2f})"
+        )
+
+        # Add valid/invalid labels if available
+        if w.valid_labels:
+            lines.append(f"    Valid labels: {', '.join(w.valid_labels)}")
+        if w.invalid_labels:
+            lines.append(f"    Invalid labels: {', '.join(w.invalid_labels)}")
+
+    return "\n".join(lines)

@@ -1,7 +1,7 @@
-"""List unique merchants with sufficient receipts for label evaluation.
+"""List unique merchants for the traced Step Function.
 
-This handler queries DynamoDB for all ReceiptPlaces, groups by merchant,
-and returns merchants that meet the minimum receipt threshold.
+This is a zip-based Lambda that doesn't have access to langsmith.
+Tracing is handled by the container-based Lambdas.
 """
 
 # pylint: disable=import-outside-toplevel
@@ -14,10 +14,14 @@ from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 import boto3
-from evaluator_types import MerchantInfo
+
+# Import from parent handlers (reuse types)
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from handlers.evaluator_types import MerchantInfo
 
 if TYPE_CHECKING:
-    from evaluator_types import ListMerchantsOutput
+    from handlers.evaluator_types import ListMerchantsOutput
 
 
 logger = logging.getLogger()
@@ -37,29 +41,20 @@ def handler(event: dict[str, Any], _context: Any) -> "ListMerchantsOutput":
     {
         "execution_id": "abc123",
         "batch_bucket": "bucket-name",
-        "min_receipts": 5,  # Minimum receipts required per merchant
-        "max_training_receipts": 50,  # Max training receipts per merchant
-        "skip_llm_review": true
+        "min_receipts": 5,
+        "max_training_receipts": 50
     }
 
     Output:
     {
-        "merchants": [
-            {"merchant_name": "Sprouts Farmers Market", "receipt_count": 184},
-            {"merchant_name": "Costco Wholesale", "receipt_count": 27},
-            ...
-        ],
-        "total_merchants": 18,
-        "total_receipts": 373,
-        "skipped_merchants": 120,  # Merchants below threshold
-        "min_receipts": 5
+        "merchants": [...],
+        "total_merchants": 18
     }
     """
     execution_id = event.get("execution_id", "unknown")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     min_receipts = event.get("min_receipts", DEFAULT_MIN_RECEIPTS)
     max_training_receipts = event.get("max_training_receipts", 50)
-    skip_llm_review = event.get("skip_llm_review", True)
 
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
@@ -121,7 +116,6 @@ def handler(event: dict[str, Any], _context: Any) -> "ListMerchantsOutput":
         "execution_id": execution_id,
         "min_receipts": min_receipts,
         "max_training_receipts": max_training_receipts,
-        "skip_llm_review": skip_llm_review,
         "merchants": qualifying_merchants,
         "total_merchants": len(qualifying_merchants),
         "total_receipts": total_receipts,
@@ -155,6 +149,5 @@ def handler(event: dict[str, Any], _context: Any) -> "ListMerchantsOutput":
         "skipped_merchants": skipped_count,
         "min_receipts": min_receipts,
         "max_training_receipts": max_training_receipts,
-        "skip_llm_review": skip_llm_review,
         "manifest_s3_key": manifest_key,
     }

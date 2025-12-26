@@ -1,22 +1,15 @@
-"""Aggregate evaluation results and generate summary report.
+"""Aggregate results for the traced Step Function.
 
-This handler collects all individual receipt evaluation results from S3
-and generates a summary report with statistics by issue type and merchant.
+This is a zip-based Lambda that doesn't have access to langsmith.
+Tracing is handled by the container-based Lambdas.
 """
 
 import json
 import logging
 import os
-from collections import Counter
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import boto3
-
-from evaluator_types import IssueDetail, ReceiptResultSummary
-
-if TYPE_CHECKING:
-    from evaluator_types import AggregateResultsOutput
-
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -24,191 +17,111 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
-def handler(event: dict[str, Any], _context: Any) -> "AggregateResultsOutput":
+def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
-    Aggregate all evaluation results and generate summary report.
+    Aggregate evaluation results for a merchant.
 
     Input:
     {
         "execution_id": "abc123",
         "batch_bucket": "bucket-name",
-        "process_results": [[{"status": "completed", ...}], ...],
-        "merchant_name": "Sprouts Farmers Market",
-        "dry_run": true
+        "process_results": [[[{...receipt results...}]]],
+        "merchant_name": "Sprouts"
     }
 
     Output:
     {
-        "execution_id": "abc123",
-        "summary": {
-            "total_receipts": 150,
-            "successful_receipts": 148,
-            "failed_receipts": 2,
-            "total_issues": 23,
-            "by_issue_type": {"position_anomaly": 12, "same_line_conflict": 11},
-            "by_status": {"NEEDS_REVIEW": 20, "INVALID": 3}
-        },
-        "report_s3_key": "reports/{exec}/summary.json"
+        "total_receipts": 45,
+        "total_issues": 12,
+        "successful_evaluations": 44,
+        "failed_evaluations": 1,
+        "summary_s3_key": "summaries/{exec}/{merchant}.json"
     }
     """
     execution_id = event.get("execution_id", "unknown")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     process_results = event.get("process_results", [])
     merchant_name = event.get("merchant_name", "Unknown")
-    dry_run = event.get("dry_run", True)
 
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
 
-    logger.info("Aggregating results for execution %s", execution_id)
-
-    # Flatten nested results from distributed map
-    all_results: list[ReceiptResultSummary] = []
-    for batch_results in process_results:
-        if isinstance(batch_results, list):
-            all_results.extend(batch_results)
-        elif isinstance(batch_results, dict):
-            all_results.append(batch_results)  # type: ignore[arg-type]
-
-    # Count statistics
-    total_receipts = len(all_results)
-    successful_receipts = sum(
-        1 for r in all_results if r.get("status") == "completed"
+    logger.info(
+        "Aggregating results for merchant '%s'",
+        merchant_name,
     )
-    failed_receipts = sum(1 for r in all_results if r.get("status") == "error")
 
-    # Aggregate issues
-    all_issues: list[IssueDetail] = []
-    issue_type_counter: Counter = Counter()
-    status_counter: Counter = Counter()
+    # Flatten nested results from Map states
+    all_results = []
+    for batch in process_results:
+        if isinstance(batch, list):
+            for receipt_batch in batch:
+                if isinstance(receipt_batch, list):
+                    all_results.extend(receipt_batch)
+                elif isinstance(receipt_batch, dict):
+                    all_results.append(receipt_batch)
+        elif isinstance(batch, dict):
+            all_results.append(batch)
+
+    # Aggregate statistics
+    total_receipts = len(all_results)
+    total_issues = 0
+    successful = 0
+    failed = 0
 
     for result in all_results:
-        if result.get("status") != "completed":
-            continue
-
-        # Load detailed results from S3 if available
-        results_key = result.get("results_s3_key")
-        if results_key:
-            try:
-                response = s3.get_object(Bucket=batch_bucket, Key=results_key)
-                detailed = json.loads(response["Body"].read().decode("utf-8"))
-                issues = detailed.get("issues", [])
-
-                for issue in issues:
-                    all_issues.append(
-                        {
-                            "image_id": result.get("image_id", ""),
-                            "receipt_id": result.get("receipt_id", 0),
-                            **issue,
-                        }
-                    )
-                    issue_type_counter[issue.get("type", "unknown")] += 1
-                    status_counter[
-                        issue.get("suggested_status", "unknown")
-                    ] += 1
-
-            except Exception as e:
-                logger.warning(
-                    "Could not load results from %s: %s",
-                    results_key,
-                    e,
-                )
-                # Fall back to summary in result
-                issues_found = result.get("issues_found", 0)
-                issue_type_counter["unknown"] += issues_found
-                status_counter["unknown"] += issues_found
-
-    total_issues = sum(issue_type_counter.values())
+        if result.get("status") == "completed":
+            successful += 1
+            issues_found = result.get("issues_found", 0)
+            total_issues += issues_found
+        else:
+            failed += 1
 
     logger.info(
-        "Aggregated %s receipts, %s successful, %s failed, %s total issues",
+        "Aggregated %s receipts: %s successful, %s failed, %s total issues",
         total_receipts,
-        successful_receipts,
-        failed_receipts,
+        successful,
+        failed,
         total_issues,
     )
 
-    # Build summary
+    # Save summary to S3
+    safe_merchant = "".join(
+        c if c.isalnum() else "_" for c in merchant_name
+    )[:50]
+    summary_key = f"summaries/{execution_id}/{safe_merchant}.json"
+
     summary = {
         "execution_id": execution_id,
         "merchant_name": merchant_name,
-        "dry_run": dry_run,
         "total_receipts": total_receipts,
-        "successful_receipts": successful_receipts,
-        "failed_receipts": failed_receipts,
+        "successful_evaluations": successful,
+        "failed_evaluations": failed,
         "total_issues": total_issues,
-        "by_issue_type": dict(issue_type_counter.most_common()),
-        "by_status": dict(status_counter.most_common()),
-        "sample_issues": all_issues[:20],  # Include sample for review
+        "results": all_results,
     }
 
-    # Build detailed report
-    report = {
-        "execution_id": execution_id,
-        "merchant_name": merchant_name,
-        "dry_run": dry_run,
-        "summary": summary,
-        "all_issues": all_issues,
-        "receipt_results": [
-            {
-                "image_id": r.get("image_id"),
-                "receipt_id": r.get("receipt_id"),
-                "status": r.get("status"),
-                "issues_found": r.get("issues_found", 0),
-                "results_s3_key": r.get("results_s3_key"),
-            }
-            for r in all_results
-        ],
-    }
-
-    # Upload summary report to S3
-    report_key = f"reports/{execution_id}/summary.json"
     try:
         s3.put_object(
             Bucket=batch_bucket,
-            Key=report_key,
-            Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
+            Key=summary_key,
+            Body=json.dumps(summary, indent=2).encode("utf-8"),
             ContentType="application/json",
         )
         logger.info(
-            "Uploaded summary report to s3://%s/%s",
+            "Saved summary to s3://%s/%s",
             batch_bucket,
-            report_key,
+            summary_key,
         )
     except Exception:
-        logger.exception(
-            "Failed to upload summary report to %s", report_key
-        )
-        raise
-
-    # Also upload issues-only report for easy analysis
-    issues_key = f"reports/{execution_id}/issues.json"
-    try:
-        s3.put_object(
-            Bucket=batch_bucket,
-            Key=issues_key,
-            Body=json.dumps(all_issues, indent=2, default=str).encode("utf-8"),
-            ContentType="application/json",
-        )
-        logger.info(
-            "Uploaded issues report to s3://%s/%s",
-            batch_bucket,
-            issues_key,
-        )
-    except Exception:
-        logger.exception("Failed to upload issues report to %s", issues_key)
+        logger.exception("Failed to save summary")
         raise
 
     return {
-        "execution_id": execution_id,
-        "summary": {
-            "total_receipts": total_receipts,
-            "successful_receipts": successful_receipts,
-            "failed_receipts": failed_receipts,
-            "total_issues": total_issues,
-            "by_issue_type": dict(issue_type_counter.most_common(5)),
-            "by_status": dict(status_counter.most_common()),
-        },
-        "report_s3_key": report_key,
-        "issues_s3_key": issues_key,
+        "total_receipts": total_receipts,
+        "total_issues": total_issues,
+        "successful_evaluations": successful,
+        "failed_evaluations": failed,
+        "summary_s3_key": summary_key,
+        "merchant_name": merchant_name,
     }

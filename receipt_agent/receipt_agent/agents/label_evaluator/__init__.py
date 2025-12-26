@@ -114,16 +114,18 @@ from receipt_agent.agents.label_evaluator.issue_detection import (
     check_unexpected_label_pair,
     evaluate_word_contexts,
 )
-from receipt_agent.agents.label_evaluator.helpers import (
+from receipt_agent.agents.label_evaluator.llm_review import (
     CURRENCY_LABELS,
-    SimilarWordResult,
     assemble_receipt_text,
     build_review_context,
     extract_receipt_currency_context,
     format_receipt_text,
-    format_similar_words_for_prompt,
     is_currency_amount,
     parse_currency_value,
+)
+from receipt_agent.utils.chroma_helpers import (
+    SimilarWordResult,
+    format_similar_words_for_prompt,
     query_similar_validated_words,
 )
 from receipt_agent.agents.label_evaluator.patterns import (

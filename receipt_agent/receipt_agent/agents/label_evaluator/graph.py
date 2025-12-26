@@ -47,8 +47,10 @@ from receipt_agent.agents.label_evaluator.word_context import (
 from receipt_agent.agents.label_evaluator.issue_detection import (
     evaluate_word_contexts,
 )
-from receipt_agent.agents.label_evaluator.helpers import (
+from receipt_agent.agents.label_evaluator.llm_review import (
     build_review_context,
+)
+from receipt_agent.utils.chroma_helpers import (
     format_similar_words_for_prompt,
     query_similar_validated_words,
 )

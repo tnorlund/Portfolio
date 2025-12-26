@@ -1,5 +1,5 @@
-# LLM Review Container Lambda
-# Multi-stage build for optional LLM-based review of flagged issues
+# LLM Review Container Lambda (Traced Version)
+# Multi-stage build with LangSmith tracing support
 
 # Stage 1: Build and install dependencies (cached layer)
 FROM public.ecr.aws/lambda/python:3.12 AS dependencies
@@ -19,7 +19,7 @@ COPY receipt_agent/ /tmp/receipt_agent/
 # 2. receipt_dynamo_stream (depends on receipt_dynamo)
 # 3. receipt_chroma (depends on receipt_dynamo_stream)
 # 4. receipt_places (depends on receipt_dynamo)
-# 5. receipt_agent (depends on all above, brings langchain-ollama)
+# 5. receipt_agent (depends on all above, brings langchain-ollama and langsmith)
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_dynamo_stream && \
     pip install --no-cache-dir /tmp/receipt_chroma && \
@@ -30,11 +30,17 @@ RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
 # Stage 2: Copy Lambda-specific code (changes frequently)
 FROM dependencies
 
+# Copy the tracing utilities
+COPY infra/label_evaluator_step_functions/lambdas/utils/tracing.py ${LAMBDA_TASK_ROOT}/tracing.py
+
 # Copy the LLM review handler
 COPY infra/label_evaluator_step_functions/lambdas/llm_review.py ${LAMBDA_TASK_ROOT}/handler.py
 
 # Copy utils module
 COPY infra/label_evaluator_step_functions/lambdas/utils/ ${LAMBDA_TASK_ROOT}/utils/
+
+# Ensure files are readable
+RUN chmod 644 ${LAMBDA_TASK_ROOT}/tracing.py ${LAMBDA_TASK_ROOT}/handler.py
 
 # Set the handler
 CMD ["handler.handler"]

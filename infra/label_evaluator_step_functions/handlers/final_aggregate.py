@@ -1,7 +1,7 @@
-"""Final aggregation across all merchants.
+"""Final aggregation for the traced Step Function.
 
-This handler takes the results from all merchants and creates a grand
-summary with totals across all receipts.
+This is a zip-based Lambda that doesn't have access to langsmith.
+Tracing is handled by the container-based Lambdas.
 """
 
 import json
@@ -18,18 +18,15 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
-def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
-    Aggregate results across all merchants into a grand summary.
+    Aggregate results across all merchants.
 
     Input:
     {
         "execution_id": "abc123",
         "batch_bucket": "bucket-name",
-        "all_merchant_results": [
-            {"merchant_name": "...", "status": "completed", "summary": {...}},
-            ...
-        ]
+        "all_merchant_results": [...]
     }
 
     Output:
@@ -39,7 +36,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "total_receipts": 702,
         "total_issues": 3421,
         "by_issue_type": {...},
-        "by_merchant": {...},
         "report_s3_key": "reports/{exec}/grand_summary.json"
     }
     """
@@ -83,12 +79,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         elif status in ("error", "failed"):
             failed_merchants += 1
 
-        # Get summary from merchant result.
-        # Nested summaries are produced by aggregate_results; flat summaries
-        # come from earlier/alternate outputs.
+        # Get summary from merchant result
         summary = result.get("summary", {})
         if isinstance(summary, dict):
-            # Check for nested structure (summary.summary.total_issues)
             inner_summary = summary.get("summary", summary)
             if isinstance(inner_summary, dict):
                 merchant_issues = inner_summary.get("total_issues", 0)

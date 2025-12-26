@@ -1,7 +1,7 @@
-"""List receipts by merchant for label evaluation.
+"""List receipts for a merchant for the traced Step Function.
 
-This handler queries DynamoDB for receipts matching the specified merchant
-and creates a manifest file in S3 for the distributed map to process.
+This is a zip-based Lambda that doesn't have access to langsmith.
+Tracing is handled by the container-based Lambdas.
 """
 
 # pylint: disable=import-outside-toplevel
@@ -13,11 +13,9 @@ import os
 from typing import TYPE_CHECKING, Any
 
 import boto3
-from evaluator_types import ReceiptRef
 
 if TYPE_CHECKING:
-    from evaluator_types import ListReceiptsOutput
-
+    from handlers.evaluator_types import ListReceiptsOutput
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -27,7 +25,7 @@ s3 = boto3.client("s3")
 
 def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
     """
-    List receipts by merchant name and create processing manifest.
+    List receipts for a specific merchant.
 
     Input:
     {
@@ -35,37 +33,36 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
         "batch_bucket": "bucket-name",
         "batch_size": 10,
         "merchant_name": "Sprouts Farmers Market",
-        "limit": 100,
-        "max_training_receipts": 50
+        "max_training_receipts": 50,
+        "limit": null
     }
 
     Output:
     {
-        "manifest_s3_key": "manifests/{exec}/receipts.json",
-        "total_receipts": 150,
-        "total_batches": 15,
-        "merchant_name": "Sprouts Farmers Market",
-        "max_training_receipts": 50
+        "receipt_batches": [[{image_id, receipt_id}, ...], ...],
+        "total_receipts": 184
     }
     """
     execution_id = event.get("execution_id", "unknown")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     batch_size = event.get("batch_size", 10)
     merchant_name = event.get("merchant_name")
-    limit = event.get("limit", 100)
+    # Handle merchant_name from merchant object (Map state)
+    if not merchant_name and "merchant" in event:
+        merchant_name = event["merchant"].get("merchant_name")
     max_training_receipts = event.get("max_training_receipts", 50)
+    limit = event.get("limit")
 
     if not merchant_name:
         raise ValueError("merchant_name is required")
-
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
 
     logger.info(
-        "Listing receipts for merchant '%s' (limit=%s, batch_size=%s)",
+        "Listing receipts for merchant '%s' (batch_size=%s, limit=%s)",
         merchant_name,
-        limit,
         batch_size,
+        limit,
     )
 
     # Import DynamoDB client
@@ -77,54 +74,55 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
 
     dynamo = DynamoClient(table_name=table_name)
 
-    # Query receipts by merchant (using ReceiptPlace instead of ReceiptMetadata)
-    places, _ = dynamo.get_receipt_places_by_merchant(
-        merchant_name, limit=limit
-    )
+    # Get receipts for this merchant
+    all_receipts = []
+    last_key = None
+    query_limit = min(limit, 1000) if limit else 1000
 
-    if not places:
-        logger.info("No receipts found for merchant '%s'", merchant_name)
-        return {
-            "manifest_s3_key": None,
-            "total_receipts": 0,
-            "total_batches": 0,
-            "merchant_name": merchant_name,
-            "max_training_receipts": max_training_receipts,
-            "receipt_batches": [],
-        }
+    while True:
+        places, last_key = dynamo.get_receipt_places_by_merchant(
+            merchant_name,
+            limit=query_limit,
+            last_evaluated_key=last_key,
+        )
 
-    # Create receipt list with typed references
-    receipts: list[ReceiptRef] = [
-        {
-            "image_id": p.image_id,
-            "receipt_id": p.receipt_id,
-            "merchant_name": p.merchant_name,
-        }
-        for p in places
-    ]
+        for place in places:
+            all_receipts.append({
+                "image_id": place.image_id,
+                "receipt_id": place.receipt_id,
+                "merchant_name": place.merchant_name,
+            })
 
-    logger.info(
-        "Found %s receipts for merchant '%s'",
-        len(receipts),
-        merchant_name,
-    )
+            if limit and len(all_receipts) >= limit:
+                break
 
-    # Create batches for distributed map
-    batches: list[list[ReceiptRef]] = []
-    for i in range(0, len(receipts), batch_size):
-        batches.append(receipts[i : i + batch_size])
+        if not last_key or (limit and len(all_receipts) >= limit):
+            break
 
-    # Upload manifest to S3
+    logger.info("Found %s receipts for merchant '%s'", len(all_receipts), merchant_name)
+
+    # Split into batches
+    receipt_batches = []
+    for i in range(0, len(all_receipts), batch_size):
+        receipt_batches.append(all_receipts[i:i + batch_size])
+
+    # Save batch manifest to S3
     manifest = {
         "execution_id": execution_id,
         "merchant_name": merchant_name,
-        "total_receipts": len(receipts),
+        "total_receipts": len(all_receipts),
+        "batch_count": len(receipt_batches),
         "batch_size": batch_size,
         "max_training_receipts": max_training_receipts,
-        "receipts": receipts,
     }
 
-    manifest_key = f"manifests/{execution_id}/receipts.json"
+    # Create safe merchant key
+    safe_merchant = "".join(
+        c if c.isalnum() else "_" for c in merchant_name
+    )[:50]
+    manifest_key = f"manifests/{execution_id}/{safe_merchant}_receipts.json"
+
+    manifest_s3_key: str | None = manifest_key
     try:
         s3.put_object(
             Bucket=batch_bucket,
@@ -133,21 +131,14 @@ def handler(event: dict[str, Any], _context: Any) -> "ListReceiptsOutput":
             ContentType="application/json",
         )
     except Exception:
-        logger.exception("Failed to upload manifest to %s", manifest_key)
-        raise
-
-    logger.info(
-        "Created manifest at s3://%s/%s with %s batches",
-        batch_bucket,
-        manifest_key,
-        len(batches),
-    )
+        logger.exception("Failed to upload manifest")
+        manifest_s3_key = None
 
     return {
-        "manifest_s3_key": manifest_key,
-        "total_receipts": len(receipts),
-        "total_batches": len(batches),
+        "receipt_batches": receipt_batches,
+        "total_receipts": len(all_receipts),
+        "total_batches": len(receipt_batches),
         "merchant_name": merchant_name,
         "max_training_receipts": max_training_receipts,
-        "receipt_batches": batches,
+        "manifest_s3_key": manifest_s3_key,
     }

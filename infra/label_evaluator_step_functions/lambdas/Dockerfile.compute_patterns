@@ -1,5 +1,5 @@
-# Compute Patterns Container Lambda
-# Multi-stage build for optimal caching
+# Compute Patterns Container Lambda (Traced Version)
+# Multi-stage build with LangSmith tracing support
 # This Lambda computes merchant patterns ONCE before the distributed map
 
 # Stage 1: Build and install dependencies (cached layer)
@@ -20,7 +20,7 @@ COPY receipt_agent/ /tmp/receipt_agent/
 # 2. receipt_dynamo_stream (depends on receipt_dynamo)
 # 3. receipt_chroma (depends on receipt_dynamo_stream)
 # 4. receipt_places (depends on receipt_dynamo)
-# 5. receipt_agent (depends on all above)
+# 5. receipt_agent (depends on all above, brings httpx and langsmith)
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_dynamo_stream && \
     pip install --no-cache-dir /tmp/receipt_chroma && \
@@ -31,8 +31,14 @@ RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
 # Stage 2: Copy Lambda-specific code (changes frequently)
 FROM dependencies
 
+# Copy the tracing utilities
+COPY infra/label_evaluator_step_functions/lambdas/utils/tracing.py ${LAMBDA_TASK_ROOT}/tracing.py
+
 # Copy the compute patterns handler
 COPY infra/label_evaluator_step_functions/lambdas/compute_patterns.py ${LAMBDA_TASK_ROOT}/handler.py
+
+# Ensure files are readable
+RUN chmod 644 ${LAMBDA_TASK_ROOT}/tracing.py ${LAMBDA_TASK_ROOT}/handler.py
 
 # Set the handler
 CMD ["handler.handler"]
