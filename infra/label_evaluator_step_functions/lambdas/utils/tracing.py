@@ -48,7 +48,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 # Version identifier for debugging - helps verify correct module is loaded in Lambda
-TRACING_VERSION = "2024-12-24-v3"
+TRACING_VERSION = "2024-12-26-v4-per-receipt"
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +127,79 @@ def generate_state_run_id(
     if map_index is not None:
         parts.append(str(map_index))
     parts.append(str(attempt))
+    return str(uuid.uuid5(TRACE_NAMESPACE, ":".join(parts)))
+
+
+# =============================================================================
+# Per-Receipt Trace ID Generation
+# =============================================================================
+
+
+def generate_receipt_trace_id(
+    execution_arn: str,
+    image_id: str,
+    receipt_id: int,
+) -> str:
+    """Generate a deterministic trace ID for a specific receipt.
+
+    Creates a unique trace ID per receipt within an execution, ensuring:
+    - One trace per receipt (not per execution)
+    - Safe retries (same ID regenerated)
+    - Proper isolation between receipts
+
+    Args:
+        execution_arn: Step Function execution ARN
+        image_id: Unique image identifier
+        receipt_id: Receipt number within the image
+
+    Returns:
+        Deterministic UUID string for this receipt's trace
+    """
+    parts = [execution_arn, image_id, str(receipt_id)]
+    return str(uuid.uuid5(TRACE_NAMESPACE, ":".join(parts)))
+
+
+def generate_receipt_root_run_id(
+    execution_arn: str,
+    image_id: str,
+    receipt_id: int,
+) -> str:
+    """Generate a deterministic root run ID for a receipt trace.
+
+    IMPORTANT: For LangSmith, the root run's ID MUST equal the trace_id.
+    This is because LangSmith uses dotted_order which must start with trace_id.
+
+    Args:
+        execution_arn: Step Function execution ARN
+        image_id: Unique image identifier
+        receipt_id: Receipt number within the image
+
+    Returns:
+        Root run ID (equals trace_id for LangSmith compatibility)
+    """
+    return generate_receipt_trace_id(execution_arn, image_id, receipt_id)
+
+
+def generate_receipt_state_run_id(
+    execution_arn: str,
+    image_id: str,
+    receipt_id: int,
+    state_name: str,
+    attempt: int = 0,
+) -> str:
+    """Generate a deterministic run ID for a state within a receipt trace.
+
+    Args:
+        execution_arn: Step Function execution ARN
+        image_id: Unique image identifier
+        receipt_id: Receipt number within the image
+        state_name: Name of the state (e.g., "EvaluateLabels", "LLMReview")
+        attempt: Retry attempt number (0 for first attempt)
+
+    Returns:
+        Deterministic UUID string for this state invocation
+    """
+    parts = [execution_arn, image_id, str(receipt_id), state_name, str(attempt)]
     return str(uuid.uuid5(TRACE_NAMESPACE, ":".join(parts)))
 
 
@@ -650,6 +723,299 @@ def end_execution_trace(trace_info: ExecutionTraceInfo, outputs: Optional[dict] 
         logger.info("Execution trace ended (root_run_id=%s)", trace_info.root_run_id[:8])
     except Exception as e:
         logger.warning("Failed to end execution trace: %s", e)
+
+
+# =============================================================================
+# Per-Receipt Trace Management
+# =============================================================================
+
+
+@dataclass
+class ReceiptTraceInfo:
+    """Information about a per-receipt trace."""
+
+    trace_id: str
+    root_run_id: str
+    root_dotted_order: Optional[str] = None
+    run_tree: Optional[Any] = None
+    # Receipt identification
+    image_id: str = ""
+    receipt_id: int = 0
+    merchant_name: str = ""
+
+    def to_dict(self) -> dict:
+        """Return trace info for passing through Step Function."""
+        result = {
+            TRACE_ID_KEY: self.trace_id,
+            ROOT_RUN_ID_KEY: self.root_run_id,
+            "image_id": self.image_id,
+            "receipt_id": self.receipt_id,
+            "merchant_name": self.merchant_name,
+        }
+        if self.root_dotted_order:
+            result[ROOT_DOTTED_ORDER_KEY] = self.root_dotted_order
+        return result
+
+
+def create_receipt_trace(
+    execution_arn: str,
+    image_id: str,
+    receipt_id: int,
+    merchant_name: str,
+    name: str = "ReceiptEvaluation",
+    inputs: Optional[dict] = None,
+    metadata: Optional[dict] = None,
+    tags: Optional[list[str]] = None,
+    enable_tracing: bool = True,
+) -> ReceiptTraceInfo:
+    """Create the root trace for a specific receipt.
+
+    Each receipt gets its own trace, allowing for:
+    - Per-receipt visibility in LangSmith
+    - Complete trace including patterns, evaluation, and LLM review
+    - Easy filtering by image_id, receipt_id, or merchant_name
+
+    Call this in EvaluateLabels Lambda to create the receipt's root trace.
+
+    Args:
+        execution_arn: Step Function execution ARN (from $$.Execution.Id)
+        image_id: Unique image identifier
+        receipt_id: Receipt number within the image
+        merchant_name: Name of the merchant
+        name: Name for the root trace (default: "ReceiptEvaluation")
+        inputs: Optional inputs to capture
+        metadata: Optional additional metadata
+        tags: Optional tags
+        enable_tracing: If False, skip trace creation (default: True)
+
+    Returns:
+        ReceiptTraceInfo with trace_id, root_run_id, and run_tree
+    """
+    trace_id = generate_receipt_trace_id(execution_arn, image_id, receipt_id)
+    root_run_id = generate_receipt_root_run_id(execution_arn, image_id, receipt_id)
+
+    # Build base trace info (returned even if tracing disabled)
+    base_info = ReceiptTraceInfo(
+        trace_id=trace_id,
+        root_run_id=root_run_id,
+        image_id=image_id,
+        receipt_id=receipt_id,
+        merchant_name=merchant_name,
+    )
+
+    if not enable_tracing:
+        logger.info("Tracing disabled, skipping receipt trace creation")
+        return base_info
+
+    if not HAS_LANGSMITH or _RunTree is None:
+        logger.info("LangSmith not available, returning empty receipt trace info")
+        return base_info
+
+    # Build metadata with receipt identification
+    trace_metadata = {
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "merchant_name": merchant_name,
+        "execution_arn": execution_arn,
+        **(metadata or {}),
+    }
+
+    trace_tags = list(tags) if tags else []
+    trace_tags.extend(["step-function", "label-evaluator", "per-receipt"])
+
+    logger.info(
+        "Creating receipt trace: %s (image_id=%s, receipt_id=%s, merchant=%s, trace_id=%s)",
+        name,
+        image_id[:8] if len(image_id) > 8 else image_id,
+        receipt_id,
+        merchant_name,
+        trace_id[:8],
+    )
+
+    try:
+        run_tree = _RunTree(
+            id=root_run_id,
+            trace_id=trace_id,
+            name=name,
+            run_type="chain",
+            inputs=inputs or {},
+            extra={"metadata": trace_metadata},
+            tags=trace_tags,
+        )
+        run_tree.post()
+
+        # Capture the root run's dotted_order for propagation to child runs
+        root_dotted_order = getattr(run_tree, "dotted_order", None)
+        logger.info(
+            "Receipt trace created with dotted_order=%s",
+            root_dotted_order[:30] if root_dotted_order else "None",
+        )
+
+        return ReceiptTraceInfo(
+            trace_id=trace_id,
+            root_run_id=root_run_id,
+            root_dotted_order=root_dotted_order,
+            run_tree=run_tree,
+            image_id=image_id,
+            receipt_id=receipt_id,
+            merchant_name=merchant_name,
+        )
+
+    except Exception as e:
+        logger.warning("Failed to create receipt trace: %s", e, exc_info=True)
+        return base_info
+
+
+def end_receipt_trace(
+    trace_info: ReceiptTraceInfo,
+    outputs: Optional[dict] = None,
+) -> None:
+    """End the receipt trace.
+
+    Call this after all receipt processing is complete (after LLM review).
+    """
+    if trace_info.run_tree is None:
+        return
+
+    try:
+        if outputs:
+            trace_info.run_tree.outputs = outputs
+        trace_info.run_tree.end()
+        trace_info.run_tree.patch()
+        logger.info(
+            "Receipt trace ended (image_id=%s, receipt_id=%s)",
+            trace_info.image_id[:8] if len(trace_info.image_id) > 8 else trace_info.image_id,
+            trace_info.receipt_id,
+        )
+    except Exception as e:
+        logger.warning("Failed to end receipt trace: %s", e)
+
+
+@contextmanager
+def receipt_state_trace(
+    execution_arn: str,
+    image_id: str,
+    receipt_id: int,
+    state_name: str,
+    trace_id: str,
+    root_run_id: str,
+    root_dotted_order: Optional[str] = None,
+    attempt: int = 0,
+    inputs: Optional[dict] = None,
+    metadata: Optional[dict] = None,
+    tags: Optional[list[str]] = None,
+    enable_tracing: bool = True,
+):
+    """Create a child trace for a state within a receipt's trace.
+
+    Use this in LLMReview Lambda to join the receipt's existing trace.
+
+    Args:
+        execution_arn: Step Function execution ARN
+        image_id: Unique image identifier
+        receipt_id: Receipt number within the image
+        state_name: Name of this state (e.g., "LLMReview")
+        trace_id: Receipt trace ID (from EvaluateLabels output)
+        root_run_id: Receipt root run ID (from EvaluateLabels output)
+        root_dotted_order: Parent's dotted_order for trace linking
+        attempt: Retry attempt number
+        inputs: Optional inputs to capture
+        metadata: Optional metadata
+        tags: Optional tags
+        enable_tracing: If False, skip trace creation
+
+    Yields:
+        TraceContext with run_tree for this state
+    """
+    if not enable_tracing:
+        logger.info("Tracing disabled for receipt state '%s', skipping", state_name)
+        yield TraceContext()
+        return
+
+    state_run_id = generate_receipt_state_run_id(
+        execution_arn, image_id, receipt_id, state_name, attempt
+    )
+
+    logger.info(
+        "[receipt_state_trace v%s] Starting trace for '%s' (image_id=%s, receipt_id=%s)",
+        TRACING_VERSION,
+        state_name,
+        image_id[:8] if len(image_id) > 8 else image_id,
+        receipt_id,
+    )
+
+    if not HAS_LANGSMITH or _RunTree is None:
+        logger.info("LangSmith not available, skipping receipt state trace")
+        yield TraceContext()
+        return
+
+    # Generate child dotted_order from parent's
+    child_dotted_order = None
+    if root_dotted_order:
+        child_dotted_order = _generate_child_dotted_order(root_dotted_order, state_run_id)
+    else:
+        logger.warning(
+            "[receipt_state_trace] No root_dotted_order provided for %s - trace linking may fail!",
+            state_name,
+        )
+
+    # Build metadata with receipt identification
+    trace_metadata = {
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "state_name": state_name,
+        **(metadata or {}),
+    }
+
+    try:
+        run_tree_kwargs = {
+            "id": state_run_id,
+            "trace_id": trace_id,
+            "parent_run_id": root_run_id,
+            "name": state_name,
+            "run_type": "chain",
+            "inputs": inputs or {},
+            "extra": {"metadata": trace_metadata},
+            "tags": tags or [],
+        }
+        if child_dotted_order:
+            run_tree_kwargs["dotted_order"] = child_dotted_order
+
+        run_tree = _RunTree(**run_tree_kwargs)
+        run_tree.post()
+
+        run_tree_headers = run_tree.to_headers()
+
+        if _tracing_context is not None:
+            with _tracing_context(parent=run_tree_headers):
+                ctx = TraceContext(
+                    run_tree=run_tree,
+                    headers=run_tree_headers,
+                    trace_id=trace_id,
+                    root_run_id=root_run_id,
+                )
+                yield ctx
+        else:
+            ctx = TraceContext(
+                run_tree=run_tree,
+                headers=run_tree_headers,
+                trace_id=trace_id,
+                root_run_id=root_run_id,
+            )
+            yield ctx
+
+        run_tree.end()
+        run_tree.patch()
+        logger.info(
+            "Receipt state trace ended (state=%s, image_id=%s, receipt_id=%s)",
+            state_name,
+            image_id[:8] if len(image_id) > 8 else image_id,
+            receipt_id,
+        )
+
+    except Exception as e:
+        logger.warning("Failed to create receipt state trace: %s", e, exc_info=True)
+        yield TraceContext()
 
 
 def _generate_child_dotted_order(parent_dotted_order: str, child_run_id: str) -> str:

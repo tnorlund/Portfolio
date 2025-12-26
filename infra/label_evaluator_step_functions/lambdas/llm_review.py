@@ -1,12 +1,11 @@
-"""LLM Review with trace propagation.
+"""LLM Review with per-receipt trace propagation.
 
 This handler reviews flagged issues for a single receipt. Each Lambda
-invocation handles exactly one receipt's issues, making the trace hierarchy
-cleaner (one trace per receipt).
+invocation handles exactly one receipt's issues.
 
-The trace_id and root_run_id are passed from the upstream
-DiscoverLineItemPatterns Lambda. LangChain's ChatOllama calls will appear
-as children in the unified trace.
+The trace_id, root_run_id, and root_dotted_order are passed from the
+EvaluateLabels Lambda. This Lambda joins the receipt's existing trace
+as a child, so the complete receipt processing appears in one trace.
 """
 
 import logging
@@ -26,7 +25,7 @@ try:
         TRACING_VERSION,
         child_trace,
         flush_langsmith_traces,
-        state_trace,
+        receipt_state_trace,
     )
     _tracing_import_source = "container"
 except ImportError:
@@ -39,7 +38,7 @@ except ImportError:
         TRACING_VERSION,
         child_trace,
         flush_langsmith_traces,
-        state_trace,
+        receipt_state_trace,
     )
     sys.path.insert(0, os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -190,18 +189,19 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
     start_time = time.time()
 
-    # Create a child trace using deterministic UUID
-    with state_trace(
+    # Join the receipt's existing trace (created by EvaluateLabels)
+    with receipt_state_trace(
         execution_arn=execution_arn,
-        state_name="LLMReviewBatch",
+        image_id=image_id or "",
+        receipt_id=receipt_id or 0,
+        state_name="LLMReview",
         trace_id=trace_id,
         root_run_id=root_run_id,
         root_dotted_order=root_dotted_order,
-        map_index=llm_batch_index,
         inputs={
             "merchant_name": merchant_name,
             "batch_index": batch_index,
-            "merchant_receipt_count": merchant_receipt_count,
+            "issues_count": 0,  # Will be updated after loading
         },
         metadata={
             "merchant_name": merchant_name,
