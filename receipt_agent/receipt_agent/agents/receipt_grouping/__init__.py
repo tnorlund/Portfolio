@@ -18,6 +18,3 @@ __all__ = [
     "run_receipt_grouping",
     "run_receipt_grouping_sync",
 ]
-
-
-

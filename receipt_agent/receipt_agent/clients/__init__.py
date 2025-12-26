@@ -13,4 +13,3 @@ __all__ = [
     "create_embed_fn",
     "create_places_api",
 ]
-

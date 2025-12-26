@@ -175,6 +175,7 @@ place data."""
 
 def create_place_submission_tool(state_holder: dict):
     """Create a tool for submitting found place data."""
+
     class SubmitPlaceInput(BaseModel):
         """Input for submit_place tool."""
 
@@ -292,11 +293,13 @@ def create_place_submission_tool(state_holder: dict):
 
         state_holder["place_result"] = result
         logger.info(
-            f"Place data submitted: {len(fields_found)} fields found "
-            f"(place_id={'✓' if place_id else '✗'}, "
-            f"merchant_name={'✓' if merchant_name else '✗'}, "
-            f"address={'✓' if address else '✗'}, "
-            f"phone={'✓' if phone_number else '✗'})"
+            "Place data submitted: %s fields found (place_id=%s, "
+            "merchant_name=%s, address=%s, phone=%s)",
+            len(fields_found),
+            "✓" if place_id else "✗",
+            "✓" if merchant_name else "✗",
+            "✓" if address else "✗",
+            "✓" if phone_number else "✗",
         )
 
         return {
@@ -519,7 +522,9 @@ async def run_receipt_place_finder(
     )
 
     logger.info(
-        f"Starting receipt place finder for {image_id}#{receipt_id}"
+        "Starting receipt place finder for %s#%s",
+        image_id,
+        receipt_id,
     )
 
     # Run the workflow
@@ -546,20 +551,17 @@ async def run_receipt_place_finder(
 
         if result:
             logger.info(
-                (
-                    f"Place finder complete: "
-                    f"{len(result.get('fields_found', []))} fields found "
-                    f"(confidence={result.get('confidence', 0):.2%})"
-                )
+                "Place finder complete: %s fields found (confidence=%.2f%%)",
+                len(result.get("fields_found", [])),
+                result.get("confidence", 0) * 100,
             )
             return result
         else:
             # Agent ended without submitting result
             logger.warning(
-                (
-                    f"Agent ended without submitting place data for "
-                    f"{image_id}#{receipt_id}"
-                )
+                "Agent ended without submitting place data for %s#%s",
+                image_id,
+                receipt_id,
             )
             return {
                 "image_id": image_id,

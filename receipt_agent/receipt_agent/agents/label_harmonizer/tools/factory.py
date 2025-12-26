@@ -5,13 +5,17 @@ Creates all tools needed for the label harmonizer workflow.
 """
 
 import asyncio
+import json
 import logging
+import os
 import re
+import time
 from typing import TYPE_CHECKING, Any, Callable, Optional, TypedDict, cast
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
+from receipt_dynamo.entities import ReceiptLine
 
 from receipt_agent.agents.label_harmonizer.tools.helpers import (
     extract_pricing_table_from_words,
@@ -321,7 +325,9 @@ def create_label_harmonizer_tools(
                 return float(str(value))
             except (ValueError, TypeError):
                 logger.warning(
-                    f"Could not coerce value to float: {value} (type: {type(value)})"
+                    "Could not coerce value to float: %s (type: %s)",
+                    value,
+                    type(value),
                 )
                 return None
 
@@ -350,8 +356,12 @@ def create_label_harmonizer_tools(
                         }
                     )
                     logger.warning(
-                        f"Invalid numeric value for {financial_type} at line {assignment.get('line_id')} "
-                        f"word {assignment.get('word_id')}: {raw_value} (type: {type(raw_value)})"
+                        "Invalid numeric value for %s at line %s word %s: %s (type: %s)",
+                        financial_type,
+                        assignment.get("line_id"),
+                        assignment.get("word_id"),
+                        raw_value,
+                        type(raw_value),
                     )
                     continue  # Skip invalid values
 
@@ -362,7 +372,8 @@ def create_label_harmonizer_tools(
             # Log warnings about invalid values
             if invalid_values:
                 logger.warning(
-                    f"Skipped {len(invalid_values)} assignments with invalid numeric values"
+                    "Skipped %s assignments with invalid numeric values",
+                    len(invalid_values),
                 )
 
             verification_results = []
@@ -538,8 +549,6 @@ def create_label_harmonizer_tools(
         # Format receipt text; fall back to simple join if fields are missing
         receipt_text = ""
         try:
-            from receipt_dynamo.entities import ReceiptLine
-
             receipt_lines = [
                 ReceiptLine(**line) if isinstance(line, dict) else line
                 for line in lines
@@ -812,8 +821,6 @@ def create_label_harmonizer_tools(
 
         # Retry logic for financial sub-agent with exponential backoff
         # Get retry configuration from environment or use defaults
-        import os
-
         max_retries = int(
             os.environ.get("FINANCIAL_SUBAGENT_MAX_RETRIES", "3")
         )
@@ -852,7 +859,8 @@ def create_label_harmonizer_tools(
                         "financial_candidates", {}
                     )
                     logger.info(
-                        f"Financial sub-agent succeeded: found {len(candidates)} types"
+                        "Financial sub-agent succeeded: found %s types",
+                        len(candidates),
                     )
 
                     # Log detailed financial discoveries
@@ -872,7 +880,11 @@ def create_label_harmonizer_tools(
                             f"{e.get('value')} (line {e.get('line_id')}, conf={e.get('confidence', 0):.2f})"
                             for e in entries[:3]
                         ]  # First 3 entries
-                        logger.info(f"  {fin_type}: {', '.join(values)}")
+                        logger.info(
+                            "  %s: %s",
+                            fin_type,
+                            ", ".join(values),
+                        )
 
                     return financial_context
                 else:
@@ -892,19 +904,23 @@ def create_label_harmonizer_tools(
                 )
 
                 if is_retryable and attempt < max_retries - 1:
-                    import time
-
                     wait_time = base_delay * (2**attempt)
                     logger.warning(
-                        f"Financial sub-agent failed (attempt {attempt + 1}/{max_retries}): {error_str[:150]}. "
-                        f"Retrying in {wait_time:.1f}s..."
+                        "Financial sub-agent failed (attempt %s/%s): %s. "
+                        "Retrying in %.1fs...",
+                        attempt + 1,
+                        max_retries,
+                        error_str[:150],
+                        wait_time,
                     )
                     time.sleep(wait_time)
                     continue
                 else:
                     logger.error(
-                        f"Financial sub-agent failed after {attempt + 1} attempts: {error_str[:200]}. "
-                        "Using simple fallback."
+                        "Financial sub-agent failed after %s attempts: %s. "
+                        "Using simple fallback.",
+                        attempt + 1,
+                        error_str[:200],
                     )
                     return _simple_financial_fallback()
 
@@ -958,8 +974,9 @@ def create_label_harmonizer_tools(
                 )
 
         logger.warning(
-            f"Using financial fallback: extracted {len(financial_candidates)} types "
-            f"from {len(labels)} existing labels"
+            "Using financial fallback: extracted %s types from %s existing labels",
+            len(financial_candidates),
+            len(labels),
         )
 
         return {
@@ -1071,7 +1088,7 @@ def create_label_harmonizer_tools(
                 "current_place_id": current_place_id,
             }
         except Exception as e:
-            logger.exception(f"ChromaDB search failed: {e}")
+            logger.exception("ChromaDB search failed: %s", e)
             return {
                 "error": str(e),
                 "similar_words": [],
@@ -1494,8 +1511,6 @@ def create_label_harmonizer_tools(
                                 col_result = m.content
                                 break
                             if isinstance(m.content, str):
-                                import json
-
                                 col_result = json.loads(m.content)
                                 break
                         except Exception:

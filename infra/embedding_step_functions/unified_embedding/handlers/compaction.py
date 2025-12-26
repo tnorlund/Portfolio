@@ -389,9 +389,7 @@ def _process_single_chunk(
                         break
 
                 if not chunk_found:
-                    raise ValueError(
-                        f"Chunk {chunk_index} not found in S3 chunks file"
-                    )
+                    raise ValueError(f"Missing chunk {chunk_index} in S3 file")
 
                 # Extract delta_results from the chunk
                 delta_results = chunk_found.get("delta_results", [])
@@ -2688,7 +2686,7 @@ def perform_final_merge(
             logger.warning("Atomic upload not available, using legacy method")
 
             # Create timestamped snapshot with dedicated prefix for lifecycle management
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
             # Use database-specific path if provided
             if database_name:

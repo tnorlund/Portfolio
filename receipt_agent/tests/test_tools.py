@@ -1,7 +1,8 @@
 """Tests for agent tools."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from receipt_agent.tools.chroma import (
     query_similar_lines,
@@ -202,4 +203,3 @@ class TestToolRegistry:
 
         assert "query_similar_lines" in descriptions
         assert "get_receipt_place" in descriptions
-

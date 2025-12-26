@@ -23,6 +23,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 
 from receipt_agent.config.settings import Settings, get_settings
+from receipt_agent.constants import CORE_LABELS
 from receipt_agent.subagents.financial_validation.state import (
     FinancialValidationState,
 )
@@ -36,46 +37,6 @@ if TYPE_CHECKING:
     from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger(__name__)
-
-# Updated CORE_LABELS from the user's specification
-CORE_LABELS = {
-    # Merchant & Store Info (6 labels)
-    "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
-    "STORE_HOURS": "Printed business hours or opening times for the merchant.",
-    "PHONE_NUMBER": (
-        "Telephone number printed on the receipt "
-        "(store's main line)."
-    ),
-    "WEBSITE": (
-        "Web or email address printed on the receipt "
-        "(e.g., sprouts.com)."
-    ),
-    "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
-    # Location / Address (1 label)
-    "ADDRESS_LINE": (
-        "Full address line (street + city etc.) printed on the receipt."
-    ),
-    # Transaction Info (5 labels)
-    "DATE": "Calendar date of the transaction.",
-    "TIME": "Time of the transaction.",
-    "PAYMENT_METHOD": (
-        "Payment instrument summary (e.g., VISA ••••1234, CASH)."
-    ),
-    "COUPON": "Coupon code or description that reduces price.",
-    "DISCOUNT": (
-        "Any non-coupon discount line item "
-        "(e.g., 10% member discount)."
-    ),
-    # Line-Item Fields (4 labels) - NOTE: LINE_TOTAL added here
-    "PRODUCT_NAME": "Descriptive text of a purchased product (item name).",
-    "QUANTITY": "Numeric count or weight of the item (e.g., 2, 1.31 lb).",
-    "UNIT_PRICE": "Price per single unit / weight before tax.",
-    "LINE_TOTAL": "Extended price for that line (quantity x unit price).",
-    # Totals & Taxes (3 labels)
-    "SUBTOTAL": "Sum of all line totals before tax and discounts.",
-    "TAX": "Any tax line (sales tax, VAT, bottle deposit).",
-    "GRAND_TOTAL": "Final amount due after all discounts, taxes and fees.",
-}
 
 # Financial label types for validation
 FINANCIAL_LABELS = {
@@ -768,7 +729,7 @@ async def run_enhanced_financial_validation(
             "table_structure_used": table_structure is not None,
         }
     except Exception as e:
-        logger.exception(f"Enhanced financial validation failed: {e}")
+        logger.exception("Enhanced financial validation failed: %s", e)
         return {
             "currency": None,
             "is_valid": False,

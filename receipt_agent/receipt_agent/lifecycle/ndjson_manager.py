@@ -5,10 +5,10 @@ Handles exporting receipt lines and words to NDJSON files in S3.
 """
 
 import json
+import traceback
 from typing import Optional
 
 import boto3
-
 from receipt_dynamo import DynamoClient
 
 
@@ -90,6 +90,4 @@ def export_receipt_ndjson(
 
     except Exception as e:
         print(f"⚠️  Error exporting NDJSON for receipt {receipt_id}: {e}")
-        import traceback
-
         traceback.print_exc()

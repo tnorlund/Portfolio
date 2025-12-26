@@ -65,7 +65,7 @@ def get_run_url() -> Optional[str]:
                 f"{settings.langsmith_project}/r/{run_tree.id}"
             )
     except Exception as e:
-        logger.debug(f"Could not get run URL: {e}")
+        logger.debug("Could not get run URL: %s", e)
 
     return None
 
@@ -103,10 +103,10 @@ def log_feedback(
             score=score,
             comment=comment,
         )
-        logger.info(f"Logged feedback for run {run_id}: {score}")
+        logger.info("Logged feedback for run %s: %s", run_id, score)
         return True
     except Exception as e:
-        logger.error(f"Failed to log feedback: {e}")
+        logger.error("Failed to log feedback: %s", e)
         return False
 
 
@@ -156,7 +156,8 @@ class ValidationRunContext:
         """Exit the context and finalize tracking."""
         if exc_type is not None:
             logger.error(
-                f"Validation run failed: {exc_val}",
+                "Validation run failed: %s",
+                exc_val,
                 extra={
                     "image_id": self.image_id,
                     "receipt_id": self.receipt_id,
