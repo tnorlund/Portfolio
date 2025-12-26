@@ -114,6 +114,12 @@ from receipt_agent.agents.label_evaluator.issue_detection import (
     check_unexpected_label_pair,
     evaluate_word_contexts,
 )
+from receipt_agent.agents.label_evaluator.geometry import (
+    angle_difference,
+    calculate_angle_degrees,
+    calculate_distance,
+    convert_polar_to_cartesian,
+)
 from receipt_agent.agents.label_evaluator.llm_review import (
     CURRENCY_LABELS,
     assemble_receipt_text,
@@ -154,11 +160,6 @@ from receipt_agent.agents.label_evaluator.state import (
     ReviewResult,
     VisualLine,
     WordContext,
-)
-from receipt_agent.agents.label_evaluator.traced_runner import (
-    create_traced_run_tree,
-    run_batch_traced,
-    run_compute_only_traced,
 )
 from receipt_agent.agents.label_evaluator.langsmith_evaluator import (
     EvaluationQualityMetrics,
@@ -214,6 +215,11 @@ __all__ = [
     "check_missing_label_in_cluster",
     "build_review_context",
     "format_receipt_text",
+    # Geometry helpers
+    "angle_difference",
+    "calculate_angle_degrees",
+    "calculate_distance",
+    "convert_polar_to_cartesian",
     # ChromaDB similarity search
     "build_word_chroma_id",
     "query_similar_validated_words",
@@ -231,10 +237,6 @@ __all__ = [
     "review_issues_batch",
     "review_issues_with_receipt_context",
     "review_single_issue",
-    # Traced runners for LangSmith visibility
-    "create_traced_run_tree",
-    "run_batch_traced",
-    "run_compute_only_traced",
     # LangSmith custom evaluators
     "create_label_evaluator",
     "label_accuracy_evaluator",

@@ -26,10 +26,10 @@ from receipt_agent.agents.label_evaluator.state import (
     WordContext,
 )
 from receipt_agent.agents.label_evaluator.word_context import get_same_line_words
-from receipt_agent.agents.label_evaluator.patterns import (
-    _calculate_angle_degrees,
-    _calculate_distance,
-    _convert_polar_to_cartesian,
+from receipt_agent.agents.label_evaluator.geometry import (
+    calculate_angle_degrees,
+    calculate_distance,
+    convert_polar_to_cartesian,
 )
 
 logger = logging.getLogger(__name__)
@@ -416,11 +416,11 @@ def _check_geometry_against_batch(
         )
 
         # Calculate actual geometry
-        actual_angle = _calculate_angle_degrees(centroid_label, centroid_other)
-        actual_distance = _calculate_distance(centroid_label, centroid_other)
+        actual_angle = calculate_angle_degrees(centroid_label, centroid_other)
+        actual_distance = calculate_distance(centroid_label, centroid_other)
 
         # Convert to Cartesian coordinates
-        actual_dx, actual_dy = _convert_polar_to_cartesian(
+        actual_dx, actual_dy = convert_polar_to_cartesian(
             actual_angle, actual_distance
         )
 
@@ -519,11 +519,11 @@ def _compute_geometric_issue(
     )
 
     # Calculate actual geometry
-    actual_angle = _calculate_angle_degrees(centroid_label, centroid_other)
-    actual_distance = _calculate_distance(centroid_label, centroid_other)
+    actual_angle = calculate_angle_degrees(centroid_label, centroid_other)
+    actual_distance = calculate_distance(centroid_label, centroid_other)
 
     # Convert to Cartesian coordinates
-    actual_dx, actual_dy = _convert_polar_to_cartesian(
+    actual_dx, actual_dy = convert_polar_to_cartesian(
         actual_angle, actual_distance
     )
 

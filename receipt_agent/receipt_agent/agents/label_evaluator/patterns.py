@@ -15,6 +15,12 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
+from receipt_agent.agents.label_evaluator.geometry import (
+    angle_difference,
+    calculate_angle_degrees,
+    calculate_distance,
+    convert_polar_to_cartesian,
+)
 from receipt_agent.agents.label_evaluator.state import (
     ConstellationGeometry,
     GeometricRelationship,
@@ -37,99 +43,6 @@ MAX_LABEL_PAIRS = 4  # Only compute geometry for top N label type pairs
 MAX_RELATIONSHIP_DIMENSION = (
     2  # Analyze relationships between N labels (2=pairs, 3=triples, etc.)
 )
-
-
-# =============================================================================
-# Geometry Helpers
-# =============================================================================
-
-
-def _calculate_angle_degrees(
-    from_point: Tuple[float, float],
-    to_point: Tuple[float, float],
-) -> float:
-    """
-    Calculate angle in degrees from one point to another.
-
-    Args:
-        from_point: (x, y) starting point
-        to_point: (x, y) ending point
-
-    Returns:
-        Angle in degrees (0-360), where:
-        - 0° = directly right
-        - 90° = directly down
-        - 180° = directly left
-        - 270° = directly up
-    """
-    dx = to_point[0] - from_point[0]
-    dy = to_point[1] - from_point[1]
-
-    # Note: y increases downward (0=bottom, 1=top in receipt coords)
-    # atan2(dy, dx) gives angle with x=right as 0°
-    radians = math.atan2(dy, dx)
-    degrees = math.degrees(radians)
-
-    # Normalize to 0-360 range
-    if degrees < 0:
-        degrees += 360
-
-    return degrees
-
-
-def _calculate_distance(
-    point1: Tuple[float, float],
-    point2: Tuple[float, float],
-) -> float:
-    """
-    Calculate Euclidean distance between two points.
-
-    Args:
-        point1: (x, y) first point
-        point2: (x, y) second point
-
-    Returns:
-        Distance (in normalized 0-1 coordinate space, diagonal ≈ 1.41)
-    """
-    dx = point2[0] - point1[0]
-    dy = point2[1] - point1[1]
-    return math.sqrt(dx * dx + dy * dy)
-
-
-def _angle_difference(angle1: float, angle2: float) -> float:
-    """
-    Calculate shortest angular distance between two angles.
-
-    Args:
-        angle1, angle2: Angles in degrees (0-360)
-
-    Returns:
-        Shortest angular distance (0-180 degrees)
-    """
-    diff = abs(angle1 - angle2)
-    if diff > 180:
-        diff = 360 - diff
-    return diff
-
-
-def _convert_polar_to_cartesian(
-    angle_degrees: float,
-    distance: float,
-) -> Tuple[float, float]:
-    """
-    Convert polar coordinates (angle, distance) to Cartesian (dx, dy).
-
-    Args:
-        angle_degrees: Angle in degrees (0-360)
-        distance: Euclidean distance (0-1 normalized)
-
-    Returns:
-        Tuple of (dx, dy) in Cartesian space
-    """
-    angle_radians = math.radians(angle_degrees)
-    dx = distance * math.cos(angle_radians)
-    dy = distance * math.sin(angle_radians)
-    return (dx, dy)
 
 
 # =============================================================================
@@ -438,7 +351,7 @@ def _print_pattern_statistics(
             # Convert observations to Cartesian coordinates for analysis
             logger.info("\n  [CARTESIAN COORDINATES]")
             cartesian_coords = [
-                _convert_polar_to_cartesian(obs.angle, obs.distance)
+                convert_polar_to_cartesian(obs.angle, obs.distance)
                 for obs in geometry.observations
             ]
 
@@ -625,10 +538,10 @@ def _compute_patterns_for_subset(
                         if pair not in geometry_dict:
                             geometry_dict[pair] = LabelPairGeometry()
 
-                        angle = _calculate_angle_degrees(
+                        angle = calculate_angle_degrees(
                             centroid_a, centroid_b
                         )
-                        distance = _calculate_distance(centroid_a, centroid_b)
+                        distance = calculate_distance(centroid_a, centroid_b)
 
                         geometry_dict[pair].observations.append(
                             GeometricRelationship(
@@ -654,7 +567,7 @@ def _compute_patterns_for_subset(
 
             # Cartesian statistics
             cartesian_coords = [
-                _convert_polar_to_cartesian(obs.angle, obs.distance)
+                convert_polar_to_cartesian(obs.angle, obs.distance)
                 for obs in geometry.observations
             ]
 
@@ -1411,8 +1324,8 @@ def compute_merchant_patterns(
                     continue
 
                 # Calculate geometry
-                angle = _calculate_angle_degrees(centroid_a, centroid_b)
-                distance = _calculate_distance(centroid_a, centroid_b)
+                angle = calculate_angle_degrees(centroid_a, centroid_b)
+                distance = calculate_distance(centroid_a, centroid_b)
 
                 # Store in patterns
                 if pair not in patterns.label_pair_geometry:
@@ -1441,7 +1354,7 @@ def compute_merchant_patterns(
 
             # Cartesian statistics
             cartesian_coords = [
-                _convert_polar_to_cartesian(obs.angle, obs.distance)
+                convert_polar_to_cartesian(obs.angle, obs.distance)
                 for obs in geometry.observations
             ]
 
