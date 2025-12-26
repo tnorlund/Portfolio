@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
+from receipt_dynamo.data._pulumi import load_secrets as load_pulumi_secrets
 
 from receipt_agent.agents.label_validation.state import LabelValidationState
 from receipt_agent.agents.label_validation.tools import (
@@ -20,32 +21,7 @@ from receipt_agent.agents.label_validation.tools import (
     create_label_validation_tools,
 )
 from receipt_agent.config.settings import Settings, get_settings
-
-# Import CORE_LABELS definitions
-try:
-    from receipt_label.constants import CORE_LABELS
-except ImportError:
-    # Fallback if receipt_label is not available
-    CORE_LABELS = {
-        "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
-        "STORE_HOURS": "Printed business hours or opening times for the merchant.",
-        "PHONE_NUMBER": "Telephone number printed on the receipt (store's main line).",
-        "WEBSITE": "Web or email address printed on the receipt (e.g., sprouts.com).",
-        "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
-        "ADDRESS_LINE": "Full address line (street + city etc.) printed on the receipt.",
-        "DATE": "Calendar date of the transaction.",
-        "TIME": "Time of the transaction.",
-        "PAYMENT_METHOD": "Payment instrument summary (e.g., VISA ••••1234, CASH).",
-        "COUPON": "Coupon code or description that reduces price.",
-        "DISCOUNT": "Any non-coupon discount line item (e.g., '10% OFF').",
-        "PRODUCT_NAME": "Name of a product or item being purchased.",
-        "QUANTITY": "Number of units purchased (e.g., '2', '1.5 lbs').",
-        "UNIT_PRICE": "Price per unit of the product.",
-        "LINE_TOTAL": "Total price for a line item (quantity × unit_price).",
-        "SUBTOTAL": "Subtotal before tax and discounts.",
-        "TAX": "Tax amount (sales tax, VAT, etc.).",
-        "GRAND_TOTAL": "Final total amount paid (after all discounts and taxes).",
-    }
+from receipt_agent.constants import CORE_LABELS
 
 logger = logging.getLogger(__name__)
 
@@ -185,10 +161,6 @@ def create_label_validation_graph(
     api_key = settings.ollama_api_key.get_secret_value()
     if not api_key:
         try:
-            from receipt_dynamo.data._pulumi import (
-                load_secrets as load_pulumi_secrets,
-            )
-
             pulumi_secrets = load_pulumi_secrets("dev") or load_pulumi_secrets(
                 "prod"
             )
@@ -201,7 +173,7 @@ def create_label_validation_graph(
                 if api_key:
                     logger.info("Loaded Ollama API key from Pulumi secrets")
         except Exception as e:
-            logger.debug(f"Could not load Ollama API key from Pulumi: {e}")
+            logger.debug("Could not load Ollama API key from Pulumi: %s", e)
 
     if not api_key:
         logger.warning(
@@ -255,8 +227,10 @@ def create_label_validation_graph(
         MAX_TOKENS = 80000  # Conservative limit (80k tokens)
         if estimated_tokens > MAX_TOKENS:
             logger.warning(
-                f"Message size too large ({estimated_tokens} estimated tokens, limit: {MAX_TOKENS}). "
-                f"Truncating tool outputs to prevent 400 error."
+                "Message size too large (%s estimated tokens, limit: %s). "
+                "Truncating tool outputs to prevent 400 error.",
+                estimated_tokens,
+                MAX_TOKENS,
             )
             # Keep system message (first) and last 2 messages (human + last tool output)
             # This preserves the prompt and most recent context
@@ -265,7 +239,9 @@ def create_label_validation_graph(
                 truncated_messages = [messages[0]] + messages[-2:]
                 messages = truncated_messages
                 logger.info(
-                    f"Truncated messages from {original_count} to {len(messages)}"
+                    "Truncated messages from %s to %s",
+                    original_count,
+                    len(messages),
                 )
 
         try:
@@ -284,15 +260,14 @@ def create_label_validation_graph(
 
             if is_bad_request:
                 logger.error(
-                    f"Bad Request (400) error from Ollama. "
-                    f"Message size: ~{estimated_tokens} tokens, "
-                    f"Message count: {len(messages)}. "
-                    f"Error: {error_str[:500]}"
+                    "Bad Request (400) error from Ollama. "
+                    "Message size: ~%s tokens, Message count: %s. Error: %s",
+                    estimated_tokens,
+                    len(messages),
+                    error_str[:500],
                 )
                 # For 400 errors, we can't retry (it's a malformed request)
                 # Return a default NEEDS_REVIEW decision
-                from langchain_core.messages import AIMessage
-
                 error_message = AIMessage(
                     content=(
                         "I encountered an error processing this request. "
@@ -304,7 +279,9 @@ def create_label_validation_graph(
 
             # For other errors, re-raise to let LangGraph handle retries
             logger.error(
-                f"LLM invocation error: {error_type}: {error_str[:500]}"
+                "LLM invocation error: %s: %s",
+                error_type,
+                error_str[:500],
             )
             raise
 
@@ -313,7 +290,7 @@ def create_label_validation_graph(
             tool_names = [
                 tc.get("name", "unknown") for tc in response.tool_calls
             ]
-            logger.info(f"Agent tool calls: {tool_names}")
+            logger.info("Agent tool calls: %s", tool_names)
             # Track unique tools used
             for tool_name in tool_names:
                 if tool_name not in state_holder.get("tools_used", []):
@@ -601,9 +578,7 @@ async def run_label_validation(
                         "merchant_name": place.merchant_name,
                         "formatted_address": place.formatted_address,
                         "place_id": place.place_id,
-                        "phone_number": getattr(
-                            place, "phone_number", None
-                        ),
+                        "phone_number": getattr(place, "phone_number", None),
                         "website": getattr(place, "website", None),
                     }
             except Exception:
@@ -617,7 +592,7 @@ async def run_label_validation(
                 "receipt_place": receipt_place,
             }
         except Exception as e:
-            logger.warning(f"Could not fetch initial context: {e}")
+            logger.warning("Could not fetch initial context: %s", e)
 
     # Format word context for prompt
     word_context_text = ""
@@ -708,8 +683,13 @@ All valid label types:
     )
 
     logger.info(
-        f"Starting label validation for '{word_text}' -> {suggested_label_type} "
-        f"({image_id}#{receipt_id}, line {line_id}, word {word_id})"
+        "Starting label validation for '%s' -> %s (%s#%s, line %s, word %s)",
+        word_text,
+        suggested_label_type,
+        image_id,
+        receipt_id,
+        line_id,
+        word_id,
     )
 
     try:
@@ -762,14 +742,18 @@ All valid label types:
                 ]
 
             logger.info(
-                f"Validation complete: {decision['decision']} "
-                f"(confidence={decision['confidence']:.2%}, tools={tools_used})"
+                "Validation complete: %s (confidence=%.2f%%, tools=%s)",
+                decision["decision"],
+                decision["confidence"] * 100.0,
+                tools_used,
             )
             return decision
         else:
             # Agent ended without submitting decision
             logger.warning(
-                f"Agent ended without submitting decision for '{word_text}' -> {suggested_label_type}"
+                "Agent ended without submitting decision for '%s' -> %s",
+                word_text,
+                suggested_label_type,
             )
             return {
                 "decision": "NEEDS_REVIEW",
@@ -779,7 +763,7 @@ All valid label types:
             }
 
     except Exception as e:
-        logger.error(f"Error in label validation: {e}")
+        logger.error("Error in label validation: %s", e)
         return {
             "decision": "NEEDS_REVIEW",
             "confidence": 0.0,

@@ -6,9 +6,35 @@ the correct configuration for caching and performance optimization.
 """
 
 import logging
-from typing import Any, Callable, Optional
+import os
+from collections.abc import Callable
+from typing import Any, Optional
 
 from receipt_agent.config.settings import Settings, get_settings
+
+try:
+    from receipt_dynamo.data.dynamo_client import DynamoClient
+except ImportError:  # pragma: no cover - optional dependency
+    DynamoClient = None
+
+try:
+    from receipt_chroma.data.chroma_client import ChromaClient
+except ImportError:  # pragma: no cover - optional dependency
+    try:
+        from receipt_chroma import ChromaClient
+    except ImportError:  # pragma: no cover - optional dependency
+        ChromaClient = None
+
+try:
+    from receipt_places import PlacesClient, PlacesConfig
+except ImportError:  # pragma: no cover - optional dependency
+    PlacesClient = None
+    PlacesConfig = None
+
+try:
+    from openai import OpenAI
+except ImportError:  # pragma: no cover - optional dependency
+    OpenAI = None
 
 logger = logging.getLogger(__name__)
 
@@ -37,21 +63,18 @@ def create_dynamo_client(
 
     table = table_name or settings.dynamo_table_name
 
-    try:
-        from receipt_dynamo.data.dynamo_client import DynamoClient
-
-        client = DynamoClient(table_name=table)
-        logger.info(f"Created DynamoDB client for table: {table}")
-        return client
-
-    except ImportError as e:
+    if DynamoClient is None:
         logger.error(
             "Failed to import receipt_dynamo. "
             "Install with: pip install receipt_dynamo"
         )
         raise ImportError(
             "receipt_dynamo package required for DynamoDB operations"
-        ) from e
+        )
+
+    client = DynamoClient(table_name=table)
+    logger.info("Created DynamoDB client for table: %s", table)
+    return client
 
 
 def create_chroma_client(
@@ -81,8 +104,6 @@ def create_chroma_client(
         ChromaClient instance from receipt_chroma, or DualChromaClient if
         separate directories are set
     """
-    import os
-
     if settings is None:
         settings = get_settings()
 
@@ -92,19 +113,37 @@ def create_chroma_client(
 
     if lines_dir and words_dir:
         # Create separate clients for lines and words
-        try:
-            # Try direct import first, fallback to package import
-            try:
-                from receipt_chroma.data.chroma_client import ChromaClient
-            except ImportError:
-                from receipt_chroma import ChromaClient
+        if ChromaClient is None:
+            raise ImportError(
+                "receipt_chroma package required for ChromaDB operations"
+            )
 
+        try:
             lines_client = ChromaClient(persist_directory=lines_dir, mode=mode)
             words_client = ChromaClient(persist_directory=words_dir, mode=mode)
 
             # Create DualChromaClient wrapper
             class DualChromaClient:
-                """Routes queries to separate line and word clients."""
+                """
+                Routes queries to separate line and word ChromaDB clients.
+
+                This wrapper provides a unified interface when lines and words
+                are stored in separate ChromaDB directories. It routes operations
+                based on collection_name parameter.
+
+                Supported operations (read-only):
+                - query: Search for similar embeddings
+                - get: Retrieve embeddings by ID
+                - list_collections: Returns ["lines", "words"]
+                - get_collection: Get collection handle
+
+                Note: Write operations (add, delete, update) are not supported.
+                This wrapper is intended for read-only similarity search workflows.
+
+                Attributes:
+                    lines_client: ChromaClient for the "lines" collection
+                    words_client: ChromaClient for the "words" collection
+                """
 
                 def __init__(self, lines_client, words_client):
                     self.lines_client = lines_client
@@ -179,8 +218,8 @@ def create_chroma_client(
                         self.words_client.__exit__(exc_type, exc_val, exc_tb)
 
             client = DualChromaClient(lines_client, words_client)
-            logger.info(f"Created ChromaDB client at: {lines_dir}")
-            logger.info(f"Created ChromaDB client at: {words_dir}")
+            logger.info("Created ChromaDB client at: %s", lines_dir)
+            logger.info("Created ChromaDB client at: %s", words_dir)
             return client
 
         except ImportError as e:
@@ -196,38 +235,31 @@ def create_chroma_client(
     persist_dir = persist_directory or settings.chroma_persist_directory
     url = http_url or settings.chroma_http_url
 
-    try:
-        # Try direct import first, fallback to package import
-        try:
-            from receipt_chroma.data.chroma_client import ChromaClient
-        except ImportError:
-            from receipt_chroma import ChromaClient
-
-        if url:
-            client = ChromaClient(http_url=url, mode=mode)
-            logger.info(f"Created ChromaDB HTTP client: {url}")
-        elif persist_dir:
-            client = ChromaClient(persist_directory=persist_dir, mode=mode)
-            logger.info(f"Created ChromaDB client at: {persist_dir}")
-        else:
-            raise ValueError(
-                "Either persist_directory or http_url must be specified. "
-                "Set RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY, "
-                "RECEIPT_AGENT_CHROMA_HTTP_URL, or "
-                "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY + "
-                "RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
-            )
-
-        return client
-
-    except ImportError as e:
+    if ChromaClient is None:
         logger.error(
             "Failed to import receipt_chroma. "
             "Install with: pip install receipt_chroma"
         )
         raise ImportError(
             "receipt_chroma package required for ChromaDB operations"
-        ) from e
+        )
+
+    if url:
+        client = ChromaClient(http_url=url, mode=mode)
+        logger.info("Created ChromaDB HTTP client: %s", url)
+    elif persist_dir:
+        client = ChromaClient(persist_directory=persist_dir, mode=mode)
+        logger.info("Created ChromaDB client at: %s", persist_dir)
+    else:
+        raise ValueError(
+            "Either persist_directory or http_url must be specified. "
+            "Set RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY, "
+            "RECEIPT_AGENT_CHROMA_HTTP_URL, or "
+            "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY + "
+            "RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
+        )
+
+    return client
 
 
 def create_places_client(
@@ -271,7 +303,10 @@ def create_places_client(
     table = table_name or settings.dynamo_table_name
 
     try:
-        from receipt_places import PlacesClient, PlacesConfig
+        if PlacesClient is None or PlacesConfig is None:
+            raise ImportError(
+                "receipt_places package required for Places API operations"
+            )
 
         # Create PlacesConfig with our settings
         places_config = PlacesConfig(
@@ -335,7 +370,10 @@ def create_embed_fn(
         )
 
     try:
-        from openai import OpenAI
+        if OpenAI is None:
+            raise ImportError(
+                "openai package required for embedding operations"
+            )
 
         client = OpenAI(api_key=key)
 
@@ -350,7 +388,7 @@ def create_embed_fn(
             )
             return [d.embedding for d in response.data]
 
-        logger.info(f"Created embedding function using model: {model_name}")
+        logger.info("Created embedding function using model: %s", model_name)
         return embed_fn
 
     except ImportError as e:

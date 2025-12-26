@@ -8,6 +8,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, TypedDict
 
 import boto3
+from botocore.exceptions import ClientError
+
+try:
+    from botocore.exceptions import ChecksumError, FlexibleChecksumError
+except ImportError:  # pragma: no cover - older botocore versions
+    ChecksumError = Exception  # type: ignore[assignment]
+    FlexibleChecksumError = Exception  # type: ignore[assignment]
 from typing_extensions import NotRequired, Required
 
 if TYPE_CHECKING:
@@ -88,6 +95,10 @@ def download_snapshot_from_s3(
         else:
             s3_client = boto3.client("s3")
 
+    allow_checksum_bypass = os.environ.get(
+        "RECEIPT_CHROMA_ALLOW_CHECKSUM_BYPASS", ""
+    ).lower() in {"1", "true", "yes"}
+
     try:
         # Create local directory
         local_path = Path(local_snapshot_path)
@@ -102,6 +113,17 @@ def download_snapshot_from_s3(
 
         file_count = 0
         total_size = 0
+
+        def check_size(s3_key: str, expected_size: int) -> None:
+            if expected_size:
+                actual_size = local_file.stat().st_size
+                if actual_size != expected_size:
+                    logger.warning(
+                        "Size mismatch for %s: expected %s, got %s",
+                        s3_key,
+                        expected_size,
+                        actual_size,
+                    )
 
         for page in pages:
             if "Contents" not in page:
@@ -122,58 +144,40 @@ def download_snapshot_from_s3(
 
                 # Download file - handle checksum errors that can occur with
                 # moto.
+                fallback_used = False
                 try:
                     s3_client.download_file(bucket, s3_key, str(local_file))
-                except Exception as e:
-                    # FlexibleChecksumError can occur with moto mock S3
-                    # Fall back to get_object + raw read for robustness
-                    if "checksum" in str(e).lower() or "Checksum" in str(e):
-                        logger.debug(
-                            "Checksum error, falling back to get_object: %s",
-                            s3_key,
-                        )
-                        response = s3_client.get_object(
-                            Bucket=bucket,
-                            Key=s3_key,
-                            ChecksumMode="DISABLED",
-                        )
-                        # Read raw stream to avoid checksum validation
-                        body = response["Body"]
-                        raw_stream = getattr(body, "_raw_stream", body)
-                        with open(local_file, "wb") as f:
-                            # Read in chunks to handle large files
-                            while True:
-                                chunk = raw_stream.read(8192)
-                                if not chunk:
-                                    break
-                                f.write(chunk)
-                        expected_size = obj.get("Size", 0)
-                        actual_size = local_file.stat().st_size
-                        if expected_size and actual_size != expected_size:
-                            logger.warning(
-                                "Fallback download size mismatch for %s: "
-                                "expected %s, got %s",
-                                s3_key,
-                                expected_size,
-                                actual_size,
-                            )
-                    else:
+                except (ChecksumError, FlexibleChecksumError) as e:
+                    if not allow_checksum_bypass:
                         raise
+                    fallback_used = True
+                    logger.warning(
+                        "Checksum error, falling back to get_object: %s (%s)",
+                        s3_key,
+                        e,
+                    )
+                    response = s3_client.get_object(
+                        Bucket=bucket,
+                        Key=s3_key,
+                        ChecksumMode="DISABLED",
+                    )
+                    body = response["Body"]
+                    try:
+                        with open(local_file, "wb") as f:
+                            for chunk in body.iter_chunks(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                    finally:
+                        body.close()
+                except ClientError:
+                    raise
 
                 file_count += 1
                 total_size += obj.get("Size", 0)
 
-                # Verify integrity if requested
-                if verify_integrity and local_file.exists():
-                    actual_size = local_file.stat().st_size
-                    expected_size = obj.get("Size", 0)
-                    if actual_size != expected_size:
-                        logger.warning(
-                            "Size mismatch for %s: expected %s, got %s",
-                            s3_key,
-                            expected_size,
-                            actual_size,
-                        )
+                # Verify integrity if requested or fallback used
+                if local_file.exists() and (verify_integrity or fallback_used):
+                    check_size(s3_key, obj.get("Size", 0))
 
         # If no files were downloaded, return error status
         if file_count == 0:

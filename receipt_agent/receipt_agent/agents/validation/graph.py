@@ -106,7 +106,9 @@ def create_validation_graph(
         base_url=settings.ollama_base_url,
         model=settings.ollama_model,
         client_kwargs={
-            "headers": {"Authorization": f"Bearer {api_key}"} if api_key else {},
+            "headers": (
+                {"Authorization": f"Bearer {api_key}"} if api_key else {}
+            ),
             "timeout": 120,  # 2 minute timeout for reliability
         },
         temperature=0.1,  # Low temperature for consistent reasoning
@@ -244,16 +246,22 @@ async def run_validation(
     )
 
     # Configure thread for checkpointing
-    config = {"configurable": {"thread_id": thread_id or f"{image_id}#{receipt_id}"}}
+    config = {
+        "configurable": {"thread_id": thread_id or f"{image_id}#{receipt_id}"}
+    }
 
     # Run the graph
-    logger.info(f"Starting validation for {image_id}#{receipt_id}")
+    logger.info(
+        "Starting validation for %s#%s",
+        image_id,
+        receipt_id,
+    )
 
     final_state = None
     async for event in graph.astream(initial_state, config):
         # event is a dict with node name -> output
         for node_name, output in event.items():
-            logger.debug(f"Node '{node_name}' completed")
+            logger.debug("Node '%s' completed", node_name)
             if isinstance(output, dict):
                 # Merge output into state tracking
                 if "result" in output:
@@ -266,4 +274,3 @@ async def run_validation(
 
     logger.warning("No final state returned from graph")
     return initial_state
-

@@ -5,6 +5,7 @@ This workflow helps identify if receipts are incorrectly split by trying
 different combinations and evaluating which makes the most sense.
 """
 
+import asyncio
 import logging
 from typing import Any, Optional
 
@@ -159,7 +160,7 @@ def create_receipt_grouping_graph(
             tool_names = [
                 tc.get("name", "unknown") for tc in response.tool_calls
             ]
-            logger.info(f"Agent tool calls: {tool_names}")
+            logger.info("Agent tool calls: %s", tool_names)
             # Check if submit_grouping was called
             if "submit_grouping" in tool_names:
                 logger.info(
@@ -192,7 +193,8 @@ def create_receipt_grouping_graph(
                     return "end"
                 # If there are tool calls, execute them
                 logger.debug(
-                    f"Tool calls detected: {[tc.get('name') for tc in last_message.tool_calls]}"
+                    "Tool calls detected: %s",
+                    [tc.get("name") for tc in last_message.tool_calls],
                 )
                 return "tools"
 
@@ -272,22 +274,19 @@ async def run_receipt_grouping(
         ],
     )
 
-    logger.info(f"Starting receipt grouping analysis for {image_id}")
+    logger.info("Starting receipt grouping analysis for %s", image_id)
 
     # Run the workflow with increased recursion limit
     try:
         config = {"recursion_limit": 100}
         _final_state = await graph.ainvoke(initial_state, config=config)
     except Exception as e:
-        logger.error(f"Error in receipt grouping: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("Error in receipt grouping")
         return {
             "image_id": image_id,
             "status": "ERROR",
             "confidence": 0.0,
-            "reasoning": f"Error during analysis: {str(e)}",
+            "reasoning": f"Error during analysis: {e!s}",
             "grouping": None,
         }
 
@@ -296,12 +295,16 @@ async def run_receipt_grouping(
 
     if grouping:
         logger.info(
-            f"Grouping complete: confidence={grouping['confidence']:.2%}"
+            "Grouping complete: confidence=%.2f%%",
+            grouping["confidence"] * 100.0,
         )
         return grouping
 
     # Agent ended without submitting grouping
-    logger.warning(f"Agent ended without submitting grouping for {image_id}")
+    logger.warning(
+        "Agent ended without submitting grouping for %s",
+        image_id,
+    )
     return {
         "image_id": image_id,
         "status": "INCOMPLETE",
@@ -322,8 +325,6 @@ def run_receipt_grouping_sync(
     image_id: str,
 ) -> dict:
     """Synchronous wrapper for run_receipt_grouping."""
-    import asyncio
-
     return asyncio.run(
         run_receipt_grouping(
             graph=graph,

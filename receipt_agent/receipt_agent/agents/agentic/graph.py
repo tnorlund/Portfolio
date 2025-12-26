@@ -17,6 +17,7 @@ The agent is guided by a system prompt that explains:
 - When to submit a decision
 """
 
+import asyncio
 import logging
 from typing import Annotated, Any, Callable, Optional
 
@@ -174,7 +175,8 @@ def create_agentic_validation_graph(
         # Log tool calls for debugging
         if hasattr(response, "tool_calls") and response.tool_calls:
             logger.debug(
-                f"Agent tool calls: {[tc['name'] for tc in response.tool_calls]}"
+                "Agent tool calls: %s",
+                [tc["name"] for tc in response.tool_calls],
             )
 
         # Only return new message - add_messages reducer handles accumulation
@@ -280,7 +282,11 @@ async def run_agentic_validation(
         ],
     )
 
-    logger.info(f"Starting agentic validation for {image_id}#{receipt_id}")
+    logger.info(
+        "Starting agentic validation for %s#%s",
+        image_id,
+        receipt_id,
+    )
 
     # Run the workflow with increased recursion limit
     try:
@@ -292,13 +298,17 @@ async def run_agentic_validation(
 
         if decision:
             logger.info(
-                f"Validation complete: {decision['status']} ({decision['confidence']:.2%})"
+                "Validation complete: %s (%.2f%%)",
+                decision["status"],
+                decision["confidence"] * 100.0,
             )
             return decision
         else:
             # Agent ended without submitting decision
             logger.warning(
-                f"Agent ended without submitting decision for {image_id}#{receipt_id}"
+                "Agent ended without submitting decision for %s#%s",
+                image_id,
+                receipt_id,
             )
             return {
                 "image_id": image_id,
@@ -310,7 +320,7 @@ async def run_agentic_validation(
             }
 
     except Exception as e:
-        logger.error(f"Error in agentic validation: {e}")
+        logger.error("Error in agentic validation: %s", e)
         return {
             "image_id": image_id,
             "receipt_id": receipt_id,
@@ -335,8 +345,6 @@ def run_agentic_validation_sync(
     word_embeddings: Optional[dict[str, list[float]]] = None,
 ) -> dict:
     """Synchronous wrapper for run_agentic_validation."""
-    import asyncio
-
     return asyncio.run(
         run_agentic_validation(
             graph=graph,

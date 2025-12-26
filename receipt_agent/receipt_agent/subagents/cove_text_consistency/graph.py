@@ -164,7 +164,6 @@ text."""
 
 def create_text_consistency_submission_tool(state_holder: dict):
     """Create a tool for submitting text consistency results."""
-    from pydantic import BaseModel, Field
 
     class ReceiptConsistencyResult(BaseModel):
         """Result for a single receipt."""
@@ -231,8 +230,10 @@ def create_text_consistency_submission_tool(state_holder: dict):
         # Warn if we got more/fewer results than expected
         if len(unique_results) != expected_count:
             logger.warning(
-                f"CoVe agent submitted {len(unique_results)} receipt_results "
-                f"but expected {expected_count} receipts. Deduplicating..."
+                "CoVe agent submitted %s receipt_results but expected %s receipts. "
+                "Deduplicating...",
+                len(unique_results),
+                expected_count,
             )
 
         # Use deduplicated results
@@ -275,11 +276,10 @@ def create_text_consistency_submission_tool(state_holder: dict):
         state_holder["consistency_result"] = result
 
         logger.info(
-            (
-                "Text consistency submitted: "
-                f"{len(outliers)}/{len(receipt_results)} outliers "
-                f"(confidence={overall_confidence:.2%})"
-            )
+            "Text consistency submitted: %s/%s outliers (confidence=%.2f%%)",
+            len(outliers),
+            len(receipt_results),
+            overall_confidence * 100.0,
         )
 
         return {
@@ -319,8 +319,6 @@ def _fetch_receipt_with_fallback(
     Returns:
         ReceiptDetails if found, None otherwise
     """
-    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-
     # Sanitize image_id first (remove trailing characters like '?')
     sanitized_image_id = image_id.rstrip("? \t\n\r")
 
@@ -338,24 +336,28 @@ def _fetch_receipt_with_fallback(
             # Receipt doesn't exist - continue to try fallback
             if img_id == sanitized_image_id and sanitized_image_id != image_id:
                 logger.debug(
-                    f"Receipt not found for sanitized {img_id}#{receipt_id}, "
-                    f"trying original image_id"
+                    "Receipt not found for sanitized %s#%s, trying original image_id",
+                    img_id,
+                    receipt_id,
                 )
             continue
         except Exception as e:
             if img_id == sanitized_image_id and sanitized_image_id != image_id:
                 logger.debug(
-                    f"get_receipt_details failed for sanitized "
-                    f"{img_id}#{receipt_id}, "
-                    f"trying original: {e}"
+                    "get_receipt_details failed for sanitized %s#%s, "
+                    "trying original: %s",
+                    img_id,
+                    receipt_id,
+                    e,
                 )
             continue
 
     if not receipt_details or not receipt_details.receipt:
         # Try alternative methods to fetch receipt details
         logger.info(
-            f"Primary get_receipt_details failed for {image_id}#{receipt_id}, "
-            f"trying alternative methods..."
+            "Primary get_receipt_details failed for %s#%s, trying alternative methods...",
+            image_id,
+            receipt_id,
         )
         receipt_details = _fetch_receipt_details_fallback(
             dynamo_client, sanitized_image_id, receipt_id
@@ -498,9 +500,10 @@ def create_cove_tools(
                         )
                         if lines:
                             logger.info(
-                                f"Fetched {len(lines)} lines directly for "
-                                f"{img_id}#{receipt_id} "
-                                f"in get_receipt_text"
+                                "Fetched %s lines directly for %s#%s in get_receipt_text",
+                                len(lines),
+                                img_id,
+                                receipt_id,
                             )
                             break
                     except EntityNotFoundError:
@@ -508,11 +511,10 @@ def create_cove_tools(
                         continue
                     except Exception as e:
                         logger.debug(
-                            (
-                                "Could not fetch lines for "
-                                f"{img_id}#{receipt_id}: "
-                                f"{e}"
-                            )
+                            "Could not fetch lines for %s#%s: %s",
+                            img_id,
+                            receipt_id,
+                            e,
                         )
 
             if not lines:
@@ -527,11 +529,11 @@ def create_cove_tools(
                     }
                 else:
                     logger.warning(
-                        "Receipt details not found for "
-                        f"{image_id}#{receipt_id} "
-                        "after fallback. Metadata exists but receipt "
-                        "lines/words are missing from DynamoDB. "
-                        "Skipping text consistency check for this receipt."
+                        "Receipt details not found for %s#%s after fallback. "
+                        "Metadata exists but receipt lines/words are missing from "
+                        "DynamoDB. Skipping text consistency check for this receipt.",
+                        image_id,
+                        receipt_id,
                     )
                     return {
                         "image_id": image_id,
@@ -549,7 +551,8 @@ def create_cove_tools(
                 formatted_text = format_receipt_text_receipt_space(lines)
             except Exception as exc:
                 logger.debug(
-                    f"Could not format receipt text (receipt-space): {exc}"
+                    "Could not format receipt text (receipt-space): %s",
+                    exc,
                 )
                 sorted_lines = sorted(lines, key=lambda line: line.line_id)
                 formatted_text = "\n".join(
@@ -566,7 +569,10 @@ def create_cove_tools(
 
         except EntityNotFoundError as e:
             logger.warning(
-                f"Receipt not found for {image_id}#{receipt_id}: {e}"
+                "Receipt not found for %s#%s: %s",
+                image_id,
+                receipt_id,
+                e,
             )
             return {
                 "image_id": image_id,
@@ -584,15 +590,16 @@ def create_cove_tools(
                 or "receipt details" in error_str.lower()
             ):
                 logger.warning(
-                    (
-                        f"Receipt details not available for "
-                        f"{image_id}#{receipt_id}: "
-                        f"{error_str}"
-                    )
+                    "Receipt details not available for %s#%s: %s",
+                    image_id,
+                    receipt_id,
+                    error_str,
                 )
             else:
                 logger.exception(
-                    f"Error getting receipt text for {image_id}#{receipt_id}"
+                    "Error getting receipt text for %s#%s",
+                    image_id,
+                    receipt_id,
                 )
             return {
                 "image_id": image_id,
@@ -650,8 +657,6 @@ def create_cove_tools(
             - message: Summary message indicating if more receipts need to be
                 checked
         """
-        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-
         # Limit batch size to prevent context overflow
         # Estimate: ~500-1000 chars per receipt text = ~125-250 tokens
         # per receipt
@@ -659,11 +664,10 @@ def create_cove_tools(
         # We'll dynamically adjust based on actual text length
         if len(receipts) > COVE_MAX_BATCH_SIZE:
             logger.info(
-                (
-                    "Batch size "
-                    f"{len(receipts)} exceeds max {COVE_MAX_BATCH_SIZE}, "
-                    f"processing first {COVE_MAX_BATCH_SIZE} receipts"
-                )
+                "Batch size %s exceeds max %s, processing first %s receipts",
+                len(receipts),
+                COVE_MAX_BATCH_SIZE,
+                COVE_MAX_BATCH_SIZE,
             )
             receipts_to_process = receipts[:COVE_MAX_BATCH_SIZE]
         else:
@@ -709,8 +713,9 @@ def create_cove_tools(
                         continue
                     except Exception:
                         logger.debug(
-                            f"get_receipt_details failed for "
-                            f"{img_id}#{receipt_id}"
+                            "get_receipt_details failed for %s#%s",
+                            img_id,
+                            receipt_id,
                         )
                         continue
 
@@ -734,8 +739,9 @@ def create_cove_tools(
                                 break
                         except Exception:
                             logger.debug(
-                                f"get_receipt_details failed for "
-                                f"{img_id}#{receipt_id}"
+                                "get_receipt_details failed for %s#%s",
+                                img_id,
+                                receipt_id,
                             )
                             continue
 
@@ -765,9 +771,7 @@ def create_cove_tools(
                 # Smart truncation: adjust based on total context used so far
                 # Estimate remaining capacity and truncate if needed
                 text_length = len(formatted_text)
-                remaining_capacity = (
-                    COVE_MAX_TOTAL_CHARS - total_chars_so_far
-                )
+                remaining_capacity = COVE_MAX_TOTAL_CHARS - total_chars_so_far
 
                 # Reserve space for other receipts in batch
                 # (estimate 500 chars each)
@@ -784,12 +788,9 @@ def create_cove_tools(
                 # Truncate if text is too long or would exceed total capacity
                 MAX_TEXT_LENGTH = min(2000, available_space)  # Dynamic limit
                 if text_length > MAX_TEXT_LENGTH:
-                    formatted_text = (
-                        formatted_text[:MAX_TEXT_LENGTH]
-                        + (
-                            f"\n... (truncated, "
-                            f"{text_length - MAX_TEXT_LENGTH} chars remaining)"
-                        )
+                    formatted_text = formatted_text[:MAX_TEXT_LENGTH] + (
+                        f"\n... (truncated, "
+                        f"{text_length - MAX_TEXT_LENGTH} chars remaining)"
                     )
                     text_length = MAX_TEXT_LENGTH
 
@@ -909,11 +910,10 @@ def create_cove_tools(
                         )
                         if lines_list:
                             logger.info(
-                                (
-                                    "Fetched "
-                                    f"{len(lines_list)} lines directly for "
-                                    f"{img_id}#{receipt_id}"
-                                )
+                                "Fetched %s lines directly for %s#%s",
+                                len(lines_list),
+                                img_id,
+                                receipt_id,
                             )
                             break
                     except EntityNotFoundError:
@@ -921,11 +921,10 @@ def create_cove_tools(
                         continue
                     except Exception as e:
                         logger.debug(
-                            (
-                                "Could not fetch lines for "
-                                f"{img_id}#{receipt_id}: "
-                                f"{e}"
-                            )
+                            "Could not fetch lines for %s#%s: %s",
+                            img_id,
+                            receipt_id,
+                            e,
                         )
 
             if not words_list:
@@ -938,11 +937,10 @@ def create_cove_tools(
                         )
                         if words_list:
                             logger.info(
-                                (
-                                    "Fetched "
-                                    f"{len(words_list)} words directly for "
-                                    f"{img_id}#{receipt_id}"
-                                )
+                                "Fetched %s words directly for %s#%s",
+                                len(words_list),
+                                img_id,
+                                receipt_id,
                             )
                             break
                     except EntityNotFoundError:
@@ -950,11 +948,10 @@ def create_cove_tools(
                         continue
                     except Exception as e:
                         logger.debug(
-                            (
-                                "Could not fetch words for "
-                                f"{img_id}#{receipt_id}: "
-                                f"{e}"
-                            )
+                            "Could not fetch words for %s#%s: %s",
+                            img_id,
+                            receipt_id,
+                            e,
                         )
 
             lines = [
@@ -996,7 +993,10 @@ def create_cove_tools(
 
         except EntityNotFoundError as e:
             logger.warning(
-                f"Receipt not found for {image_id}#{receipt_id}: {e}"
+                "Receipt not found for %s#%s: %s",
+                image_id,
+                receipt_id,
+                e,
             )
             return {
                 "image_id": image_id,
@@ -1014,18 +1014,16 @@ def create_cove_tools(
                 or "receipt details" in error_str.lower()
             ):
                 logger.warning(
-                    (
-                        f"Receipt details not available for "
-                        f"{image_id}#{receipt_id}: "
-                        f"{error_str}"
-                    )
+                    "Receipt details not available for %s#%s: %s",
+                    image_id,
+                    receipt_id,
+                    error_str,
                 )
             else:
                 logger.exception(
-                    (
-                        f"Error getting receipt content for "
-                        f"{image_id}#{receipt_id}"
-                    )
+                    "Error getting receipt content for %s#%s",
+                    image_id,
+                    receipt_id,
                 )
             return {
                 "image_id": image_id,
@@ -1218,10 +1216,9 @@ async def run_cove_text_consistency(
     )
 
     logger.info(
-        (
-            f"Starting CoVe text consistency check for place_id {place_id} "
-            f"({len(receipts)} receipts)"
-        )
+        "Starting CoVe text consistency check for place_id %s (%s receipts)",
+        place_id,
+        len(receipts),
     )
 
     # Store receipts in state_holder for validation in submit_text_consistency
@@ -1258,11 +1255,10 @@ async def run_cove_text_consistency(
             receipt_results_count = len(result.get("receipt_results", []))
             outlier_count = result.get("outlier_count", 0)
             logger.info(
-                (
-                    "CoVe check complete: "
-                    f"{outlier_count}/{receipt_results_count} outliers "
-                    f"(expected {len(receipts)} receipts)"
-                )
+                "CoVe check complete: %s/%s outliers (expected %s receipts)",
+                outlier_count,
+                receipt_results_count,
+                len(receipts),
             )
             return {
                 "status": "success",
@@ -1271,10 +1267,8 @@ async def run_cove_text_consistency(
         else:
             # Agent ended without submitting result
             logger.warning(
-                (
-                    f"CoVe agent ended without submitting result for "
-                    f"place_id {place_id}"
-                )
+                "CoVe agent ended without submitting result for place_id %s",
+                place_id,
             )
             return {
                 "status": "incomplete",

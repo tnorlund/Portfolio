@@ -519,7 +519,9 @@ def create_agentic_tools(
                     break
 
             logger.info(
-                f"find_similar_to_my_line({line_id}) returned {len(output)} results"
+                "find_similar_to_my_line(%s) returned %s results",
+                line_id,
+                len(output),
             )
             return output
 
@@ -630,7 +632,10 @@ def create_agentic_tools(
                     break
 
             logger.info(
-                f"find_similar_to_my_word({line_id}, {word_id}) returned {len(output)} results"
+                "find_similar_to_my_word(%s, %s) returned %s results",
+                line_id,
+                word_id,
+                len(output),
             )
             return output
 
@@ -717,7 +722,9 @@ def create_agentic_tools(
                     break
 
             logger.info(
-                f"search_lines('{query[:30]}...') returned {len(output)} results"
+                "search_lines('%s...') returned %s results",
+                query[:30],
+                len(output),
             )
             return output
 
@@ -924,7 +931,8 @@ def create_agentic_tools(
             try:
                 collection = chroma_client.get_collection("lines")
                 logger.debug(
-                    f"Found 'lines' collection with {collection.count()} vectors"
+                    "Found 'lines' collection with %s vectors",
+                    collection.count(),
                 )
             except Exception as e:
                 error_str = str(e)
@@ -1044,9 +1052,7 @@ def create_agentic_tools(
 
             # Compare
             differences = []
-            same_merchant = (
-                my_place.merchant_name == other_place.merchant_name
-            )
+            same_merchant = my_place.merchant_name == other_place.merchant_name
             if not same_merchant:
                 differences.append(
                     f"Merchant: '{my_place.merchant_name}' vs '{other_place.merchant_name}'"
@@ -1064,9 +1070,7 @@ def create_agentic_tools(
                     f"Address: '{my_place.formatted_address}' vs '{other_place.formatted_address}'"
                 )
 
-            same_phone = (
-                my_place.phone_number == other_place.phone_number
-            )
+            same_phone = my_place.phone_number == other_place.phone_number
             if not same_phone:
                 differences.append(
                     f"Phone: '{my_place.phone_number}' vs '{other_place.phone_number}'"

@@ -59,7 +59,11 @@ def create_graph_with_middleware(
 
         def default_error_handler(exc: Exception) -> dict:
             error_msg = str(exc)
-            logger.error(f"Graph execution error: {error_msg}", exc_info=exc)
+            logger.error(
+                "Graph execution error: %s",
+                error_msg,
+                exc_info=exc,
+            )
             return {"errors": [error_msg]}
 
         error_handler = default_error_handler
@@ -67,6 +71,3 @@ def create_graph_with_middleware(
     # Note: LangGraph middleware is typically applied at compile time
     # This is a placeholder for future middleware patterns
     return graph
-
-
-

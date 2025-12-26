@@ -389,9 +389,7 @@ def _process_single_chunk(
                         break
 
                 if not chunk_found:
-                    raise ValueError(
-                        f"Chunk {chunk_index} not found in S3 chunks file"
-                    )
+                    raise ValueError(f"Missing chunk {chunk_index} in S3 file")
 
                 # Extract delta_results from the chunk
                 delta_results = chunk_found.get("delta_results", [])

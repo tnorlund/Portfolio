@@ -8,13 +8,16 @@ using ChromaDB similarity search, minimizing LLM calls.
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from datetime import datetime, timezone
+from collections.abc import Callable
+from typing import Any, Optional
 
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 from receipt_chroma.embedding.formatting.word_format import (
     format_word_context_embedding_input,
 )
+from receipt_dynamo.entities import ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +26,13 @@ logger = logging.getLogger(__name__)
 # Receipt Context - Injected at runtime
 # =====================================================================
 
+
 @dataclass
 class ReceiptContext:
     """Context for the receipt being processed.
     Injected into tools at runtime.
     """
+
     image_id: str
     receipt_id: int
     merchant_name: Optional[str] = None
@@ -52,8 +57,10 @@ def _build_word_id(
 # Tool Input Schemas
 # =====================================================================
 
+
 class SearchLabelCandidatesInput(BaseModel):
     """Input for search_label_candidates tool."""
+
     word_id: int = Field(description="Word ID to find label candidates for")
     line_id: int = Field(description="Line ID containing the word")
     n_results: int = Field(
@@ -67,6 +74,7 @@ class SearchLabelCandidatesInput(BaseModel):
 
 class SubmitLabelSuggestionsInput(BaseModel):
     """Input for submit_label_suggestions tool."""
+
     suggestions: list[dict] = Field(
         description=(
             "List of label suggestions. Each dict should have: "
@@ -78,6 +86,7 @@ class SubmitLabelSuggestionsInput(BaseModel):
 # =====================================================================
 # Tool Factory
 # =====================================================================
+
 
 def create_label_suggestion_tools(
     dynamo_client: Any,
@@ -119,8 +128,7 @@ def create_label_suggestion_tools(
                 receipt_id=ctx.receipt_id,
             )
             meaningful_words = [
-                w for w in all_words
-                if not getattr(w, "is_noise", False)
+                w for w in all_words if not getattr(w, "is_noise", False)
             ]
 
             # Get existing labels
@@ -167,7 +175,7 @@ def create_label_suggestion_tools(
             }
 
         except Exception as e:
-            logger.error(f"Error getting receipt context: {e}")
+            logger.error("Error getting receipt context: %s", e)
             return {"error": str(e)}
 
     @tool(args_schema=SearchLabelCandidatesInput)
@@ -266,15 +274,16 @@ def create_label_suggestion_tools(
                     ):
                         target_embedding = embeddings[0]
                         # Convert to list if numpy array
-                        if hasattr(target_embedding, 'tolist'):
+                        if hasattr(target_embedding, "tolist"):
                             target_embedding = target_embedding.tolist()
                         elif not isinstance(target_embedding, list):
                             target_embedding = list(target_embedding)
                         logger.debug(
-                            f"Using stored embedding for word '{word.text}'"
+                            "Using stored embedding for word '%s'",
+                            word.text,
                         )
             except Exception as e:
-                logger.debug(f"Could not get stored embedding: {e}")
+                logger.debug("Could not get stored embedding: %s", e)
             finally:
                 get_time = time.time() - get_start
 
@@ -283,8 +292,8 @@ def create_label_suggestion_tools(
             # doesn't exist in ChromaDB
             if target_embedding is None:
                 logger.debug(
-                    f"Embedding on-the-fly for word '{word.text}' "
-                    f"(not found in ChromaDB or fallback)"
+                    "Embedding on-the-fly for word '%s' (not found in ChromaDB or fallback)",
+                    word.text,
                 )
 
                 embed_start = time.time()
@@ -309,7 +318,7 @@ def create_label_suggestion_tools(
 
                 # Ensure it's a list
                 if not isinstance(target_embedding, list):
-                    if hasattr(target_embedding, 'tolist'):
+                    if hasattr(target_embedding, "tolist"):
                         target_embedding = target_embedding.tolist()
                     else:
                         target_embedding = list(target_embedding)
@@ -344,7 +353,7 @@ def create_label_suggestion_tools(
             query_time = time.time() - query_start
 
             if not query_results or not query_results.get("documents"):
-                logger.debug(f"No query results for word '{word.text}'")
+                logger.debug("No query results for word '%s'", word.text)
             # Continue to process results even if empty
 
             # Log query results for debugging
@@ -354,8 +363,9 @@ def create_label_suggestion_tools(
                 else 0
             )
             logger.info(
-                f"ChromaDB query for '{word.text}': "
-                f"found {total_results} total results"
+                "ChromaDB query for '%s': found %s total results",
+                word.text,
+                total_results,
             )
 
             # Check a few sample results to see what we're getting
@@ -370,8 +380,10 @@ def create_label_suggestion_tools(
                 ):
                     valid_lbls = smeta.get("valid_labels", "") if smeta else ""
                     logger.info(
-                        f"  Sample result: '{sdoc}' (id: {sid[:50]}...) "
-                        f"valid_labels: '{valid_lbls}'"
+                        "  Sample result: '%s' (id: %s...) valid_labels: '%s'",
+                        sdoc,
+                        sid[:50],
+                        valid_lbls,
                     )
 
             # Analyze results to find label candidates
@@ -400,6 +412,7 @@ def create_label_suggestion_tools(
                 documents,
                 metadatas,
                 distances,
+                strict=True,
             ):
                 # Skip if same word
                 if doc_id == chroma_id:
@@ -415,8 +428,6 @@ def create_label_suggestion_tools(
                 if not valid_labels_str or not valid_labels_str.strip(","):
                     words_without_valid_labels += 1
                     continue
-
-                words_with_valid_labels += 1
 
                 words_with_valid_labels += 1
 
@@ -443,11 +454,15 @@ def create_label_suggestion_tools(
 
                     # Keep up to 3 examples
                     if len(label_candidates[label_type]["examples"]) < 3:
-                        label_candidates[label_type]["examples"].append({
-                            "word": doc,
-                            "similarity": round(similarity, 3),
-                            "merchant": meta.get("merchant_name", "Unknown"),
-                        })
+                        label_candidates[label_type]["examples"].append(
+                            {
+                                "word": doc,
+                                "similarity": round(similarity, 3),
+                                "merchant": meta.get(
+                                    "merchant_name", "Unknown"
+                                ),
+                            }
+                        )
 
             # Calculate confidence scores for each candidate
             scored_candidates = []
@@ -467,33 +482,37 @@ def create_label_suggestion_tools(
                 similarity_score = avg_sim  # Already 0-1
                 confidence = (similarity_score * 0.7) + (count_score * 0.3)
 
-                scored_candidates.append({
-                    "label_type": label_type,
-                    "confidence": round(confidence, 3),
-                    "match_count": count,
-                    "avg_similarity": round(avg_sim, 3),
-                    "min_similarity": round(min(data["similarities"]), 3),
-                    "max_similarity": round(max(data["similarities"]), 3),
-                    "examples": data["examples"],
-                })
+                scored_candidates.append(
+                    {
+                        "label_type": label_type,
+                        "confidence": round(confidence, 3),
+                        "match_count": count,
+                        "avg_similarity": round(avg_sim, 3),
+                        "min_similarity": round(min(data["similarities"]), 3),
+                        "max_similarity": round(max(data["similarities"]), 3),
+                        "examples": data["examples"],
+                    }
+                )
 
             # Sort by confidence
             scored_candidates.sort(key=lambda x: x["confidence"], reverse=True)
 
             logger.info(
-                f"Word '{word.text}': {words_with_valid_labels} results "
-                f"with valid_labels, {words_without_valid_labels} without, "
-                f"{len(scored_candidates)} candidates"
+                "Word '%s': %s results with valid_labels, %s without, %s candidates",
+                word.text,
+                words_with_valid_labels,
+                words_without_valid_labels,
+                len(scored_candidates),
             )
 
             # If we found similar words but none have valid_labels,
             # that's useful info
             if total_results > 0 and words_with_valid_labels == 0:
                 logger.info(
-                    f"  Note: Found {total_results} similar words "
-                    f"in ChromaDB, but none have VALID labels yet. "
-                    f"This word will be skipped until similar words "
-                    f"are validated."
+                    "  Note: Found %s similar words in ChromaDB, but none have "
+                    "VALID labels yet. This word will be skipped until similar "
+                    "words are validated.",
+                    total_results,
                 )
 
             return {
@@ -532,7 +551,8 @@ def create_label_suggestion_tools(
 
         except Exception as e:
             logger.error(
-                f"Error searching label candidates: {e}",
+                "Error searching label candidates: %s",
+                e,
                 exc_info=True,
             )
             return {"error": str(e)}
@@ -562,9 +582,6 @@ def create_label_suggestion_tools(
             return {"error": "No receipt context set"}
 
         try:
-            from datetime import datetime
-            from receipt_dynamo.entities import ReceiptWordLabel
-
             created_labels = []
             errors = []
 
@@ -588,24 +605,28 @@ def create_label_suggestion_tools(
                         label=label_type,
                         validation_status="PENDING",
                         reasoning=reasoning,
-                        timestamp_added=datetime.utcnow(),
+                        timestamp_added=datetime.now(timezone.utc),
                         label_proposed_by="label-suggestion-agent",
                     )
 
                     # Save to DynamoDB
                     dynamo_client.create_receipt_word_label(label)
-                    created_labels.append({
-                        "word_id": word_id,
-                        "line_id": line_id,
-                        "label_type": label_type,
-                        "confidence": confidence,
-                    })
+                    created_labels.append(
+                        {
+                            "word_id": word_id,
+                            "line_id": line_id,
+                            "label_type": label_type,
+                            "confidence": confidence,
+                        }
+                    )
 
                 except Exception as e:
-                    errors.append({
-                        "suggestion": suggestion,
-                        "error": str(e),
-                    })
+                    errors.append(
+                        {
+                            "suggestion": suggestion,
+                            "error": str(e),
+                        }
+                    )
 
             return {
                 "status": "success",
@@ -617,7 +638,8 @@ def create_label_suggestion_tools(
 
         except Exception as e:
             logger.error(
-                f"Error submitting label suggestions: {e}",
+                "Error submitting label suggestions: %s",
+                e,
                 exc_info=True,
             )
             return {"error": str(e)}

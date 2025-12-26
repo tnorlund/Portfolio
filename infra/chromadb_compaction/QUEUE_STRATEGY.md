@@ -18,7 +18,7 @@ FIFO queues were selected to prevent a race condition:
 
 ### Configuration
 
-```
+```text
 Queue Type: FIFO
 MessageGroupId: "compaction:{collection}" (single group per collection)
 Batch Size: 10 (AWS maximum for FIFO)
@@ -109,7 +109,7 @@ if message.timestamp > current_record.metadata.get("last_modified"):
 
 Use per-image MessageGroupIds with Lambda concurrency > 1.
 
-```
+```text
 MessageGroupId: "{entity_type}:{image_id}:{collection}"
 Lambda Concurrency: 5-10
 ```

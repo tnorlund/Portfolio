@@ -71,6 +71,9 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from receipt_agent.agents.harmonizer import create_harmonizer_graph
+from receipt_agent.agents.harmonizer.graph import run_harmonizer_agent
+
 logger = logging.getLogger(__name__)
 
 
@@ -272,9 +275,10 @@ class MerchantHarmonizerV3:
                 group.is_consistent = self._is_group_consistent(group)
 
             logger.info(
-                f"Loaded {total} receipts: "
-                f"{len(self._place_id_groups)} place_id groups, "
-                f"{len(self._no_place_id_receipts)} without place_id"
+                "Loaded %s receipts: %s place_id groups, %s without place_id",
+                total,
+                len(self._place_id_groups),
+                len(self._no_place_id_receipts),
             )
 
         except Exception:
@@ -297,8 +301,8 @@ class MerchantHarmonizerV3:
             Total number of receipts loaded
         """
         logger.info(
-            f"Loading receipt metadata for {len(place_ids)} "
-            "place_id(s) from DynamoDB..."
+            "Loading receipt metadata for %s place_id(s) from DynamoDB...",
+            len(place_ids),
         )
 
         self._place_id_groups = {}
@@ -365,8 +369,9 @@ class MerchantHarmonizerV3:
                 group.is_consistent = self._is_group_consistent(group)
 
             logger.info(
-                f"Loaded {total} receipts for "
-                f"{len(self._place_id_groups)} place_id group(s)"
+                "Loaded %s receipts for %s place_id group(s)",
+                total,
+                len(self._place_id_groups),
             )
 
         except Exception:
@@ -431,8 +436,6 @@ class MerchantHarmonizerV3:
 
         # Initialize agent if needed
         if self._agent_graph is None:
-            from receipt_agent.agents.harmonizer import create_harmonizer_graph
-
             self._agent_graph, self._agent_state_holder = (
                 create_harmonizer_graph(
                     dynamo_client=self.dynamo,
@@ -454,8 +457,8 @@ class MerchantHarmonizerV3:
             groups_to_process = groups_to_process[:limit]
 
         logger.info(
-            f"Processing {len(groups_to_process)} "
-            "inconsistent groups with agent..."
+            "Processing %s inconsistent groups with agent...",
+            len(groups_to_process),
         )
 
         # Process each group with the agent
@@ -463,7 +466,9 @@ class MerchantHarmonizerV3:
         for i, group in enumerate(groups_to_process):
             if (i + 1) % 5 == 0:
                 logger.info(
-                    f"Processed {i + 1}/{len(groups_to_process)} groups..."
+                    "Processed %s/%s groups...",
+                    i + 1,
+                    len(groups_to_process),
                 )
 
             # Convert receipts to dict format for agent
@@ -483,10 +488,6 @@ class MerchantHarmonizerV3:
             result = None
             for attempt in range(max_retries):
                 try:
-                    from receipt_agent.agents.harmonizer import (
-                        run_harmonizer_agent,
-                    )
-
                     result = await run_harmonizer_agent(
                         graph=self._agent_graph,
                         state_holder=self._agent_state_holder,
@@ -504,8 +505,10 @@ class MerchantHarmonizerV3:
                     )
                     if is_retryable and attempt < max_retries - 1:
                         logger.warning(
-                            f"Retryable error for {group.place_id} (attempt "
-                            f"{attempt + 1}): {error_str[:100]}"
+                            "Retryable error for %s (attempt %s): %s",
+                            group.place_id,
+                            attempt + 1,
+                            error_str[:100],
                         )
                         await asyncio.sleep(2 * (attempt + 1))
                         continue
@@ -617,8 +620,10 @@ class MerchantHarmonizerV3:
             confidence = agent_result.get("confidence", 0)
             if confidence < min_confidence:
                 logger.debug(
-                    f"Skipping {agent_result.get('place_id')}: "
-                    f"confidence {confidence} < {min_confidence}"
+                    "Skipping %s: confidence %s < %s",
+                    agent_result.get("place_id"),
+                    confidence,
+                    min_confidence,
                 )
                 continue
 
@@ -644,21 +649,30 @@ class MerchantHarmonizerV3:
 
         if dry_run:
             logger.info(
-                f"[DRY RUN] Would update {len(updates_to_apply)} receipts"
+                "[DRY RUN] Would update %s receipts",
+                len(updates_to_apply),
             )
             for update in updates_to_apply[:10]:
                 logger.info(
-                    f"  {update['image_id'][:8]}...#{update['receipt_id']}: "
-                    f"{', '.join(update['changes'][:2])}"
+                    "  %s...#%s: %s",
+                    update["image_id"][:8],
+                    update["receipt_id"],
+                    ", ".join(update["changes"][:2]),
                 )
             if len(updates_to_apply) > 10:
-                logger.info(f"  ... and {len(updates_to_apply) - 10} more")
+                logger.info(
+                    "  ... and %s more",
+                    len(updates_to_apply) - 10,
+                )
 
             result.total_updated = len(updates_to_apply)
             return result
 
         # Actually apply updates
-        logger.info(f"Applying {len(updates_to_apply)} updates to DynamoDB...")
+        logger.info(
+            "Applying %s updates to DynamoDB...",
+            len(updates_to_apply),
+        )
 
         for update in updates_to_apply:
             try:
@@ -694,17 +708,19 @@ class MerchantHarmonizerV3:
                     self.dynamo.update_receipt_place(place)
                     result.total_updated += 1
                     logger.debug(
-                        "Updated "
-                        f"{update['image_id'][:8]}...#{update['receipt_id']}: "
-                        f"{', '.join(updated_fields)}"
+                        "Updated %s...#%s: %s",
+                        update["image_id"][:8],
+                        update["receipt_id"],
+                        ", ".join(updated_fields),
                     )
                 else:
                     result.total_skipped += 1
 
             except Exception as e:
                 logger.exception(
-                    f"Failed to update {update['image_id']}#"
-                    f"{update['receipt_id']}"
+                    "Failed to update %s#%s",
+                    update["image_id"],
+                    update["receipt_id"],
                 )
                 result.total_failed += 1
                 result.errors.append(
@@ -712,8 +728,10 @@ class MerchantHarmonizerV3:
                 )
 
         logger.info(
-            f"Update complete: {result.total_updated} updated, "
-            f"{result.total_skipped} skipped, {result.total_failed} failed"
+            "Update complete: %s updated, %s skipped, %s failed",
+            result.total_updated,
+            result.total_skipped,
+            result.total_failed,
         )
 
         return result

@@ -28,6 +28,7 @@ Migration Strategy:
 - Phase 4: Mark migration complete when all receipts have ReceiptPlace
 """
 
+import argparse
 import asyncio
 import logging
 import sys
@@ -35,10 +36,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 
+from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
+from receipt_dynamo.entities import ReceiptPlace
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -46,6 +50,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BackfillStats:
     """Statistics for backfill operation."""
+
     total_processed: int = 0
     total_created: int = 0
     total_skipped: int = 0
@@ -109,7 +114,7 @@ class ReceiptPlaceBackfiller:
         if dry_run:
             logger.info("[DRY RUN MODE] - No writes will be made to DynamoDB")
         if limit:
-            logger.info(f"Processing max {limit} receipts")
+            logger.info("Processing max %s receipts", limit)
 
         try:
             # If specific receipt requested, backfill just that one
@@ -120,9 +125,7 @@ class ReceiptPlaceBackfiller:
                 return self.stats
 
             # Otherwise, scan and backfill all receipts
-            await self._backfill_all_receipts(
-                dry_run, limit, image_id
-            )
+            await self._backfill_all_receipts(dry_run, limit, image_id)
 
         except Exception as e:
             logger.exception("Fatal error during backfill")
@@ -138,36 +141,35 @@ class ReceiptPlaceBackfiller:
     ) -> None:
         """Backfill a single receipt."""
         logger.info(
-            f"Backfilling single receipt: {image_id}#{receipt_id}"
+            "Backfilling single receipt: %s#%s",
+            image_id,
+            receipt_id,
         )
 
         try:
             # Get existing ReceiptMetadata
-            metadata = self.dynamo.get_receipt_metadata(
-                image_id, receipt_id
-            )
+            metadata = self.dynamo.get_receipt_metadata(image_id, receipt_id)
 
             if not metadata or not metadata.place_id:
                 logger.warning(
-                    f"No metadata or place_id found for "
-                    f"{image_id}#{receipt_id}"
+                    "No metadata or place_id found for %s#%s",
+                    image_id,
+                    receipt_id,
                 )
                 self.stats.total_skipped += 1
                 return
 
             # Create ReceiptPlace
-            await self._create_receipt_place_from_metadata(
-                metadata, dry_run
-            )
+            await self._create_receipt_place_from_metadata(metadata, dry_run)
 
         except Exception as e:
             logger.exception(
-                f"Failed to backfill {image_id}#{receipt_id}"
+                "Failed to backfill %s#%s",
+                image_id,
+                receipt_id,
             )
             self.stats.total_failed += 1
-            self.stats.errors.append(
-                f"{image_id}#{receipt_id}: {e!s}"
-            )
+            self.stats.errors.append(f"{image_id}#{receipt_id}: {e!s}")
 
     async def _backfill_all_receipts(
         self,
@@ -192,12 +194,15 @@ class ReceiptPlaceBackfiller:
             for metadata in batch:
                 # Stop if limit reached
                 if limit and processed >= limit:
-                    logger.info(f"Reached limit of {limit} receipts")
+                    logger.info("Reached limit of %s receipts", limit)
                     break
 
                 # Skip if no place_id (can't enrich without it)
                 if not metadata.place_id or metadata.place_id in (
-                    "", "null", "NO_RESULTS", "INVALID"
+                    "",
+                    "null",
+                    "NO_RESULTS",
+                    "INVALID",
                 ):
                     self.stats.total_skipped += 1
                     continue
@@ -214,13 +219,13 @@ class ReceiptPlaceBackfiller:
                     )
                 except Exception as e:
                     logger.exception(
-                        f"Failed to create ReceiptPlace for "
-                        f"{metadata.image_id}#{metadata.receipt_id}"
+                        "Failed to create ReceiptPlace for %s#%s",
+                        metadata.image_id,
+                        metadata.receipt_id,
                     )
                     self.stats.total_failed += 1
                     self.stats.errors.append(
-                        f"{metadata.image_id}#{metadata.receipt_id}: "
-                        f"{e!s}"
+                        f"{metadata.image_id}#{metadata.receipt_id}: " f"{e!s}"
                     )
 
                 processed += 1
@@ -229,10 +234,12 @@ class ReceiptPlaceBackfiller:
                 # Log progress periodically
                 if processed % self.batch_size == 0:
                     logger.info(
-                        f"Processed {processed} receipts: "
-                        f"{self.stats.total_created} created, "
-                        f"{self.stats.total_failed} failed, "
-                        f"{self.stats.total_skipped} skipped"
+                        "Processed %s receipts: %s created, %s failed, %s "
+                        "skipped",
+                        processed,
+                        self.stats.total_created,
+                        self.stats.total_failed,
+                        self.stats.total_skipped,
                     )
 
             # Continue with next batch if there is one
@@ -240,10 +247,11 @@ class ReceiptPlaceBackfiller:
                 break
 
         logger.info(
-            f"Backfill complete: {self.stats.total_created} created, "
-            f"{self.stats.total_failed} failed, "
-            f"{self.stats.total_skipped} skipped "
-            f"(total: {self.stats.total_processed})"
+            "Backfill complete: %s created, %s failed, %s skipped (total: %s)",
+            self.stats.total_created,
+            self.stats.total_failed,
+            self.stats.total_skipped,
+            self.stats.total_processed,
         )
 
     async def _create_receipt_place_from_metadata(
@@ -256,12 +264,6 @@ class ReceiptPlaceBackfiller:
 
         Fetches rich data from v1 API and creates ReceiptPlace entity.
         """
-        from receipt_dynamo.constants import (
-            MerchantValidationStatus,
-            ValidationMethod,
-        )
-        from receipt_dynamo.entities import ReceiptPlace
-
         self.stats.total_processed += 1
 
         if not self.places or not metadata.place_id:
@@ -270,14 +272,12 @@ class ReceiptPlaceBackfiller:
 
         try:
             # Get rich place data from v1 API (PlacesClient is synchronous)
-            place_v1 = self.places.get_place_details(
-                metadata.place_id
-            )
+            place_v1 = self.places.get_place_details(metadata.place_id)
 
             if not place_v1:
                 logger.warning(
-                    f"v1 API returned no data for place_id "
-                    f"{metadata.place_id}"
+                    "v1 API returned no data for place_id %s",
+                    metadata.place_id,
                 )
                 self.stats.total_skipped += 1
                 return
@@ -295,22 +295,30 @@ class ReceiptPlaceBackfiller:
             )
             viewport_ne_lat = (
                 place_v1.geometry.viewport.northeast.latitude
-                if place_v1.geometry and place_v1.geometry.viewport and place_v1.geometry.viewport.northeast
+                if place_v1.geometry
+                and place_v1.geometry.viewport
+                and place_v1.geometry.viewport.northeast
                 else None
             )
             viewport_ne_lng = (
                 place_v1.geometry.viewport.northeast.longitude
-                if place_v1.geometry and place_v1.geometry.viewport and place_v1.geometry.viewport.northeast
+                if place_v1.geometry
+                and place_v1.geometry.viewport
+                and place_v1.geometry.viewport.northeast
                 else None
             )
             viewport_sw_lat = (
                 place_v1.geometry.viewport.southwest.latitude
-                if place_v1.geometry and place_v1.geometry.viewport and place_v1.geometry.viewport.southwest
+                if place_v1.geometry
+                and place_v1.geometry.viewport
+                and place_v1.geometry.viewport.southwest
                 else None
             )
             viewport_sw_lng = (
                 place_v1.geometry.viewport.southwest.longitude
-                if place_v1.geometry and place_v1.geometry.viewport and place_v1.geometry.viewport.southwest
+                if place_v1.geometry
+                and place_v1.geometry.viewport
+                and place_v1.geometry.viewport.southwest
                 else None
             )
 
@@ -332,7 +340,8 @@ class ReceiptPlaceBackfiller:
             photo_references = []
             if place_v1.photos:
                 photo_references = [
-                    p.photo_reference for p in place_v1.photos
+                    p.photo_reference
+                    for p in place_v1.photos
                     if p.photo_reference
                 ]
 
@@ -416,16 +425,21 @@ class ReceiptPlaceBackfiller:
             self.stats.total_created += 1
 
             logger.debug(
-                f"Backfilled ReceiptPlace for "
-                f"{metadata.image_id[:8]}...#{metadata.receipt_id} "
-                f"(place_id={metadata.place_id}, "
-                f"lat={latitude}, lng={longitude})"
+                "Backfilled ReceiptPlace for %s...#%s (place_id=%s, lat=%s, "
+                "lng=%s)",
+                metadata.image_id[:8],
+                metadata.receipt_id,
+                metadata.place_id,
+                latitude,
+                longitude,
             )
 
         except Exception as e:
             logger.warning(
-                f"Failed to backfill ReceiptPlace for "
-                f"{metadata.image_id}#{metadata.receipt_id}: {e!s}"
+                "Failed to backfill ReceiptPlace for %s#%s: %s",
+                metadata.image_id,
+                metadata.receipt_id,
+                e,
             )
             self.stats.total_failed += 1
             self.stats.errors.append(
@@ -451,17 +465,17 @@ class ReceiptPlaceBackfiller:
             if len(self.stats.errors) > 10:
                 print(f"  ... and {len(self.stats.errors) - 10} more")
 
-        print("\nSuccess rate: {:.1f}%".format(
-            (self.stats.total_created / max(self.stats.total_processed, 1))
-            * 100
-        ))
+        print(
+            "\nSuccess rate: {:.1f}%".format(
+                (self.stats.total_created / max(self.stats.total_processed, 1))
+                * 100
+            )
+        )
         print("=" * 70 + "\n")
 
 
 async def main():
     """Main entry point for backfill script."""
-    import argparse
-
     parser = argparse.ArgumentParser(
         description="Backfill ReceiptPlace entities from ReceiptMetadata"
     )

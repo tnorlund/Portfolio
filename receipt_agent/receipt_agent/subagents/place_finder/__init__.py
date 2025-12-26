@@ -21,5 +21,3 @@ __all__ = [
     "create_receipt_place_finder_graph",
     "run_receipt_place_finder",
 ]
-
-

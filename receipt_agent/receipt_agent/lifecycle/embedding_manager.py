@@ -21,6 +21,13 @@ from receipt_dynamo.entities import (
     ReceiptWordLabel,
 )
 
+try:
+    from receipt_chroma.embedding.orchestration import (
+        create_embeddings_and_compaction_run as chroma_create_embeddings,
+    )
+except ImportError:  # pragma: no cover
+    chroma_create_embeddings = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,6 +84,10 @@ def create_embeddings_and_compaction_run(
         logger.info("OPENAI_API_KEY not set; skipping embeddings")
         return None
 
+    if chroma_create_embeddings is None:
+        logger.warning("receipt_chroma embedding orchestration unavailable")
+        return None
+
     # Fetch data from DynamoDB if not provided
     if receipt_lines is None:
         receipt_lines = client.list_receipt_lines_from_receipt(
@@ -97,11 +108,6 @@ def create_embeddings_and_compaction_run(
             receipt_id,
         )
         return None
-
-    # Import and call receipt_chroma implementation
-    from receipt_chroma.embedding.orchestration import (
-        create_embeddings_and_compaction_run as chroma_create_embeddings,
-    )
 
     try:
         # Use real client if add_to_dynamo, otherwise no-op client
