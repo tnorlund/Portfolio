@@ -36,6 +36,3 @@ __all__ = [
     "VerificationEvidence",
     "VerificationStep",
 ]
-
-
-

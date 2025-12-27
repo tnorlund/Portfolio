@@ -40,7 +40,10 @@ def mock_dynamo_client() -> MagicMock:
     mock_word = MagicMock()
     mock_word.word_id = 1
     mock_word.text = "Test"
-    mock_word.extracted_data = {"type": "merchant_name", "value": "Test Merchant"}
+    mock_word.extracted_data = {
+        "type": "merchant_name",
+        "value": "Test Merchant",
+    }
 
     client.get_receipt_details.return_value = (
         MagicMock(),  # image
@@ -66,37 +69,41 @@ def mock_chroma_client() -> MagicMock:
     client.query.return_value = {
         "ids": [["doc1", "doc2"]],
         "documents": [["Test line 1", "Test line 2"]],
-        "metadatas": [[
-            {
-                "image_id": "other-image",
-                "receipt_id": 2,
-                "line_id": 1,
-                "merchant_name": "Test Merchant",
-                "normalized_phone_10": "5551234567",
-                "normalized_full_address": "123 Test St",
-                "place_id": "ChIJtest123",
-            },
-            {
-                "image_id": "other-image-2",
-                "receipt_id": 1,
-                "line_id": 2,
-                "merchant_name": "Test Merchant",
-                "normalized_phone_10": "5551234567",
-                "normalized_full_address": "123 Test St",
-                "place_id": "ChIJtest123",
-            },
-        ]],
+        "metadatas": [
+            [
+                {
+                    "image_id": "other-image",
+                    "receipt_id": 2,
+                    "line_id": 1,
+                    "merchant_name": "Test Merchant",
+                    "normalized_phone_10": "5551234567",
+                    "normalized_full_address": "123 Test St",
+                    "place_id": "ChIJtest123",
+                },
+                {
+                    "image_id": "other-image-2",
+                    "receipt_id": 1,
+                    "line_id": 2,
+                    "merchant_name": "Test Merchant",
+                    "normalized_phone_10": "5551234567",
+                    "normalized_full_address": "123 Test St",
+                    "place_id": "ChIJtest123",
+                },
+            ]
+        ],
         "distances": [[0.2, 0.3]],  # Low distance = high similarity
     }
 
     # Mock get results
     client.get.return_value = {
         "ids": ["doc1"],
-        "metadatas": [{
-            "image_id": "other-image",
-            "receipt_id": 2,
-            "merchant_name": "Test Merchant",
-        }],
+        "metadatas": [
+            {
+                "image_id": "other-image",
+                "receipt_id": 2,
+                "merchant_name": "Test Merchant",
+            }
+        ],
     }
 
     return client
@@ -105,9 +112,11 @@ def mock_chroma_client() -> MagicMock:
 @pytest.fixture
 def mock_embed_fn():
     """Create a mock embedding function."""
+
     def embed_fn(texts: List[str]) -> List[List[float]]:
         # Return fake 1536-dim embeddings
         return [[0.1] * 1536 for _ in texts]
+
     return embed_fn
 
 
@@ -144,4 +153,3 @@ def sample_validation_state() -> Dict[str, Any]:
         "current_phone": "555-123-4567",
         "current_validation_status": "MATCHED",
     }
-

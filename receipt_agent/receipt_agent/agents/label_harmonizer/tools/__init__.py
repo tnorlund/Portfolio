@@ -7,6 +7,3 @@ from receipt_agent.agents.label_harmonizer.tools.factory import (
 )
 
 __all__ = ["create_label_harmonizer_tools"]
-
-
-

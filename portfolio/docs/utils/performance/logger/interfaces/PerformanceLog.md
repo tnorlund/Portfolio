@@ -6,7 +6,7 @@
 
 # Interface: PerformanceLog
 
-Defined in: [utils/performance/logger.ts:3](https://github.com/tnorlund/Portfolio/blob/079954855eb0c9aa207d7e2a2da01eb969c79c75/portfolio/utils/performance/logger.ts#L3)
+Defined in: [utils/performance/logger.ts:3](https://github.com/tnorlund/Portfolio/blob/8ec845a760ab3f502d44f60451fea4720c981f84/portfolio/utils/performance/logger.ts#L3)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [utils/performance/logger.ts:3](https://github.com/tnorlund/Portfoli
 
 > **metrics**: [`PerformanceMetrics`](../../monitor/interfaces/PerformanceMetrics.md)
 
-Defined in: [utils/performance/logger.ts:5](https://github.com/tnorlund/Portfolio/blob/079954855eb0c9aa207d7e2a2da01eb969c79c75/portfolio/utils/performance/logger.ts#L5)
+Defined in: [utils/performance/logger.ts:5](https://github.com/tnorlund/Portfolio/blob/8ec845a760ab3f502d44f60451fea4720c981f84/portfolio/utils/performance/logger.ts#L5)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [utils/performance/logger.ts:5](https://github.com/tnorlund/Portfoli
 
 > **timestamp**: `string`
 
-Defined in: [utils/performance/logger.ts:4](https://github.com/tnorlund/Portfolio/blob/079954855eb0c9aa207d7e2a2da01eb969c79c75/portfolio/utils/performance/logger.ts#L4)
+Defined in: [utils/performance/logger.ts:4](https://github.com/tnorlund/Portfolio/blob/8ec845a760ab3f502d44f60451fea4720c981f84/portfolio/utils/performance/logger.ts#L4)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [utils/performance/logger.ts:4](https://github.com/tnorlund/Portfoli
 
 > **url**: `string`
 
-Defined in: [utils/performance/logger.ts:6](https://github.com/tnorlund/Portfolio/blob/079954855eb0c9aa207d7e2a2da01eb969c79c75/portfolio/utils/performance/logger.ts#L6)
+Defined in: [utils/performance/logger.ts:6](https://github.com/tnorlund/Portfolio/blob/8ec845a760ab3f502d44f60451fea4720c981f84/portfolio/utils/performance/logger.ts#L6)
 
 ***
 
@@ -38,4 +38,4 @@ Defined in: [utils/performance/logger.ts:6](https://github.com/tnorlund/Portfoli
 
 > **userAgent**: `string`
 
-Defined in: [utils/performance/logger.ts:7](https://github.com/tnorlund/Portfolio/blob/079954855eb0c9aa207d7e2a2da01eb969c79c75/portfolio/utils/performance/logger.ts#L7)
+Defined in: [utils/performance/logger.ts:7](https://github.com/tnorlund/Portfolio/blob/8ec845a760ab3f502d44f60451fea4720c981f84/portfolio/utils/performance/logger.ts#L7)

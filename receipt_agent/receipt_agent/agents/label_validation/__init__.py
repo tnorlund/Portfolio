@@ -15,6 +15,3 @@ __all__ = [
     "create_label_validation_graph",
     "run_label_validation",
 ]
-
-
-

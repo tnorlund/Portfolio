@@ -85,7 +85,16 @@ import re
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Optional
+
+from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
+from receipt_dynamo.entities import ReceiptPlace
+
+from receipt_agent.subagents.place_finder import (
+    create_receipt_place_finder_graph,
+    run_receipt_place_finder,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -427,7 +436,10 @@ class ReceiptPlaceFinder:
                 if not last_key:
                     break
 
-            logger.info(f"Loaded {total} receipts with missing metadata")
+            logger.info(
+                "Loaded %s receipts with missing metadata",
+                total,
+            )
 
         except Exception:
             logger.exception("Failed to load receipts")
@@ -455,11 +467,6 @@ class ReceiptPlaceFinder:
         Returns:
             FinderResult with all matches
         """
-        from receipt_agent.subagents.place_finder import (
-            create_receipt_place_finder_graph,
-            run_receipt_place_finder,
-        )
-
         if not self.chroma or not self.embed_fn:
             raise AgenticSearchRequirementsError()
 
@@ -488,18 +495,17 @@ class ReceiptPlaceFinder:
         result.total_processed = len(receipts_to_process)
 
         logger.info(
-            "Finding place data using agent for "
-            f"{len(receipts_to_process)} receipts..."
+            "Finding place data using agent for %s receipts...",
+            len(receipts_to_process),
         )
 
         # Process each receipt with agent
         for i, receipt in enumerate(receipts_to_process):
             if (i + 1) % 5 == 0:
                 logger.info(
-                    (
-                        "Processed "
-                        f"{i + 1}/{len(receipts_to_process)} receipts..."
-                    )
+                    "Processed %s/%s receipts...",
+                    i + 1,
+                    len(receipts_to_process),
                 )
 
             # Retry logic for server errors
@@ -532,12 +538,12 @@ class ReceiptPlaceFinder:
 
                     if is_retryable and attempt < max_retries - 1:
                         logger.warning(
-                            (
-                                "Retryable error for "
-                                f"{receipt.image_id}#{receipt.receipt_id} "
-                                f"(attempt {attempt + 1}/{max_retries}): "
-                                f"{error_str[:100]}"
-                            )
+                            "Retryable error for %s#%s (attempt %s/%s): %s",
+                            receipt.image_id,
+                            receipt.receipt_id,
+                            attempt + 1,
+                            max_retries,
+                            error_str[:100],
                         )
                         await asyncio.sleep(retry_delay * (attempt + 1))
                         continue
@@ -631,13 +637,12 @@ class ReceiptPlaceFinder:
                 result.total_not_found += 1
 
         logger.info(
-            (
-                "Metadata finder complete: "
-                f"{result.total_found_all} all fields, "
-                f"{result.total_found_partial} partial, "
-                f"{result.total_not_found} not found, "
-                f"{result.total_errors} errors"
-            )
+            "Metadata finder complete: %s all fields, %s partial, %s not "
+            "found, %s errors",
+            result.total_found_all,
+            result.total_found_partial,
+            result.total_not_found,
+            result.total_errors,
         )
 
         self._last_report = result
@@ -678,12 +683,11 @@ class ReceiptPlaceFinder:
 
             if match.confidence < min_confidence:
                 logger.debug(
-                    (
-                        "Skipping "
-                        f"{match.receipt.image_id}#"
-                        f"{match.receipt.receipt_id}: "
-                        f"confidence {match.confidence} < {min_confidence}"
-                    )
+                    "Skipping %s#%s: confidence %s < %s",
+                    match.receipt.image_id,
+                    match.receipt.receipt_id,
+                    match.confidence,
+                    min_confidence,
                 )
                 result.total_skipped += 1
                 continue
@@ -694,10 +698,8 @@ class ReceiptPlaceFinder:
 
         if dry_run:
             logger.info(
-                (
-                    "[DRY RUN] Would update "
-                    f"{len(matches_to_update)} ReceiptPlace entities"
-                )
+                "[DRY RUN] Would update %s ReceiptPlace entities",
+                len(matches_to_update),
             )
             for match in matches_to_update[:10]:
                 fields = [
@@ -705,16 +707,17 @@ class ReceiptPlaceFinder:
                     for f in match.fields_found
                 ]
                 logger.info(
-                    (
-                        "  "
-                        f"{match.receipt.image_id[:8]}..."
-                        f"#{match.receipt.receipt_id}: "
-                        f"{', '.join(fields)} "
-                        f"(confidence={match.confidence:.1f}%)"
-                    )
+                    "  %s...#%s: %s (confidence=%.1f%%)",
+                    match.receipt.image_id[:8],
+                    match.receipt.receipt_id,
+                    ", ".join(fields),
+                    match.confidence,
                 )
             if len(matches_to_update) > 10:
-                logger.info(f"  ... and {len(matches_to_update) - 10} more")
+                logger.info(
+                    "  ... and %s more",
+                    len(matches_to_update) - 10,
+                )
 
             # In dry-run mode, total_updated represents "would update" count
             # (no actual DynamoDB writes occur)
@@ -723,10 +726,8 @@ class ReceiptPlaceFinder:
 
         # Actually apply updates
         logger.info(
-            (
-                "Applying ReceiptPlace updates to "
-                f"{len(matches_to_update)} receipts..."
-            )
+            "Applying ReceiptPlace updates to %s receipts...",
+            len(matches_to_update),
         )
 
         for match in matches_to_update:
@@ -758,14 +759,14 @@ class ReceiptPlaceFinder:
                             await self._create_receipt_place_from_match(match)
                             result.total_updated += 1
                             logger.info(
-                                "Created new ReceiptPlace for "
-                                f"{match.receipt.image_id[:8]}..."
-                                f"#{match.receipt.receipt_id}: "
-                                f"{len(match.fields_found)} fields"
+                                "Created new ReceiptPlace for %s...#%s: %s fields",
+                                match.receipt.image_id[:8],
+                                match.receipt.receipt_id,
+                                len(match.fields_found),
                             )
                         except Exception as e:
                             logger.warning(
-                                f"Failed to create ReceiptPlace: {e!s}"
+                                "Failed to create ReceiptPlace: %s", e
                             )
                             result.total_failed += 1
                     else:
@@ -792,13 +793,11 @@ class ReceiptPlaceFinder:
 
                     if match_looks_like_address:
                         logger.warning(
-                            (
-                                "Skipping merchant_name update for "
-                                f"{match.receipt.image_id[:8]}..."
-                                f"#{match.receipt.receipt_id}: "
-                                f"'{match.merchant_name}' looks like "
-                                "an address, not a merchant name"
-                            )
+                            "Skipping merchant_name update for %s...#%s: '%s' "
+                            "looks like an address, not a merchant name",
+                            match.receipt.image_id[:8],
+                            match.receipt.receipt_id,
+                            match.merchant_name,
                         )
                     elif not existing_place.merchant_name:
                         existing_place.merchant_name = match.merchant_name
@@ -837,8 +836,6 @@ class ReceiptPlaceFinder:
                     updated_fields.append("matched_fields")
 
                 # Update validation_status
-                from receipt_dynamo.constants import MerchantValidationStatus
-
                 confidence = match.confidence / 100.0
                 has_place_id = bool(existing_place.place_id)
 
@@ -860,20 +857,19 @@ class ReceiptPlaceFinder:
                     result.total_updated += 1
 
                     logger.debug(
-                        "Updated "
-                        f"{match.receipt.image_id[:8]}..."
-                        f"#{match.receipt.receipt_id}: "
-                        f"{', '.join(updated_fields)}"
+                        "Updated %s...#%s: %s",
+                        match.receipt.image_id[:8],
+                        match.receipt.receipt_id,
+                        ", ".join(updated_fields),
                     )
                 else:
                     result.total_skipped += 1
 
             except Exception as e:
                 logger.exception(
-                    (
-                        "Failed to update "
-                        f"{match.receipt.image_id}#{match.receipt.receipt_id}"
-                    )
+                    "Failed to update %s#%s",
+                    match.receipt.image_id,
+                    match.receipt.receipt_id,
                 )
                 result.total_failed += 1
                 result.errors.append(
@@ -885,12 +881,10 @@ class ReceiptPlaceFinder:
                 )
 
         logger.info(
-            (
-                "Update complete: "
-                f"{result.total_updated} updated, "
-                f"{result.total_failed} failed, "
-                f"{result.total_skipped} skipped"
-            )
+            "Update complete: %s updated, %s failed, %s skipped",
+            result.total_updated,
+            result.total_failed,
+            result.total_skipped,
         )
 
         return result
@@ -910,14 +904,6 @@ class ReceiptPlaceFinder:
         Raises:
             Exception: If places API fails or ReceiptPlace creation fails
         """
-        from datetime import datetime, timezone
-
-        from receipt_dynamo.constants import (
-            MerchantValidationStatus,
-            ValidationMethod,
-        )
-        from receipt_dynamo.entities import ReceiptPlace
-
         if not self.places:
             logger.debug(
                 "Places API client not available, "
@@ -932,16 +918,16 @@ class ReceiptPlaceFinder:
         try:
             # Get rich place data from v1 API
             logger.debug(
-                f"Fetching place details for {match.place_id} "
-                f"({match.merchant_name})"
+                "Fetching place details for %s (%s)",
+                match.place_id,
+                match.merchant_name,
             )
-            place_v1 = await self.places.get_place_details(
-                match.place_id
-            )
+            place_v1 = await self.places.get_place_details(match.place_id)
 
             if not place_v1:
                 logger.warning(
-                    f"v1 API returned no data for place_id {match.place_id}"
+                    "v1 API returned no data for place_id %s",
+                    match.place_id,
                 )
                 return
 
@@ -1050,9 +1036,11 @@ class ReceiptPlaceFinder:
                 website=place_v1.website_uri or "",
                 maps_url=place_v1.google_maps_uri or "",
                 business_status=place_v1.business_status or "",
-                open_now=place_v1.opening_hours.open_now
-                if place_v1.opening_hours
-                else None,
+                open_now=(
+                    place_v1.opening_hours.open_now
+                    if place_v1.opening_hours
+                    else None
+                ),
                 hours_summary=hours_summary,
                 hours_data=hours_data,
                 photo_references=photo_references,
@@ -1078,16 +1066,20 @@ class ReceiptPlaceFinder:
             self.dynamo.add_receipt_place(receipt_place)
 
             logger.debug(
-                f"Created ReceiptPlace for {match.receipt.image_id[:8]}..."
-                f"#{match.receipt.receipt_id} "
-                f"(place_id={match.place_id}, "
-                f"lat={latitude}, lng={longitude})"
+                "Created ReceiptPlace for %s...#%s (place_id=%s, lat=%s, lng=%s)",
+                match.receipt.image_id[:8],
+                match.receipt.receipt_id,
+                match.place_id,
+                latitude,
+                longitude,
             )
 
         except Exception as e:
             logger.warning(
-                f"Failed to create ReceiptPlace for "
-                f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e!s}"
+                "Failed to create ReceiptPlace for %s#%s: %s",
+                match.receipt.image_id,
+                match.receipt.receipt_id,
+                e,
             )
             raise
 

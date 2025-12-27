@@ -37,6 +37,14 @@ from pydantic import BaseModel, Field
 
 from receipt_agent.agents.harmonizer.state import HarmonizerAgentState
 from receipt_agent.config.settings import Settings, get_settings
+from receipt_agent.subagents.cove_text_consistency import (
+    create_cove_text_consistency_graph,
+    run_cove_text_consistency,
+)
+from receipt_agent.subagents.place_finder import (
+    create_receipt_place_finder_graph,
+    run_receipt_place_finder,
+)
 from receipt_agent.utils.address_validation import (
     is_address_like,
     is_clean_address,
@@ -409,17 +417,20 @@ def create_harmonizer_tools(
                         and sanitized_image_id != image_id
                     ):
                         logger.debug(
-                            "get_receipt_details failed for sanitized "
-                            f"{img_id}#{receipt_id}, "
-                            f"trying original: {e}"
+                            "get_receipt_details failed for sanitized %s#%s, "
+                            "trying original: %s",
+                            img_id,
+                            receipt_id,
+                            e,
                         )
                     continue
 
             if not receipt_details or not receipt_details.receipt:
                 # Try alternative methods to fetch receipt details
                 logger.info(
-                    "Primary get_receipt_details failed for "
-                    f"{image_id}#{receipt_id}, trying alternative methods..."
+                    "Primary get_receipt_details failed for %s#%s, trying alternative methods...",
+                    image_id,
+                    receipt_id,
                 )
                 receipt_details = _fetch_receipt_details_fallback(
                     dynamo_client, sanitized_image_id, receipt_id
@@ -447,23 +458,27 @@ def create_harmonizer_tools(
                         )
                         if lines or words_list:
                             logger.info(
-                                "Fetched "
-                                f"{len(lines)} lines and {len(words_list)} "
-                                f"words directly for {img_id}#{receipt_id}"
+                                "Fetched %s lines and %s words directly for %s#%s",
+                                len(lines),
+                                len(words_list),
+                                img_id,
+                                receipt_id,
                             )
                             break
                     except Exception as e:
                         logger.debug(
-                            "Could not fetch lines/words for "
-                            f"{img_id}#{receipt_id}: {e}"
+                            "Could not fetch lines/words for %s#%s: %s",
+                            img_id,
+                            receipt_id,
+                            e,
                         )
 
             if not lines and not words_list:
                 logger.warning(
-                    "Receipt details not found for "
-                    f"{image_id}#{receipt_id} after fallback. "
-                    "Metadata exists but "
-                    "receipt lines/words are missing from DynamoDB."
+                    "Receipt details not found for %s#%s after fallback. "
+                    "Metadata exists but receipt lines/words are missing from DynamoDB.",
+                    image_id,
+                    receipt_id,
                 )
                 return {
                     "error": (
@@ -497,7 +512,7 @@ def create_harmonizer_tools(
             }
 
         except Exception as e:
-            logger.error(f"Error getting receipt content: {e}")
+            logger.error("Error getting receipt content: %s", e)
             return {"error": str(e)}
 
     class VerifyAddressOnReceiptInput(BaseModel):
@@ -554,17 +569,20 @@ def create_harmonizer_tools(
                         and sanitized_image_id != image_id
                     ):
                         logger.debug(
-                            "get_receipt_details failed for sanitized "
-                            f"{img_id}#{receipt_id}, "
-                            f"trying original: {e}"
+                            "get_receipt_details failed for sanitized %s#%s, "
+                            "trying original: %s",
+                            img_id,
+                            receipt_id,
+                            e,
                         )
                     continue
 
             if not receipt_details or not receipt_details.receipt:
                 # Try alternative methods to fetch receipt details
                 logger.info(
-                    "Primary get_receipt_details failed for "
-                    f"{image_id}#{receipt_id}, trying alternative methods..."
+                    "Primary get_receipt_details failed for %s#%s, trying alternative methods...",
+                    image_id,
+                    receipt_id,
                 )
                 receipt_details = _fetch_receipt_details_fallback(
                     dynamo_client, sanitized_image_id, receipt_id
@@ -572,11 +590,11 @@ def create_harmonizer_tools(
 
             if not receipt_details or not receipt_details.receipt:
                 logger.warning(
-                    "Receipt details not found for "
-                    f"{image_id}#{receipt_id} after fallback. "
-                    "Metadata exists but "
-                    "receipt lines/words are missing from DynamoDB. "
-                    "Skipping address verification for this receipt."
+                    "Receipt details not found for %s#%s after fallback. "
+                    "Metadata exists but receipt lines/words are missing from DynamoDB. "
+                    "Skipping address verification for this receipt.",
+                    image_id,
+                    receipt_id,
                 )
                 return {
                     "error": (
@@ -607,15 +625,13 @@ def create_harmonizer_tools(
                     )
                     if lines:
                         logger.info(
-                            "Fetched "
-                            f"{len(lines)} lines directly for "
-                            f"{image_id}#{receipt_id}"
+                            "Fetched %s lines directly for %s#%s",
+                            len(lines),
+                            image_id,
+                            receipt_id,
                         )
                 except Exception as e:
-                    logger.debug(
-                        "Could not fetch lines directly: "
-                        f"{e}"
-                    )
+                    logger.debug("Could not fetch lines directly: %s", e)
 
             if not lines:
                 return {
@@ -632,7 +648,8 @@ def create_harmonizer_tools(
                 formatted_text = format_receipt_text_receipt_space(lines)
             except Exception as exc:
                 logger.debug(
-                    f"Could not format receipt text (receipt-space): {exc}"
+                    "Could not format receipt text (receipt-space): %s",
+                    exc,
                 )
                 sorted_lines = sorted(lines, key=lambda line: line.line_id)
                 formatted_text = "\n".join(
@@ -758,13 +775,17 @@ def create_harmonizer_tools(
                 or "receipt details" in error_str.lower()
             ):
                 logger.warning(
-                    "Receipt details not available for "
-                    f"{image_id}#{receipt_id}: {error_str}"
+                    "Receipt details not available for %s#%s: %s",
+                    image_id,
+                    receipt_id,
+                    error_str,
                 )
             else:
                 logger.error(
-                    "Error verifying address on receipt "
-                    f"{image_id}#{receipt_id}: {e}"
+                    "Error verifying address on receipt %s#%s: %s",
+                    image_id,
+                    receipt_id,
+                    e,
                 )
             return {"error": str(e), "found": False, "matches": False}
 
@@ -802,8 +823,10 @@ def create_harmonizer_tools(
             # Log table name for debugging
             table_name = getattr(dynamo_client, "table_name", "unknown")
             logger.debug(
-                "display_receipt_text: Using table "
-                f"'{table_name}' for {image_id}#{receipt_id}"
+                "display_receipt_text: Using table '%s' for %s#%s",
+                table_name,
+                image_id,
+                receipt_id,
             )
 
             # Simplified: Use list_receipt_lines_from_receipt directly
@@ -817,22 +840,26 @@ def create_harmonizer_tools(
                     )
                     if lines:
                         logger.info(
-                            "Fetched "
-                            f"{len(lines)} lines for {img_id}#{receipt_id} "
-                            "using list_receipt_lines_from_receipt()"
+                            "Fetched %s lines for %s#%s using list_receipt_lines_from_receipt()",
+                            len(lines),
+                            img_id,
+                            receipt_id,
                         )
                         break
                 except Exception as e:
                     logger.debug(
-                        "list_receipt_lines_from_receipt failed for "
-                        f"{img_id}#{receipt_id}: {e}"
+                        "list_receipt_lines_from_receipt failed for %s#%s: %s",
+                        img_id,
+                        receipt_id,
+                        e,
                     )
 
             # Fallback: Try get_receipt_details if direct query failed
             if not lines:
                 logger.debug(
-                    "Direct line query failed, trying get_receipt_details() "
-                    f"for {image_id}#{receipt_id}"
+                    "Direct line query failed, trying get_receipt_details() for %s#%s",
+                    image_id,
+                    receipt_id,
                 )
                 try:
                     receipt_details = dynamo_client.get_receipt_details(
@@ -841,20 +868,18 @@ def create_harmonizer_tools(
                     if receipt_details and receipt_details.lines:
                         lines = receipt_details.lines
                         logger.info(
-                            "Fetched "
-                            f"{len(lines)} lines via get_receipt_details()"
+                            "Fetched %s lines via get_receipt_details()",
+                            len(lines),
                         )
                 except Exception as e:
-                    logger.debug(
-                        "get_receipt_details also failed: "
-                        f"{e}"
-                    )
+                    logger.debug("get_receipt_details also failed: %s", e)
 
             # Final fallback: Try fetch_receipt_details_with_fallback
             if not lines:
                 logger.debug(
-                    "Trying fetch_receipt_details_with_fallback() for "
-                    f"{image_id}#{receipt_id}"
+                    "Trying fetch_receipt_details_with_fallback() for %s#%s",
+                    image_id,
+                    receipt_id,
                 )
                 receipt_details = _fetch_receipt_details_fallback(
                     dynamo_client, sanitized_image_id, receipt_id
@@ -862,9 +887,8 @@ def create_harmonizer_tools(
                 if receipt_details and receipt_details.lines:
                     lines = receipt_details.lines
                     logger.info(
-                        "Fetched "
-                        f"{len(lines)} lines via "
-                        "fetch_receipt_details_with_fallback()"
+                        "Fetched %s lines via fetch_receipt_details_with_fallback()",
+                        len(lines),
                     )
 
             if not lines:
@@ -893,14 +917,18 @@ def create_harmonizer_tools(
                     }
             except Exception as e:
                 logger.debug(
-                    f"Could not fetch receipt_place for {image_id}#{receipt_id}: {e}"
+                    "Could not fetch receipt_place for %s#%s: %s",
+                    image_id,
+                    receipt_id,
+                    e,
                 )
 
             try:
                 formatted_text = format_receipt_text_receipt_space(lines)
             except Exception as exc:
                 logger.debug(
-                    f"Could not format receipt text (receipt-space): {exc}"
+                    "Could not format receipt text (receipt-space): %s",
+                    exc,
                 )
                 sorted_lines = sorted(lines, key=lambda line: line.line_id)
                 formatted_text = "\n".join(
@@ -940,7 +968,7 @@ def create_harmonizer_tools(
             }
 
         except Exception as e:
-            logger.error(f"Error displaying receipt text: {e}")
+            logger.error("Error displaying receipt text: %s", e)
             return {"error": str(e), "found": False}
 
     class GetFieldVariationsInput(BaseModel):
@@ -1109,7 +1137,7 @@ def create_harmonizer_tools(
             }
 
         except Exception as e:
-            logger.error(f"Error verifying place_id: {e}")
+            logger.error("Error verifying place_id: %s", e)
             return {"error": str(e), "valid": False}
 
     class FindBusinessesAtAddressInput(BaseModel):
@@ -1234,7 +1262,7 @@ def create_harmonizer_tools(
             }
 
         except Exception as e:
-            logger.error(f"Error finding businesses at address: {e}")
+            logger.error("Error finding businesses at address: %s", e)
             return {"error": str(e)}
 
     # ========== METADATA FINDER TOOL ==========
@@ -1311,8 +1339,8 @@ def create_harmonizer_tools(
                     )
                 except Exception as e:
                     logger.warning(
-                        "Could not lazy-load ChromaDB (metadata finder will "
-                        f"use fallback): {e}"
+                        "Could not lazy-load ChromaDB (metadata finder will use fallback): %s",
+                        e,
                     )
                     # Continue without ChromaDB - metadata finder will use
                     # Google Places fallback
@@ -1324,11 +1352,6 @@ def create_harmonizer_tools(
             if chroma_client and embed_fn:
                 # Use full place finder agent
                 try:
-                    from receipt_agent.subagents.place_finder import (
-                        create_receipt_place_finder_graph,
-                        run_receipt_place_finder,
-                    )
-
                     # Create graph if not already created (cache it in state)
                     if "place_finder_graph" not in state:
                         (
@@ -1366,9 +1389,10 @@ def create_harmonizer_tools(
 
                     if result.get("found"):
                         logger.info(
-                            f"Place finder found "
-                            f"{len(result.get('fields_found', []))} fields "
-                            f"for {image_id}#{receipt_id}"
+                            "Place finder found %s fields for %s#%s",
+                            len(result.get("fields_found", [])),
+                            image_id,
+                            receipt_id,
                         )
                         return {
                             "found": True,
@@ -1394,7 +1418,8 @@ def create_harmonizer_tools(
 
                 except Exception as e:
                     logger.warning(
-                        f"Place finder agent failed: {e}, trying fallback"
+                        "Place finder agent failed: %s, trying fallback",
+                        e,
                     )
                     # Fall through to fallback
 
@@ -1434,7 +1459,7 @@ def create_harmonizer_tools(
                     if place_data:
                         search_method = "phone"
                 except Exception as e:
-                    logger.debug(f"Phone search failed: {e}")
+                    logger.debug("Phone search failed: %s", e)
 
             # Try address if phone didn't work
             if not place_data and receipt.address:
@@ -1443,7 +1468,7 @@ def create_harmonizer_tools(
                     if place_data:
                         search_method = "address"
                 except Exception as e:
-                    logger.debug(f"Address search failed: {e}")
+                    logger.debug("Address search failed: %s", e)
 
             # Try merchant name text search as last resort
             if not place_data and receipt.merchant_name:
@@ -1454,7 +1479,7 @@ def create_harmonizer_tools(
                     if place_data:
                         search_method = "merchant_name"
                 except Exception as e:
-                    logger.debug(f"Text search failed: {e}")
+                    logger.debug("Text search failed: %s", e)
 
             if place_data:
                 # Get full place details
@@ -1492,15 +1517,15 @@ def create_harmonizer_tools(
 
             return {
                 "found": False,
-                            "reasoning": (
-                                "Could not find correct metadata using "
-                                "Google Places search"
-                            ),
+                "reasoning": (
+                    "Could not find correct metadata using "
+                    "Google Places search"
+                ),
                 "method": "google_places_fallback",
             }
 
         except Exception as e:
-            logger.error(f"Error finding correct metadata: {e}")
+            logger.error("Error finding correct metadata: %s", e)
             return {
                 "found": False,
                 "error": str(e),
@@ -1567,12 +1592,6 @@ def create_harmonizer_tools(
             if not receipts:
                 return {"error": "No receipts in group"}
 
-            # Import CoVe workflow
-            from receipt_agent.subagents.cove_text_consistency import (
-                create_cove_text_consistency_graph,
-                run_cove_text_consistency,
-            )
-
             # Create graph if not already cached
             if "cove_graph" not in state:
                 (
@@ -1624,9 +1643,10 @@ def create_harmonizer_tools(
                     cove_result.get("receipt_results", [])
                 )
                 logger.info(
-                    f"CoVe check complete: {outlier_count}/"
-                    f"{receipt_results_count} outliers found "
-                    f"(expected {len(receipts)} receipts)"
+                    "CoVe check complete: %s/%s outliers found (expected %s receipts)",
+                    outlier_count,
+                    receipt_results_count,
+                    len(receipts),
                 )
                 return {
                     "status": "success",
@@ -1647,7 +1667,7 @@ def create_harmonizer_tools(
                 }
 
         except Exception as e:
-            logger.error(f"Error verifying text consistency: {e}")
+            logger.error("Error verifying text consistency: %s", e)
             return {
                 "status": "error",
                 "error": str(e),
@@ -1742,8 +1762,7 @@ def create_harmonizer_tools(
                 )
             if canonical_phone and r.get("phone") != canonical_phone:
                 changes.append(
-                    f"phone: '{r.get('phone')}' "
-                    f"→ '{canonical_phone}'"
+                    f"phone: '{r.get('phone')}' " f"→ '{canonical_phone}'"
                 )
 
             if changes:
@@ -1774,16 +1793,18 @@ def create_harmonizer_tools(
             outlier_count = state["cove_result"].get("outlier_count", 0)
             if outlier_count > 0:
                 logger.warning(
-                    "Harmonization submitted with "
-                    f"{outlier_count} outliers identified by CoVe"
+                    "Harmonization submitted with %s outliers identified by CoVe",
+                    outlier_count,
                 )
 
         state["result"] = result
 
         logger.info(
-            f"Harmonization submitted: {canonical_merchant_name} "
-            f"({len(updates_needed)}/{len(receipts)} need updates, "
-            f"confidence={confidence:.2%})"
+            "Harmonization submitted: %s (%s/%s need updates, confidence=%.2f%%)",
+            canonical_merchant_name,
+            len(updates_needed),
+            len(receipts),
+            confidence * 100.0,
         )
 
         return {
@@ -1978,12 +1999,15 @@ async def run_harmonizer_agent(
                         ),
                     }
                     logger.info(
-                        f"Fetched Google Places data for {place_id}: "
-                        f"{google_places_info.get('name')}"
+                        "Fetched Google Places data for %s: %s",
+                        place_id,
+                        google_places_info.get("name"),
                     )
         except Exception as e:
             logger.warning(
-                f"Could not fetch Google Places data for {place_id}: {e}"
+                "Could not fetch Google Places data for %s: %s",
+                place_id,
+                e,
             )
 
     # Build initial prompt with Google Places data
@@ -2052,8 +2076,9 @@ async def run_harmonizer_agent(
     )
 
     logger.info(
-        f"Starting harmonizer agent for place_id {place_id} "
-        f"({len(receipts)} receipts)"
+        "Starting harmonizer agent for place_id %s (%s receipts)",
+        place_id,
+        len(receipts),
     )
 
     try:
@@ -2077,14 +2102,16 @@ async def run_harmonizer_agent(
 
         if result:
             logger.info(
-                f"Harmonization complete: {result['canonical_merchant_name']} "
-                f"({result['receipts_needing_update']}/"
-                f"{result['total_receipts']} need updates)"
+                "Harmonization complete: %s (%s/%s need updates)",
+                result["canonical_merchant_name"],
+                result["receipts_needing_update"],
+                result["total_receipts"],
             )
             return result
         else:
             logger.warning(
-                f"Agent ended without submitting harmonization for {place_id}"
+                "Agent ended without submitting harmonization for %s",
+                place_id,
             )
             return {
                 "place_id": place_id,
@@ -2094,7 +2121,7 @@ async def run_harmonizer_agent(
             }
 
     except Exception as e:
-        logger.error(f"Error in harmonizer agent: {e}")
+        logger.error("Error in harmonizer agent: %s", e)
         return {
             "place_id": place_id,
             "error": str(e),

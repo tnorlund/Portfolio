@@ -35,9 +35,11 @@ import os
 from typing import Annotated, Any, Callable, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel, Field
 
 from receipt_agent.agents.agentic.tools import (
     ReceiptContext,
@@ -190,8 +192,6 @@ Begin by examining the receipt content, then systematically search for the place
 
 def create_place_id_submission_tool(state_holder: dict):
     """Create a tool for submitting the found place_id."""
-    from langchain_core.tools import tool
-    from pydantic import BaseModel, Field
 
     class SubmitPlaceIdInput(BaseModel):
         place_id: Optional[str] = Field(
@@ -262,7 +262,9 @@ def create_place_id_submission_tool(state_holder: dict):
 
         state_holder["place_id_result"] = result
         logger.info(
-            f"Place ID submitted: {place_id} (confidence={confidence:.2%})"
+            "Place ID submitted: %s (confidence=%.2f%%)",
+            place_id,
+            confidence * 100.0,
         )
 
         return {
@@ -440,7 +442,11 @@ async def run_place_id_finder(
         ],
     )
 
-    logger.info(f"Starting place ID finder for {image_id}#{receipt_id}")
+    logger.info(
+        "Starting place ID finder for %s#%s",
+        image_id,
+        receipt_id,
+    )
 
     # Run the workflow
     try:
@@ -467,14 +473,17 @@ async def run_place_id_finder(
 
         if result:
             logger.info(
-                f"Place ID finder complete: {'FOUND' if result['found'] else 'NOT FOUND'} "
-                f"(confidence={result['confidence']:.2%})"
+                "Place ID finder complete: %s (confidence=%.2f%%)",
+                "FOUND" if result["found"] else "NOT FOUND",
+                result["confidence"] * 100.0,
             )
             return result
         else:
             # Agent ended without submitting result
             logger.warning(
-                f"Agent ended without submitting place_id for {image_id}#{receipt_id}"
+                "Agent ended without submitting place_id for %s#%s",
+                image_id,
+                receipt_id,
             )
             return {
                 "image_id": image_id,
@@ -488,7 +497,9 @@ async def run_place_id_finder(
 
     except Exception as e:
         logger.exception(
-            f"Error in place ID finder for {image_id}#{receipt_id}"
+            "Error in place ID finder for %s#%s",
+            image_id,
+            receipt_id,
         )
         return {
             "image_id": image_id,

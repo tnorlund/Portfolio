@@ -655,8 +655,9 @@ def create_llm_driven_financial_tools(
             return float(str(value))
         except (ValueError, TypeError):
             logger.warning(
-                f"Could not coerce value to float: {value} "
-                f"(type: {type(value)})"
+                "Could not coerce value to float: %s (type: %s)",
+                value,
+                type(value),
             )
             return None
 
@@ -691,11 +692,13 @@ def create_llm_driven_financial_tools(
                     }
                 )
                 logger.warning(
-                    f"Invalid numeric value for {financial_type} at line "
-                    f"{assignment.get('line_id')} word "
-                    f"{assignment.get('word_id')}: "
-                    f"{raw_value} "
-                    f"(type: {type(raw_value)})"
+                    "Invalid numeric value for %s at line %s word %s: %s "
+                    "(type: %s)",
+                    financial_type,
+                    assignment.get("line_id"),
+                    assignment.get("word_id"),
+                    raw_value,
+                    type(raw_value),
                 )
                 continue  # Skip invalid values
 
@@ -713,8 +716,8 @@ def create_llm_driven_financial_tools(
         # If we have invalid values, include them in the response
         if invalid_values:
             logger.warning(
-                f"Skipped {len(invalid_values)} assignments with invalid "
-                "numeric values"
+                "Skipped %s assignments with invalid numeric values",
+                len(invalid_values),
             )
 
         verification_results = []
@@ -1174,12 +1177,12 @@ async def run_llm_driven_financial_discovery(
 
     try:
         logger.info(
-            f"LLM Financial Discovery: Starting graph execution with "
-            f"{len(words)} words"
+            "LLM Financial Discovery: Starting graph execution with %s words",
+            len(words),
         )
         logger.info(
-            f"LLM Financial Discovery: Initial state has "
-            f"{len(initial_state.messages)} messages"
+            "LLM Financial Discovery: Initial state has %s messages",
+            len(initial_state.messages),
         )
 
         # Run the agent
@@ -1187,8 +1190,8 @@ async def run_llm_driven_financial_discovery(
 
         logger.info("LLM Financial Discovery: Graph execution completed")
         logger.info(
-            f"LLM Financial Discovery: Tool state keys: "
-            f"{list(tool_state.keys())}"
+            "LLM Financial Discovery: Tool state keys: %s",
+            list(tool_state.keys()),
         )
 
         # Extract final result from tool state
@@ -1197,8 +1200,8 @@ async def run_llm_driven_financial_discovery(
 
         if final_result:
             logger.info(
-                f"LLM Financial Discovery: SUCCESS - final_result found with "
-                f"keys: {list(final_result.keys())}"
+                "LLM Financial Discovery: SUCCESS - final_result found with keys: %s",
+                list(final_result.keys()),
             )
             return final_result
         else:
@@ -1208,8 +1211,8 @@ async def run_llm_driven_financial_discovery(
             )
             if tool_state:
                 logger.warning(
-                    f"LLM Financial Discovery: Available tool_state keys: "
-                    f"{list(tool_state.keys())}"
+                    "LLM Financial Discovery: Available tool_state keys: %s",
+                    list(tool_state.keys()),
                 )
 
             # Fallback - extract what we can from tool state
@@ -1238,7 +1241,7 @@ async def run_llm_driven_financial_discovery(
             }
 
     except Exception as e:
-        logger.exception(f"LLM-driven financial discovery failed: {e}")
+        logger.exception("LLM-driven financial discovery failed: %s", e)
         return {
             "financial_candidates": {},
             "mathematical_validation": {

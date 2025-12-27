@@ -7,12 +7,6 @@ Main entry point for creating and deleting receipts across DynamoDB and ChromaDB
 from dataclasses import dataclass
 from typing import List, Optional
 
-from receipt_agent.lifecycle.compaction_manager import (
-    check_compaction_status,
-    wait_for_compaction,
-)
-from receipt_agent.lifecycle.embedding_manager import create_embeddings
-from receipt_agent.lifecycle.ndjson_manager import export_receipt_ndjson
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import (
     Receipt,
@@ -21,6 +15,13 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
 )
+
+from receipt_agent.lifecycle.compaction_manager import (
+    check_compaction_status,
+    wait_for_compaction,
+)
+from receipt_agent.lifecycle.embedding_manager import create_embeddings
+from receipt_agent.lifecycle.ndjson_manager import export_receipt_ndjson
 
 
 @dataclass

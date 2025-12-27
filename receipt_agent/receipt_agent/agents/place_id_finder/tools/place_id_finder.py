@@ -63,9 +63,18 @@ Search methods:
 
 import asyncio
 import logging
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
+
+from receipt_dynamo.constants import MerchantValidationStatus
+from receipt_dynamo.entities import ReceiptPlace
+
+from receipt_agent.agents.place_id_finder import (
+    create_place_id_finder_graph,
+    run_place_id_finder,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -280,15 +289,18 @@ class PlaceIdFinder:
                     merchant_name=place.merchant_name,
                     address=place.formatted_address,
                     phone=place.phone_number,
-                    validation_status=getattr(place, "validation_status", None),
+                    validation_status=getattr(
+                        place, "validation_status", None
+                    ),
                 )
 
                 self._receipts_without_place_id.append(receipt)
                 total += 1
 
             logger.info(
-                f"Loaded {total} receipts without place_id "
-                f"(out of {len(places)} total receipts)"
+                "Loaded %s receipts without place_id (out of %s total receipts)",
+                total,
+                len(places),
             )
 
         except Exception:
@@ -327,7 +339,7 @@ class PlaceIdFinder:
             phone_digits = "".join(c for c in receipt.phone if c.isdigit())
             if len(phone_digits) >= 10:  # Valid phone has at least 10 digits
                 try:
-                    logger.debug(f"Searching by phone: {receipt.phone}")
+                    logger.debug("Searching by phone: %s", receipt.phone)
                     place_data = self.places.search_by_phone(receipt.phone)
                     if place_data and place_data.get("place_id"):
                         match.place_id = place_data.get("place_id")
@@ -346,12 +358,17 @@ class PlaceIdFinder:
                         return match
                 except Exception as e:
                     logger.debug(
-                        f"Phone search failed for {receipt.image_id}#{receipt.receipt_id}: {e}"
+                        "Phone search failed for %s#%s: %s",
+                        receipt.image_id,
+                        receipt.receipt_id,
+                        e,
                     )
                     match.error = f"Phone search error: {e!s}"
             else:
                 logger.debug(
-                    f"Invalid phone number format: {receipt.phone} (only {len(phone_digits)} digits)"
+                    "Invalid phone number format: %s (only %s digits)",
+                    receipt.phone,
+                    len(phone_digits),
                 )
 
         # Strategy 2: Try address geocoding
@@ -362,7 +379,8 @@ class PlaceIdFinder:
             ):  # Address should have some content
                 try:
                     logger.debug(
-                        f"Searching by address: {receipt.address[:50]}"
+                        "Searching by address: %s",
+                        receipt.address[:50],
                     )
                     place_data = self.places.search_by_address(receipt.address)
                     if place_data and place_data.get("place_id"):
@@ -382,12 +400,15 @@ class PlaceIdFinder:
                         return match
                 except Exception as e:
                     logger.debug(
-                        f"Address search failed for {receipt.image_id}#{receipt.receipt_id}: {e}"
+                        "Address search failed for %s#%s: %s",
+                        receipt.image_id,
+                        receipt.receipt_id,
+                        e,
                     )
                     if not match.error:  # Don't overwrite previous error
                         match.error = f"Address search error: {str(e)}"
             else:
-                logger.debug(f"Address too short: {receipt.address}")
+                logger.debug("Address too short: %s", receipt.address)
 
         # Strategy 3: Try text search with merchant name
         if receipt.merchant_name and not match.found:
@@ -396,7 +417,10 @@ class PlaceIdFinder:
                 len(receipt.merchant_name.strip()) >= 3
             ):  # Name should have some content
                 try:
-                    logger.debug(f"Searching by text: {receipt.merchant_name}")
+                    logger.debug(
+                        "Searching by text: %s",
+                        receipt.merchant_name,
+                    )
                     place_data = self.places.search_by_text(
                         receipt.merchant_name
                     )
@@ -417,13 +441,17 @@ class PlaceIdFinder:
                         return match
                 except Exception as e:
                     logger.debug(
-                        f"Text search failed for {receipt.image_id}#{receipt.receipt_id}: {e}"
+                        "Text search failed for %s#%s: %s",
+                        receipt.image_id,
+                        receipt.receipt_id,
+                        e,
                     )
                     if not match.error:  # Don't overwrite previous error
                         match.error = f"Text search error: {str(e)}"
             else:
                 logger.debug(
-                    f"Merchant name too short: {receipt.merchant_name}"
+                    "Merchant name too short: %s",
+                    receipt.merchant_name,
                 )
 
         # No match found - this is a normal outcome, not an error
@@ -576,14 +604,17 @@ class PlaceIdFinder:
         result.total_processed = len(receipts_to_process)
 
         logger.info(
-            f"Searching Google Places for {len(receipts_to_process)} receipts..."
+            "Searching Google Places for %s receipts...",
+            len(receipts_to_process),
         )
 
         # Process each receipt
         for i, receipt in enumerate(receipts_to_process):
             if (i + 1) % 10 == 0:
                 logger.info(
-                    f"Processed {i + 1}/{len(receipts_to_process)} receipts..."
+                    "Processed %s/%s receipts...",
+                    i + 1,
+                    len(receipts_to_process),
                 )
 
             match = self._search_places_for_receipt(receipt)
@@ -601,8 +632,10 @@ class PlaceIdFinder:
                 result.total_not_found += 1
 
         logger.info(
-            f"Search complete: {result.total_found} found, "
-            f"{result.total_not_found} not found, {result.total_errors} errors"
+            "Search complete: %s found, %s not found, %s errors",
+            result.total_found,
+            result.total_not_found,
+            result.total_errors,
         )
 
         self._last_report = result
@@ -639,10 +672,6 @@ class PlaceIdFinder:
 
         # Initialize agent graph if needed
         if self._agent_graph is None:
-            from receipt_agent.agents.place_id_finder import (
-                create_place_id_finder_graph,
-            )
-
             self._agent_graph, self._agent_state_holder = (
                 create_place_id_finder_graph(
                     dynamo_client=self.dynamo,
@@ -662,14 +691,17 @@ class PlaceIdFinder:
         result.total_processed = len(receipts_to_process)
 
         logger.info(
-            f"Searching Google Places using agent for {len(receipts_to_process)} receipts..."
+            "Searching Google Places using agent for %s receipts...",
+            len(receipts_to_process),
         )
 
         # Process each receipt with agent
         for i, receipt in enumerate(receipts_to_process):
             if (i + 1) % 5 == 0:
                 logger.info(
-                    f"Processed {i + 1}/{len(receipts_to_process)} receipts..."
+                    "Processed %s/%s receipts...",
+                    i + 1,
+                    len(receipts_to_process),
                 )
 
             # Retry logic for server errors
@@ -680,10 +712,6 @@ class PlaceIdFinder:
 
             for attempt in range(max_retries):
                 try:
-                    from receipt_agent.agents.place_id_finder import (
-                        run_place_id_finder,
-                    )
-
                     agent_result = await run_place_id_finder(
                         graph=self._agent_graph,
                         state_holder=self._agent_state_holder,
@@ -706,8 +734,12 @@ class PlaceIdFinder:
 
                     if is_retryable and attempt < max_retries - 1:
                         logger.warning(
-                            f"Retryable error for {receipt.image_id}#{receipt.receipt_id} "
-                            f"(attempt {attempt + 1}/{max_retries}): {error_str[:100]}"
+                            "Retryable error for %s#%s (attempt %s/%s): %s",
+                            receipt.image_id,
+                            receipt.receipt_id,
+                            attempt + 1,
+                            max_retries,
+                            error_str[:100],
                         )
                         await asyncio.sleep(
                             retry_delay * (attempt + 1)
@@ -815,8 +847,10 @@ class PlaceIdFinder:
                 result.total_not_found += 1
 
         logger.info(
-            f"Agent search complete: {result.total_found} found, "
-            f"{result.total_not_found} not found, {result.total_errors} errors"
+            "Agent search complete: %s found, %s not found, %s errors",
+            result.total_found,
+            result.total_not_found,
+            result.total_errors,
         )
 
         self._last_report = result
@@ -863,8 +897,11 @@ class PlaceIdFinder:
 
             if match.confidence < min_confidence:
                 logger.debug(
-                    f"Skipping {match.receipt.image_id}#{match.receipt.receipt_id}: "
-                    f"confidence {match.confidence} < {min_confidence}"
+                    "Skipping %s#%s: confidence %s < %s",
+                    match.receipt.image_id,
+                    match.receipt.receipt_id,
+                    match.confidence,
+                    min_confidence,
                 )
                 result.total_skipped += 1
                 continue
@@ -877,7 +914,8 @@ class PlaceIdFinder:
 
         if dry_run:
             logger.info(
-                f"[DRY RUN] Would update {len(matches_to_update)} receipts with place_ids and Google Places data"
+                "[DRY RUN] Would update %s receipts with place_ids and Google Places data",
+                len(matches_to_update),
             )
             for match in matches_to_update[:10]:  # Show first 10
                 fields = [f"place_id={match.place_id}"]
@@ -888,24 +926,35 @@ class PlaceIdFinder:
                 if match.place_phone:
                     fields.append(f"phone={match.place_phone}")
                 logger.info(
-                    f"  {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}: "
-                    f"{', '.join(fields)} (confidence={match.confidence:.1f}, method={match.search_method})"
+                    "  %s...#%s: %s (confidence=%.1f, method=%s)",
+                    match.receipt.image_id[:8],
+                    match.receipt.receipt_id,
+                    ", ".join(fields),
+                    match.confidence,
+                    match.search_method,
                 )
             if len(matches_to_update) > 10:
-                logger.info(f"  ... and {len(matches_to_update) - 10} more")
+                logger.info(
+                    "  ... and %s more",
+                    len(matches_to_update) - 10,
+                )
 
             if matches_needing_review:
                 logger.info(
-                    f"[DRY RUN] Would mark {len(matches_needing_review)} receipts as needing review"
+                    "[DRY RUN] Would mark %s receipts as needing review",
+                    len(matches_needing_review),
                 )
                 for match in matches_needing_review[:5]:
                     logger.info(
-                        f"  {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}: "
-                        f"needs_review=True ({match.error})"
+                        "  %s...#%s: needs_review=True (%s)",
+                        match.receipt.image_id[:8],
+                        match.receipt.receipt_id,
+                        match.error,
                     )
                 if len(matches_needing_review) > 5:
                     logger.info(
-                        f"  ... and {len(matches_needing_review) - 5} more"
+                        "  ... and %s more",
+                        len(matches_needing_review) - 5,
                     )
 
             result.total_updated = len(matches_to_update)
@@ -913,7 +962,8 @@ class PlaceIdFinder:
 
         # Actually apply updates
         logger.info(
-            f"Applying place_id updates to {len(matches_to_update)} receipts..."
+            "Applying place_id updates to %s receipts...",
+            len(matches_to_update),
         )
 
         for match in matches_to_update:
@@ -942,11 +992,6 @@ class PlaceIdFinder:
 
                 if not place_exists:
                     # Create new place from Google Places data
-                    from receipt_dynamo.constants import (
-                        MerchantValidationStatus,
-                    )
-                    from receipt_dynamo.entities import ReceiptPlace
-
                     # Use Google Places data (preferred) or fallback to receipt data
                     merchant_name = (
                         match.place_name or match.receipt.merchant_name or ""
@@ -982,8 +1027,11 @@ class PlaceIdFinder:
                     result.total_updated += 1
 
                     logger.info(
-                        f"Created new place for {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}: "
-                        f"place_id={match.place_id}, merchant_name={merchant_name[:30] if merchant_name else 'N/A'}"
+                        "Created new place for %s...#%s: place_id=%s, merchant_name=%s",
+                        match.receipt.image_id[:8],
+                        match.receipt.receipt_id,
+                        match.place_id,
+                        merchant_name[:30] if merchant_name else "N/A",
                     )
                     continue
 
@@ -999,8 +1047,6 @@ class PlaceIdFinder:
                     and place.merchant_name != match.place_name
                 ):
                     # Validate that place_name is NOT an address
-                    import re
-
                     place_name_upper = match.place_name.upper()
                     looks_like_address = any(
                         suffix in place_name_upper
@@ -1029,8 +1075,11 @@ class PlaceIdFinder:
 
                     if looks_like_address:
                         logger.warning(
-                            f"Skipping merchant_name update for {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}: "
-                            f"'{match.place_name}' from Google Places looks like an address, not a merchant name"
+                            "Skipping merchant_name update for %s...#%s: '%s' "
+                            "from Google Places looks like an address, not a merchant name",
+                            match.receipt.image_id[:8],
+                            match.receipt.receipt_id,
+                            match.place_name,
                         )
                     else:
                         place.merchant_name = match.place_name
@@ -1059,13 +1108,17 @@ class PlaceIdFinder:
                 result.total_updated += 1
 
                 logger.debug(
-                    f"Updated {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}: "
-                    f"{', '.join(updated_fields)}"
+                    "Updated %s...#%s: %s",
+                    match.receipt.image_id[:8],
+                    match.receipt.receipt_id,
+                    ", ".join(updated_fields),
                 )
 
             except Exception as e:
                 logger.exception(
-                    f"Failed to update {match.receipt.image_id}#{match.receipt.receipt_id}"
+                    "Failed to update %s#%s",
+                    match.receipt.image_id,
+                    match.receipt.receipt_id,
                 )
                 result.total_failed += 1
                 result.errors.append(
@@ -1075,7 +1128,8 @@ class PlaceIdFinder:
         # Mark receipts as needing review (no searchable data)
         if matches_needing_review:
             logger.info(
-                f"Marking {len(matches_needing_review)} receipts as needing review..."
+                "Marking %s receipts as needing review...",
+                len(matches_needing_review),
             )
 
             for match in matches_needing_review:
@@ -1104,10 +1158,6 @@ class PlaceIdFinder:
 
                     if not place_exists:
                         # Create minimal place marked as needing review
-                        from receipt_dynamo.constants import (
-                            MerchantValidationStatus,
-                        )
-                        from receipt_dynamo.entities import ReceiptPlace
                         merchant_name = match.receipt.merchant_name or ""
                         if not merchant_name.strip():
                             logger.warning(
@@ -1134,15 +1184,13 @@ class PlaceIdFinder:
                         result.total_updated += 1
 
                         logger.info(
-                            f"Created place (needs review) for {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}"
+                            "Created place (needs review) for %s...#%s",
+                            match.receipt.image_id[:8],
+                            match.receipt.receipt_id,
                         )
                         continue
 
                     # Update existing place to mark as needing review
-                    from receipt_dynamo.constants import (
-                        MerchantValidationStatus,
-                    )
-
                     # Update the record
                     place.validation_status = (
                         MerchantValidationStatus.UNSURE.value
@@ -1155,12 +1203,16 @@ class PlaceIdFinder:
                     result.total_updated += 1
 
                     logger.debug(
-                        f"Marked {match.receipt.image_id[:8]}...#{match.receipt.receipt_id} as needing review"
+                        "Marked %s...#%s as needing review",
+                        match.receipt.image_id[:8],
+                        match.receipt.receipt_id,
                     )
 
                 except Exception as e:
                     logger.exception(
-                        f"Failed to mark {match.receipt.image_id}#{match.receipt.receipt_id} as needing review"
+                        "Failed to mark %s#%s as needing review",
+                        match.receipt.image_id,
+                        match.receipt.receipt_id,
                     )
                     result.total_failed += 1
                     result.errors.append(
@@ -1168,8 +1220,10 @@ class PlaceIdFinder:
                     )
 
         logger.info(
-            f"Update complete: {result.total_updated} updated, "
-            f"{result.total_failed} failed, {result.total_skipped} skipped"
+            "Update complete: %s updated, %s failed, %s skipped",
+            result.total_updated,
+            result.total_failed,
+            result.total_skipped,
         )
 
         return result

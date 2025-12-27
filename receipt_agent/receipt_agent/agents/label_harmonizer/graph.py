@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
+from receipt_dynamo.entities import ReceiptLine
 
 from receipt_agent.agents.label_harmonizer.state import (
     LabelHarmonizerAgentState,
@@ -17,6 +18,9 @@ from receipt_agent.agents.label_harmonizer.tools.factory import (
     create_label_harmonizer_tools,
 )
 from receipt_agent.agents.label_harmonizer.tools.helpers import label_to_dict
+from receipt_agent.agents.label_harmonizer.tools.label_harmonizer_v3 import (
+    ReceiptLabelResult,
+)
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.utils.agent_common import (
     create_agent_node_with_retry,
@@ -176,10 +180,6 @@ async def run_label_harmonizer_agent(
     Returns:
         ReceiptLabelResult object
     """
-    from receipt_agent.agents.label_harmonizer.tools.label_harmonizer_v3 import (
-        ReceiptLabelResult,
-    )
-
     dynamo_client = state_holder.get("dynamo_client")
     if not dynamo_client:
         return ReceiptLabelResult(
@@ -290,8 +290,6 @@ async def run_label_harmonizer_agent(
 
     # Format receipt text; fall back to simple join if fields are missing
     try:
-        from receipt_dynamo.entities import ReceiptLine
-
         receipt_lines = [
             ReceiptLine(**line) if isinstance(line, dict) else line
             for line in lines
@@ -316,9 +314,7 @@ async def run_label_harmonizer_agent(
     # Load receipt place data for context and tools
     receipt_place = None
     try:
-        receipt_place = dynamo_client.get_receipt_place(
-            image_id, receipt_id
-        )
+        receipt_place = dynamo_client.get_receipt_place(image_id, receipt_id)
     except Exception as e:
         logger.debug("Could not load receipt place: %s", e)
 
@@ -391,9 +387,7 @@ async def run_label_harmonizer_agent(
                 "line_count": len(lines_data),
                 "workflow": "label_harmonizer_v3",
                 "merchant_name": (
-                    receipt_place.merchant_name
-                    if receipt_place
-                    else None
+                    receipt_place.merchant_name if receipt_place else None
                 ),
                 "place_id": (
                     receipt_place.place_id if receipt_place else None
@@ -402,7 +396,7 @@ async def run_label_harmonizer_agent(
 
         await graph.ainvoke(initial_state, config=config)
     except Exception as e:
-        logger.exception(f"Agent execution failed: {e}")
+        logger.exception("Agent execution failed: %s", e)
         return ReceiptLabelResult(
             image_id=image_id,
             receipt_id=receipt_id,
