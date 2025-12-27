@@ -38,6 +38,8 @@ from receipt_agent.utils.chroma_helpers import (
     query_similar_words,
 )
 
+from receipt_agent.constants import CURRENCY_LABELS
+
 from .state import (
     EvaluationIssue,
     ReviewContext,
@@ -57,22 +59,6 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # Receipt Text Assembly for LLM Review
 # =============================================================================
-
-
-# Currency-related labels that should be shown in receipt context
-CURRENCY_LABELS = {
-    "LINE_TOTAL",
-    "SUBTOTAL",
-    "TAX",
-    "GRAND_TOTAL",
-    "TENDER",
-    "CHANGE",
-    "DISCOUNT",
-    "SAVINGS",
-    "CASH_BACK",
-    "REFUND",
-    "UNIT_PRICE",
-}
 
 
 def is_currency_amount(text: str) -> bool:

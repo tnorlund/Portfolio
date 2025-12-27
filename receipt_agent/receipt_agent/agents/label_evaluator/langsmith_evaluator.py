@@ -29,7 +29,7 @@ Usage:
 
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Optional
 
@@ -94,12 +94,8 @@ class EvaluationQualityMetrics:
     """Metrics from pattern-based quality evaluation."""
 
     total_issues: int = 0
-    issues_by_type: dict[str, int] = None
+    issues_by_type: dict[str, int] = field(default_factory=dict)
     total_words: int = 0
-
-    def __post_init__(self) -> None:
-        if self.issues_by_type is None:
-            self.issues_by_type = {}
 
     @property
     def issue_rate(self) -> float:
@@ -288,6 +284,8 @@ def label_quality_evaluator(
     quality = _evaluate_prediction_quality(words, predicted, patterns)
 
     # Combined score: 70% F1, 30% quality (fewer issues = better)
+    # These weights prioritize label accuracy over pattern conformity since
+    # patterns may not capture all valid label variations.
     quality_score = 1.0 - quality.issue_rate
     combined_score = 0.7 * comparison.f1_score + 0.3 * quality_score
 

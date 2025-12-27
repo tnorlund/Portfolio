@@ -49,6 +49,7 @@ from receipt_agent.agents.label_evaluator.issue_detection import (
 )
 from receipt_agent.agents.label_evaluator.llm_review import (
     build_review_context,
+    review_all_issues,
 )
 from receipt_agent.utils.chroma_helpers import (
     format_similar_words_for_prompt,
@@ -56,9 +57,6 @@ from receipt_agent.utils.chroma_helpers import (
 )
 from receipt_agent.agents.label_evaluator.patterns import (
     compute_merchant_patterns,
-)
-from receipt_agent.agents.label_evaluator.llm_review import (
-    review_all_issues,
 )
 from receipt_agent.agents.label_evaluator.state import (
     EvaluationIssue,

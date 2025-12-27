@@ -706,7 +706,11 @@ def _parse_llm_response(content: str) -> dict | None:
         content = content[:-3]
     content = content.strip()
 
-    return json.loads(content)
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.warning("Failed to parse LLM response as JSON: %s", e)
+        return None
 
 
 def get_default_patterns(merchant_name: str, reason: str = "unknown") -> dict:

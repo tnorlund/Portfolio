@@ -5,6 +5,7 @@ Functions for building WordContext objects from receipt words/labels
 and grouping them into visual lines.
 """
 
+import statistics
 from collections import defaultdict
 from typing import Optional
 
@@ -119,7 +120,7 @@ def assemble_visual_lines(
             if w.word.bounding_box.get("height")
         ]
         if heights:
-            median_height = sorted(heights)[len(heights) // 2]
+            median_height = statistics.median(heights)
             y_tolerance = max(0.01, median_height * 0.75)
         else:
             y_tolerance = 0.015  # Fallback

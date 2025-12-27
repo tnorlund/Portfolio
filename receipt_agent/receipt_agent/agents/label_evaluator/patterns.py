@@ -11,7 +11,7 @@ import math
 import statistics
 from collections import Counter, defaultdict
 from itertools import combinations
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Optional
 
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
@@ -50,7 +50,7 @@ MAX_RELATIONSHIP_DIMENSION = (
 # =============================================================================
 
 
-def _is_within_group_pair(pair: Tuple[str, str]) -> bool:
+def _is_within_group_pair(pair: tuple[str, str]) -> bool:
     """Check if a pair is within the same semantic group."""
     label1, label2 = pair
     group1 = LABEL_TO_GROUP.get(label1)
@@ -58,7 +58,7 @@ def _is_within_group_pair(pair: Tuple[str, str]) -> bool:
     return group1 is not None and group1 == group2
 
 
-def _is_cross_group_pair(pair: Tuple[str, str]) -> bool:
+def _is_cross_group_pair(pair: tuple[str, str]) -> bool:
     """Check if a pair spans different semantic groups."""
     label1, label2 = pair
     group1 = LABEL_TO_GROUP.get(label1)
@@ -67,9 +67,9 @@ def _is_cross_group_pair(pair: Tuple[str, str]) -> bool:
 
 
 def _select_top_label_pairs(
-    all_pairs: Dict[Tuple[str, str], int],
+    all_pairs: dict[tuple[str, str], int],
     max_pairs: int = MAX_LABEL_PAIRS,
-) -> Set[Tuple[str, str]]:
+) -> set[tuple[str, str]]:
     """
     Select top label type pairs for geometry computation.
 
@@ -85,7 +85,7 @@ def _select_top_label_pairs(
     Returns:
         Set of selected label type pairs (sorted tuples)
     """
-    selected: Set[Tuple[str, str]] = set()
+    selected: set[tuple[str, str]] = set()
 
     # Separate all pairs into categories
     within_group_pairs = []
@@ -94,7 +94,7 @@ def _select_top_label_pairs(
 
     for pair in all_pairs.keys():
         sorted_pair = sorted(pair)
-        normalized: Tuple[str, str] = (sorted_pair[0], sorted_pair[1])
+        normalized: tuple[str, str] = (sorted_pair[0], sorted_pair[1])
         if _is_within_group_pair(pair):
             within_group_pairs.append((normalized, all_pairs[pair]))
         elif _is_cross_group_pair(pair):
@@ -169,9 +169,9 @@ def _select_top_label_pairs(
 
 
 def _select_top_label_ntuples(
-    all_ntuples: Dict[Tuple[str, ...], int],
+    all_ntuples: dict[tuple[str, ...], int],
     max_ntuples: int = 4,
-) -> Set[Tuple[str, ...]]:
+) -> set[tuple[str, ...]]:
     """
     Select top label n-tuples by frequency.
 
@@ -202,9 +202,9 @@ def _select_top_label_ntuples(
 
 
 def _generate_label_ntuples(
-    all_pairs: Dict[Tuple[str, str], int],
+    all_pairs: dict[tuple[str, str], int],
     dimension: int = 2,
-) -> Dict[Tuple[str, ...], int]:
+) -> dict[tuple[str, ...], int]:
     """
     Generate n-tuples of labels from pair co-occurrence data.
 
@@ -230,13 +230,13 @@ def _generate_label_ntuples(
     # A clique is a set of labels that all co-occur with each other
 
     # Build adjacency list from pairs
-    label_neighbors: Dict[str, Set[str]] = defaultdict(set)
+    label_neighbors: dict[str, set[str]] = defaultdict(set)
     for (label_a, label_b), _freq in all_pairs.items():
         label_neighbors[label_a].add(label_b)
         label_neighbors[label_b].add(label_a)
 
     # Generate all possible n-tuples and check if they form cliques
-    ntuples: Dict[Tuple[str, ...], int] = defaultdict(int)
+    ntuples: dict[tuple[str, ...], int] = defaultdict(int)
     all_labels = sorted(label_neighbors.keys())
 
     for ntuple in combinations(all_labels, dimension):
@@ -445,8 +445,8 @@ def _print_pattern_statistics(
 
 
 def _compute_patterns_for_subset(
-    receipts: List[OtherReceiptData],
-) -> Dict[Tuple[str, str], LabelPairGeometry]:
+    receipts: list[OtherReceiptData],
+) -> dict[tuple[str, str], LabelPairGeometry]:
     """
     Compute label pair geometry patterns from a subset of receipts.
 
@@ -458,26 +458,26 @@ def _compute_patterns_for_subset(
     Returns:
         Dict mapping (label1, label2) pairs to LabelPairGeometry objects
     """
-    geometry_dict: Dict[Tuple[str, str], LabelPairGeometry] = {}
+    geometry_dict: dict[tuple[str, str], LabelPairGeometry] = {}
 
     for receipt_data in receipts:
         words = receipt_data.words
         labels = receipt_data.labels
 
         # Build word lookup
-        word_by_id: Dict[Tuple[int, int], ReceiptWord] = {
+        word_by_id: dict[tuple[int, int], ReceiptWord] = {
             (w.line_id, w.word_id): w for w in words
         }
 
         # Get most recent label per word, preferring VALID ones
-        labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = (
+        labels_by_word: dict[tuple[int, int], list[ReceiptWordLabel]] = (
             defaultdict(list)
         )
         for label in labels:
             key = (label.line_id, label.word_id)
             labels_by_word[key].append(label)
 
-        current_labels: Dict[Tuple[int, int], ReceiptWordLabel] = {}
+        current_labels: dict[tuple[int, int], ReceiptWordLabel] = {}
         for key, label_list in labels_by_word.items():
             label_list.sort(
                 key=lambda lbl: (
@@ -496,14 +496,14 @@ def _compute_patterns_for_subset(
                 current_labels[key] = label_list[0]
 
         # Group words by label type to get centroids
-        labels_by_type: Dict[str, List[ReceiptWord]] = defaultdict(list)
+        labels_by_type: dict[str, list[ReceiptWord]] = defaultdict(list)
         for key, label in current_labels.items():
             word = word_by_id.get(key)
             if word:
                 labels_by_type[label.label].append(word)
 
         # Compute geometry for label pairs on same line
-        labels_by_line: Dict[int, List[str]] = defaultdict(list)
+        labels_by_line: dict[int, list[str]] = defaultdict(list)
         for key, label in current_labels.items():
             labels_by_line[key[0]].append(label.label)
 
@@ -513,7 +513,7 @@ def _compute_patterns_for_subset(
             for i, label_a in enumerate(unique_labels):
                 for label_b in unique_labels[i + 1 :]:
                     sorted_labels = sorted([label_a, label_b])
-                    pair: Tuple[str, str] = (
+                    pair: tuple[str, str] = (
                         sorted_labels[0],
                         sorted_labels[1],
                     )
@@ -551,7 +551,7 @@ def _compute_patterns_for_subset(
                         )
 
     # Compute statistics for each pair
-    for pair, geometry in geometry_dict.items():
+    for geometry in geometry_dict.values():
         if geometry.observations:
             angles = [obs.angle for obs in geometry.observations]
             distances = [obs.distance for obs in geometry.observations]
@@ -603,10 +603,10 @@ def _compute_patterns_for_subset(
 
 
 def _compute_constellation_patterns(
-    receipts: List[OtherReceiptData],
-    constellations: List[Tuple[str, ...]],
+    receipts: list[OtherReceiptData],
+    constellations: list[tuple[str, ...]],
     min_observations: int = 3,
-) -> Dict[Tuple[str, ...], ConstellationGeometry]:
+) -> dict[tuple[str, ...], ConstellationGeometry]:
     """
     Compute constellation geometry patterns from receipts.
 
@@ -624,7 +624,7 @@ def _compute_constellation_patterns(
         Dict mapping constellation tuple to ConstellationGeometry
     """
     # Initialize storage for observations
-    constellation_observations: Dict[Tuple[str, ...], List[Dict[str, Any]]] = (
+    constellation_observations: dict[tuple[str, ...], list[dict[str, Any]]] = (
         defaultdict(list)
     )
 
@@ -633,19 +633,19 @@ def _compute_constellation_patterns(
         labels = receipt_data.labels
 
         # Build word lookup
-        word_by_id: Dict[Tuple[int, int], ReceiptWord] = {
+        word_by_id: dict[tuple[int, int], ReceiptWord] = {
             (w.line_id, w.word_id): w for w in words
         }
 
         # Get most recent valid label per word
-        labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = (
+        labels_by_word: dict[tuple[int, int], list[ReceiptWordLabel]] = (
             defaultdict(list)
         )
         for label in labels:
             key = (label.line_id, label.word_id)
             labels_by_word[key].append(label)
 
-        current_labels: Dict[Tuple[int, int], ReceiptWordLabel] = {}
+        current_labels: dict[tuple[int, int], ReceiptWordLabel] = {}
         for key, label_list in labels_by_word.items():
             label_list.sort(
                 key=lambda lbl: (
@@ -664,8 +664,8 @@ def _compute_constellation_patterns(
                 current_labels[key] = label_list[0]
 
         # Group words by label type and compute centroids
-        label_centroids: Dict[str, Tuple[float, float]] = {}
-        labels_by_type: Dict[str, List[ReceiptWord]] = defaultdict(list)
+        label_centroids: dict[str, tuple[float, float]] = {}
+        labels_by_type: dict[str, list[ReceiptWord]] = defaultdict(list)
 
         for key, label in current_labels.items():
             word = word_by_id.get(key)
@@ -715,7 +715,7 @@ def _compute_constellation_patterns(
             )
 
     # Compute statistics for each constellation
-    result: Dict[Tuple[str, ...], ConstellationGeometry] = {}
+    result: dict[tuple[str, ...], ConstellationGeometry] = {}
 
     for constellation, observations in constellation_observations.items():
         if len(observations) < min_observations:
@@ -731,8 +731,8 @@ def _compute_constellation_patterns(
         # Compute relative position statistics for each label
         for lbl_type in constellation:
             # Collect relative positions (offset from constellation centroid)
-            dx_values: List[float] = []
-            dy_values: List[float] = []
+            dx_values: list[float] = []
+            dy_values: list[float] = []
 
             for obs in observations:
                 centroid = obs["centroid"]
@@ -753,7 +753,7 @@ def _compute_constellation_patterns(
             # Compute combined deviation metric
             deviations = [
                 math.sqrt((dx - mean_dx) ** 2 + (dy - mean_dy) ** 2)
-                for dx, dy in zip(dx_values, dy_values)
+                for dx, dy in zip(dx_values, dy_values, strict=True)
             ]
             std_deviation = (
                 statistics.stdev(deviations) if len(deviations) >= 2 else 0.0
@@ -814,8 +814,8 @@ def _compute_constellation_patterns(
 
 
 def detect_label_conflicts(
-    labels: List[ReceiptWordLabel],
-) -> List[Tuple[int, int, Set[str]]]:
+    labels: list[ReceiptWordLabel],
+) -> list[tuple[int, int, set[str]]]:
     """
     Detect when the same word position has conflicting labels.
 
@@ -834,7 +834,7 @@ def detect_label_conflicts(
         conflict
     """
     # Group labels by position, excluding INVALID labels
-    labels_by_position: Dict[Tuple[int, int], Set[str]] = defaultdict(set)
+    labels_by_position: dict[tuple[int, int], set[str]] = defaultdict(set)
     for label in labels:
         # Skip labels already marked as INVALID in the audit trail
         if label.validation_status == "INVALID":
@@ -863,7 +863,7 @@ def detect_label_conflicts(
     return conflicts
 
 
-def _classify_conflict_heuristic(label_set: Set[str]) -> str:
+def _classify_conflict_heuristic(label_set: set[str]) -> str:
     """Heuristic classification when LLM not available."""
     # UNIT_PRICE ↔ LINE_TOTAL is typically format variation
     if "UNIT_PRICE" in label_set and "LINE_TOTAL" in label_set:
@@ -878,8 +878,8 @@ def _classify_conflict_heuristic(label_set: Set[str]) -> str:
 
 
 def _heuristic_conflict_classification(
-    conflicts: List[Tuple[int, int, Set[str]]],
-) -> Dict[Tuple[int, int], str]:
+    conflicts: list[tuple[int, int, set[str]]],
+) -> dict[tuple[int, int], str]:
     """Classify conflicts using heuristics only."""
     classifications = {}
     for line_id, word_id, label_set in conflicts:
@@ -890,9 +890,9 @@ def _heuristic_conflict_classification(
 
 
 def classify_conflicts_with_llm(
-    conflicts: List[Tuple[int, int, Set[str]]],
+    conflicts: list[tuple[int, int, set[str]]],
     receipt_label: str,
-) -> Dict[Tuple[int, int], str]:
+) -> dict[tuple[int, int], str]:
     """
     Classify each conflict as REAL_ERROR or FORMAT_VARIATION.
 
@@ -913,7 +913,7 @@ def classify_conflicts_with_llm(
 
 
 def assign_batch_with_llm(
-    labels: List[ReceiptWordLabel],
+    labels: list[ReceiptWordLabel],
     receipt_label: str,
 ) -> str:
     """
@@ -971,9 +971,9 @@ def assign_batch_with_llm(
 
 
 def batch_receipts_by_quality(
-    other_receipt_data: List[OtherReceiptData],
+    other_receipt_data: list[OtherReceiptData],
     merchant_name: str,
-) -> Dict[str, List[OtherReceiptData]]:
+) -> dict[str, list[OtherReceiptData]]:
     """
     Classify receipts into HAPPY, AMBIGUOUS, ANTI_PATTERN batches.
 
@@ -987,7 +987,7 @@ def batch_receipts_by_quality(
     Returns:
         Dict mapping batch names to lists of receipts in that batch
     """
-    batches: Dict[str, List[OtherReceiptData]] = {
+    batches: dict[str, list[OtherReceiptData]] = {
         "HAPPY": [],
         "AMBIGUOUS": [],
         "ANTI_PATTERN": [],
@@ -1014,7 +1014,7 @@ def batch_receipts_by_quality(
 
 
 def compute_merchant_patterns(
-    other_receipt_data: List[OtherReceiptData],
+    other_receipt_data: list[OtherReceiptData],
     merchant_name: str,
     max_pair_patterns: int = MAX_LABEL_PAIRS,
     max_relationship_dimension: int = MAX_RELATIONSHIP_DIMENSION,
@@ -1060,26 +1060,26 @@ def compute_merchant_patterns(
     )
 
     # Track all label pairs for pair selection and unexpected pair detection
-    all_pair_frequencies: Dict[Tuple[str, str], int] = defaultdict(int)
+    all_pair_frequencies: dict[tuple[str, str], int] = defaultdict(int)
 
     for receipt_data in other_receipt_data:
         words = receipt_data.words
         labels = receipt_data.labels
 
         # Build word lookup
-        word_by_id: Dict[Tuple[int, int], ReceiptWord] = {
+        word_by_id: dict[tuple[int, int], ReceiptWord] = {
             (w.line_id, w.word_id): w for w in words
         }
 
         # Get most recent label per word, preferring VALID ones
-        labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = (
+        labels_by_word: dict[tuple[int, int], list[ReceiptWordLabel]] = (
             defaultdict(list)
         )
         for label in labels:
             key = (label.line_id, label.word_id)
             labels_by_word[key].append(label)
 
-        current_labels: Dict[Tuple[int, int], ReceiptWordLabel] = {}
+        current_labels: dict[tuple[int, int], ReceiptWordLabel] = {}
         for key, label_list in labels_by_word.items():
             # Sort by timestamp descending
             label_list.sort(
@@ -1109,13 +1109,13 @@ def compute_merchant_patterns(
                 patterns.label_texts[label.label].add(word.text)
 
         # Record same-line pairs using line_id as proxy
-        labels_by_line: Dict[int, List[str]] = defaultdict(list)
+        labels_by_line: dict[int, list[str]] = defaultdict(list)
         for key, label in current_labels.items():
             labels_by_line[key[0]].append(label.label)
 
         for line_labels in labels_by_line.values():
             # Track which labels appear multiple times on the same line
-            label_counts: Dict[str, int] = defaultdict(int)
+            label_counts: dict[str, int] = defaultdict(int)
             for lbl in line_labels:
                 label_counts[lbl] += 1
 
@@ -1134,7 +1134,7 @@ def compute_merchant_patterns(
                     patterns.all_observed_pairs.add(pair)
 
         # Track value pairs: when the same text has different labels
-        words_by_text: Dict[str, List[Tuple[ReceiptWord, str]]] = defaultdict(
+        words_by_text: dict[str, list[tuple[ReceiptWord, str]]] = defaultdict(
             list
         )
         for key, cur_label in current_labels.items():
@@ -1146,8 +1146,8 @@ def compute_merchant_patterns(
         for _text, word_label_pairs in words_by_text.items():
             if len(word_label_pairs) > 1:
                 # Check for same text with different labels
-                unique_label_pairs: Set[Tuple[str, str]] = set()
-                label_positions_by_label: Dict[str, float] = {}
+                unique_label_pairs: set[tuple[str, str]] = set()
+                label_positions_by_label: dict[str, float] = {}
 
                 for w, lbl_name in word_label_pairs:
                     y = w.calculate_centroid()[1]
@@ -1170,7 +1170,7 @@ def compute_merchant_patterns(
                         patterns.value_pair_positions[pair] = (y1, y2)
 
         # Count pair frequencies for geometry (first pass - cheap)
-        words_by_label: Dict[str, List[ReceiptWord]] = defaultdict(list)
+        words_by_label: dict[str, list[ReceiptWord]] = defaultdict(list)
         for key, cur_label in current_labels.items():
             word = word_by_id.get(key)
             if word:
@@ -1185,7 +1185,7 @@ def compute_merchant_patterns(
                 patterns.all_observed_pairs.add(pair)
 
     # TWO-PASS OPTIMIZATION: Select top pairs/tuples before computing geometry
-    selected_constellations: List[Tuple[str, ...]] = []
+    selected_constellations: list[tuple[str, ...]] = []
 
     if max_relationship_dimension >= 3:
         # Generate n-tuples from pair co-occurrence data
@@ -1207,7 +1207,7 @@ def compute_merchant_patterns(
         selected_constellations = [tuple(sorted(t)) for t in selected_tuples]
 
         # Extract all pairs from selected n-tuples
-        selected_pairs: Set[Tuple[str, str]] = set()
+        selected_pairs: set[tuple[str, str]] = set()
         for ntuple in selected_tuples:
             for pair in combinations(sorted(ntuple), 2):
                 selected_pairs.add((pair[0], pair[1]))
@@ -1234,19 +1234,19 @@ def compute_merchant_patterns(
         labels_2 = receipt_data.labels
 
         # Build word lookup
-        word_by_id_2: Dict[Tuple[int, int], ReceiptWord] = {
+        word_by_id_2: dict[tuple[int, int], ReceiptWord] = {
             (w.line_id, w.word_id): w for w in words_2
         }
 
         # Get most recent label per word, preferring VALID ones
-        labels_by_word_2: Dict[Tuple[int, int], List[ReceiptWordLabel]] = (
+        labels_by_word_2: dict[tuple[int, int], list[ReceiptWordLabel]] = (
             defaultdict(list)
         )
         for label_item in labels_2:
             key = (label_item.line_id, label_item.word_id)
             labels_by_word_2[key].append(label_item)
 
-        current_labels_2: Dict[Tuple[int, int], ReceiptWordLabel] = {}
+        current_labels_2: dict[tuple[int, int], ReceiptWordLabel] = {}
         for key, label_list in labels_by_word_2.items():
             label_list.sort(
                 key=lambda lbl: (
@@ -1265,14 +1265,14 @@ def compute_merchant_patterns(
                 current_labels_2[key] = label_list[0]
 
         # Cache centroids for this receipt
-        centroid_cache: Dict[Tuple[int, int], Tuple[float, float]] = {}
+        centroid_cache: dict[tuple[int, int], tuple[float, float]] = {}
         for key in current_labels_2:
             word = word_by_id_2.get(key)
             if word:
                 centroid_cache[key] = word.calculate_centroid()
 
         # Group words by label (storing keys, not ReceiptWord objects)
-        words_by_label_2: Dict[str, List[Tuple[int, int]]] = defaultdict(list)
+        words_by_label_2: dict[str, list[tuple[int, int]]] = defaultdict(list)
         for key, cur_label in current_labels_2.items():
             words_by_label_2[cur_label.label].append(key)
 
@@ -1339,7 +1339,7 @@ def compute_merchant_patterns(
                 )
 
     # Finalize geometry statistics (both polar and Cartesian)
-    for pair, geometry in patterns.label_pair_geometry.items():
+    for geometry in patterns.label_pair_geometry.values():
         if geometry.observations:
             angles = [obs.angle for obs in geometry.observations]
             distances = [obs.distance for obs in geometry.observations]

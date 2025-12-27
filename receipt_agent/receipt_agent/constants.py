@@ -115,13 +115,15 @@ CONFLICTING_LABEL_PAIRS = {
 
 # Currency-related labels (values that represent money amounts)
 CURRENCY_LABELS = {
-    "UNIT_PRICE",
+    "CASH_BACK",
+    "CHANGE",
+    "DISCOUNT",
+    "GRAND_TOTAL",
     "LINE_TOTAL",
+    "REFUND",
+    "SAVINGS",
     "SUBTOTAL",
     "TAX",
-    "GRAND_TOTAL",
-    "DISCOUNT",
-    "CHANGE",
-    "CASH_BACK",
-    "REFUND",
+    "TENDER",
+    "UNIT_PRICE",
 }
