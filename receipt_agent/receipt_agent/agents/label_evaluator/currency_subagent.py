@@ -474,8 +474,14 @@ def evaluate_currency_labels(
         return results
 
     except Exception as e:
+        # Check if this is a rate limit error that should trigger Step Function retry
+        from receipt_agent.utils import OllamaRateLimitError, BothProvidersFailedError
+        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+            logger.error(f"Currency LLM rate limited, propagating for retry: {e}")
+            raise  # Let Step Function retry handle this
+
         logger.error(f"Currency LLM call failed: {e}")
-        # Return NEEDS_REVIEW for all words
+        # Return NEEDS_REVIEW for all words (non-rate-limit errors only)
         results = []
         for cw in currency_words:
             wc = cw.word_context

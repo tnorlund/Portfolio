@@ -648,6 +648,12 @@ def review_single_issue(
         return parse_llm_response(response_text)
 
     except Exception as e:
+        # Check if this is a rate limit error that should trigger Step Function retry
+        from receipt_agent.utils import OllamaRateLimitError, BothProvidersFailedError
+        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+            logger.error("LLM review rate limited, propagating for retry: %s", e)
+            raise  # Let Step Function retry handle this
+
         logger.error("LLM review failed: %s", e)
         return {
             "decision": "NEEDS_REVIEW",
@@ -729,8 +735,14 @@ def review_issues_batch(
         )
 
     except Exception as e:
+        # Check if this is a rate limit error that should trigger Step Function retry
+        from receipt_agent.utils import OllamaRateLimitError, BothProvidersFailedError
+        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+            logger.error("Batched LLM review rate limited, propagating for retry: %s", e)
+            raise  # Let Step Function retry handle this
+
         logger.error("Batched LLM review failed: %s", e)
-        # Return fallback for all issues
+        # Return fallback for all issues (non-rate-limit errors only)
         return [
             {
                 "decision": "NEEDS_REVIEW",
@@ -815,6 +827,12 @@ def review_issues_with_receipt_context(
         )
 
     except Exception as e:
+        # Check if this is a rate limit error that should trigger Step Function retry
+        from receipt_agent.utils import OllamaRateLimitError, BothProvidersFailedError
+        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+            logger.error("Receipt context LLM review rate limited, propagating for retry: %s", e)
+            raise  # Let Step Function retry handle this
+
         logger.error("Receipt context LLM review failed: %s", e)
         return [
             {
