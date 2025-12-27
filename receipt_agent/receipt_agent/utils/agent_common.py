@@ -8,10 +8,17 @@ agent nodes with retry logic, eliminating code duplication across workflows.
 import logging
 import random
 import time
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
-from langchain_ollama import ChatOllama
 from receipt_agent.config.settings import Settings, get_settings
+from receipt_agent.utils.llm_factory import (
+    LLMProvider,
+    create_llm,
+    create_llm_from_settings,
+)
+
+if TYPE_CHECKING:
+    from langchain_core.language_models import BaseChatModel
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +27,13 @@ def create_ollama_llm(
     settings: Optional[Settings] = None,
     temperature: float = 0.0,
     timeout: int = 120,
-) -> ChatOllama:
+) -> "BaseChatModel":
     """
-    Create a ChatOllama LLM instance with standard configuration.
+    Create an LLM instance with standard configuration.
+
+    DEPRECATED: Use create_llm() or create_llm_from_settings() from
+    receipt_agent.utils.llm_factory instead. This function is kept for
+    backwards compatibility and now delegates to the factory.
 
     Args:
         settings: Optional settings (uses get_settings() if None)
@@ -30,28 +41,41 @@ def create_ollama_llm(
         timeout: Request timeout in seconds
 
     Returns:
-        Configured ChatOllama instance
+        Configured LLM instance (ChatOllama or ChatOpenAI depending on provider)
     """
     if settings is None:
         settings = get_settings()
 
-    api_key = settings.ollama_api_key.get_secret_value()
+    # Determine provider from settings
+    provider_str = getattr(settings, "llm_provider", "ollama")
+    try:
+        provider = LLMProvider(provider_str)
+    except ValueError:
+        provider = LLMProvider.OLLAMA
 
-    return ChatOllama(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_model,
-        client_kwargs={
-            "headers": (
-                {"Authorization": f"Bearer {api_key}"} if api_key else {}
-            ),
-            "timeout": timeout,
-        },
-        temperature=temperature,
-    )
+    if provider == LLMProvider.OPENROUTER:
+        return create_llm(
+            provider=provider,
+            model=settings.openrouter_model,
+            base_url=settings.openrouter_base_url,
+            api_key=settings.openrouter_api_key.get_secret_value(),
+            temperature=temperature,
+            timeout=timeout,
+        )
+    else:
+        # Default to Ollama
+        return create_llm(
+            provider=LLMProvider.OLLAMA,
+            model=settings.ollama_model,
+            base_url=settings.ollama_base_url,
+            api_key=settings.ollama_api_key.get_secret_value(),
+            temperature=temperature,
+            timeout=timeout,
+        )
 
 
 def create_agent_node_with_retry(
-    llm: ChatOllama,
+    llm: "BaseChatModel",
     agent_name: str = "agent",
     max_retries: int = 5,
     base_delay: float = 2.0,

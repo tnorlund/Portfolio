@@ -22,7 +22,18 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # LLM Configuration (Ollama Cloud)
+    # ==========================================================================
+    # LLM Provider Selection
+    # ==========================================================================
+    llm_provider: Literal["ollama", "openrouter"] = Field(
+        default="ollama",
+        description="LLM provider to use: 'ollama' for Ollama Cloud, 'openrouter' for OpenRouter",
+        alias="LLM_PROVIDER",
+    )
+
+    # ==========================================================================
+    # Ollama Cloud Configuration
+    # ==========================================================================
     ollama_base_url: str = Field(
         default="https://ollama.com",
         description="Base URL for Ollama Cloud API",
@@ -34,6 +45,22 @@ class Settings(BaseSettings):
     ollama_model: str = Field(
         default="gpt-oss:120b-cloud",
         description="Model to use for agent reasoning (OpenAI OSS 120B cloud model). Note: Tier configuration (low/medium/high) may need to be specified separately or via model name format - verify with Ollama Cloud docs.",
+    )
+
+    # ==========================================================================
+    # OpenRouter Configuration
+    # ==========================================================================
+    openrouter_base_url: str = Field(
+        default="https://openrouter.ai/api/v1",
+        description="Base URL for OpenRouter API (OpenAI-compatible)",
+    )
+    openrouter_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        description="API key for OpenRouter",
+    )
+    openrouter_model: str = Field(
+        default="openai/gpt-oss-120b:free",
+        description="Model to use on OpenRouter. Default is the free GPT-OSS-120B model. See https://openrouter.ai/models for available models.",
     )
 
     # Alternative: OpenAI for embeddings

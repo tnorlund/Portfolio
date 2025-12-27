@@ -16,6 +16,17 @@ from .chroma_helpers import (
     parse_chroma_id,
     query_similar_words,
 )
+from .llm_factory import (
+    BothProvidersFailedError,
+    LLMProvider,
+    ResilientLLM,
+    create_llm,
+    create_llm_from_settings,
+    create_production_invoker,
+    create_resilient_llm,
+    get_default_provider,
+    is_fallback_error,
+)
 from .ollama_rate_limit import (
     OllamaCircuitBreaker,
     OllamaRateLimitError,
@@ -41,6 +52,16 @@ __all__ = [
     "load_dual_chroma_from_s3",
     "parse_chroma_id",
     "query_similar_words",
+    # LLM Factory
+    "BothProvidersFailedError",
+    "LLMProvider",
+    "ResilientLLM",
+    "create_llm",
+    "create_llm_from_settings",
+    "create_production_invoker",
+    "create_resilient_llm",
+    "get_default_provider",
+    "is_fallback_error",
     # Rate limit utilities
     "OllamaCircuitBreaker",
     "OllamaRateLimitError",
