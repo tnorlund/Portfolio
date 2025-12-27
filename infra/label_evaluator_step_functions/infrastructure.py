@@ -68,7 +68,7 @@ langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 
 # Label evaluator specific config
 evaluator_config = Config("label-evaluator")
-max_concurrency_default = evaluator_config.get_int("max_concurrency") or 10
+max_concurrency_default = evaluator_config.get_int("max_concurrency") or 3
 batch_size_default = evaluator_config.get_int("batch_size") or 10
 
 

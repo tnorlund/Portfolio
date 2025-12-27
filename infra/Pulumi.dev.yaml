@@ -39,3 +39,4 @@ config:
   docker-build:force-rebuild: "false"
   docker-build:debug-mode: "false"
   portfolio:force-rebuild: "false"
+  label-evaluator:max_concurrency: "3"
