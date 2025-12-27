@@ -149,6 +149,12 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
         _tracing_import_source,
     )
 
+    # Allow runtime override of LangSmith project via Step Function input
+    langchain_project = event.get("langchain_project")
+    if langchain_project:
+        os.environ["LANGCHAIN_PROJECT"] = langchain_project
+        logger.info("LangSmith project set to: %s", langchain_project)
+
     execution_id = event.get("execution_id", "unknown")
     execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")

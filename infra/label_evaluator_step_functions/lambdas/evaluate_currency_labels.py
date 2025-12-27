@@ -62,8 +62,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
     Evaluate currency labels using LLM and line item patterns.
 
-    Runs in parallel with EvaluateLabels. Joins the execution-level trace
-    from DiscoverLineItemPatterns/ComputePatterns.
+    Runs in parallel with EvaluateLabels. Joins the receipt-level trace
+    using receipt_trace_id from FetchReceiptData.
 
     Input:
     {
@@ -73,10 +73,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "batch_bucket": "bucket-name",
         "merchant_name": "Wild Fork",
         "dry_run": false,
-        # Trace context (from execution-level trace)
-        "trace_id": "...",
-        "root_run_id": "...",
-        "root_dotted_order": "..."
+        # Receipt-level trace_id from FetchReceiptData
+        "receipt_trace_id": "..."
     }
 
     Output:
@@ -95,6 +93,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         _tracing_import_source,
     )
 
+    # Allow runtime override of LangSmith project via Step Function input
+    langchain_project = event.get("langchain_project")
+    if langchain_project:
+        os.environ["LANGCHAIN_PROJECT"] = langchain_project
+        logger.info("LangSmith project set to: %s", langchain_project)
+
     data_s3_key = event.get("data_s3_key")
     line_item_patterns_s3_key = event.get("line_item_patterns_s3_key")
     execution_id = event.get("execution_id", "unknown")
@@ -103,10 +107,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     merchant_name = event.get("merchant_name", "unknown")
     dry_run = event.get("dry_run", False)
 
-    # Trace context from upstream (execution-level trace)
-    trace_id = event.get("trace_id", "")
-    root_run_id = event.get("root_run_id", "")
-    root_dotted_order = event.get("root_dotted_order")
+    # Receipt-level trace_id from FetchReceiptData
+    # This ensures all parallel evaluators (EvaluateLabels, Currency, Metadata)
+    # share the same receipt trace. For receipt traces, root_run_id == trace_id.
+    receipt_trace_id = event.get("receipt_trace_id", "")
+    # Note: We don't have root_dotted_order since EvaluateLabels creates it simultaneously.
+    # The trace will still link correctly via trace_id and parent_run_id.
     enable_tracing = event.get("enable_tracing", True)
 
     if not data_s3_key:
@@ -121,15 +127,16 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     receipt_id = None
     result = None
 
-    # Join the execution-level trace as a child
+    # Join the receipt-level trace as a child
+    # For receipt traces, root_run_id == trace_id (by design)
     with receipt_state_trace(
         execution_arn=execution_arn,
         image_id="",  # Will be updated after loading
         receipt_id=0,
         state_name="EvaluateCurrencyLabels",
-        trace_id=trace_id,
-        root_run_id=root_run_id,
-        root_dotted_order=root_dotted_order,
+        trace_id=receipt_trace_id,
+        root_run_id=receipt_trace_id,  # For receipt traces, root_run_id == trace_id
+        root_dotted_order=None,  # Not available - EvaluateLabels creates it simultaneously
         inputs={
             "data_s3_key": data_s3_key,
             "merchant_name": merchant_name,

@@ -755,6 +755,38 @@ class LabelEvaluatorStepFunction(ComponentResource):
         evaluate_metadata_lambda = metadata_docker_image.lambda_function
 
         # ============================================================
+        # Container Lambda: close_receipt_trace (minimal)
+        # Closes receipt trace after parallel evaluation completes
+        # ============================================================
+        close_trace_lambda_config = {
+            "role_arn": lambda_role.arn,
+            "timeout": 30,  # 30 seconds (minimal work)
+            "memory_size": 256,  # Minimal memory
+            "tags": {"environment": stack},
+            "environment": {
+                **tracing_env,
+            },
+        }
+
+        close_trace_docker_image = CodeBuildDockerImage(
+            f"{name}-close-trace-img",
+            dockerfile_path=(
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.close_trace"
+            ),
+            build_context_path=".",
+            source_paths=[
+                "infra/label_evaluator_step_functions/lambdas",
+            ],
+            lambda_function_name=f"{name}-close-trace",
+            lambda_config=close_trace_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
+        )
+
+        close_trace_lambda = close_trace_docker_image.lambda_function
+
+        # ============================================================
         # Step Function role policies
         # ============================================================
         RolePolicy(
@@ -768,6 +800,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 evaluate_labels_lambda.arn,
                 evaluate_currency_lambda.arn,
                 evaluate_metadata_lambda.arn,
+                close_trace_lambda.arn,
                 aggregate_results_lambda.arn,
                 final_aggregate_lambda.arn,
                 discover_patterns_lambda.arn,
@@ -852,6 +885,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 evaluate_labels_lambda.arn,
                 evaluate_currency_lambda.arn,
                 evaluate_metadata_lambda.arn,
+                close_trace_lambda.arn,
                 aggregate_results_lambda.arn,
                 final_aggregate_lambda.arn,
                 discover_patterns_lambda.arn,
@@ -866,11 +900,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     evaluate_labels_arn=args[4],
                     evaluate_currency_arn=args[5],
                     evaluate_metadata_arn=args[6],
-                    aggregate_results_arn=args[7],
-                    final_aggregate_arn=args[8],
-                    discover_patterns_arn=args[9],
-                    llm_review_arn=args[10],
-                    batch_bucket=args[11],
+                    close_trace_arn=args[7],
+                    aggregate_results_arn=args[8],
+                    final_aggregate_arn=args[9],
+                    discover_patterns_arn=args[10],
+                    llm_review_arn=args[11],
+                    batch_bucket=args[12],
                     max_concurrency=self.max_concurrency,
                     batch_size=self.batch_size,
                 )
@@ -894,6 +929,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "evaluate_labels_lambda_arn": evaluate_labels_lambda.arn,
                 "evaluate_currency_lambda_arn": evaluate_currency_lambda.arn,
                 "evaluate_metadata_lambda_arn": evaluate_metadata_lambda.arn,
+                "close_trace_lambda_arn": close_trace_lambda.arn,
                 "llm_review_lambda_arn": llm_review_lambda.arn,
                 "aggregate_results_lambda_arn": aggregate_results_lambda.arn,
                 "final_aggregate_lambda_arn": final_aggregate_lambda.arn,
@@ -910,6 +946,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         evaluate_labels_arn: str,
         evaluate_currency_arn: str,
         evaluate_metadata_arn: str,
+        close_trace_arn: str,
         aggregate_results_arn: str,
         final_aggregate_arn: str,
         discover_patterns_arn: str,
@@ -963,6 +1000,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "force_rediscovery": False,
                         "enable_tracing": True,
                         "limit": None,
+                        "langchain_project": None,
                     },
                     "ResultPath": "$.defaults",
                     "Next": "MergeInputWithDefaults",
@@ -1000,6 +1038,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "dry_run.$": "$.config.merged.dry_run",
                         "force_rediscovery.$": "$.config.merged.force_rediscovery",
                         "enable_tracing.$": "$.config.merged.enable_tracing",
+                        "langchain_project.$": "$.config.merged.langchain_project",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
                         "limit.$": "$.config.merged.limit",
@@ -1020,6 +1059,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "dry_run.$": "$.config.merged.dry_run",
                         "force_rediscovery.$": "$.config.merged.force_rediscovery",
                         "enable_tracing.$": "$.config.merged.enable_tracing",
+                        "langchain_project.$": "$.config.merged.langchain_project",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
                         "limit.$": "$.config.merged.limit",
@@ -1097,6 +1137,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "dry_run.$": "$.init.dry_run",
                         "force_rediscovery.$": "$.init.force_rediscovery",
                         "enable_tracing.$": "$.init.enable_tracing",
+                        "langchain_project.$": "$.init.langchain_project",
                     },
                     "ItemProcessor": {
                         "ProcessorConfig": {"Mode": "INLINE"},
@@ -1157,6 +1198,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     "merchant_name.$": "$.merchant.merchant_name",
                                     "force_rediscovery.$": "$.force_rediscovery",
                                     "enable_tracing.$": "$.enable_tracing",
+                                    "langchain_project.$": "$.langchain_project",
                                     # Pass execution ARN for deterministic trace ID
                                     "execution_arn.$": "$$.Execution.Id",
                                 },
@@ -1182,6 +1224,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     "merchant.$": "$.merchant",
                                     "max_training_receipts.$": "$.max_training_receipts",
                                     "enable_tracing.$": "$.enable_tracing",
+                                    "langchain_project.$": "$.langchain_project",
                                     # Deterministic trace propagation
                                     "execution_arn.$": "$$.Execution.Id",
                                     "trace_id.$": "$.line_item_patterns.trace_id",
@@ -1200,10 +1243,11 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                 "Next": "ProcessBatches",
                             },
                             # Process receipt batches - simplified flow with parallel evaluation
+                            # Reduced concurrency (was 3) to avoid Ollama rate limits
                             "ProcessBatches": {
                                 "Type": "Map",
                                 "ItemsPath": "$.receipts_data.receipt_batches",
-                                "MaxConcurrency": max_concurrency,
+                                "MaxConcurrency": 2,
                                 "Parameters": {
                                     "batch.$": "$$.Map.Item.Value",
                                     "batch_index.$": "$$.Map.Item.Index",
@@ -1214,6 +1258,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     "merchant_name.$": "$.merchant.merchant_name",
                                     "dry_run.$": "$.dry_run",
                                     "enable_tracing.$": "$.enable_tracing",
+                                    "langchain_project.$": "$.langchain_project",
                                     # Deterministic trace propagation
                                     "execution_arn.$": "$$.Execution.Id",
                                     "trace_id.$": "$.line_item_patterns.trace_id",
@@ -1224,10 +1269,11 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     "ProcessorConfig": {"Mode": "INLINE"},
                                     "StartAt": "ProcessReceipts",
                                     "States": {
+                                        # Reduced concurrency (was 5) to avoid Ollama rate limits
                                         "ProcessReceipts": {
                                             "Type": "Map",
                                             "ItemsPath": "$.batch",
-                                            "MaxConcurrency": 5,
+                                            "MaxConcurrency": 2,
                                             "Parameters": {
                                                 "receipt.$": "$$.Map.Item.Value",
                                                 "receipt_index.$": "$$.Map.Item.Index",
@@ -1239,6 +1285,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                 "merchant_name.$": "$.merchant_name",
                                                 "dry_run.$": "$.dry_run",
                                                 "enable_tracing.$": "$.enable_tracing",
+                                                "langchain_project.$": "$.langchain_project",
                                                 # Deterministic trace propagation
                                                 "execution_arn.$": "$.execution_arn",
                                                 "trace_id.$": "$.trace_id",
@@ -1250,6 +1297,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                 "StartAt": "FetchReceiptData",
                                                 "States": {
                                                     # Fetch receipt data from DynamoDB
+                                                    # Also generates receipt-level trace_id for parallel evaluators
                                                     "FetchReceiptData": {
                                                         "Type": "Task",
                                                         "Resource": fetch_receipt_data_arn,
@@ -1258,6 +1306,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                             "receipt.$": "$.receipt",
                                                             "execution_id.$": "$.execution_id",
                                                             "batch_bucket.$": "$.batch_bucket",
+                                                            # Pass execution_arn for receipt trace_id generation
+                                                            "execution_arn.$": "$.execution_arn",
                                                         },
                                                         "ResultPath": "$.receipt_data",
                                                         "Retry": [
@@ -1286,7 +1336,11 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                             "patterns_s3_key.$": "$.patterns_s3_key",
                                                                             "execution_id.$": "$.execution_id",
                                                                             "batch_bucket.$": "$.batch_bucket",
-                                                                            # Deterministic trace propagation
+                                                                            "enable_tracing.$": "$.enable_tracing",
+                                                                            "langchain_project.$": "$.langchain_project",
+                                                                            # Receipt-level trace_id from FetchReceiptData
+                                                                            "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
+                                                                            # Execution-level trace propagation (for reference)
                                                                             "execution_arn.$": "$.execution_arn",
                                                                             "trace_id.$": "$.trace_id",
                                                                             "root_run_id.$": "$.root_run_id",
@@ -1321,7 +1375,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                             "merchant_name.$": "$.merchant_name",
                                                                             "dry_run.$": "$.dry_run",
                                                                             "enable_tracing.$": "$.enable_tracing",
-                                                                            # Deterministic trace propagation
+                                                                            "langchain_project.$": "$.langchain_project",
+                                                                            # Receipt-level trace_id from FetchReceiptData
+                                                                            "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
+                                                                            # Execution-level trace propagation (for reference)
                                                                             "execution_arn.$": "$.execution_arn",
                                                                             "trace_id.$": "$.trace_id",
                                                                             "root_run_id.$": "$.root_run_id",
@@ -1361,7 +1418,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                             "merchant_name.$": "$.merchant_name",
                                                                             "dry_run.$": "$.dry_run",
                                                                             "enable_tracing.$": "$.enable_tracing",
-                                                                            # Deterministic trace propagation
+                                                                            "langchain_project.$": "$.langchain_project",
+                                                                            # Receipt-level trace_id from FetchReceiptData
+                                                                            "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
+                                                                            # Execution-level trace propagation (for reference)
                                                                             "execution_arn.$": "$.execution_arn",
                                                                             "trace_id.$": "$.trace_id",
                                                                             "root_run_id.$": "$.root_run_id",
@@ -1402,7 +1462,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                 "Next": "LLMReviewReceipt",
                                                             }
                                                         ],
-                                                        "Default": "ReturnResult",
+                                                        # No issues - close trace and return
+                                                        "Default": "CloseReceiptTrace",
                                                     },
                                                     # LLM reviews issues for this receipt
                                                     "LLMReviewReceipt": {
@@ -1420,6 +1481,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                             "line_item_patterns_s3_key.$": "$.line_item_patterns_s3_key",
                                                             "dry_run.$": "$.dry_run",
                                                             "enable_tracing.$": "$.enable_tracing",
+                                                            "langchain_project.$": "$.langchain_project",
                                                             # Deterministic trace propagation
                                                             "execution_arn.$": "$.execution_arn",
                                                             "trace_id.$": "$.parallel_results[0].trace_id",
@@ -1442,6 +1504,39 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                 "MaxAttempts": 2,
                                                                 "BackoffRate": 2.0,
                                                             },
+                                                        ],
+                                                        "Next": "ReturnResult",
+                                                    },
+                                                    # Close receipt trace when no issues found
+                                                    # (LLMReviewReceipt closes it when there ARE issues)
+                                                    "CloseReceiptTrace": {
+                                                        "Type": "Task",
+                                                        "Resource": close_trace_arn,
+                                                        "TimeoutSeconds": 30,
+                                                        "Parameters": {
+                                                            # Trace info from EvaluateLabels
+                                                            "trace_id.$": "$.parallel_results[0].trace_id",
+                                                            "root_run_id.$": "$.parallel_results[0].root_run_id",
+                                                            "image_id.$": "$.parallel_results[0].image_id",
+                                                            "receipt_id.$": "$.parallel_results[0].receipt_id",
+                                                            "issues_found.$": "$.parallel_results[0].issues_found",
+                                                            "enable_tracing.$": "$.enable_tracing",
+                                                            "langchain_project.$": "$.langchain_project",
+                                                            # Currency results (index 1)
+                                                            "currency_words_evaluated.$": "$.parallel_results[1].currency_words_evaluated",
+                                                            "currency_decisions.$": "$.parallel_results[1].decisions",
+                                                            # Metadata results (index 2)
+                                                            "metadata_words_evaluated.$": "$.parallel_results[2].metadata_words_evaluated",
+                                                            "metadata_decisions.$": "$.parallel_results[2].decisions",
+                                                        },
+                                                        "ResultPath": "$.close_trace_result",
+                                                        "Retry": [
+                                                            {
+                                                                "ErrorEquals": ["States.TaskFailed"],
+                                                                "IntervalSeconds": 2,
+                                                                "MaxAttempts": 2,
+                                                                "BackoffRate": 2.0,
+                                                            }
                                                         ],
                                                         "Next": "ReturnResult",
                                                     },
