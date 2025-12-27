@@ -331,9 +331,18 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             "root_dotted_order": receipt_trace.root_dotted_order,
         }
 
-        # End the receipt trace (don't close it yet - LLMReview will add to it)
-        # Note: We don't call end_receipt_trace here because LLMReview will continue it
-        # The trace will be ended after LLMReview completes
+        # End the receipt trace if no issues found (LLMReview won't run)
+        # If there ARE issues, LLMReview will end the trace after processing
+        issues_found = result.get("issues_found", 0)
+        if issues_found == 0:
+            end_receipt_trace(
+                receipt_trace,
+                outputs={
+                    "status": "completed",
+                    "issues_found": 0,
+                    "llm_review": "skipped",
+                },
+            )
 
         # Flush LangSmith traces
         flush_langsmith_traces()

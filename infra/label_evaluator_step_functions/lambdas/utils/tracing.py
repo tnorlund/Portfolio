@@ -891,6 +891,46 @@ def end_receipt_trace(
         logger.warning("Failed to end receipt trace: %s", e)
 
 
+def end_receipt_trace_by_id(
+    trace_id: str,
+    root_run_id: str,
+    outputs: Optional[dict] = None,
+) -> None:
+    """End a receipt trace by ID (for cross-Lambda trace closing).
+
+    Use this when you need to close a receipt trace that was started in a
+    different Lambda. This is necessary because the RunTree object is not
+    serializable across Lambda invocations.
+
+    Args:
+        trace_id: The trace ID from EvaluateLabels output
+        root_run_id: The root run ID from EvaluateLabels output
+        outputs: Optional outputs to attach to the trace
+    """
+    if not HAS_LANGSMITH or _RunTree is None:
+        logger.info("LangSmith not available, skipping trace end by ID")
+        return
+
+    try:
+        # Create a RunTree with the same ID to patch the existing run
+        # We only need to set end_time and outputs - the run already exists
+        run_tree = _RunTree(
+            id=root_run_id,
+            trace_id=trace_id,
+            name="ReceiptEvaluation",  # Must match original name
+            run_type="chain",
+            outputs=outputs or {},
+        )
+        run_tree.end()
+        run_tree.patch()
+        logger.info(
+            "Receipt trace ended by ID (root_run_id=%s)",
+            root_run_id[:8] if len(root_run_id) > 8 else root_run_id,
+        )
+    except Exception as e:
+        logger.warning("Failed to end receipt trace by ID: %s", e, exc_info=True)
+
+
 @contextmanager
 def receipt_state_trace(
     execution_arn: str,

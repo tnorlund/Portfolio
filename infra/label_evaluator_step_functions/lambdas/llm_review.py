@@ -24,6 +24,7 @@ try:
     from tracing import (
         TRACING_VERSION,
         child_trace,
+        end_receipt_trace_by_id,
         flush_langsmith_traces,
         receipt_state_trace,
     )
@@ -37,6 +38,7 @@ except ImportError:
     from tracing import (
         TRACING_VERSION,
         child_trace,
+        end_receipt_trace_by_id,
         flush_langsmith_traces,
         receipt_state_trace,
     )
@@ -686,6 +688,19 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                 "error": str(e),
             }
             trace_ctx.set_outputs(result)
+
+    # End the receipt trace that was started in EvaluateLabels
+    # This closes the parent trace that spans both EvaluateLabels and LLMReview
+    if trace_id and root_run_id:
+        end_receipt_trace_by_id(
+            trace_id=trace_id,
+            root_run_id=root_run_id,
+            outputs={
+                "status": result.get("status", "unknown"),
+                "issues_reviewed": result.get("issues_reviewed", 0),
+                "decisions": result.get("decisions", {}),
+            },
+        )
 
     # Flush LangSmith traces
     flush_langsmith_traces()
