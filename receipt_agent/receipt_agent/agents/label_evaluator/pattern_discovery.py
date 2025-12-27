@@ -37,9 +37,8 @@ Usage:
 import json
 import logging
 import os
-from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol
+from typing import Any, Protocol
 
 import httpx
 
@@ -336,6 +335,9 @@ def build_receipt_structure(
             words = dynamo_client.list_receipt_words_from_receipt(
                 place.image_id, place.receipt_id
             )
+            # Handle implementations that return (items, last_key) tuple
+            if isinstance(words, tuple):
+                words = words[0]
             labels_result = dynamo_client.list_receipt_word_labels_for_receipt(
                 place.image_id, place.receipt_id
             )
@@ -562,8 +564,8 @@ Respond with ONLY the JSON object, no markdown code blocks or other text."""
 
 def discover_patterns_with_llm(
     prompt: str,
-    config: Optional[PatternDiscoveryConfig] = None,
-    trace_ctx: Optional[Any] = None,
+    config: PatternDiscoveryConfig | None = None,
+    trace_ctx: Any | None = None,
 ) -> dict | None:
     """Call LLM to discover patterns.
 
@@ -582,7 +584,6 @@ def discover_patterns_with_llm(
         logger.error("OLLAMA_API_KEY not set")
         return None
 
-    content = ""
     llm_inputs = {
         "model": config.ollama_model,
         "messages": [

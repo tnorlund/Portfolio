@@ -21,12 +21,10 @@ Detects labeling errors such as:
 # pylint: disable=import-outside-toplevel
 # asyncio imported inside sync wrappers to avoid issues in async contexts
 
-import json
 import logging
 from datetime import UTC, datetime
-from typing import Any, Optional
+from typing import Any
 
-from langchain_core.messages import HumanMessage
 from langgraph.graph import END, StateGraph
 
 # Optional: langchain_ollama for Ollama Cloud
@@ -38,22 +36,11 @@ except ImportError:
     HAS_OLLAMA = False
     ChatOllama = None  # type: ignore
 
-from receipt_dynamo.entities import ReceiptWordLabel
-
-from receipt_agent.agents.label_evaluator.word_context import (
-    assemble_visual_lines,
-    build_word_contexts,
-)
 from receipt_agent.agents.label_evaluator.issue_detection import (
     evaluate_word_contexts,
 )
 from receipt_agent.agents.label_evaluator.llm_review import (
-    build_review_context,
     review_all_issues,
-)
-from receipt_agent.utils.chroma_helpers import (
-    format_similar_words_for_prompt,
-    query_similar_validated_words,
 )
 from receipt_agent.agents.label_evaluator.patterns import (
     compute_merchant_patterns,
@@ -64,7 +51,12 @@ from receipt_agent.agents.label_evaluator.state import (
     OtherReceiptData,
     ReviewResult,
 )
+from receipt_agent.agents.label_evaluator.word_context import (
+    assemble_visual_lines,
+    build_word_contexts,
+)
 from receipt_agent.constants import CORE_LABELS
+from receipt_dynamo.entities import ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
@@ -89,90 +81,13 @@ def _coord_value(coord: Any, key: str, default: float = 0.5) -> float:
 # Can be overridden per-run via max_receipts parameter.
 MAX_OTHER_RECEIPTS = 10
 
-# LLM Review Prompt
-LLM_REVIEW_PROMPT = """You are reviewing a flagged label issue on a receipt.
-
-An automated evaluator flagged this label as potentially incorrect based on
-spatial patterns.
-Your job is to make the final semantic decision using the full context.
-
-## CORE_LABELS Definitions
-
-{core_labels}
-
-## Issue Details
-
-- **Word**: "{word_text}"
-- **Current Label**: {current_label}
-- **Issue Type**: {issue_type}
-- **Evaluator Reasoning**: {evaluator_reasoning}
-
-## Receipt Context
-
-The word is marked with [brackets] in the receipt below:
-
-```
-{receipt_text}
-```
-
-## Same Visual Line
-
-Line: "{visual_line_text}"
-Labels on this line: {visual_line_labels}
-
-## Similar Words from Database
-
-These are semantically similar words from other receipts with their validated
-labels:
-
-{similar_words}
-
-IMPORTANT: Use these examples to understand what labels are typically assigned
-to similar text. If the similar words show that text like "{word_text}"
-typically has NO label or a DIFFERENT label,
-that's strong evidence the current label may be wrong.
-
-## Label History
-
-{label_history}
-
-## Your Task
-
-Decide if the current label is correct:
-
-- **VALID**: The label IS correct despite the flag (false positive from
-  evaluator)
-  - Example: "CHARGE" labeled PAYMENT_METHOD is valid if it's part of
-    "CREDIT CARD CHARGE"
-
-- **INVALID**: The label IS wrong - provide the correct label from CORE_LABELS,
-  or null if no label applies
-  - Example: "Sprouts" in product area should be PRODUCT_NAME, not
-    MERCHANT_NAME
-  - Example: "Tip:" is a descriptor, not a value - it should have no label
-    (suggested_label: null)
-
-- **NEEDS_REVIEW**: Genuinely ambiguous, needs human review
-
-Respond with ONLY a JSON object (no markdown, no explanation outside JSON):
-{{"decision": "VALID|INVALID|NEEDS_REVIEW", "reasoning": "your explanation",
- "suggested_label": "LABEL_NAME or null"}}"""
-
-
-def _format_core_labels() -> str:
-    """Format CORE_LABELS as a readable string."""
-    return "\n".join(
-        f"- **{label}**: {definition}"
-        for label, definition in CORE_LABELS.items()
-    )
-
 
 def create_label_evaluator_graph(
     dynamo_client: Any,
-    llm_model: Optional[str] = None,
+    llm_model: str | None = None,
     llm: Any = None,
     ollama_base_url: str = "https://ollama.com",
-    ollama_api_key: Optional[str] = None,
+    ollama_api_key: str | None = None,
     chroma_client: Any = None,
     max_pair_patterns: int = 4,
     max_relationship_dimension: int = 2,
@@ -683,7 +598,7 @@ def create_label_evaluator_graph(
 
 def _create_evaluation_label(
     issue: EvaluationIssue,
-    review_result: Optional[ReviewResult] = None,
+    review_result: ReviewResult | None = None,
 ) -> ReceiptWordLabel:
     """
     Create a new ReceiptWordLabel documenting the evaluation result.
