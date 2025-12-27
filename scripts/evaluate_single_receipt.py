@@ -84,6 +84,7 @@ def main():
 
     # Import after setting env vars
     from receipt_dynamo import DynamoClient
+    from langchain_ollama import ChatOllama
     from receipt_agent.agents.label_evaluator import (
         # Pattern discovery
         build_receipt_structure,
@@ -98,7 +99,7 @@ def main():
         run_compute_only_sync,
         EvaluatorState,
         # LLM Review
-        review_issues_batch,
+        review_all_issues,
         apply_llm_decisions,
     )
     from receipt_agent.agents.label_evaluator.pattern_discovery import (
@@ -197,14 +198,28 @@ def main():
                 logger.warning(f"  ChromaDB failed: {e}")
 
         try:
-            reviewed_issues = review_issues_batch(
+            # Create LLM for review
+            llm = ChatOllama(
+                model=os.environ.get("OLLAMA_MODEL", "gpt-oss:120b-cloud"),
+                base_url=os.environ.get("OLLAMA_BASE_URL", "https://ollama.com"),
+                api_key=os.environ.get("OLLAMA_API_KEY", ""),
+                temperature=0.0,
+            )
+
+            # Serialize words and labels to dicts
+            words_dicts = [w.to_dict() for w in words]
+            labels_dicts = [lbl.to_dict() for lbl in labels]
+
+            reviewed_issues = review_all_issues(
                 issues=issues,
-                words=words,
-                labels=labels,
+                receipt_words=words_dicts,
+                receipt_labels=labels_dicts,
                 merchant_name=merchant_name,
-                line_item_patterns=patterns,
+                merchant_receipt_count=len(places),
+                llm=llm,
                 chroma_client=chroma_client,
                 dynamo_client=dynamo_client,
+                line_item_patterns=patterns,
             )
             logger.info(f"  Reviewed {len(reviewed_issues)} issues")
         finally:
