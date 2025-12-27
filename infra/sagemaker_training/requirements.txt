@@ -1,0 +1,12 @@
+# LayoutLM Training Dependencies
+transformers>=4.40.0
+datasets>=2.19.0
+boto3>=1.34.0
+seqeval>=1.2.2
+Pillow>=10.0.0
+sentencepiece>=0.1.99
+pydantic>=2.10.6
+tqdm>=4.66.0
+filelock>=3.13.0
+accelerate>=0.21.0
+sagemaker-training>=4.0.0

@@ -399,16 +399,37 @@ pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
 
 # ML Training Infrastructure
 # -------------------------
-# Minimal LayoutLM training infra (toggle via config)
-from layoutlm_training.component import LayoutLMTrainingInfra
+# LayoutLM training infra (toggle via config)
+# Options:
+#   - enable-sagemaker: Use SageMaker for managed training (recommended)
+#   - enable-minimal: Use EC2-based training (legacy)
 
 ml_cfg = pulumi.Config("ml-training")
+enable_sagemaker = ml_cfg.get_bool("enable-sagemaker") or False
 enable_minimal = ml_cfg.get_bool("enable-minimal") or False
 
 # Training bucket - either from new training infra or existing bucket name
 layoutlm_training_bucket_name: Optional[Output[str]] = None
 
-if enable_minimal:
+if enable_sagemaker:
+    # SageMaker-based training (recommended)
+    from sagemaker_training import SageMakerTrainingInfra
+
+    sagemaker_training = SageMakerTrainingInfra(
+        "layoutlm-sagemaker",
+        dynamodb_table_name=dynamodb_table.name,
+    )
+    layoutlm_training_bucket_name = sagemaker_training.output_bucket.bucket
+    pulumi.export("layoutlm_training_bucket", sagemaker_training.output_bucket.bucket)
+    pulumi.export("layoutlm_sagemaker_ecr_repo", sagemaker_training.ecr_repo.repository_url)
+    pulumi.export("layoutlm_sagemaker_role_arn", sagemaker_training.sagemaker_role.arn)
+    pulumi.export("layoutlm_start_training_lambda", sagemaker_training.start_training_lambda.arn)
+    pulumi.export("layoutlm_codebuild_project", sagemaker_training.codebuild_project.name)
+
+elif enable_minimal:
+    # EC2-based training (legacy)
+    from layoutlm_training.component import LayoutLMTrainingInfra
+
     training = LayoutLMTrainingInfra(
         "layoutlm",
         dynamodb_table_name=dynamodb_table.name,
