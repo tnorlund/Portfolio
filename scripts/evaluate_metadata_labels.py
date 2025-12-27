@@ -91,15 +91,10 @@ def main():
     )
     logger.info(f"  Loaded {len(words)} words")
 
-    # Get labels (returns tuple of batches)
-    labels_result = dynamo_client.list_receipt_word_labels_for_receipt(
+    # Get labels (returns tuple: list of labels, last_evaluated_key)
+    labels, _ = dynamo_client.list_receipt_word_labels_for_receipt(
         args.image_id, args.receipt_id
     )
-    # Flatten the batches
-    labels = []
-    for batch in labels_result:
-        if isinstance(batch, list):
-            labels.extend(batch)
     logger.info(f"  Loaded {len(labels)} labels")
 
     # Get place
@@ -148,7 +143,11 @@ def main():
     # Count decisions
     decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
     for d in decisions:
-        decision_counts[d["llm_review"]["decision"]] += 1
+        decision = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
+        if decision in decision_counts:
+            decision_counts[decision] += 1
+        else:
+            decision_counts["NEEDS_REVIEW"] += 1
     logger.info(f"  Decisions: {decision_counts}")
 
     # =========================================================================
@@ -160,7 +159,7 @@ def main():
         # Filter to only INVALID decisions
         invalid_decisions = [
             d for d in decisions
-            if d["llm_review"]["decision"] == "INVALID"
+            if d.get("llm_review", {}).get("decision") == "INVALID"
         ]
 
         if invalid_decisions:

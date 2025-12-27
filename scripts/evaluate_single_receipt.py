@@ -231,8 +231,12 @@ def main():
         print(f"LLM decisions: {decisions}")
 
     for i, issue in enumerate(issues[:10]):
-        print(f"\n  [{i}] {issue.issue_type}: \"{issue.word.text}\"")
-        print(f"      Current: {issue.current_label}")
+        # Issues are dicts from run_compute_only_sync
+        issue_type = issue.get("type", "unknown")
+        word_text = issue.get("word_text", "")
+        current_label = issue.get("current_label", "")
+        print(f"\n  [{i}] {issue_type}: \"{word_text}\"")
+        print(f"      Current: {current_label}")
         if i < len(reviewed_issues):
             r = reviewed_issues[i]
             print(f"      Decision: {r.get('decision')} - {r.get('reasoning', '')[:60]}...")

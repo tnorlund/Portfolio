@@ -38,6 +38,7 @@ except ImportError:
 
 from receipt_agent.agents.label_evaluator.currency_subagent import (
     evaluate_currency_labels_sync,
+    convert_to_evaluation_issues,
 )
 from receipt_agent.agents.label_evaluator.issue_detection import (
     evaluate_word_contexts,
@@ -408,19 +409,22 @@ def create_label_evaluator_graph(
             }
 
         try:
-            currency_issues = evaluate_currency_labels_sync(
+            currency_decisions = evaluate_currency_labels_sync(
                 visual_lines=state.visual_lines,
                 patterns=patterns,
                 llm=_llm,
+                image_id=state.image_id,
+                receipt_id=state.receipt_id,
                 merchant_name=merchant_name,
             )
 
-            if currency_issues:
+            if currency_decisions:
                 logger.info(
                     "Currency subagent found %s issues",
-                    len(currency_issues),
+                    len(currency_decisions),
                 )
-                # Merge with existing issues
+                # Convert dicts to EvaluationIssue objects and merge
+                currency_issues = convert_to_evaluation_issues(currency_decisions)
                 combined_issues = list(state.issues_found) + currency_issues
                 return {"issues_found": combined_issues}
 
