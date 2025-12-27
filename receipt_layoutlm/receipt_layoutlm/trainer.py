@@ -742,6 +742,26 @@ class ReceiptLayoutLMTrainer:
                 source="receipt_layoutlm.trainer",
             )
             self.dynamo.add_job_log(summary_log)
+
+            # Update Job with results and mark as succeeded
+            job.status = "succeeded"
+            job.results = {
+                "best_f1": float(best_f1) if best_f1 is not None else None,
+                "best_epoch": int(best_epoch) if best_epoch is not None else None,
+                "early_stopping_triggered": early_stopping_triggered,
+            }
+            # Add training time metrics if available
+            if "train_runtime_seconds" in summary_payload:
+                job.results["train_runtime"] = summary_payload["train_runtime_seconds"]
+            if "total_flos" in summary_payload:
+                job.results["total_flos"] = summary_payload["total_flos"]
+            if "best_checkpoint_s3_path" in summary_payload:
+                job.results["best_checkpoint_s3_path"] = summary_payload["best_checkpoint_s3_path"]
+            elif "best_checkpoint_path" in summary_payload:
+                job.results["best_checkpoint_path"] = summary_payload["best_checkpoint_path"]
+
+            self.dynamo.update_job(job)
+
         except (
             DynamoDBError,
             EntityError,

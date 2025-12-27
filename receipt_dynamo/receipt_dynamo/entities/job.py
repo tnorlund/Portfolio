@@ -20,8 +20,7 @@ class Job:
     This class encapsulates job-related information such as its unique
     identifier, name, description, status, priority, and configuration. It is
     designed to support operations such as generating DynamoDB keys and
-    converting job metadata to a
-    DynamoDB-compatible item.
+    converting job metadata to a DynamoDB-compatible item.
 
     Attributes:
         job_id (str): UUID identifying the job.
@@ -36,6 +35,9 @@ class Job:
         job_config (Dict): The configuration for the job (stored as a JSON).
         estimated_duration (int): The estimated duration of the job in seconds.
         tags (Dict[str, str]): Tags associated with the job.
+        storage (Dict[str, str]): S3 storage paths (bucket, prefixes).
+        results (Dict[str, Any]): Training results populated after completion.
+            Expected keys: best_f1, best_epoch, train_runtime, total_flos.
     """
 
     job_id: str
@@ -52,6 +54,9 @@ class Job:
     #   bucket, run_root_prefix, checkpoints_prefix, best_prefix, logs_prefix,
     #   config_prefix, publish_model_prefix
     storage: Optional[Dict[str, str]] = None
+    # Optional training results/outcomes. Populated after training completes.
+    # Expected keys: best_f1, best_epoch, train_runtime, total_flos, etc.
+    results: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         """Validates fields after dataclass initialization.
@@ -131,6 +136,11 @@ class Job:
             # Replace with normalized copy to avoid mutating the input dict elsewhere
             self.storage = normalized
 
+        # Validate optional results map
+        if self.results is not None:
+            if not isinstance(self.results, dict):
+                raise ValueError("results must be a dictionary when provided")
+
     @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job.
@@ -179,6 +189,9 @@ class Job:
         if self.storage:
             item["storage"] = {"M": dict_to_dynamodb_map(self.storage)}
 
+        if self.results:
+            item["results"] = {"M": dict_to_dynamodb_map(self.results)}
+
         return item
 
     def __repr__(self) -> str:
@@ -198,7 +211,8 @@ class Job:
             f"priority={_repr_str(self.priority)}, "
             f"job_config={self.job_config}, "
             f"estimated_duration={self.estimated_duration}, "
-            f"tags={self.tags}"
+            f"tags={self.tags}, "
+            f"results={self.results}"
             ")"
         )
 
@@ -220,6 +234,7 @@ class Job:
         yield "estimated_duration", self.estimated_duration
         yield "tags", self.tags
         yield "storage", self.storage
+        yield "results", self.results
 
     def __hash__(self) -> int:
         """Returns the hash value of the Job object.
@@ -245,6 +260,12 @@ class Job:
                 (
                     tuple(sorted((k, str(v)) for k, v in self.storage.items()))
                     if self.storage
+                    else None
+                ),
+                # Include results map in hash if present
+                (
+                    tuple(sorted((k, str(v)) for k, v in self.results.items()))
+                    if self.results
                     else None
                 ),
             )
@@ -348,6 +369,11 @@ def item_to_job(item: Dict[str, Any]) -> Job:
         if "storage" in item and "M" in item["storage"]:
             storage = parse_dynamodb_map(item["storage"]["M"])
 
+        # Parse optional results map
+        results: Optional[Dict[str, Any]] = None
+        if "results" in item and "M" in item["results"]:
+            results = parse_dynamodb_map(item["results"]["M"])
+
         return Job(
             job_id=job_id,
             name=name,
@@ -360,6 +386,7 @@ def item_to_job(item: Dict[str, Any]) -> Job:
             estimated_duration=estimated_duration,
             tags=tags,
             storage=storage,
+            results=results,
         )
     except KeyError as e:
         raise ValueError(f"Error converting item to Job: {e}") from e

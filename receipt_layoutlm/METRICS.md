@@ -66,14 +66,39 @@ for m in [m for m in label_metrics if m.metric_name.startswith("label_")]:
 
 ## Training Summary Metrics
 
-End-of-run metrics. Currently stored in JobLog summary.
+End-of-run metrics stored in `Job.results` field after training completes.
 
 | Metric | Status | Source | Unit |
 |--------|--------|--------|------|
-| `train_runtime` | ❌ JobLog only | `trainer_state.json` | seconds |
-| `total_flos` | ❌ JobLog only | `trainer_state.json` | FLOPs |
-| `best_f1` | ❌ JobLog only | computed | ratio |
-| `best_epoch` | ❌ JobLog only | computed | epoch number |
+| `best_f1` | ✅ Job.results | computed | ratio |
+| `best_epoch` | ✅ Job.results | computed | epoch number |
+| `train_runtime` | ✅ Job.results | `trainer_state.json` | seconds |
+| `total_flos` | ✅ Job.results | `trainer_state.json` | FLOPs |
+| `early_stopping_triggered` | ✅ Job.results | computed | boolean |
+| `best_checkpoint_s3_path` | ✅ Job.results | computed | S3 URI |
+
+**Storage format:** Updated on Job entity after training:
+```python
+job.status = "succeeded"
+job.results = {
+    "best_f1": 0.92,
+    "best_epoch": 7,
+    "train_runtime": 3847.5,
+    "total_flos": 1200000000000000,
+    "early_stopping_triggered": True,
+    "best_checkpoint_s3_path": "s3://bucket/runs/job-name/best/",
+}
+dynamo.update_job(job)
+```
+
+**Query examples:**
+```python
+# Get a job and check its results
+job = dynamo.get_job(job_id)
+if job.results:
+    print(f"Best F1: {job.results['best_f1']}")
+    print(f"Training time: {job.results['train_runtime']:.1f}s")
+```
 
 ## GPU/Resource Metrics
 
