@@ -1218,7 +1218,7 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
     dynamodb_table_arn=dynamodb_table.arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-    max_concurrency=10,  # Process 10 receipts in parallel
+    max_concurrency=3,  # Limited to 3 to avoid Ollama rate limits
     batch_size=25,  # 25 receipts per batch
 )
 

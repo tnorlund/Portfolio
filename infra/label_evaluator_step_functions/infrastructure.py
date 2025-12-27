@@ -68,7 +68,9 @@ langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 
 # Label evaluator specific config
 evaluator_config = Config("label-evaluator")
-max_concurrency_default = evaluator_config.get_int("max_concurrency") or 3
+# Note: Config not reliably read at module import time. Use explicit value.
+# To change, update this value and redeploy.
+max_concurrency_default = 3  # evaluator_config.get_int("max_concurrency") or 3
 batch_size_default = evaluator_config.get_int("batch_size") or 10
 
 
@@ -914,7 +916,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         purpose is LangSmith observability of LLM calls.
         """
         definition = {
-            "Comment": "Label Evaluator with LangSmith Trace Propagation",
+            "Comment": f"Label Evaluator with LangSmith Trace Propagation (maxConcurrency={max_concurrency})",
             "StartAt": "NormalizeInput",
             "States": {
                 # Capture original input
