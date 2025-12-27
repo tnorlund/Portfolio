@@ -388,6 +388,26 @@ class ReceiptLayoutLMTrainer:
                         "epoch": current_epoch,
                         "global_step": int(getattr(state, "global_step", 0)),
                     }
+
+                    # Set up metric recording (used for both eval metrics and training metrics)
+                    epoch_val = int(current_epoch) if current_epoch is not None else None
+                    step_val = int(getattr(state, "global_step", 0))
+                    metrics_to_write: list = []
+
+                    def _add_metric(name: str, value: float, unit: str = "ratio"):
+                        """Add a metric to the batch for writing."""
+                        metrics_to_write.append(
+                            JobMetric(
+                                job_id=self.job_id,
+                                metric_name=name,
+                                value=float(value),
+                                timestamp=datetime.now().isoformat(),
+                                unit=unit,
+                                epoch=epoch_val,
+                                step=step_val,
+                            )
+                        )
+
                     if isinstance(metrics, dict):
                         # Add scalar metrics
                         entry.update(
@@ -401,29 +421,26 @@ class ReceiptLayoutLMTrainer:
                         if "per_label_metrics" in metrics:
                             entry["per_label_metrics"] = metrics["per_label_metrics"]
 
-                        # Store F1 metric to DynamoDB with epoch if available
-                        if "eval_f1" in metrics or "f1" in metrics:
-                            f1_value = metrics.get("eval_f1") or metrics.get("f1")
-                            if f1_value is not None:
-                                try:
-                                    from receipt_dynamo.data.shared_exceptions import (
-                                        DynamoDBError,
-                                        EntityError,
-                                        OperationError,
-                                    )
-                                    metric = JobMetric(
-                                        job_id=self.job_id,
-                                        metric_name="val_f1",
-                                        value=float(f1_value),
-                                        timestamp=datetime.now().isoformat(),
-                                        unit="ratio",
-                                        epoch=int(current_epoch) if current_epoch is not None else None,
-                                        step=int(getattr(state, "global_step", 0)),
-                                    )
-                                    self.dynamo.add_job_metric(metric)
-                                except (DynamoDBError, EntityError, OperationError):
-                                    # Best-effort write; ignore errors
-                                    pass
+                        # Collect training metrics for batch write
+                        # F1 score
+                        f1_value = metrics.get("eval_f1") or metrics.get("f1")
+                        if f1_value is not None:
+                            _add_metric("val_f1", f1_value, "ratio")
+
+                        # Precision
+                        prec_value = metrics.get("eval_precision") or metrics.get("precision")
+                        if prec_value is not None:
+                            _add_metric("val_precision", prec_value, "ratio")
+
+                        # Recall
+                        recall_value = metrics.get("eval_recall") or metrics.get("recall")
+                        if recall_value is not None:
+                            _add_metric("val_recall", recall_value, "ratio")
+
+                        # Eval loss
+                        eval_loss = metrics.get("eval_loss")
+                        if eval_loss is not None:
+                            _add_metric("eval_loss", eval_loss, "loss")
 
                     # Add training loss from log_history if available
                     if state and hasattr(state, "log_history") and state.log_history:
@@ -433,8 +450,18 @@ class ReceiptLayoutLMTrainer:
                             latest_train = train_logs[-1]
                             if "loss" in latest_train:
                                 entry["train_loss"] = float(latest_train["loss"])
+                                _add_metric("train_loss", latest_train["loss"], "loss")
                             if "learning_rate" in latest_train:
                                 entry["learning_rate"] = float(latest_train["learning_rate"])
+                                _add_metric("learning_rate", latest_train["learning_rate"], "rate")
+
+                    # Batch write all metrics in a single DynamoDB call
+                    if metrics_to_write:
+                        try:
+                            self.dynamo.add_job_metrics(metrics_to_write)
+                        except Exception:
+                            # Best-effort write; ignore all errors
+                            pass
 
                     epoch_metrics.append(entry)
                     data["epoch_metrics"] = epoch_metrics
