@@ -115,13 +115,32 @@ Hardware utilization metrics. Not currently captured.
 
 ## Dataset Quality Metrics
 
-Dataset statistics captured at training start.
+Dataset statistics captured at training start as `JobMetric` records with `epoch=None`.
 
-| Metric | Status | Source | Notes |
-|--------|--------|--------|-------|
-| `o_entity_ratio` | ❌ JobLog only | `_count_labels()` | Class imbalance (O tokens / entity tokens) |
-| `num_train_samples` | ❌ JobLog only | dataset | Training set size |
-| `num_val_samples` | ❌ JobLog only | dataset | Validation set size |
+| Metric | Status | Source | Unit | Notes |
+|--------|--------|--------|------|-------|
+| `num_train_samples` | ✅ Implemented | `_count_labels()` | count | Training set size (num_lines) |
+| `num_val_samples` | ✅ Implemented | `_count_labels()` | count | Validation set size (num_lines) |
+| `o_entity_ratio_train` | ✅ Implemented | `_count_labels()` | ratio | Class imbalance in training set |
+| `o_entity_ratio_val` | ✅ Implemented | `_count_labels()` | ratio | Class imbalance in validation set |
+
+**Implementation:** `receipt_layoutlm/trainer.py` → written after JobLog config entry.
+
+**Batch Write:** All 4 metrics written in single `add_job_metrics()` call at training start.
+
+**Query examples:**
+```python
+# Find jobs with high class imbalance
+metrics, _ = dynamo.get_metrics_by_name("o_entity_ratio_train")
+for m in metrics:
+    if m.value > 5.0:
+        print(f"Job {m.job_id[:8]}: O:entity ratio = {m.value:.2f}")
+
+# Compare dataset sizes across jobs
+train_sizes, _ = dynamo.get_metrics_by_name("num_train_samples")
+for m in train_sizes:
+    print(f"Job {m.job_id[:8]}: {int(m.value)} training samples")
+```
 
 ## Query Examples
 

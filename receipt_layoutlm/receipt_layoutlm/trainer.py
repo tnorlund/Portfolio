@@ -510,6 +510,64 @@ class ReceiptLayoutLMTrainer:
                 source="receipt_layoutlm.trainer",
             )
             self.dynamo.add_job_log(cfg_log)
+
+            # Write dataset quality metrics as individual JobMetric records
+            dataset_metrics: List[JobMetric] = []
+            ts = datetime.now().isoformat()
+
+            # Training set metrics
+            if "train" in dataset_counts:
+                train_stats = dataset_counts["train"]
+                dataset_metrics.append(
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="num_train_samples",
+                        value=train_stats.get("num_lines", 0),
+                        timestamp=ts,
+                        unit="count",
+                        epoch=None,
+                    )
+                )
+                if train_stats.get("o_entity_ratio") is not None:
+                    dataset_metrics.append(
+                        JobMetric(
+                            job_id=job.job_id,
+                            metric_name="o_entity_ratio_train",
+                            value=train_stats["o_entity_ratio"],
+                            timestamp=ts,
+                            unit="ratio",
+                            epoch=None,
+                        )
+                    )
+
+            # Validation set metrics
+            if "validation" in dataset_counts:
+                val_stats = dataset_counts["validation"]
+                dataset_metrics.append(
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="num_val_samples",
+                        value=val_stats.get("num_lines", 0),
+                        timestamp=ts,
+                        unit="count",
+                        epoch=None,
+                    )
+                )
+                if val_stats.get("o_entity_ratio") is not None:
+                    dataset_metrics.append(
+                        JobMetric(
+                            job_id=job.job_id,
+                            metric_name="o_entity_ratio_val",
+                            value=val_stats["o_entity_ratio"],
+                            timestamp=ts,
+                            unit="ratio",
+                            epoch=None,
+                        )
+                    )
+
+            if dataset_metrics:
+                self.dynamo.add_job_metrics(dataset_metrics)
+
         except (DynamoDBError, EntityError, OperationError, ValueError):
             pass
 
