@@ -65,7 +65,7 @@ class DynamoClientProtocol(Protocol):
 
     def list_receipt_words_from_receipt(
         self, image_id: str, receipt_id: int
-    ) -> list: ...
+    ) -> list | tuple[list, Any]: ...
 
     def list_receipt_word_labels_for_receipt(
         self, image_id: str, receipt_id: int
@@ -131,7 +131,7 @@ class PatternDiscoveryConfig:
     ollama_base_url: str = "https://ollama.com"
     ollama_model: str = "gpt-oss:120b-cloud"
     max_receipts: int = 3
-    max_lines_per_receipt: int = 80  # Increased from 50
+    max_lines_per_receipt: int = 80
     focus_on_line_items: bool = True  # Smart line selection
 
     @classmethod
@@ -605,8 +605,6 @@ def discover_patterns_with_llm(
 
     except json.JSONDecodeError as e:
         logger.exception("Failed to parse LLM response as JSON: %s", e)
-        # Note: content variable is set inside _call_llm_* functions, not here.
-        # The actual raw content is logged inside those functions on error.
         return None
     except Exception:
         logger.exception("LLM call failed")
