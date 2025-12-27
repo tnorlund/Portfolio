@@ -309,43 +309,29 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                 except Exception as e:
                     logger.warning(f"Could not initialize DynamoDB: {e}")
 
-            # 5. Setup Ollama LLM with LangSmith tracing context
+            # 5. Setup LLM with automatic Ollama → OpenRouter fallback
             with child_trace("setup_llm", trace_ctx):
-                ollama_api_key = os.environ.get("RECEIPT_AGENT_OLLAMA_API_KEY")
-                ollama_base_url = os.environ.get(
-                    "RECEIPT_AGENT_OLLAMA_BASE_URL", "https://ollama.com"
-                )
-                ollama_model = os.environ.get(
-                    "RECEIPT_AGENT_OLLAMA_MODEL", "gpt-oss:20b-cloud"
-                )
+                from receipt_agent.utils import create_production_invoker
 
-                if not ollama_api_key:
-                    raise ValueError("RECEIPT_AGENT_OLLAMA_API_KEY not set")
-
-                from langchain_ollama import ChatOllama
-
-                base_llm = ChatOllama(
-                    model=ollama_model,
-                    base_url=ollama_base_url,
-                    client_kwargs={
-                        "headers": {"Authorization": f"Bearer {ollama_api_key}"},
-                        "timeout": 120,
-                    },
-                    temperature=0,
-                )
-
-                # Wrap LLM with rate limiting and circuit breaker
-                circuit_breaker = OllamaCircuitBreaker(
-                    threshold=circuit_breaker_threshold
-                )
-                llm_invoker = RateLimitedLLMInvoker(
-                    llm=base_llm,
-                    circuit_breaker=circuit_breaker,
+                # create_production_invoker() creates:
+                # - ResilientLLM: Ollama (primary) → OpenRouter (fallback)
+                # - RateLimitedLLMInvoker: jitter + circuit breaker
+                # Environment variables used:
+                # - OLLAMA_API_KEY, OLLAMA_BASE_URL, OLLAMA_MODEL (or RECEIPT_AGENT_* variants)
+                # - OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
+                llm_invoker = create_production_invoker(
+                    temperature=0.0,
+                    timeout=120,
+                    circuit_breaker_threshold=circuit_breaker_threshold,
                     max_jitter_seconds=max_jitter_seconds,
                 )
 
+                ollama_model = os.environ.get(
+                    "RECEIPT_AGENT_OLLAMA_MODEL", "gpt-oss:120b-cloud"
+                )
                 logger.info(
-                    f"LLM initialized: {ollama_model} (max jitter: {max_jitter_seconds}s)"
+                    f"LLM initialized with fallback: {ollama_model} → OpenRouter "
+                    f"(max jitter: {max_jitter_seconds}s)"
                 )
 
             # 6. Process issues for this receipt with tracing

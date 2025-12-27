@@ -64,6 +64,7 @@ except ImportError as e:
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
 ollama_api_key = config.require_secret("OLLAMA_API_KEY")
+openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 
 # Label evaluator specific config
@@ -508,9 +509,14 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "environment": {
                 "BATCH_BUCKET": self.batch_bucket.bucket,
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                # Ollama (primary LLM provider)
                 "OLLAMA_API_KEY": ollama_api_key,
                 "OLLAMA_BASE_URL": "https://ollama.com",
                 "OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter (fallback LLM provider)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
                 **tracing_env,
             },
         }
@@ -590,9 +596,14 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "environment": {
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "BATCH_BUCKET": self.batch_bucket.bucket,
+                # Ollama (primary LLM provider)
                 "OLLAMA_API_KEY": ollama_api_key,
                 "OLLAMA_BASE_URL": "https://ollama.com",
                 "OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter (fallback LLM provider)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
                 **tracing_env,
             },
         }
@@ -634,9 +645,14 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "CHROMADB_BUCKET": chromadb_bucket_name or "",
                 "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
+                # Ollama (primary LLM provider)
                 "RECEIPT_AGENT_OLLAMA_API_KEY": ollama_api_key,
                 "RECEIPT_AGENT_OLLAMA_BASE_URL": "https://ollama.com",
                 "RECEIPT_AGENT_OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter (fallback LLM provider)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
                 **tracing_env,
                 "MAX_ISSUES_PER_LLM_CALL": "15",
@@ -681,9 +697,14 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "environment": {
                 "BATCH_BUCKET": self.batch_bucket.bucket,
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                # Ollama (primary LLM provider)
                 "OLLAMA_API_KEY": ollama_api_key,
                 "OLLAMA_BASE_URL": "https://ollama.com",
                 "OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter (fallback LLM provider)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
                 **tracing_env,
             },
         }
@@ -724,9 +745,14 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "environment": {
                 "BATCH_BUCKET": self.batch_bucket.bucket,
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                # Ollama (primary LLM provider)
                 "OLLAMA_API_KEY": ollama_api_key,
                 "OLLAMA_BASE_URL": "https://ollama.com",
                 "OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter (fallback LLM provider)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
                 **tracing_env,
             },
         }

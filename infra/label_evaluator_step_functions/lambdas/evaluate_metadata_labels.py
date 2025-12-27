@@ -206,24 +206,26 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
                 logger.info("Built %s visual lines", len(visual_lines))
 
-            # 3. Create LLM instance and run evaluation
+            # 3. Create LLM instance with automatic Ollama → OpenRouter fallback
             with child_trace("llm_metadata_evaluation", trace_ctx, metadata={
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "word_count": len(words),
                 "has_place": place is not None,
             }):
-                from langchain_ollama import ChatOllama
+                from receipt_agent.utils import create_production_invoker
 
-                ollama_api_key = os.environ.get("OLLAMA_API_KEY")
-                if not ollama_api_key:
-                    raise ValueError("OLLAMA_API_KEY environment variable is required")
-
-                llm = ChatOllama(
-                    model=os.environ.get("OLLAMA_MODEL", "gpt-oss:120b-cloud"),
-                    base_url=os.environ.get("OLLAMA_BASE_URL", "https://ollama.com"),
-                    api_key=ollama_api_key,
+                # create_production_invoker() creates:
+                # - ResilientLLM: Ollama (primary) → OpenRouter (fallback)
+                # - RateLimitedLLMInvoker: jitter + circuit breaker
+                # Environment variables used:
+                # - OLLAMA_API_KEY, OLLAMA_BASE_URL, OLLAMA_MODEL
+                # - OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
+                llm_invoker = create_production_invoker(
                     temperature=0.0,
+                    timeout=120,
+                    circuit_breaker_threshold=5,
+                    max_jitter_seconds=0.25,
                 )
 
                 # Run metadata evaluation
@@ -234,7 +236,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 decisions = evaluate_metadata_labels(
                     visual_lines=visual_lines,
                     place=place,
-                    llm=llm,
+                    llm=llm_invoker,
                     image_id=image_id,
                     receipt_id=receipt_id,
                     merchant_name=merchant_name,
