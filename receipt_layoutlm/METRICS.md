@@ -1,0 +1,128 @@
+# LayoutLM Training Metrics
+
+This document tracks the metrics recorded during LayoutLM training runs and their storage in DynamoDB.
+
+## Storage Entities
+
+| Entity | Purpose | Query Capabilities |
+|--------|---------|-------------------|
+| `Job` | Training run metadata, config, status | Query by status, created_at |
+| `JobMetric` | Individual metric values with epoch/step | Query by metric name across jobs (GSI1, GSI2) |
+| `JobLog` | Structured JSON logs (config, summary) | Query by job_id |
+
+## Per-Epoch Training Metrics
+
+Recorded as `JobMetric` entities after each evaluation epoch.
+
+| Metric | Status | Source | Unit | Notes |
+|--------|--------|--------|------|-------|
+| `val_f1` | ✅ Implemented | `compute_metrics` | ratio | Entity-level F1 from seqeval |
+| `val_precision` | ✅ Implemented | `compute_metrics` | ratio | Entity-level precision |
+| `val_recall` | ✅ Implemented | `compute_metrics` | ratio | Entity-level recall |
+| `eval_loss` | ✅ Implemented | HF Trainer | loss | Validation loss (lower is better) |
+| `train_loss` | ✅ Implemented | HF Trainer `log_history` | loss | Training loss curve |
+| `learning_rate` | ✅ Implemented | HF Trainer `log_history` | rate | LR scheduler tracking |
+
+**Implementation:** `receipt_layoutlm/trainer.py` → `_MetricLoggerCallback.on_evaluate()`
+
+**Batch Write:** All 6 metrics written in single `add_job_metrics()` call per epoch.
+
+## Per-Label Metrics
+
+Per-label breakdown (MERCHANT_NAME, AMOUNT, etc.). Currently stored in JobLog only.
+
+| Metric | Status | Source | Notes |
+|--------|--------|--------|-------|
+| `label_f1` | ❌ JobLog only | `classification_report` | F1 per label |
+| `label_precision` | ❌ JobLog only | `classification_report` | Precision per label |
+| `label_recall` | ❌ JobLog only | `classification_report` | Recall per label |
+| `label_support` | ❌ JobLog only | `classification_report` | Sample count per label |
+
+**Note:** `JobMetric.value` supports Dict values, so these could be stored as:
+```python
+JobMetric(
+    metric_name="per_label_f1",
+    value={"MERCHANT_NAME": 0.92, "AMOUNT": 0.88, ...},
+    epoch=3,
+)
+```
+
+## Training Summary Metrics
+
+End-of-run metrics. Currently stored in JobLog summary.
+
+| Metric | Status | Source | Unit |
+|--------|--------|--------|------|
+| `train_runtime` | ❌ JobLog only | `trainer_state.json` | seconds |
+| `total_flos` | ❌ JobLog only | `trainer_state.json` | FLOPs |
+| `best_f1` | ❌ JobLog only | computed | ratio |
+| `best_epoch` | ❌ JobLog only | computed | epoch number |
+
+## GPU/Resource Metrics
+
+Hardware utilization metrics. Not currently captured.
+
+| Metric | Status | Source | Notes |
+|--------|--------|--------|-------|
+| `gpu_memory_used` | ❌ Not captured | `torch.cuda.memory_allocated()` | Peak GPU usage |
+| `gpu_utilization` | ❌ Not captured | nvidia-smi or SageMaker | Compute efficiency |
+| `samples_per_second` | ❌ Not captured | HF Trainer | Throughput |
+| `steps_per_second` | ❌ Not captured | HF Trainer | Training speed |
+
+**Note:** SageMaker captures some of these in CloudWatch metrics automatically.
+
+## Dataset Quality Metrics
+
+Dataset statistics captured at training start.
+
+| Metric | Status | Source | Notes |
+|--------|--------|--------|-------|
+| `o_entity_ratio` | ❌ JobLog only | `_count_labels()` | Class imbalance (O tokens / entity tokens) |
+| `num_train_samples` | ❌ JobLog only | dataset | Training set size |
+| `num_val_samples` | ❌ JobLog only | dataset | Validation set size |
+
+## Query Examples
+
+### Compare F1 across training runs
+```python
+# Get val_f1 for all jobs, sorted by job then timestamp
+metrics, _ = dynamo.get_metrics_by_name_across_jobs("val_f1")
+
+for m in metrics:
+    print(f"Job {m.job_id[:8]} Epoch {m.epoch}: F1={m.value:.4f}")
+```
+
+### Get training curve for a job
+```python
+# Get all metrics for a specific job
+loss_metrics, _ = dynamo.list_job_metrics(job_id, metric_name="train_loss")
+lr_metrics, _ = dynamo.list_job_metrics(job_id, metric_name="learning_rate")
+
+# Plot training curve
+epochs = [m.epoch for m in loss_metrics]
+losses = [m.value for m in loss_metrics]
+```
+
+### Find best performing jobs
+```python
+# Get all val_f1 metrics
+metrics, _ = dynamo.get_metrics_by_name("val_f1")
+
+# Group by job and find max F1 per job
+from collections import defaultdict
+job_best = defaultdict(float)
+for m in metrics:
+    job_best[m.job_id] = max(job_best[m.job_id], m.value)
+
+# Sort by best F1
+ranked = sorted(job_best.items(), key=lambda x: x[1], reverse=True)
+```
+
+## GSI Structure
+
+`JobMetric` has two GSIs for efficient queries:
+
+| GSI | Key Structure | Use Case |
+|-----|---------------|----------|
+| GSI1 | `METRIC#{name}` → `{timestamp}` | "All val_f1 scores over time" |
+| GSI2 | `METRIC#{name}` → `JOB#{id}#{timestamp}` | "Compare metric across jobs" |
