@@ -1012,6 +1012,8 @@ def apply_llm_decisions(
         "labels_created": 0,
         "conflicts_resolved": 0,
         "skipped_needs_review": 0,
+        "unlabeled_confirmed": 0,
+        "cannot_fix": 0,
         "errors": 0,
     }
 
@@ -1031,21 +1033,61 @@ def apply_llm_decisions(
             confidence = llm_review.get("confidence", "medium")
 
             # Validate required fields
-            # current_label can be None for unlabeled words if we have suggested_label
             has_required_fields = all([
                 image_id,
                 receipt_id is not None,
                 line_id is not None,
                 word_id is not None,
             ])
-            has_label_info = current_label or (
-                decision == "INVALID" and suggested_label
-            )
 
-            if not has_required_fields or not has_label_info:
-                logger.warning("Missing required fields for issue: %s", item)
+            if not has_required_fields:
+                logger.warning(
+                    "Skipping issue - missing identifiers "
+                    "(image_id, receipt_id, line_id, or word_id): %s",
+                    item,
+                )
                 stats["errors"] += 1
                 continue
+
+            # Handle unlabeled words (current_label is None) separately
+            if current_label is None:
+                if decision == "VALID":
+                    # LLM confirms this word should remain unlabeled - success!
+                    logger.debug(
+                        "Unlabeled word confirmed as correctly unlabeled: "
+                        "%s:%s line=%s word=%s",
+                        image_id,
+                        receipt_id,
+                        line_id,
+                        word_id,
+                    )
+                    stats["unlabeled_confirmed"] += 1
+                    continue
+                elif decision == "NEEDS_REVIEW":
+                    # Unlabeled word needs human review - no action needed
+                    logger.debug(
+                        "Unlabeled word needs human review: %s:%s line=%s word=%s",
+                        image_id,
+                        receipt_id,
+                        line_id,
+                        word_id,
+                    )
+                    stats["skipped_needs_review"] += 1
+                    continue
+                elif decision == "INVALID" and not suggested_label:
+                    # LLM says it's wrong but doesn't know the correct label
+                    logger.info(
+                        "Cannot fix unlabeled word - LLM marked INVALID but "
+                        "provided no suggested label: %s:%s line=%s word=%s",
+                        image_id,
+                        receipt_id,
+                        line_id,
+                        word_id,
+                    )
+                    stats["cannot_fix"] += 1
+                    continue
+                # If decision == "INVALID" and suggested_label exists,
+                # fall through to apply the suggested label below
             assert isinstance(image_id, str)
             assert isinstance(receipt_id, int)
             assert isinstance(line_id, int)

@@ -30,6 +30,7 @@ Output:
 import json
 import logging
 import re
+import string
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -73,6 +74,45 @@ PAYMENT_PATTERNS = [
     re.compile(r"^(CASH|CHECK|EBT|SNAP)\b", re.I),
     re.compile(r"^[*•]+\d{4}$"),  # ••••1234
 ]
+
+# Common stop words that are never metadata
+# Note: Single characters are handled separately to preserve state abbreviations (CA, TX)
+METADATA_STOP_WORDS = frozenset({
+    "for", "to", "and", "or", "the", "a", "an", "is", "by", "of", "in", "on", "at", "we", "it"
+})
+
+
+def should_skip_for_metadata_evaluation(word_text: str) -> bool:
+    """
+    Check if a token should be skipped for metadata evaluation.
+
+    Returns True for tokens that are obviously not metadata:
+    - Single character tokens (length == 1)
+    - Pure punctuation (all chars are in string.punctuation)
+    - Common stop words
+
+    Note: Two-character tokens are NOT filtered because they could be
+    legitimate metadata like state abbreviations (CA, TX, NY, etc.)
+
+    Args:
+        word_text: The text of the word to check
+
+    Returns:
+        True if the word should be skipped, False otherwise
+    """
+    # Single character tokens (T, F, E, A, S, etc. - tax/food stamp indicators)
+    if len(word_text) == 1:
+        return True
+
+    # Pure punctuation (-, /, ., =, etc.)
+    if all(c in string.punctuation for c in word_text):
+        return True
+
+    # Common stop words (case-insensitive)
+    if word_text.lower() in METADATA_STOP_WORDS:
+        return True
+
+    return False
 
 
 @dataclass
@@ -170,15 +210,22 @@ def detect_pattern_type(text: str) -> Optional[str]:
 def collect_metadata_words(
     visual_lines: list[VisualLine],
     place: Optional[Any] = None,
-) -> list[MetadataWord]:
+) -> tuple[list[MetadataWord], int]:
     """
     Collect all words that need metadata evaluation.
 
     This includes:
     1. Words with metadata labels
     2. Unlabeled words that match metadata patterns or ReceiptPlace data
+
+    Pre-filters obvious non-metadata tokens (single chars, punctuation, stop words)
+    to save API costs.
+
+    Returns:
+        Tuple of (metadata_words, prefiltered_count)
     """
     metadata_words = []
+    prefiltered_count = 0
 
     # Extract place data if available
     merchant_name = getattr(place, "merchant_name", "") if place else ""
@@ -197,6 +244,12 @@ def collect_metadata_words(
 
             # Check if word has a metadata label
             has_metadata_label = current_label in METADATA_EVALUATION_LABELS
+
+            # Pre-filter: Skip obvious non-metadata tokens for unlabeled words
+            # Words with metadata labels are always evaluated (to catch mislabeling)
+            if not has_metadata_label and should_skip_for_metadata_evaluation(text):
+                prefiltered_count += 1
+                continue
 
             # Check for pattern matches (for unlabeled words only)
             detected_type = None
@@ -226,7 +279,7 @@ def collect_metadata_words(
                     )
                 )
 
-    return metadata_words
+    return metadata_words, prefiltered_count
 
 
 # =============================================================================
@@ -433,8 +486,13 @@ def evaluate_metadata_labels(
     Returns:
         List of decisions ready for apply_llm_decisions()
     """
-    # Step 1: Collect metadata words to evaluate
-    metadata_words = collect_metadata_words(visual_lines, place)
+    # Step 1: Collect metadata words to evaluate (with pre-filtering)
+    metadata_words, prefiltered_count = collect_metadata_words(visual_lines, place)
+
+    # Log pre-filtering results
+    if prefiltered_count > 0:
+        logger.debug("Pre-filtered %d non-metadata tokens", prefiltered_count)
+
     logger.info(f"Found {len(metadata_words)} metadata words to evaluate")
 
     if not metadata_words:
