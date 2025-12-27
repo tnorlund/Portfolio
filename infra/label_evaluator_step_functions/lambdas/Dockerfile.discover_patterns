@@ -37,6 +37,9 @@ COPY infra/label_evaluator_step_functions/lambdas/utils/tracing.py ${LAMBDA_TASK
 # Copy the discover patterns handler
 COPY infra/label_evaluator_step_functions/lambdas/discover_patterns.py ${LAMBDA_TASK_ROOT}/handler.py
 
+# Copy utils module (for s3_helpers)
+COPY infra/label_evaluator_step_functions/lambdas/utils/ ${LAMBDA_TASK_ROOT}/utils/
+
 # Ensure files are readable
 RUN chmod 644 ${LAMBDA_TASK_ROOT}/tracing.py ${LAMBDA_TASK_ROOT}/handler.py
 
