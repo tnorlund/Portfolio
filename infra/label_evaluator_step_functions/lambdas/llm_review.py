@@ -3,9 +3,12 @@
 This handler reviews flagged issues for a single receipt. Each Lambda
 invocation handles exactly one receipt's issues.
 
-The trace_id, root_run_id, and root_dotted_order are passed from the
-EvaluateLabels Lambda. This Lambda joins the receipt's existing trace
-as a child, so the complete receipt processing appears in one trace.
+The simplified flow (preferred):
+  FetchReceiptData → ParallelEvaluation → LLMReviewReceipt
+
+The handler accepts issues from EvaluateLabels via `results_s3_key` and
+joins the receipt's existing trace as a child, so the complete receipt
+processing appears in one trace.
 """
 
 import logging
@@ -108,22 +111,24 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
     Each Lambda invocation handles exactly one receipt's issues.
 
-    Input:
+    Input (simplified per-receipt flow):
     {
         "execution_id": "abc123",
         "execution_arn": "arn:aws:states:...",  # From $$.Execution.Id
         "batch_bucket": "bucket-name",
         "merchant_name": "Sprouts Farmers Market",
-        "merchant_receipt_count": 50,
-        "batch_s3_key": "batches/{exec}/{merchant_hash}_r0.json",
-        "batch_index": 0,
-        "llm_batch_index": 0,    # From Map state
+        "results_s3_key": "results/{exec}/{image_id}_{receipt_id}.json",
         "image_id": "img_abc",   # Receipt identification
         "receipt_id": 1,         # Receipt identification
+        "line_item_patterns_s3_key": "line_item_patterns/{merchant_hash}.json",
         "dry_run": false,
         "trace_id": "...",       # From upstream Lambda
         "root_run_id": "..."     # From upstream Lambda
     }
+
+    Alternative inputs (legacy/batched flow):
+    - batch_s3_key: "batches/{exec}/{merchant_hash}_r0.json"
+    - issues_s3_key: "issues/{exec}/{merchant_hash}.json"
 
     Output:
     {
@@ -166,10 +171,14 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     # Check if tracing is enabled
     enable_tracing = event.get("enable_tracing", False)
 
-    # Support both batch format and legacy format
+    # Support multiple input key formats:
+    # - results_s3_key: From simplified per-receipt flow (EvaluateLabels output)
+    # - batch_s3_key: From batched flow (BatchIssues output)
+    # - issues_s3_key: Legacy format
+    results_s3_key = event.get("results_s3_key")
     batch_s3_key = event.get("batch_s3_key")
     issues_s3_key = event.get("issues_s3_key")
-    data_s3_key = batch_s3_key or issues_s3_key
+    data_s3_key = results_s3_key or batch_s3_key or issues_s3_key
 
     # Rate limiting configuration
     circuit_breaker_threshold = int(
@@ -188,7 +197,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
     if not data_s3_key:
-        raise ValueError("batch_s3_key or issues_s3_key is required")
+        raise ValueError("results_s3_key, batch_s3_key, or issues_s3_key is required")
 
     start_time = time.time()
 

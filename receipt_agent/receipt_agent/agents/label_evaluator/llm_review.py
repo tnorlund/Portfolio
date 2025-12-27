@@ -1012,15 +1012,19 @@ def apply_llm_decisions(
             suggested_label = llm_review.get("suggested_label")
             confidence = llm_review.get("confidence", "medium")
 
-            if not all(
-                [
-                    image_id,
-                    receipt_id is not None,
-                    line_id,
-                    word_id,
-                    current_label,
-                ]
-            ):
+            # Validate required fields
+            # current_label can be None for unlabeled words if we have suggested_label
+            has_required_fields = all([
+                image_id,
+                receipt_id is not None,
+                line_id is not None,
+                word_id is not None,
+            ])
+            has_label_info = current_label or (
+                decision == "INVALID" and suggested_label
+            )
+
+            if not has_required_fields or not has_label_info:
                 logger.warning("Missing required fields for issue: %s", item)
                 stats["errors"] += 1
                 continue
@@ -1028,7 +1032,6 @@ def apply_llm_decisions(
             assert isinstance(receipt_id, int)
             assert isinstance(line_id, int)
             assert isinstance(word_id, int)
-            assert isinstance(current_label, str)
 
             # Build audit reasoning
             audit_reasoning = (
@@ -1082,7 +1085,7 @@ def apply_llm_decisions(
                         )
 
             elif decision == "INVALID":
-                # 1. Invalidate the current label
+                # 1. Invalidate the current label (if exists)
                 # 2. If suggested_label provided, confirm or create it
 
                 # Get all labels for this word (returns tuple: list, last_key)
@@ -1092,32 +1095,33 @@ def apply_llm_decisions(
                     )
                 )
 
-                # Find and invalidate the current label
-                for label in all_labels:
-                    if label.label == current_label:
-                        updated_label = ReceiptWordLabel(
-                            image_id=image_id,
-                            receipt_id=receipt_id,
-                            line_id=line_id,
-                            word_id=word_id,
-                            label=label.label,
-                            reasoning=audit_reasoning,
-                            timestamp_added=label.timestamp_added,
-                            validation_status="INVALID",
-                            label_proposed_by=label.label_proposed_by,
-                            label_consolidated_from=label.label_consolidated_from,
-                        )
-                        dynamo_client.update_receipt_word_label(updated_label)
-                        stats["labels_invalidated"] += 1
-                        logger.info(
-                            "Invalidated %s on %s:%s:%s:%s",
-                            current_label,
-                            image_id,
-                            receipt_id,
-                            line_id,
-                            word_id,
-                        )
-                        break
+                # Find and invalidate the current label (if it exists)
+                if current_label:
+                    for label in all_labels:
+                        if label.label == current_label:
+                            updated_label = ReceiptWordLabel(
+                                image_id=image_id,
+                                receipt_id=receipt_id,
+                                line_id=line_id,
+                                word_id=word_id,
+                                label=label.label,
+                                reasoning=audit_reasoning,
+                                timestamp_added=label.timestamp_added,
+                                validation_status="INVALID",
+                                label_proposed_by=label.label_proposed_by,
+                                label_consolidated_from=label.label_consolidated_from,
+                            )
+                            dynamo_client.update_receipt_word_label(updated_label)
+                            stats["labels_invalidated"] += 1
+                            logger.info(
+                                "Invalidated %s on %s:%s:%s:%s",
+                                current_label,
+                                image_id,
+                                receipt_id,
+                                line_id,
+                                word_id,
+                            )
+                            break
 
                 # Handle suggested label
                 if suggested_label:

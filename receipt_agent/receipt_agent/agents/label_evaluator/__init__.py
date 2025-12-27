@@ -173,6 +173,17 @@ from receipt_agent.agents.label_evaluator.pattern_discovery import (
     discover_patterns_with_llm,
     get_default_patterns,
 )
+from receipt_agent.agents.label_evaluator.currency_subagent import (
+    CurrencyWord,
+    LineItemRow,
+    build_currency_evaluation_prompt,
+    collect_currency_words,
+    convert_to_evaluation_issues,
+    evaluate_currency_labels,
+    evaluate_currency_labels_sync,
+    identify_line_item_rows,
+    parse_currency_evaluation_response,
+)
 
 __all__ = [
     # Graph and runners (full workflow with I/O)
@@ -247,4 +258,14 @@ __all__ = [
     "build_discovery_prompt",
     "discover_patterns_with_llm",
     "get_default_patterns",
+    # Currency subagent (for currency label validation)
+    "CurrencyWord",
+    "LineItemRow",
+    "build_currency_evaluation_prompt",
+    "collect_currency_words",
+    "convert_to_evaluation_issues",
+    "evaluate_currency_labels",
+    "evaluate_currency_labels_sync",
+    "identify_line_item_rows",
+    "parse_currency_evaluation_response",
 ]
