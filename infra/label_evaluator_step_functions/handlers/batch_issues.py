@@ -130,8 +130,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     for receipt_idx, (receipt_key, receipt_issues) in enumerate(
         issues_by_receipt.items()
     ):
-        image_id, receipt_id_str = receipt_key.split(":", 1)
-        receipt_id = int(receipt_id_str)
+        try:
+            image_id, receipt_id_str = receipt_key.split(":", 1)
+            receipt_id = int(receipt_id_str)
+        except (ValueError, AttributeError):
+            logger.warning("Skipping malformed receipt_key: %s", receipt_key)
+            continue
 
         # Get per-receipt trace info (from EvaluateLabels)
         trace_info = receipt_trace_info.get(receipt_key, {})

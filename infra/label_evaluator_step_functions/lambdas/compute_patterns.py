@@ -21,6 +21,7 @@ import boto3
 try:
     # Container environment: tracing.py is in same directory
     from tracing import child_trace, flush_langsmith_traces, state_trace
+    from utils.s3_helpers import get_merchant_hash
 except ImportError:
     # Local/development environment: use path relative to this file
     sys.path.insert(0, os.path.join(
@@ -28,6 +29,7 @@ except ImportError:
         "lambdas", "utils"
     ))
     from tracing import child_trace, flush_langsmith_traces, state_trace
+    from s3_helpers import get_merchant_hash
 
 if TYPE_CHECKING:
     from handlers.evaluator_types import ComputePatternsOutput
@@ -171,7 +173,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
         if not other_receipt_data:
             # No training data - save empty patterns
             patterns_s3_key = (
-                f"patterns/{execution_id}/{_hash_merchant(merchant_name)}.json"
+                f"patterns/{execution_id}/{get_merchant_hash(merchant_name)}.json"
             )
             s3.put_object(
                 Bucket=batch_bucket,
@@ -215,7 +217,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
 
         # Serialize patterns to S3
         patterns_s3_key = (
-            f"patterns/{execution_id}/{_hash_merchant(merchant_name)}.json"
+            f"patterns/{execution_id}/{get_merchant_hash(merchant_name)}.json"
         )
         patterns_data = _serialize_patterns(patterns, merchant_name)
 
@@ -257,13 +259,6 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
     flush_langsmith_traces()
 
     return result
-
-
-def _hash_merchant(merchant_name: str) -> str:
-    """Create a short hash for merchant name (for S3 key)."""
-    import hashlib
-
-    return hashlib.sha256(merchant_name.encode("utf-8")).hexdigest()[:12]
 
 
 def _serialize_patterns(patterns, merchant_name: str) -> dict[str, Any]:

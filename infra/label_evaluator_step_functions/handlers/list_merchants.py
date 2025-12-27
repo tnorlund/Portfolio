@@ -15,13 +15,8 @@ from typing import TYPE_CHECKING, Any
 
 import boto3
 
-# Import from parent handlers (reuse types)
-import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from handlers.evaluator_types import MerchantInfo
-
 if TYPE_CHECKING:
-    from handlers.evaluator_types import ListMerchantsOutput
+    from handlers.evaluator_types import ListMerchantsOutput, MerchantInfo
 
 
 logger = logging.getLogger()
@@ -51,6 +46,9 @@ def handler(event: dict[str, Any], _context: Any) -> "ListMerchantsOutput":
         "total_merchants": 18
     }
     """
+    # Lazy import to avoid sys.path manipulation at module level
+    from handlers.evaluator_types import MerchantInfo
+
     execution_id = event.get("execution_id", "unknown")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     min_receipts = event.get("min_receipts", DEFAULT_MIN_RECEIPTS)

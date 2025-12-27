@@ -96,13 +96,13 @@ except Exception as e:
 print("\n3. Testing nested child traces...")
 try:
     with child_trace("outer_child", parent_ctx) as outer_ctx:
-        print(f"   Outer child created")
+        print("   Outer child created")
         with child_trace("inner_child", outer_ctx) as inner_ctx:
-            print(f"   Inner child created")
+            print("   Inner child created")
             # Run graph in innermost child
             result = graph.invoke({"value": 10})
             print(f"   Inner graph result: {result}")
-        print(f"   Back to outer")
+        print("   Back to outer")
     print("   SUCCESS: Nested child traces work")
 except Exception as e:
     print(f"   ERROR: {e}")
@@ -111,7 +111,7 @@ except Exception as e:
 print("\n4. Testing simulated LLM child trace...")
 try:
     with child_trace("llm_call_simulation", parent_ctx, run_type="llm") as llm_ctx:
-        print(f"   LLM trace created")
+        print("   LLM trace created")
         # In real code, this would be: llm.invoke(messages)
         # The tracing_context should make LangChain calls children of this
         print("   (Simulated LLM call)")
@@ -131,8 +131,8 @@ client.flush()
 print("\n" + "=" * 60)
 print("TEST COMPLETE")
 print("=" * 60)
-print(f"\nCheck traces at: https://smith.langchain.com")
-print(f"Project: dev-trace-test")
+print("\nCheck traces at: https://smith.langchain.com")
+print("Project: dev-trace-test")
 print(f"Look for trace: {root.trace_id}")
 print("\nExpected hierarchy:")
 print("  test_root_trace")

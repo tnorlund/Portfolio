@@ -92,8 +92,9 @@ def download_chromadb_snapshot(
     Returns:
         Path to the cached ChromaDB directory
     """
-    chroma_db_file = os.path.join(cache_path, "chroma.sqlite3")
-    if os.path.exists(chroma_db_file):
+    # Use completion marker to detect interrupted downloads
+    completion_marker = os.path.join(cache_path, ".download_complete")
+    if os.path.exists(completion_marker):
         logger.info("ChromaDB already cached at %s", cache_path)
         return cache_path
 
@@ -127,4 +128,9 @@ def download_chromadb_snapshot(
             downloaded += 1
 
     logger.info("Downloaded %d files to %s", downloaded, cache_path)
+
+    # Create completion marker after successful download
+    with open(completion_marker, "w") as f:
+        f.write(timestamp)
+
     return cache_path
