@@ -2,26 +2,22 @@
 
 import os
 import sys
-
-# Suppress gRPC fork handler warnings before any gRPC imports
-# These warnings are benign but noisy during multiprocess operations
-os.environ.setdefault("GRPC_ENABLE_FORK_SUPPORT", "0")
-os.environ.setdefault("GRPC_VERBOSITY", "ERROR")
-
-import base64
 from pathlib import Path
 
 # Add parent directory to path so 'infra' package can be imported
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import api_gateway
 import pulumi
 import pulumi_aws as aws
 from pulumi import Output
 
+import api_gateway
+
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
-if config.get_bool("docker-buildkit") != False:  # Default to True if not set
+if (
+    config.get_bool("docker-buildkit") is not False
+):  # Default to True if not set
     os.environ["DOCKER_BUILDKIT"] = "1"
     os.environ["COMPOSE_DOCKER_CLI_BUILD"] = (
         "1"  # Also enable for docker-compose
@@ -37,8 +33,9 @@ if config.get_bool("docker-buildkit") != False:  # Default to True if not set
 
 from typing import Optional
 
+from pulumi import ResourceOptions
+
 # Import our infrastructure components
-import s3_website  # noqa: F401
 from billing_alerts import BillingAlerts
 from chromadb_compaction import create_chromadb_compaction_infrastructure
 from combine_receipts_step_functions import CombineReceiptsStepFunction
@@ -46,6 +43,7 @@ from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
 from embedding_step_functions import EmbeddingInfrastructure
+from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from label_harmonizer_step_functions import LabelHarmonizerV3StepFunction
 from label_suggestion_step_functions import LabelSuggestionStepFunction
 from label_validation_agent_step_functions import (
@@ -56,7 +54,6 @@ from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
 from notifications import NotificationSystem
-from pulumi import ResourceOptions
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from security import ChromaSecurity
@@ -71,25 +68,24 @@ from upload_images import UploadImages
 
 # Import other necessary components
 try:
-    # from infra.components import lambda_layer  # noqa: F401
-    from infra.components import lambda_layer  # Imported for side effects
-    from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
+    from infra.components import lambda_layer  # side effects
+    from lambda_functions.label_count_cache_updater.infra import (
         label_count_cache_updater_lambda,
     )
-    from routes.health_check.infra import health_check_lambda  # noqa: F401
+    from routes.health_check.infra import health_check_lambda
 
     print("✓ Successfully imported label_count_cache_updater_lambda")
 except ImportError as e:
     # These may not be available in all environments
     print(f"⚠️  Failed to import label cache updater: {e}")
-    pass
 # import step_function  # Legacy - receipt_processor depends on removed receipt_label
 from chroma.nat_egress import NatEgress
 from chroma.orchestrator import ChromaOrchestrator
 from chroma.service import ChromaEcsService
 from chroma.workers import ChromaWorkers
 
-# from step_function_enhanced import create_enhanced_receipt_processor  # Legacy - depends on receipt_processor which needs receipt_label
+# from step_function_enhanced import create_enhanced_receipt_processor  # Legacy
+# - depends on receipt_processor which needs receipt_label
 
 # Foundation VPC (public subnets only, no NAT) per Task 350
 public_vpc = PublicVpc("foundation")
@@ -173,7 +169,8 @@ billing_alerts = BillingAlerts(
 )
 
 # Export enhanced step function ARN
-# pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)  # Commented out - legacy code
+# pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
+# Commented out - legacy code
 
 # Task 6: ECS Service (scale-to-zero) using our Chroma container
 chroma_service = ChromaEcsService(
@@ -717,7 +714,8 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 #                         "elasticfilesystem:ClientMount",
 #                         "elasticfilesystem:ClientWrite"
 #                     ],
-#                     "Resource": "arn:aws:elasticfilesystem:{args['region']}:{args['account_id']}:file-system/{args['file_system_id']}"
+#                     "Resource": "arn:aws:elasticfilesystem:{args['region']}:"
+#                     "{args['account_id']}:file-system/{args['file_system_id']}"
 #                 }}
 #             ]
 #         }}"""
@@ -782,7 +780,8 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 #     ),
 #     network_interfaces=[
 #         aws.ec2.LaunchTemplateNetworkInterfaceArgs(
-#             associate_public_ip_address=True,  # Ensure instances in private subnets don't get public IPs
+#             associate_public_ip_address=True,
+#             # Ensure instances in private subnets don't get public IPs
 #             security_groups=[network.security_group_id],  # Use new security group
 #             # subnet_id is determined by the ASG's vpc_zone_identifiers
 #         )
@@ -813,11 +812,17 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 # mkdir -p /mnt/checkpoints || echo "Failed to create checkpoints mount point"
 
 # # Mount EFS access points
-# mount -t efs -o tls,accesspoint={args['training_ap_id']} {args['efs_dns_name']}:/ /mnt/training || echo "Failed to mount EFS training"
-# echo "{args['efs_dns_name']}:/ /mnt/training efs _netdev,tls,accesspoint={args['training_ap_id']} 0 0" >> /etc/fstab || echo "Failed to add EFS training to fstab"
+# mount -t efs -o tls,accesspoint={args['training_ap_id']} \
+# {args['efs_dns_name']}:/ /mnt/training || echo "Failed to mount EFS training"
+# echo "{args['efs_dns_name']}:/ /mnt/training efs \
+# _netdev,tls,accesspoint={args['training_ap_id']} 0 0" \
+# >> /etc/fstab || echo "Failed to add EFS training to fstab"
 
-# mount -t efs -o tls,accesspoint={args['checkpoints_ap_id']} {args['efs_dns_name']}:/ /mnt/checkpoints || echo "Failed to mount EFS checkpoints"
-# echo "{args['efs_dns_name']}:/ /mnt/checkpoints efs _netdev,tls,accesspoint={args['checkpoints_ap_id']} 0 0" >> /etc/fstab || echo "Failed to add EFS checkpoints to fstab"
+# mount -t efs -o tls,accesspoint={args['checkpoints_ap_id']} \
+# {args['efs_dns_name']}:/ /mnt/checkpoints || echo "Failed to mount EFS checkpoints"
+# echo "{args['efs_dns_name']}:/ /mnt/checkpoints efs \
+# _netdev,tls,accesspoint={args['checkpoints_ap_id']} 0 0" \
+# >> /etc/fstab || echo "Failed to add EFS checkpoints to fstab"
 
 # # Get instance metadata
 # export INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
@@ -825,7 +830,9 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 # export INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type)
 # export AZ=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
 # export IP_ADDRESS=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-# export IS_SPOT=$(curl -s http://169.254.169.254/latest/meta-data/instance-life-cycle | grep -q "spot" && echo "true" || echo "false")
+# export IS_SPOT=$(curl -s \
+# http://169.254.169.254/latest/meta-data/instance-life-cycle | \
+# grep -q "spot" && echo "true" || echo "false")
 # # Determine GPU count in a generic manner
 # if command -v nvidia-smi >/dev/null 2>&1; then
 #     export GPU_COUNT=$(nvidia-smi --query-gpu=count --format=csv,noheader 2>/dev/null)
@@ -856,8 +863,12 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 
 # # Download and setup training code
 # cd /mnt/training
-# aws s3 cp s3://{args['bucket_name']}/output/receipt_trainer/wheels/receipt_trainer-0.1.0-py3-none-any.whl /tmp/ || echo "Failed to download receipt_trainer"
-# aws s3 cp s3://{args['bucket_name']}/output/receipt_dynamo/wheels/receipt_dynamo-0.1.0-py3-none-any.whl /tmp/ || echo "Failed to download receipt_dynamo"
+# aws s3 cp s3://{args['bucket_name']}/output/receipt_trainer/wheels/ \
+# receipt_trainer-0.1.0-py3-none-any.whl /tmp/ || \
+# echo "Failed to download receipt_trainer"
+# aws s3 cp s3://{args['bucket_name']}/output/receipt_dynamo/wheels/ \
+# receipt_dynamo-0.1.0-py3-none-any.whl /tmp/ || \
+# echo "Failed to download receipt_dynamo"
 
 # # Install the package with pip (this will also install dependencies if specified in setup.py)
 # pip install /tmp/receipt_dynamo-0.1.0-py3-none-any.whl
@@ -865,8 +876,10 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 
 # # (Optional) Verify installation of key modules
 # python -c "import receipt_trainer; print('ReceiptTrainer module loaded successfully')"
-# python -c "import transformers; print('Transformers version:', getattr(transformers, '__version__', 'unknown'))"
-# python -c "import datasets; print('Datasets version:', getattr(datasets, '__version__', 'unknown'))"
+# python -c "import transformers; print('Transformers version:', \
+# getattr(transformers, '__version__', 'unknown'))"
+# python -c "import datasets; print('Datasets version:', \
+# getattr(datasets, '__version__', 'unknown'))"
 
 # # Register instance using the receipt_dynamo package
 # python -c "
@@ -938,7 +951,8 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 
 # # Adjust fields to reflect termination
 # instance.status = 'terminated'
-# instance.launched_at = datetime.utcnow().isoformat()  # or store a termination timestamp if desired
+# instance.launched_at = datetime.utcnow().isoformat()
+# or store a termination timestamp if desired
 # instance.health_status = 'unhealthy'
 
 # # Write changes back to DynamoDB
@@ -980,7 +994,8 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 #             spot_allocation_strategy="capacity-optimized",
 #         ),
 #         launch_template=aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateArgs(
-#             launch_template_specification=aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateLaunchTemplateSpecificationArgs(
+#             launch_template_specification=aws.autoscaling.
+#             GroupMixedInstancesPolicyLaunchTemplateLaunchTemplateSpecificationArgs(
 #                 launch_template_id=launch_template.id,
 #                 version="$Latest",
 #             ),
@@ -1019,7 +1034,8 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 #     autoscaling_group_name=asg.name,
 #     policy_type="TargetTrackingScaling",
 #     target_tracking_configuration=aws.autoscaling.PolicyTargetTrackingConfigurationArgs(
-#         predefined_metric_specification=aws.autoscaling.PolicyTargetTrackingConfigurationPredefinedMetricSpecificationArgs(
+#         predefined_metric_specification=aws.autoscaling.
+#         PolicyTargetTrackingConfigurationPredefinedMetricSpecificationArgs(
 #             predefined_metric_type="ASGAverageCPUUtilization",
 #         ),
 #         target_value=70.0,
@@ -1193,4 +1209,20 @@ pulumi.export(
 pulumi.export(
     "metadata_harmonizer_batch_bucket_name",
     metadata_harmonizer_sf.batch_bucket_name,
+)
+
+# Label Evaluator Step Function (with LangSmith observability)
+label_evaluator_sf = LabelEvaluatorStepFunction(
+    f"label-evaluator-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
+    max_concurrency=3,  # Limited to 3 to avoid Ollama rate limits
+    batch_size=25,  # 25 receipts per batch
+)
+
+pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
+pulumi.export(
+    "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
 )
