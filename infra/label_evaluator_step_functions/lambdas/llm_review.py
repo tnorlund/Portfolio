@@ -374,7 +374,8 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                 )
                 # Mark all issues as NEEDS_REVIEW
                 for collected in receipt_issues:
-                    issue = collected.get("issue", {})
+                    # The collected item IS the issue (not nested under "issue" key)
+                    issue = collected
                     decisions["NEEDS_REVIEW"] += 1
                     reviewed_issues.append(
                         {
@@ -408,7 +409,8 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     chunk_metadata = []
 
                     for collected in chunk_issues:
-                        issue = collected.get("issue", {})
+                        # The collected item IS the issue (not nested under "issue" key)
+                        issue = collected
                         word_text = issue.get("word_text", "")
                         word_id = issue.get("word_id", 0)
                         line_id = issue.get("line_id", 0)
