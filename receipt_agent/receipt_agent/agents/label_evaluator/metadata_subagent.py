@@ -198,24 +198,21 @@ def collect_metadata_words(
             # Check if word has a metadata label
             has_metadata_label = current_label in METADATA_EVALUATION_LABELS
 
-            # Check for pattern matches (for unlabeled words)
+            # Check for pattern matches (for unlabeled words only)
             detected_type = None
-            place_match = None
-
             if not has_metadata_label:
-                # Check format patterns
                 detected_type = detect_pattern_type(text)
 
-                # Check against ReceiptPlace data
-                if not detected_type:
-                    if check_merchant_match(text, merchant_name):
-                        place_match = "MERCHANT_NAME"
-                    elif check_address_match(text, address, address_components):
-                        place_match = "ADDRESS_LINE"
-                    elif check_phone_match(text, phone, phone_intl):
-                        place_match = "PHONE_NUMBER"
-                    elif check_website_match(text, website):
-                        place_match = "WEBSITE"
+            # Always check against ReceiptPlace data (provides context for LLM)
+            place_match = None
+            if check_merchant_match(text, merchant_name):
+                place_match = "MERCHANT_NAME"
+            elif check_address_match(text, address, address_components):
+                place_match = "ADDRESS_LINE"
+            elif check_phone_match(text, phone, phone_intl):
+                place_match = "PHONE_NUMBER"
+            elif check_website_match(text, website):
+                place_match = "WEBSITE"
 
             # Include if: has metadata label OR matches pattern OR matches place data
             if has_metadata_label or detected_type or place_match:
