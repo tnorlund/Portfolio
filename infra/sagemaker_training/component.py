@@ -299,6 +299,11 @@ class SageMakerTrainingInfra(ComponentResource):
                         ],
                         "Resource": f"{args[1]}/*",
                     },
+                    {
+                        "Effect": "Allow",
+                        "Action": "s3:ListBucket",
+                        "Resource": args[1],
+                    },
                 ],
             })),
             opts=ResourceOptions(parent=self.codebuild_role),

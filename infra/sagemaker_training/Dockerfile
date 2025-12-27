@@ -25,10 +25,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY requirements.txt .
+COPY infra/sagemaker_training/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the training packages
+# Copy the training packages (entire package directories including pyproject.toml)
 COPY receipt_dynamo/ /opt/ml/code/receipt_dynamo/
 COPY receipt_layoutlm/ /opt/ml/code/receipt_layoutlm/
 

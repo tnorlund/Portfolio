@@ -9,4 +9,3 @@ pydantic>=2.10.6
 tqdm>=4.66.0
 filelock>=3.13.0
 accelerate>=0.21.0
-sagemaker-training>=4.0.0
