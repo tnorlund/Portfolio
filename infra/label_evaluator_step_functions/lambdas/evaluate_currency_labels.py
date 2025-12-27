@@ -159,6 +159,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 )
                 target_data = load_json_from_s3(s3, batch_bucket, data_s3_key)
 
+                if target_data is None:
+                    raise ValueError(f"Receipt data not found at {data_s3_key}")
+
                 image_id = target_data.get("image_id")
                 receipt_id = target_data.get("receipt_id")
 
@@ -250,7 +253,11 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             # Count decisions
             decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
             for d in decisions:
-                decision_counts[d["llm_review"]["decision"]] += 1
+                decision = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
+                if decision in decision_counts:
+                    decision_counts[decision] += 1
+                else:
+                    decision_counts["NEEDS_REVIEW"] += 1
 
             logger.info("Decisions: %s", decision_counts)
 
@@ -260,7 +267,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 # Filter to only INVALID decisions
                 invalid_decisions = [
                     d for d in decisions
-                    if d["llm_review"]["decision"] == "INVALID"
+                    if d.get("llm_review", {}).get("decision") == "INVALID"
                 ]
 
                 if invalid_decisions:
