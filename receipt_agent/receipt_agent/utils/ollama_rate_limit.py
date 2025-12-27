@@ -40,11 +40,9 @@ import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Optional, TypeVar
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
 
 
 # =============================================================================
@@ -363,7 +361,8 @@ class RateLimitedLLMInvoker:
     def invoke_with_fallback(
         self,
         messages: Any,
-        fallback_fn: Callable[[], T],
+        fallback_fn: Callable[[], Any],
+        config: Optional[dict] = None,
     ) -> Any:
         """
         Invoke LLM with a fallback function for non-rate-limit errors.
@@ -371,6 +370,7 @@ class RateLimitedLLMInvoker:
         Args:
             messages: Messages to send to the LLM
             fallback_fn: Function to call if LLM fails (non-rate-limit error)
+            config: Optional LangChain config dict (for callbacks/tracing)
 
         Returns:
             LLM response or fallback result
@@ -379,7 +379,7 @@ class RateLimitedLLMInvoker:
             OllamaRateLimitError: If rate limit is hit (no fallback for this)
         """
         try:
-            return self.invoke(messages)
+            return self.invoke(messages, config=config)
         except OllamaRateLimitError:
             # Rate limits should propagate up for Step Function retry
             raise

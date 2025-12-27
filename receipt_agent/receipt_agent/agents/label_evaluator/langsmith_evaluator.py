@@ -209,7 +209,7 @@ def _evaluate_prediction_quality(
 
 
 def label_accuracy_evaluator(
-    inputs: dict[str, Any],
+    inputs: dict[str, Any],  # noqa: ARG001 - Required by LangSmith API
     outputs: dict[str, Any],
     reference_outputs: dict[str, Any],
 ) -> dict[str, Any]:
@@ -219,7 +219,7 @@ def label_accuracy_evaluator(
     This is a LangSmith custom evaluator function.
 
     Args:
-        inputs: Dataset inputs (unused for this evaluator)
+        inputs: Dataset inputs (required by LangSmith API, unused here)
         outputs: Model predictions with 'labels' key
         reference_outputs: Ground truth with 'labels' key
 
@@ -231,9 +231,9 @@ def label_accuracy_evaluator(
 
     # Handle both native objects and dicts
     if predicted and isinstance(predicted[0], dict):
-        predicted = [ReceiptWordLabel(**l) for l in predicted]
+        predicted = [ReceiptWordLabel(**lbl) for lbl in predicted]
     if ground_truth and isinstance(ground_truth[0], dict):
-        ground_truth = [ReceiptWordLabel(**l) for l in ground_truth]
+        ground_truth = [ReceiptWordLabel(**lbl) for lbl in ground_truth]
 
     metrics = _compare_labels(predicted, ground_truth)
 
@@ -277,9 +277,9 @@ def label_quality_evaluator(
     if words and isinstance(words[0], dict):
         words = [ReceiptWord(**w) for w in words]
     if predicted and isinstance(predicted[0], dict):
-        predicted = [ReceiptWordLabel(**l) for l in predicted]
+        predicted = [ReceiptWordLabel(**lbl) for lbl in predicted]
     if ground_truth and isinstance(ground_truth[0], dict):
-        ground_truth = [ReceiptWordLabel(**l) for l in ground_truth]
+        ground_truth = [ReceiptWordLabel(**lbl) for lbl in ground_truth]
 
     # Compare labels
     comparison = _compare_labels(predicted, ground_truth)

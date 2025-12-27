@@ -6,12 +6,11 @@ conversions used in pattern computation and issue detection.
 """
 
 import math
-from typing import Tuple
 
 
 def calculate_angle_degrees(
-    from_point: Tuple[float, float],
-    to_point: Tuple[float, float],
+    from_point: tuple[float, float],
+    to_point: tuple[float, float],
 ) -> float:
     """
     Calculate angle in degrees from one point to another.
@@ -43,8 +42,8 @@ def calculate_angle_degrees(
 
 
 def calculate_distance(
-    point1: Tuple[float, float],
-    point2: Tuple[float, float],
+    point1: tuple[float, float],
+    point2: tuple[float, float],
 ) -> float:
     """
     Calculate Euclidean distance between two points.
@@ -80,7 +79,7 @@ def angle_difference(angle1: float, angle2: float) -> float:
 def convert_polar_to_cartesian(
     angle_degrees: float,
     distance: float,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Convert polar coordinates (angle, distance) to Cartesian (dx, dy).
 

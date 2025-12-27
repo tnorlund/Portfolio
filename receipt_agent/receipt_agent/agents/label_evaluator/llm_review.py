@@ -15,8 +15,8 @@ Also includes text assembly and review context building functions
 import logging
 import re
 from collections import defaultdict
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage
 from receipt_dynamo import ReceiptWordLabel
@@ -92,8 +92,8 @@ def parse_currency_value(text: str) -> Optional[float]:
 
 
 def _group_words_into_ocr_lines(
-    words: List[Dict],
-) -> List[Dict]:
+    words: list[dict],
+) -> list[dict]:
     """
     Group words by line_id into OCR lines with computed geometry.
 
@@ -105,7 +105,7 @@ def _group_words_into_ocr_lines(
     - bottom_y: min bottom_left Y (bottom of line)
     - min_x: leftmost X
     """
-    lines_by_id: Dict[int, List[Dict]] = defaultdict(list)
+    lines_by_id: dict[int, list[dict]] = defaultdict(list)
     for w in words:
         lines_by_id[w.get("line_id", 0)].append(w)
 
@@ -149,9 +149,9 @@ def _group_words_into_ocr_lines(
 
 
 def assemble_receipt_text(
-    words: List[Dict],
-    labels: List[Dict],
-    highlight_words: Optional[List[Tuple[int, int]]] = None,
+    words: list[dict],
+    labels: list[dict],
+    highlight_words: Optional[list[tuple[int, int]]] = None,
     max_lines: int = 60,
 ) -> str:
     """
@@ -184,7 +184,7 @@ def assemble_receipt_text(
         return "(empty receipt)"
 
     # Build label lookup: (line_id, word_id) -> label info
-    label_map: Dict[Tuple[int, int], Dict] = {}
+    label_map: dict[tuple[int, int], dict] = {}
     for lbl in labels:
         key = (lbl.get("line_id"), lbl.get("word_id"))
         # Keep only VALID labels, or the most recent if no VALID
@@ -203,7 +203,7 @@ def assemble_receipt_text(
     ocr_lines.sort(key=lambda line: -line["centroid_y"])
 
     # Merge OCR lines into visual lines using vertical span logic
-    visual_lines: List[Dict] = []
+    visual_lines: list[dict] = []
 
     for ocr_line in ocr_lines:
         if visual_lines:
@@ -290,9 +290,9 @@ def assemble_receipt_text(
 
 
 def extract_receipt_currency_context(
-    words: List[Dict],
-    labels: List[Dict],
-) -> List[Dict]:
+    words: list[dict],
+    labels: list[dict],
+) -> list[dict]:
     """
     Extract all currency amounts from a receipt with their labels and context.
 
@@ -305,13 +305,13 @@ def extract_receipt_currency_context(
     - context: surrounding words on the same line
     """
     # Build label lookup
-    label_map: Dict[Tuple[int, int], Dict] = {}
+    label_map: dict[tuple[int, int], dict] = {}
     for lbl in labels:
         key = (lbl.get("line_id"), lbl.get("word_id"))
         label_map[key] = lbl
 
     # Group words by line for context
-    lines: Dict[int, List[Dict]] = {}
+    lines: dict[int, list[dict]] = {}
     for word in words:
         line_id = word.get("line_id")
         if line_id not in lines:
@@ -325,7 +325,7 @@ def extract_receipt_currency_context(
         )
 
     # Extract currency amounts
-    currency_items: List[Dict] = []
+    currency_items: list[dict] = []
     for word in words:
         text = word.get("text", "")
         if not is_currency_amount(text):
@@ -387,7 +387,7 @@ def extract_receipt_currency_context(
 
 
 def format_receipt_text(
-    visual_lines: List[VisualLine],
+    visual_lines: list[VisualLine],
     target_word: Optional[ReceiptWord] = None,
 ) -> str:
     """
@@ -418,7 +418,7 @@ def format_receipt_text(
 
 def get_visual_line_text(
     issue: EvaluationIssue,
-    visual_lines: List[VisualLine],
+    visual_lines: list[VisualLine],
 ) -> str:
     """
     Get the text of the visual line containing the issue word.
@@ -443,8 +443,8 @@ def get_visual_line_text(
 
 def get_visual_line_labels(
     issue: EvaluationIssue,
-    visual_lines: List[VisualLine],
-) -> List[str]:
+    visual_lines: list[VisualLine],
+) -> list[str]:
     """
     Get the labels of other words on the same visual line.
 
@@ -469,7 +469,7 @@ def get_visual_line_labels(
     return labels
 
 
-def format_label_history(word_context: Optional[WordContext]) -> List[Dict]:
+def format_label_history(word_context: Optional[WordContext]) -> list[dict]:
     """
     Format label history for a word as a list of dicts.
 
@@ -501,7 +501,7 @@ def format_label_history(word_context: Optional[WordContext]) -> List[Dict]:
 
 def build_review_context(
     issue: EvaluationIssue,
-    visual_lines: List[VisualLine],
+    visual_lines: list[VisualLine],
     merchant_name: str,
 ) -> ReviewContext:
     """
@@ -1049,7 +1049,7 @@ def apply_llm_decisions(
                 f"[label-evaluator {execution_id}] "
                 f"Decision: {decision} ({confidence}). {reasoning[:200]}"
             )
-            timestamp = datetime.now(timezone.utc).isoformat()
+            timestamp = datetime.now(UTC).isoformat()
 
             if decision == "VALID":
                 # 1. Confirm the current label (update reasoning if desired)

@@ -6,7 +6,7 @@ and grouping them into visual lines.
 """
 
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
@@ -17,9 +17,9 @@ from receipt_agent.agents.label_evaluator.state import (
 
 
 def build_word_contexts(
-    words: List[ReceiptWord],
-    labels: List[ReceiptWordLabel],
-) -> List[WordContext]:
+    words: list[ReceiptWord],
+    labels: list[ReceiptWordLabel],
+) -> list[WordContext]:
     """
     Build WordContext objects for each word, linking to their label history.
 
@@ -31,7 +31,7 @@ def build_word_contexts(
         List of WordContext objects with label history populated
     """
     # Group labels by word (line_id, word_id)
-    labels_by_word: Dict[Tuple[int, int], List[ReceiptWordLabel]] = (
+    labels_by_word: dict[tuple[int, int], list[ReceiptWordLabel]] = (
         defaultdict(list)
     )
     for label in labels:
@@ -83,9 +83,9 @@ def build_word_contexts(
 
 
 def assemble_visual_lines(
-    word_contexts: List[WordContext],
+    word_contexts: list[WordContext],
     y_tolerance: Optional[float] = None,
-) -> List[VisualLine]:
+) -> list[VisualLine]:
     """
     Group words into visual lines by y-coordinate proximity.
 
@@ -125,8 +125,8 @@ def assemble_visual_lines(
             y_tolerance = 0.015  # Fallback
 
     # Group by y-proximity
-    visual_lines: List[VisualLine] = []
-    current_line_words: List[WordContext] = [sorted_contexts[0]]
+    visual_lines: list[VisualLine] = []
+    current_line_words: list[WordContext] = [sorted_contexts[0]]
     current_y = sorted_contexts[0].normalized_y
 
     for ctx in sorted_contexts[1:]:
@@ -170,8 +170,8 @@ def assemble_visual_lines(
 
 def get_same_line_words(
     ctx: WordContext,
-    visual_lines: List[VisualLine],
-) -> List[WordContext]:
+    visual_lines: list[VisualLine],
+) -> list[WordContext]:
     """
     Get other words on the same visual line as ctx.
 

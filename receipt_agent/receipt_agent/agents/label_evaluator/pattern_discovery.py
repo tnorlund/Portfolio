@@ -602,9 +602,10 @@ def discover_patterns_with_llm(
         # No tracing - direct call
         return _call_llm_direct(config, llm_inputs)
 
-    except json.JSONDecodeError:
-        logger.exception("Failed to parse LLM response as JSON")
-        logger.debug("Raw content: %s", content[:500] if content else "empty")
+    except json.JSONDecodeError as e:
+        logger.exception("Failed to parse LLM response as JSON: %s", e)
+        # Note: content variable is set inside _call_llm_* functions, not here.
+        # The actual raw content is logged inside those functions on error.
         return None
     except Exception:
         logger.exception("LLM call failed")

@@ -66,6 +66,11 @@ LABEL_TO_GROUP = {
 }
 
 # Priority within-group pairs (important relationships within semantic groups)
+# NOTE: These define important spatial relationships between labels that commonly
+# appear on the SAME LINE (e.g., PRODUCT_NAME next to QUANTITY). This is distinct
+# from CONFLICTING_LABEL_PAIRS which defines labels that should never be on the
+# SAME WORD. A pair can be in both sets: important when on same line, but invalid
+# if both labels are applied to a single word.
 WITHIN_GROUP_PRIORITY_PAIRS = {
     # Line item internal structure
     ("PRODUCT_NAME", "UNIT_PRICE"),

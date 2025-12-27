@@ -122,15 +122,22 @@ from receipt_agent.agents.label_evaluator.geometry import (
 )
 from receipt_agent.agents.label_evaluator.llm_review import (
     CURRENCY_LABELS,
+    apply_llm_decisions,
     assemble_receipt_text,
     build_review_context,
     extract_receipt_currency_context,
     format_receipt_text,
+    gather_evidence_for_issue,
     is_currency_amount,
     parse_currency_value,
+    review_all_issues,
+    review_issues_batch,
+    review_issues_with_receipt_context,
+    review_single_issue,
 )
 from receipt_agent.utils.chroma_helpers import (
     SimilarWordResult,
+    build_word_chroma_id,
     format_similar_words_for_prompt,
     query_similar_validated_words,
 )
@@ -139,15 +146,6 @@ from receipt_agent.agents.label_evaluator.patterns import (
     classify_conflicts_with_llm,
     compute_merchant_patterns,
     detect_label_conflicts,
-)
-from receipt_agent.utils.chroma_helpers import build_word_chroma_id
-from receipt_agent.agents.label_evaluator.llm_review import (
-    apply_llm_decisions,
-    gather_evidence_for_issue,
-    review_all_issues,
-    review_issues_batch,
-    review_issues_with_receipt_context,
-    review_single_issue,
 )
 from receipt_agent.agents.label_evaluator.state import (
     ConstellationGeometry,

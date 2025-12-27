@@ -919,7 +919,10 @@ def assign_batch_with_llm(
     """
     Classify receipt into HAPPY, AMBIGUOUS, or ANTI_PATTERN batch.
 
-    Uses LLM-classified conflicts to make intelligent assignment.
+    Uses rule-based conflict classification to make intelligent assignment.
+    Despite the name (kept for backward compatibility), this function uses
+    deterministic heuristics rather than LLM calls - the conflict
+    classification in classify_conflicts_with_llm is also heuristic-based.
 
     Args:
         labels: All labels for receipt

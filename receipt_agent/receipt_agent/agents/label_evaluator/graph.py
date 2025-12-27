@@ -23,7 +23,7 @@ Detects labeling errors such as:
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Optional
 
 from langchain_core.messages import HumanMessage
@@ -735,7 +735,7 @@ def _create_evaluation_label(
         word_id=issue.word.word_id,
         label=label,
         reasoning=reasoning,
-        timestamp_added=datetime.now(timezone.utc),
+        timestamp_added=datetime.now(UTC),
         validation_status=validation_status,
         label_proposed_by=proposed_by,
         label_consolidated_from=None,
