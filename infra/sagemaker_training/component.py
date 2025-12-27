@@ -11,8 +11,10 @@ replacing the custom EC2-based training setup. Benefits include:
 
 import json
 import hashlib
+import os
 import pulumi
 import pulumi_aws as aws
+import pulumi_command as command
 from pulumi import ComponentResource, ResourceOptions, Output
 
 
@@ -197,6 +199,44 @@ class SageMakerTrainingInfra(ComponentResource):
         )
 
         # ---------------------------------------------------------------------
+        # S3 Bucket for Build Source
+        # ---------------------------------------------------------------------
+        self.source_bucket = aws.s3.Bucket(
+            f"{name}-source",
+            bucket=f"layoutlm-build-source-{stack}-{account_id[:8]}",
+            force_destroy=True,
+            tags={"Component": name, "Purpose": "codebuild-source"},
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Block public access
+        aws.s3.BucketPublicAccessBlock(
+            f"{name}-source-pab",
+            bucket=self.source_bucket.id,
+            block_public_acls=True,
+            block_public_policy=True,
+            ignore_public_acls=True,
+            restrict_public_buckets=True,
+            opts=ResourceOptions(parent=self.source_bucket),
+        )
+
+        # Compute content hash for the Docker build context
+        self.content_hash = self._compute_source_hash()
+
+        # Upload source to S3 when content changes
+        self.upload_source = command.local.Command(
+            f"{name}-upload-source",
+            create=Output.all(self.source_bucket.bucket).apply(
+                lambda args: self._generate_upload_script(args[0])
+            ),
+            update=Output.all(self.source_bucket.bucket).apply(
+                lambda args: self._generate_upload_script(args[0])
+            ),
+            triggers=[self.content_hash],
+            opts=ResourceOptions(parent=self.source_bucket),
+        )
+
+        # ---------------------------------------------------------------------
         # CodeBuild for Docker Image Building
         # ---------------------------------------------------------------------
         self.codebuild_role = aws.iam.Role(
@@ -215,7 +255,10 @@ class SageMakerTrainingInfra(ComponentResource):
         codebuild_policy = aws.iam.RolePolicy(
             f"{name}-codebuild-policy",
             role=self.codebuild_role.id,
-            policy=Output.all(self.ecr_repo.arn).apply(lambda args: json.dumps({
+            policy=Output.all(
+                self.ecr_repo.arn,
+                self.source_bucket.arn,
+            ).apply(lambda args: json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [
                     # ECR push access
@@ -247,21 +290,21 @@ class SageMakerTrainingInfra(ComponentResource):
                         ],
                         "Resource": f"arn:aws:logs:{region}:{account_id}:log-group:/aws/codebuild/*",
                     },
-                    # S3 for source (if needed)
+                    # S3 source bucket access
                     {
                         "Effect": "Allow",
                         "Action": [
                             "s3:GetObject",
                             "s3:GetObjectVersion",
                         ],
-                        "Resource": "*",
+                        "Resource": f"{args[1]}/*",
                     },
                 ],
             })),
             opts=ResourceOptions(parent=self.codebuild_role),
         )
 
-        # CodeBuild project
+        # CodeBuild project with S3 source
         self.codebuild_project = aws.codebuild.Project(
             f"{name}-image-builder",
             description="Builds LayoutLM training Docker image",
@@ -285,17 +328,41 @@ class SageMakerTrainingInfra(ComponentResource):
                         name="ECR_REPO",
                         value=self.ecr_repo.repository_url,
                     ),
+                    aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                        name="IMAGE_TAG",
+                        value=self.content_hash,
+                    ),
                 ],
             ),
             source=aws.codebuild.ProjectSourceArgs(
-                type="GITHUB",
-                location="https://github.com/tnorlund/Portfolio.git",
-                git_clone_depth=1,
-                buildspec="infra/sagemaker_training/buildspec.yml",
+                type="S3",
+                location=self.source_bucket.bucket.apply(
+                    lambda b: f"{b}/source.zip"
+                ),
+                buildspec=self._generate_buildspec(),
             ),
             artifacts=aws.codebuild.ProjectArtifactsArgs(type="NO_ARTIFACTS"),
             tags={"Component": name},
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=[self.upload_source],
+            ),
+        )
+
+        # Trigger build when source changes
+        self.trigger_build = command.local.Command(
+            f"{name}-trigger-build",
+            create=Output.all(self.codebuild_project.name).apply(
+                lambda args: f'aws codebuild start-build --project-name "{args[0]}" --query "build.id" --output text'
+            ),
+            update=Output.all(self.codebuild_project.name).apply(
+                lambda args: f'aws codebuild start-build --project-name "{args[0]}" --query "build.id" --output text'
+            ),
+            triggers=[self.content_hash],
+            opts=ResourceOptions(
+                parent=self.codebuild_project,
+                depends_on=[self.upload_source],
+            ),
         )
 
         # ---------------------------------------------------------------------
@@ -393,6 +460,8 @@ class SageMakerTrainingInfra(ComponentResource):
         self.register_outputs({
             "ecr_repo_url": self.ecr_repo.repository_url,
             "output_bucket": self.output_bucket.bucket,
+            "source_bucket": self.source_bucket.bucket,
+            "content_hash": self.content_hash,
             "sagemaker_role_arn": self.sagemaker_role.arn,
             "start_training_lambda_arn": self.start_training_lambda.arn,
             "codebuild_project_name": self.codebuild_project.name,
@@ -488,4 +557,83 @@ def handler(event, context):
             "use_spot": use_spot,
         }),
     }
+'''
+
+    def _compute_source_hash(self) -> str:
+        """Compute a hash of the source files that affect the Docker image."""
+        # Get the repo root (parent of infra/)
+        infra_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.dirname(infra_dir)
+
+        # Files/directories to include in hash
+        paths_to_hash = [
+            os.path.join(infra_dir, "sagemaker_training", "Dockerfile"),
+            os.path.join(infra_dir, "sagemaker_training", "requirements.txt"),
+            os.path.join(infra_dir, "sagemaker_training", "train.py"),
+            os.path.join(repo_root, "receipt_layoutlm"),
+            os.path.join(repo_root, "receipt_dynamo"),
+        ]
+
+        hasher = hashlib.sha256()
+
+        for path in paths_to_hash:
+            if os.path.isfile(path):
+                with open(path, "rb") as f:
+                    hasher.update(f.read())
+            elif os.path.isdir(path):
+                # Hash all Python files in directory
+                for root, _, files in os.walk(path):
+                    for fname in sorted(files):
+                        if fname.endswith((".py", ".txt", ".json")):
+                            fpath = os.path.join(root, fname)
+                            with open(fpath, "rb") as f:
+                                hasher.update(f.read())
+
+        return hasher.hexdigest()[:16]
+
+    def _generate_upload_script(self, bucket: str) -> str:
+        """Generate script to zip and upload source to S3."""
+        # Get the repo root
+        infra_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.dirname(infra_dir)
+
+        return f'''
+cd "{repo_root}"
+zip -r /tmp/source.zip \
+    receipt_layoutlm/ \
+    receipt_dynamo/ \
+    infra/sagemaker_training/Dockerfile \
+    infra/sagemaker_training/requirements.txt \
+    infra/sagemaker_training/train.py \
+    -x "*.pyc" -x "__pycache__/*" -x "*.egg-info/*" -x ".git/*"
+aws s3 cp /tmp/source.zip s3://{bucket}/source.zip
+rm /tmp/source.zip
+echo "Uploaded source.zip to s3://{bucket}/source.zip"
+'''
+
+    def _generate_buildspec(self) -> str:
+        """Generate the buildspec for CodeBuild."""
+        return '''version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+      - echo "Building image with tag $IMAGE_TAG"
+
+  build:
+    commands:
+      - echo "Building Docker image..."
+      - docker build -t layoutlm-trainer -f infra/sagemaker_training/Dockerfile .
+      - docker tag layoutlm-trainer:latest $ECR_REPO:latest
+      - docker tag layoutlm-trainer:latest $ECR_REPO:$IMAGE_TAG
+
+  post_build:
+    commands:
+      - echo "Pushing Docker image to ECR..."
+      - docker push $ECR_REPO:latest
+      - docker push $ECR_REPO:$IMAGE_TAG
+      - echo "Image pushed successfully"
+      - echo "Image URI - $ECR_REPO:$IMAGE_TAG"
 '''
