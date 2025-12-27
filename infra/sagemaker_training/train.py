@@ -23,12 +23,23 @@ from pathlib import Path
 
 def get_hyperparameters() -> dict:
     """Get hyperparameters from SageMaker environment."""
-    # SageMaker sets hyperparameters as SM_HP_<name> environment variables
-    # or as a JSON string in SM_HPS
+    # SageMaker provides hyperparameters in multiple ways:
+    # 1. /opt/ml/input/config/hyperparameters.json (BYOC containers)
+    # 2. SM_HPS environment variable (JSON string)
+    # 3. SM_HP_* environment variables
     hps = {}
 
-    # Try SM_HPS first (JSON format)
-    if "SM_HPS" in os.environ:
+    # Try hyperparameters.json first (BYOC containers)
+    hp_file = Path("/opt/ml/input/config/hyperparameters.json")
+    if hp_file.exists():
+        try:
+            with open(hp_file) as f:
+                hps = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    # Try SM_HPS (JSON format)
+    if not hps and "SM_HPS" in os.environ:
         try:
             hps = json.loads(os.environ["SM_HPS"])
         except json.JSONDecodeError:
