@@ -47,7 +47,8 @@ Environment Variables:
     For OpenRouter (Fallback):
         OPENROUTER_BASE_URL: OpenRouter API URL (default: https://openrouter.ai/api/v1)
         OPENROUTER_API_KEY: OpenRouter API key
-        OPENROUTER_MODEL: Model name (default: openai/gpt-oss-120b:free)
+        OPENROUTER_MODEL: Free model name (default: openai/gpt-oss-120b:free)
+        OPENROUTER_PAID_MODEL: Paid model name (default: openai/gpt-oss-120b)
 """
 
 import logging
@@ -363,53 +364,93 @@ def create_llm_from_settings(
 # =============================================================================
 
 
-class BothProvidersFailedError(Exception):
+class AllProvidersFailedError(Exception):
     """
-    Raised when both Ollama and OpenRouter fail with rate limit errors.
+    Raised when all LLM providers (Ollama, OpenRouter free, OpenRouter paid) fail.
 
     This error is designed to be caught by the circuit breaker and Step Function
-    retry logic. It preserves information about both failures for debugging.
+    retry logic. It preserves information about all failures for debugging.
     """
 
     def __init__(
         self,
         message: str,
-        primary_error: Exception,
-        fallback_error: Exception,
+        errors: list[Exception],
     ):
         super().__init__(message)
-        self.primary_error = primary_error
-        self.fallback_error = fallback_error
+        self.errors = errors
+
+    @property
+    def primary_error(self) -> Exception:
+        """Backward compatibility: return first error."""
+        return self.errors[0] if self.errors else Exception("Unknown error")
+
+    @property
+    def fallback_error(self) -> Exception:
+        """Backward compatibility: return second error."""
+        return self.errors[1] if len(self.errors) > 1 else self.primary_error
+
+
+# Backward compatibility alias
+BothProvidersFailedError = AllProvidersFailedError
 
 
 @dataclass
 class ResilientLLM:
     """
-    LLM wrapper with automatic fallback from Ollama to OpenRouter.
+    LLM wrapper with automatic fallback: Ollama → OpenRouter free → OpenRouter paid.
 
     This class integrates with the existing rate limiting infrastructure:
-    - If Ollama fails with rate limit → immediately try OpenRouter
-    - If OpenRouter succeeds → return response (circuit breaker sees success)
-    - If both fail with rate limit → raise BothProvidersFailedError
+    - If Ollama fails with rate limit → try OpenRouter free model
+    - If OpenRouter free fails with rate limit → try OpenRouter paid model
+    - If paid succeeds → return response (circuit breaker sees success)
+    - If all three fail → raise AllProvidersFailedError
       (which triggers circuit breaker / Step Function retry)
 
     Usage:
         llm = ResilientLLM(
             primary_llm=create_llm(provider=LLMProvider.OLLAMA),
-            fallback_llm=create_llm(provider=LLMProvider.OPENROUTER),
+            fallback_free_llm=create_llm(provider=LLMProvider.OPENROUTER, model="...free"),
+            fallback_paid_llm=create_llm(provider=LLMProvider.OPENROUTER, model="...paid"),
         )
         response = llm.invoke(messages)
     """
 
     primary_llm: Any  # BaseChatModel - Ollama
-    fallback_llm: Any  # BaseChatModel - OpenRouter
+    fallback_free_llm: Any  # BaseChatModel - OpenRouter free model
+    fallback_paid_llm: Optional[Any] = None  # BaseChatModel - OpenRouter paid model
+
+    # Backward compatibility: accept fallback_llm as alias for fallback_free_llm
+    fallback_llm: Any = field(default=None, repr=False)
 
     # Statistics
     primary_calls: int = field(default=0, init=False)
     primary_successes: int = field(default=0, init=False)
-    fallback_calls: int = field(default=0, init=False)
-    fallback_successes: int = field(default=0, init=False)
-    both_failed: int = field(default=0, init=False)
+    fallback_free_calls: int = field(default=0, init=False)
+    fallback_free_successes: int = field(default=0, init=False)
+    fallback_paid_calls: int = field(default=0, init=False)
+    fallback_paid_successes: int = field(default=0, init=False)
+    all_failed: int = field(default=0, init=False)
+
+    def __post_init__(self):
+        """Handle backward compatibility for fallback_llm parameter."""
+        if self.fallback_llm is not None and self.fallback_free_llm is None:
+            self.fallback_free_llm = self.fallback_llm
+        elif self.fallback_free_llm is None:
+            raise ValueError("fallback_free_llm is required")
+
+    # Backward compatibility aliases
+    @property
+    def fallback_calls(self) -> int:
+        return self.fallback_free_calls
+
+    @property
+    def fallback_successes(self) -> int:
+        return self.fallback_free_successes
+
+    @property
+    def both_failed(self) -> int:
+        return self.all_failed
 
     def invoke(
         self,
@@ -418,7 +459,9 @@ class ResilientLLM:
         **kwargs: Any,
     ) -> Any:
         """
-        Invoke the LLM with automatic fallback.
+        Invoke the LLM with automatic fallback through three tiers.
+
+        Fallback chain: Ollama → OpenRouter free → OpenRouter paid
 
         Args:
             messages: Messages to send to the LLM (LangChain format)
@@ -429,12 +472,13 @@ class ResilientLLM:
             LLM response
 
         Raises:
-            BothProvidersFailedError: If both providers fail with rate limits
+            AllProvidersFailedError: If all providers fail with rate limits
             Exception: If primary fails with non-rate-limit error
         """
+        errors: list[Exception] = []
         self.primary_calls += 1
 
-        # Try primary (Ollama) first
+        # Tier 1: Try primary (Ollama) first
         try:
             if config:
                 response = self.primary_llm.invoke(messages, config=config, **kwargs)
@@ -444,9 +488,10 @@ class ResilientLLM:
             return response
 
         except Exception as primary_error:
+            errors.append(primary_error)
+
             # Check if this is a fallback-worthy error
             if not is_fallback_error(primary_error):
-                # Not a rate limit - don't try fallback, just raise
                 logger.warning(
                     "Ollama failed with non-fallback error: %s",
                     str(primary_error)[:200],
@@ -454,46 +499,79 @@ class ResilientLLM:
                 raise
 
             logger.info(
-                "Ollama rate limited, trying OpenRouter: %s",
+                "Ollama rate limited, trying OpenRouter free: %s",
                 str(primary_error)[:100],
             )
 
-            # Try fallback (OpenRouter)
-            self.fallback_calls += 1
-            try:
-                if config:
-                    response = self.fallback_llm.invoke(
-                        messages, config=config, **kwargs
-                    )
-                else:
-                    response = self.fallback_llm.invoke(messages, **kwargs)
-                self.fallback_successes += 1
-                logger.info("OpenRouter fallback succeeded")
-                return response
+        # Tier 2: Try OpenRouter free model
+        self.fallback_free_calls += 1
+        try:
+            if config:
+                response = self.fallback_free_llm.invoke(
+                    messages, config=config, **kwargs
+                )
+            else:
+                response = self.fallback_free_llm.invoke(messages, **kwargs)
+            self.fallback_free_successes += 1
+            logger.info("OpenRouter free fallback succeeded")
+            return response
 
-            except Exception as fallback_error:
-                self.both_failed += 1
+        except Exception as free_error:
+            errors.append(free_error)
 
-                # Check if fallback also hit rate limit
-                if is_fallback_error(fallback_error):
-                    logger.error(
-                        "Both providers rate limited. Ollama: %s, OpenRouter: %s",
-                        str(primary_error)[:100],
-                        str(fallback_error)[:100],
-                    )
-                    # Raise special error for circuit breaker
-                    raise BothProvidersFailedError(
-                        f"Both Ollama and OpenRouter are rate limited",
-                        primary_error=primary_error,
-                        fallback_error=fallback_error,
-                    ) from fallback_error
-                else:
-                    # Fallback failed with different error
-                    logger.error(
-                        "OpenRouter fallback failed: %s",
-                        str(fallback_error)[:200],
-                    )
-                    raise
+            if not is_fallback_error(free_error):
+                logger.error(
+                    "OpenRouter free failed with non-fallback error: %s",
+                    str(free_error)[:200],
+                )
+                raise
+
+            # Check if we have a paid fallback
+            if self.fallback_paid_llm is None:
+                self.all_failed += 1
+                logger.error(
+                    "Both Ollama and OpenRouter free rate limited (no paid fallback). "
+                    "Ollama: %s, OpenRouter: %s",
+                    str(errors[0])[:100],
+                    str(free_error)[:100],
+                )
+                raise AllProvidersFailedError(
+                    "Ollama and OpenRouter free are rate limited",
+                    errors=errors,
+                ) from free_error
+
+            logger.info(
+                "OpenRouter free rate limited, trying OpenRouter paid: %s",
+                str(free_error)[:100],
+            )
+
+        # Tier 3: Try OpenRouter paid model
+        self.fallback_paid_calls += 1
+        try:
+            if config:
+                response = self.fallback_paid_llm.invoke(
+                    messages, config=config, **kwargs
+                )
+            else:
+                response = self.fallback_paid_llm.invoke(messages, **kwargs)
+            self.fallback_paid_successes += 1
+            logger.info("OpenRouter paid fallback succeeded")
+            return response
+
+        except Exception as paid_error:
+            errors.append(paid_error)
+            self.all_failed += 1
+
+            logger.error(
+                "All providers failed. Ollama: %s, Free: %s, Paid: %s",
+                str(errors[0])[:80],
+                str(errors[1])[:80],
+                str(paid_error)[:80],
+            )
+            raise AllProvidersFailedError(
+                "All LLM providers failed (Ollama, OpenRouter free, OpenRouter paid)",
+                errors=errors,
+            ) from paid_error
 
     async def ainvoke(
         self,
@@ -501,9 +579,15 @@ class ResilientLLM:
         config: Optional[dict] = None,
         **kwargs: Any,
     ) -> Any:
-        """Async invoke with automatic fallback."""
+        """
+        Async invoke with automatic fallback through three tiers.
+
+        Fallback chain: Ollama → OpenRouter free → OpenRouter paid
+        """
+        errors: list[Exception] = []
         self.primary_calls += 1
 
+        # Tier 1: Try primary (Ollama) first
         try:
             if config:
                 response = await self.primary_llm.ainvoke(
@@ -515,50 +599,116 @@ class ResilientLLM:
             return response
 
         except Exception as primary_error:
+            errors.append(primary_error)
+
             if not is_fallback_error(primary_error):
+                logger.warning(
+                    "Ollama failed with non-fallback error: %s",
+                    str(primary_error)[:200],
+                )
                 raise
 
             logger.info(
-                "Ollama rate limited, trying OpenRouter: %s",
+                "Ollama rate limited, trying OpenRouter free: %s",
                 str(primary_error)[:100],
             )
 
-            self.fallback_calls += 1
-            try:
-                if config:
-                    response = await self.fallback_llm.ainvoke(
-                        messages, config=config, **kwargs
-                    )
-                else:
-                    response = await self.fallback_llm.ainvoke(messages, **kwargs)
-                self.fallback_successes += 1
-                return response
+        # Tier 2: Try OpenRouter free model
+        self.fallback_free_calls += 1
+        try:
+            if config:
+                response = await self.fallback_free_llm.ainvoke(
+                    messages, config=config, **kwargs
+                )
+            else:
+                response = await self.fallback_free_llm.ainvoke(messages, **kwargs)
+            self.fallback_free_successes += 1
+            logger.info("OpenRouter free fallback succeeded")
+            return response
 
-            except Exception as fallback_error:
-                self.both_failed += 1
-                if is_fallback_error(fallback_error):
-                    raise BothProvidersFailedError(
-                        f"Both Ollama and OpenRouter are rate limited",
-                        primary_error=primary_error,
-                        fallback_error=fallback_error,
-                    ) from fallback_error
+        except Exception as free_error:
+            errors.append(free_error)
+
+            if not is_fallback_error(free_error):
+                logger.error(
+                    "OpenRouter free failed with non-fallback error: %s",
+                    str(free_error)[:200],
+                )
                 raise
 
+            # Check if we have a paid fallback
+            if self.fallback_paid_llm is None:
+                self.all_failed += 1
+                logger.error(
+                    "Both Ollama and OpenRouter free rate limited (no paid fallback). "
+                    "Ollama: %s, OpenRouter: %s",
+                    str(errors[0])[:100],
+                    str(free_error)[:100],
+                )
+                raise AllProvidersFailedError(
+                    "Ollama and OpenRouter free are rate limited",
+                    errors=errors,
+                ) from free_error
+
+            logger.info(
+                "OpenRouter free rate limited, trying OpenRouter paid: %s",
+                str(free_error)[:100],
+            )
+
+        # Tier 3: Try OpenRouter paid model
+        self.fallback_paid_calls += 1
+        try:
+            if config:
+                response = await self.fallback_paid_llm.ainvoke(
+                    messages, config=config, **kwargs
+                )
+            else:
+                response = await self.fallback_paid_llm.ainvoke(messages, **kwargs)
+            self.fallback_paid_successes += 1
+            logger.info("OpenRouter paid fallback succeeded")
+            return response
+
+        except Exception as paid_error:
+            errors.append(paid_error)
+            self.all_failed += 1
+
+            logger.error(
+                "All providers failed. Ollama: %s, Free: %s, Paid: %s",
+                str(errors[0])[:80],
+                str(errors[1])[:80],
+                str(paid_error)[:80],
+            )
+            raise AllProvidersFailedError(
+                "All LLM providers failed (Ollama, OpenRouter free, OpenRouter paid)",
+                errors=errors,
+            ) from paid_error
+
     def get_stats(self) -> dict[str, Any]:
-        """Get statistics on LLM usage."""
+        """Get statistics on LLM usage across all three tiers."""
         total = self.primary_calls
+        total_successes = (
+            self.primary_successes
+            + self.fallback_free_successes
+            + self.fallback_paid_successes
+        )
         return {
             "primary_calls": self.primary_calls,
             "primary_successes": self.primary_successes,
-            "fallback_calls": self.fallback_calls,
-            "fallback_successes": self.fallback_successes,
-            "both_failed": self.both_failed,
-            "fallback_rate": self.fallback_calls / total if total > 0 else 0.0,
-            "overall_success_rate": (
-                (self.primary_successes + self.fallback_successes) / total
-                if total > 0
-                else 1.0
+            "fallback_free_calls": self.fallback_free_calls,
+            "fallback_free_successes": self.fallback_free_successes,
+            "fallback_paid_calls": self.fallback_paid_calls,
+            "fallback_paid_successes": self.fallback_paid_successes,
+            "all_failed": self.all_failed,
+            # Backward compatibility
+            "fallback_calls": self.fallback_free_calls,
+            "fallback_successes": self.fallback_free_successes,
+            "both_failed": self.all_failed,
+            # Computed rates
+            "fallback_rate": self.fallback_free_calls / total if total > 0 else 0.0,
+            "paid_fallback_rate": (
+                self.fallback_paid_calls / total if total > 0 else 0.0
             ),
+            "overall_success_rate": total_successes / total if total > 0 else 1.0,
         }
 
 
@@ -568,16 +718,23 @@ def create_resilient_llm(
     **kwargs: Any,
 ) -> ResilientLLM:
     """
-    Create a resilient LLM with automatic Ollama -> OpenRouter fallback.
+    Create a resilient LLM with three-tier fallback.
+
+    Fallback chain: Ollama → OpenRouter free → OpenRouter paid
 
     Args:
         temperature: LLM temperature (default 0.0)
         timeout: Request timeout in seconds (default 120)
-        **kwargs: Additional arguments passed to both LLMs
+        **kwargs: Additional arguments passed to all LLMs
 
     Returns:
         ResilientLLM instance with automatic failover
+
+    Environment Variables:
+        OPENROUTER_MODEL: Free model (default: openai/gpt-oss-120b:free)
+        OPENROUTER_PAID_MODEL: Paid model (default: openai/gpt-oss-120b)
     """
+    # Tier 1: Ollama (primary)
     primary_llm = create_llm(
         provider=LLMProvider.OLLAMA,
         temperature=temperature,
@@ -585,16 +742,44 @@ def create_resilient_llm(
         **kwargs,
     )
 
-    fallback_llm = create_llm(
+    # Get model names from environment
+    free_model = os.environ.get("OPENROUTER_MODEL", "openai/gpt-oss-120b:free")
+    paid_model = os.environ.get("OPENROUTER_PAID_MODEL", "openai/gpt-oss-120b")
+
+    # Tier 2: OpenRouter free model
+    fallback_free_llm = create_llm(
         provider=LLMProvider.OPENROUTER,
+        model=free_model,
         temperature=temperature,
         timeout=timeout,
         **kwargs,
     )
 
+    # Tier 3: OpenRouter paid model (only if different from free)
+    fallback_paid_llm = None
+    if paid_model and paid_model != free_model:
+        fallback_paid_llm = create_llm(
+            provider=LLMProvider.OPENROUTER,
+            model=paid_model,
+            temperature=temperature,
+            timeout=timeout,
+            **kwargs,
+        )
+        logger.info(
+            "Created three-tier resilient LLM: Ollama → %s → %s",
+            free_model,
+            paid_model,
+        )
+    else:
+        logger.info(
+            "Created two-tier resilient LLM: Ollama → %s (no paid fallback)",
+            free_model,
+        )
+
     return ResilientLLM(
         primary_llm=primary_llm,
-        fallback_llm=fallback_llm,
+        fallback_free_llm=fallback_free_llm,
+        fallback_paid_llm=fallback_paid_llm,
     )
 
 

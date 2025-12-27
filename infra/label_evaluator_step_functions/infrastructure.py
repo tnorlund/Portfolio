@@ -517,6 +517,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
+                "OPENROUTER_PAID_MODEL": "openai/gpt-oss-120b",
                 **tracing_env,
             },
         }
@@ -604,6 +605,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
+                "OPENROUTER_PAID_MODEL": "openai/gpt-oss-120b",
                 **tracing_env,
             },
         }
@@ -653,6 +655,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
+                "OPENROUTER_PAID_MODEL": "openai/gpt-oss-120b",
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
                 **tracing_env,
                 "MAX_ISSUES_PER_LLM_CALL": "15",
@@ -705,6 +708,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
+                "OPENROUTER_PAID_MODEL": "openai/gpt-oss-120b",
                 **tracing_env,
             },
         }
@@ -753,6 +757,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
+                "OPENROUTER_PAID_MODEL": "openai/gpt-oss-120b",
                 **tracing_env,
             },
         }
@@ -1269,11 +1274,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                 "Next": "ProcessBatches",
                             },
                             # Process receipt batches - simplified flow with parallel evaluation
-                            # Reduced concurrency (was 3) to avoid Ollama rate limits
                             "ProcessBatches": {
                                 "Type": "Map",
                                 "ItemsPath": "$.receipts_data.receipt_batches",
-                                "MaxConcurrency": 2,
+                                "MaxConcurrency": 3,
                                 "Parameters": {
                                     "batch.$": "$$.Map.Item.Value",
                                     "batch_index.$": "$$.Map.Item.Index",
@@ -1295,11 +1299,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     "ProcessorConfig": {"Mode": "INLINE"},
                                     "StartAt": "ProcessReceipts",
                                     "States": {
-                                        # Reduced concurrency (was 5) to avoid Ollama rate limits
                                         "ProcessReceipts": {
                                             "Type": "Map",
                                             "ItemsPath": "$.batch",
-                                            "MaxConcurrency": 2,
+                                            "MaxConcurrency": 3,
                                             "Parameters": {
                                                 "receipt.$": "$$.Map.Item.Value",
                                                 "receipt_index.$": "$$.Map.Item.Index",
