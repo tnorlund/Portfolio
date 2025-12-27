@@ -40,7 +40,8 @@ COPY infra/label_evaluator_step_functions/lambdas/evaluate_currency_labels.py ${
 COPY infra/label_evaluator_step_functions/lambdas/utils/ ${LAMBDA_TASK_ROOT}/utils/
 
 # Ensure files are readable
-RUN chmod 644 ${LAMBDA_TASK_ROOT}/tracing.py ${LAMBDA_TASK_ROOT}/handler.py
+RUN chmod 644 ${LAMBDA_TASK_ROOT}/tracing.py ${LAMBDA_TASK_ROOT}/handler.py && \
+    find ${LAMBDA_TASK_ROOT}/utils -name "*.py" -exec chmod 644 {} \;
 
 # Set the handler
 CMD ["handler.handler"]

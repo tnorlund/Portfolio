@@ -315,7 +315,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             trace_ctx.set_outputs(result)
 
         except Exception as e:
-            logger.exception("Currency evaluation failed: %s", e)
+            logger.exception("Currency evaluation failed")
             result = {
                 "status": "failed",
                 "error": str(e),

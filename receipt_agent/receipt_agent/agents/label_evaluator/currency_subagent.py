@@ -127,18 +127,19 @@ def get_non_currency_pattern(text: str) -> Optional[str]:
 
 def identify_line_item_rows(
     visual_lines: list[VisualLine],
-    patterns: Optional[dict] = None,
+    patterns: Optional[dict] = None,  # Reserved for future pattern-based detection
 ) -> list[LineItemRow]:
     """
     Identify which visual lines are line item rows based on patterns.
 
     Args:
         visual_lines: All visual lines from the receipt
-        patterns: Line item patterns from discover_patterns_with_llm()
+        patterns: Line item patterns from discover_patterns_with_llm() (reserved for future use)
 
     Returns:
         List of LineItemRow objects
     """
+    _ = patterns  # Suppress unused warning until pattern-based detection is implemented
     rows = []
     for line in visual_lines:
         line_labels = {
@@ -450,7 +451,7 @@ def evaluate_currency_labels(
 
         # Step 5: Format output for apply_llm_decisions
         results = []
-        for cw, decision in zip(currency_words, decisions):
+        for cw, decision in zip(currency_words, decisions, strict=True):
             wc = cw.word_context
             results.append({
                 "image_id": image_id,

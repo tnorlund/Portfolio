@@ -461,7 +461,7 @@ def evaluate_metadata_labels(
 
         # Step 4: Format output for apply_llm_decisions
         results = []
-        for mw, decision in zip(metadata_words, decisions):
+        for mw, decision in zip(metadata_words, decisions, strict=True):
             wc = mw.word_context
             results.append({
                 "image_id": image_id,
