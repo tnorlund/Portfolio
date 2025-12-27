@@ -362,6 +362,7 @@ def start_trace(
         # Create a sanitized copy of the event (exclude large/sensitive fields)
         trace_inputs = _sanitize_event_for_trace(event)
 
+    run_tree = None
     try:
         run_tree = _RunTree(
             name=name,
@@ -378,16 +379,21 @@ def start_trace(
         )
 
         logger.info("Trace started, yielding context (run_id=%s)", run_tree.id)
-        yield ctx
-
-        # End the run successfully
-        run_tree.end()
-        run_tree.patch()
-        logger.info("Trace ended and patched (run_id=%s)", run_tree.id)
-
     except Exception as e:
         logger.warning("Failed to create trace: %s", e, exc_info=True)
         yield TraceContext()
+        return
+
+    try:
+        yield ctx
+    finally:
+        if run_tree is not None:
+            try:
+                run_tree.end()
+                run_tree.patch()
+                logger.info("Trace ended and patched (run_id=%s)", run_tree.id)
+            except Exception as e:
+                logger.warning("Failed to finalize trace: %s", e, exc_info=True)
 
 
 @contextmanager
@@ -458,47 +464,52 @@ def resume_trace(
     if trace_inputs is None:
         trace_inputs = _sanitize_event_for_trace(event)
 
-    try:
-        if _RunTree is not None:
-            # Create a child run for this step, linked to parent via headers
-            child_run = _RunTree(
-                name=name,
-                run_type=run_type,
-                inputs=trace_inputs,
-                extra={"metadata": trace_metadata},
-                tags=trace_tags,
-                parent=parent_headers,  # Link to parent via headers
-            )
-            child_run.post()
-
-            # Use headers for tracing_context (consistent across all helpers)
-            child_headers = child_run.to_headers()
-            if _tracing_context is not None:
-                with _tracing_context(parent=child_headers):
-                    ctx = TraceContext(
-                        run_tree=child_run,
-                        headers=child_headers,
-                    )
-                    yield ctx
-            else:
-                ctx = TraceContext(
-                    run_tree=child_run,
-                    headers=child_headers,
-                )
-                yield ctx
-
-            child_run.end()
-            child_run.patch()
-        elif _tracing_context is not None:
-            # Fallback: just set up tracing context without RunTree
+    if _RunTree is None:
+        # No RunTree available - fallback to tracing context only
+        if _tracing_context is not None:
             with _tracing_context(parent=parent_headers):
                 yield TraceContext(headers=parent_headers)
         else:
             yield TraceContext(headers=parent_headers)
+        return
 
+    child_run = None
+    try:
+        # Create a child run for this step, linked to parent via headers
+        child_run = _RunTree(
+            name=name,
+            run_type=run_type,
+            inputs=trace_inputs,
+            extra={"metadata": trace_metadata},
+            tags=trace_tags,
+            parent=parent_headers,  # Link to parent via headers
+        )
+        child_run.post()
+
+        # Use headers for tracing_context (consistent across all helpers)
+        child_headers = child_run.to_headers()
+        ctx = TraceContext(
+            run_tree=child_run,
+            headers=child_headers,
+        )
     except Exception as e:
         logger.warning("Failed to resume trace: %s", e)
         yield TraceContext(headers=parent_headers)
+        return
+
+    try:
+        if _tracing_context is not None:
+            with _tracing_context(parent=child_headers):
+                yield ctx
+        else:
+            yield ctx
+    finally:
+        if child_run is not None:
+            try:
+                child_run.end()
+                child_run.patch()
+            except Exception as e:
+                logger.warning("Failed to finalize resumed trace: %s", e, exc_info=True)
 
 
 @contextmanager
@@ -541,50 +552,55 @@ def child_trace(
         yield TraceContext(headers=parent_ctx.headers)
         return
 
+    if not hasattr(parent_ctx.run_tree, "create_child"):
+        logger.warning("[child_trace] Parent run_tree has no create_child method")
+        yield TraceContext(headers=parent_ctx.headers)
+        return
+
+    child = None
     try:
-        if hasattr(parent_ctx.run_tree, "create_child"):
-            child = parent_ctx.run_tree.create_child(
-                name=name,
-                run_type=run_type,
-                inputs=inputs or {},
-                extra={"metadata": metadata or {}},
-            )
-            child.post()
+        child = parent_ctx.run_tree.create_child(
+            name=name,
+            run_type=run_type,
+            inputs=inputs or {},
+            extra={"metadata": metadata or {}},
+        )
+        child.post()
 
-            # Use headers for tracing_context (consistent across all helpers)
-            child_headers = child.to_headers()
-            logger.info(
-                "[child_trace] Created child id=%s, trace_id=%s, headers=%s, using_tracing_context=%s",
-                child.id,
-                child.trace_id,
-                list(child_headers.keys()) if child_headers else None,
-                _tracing_context is not None,
-            )
-
-            if _tracing_context is not None:
-                logger.info("[child_trace] Activating tracing_context with parent=headers")
-                with _tracing_context(parent=child_headers):
-                    yield TraceContext(
-                        run_tree=child,
-                        headers=child_headers,
-                    )
-            else:
-                logger.warning("[child_trace] _tracing_context is None - LangGraph/LLM calls may not be nested")
-                yield TraceContext(
-                    run_tree=child,
-                    headers=child_headers,
-                )
-
-            child.end()
-            child.patch()
-            logger.info("[child_trace] Child '%s' completed and patched", name)
-        else:
-            logger.warning("[child_trace] Parent run_tree has no create_child method")
-            yield TraceContext(headers=parent_ctx.headers)
-
+        # Use headers for tracing_context (consistent across all helpers)
+        child_headers = child.to_headers()
+        logger.info(
+            "[child_trace] Created child id=%s, trace_id=%s, headers=%s, using_tracing_context=%s",
+            child.id,
+            child.trace_id,
+            list(child_headers.keys()) if child_headers else None,
+            _tracing_context is not None,
+        )
+        ctx = TraceContext(
+            run_tree=child,
+            headers=child_headers,
+        )
     except Exception as e:
         logger.warning("Failed to create child trace: %s", e)
         yield TraceContext(headers=parent_ctx.headers)
+        return
+
+    try:
+        if _tracing_context is not None:
+            logger.info("[child_trace] Activating tracing_context with parent=headers")
+            with _tracing_context(parent=child_headers):
+                yield ctx
+        else:
+            logger.warning("[child_trace] _tracing_context is None - LangGraph/LLM calls may not be nested")
+            yield ctx
+    finally:
+        if child is not None:
+            try:
+                child.end()
+                child.patch()
+                logger.info("[child_trace] Child '%s' completed and patched", name)
+            except Exception as e:
+                logger.warning("Failed to finalize child trace: %s", e, exc_info=True)
 
 
 def log_trace_event(
@@ -1008,6 +1024,7 @@ def receipt_state_trace(
         **(metadata or {}),
     }
 
+    run_tree = None
     try:
         run_tree_kwargs = {
             "id": state_run_id,
@@ -1026,37 +1043,36 @@ def receipt_state_trace(
         run_tree.post()
 
         run_tree_headers = run_tree.to_headers()
-
-        if _tracing_context is not None:
-            with _tracing_context(parent=run_tree_headers):
-                ctx = TraceContext(
-                    run_tree=run_tree,
-                    headers=run_tree_headers,
-                    trace_id=trace_id,
-                    root_run_id=root_run_id,
-                )
-                yield ctx
-        else:
-            ctx = TraceContext(
-                run_tree=run_tree,
-                headers=run_tree_headers,
-                trace_id=trace_id,
-                root_run_id=root_run_id,
-            )
-            yield ctx
-
-        run_tree.end()
-        run_tree.patch()
-        logger.info(
-            "Receipt state trace ended (state=%s, image_id=%s, receipt_id=%s)",
-            state_name,
-            image_id[:8] if len(image_id) > 8 else image_id,
-            receipt_id,
+        ctx = TraceContext(
+            run_tree=run_tree,
+            headers=run_tree_headers,
+            trace_id=trace_id,
+            root_run_id=root_run_id,
         )
-
     except Exception as e:
         logger.warning("Failed to create receipt state trace: %s", e, exc_info=True)
         yield TraceContext()
+        return
+
+    try:
+        if _tracing_context is not None:
+            with _tracing_context(parent=run_tree_headers):
+                yield ctx
+        else:
+            yield ctx
+    finally:
+        if run_tree is not None:
+            try:
+                run_tree.end()
+                run_tree.patch()
+                logger.info(
+                    "Receipt state trace ended (state=%s, image_id=%s, receipt_id=%s)",
+                    state_name,
+                    image_id[:8] if len(image_id) > 8 else image_id,
+                    receipt_id,
+                )
+            except Exception as e:
+                logger.warning("Failed to finalize receipt state trace: %s", e, exc_info=True)
 
 
 def _generate_child_dotted_order(parent_dotted_order: str, child_run_id: str) -> str:
@@ -1153,6 +1169,7 @@ def state_trace(
             state_name,
         )
 
+    run_tree = None
     try:
         # Build RunTree with our generated dotted_order
         # LangSmith validates first segment matches trace_id
@@ -1185,30 +1202,30 @@ def state_trace(
             _tracing_context is not None,
         )
 
-        if _tracing_context is not None:
-            logger.info("[state_trace] Activating tracing_context with parent=headers")
-            with _tracing_context(parent=run_tree_headers):
-                ctx = TraceContext(
-                    run_tree=run_tree,
-                    headers=run_tree_headers,
-                    trace_id=trace_id,
-                    root_run_id=root_run_id,
-                )
-                yield ctx
-        else:
-            logger.warning("[state_trace] _tracing_context is None - nested calls may not be linked")
-            ctx = TraceContext(
-                run_tree=run_tree,
-                headers=run_tree_headers,
-                trace_id=trace_id,
-                root_run_id=root_run_id,
-            )
-            yield ctx
-
-        run_tree.end()
-        run_tree.patch()
-        logger.info("State trace ended (run_id=%s)", state_run_id[:8])
-
+        ctx = TraceContext(
+            run_tree=run_tree,
+            headers=run_tree_headers,
+            trace_id=trace_id,
+            root_run_id=root_run_id,
+        )
     except Exception as e:
         logger.warning("Failed to create state trace: %s", e, exc_info=True)
         yield TraceContext()
+        return
+
+    try:
+        if _tracing_context is not None:
+            logger.info("[state_trace] Activating tracing_context with parent=headers")
+            with _tracing_context(parent=run_tree_headers):
+                yield ctx
+        else:
+            logger.warning("[state_trace] _tracing_context is None - nested calls may not be linked")
+            yield ctx
+    finally:
+        if run_tree is not None:
+            try:
+                run_tree.end()
+                run_tree.patch()
+                logger.info("State trace ended (run_id=%s)", state_run_id[:8])
+            except Exception as e:
+                logger.warning("Failed to finalize state trace: %s", e, exc_info=True)
