@@ -159,6 +159,7 @@ class SageMakerTrainingInfra(ComponentResource):
                     {
                         "Effect": "Allow",
                         "Action": [
+                            "dynamodb:DescribeTable",  # For table validation
                             "dynamodb:GetItem",
                             "dynamodb:Query",
                             "dynamodb:Scan",
