@@ -45,6 +45,7 @@ import logging
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 # Version identifier for debugging - helps verify correct module is loaded in Lambda
@@ -1067,8 +1068,6 @@ def _generate_child_dotted_order(parent_dotted_order: str, child_run_id: str) ->
 
     Example: 20251224T174151682753Z3fec4059-46c3-48e7-9abb-18a3de8277ca.20251224T175029523772Z019b517b-d893-7051-af16-c083cae44a11
     """
-    from datetime import datetime, timezone
-
     now = datetime.now(timezone.utc)
     # Format: 20251224T072227945197Z (22 chars)
     timestamp = now.strftime("%Y%m%dT%H%M%S") + f"{now.microsecond:06d}Z"

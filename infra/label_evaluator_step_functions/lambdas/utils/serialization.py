@@ -164,7 +164,7 @@ def deserialize_patterns(
         label_positions[label] = [stats["mean_y"]]
 
     # Reconstruct label_pair_geometry
-    label_pair_geometry: dict[tuple, LabelPairGeometry] = {}
+    label_pair_geometry: dict[tuple[str, str], LabelPairGeometry] = {}
     for geom_data in p.get("label_pair_geometry", []):
         pair_key = tuple(geom_data["labels"])
         geom = LabelPairGeometry(
@@ -181,7 +181,7 @@ def deserialize_patterns(
         label_pair_geometry[pair_key] = geom
 
     # Reconstruct constellation_geometry
-    constellation_geometry: dict[tuple, ConstellationGeometry] = {}
+    constellation_geometry: dict[tuple[str, ...], ConstellationGeometry] = {}
     for cg_data in p.get("constellation_geometry", []):
         labels_key = tuple(cg_data["labels"])
         relative_positions = {}

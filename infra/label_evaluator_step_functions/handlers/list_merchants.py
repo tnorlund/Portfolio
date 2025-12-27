@@ -147,5 +147,6 @@ def handler(event: dict[str, Any], _context: Any) -> "ListMerchantsOutput":
         "skipped_merchants": skipped_count,
         "min_receipts": min_receipts,
         "max_training_receipts": max_training_receipts,
+        "skip_llm_review": False,  # This traced version always runs LLM
         "manifest_s3_key": manifest_key,
     }

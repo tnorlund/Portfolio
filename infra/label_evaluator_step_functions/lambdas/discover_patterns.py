@@ -8,7 +8,6 @@ The trace_id and root_run_id are returned in the output and propagated
 through the Step Function to all downstream Lambdas.
 """
 
-import json
 import logging
 import os
 import sys
@@ -26,6 +25,7 @@ try:
         end_execution_trace,
         flush_langsmith_traces,
     )
+    from utils.s3_helpers import get_merchant_hash, upload_json_to_s3
 except ImportError:
     # Local/development environment: use path relative to this file
     sys.path.insert(0, os.path.join(
@@ -39,6 +39,7 @@ except ImportError:
         end_execution_trace,
         flush_langsmith_traces,
     )
+    from s3_helpers import get_merchant_hash, upload_json_to_s3
 
 # Import pattern discovery from receipt_agent
 from receipt_agent.agents.label_evaluator.pattern_discovery import (
@@ -53,23 +54,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3")
-
-
-def upload_json_to_s3(bucket: str, key: str, data: Any) -> None:
-    """Upload JSON data to S3."""
-    s3.put_object(
-        Bucket=bucket,
-        Key=key,
-        Body=json.dumps(data, indent=2, default=str).encode("utf-8"),
-        ContentType="application/json",
-    )
-
-
-def get_merchant_hash(merchant_name: str) -> str:
-    """Create a short, stable hash for merchant name S3 keys."""
-    import hashlib
-
-    return hashlib.sha256(merchant_name.encode("utf-8")).hexdigest()[:12]
 
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
@@ -147,7 +131,14 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     # Get pattern discovery config from environment
     config = PatternDiscoveryConfig.from_env()
 
-    result = None
+    # Initialize result with default structure for error cases
+    result = {
+        "execution_id": execution_id,
+        "merchant_name": merchant_name,
+        "patterns_s3_key": None,
+        "patterns": None,
+        "error": None,
+    }
 
     try:
         # Always run pattern discovery (no caching)
@@ -165,7 +156,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             default_patterns = get_default_patterns(
                 merchant_name, reason="no_receipt_data"
             )
-            upload_json_to_s3(batch_bucket, patterns_s3_key, default_patterns)
+            upload_json_to_s3(s3, batch_bucket, patterns_s3_key, default_patterns)
             result = {
                 "execution_id": execution_id,
                 "merchant_name": merchant_name,
@@ -188,7 +179,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     merchant_name, reason="llm_discovery_failed"
                 )
                 upload_json_to_s3(
-                    batch_bucket, patterns_s3_key, default_patterns
+                    s3, batch_bucket, patterns_s3_key, default_patterns
                 )
                 result = {
                     "execution_id": execution_id,
@@ -204,7 +195,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
                 # Store patterns
                 with child_trace("upload_patterns", trace_ctx):
-                    upload_json_to_s3(batch_bucket, patterns_s3_key, patterns)
+                    upload_json_to_s3(s3, batch_bucket, patterns_s3_key, patterns)
                     logger.info(
                         f"Stored patterns for {merchant_name} at {patterns_s3_key}"
                     )

@@ -84,6 +84,14 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
 
     start_time = time.time()
 
+    # Initialize result for error cases
+    result = {
+        "patterns_s3_key": "",
+        "merchant_name": merchant_name,
+        "receipt_count": 0,
+        "pattern_stats": None,
+    }
+
     # Create a child trace using deterministic UUID
     with state_trace(
         execution_arn=execution_arn,

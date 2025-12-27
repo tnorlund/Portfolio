@@ -97,6 +97,9 @@ def handler(event: dict[str, Any], _context: Any) -> "CollectIssuesOutput":
             eval_results = load_json_from_s3(
                 s3, batch_bucket, results_s3_key, logger=logger
             )
+            if eval_results is None:
+                logger.warning("Empty results from %s", results_s3_key)
+                continue
             issues = eval_results.get("issues", [])
 
             if not issues:
