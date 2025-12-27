@@ -96,6 +96,7 @@ from receipt_agent.utils.chroma_helpers import (
 # Lambda-specific S3 utilities
 from utils.s3_helpers import (
     download_chromadb_snapshot,
+    get_merchant_hash,
     load_json_from_s3,
     upload_json_to_s3,
 )
@@ -579,9 +580,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
             # 7. Upload reviewed results to S3
             with child_trace("upload_results", trace_ctx):
-                merchant_hash = merchant_name.lower().replace(" ", "_")[:30]
                 reviewed_s3_key = (
-                    f"reviewed/{execution_id}/{merchant_hash}_{batch_index}.json"
+                    f"reviewed/{execution_id}/"
+                    f"{get_merchant_hash(merchant_name)}_{batch_index}.json"
                 )
 
                 rate_limit_stats = llm_invoker.get_stats()
