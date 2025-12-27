@@ -29,22 +29,39 @@ Recorded as `JobMetric` entities after each evaluation epoch.
 
 ## Per-Label Metrics
 
-Per-label breakdown (MERCHANT_NAME, AMOUNT, etc.). Currently stored in JobLog only.
+Per-label breakdown stored as one `JobMetric` per label with Dict value.
 
 | Metric | Status | Source | Notes |
 |--------|--------|--------|-------|
-| `label_f1` | ❌ JobLog only | `classification_report` | F1 per label |
-| `label_precision` | ❌ JobLog only | `classification_report` | Precision per label |
-| `label_recall` | ❌ JobLog only | `classification_report` | Recall per label |
-| `label_support` | ❌ JobLog only | `classification_report` | Sample count per label |
+| `label_{LABEL_NAME}` | ✅ Implemented | `classification_report` | Dict with f1, precision, recall, support |
 
-**Note:** `JobMetric.value` supports Dict values, so these could be stored as:
+**Storage format:** One record per label per epoch:
 ```python
 JobMetric(
-    metric_name="per_label_f1",
-    value={"MERCHANT_NAME": 0.92, "AMOUNT": 0.88, ...},
+    metric_name="label_MERCHANT_NAME",
+    value={"f1": 0.92, "precision": 0.94, "recall": 0.90, "support": 156},
+    unit="per_label",
     epoch=3,
 )
+JobMetric(
+    metric_name="label_AMOUNT",
+    value={"f1": 0.85, "precision": 0.88, "recall": 0.82, "support": 423},
+    unit="per_label",
+    epoch=3,
+)
+```
+
+**Query examples:**
+```python
+# Get MERCHANT_NAME metrics across all jobs
+metrics, _ = dynamo.get_metrics_by_name("label_MERCHANT_NAME")
+for m in metrics:
+    print(f"Job {m.job_id[:8]} Epoch {m.epoch}: F1={m.value['f1']:.3f}")
+
+# Compare label performance within a job
+label_metrics, _ = dynamo.list_job_metrics(job_id)
+for m in [m for m in label_metrics if m.metric_name.startswith("label_")]:
+    print(f"{m.metric_name}: F1={m.value['f1']:.3f} Support={m.value['support']}")
 ```
 
 ## Training Summary Metrics

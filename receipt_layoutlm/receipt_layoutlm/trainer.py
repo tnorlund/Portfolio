@@ -420,6 +420,19 @@ class ReceiptLayoutLMTrainer:
                         # Add per-label metrics if available (nested dict)
                         if "per_label_metrics" in metrics:
                             entry["per_label_metrics"] = metrics["per_label_metrics"]
+                            # Also record each label as a separate JobMetric with Dict value
+                            for label_name, label_stats in metrics["per_label_metrics"].items():
+                                metrics_to_write.append(
+                                    JobMetric(
+                                        job_id=self.job_id,
+                                        metric_name=f"label_{label_name}",
+                                        value=label_stats,  # Dict with f1, precision, recall, support
+                                        timestamp=datetime.now().isoformat(),
+                                        unit="per_label",
+                                        epoch=epoch_val,
+                                        step=step_val,
+                                    )
+                                )
 
                         # Collect training metrics for batch write
                         # F1 score
