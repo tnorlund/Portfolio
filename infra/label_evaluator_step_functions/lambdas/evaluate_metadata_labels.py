@@ -208,10 +208,14 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             }):
                 from langchain_ollama import ChatOllama
 
+                ollama_api_key = os.environ.get("OLLAMA_API_KEY")
+                if not ollama_api_key:
+                    raise ValueError("OLLAMA_API_KEY environment variable is required")
+
                 llm = ChatOllama(
                     model=os.environ.get("OLLAMA_MODEL", "gpt-oss:120b-cloud"),
                     base_url=os.environ.get("OLLAMA_BASE_URL", "https://ollama.com"),
-                    api_key=os.environ.get("OLLAMA_API_KEY", ""),
+                    api_key=ollama_api_key,
                     temperature=0.0,
                 )
 

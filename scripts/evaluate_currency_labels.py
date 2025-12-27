@@ -236,14 +236,17 @@ def main():
 
     print("\n--- Currency Words ---")
     for i, d in enumerate(decisions[:20]):
-        issue = d["issue"]
-        review = d["llm_review"]
-        status_icon = {"VALID": "✓", "INVALID": "✗", "NEEDS_REVIEW": "?"}[review["decision"]]
+        issue = d.get("issue", {})
+        review = d.get("llm_review", {})
+        decision = review.get("decision", "NEEDS_REVIEW")
+        confidence = review.get("confidence", "unknown")
+        status_icon = {"VALID": "✓", "INVALID": "✗", "NEEDS_REVIEW": "?"}.get(decision, "?")
 
-        print(f"\n  [{i}] {status_icon} {review['decision']} ({review['confidence']})")
-        print(f"      Word: \"{issue['word_text']}\"")
-        print(f"      Current Label: {issue['current_label'] or 'unlabeled'}")
-        print(f"      Reasoning: {review['reasoning'][:80]}")
+        print(f"\n  [{i}] {status_icon} {decision} ({confidence})")
+        print(f"      Word: \"{issue.get('word_text', '')}\"")
+        print(f"      Current Label: {issue.get('current_label') or 'unlabeled'}")
+        reasoning = review.get("reasoning", "")
+        print(f"      Reasoning: {reasoning[:80] if reasoning else ''}")
         if review.get("suggested_label"):
             print(f"      Suggested: {review['suggested_label']}")
 

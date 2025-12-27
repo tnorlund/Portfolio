@@ -189,10 +189,10 @@ def main():
     print("\n--- Metadata Words ---\n")
 
     for i, d in enumerate(decisions[:25]):
-        issue = d["issue"]
-        review = d["llm_review"]
-        decision = review["decision"]
-        confidence = review["confidence"]
+        issue = d.get("issue", {})
+        review = d.get("llm_review", {})
+        decision = review.get("decision", "NEEDS_REVIEW")
+        confidence = review.get("confidence", "unknown")
 
         if decision == "VALID":
             symbol = "✓"
@@ -202,9 +202,10 @@ def main():
             symbol = "?"
 
         print(f"  [{i}] {symbol} {decision} ({confidence})")
-        print(f"      Word: \"{issue['word_text']}\"")
-        print(f"      Current Label: {issue['current_label'] or 'unlabeled'}")
-        print(f"      Reasoning: {review['reasoning'][:70]}")
+        print(f"      Word: \"{issue.get('word_text', '')}\"")
+        print(f"      Current Label: {issue.get('current_label') or 'unlabeled'}")
+        reasoning = review.get("reasoning", "")
+        print(f"      Reasoning: {reasoning[:70] if reasoning else ''}")
         if review.get("suggested_label"):
             print(f"      Suggested: {review['suggested_label']}")
         print()

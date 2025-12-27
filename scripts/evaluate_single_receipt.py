@@ -196,16 +196,24 @@ def main():
             except Exception as e:
                 logger.warning(f"  ChromaDB failed: {e}")
 
-        reviewed_issues = review_issues_batch(
-            issues=issues,
-            words=words,
-            labels=labels,
-            merchant_name=merchant_name,
-            line_item_patterns=patterns,
-            chroma_client=chroma_client,
-            dynamo_client=dynamo_client,
-        )
-        logger.info(f"  Reviewed {len(reviewed_issues)} issues")
+        try:
+            reviewed_issues = review_issues_batch(
+                issues=issues,
+                words=words,
+                labels=labels,
+                merchant_name=merchant_name,
+                line_item_patterns=patterns,
+                chroma_client=chroma_client,
+                dynamo_client=dynamo_client,
+            )
+            logger.info(f"  Reviewed {len(reviewed_issues)} issues")
+        finally:
+            # Cleanup ChromaDB client
+            if chroma_client is not None:
+                try:
+                    chroma_client.close()
+                except Exception:
+                    pass
 
     # 6. Apply decisions
     if args.apply and reviewed_issues:
@@ -227,7 +235,11 @@ def main():
     if reviewed_issues:
         decisions = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
         for r in reviewed_issues:
-            decisions[r.get("decision", "NEEDS_REVIEW")] += 1
+            decision = r.get("decision", "NEEDS_REVIEW")
+            if decision in decisions:
+                decisions[decision] += 1
+            else:
+                decisions["NEEDS_REVIEW"] += 1
         print(f"LLM decisions: {decisions}")
 
     for i, issue in enumerate(issues[:10]):

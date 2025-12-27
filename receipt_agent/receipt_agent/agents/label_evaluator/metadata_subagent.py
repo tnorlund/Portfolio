@@ -478,7 +478,11 @@ def evaluate_metadata_labels(
         # Log summary
         decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
         for r in results:
-            decision_counts[r["llm_review"]["decision"]] += 1
+            decision = r.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
+            if decision in decision_counts:
+                decision_counts[decision] += 1
+            else:
+                decision_counts["NEEDS_REVIEW"] += 1
         logger.info(f"Metadata evaluation results: {decision_counts}")
 
         return results
