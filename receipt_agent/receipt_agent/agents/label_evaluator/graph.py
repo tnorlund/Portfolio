@@ -36,6 +36,10 @@ except ImportError:
     HAS_OLLAMA = False
     ChatOllama = None  # type: ignore
 
+from receipt_agent.agents.label_evaluator.currency_subagent import (
+    evaluate_currency_labels_sync,
+    convert_to_evaluation_issues,
+)
 from receipt_agent.agents.label_evaluator.issue_detection import (
     evaluate_word_contexts,
 )
@@ -377,6 +381,58 @@ def create_label_evaluator_graph(
 
         return {"issues_found": issues}
 
+    def evaluate_currency(state: EvaluatorState) -> dict:
+        """Evaluate currency labels using the currency subagent."""
+        if state.error:
+            return {}
+
+        if not state.visual_lines:
+            return {}
+
+        # Skip currency evaluation if LLM not available
+        if _llm is None:
+            logger.info(
+                "Skipping currency evaluation - LLM not available"
+            )
+            return {}
+
+        merchant_name = "Unknown"
+        if state.place:
+            merchant_name = state.place.merchant_name or "Unknown"
+
+        # Get line item patterns if available
+        patterns = None
+        if state.merchant_patterns:
+            patterns = {
+                "merchant": state.merchant_patterns.merchant_name,
+                "receipt_count": state.merchant_patterns.receipt_count,
+            }
+
+        try:
+            currency_decisions = evaluate_currency_labels_sync(
+                visual_lines=state.visual_lines,
+                patterns=patterns,
+                llm=_llm,
+                image_id=state.image_id,
+                receipt_id=state.receipt_id,
+                merchant_name=merchant_name,
+            )
+
+            if currency_decisions:
+                logger.info(
+                    "Currency subagent found %s issues",
+                    len(currency_decisions),
+                )
+                # Convert dicts to EvaluationIssue objects and merge
+                currency_issues = convert_to_evaluation_issues(currency_decisions)
+                combined_issues = list(state.issues_found) + currency_issues
+                return {"issues_found": combined_issues}
+
+        except Exception as e:
+            logger.warning("Currency evaluation failed: %s", e)
+
+        return {}
+
     def review_issues_with_llm(state: EvaluatorState) -> dict:
         """Use LLM to review flagged issues and make semantic decisions."""
         if state.error:
@@ -579,6 +635,7 @@ def create_label_evaluator_graph(
     workflow.add_node("build_spatial_context", build_spatial_context)
     workflow.add_node("compute_patterns", compute_patterns)
     workflow.add_node("evaluate_labels", evaluate_labels)
+    workflow.add_node("evaluate_currency", evaluate_currency)
     workflow.add_node("review_issues_with_llm", review_issues_with_llm)
     workflow.add_node("write_evaluation_results", write_evaluation_results)
 
@@ -587,7 +644,8 @@ def create_label_evaluator_graph(
     workflow.add_edge("fetch_merchant_receipts", "build_spatial_context")
     workflow.add_edge("build_spatial_context", "compute_patterns")
     workflow.add_edge("compute_patterns", "evaluate_labels")
-    workflow.add_edge("evaluate_labels", "review_issues_with_llm")
+    workflow.add_edge("evaluate_labels", "evaluate_currency")
+    workflow.add_edge("evaluate_currency", "review_issues_with_llm")
     workflow.add_edge("review_issues_with_llm", "write_evaluation_results")
     workflow.add_edge("write_evaluation_results", END)
 

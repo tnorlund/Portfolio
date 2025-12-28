@@ -113,17 +113,41 @@ CONFLICTING_LABEL_PAIRS = {
     ("PRODUCT_NAME", "LINE_TOTAL"),
 }
 
-# Currency-related labels (values that represent money amounts)
-CURRENCY_LABELS = {
+# Line item evaluation labels - labels that should be validated on line item rows
+# Includes both currency labels and other line item components
+# Only includes labels defined in CORE_LABELS
+LINE_ITEM_EVALUATION_LABELS = {
+    # Currency labels (money amounts)
     "CASH_BACK",
     "CHANGE",
     "DISCOUNT",
     "GRAND_TOTAL",
     "LINE_TOTAL",
     "REFUND",
-    "SAVINGS",
     "SUBTOTAL",
     "TAX",
-    "TENDER",
     "UNIT_PRICE",
+    # Non-currency line item components
+    "PRODUCT_NAME",
+    "QUANTITY",
+}
+
+# Backward compatibility alias
+CURRENCY_LABELS = LINE_ITEM_EVALUATION_LABELS
+
+# Metadata evaluation labels - labels validated against ReceiptPlace or format patterns
+# These are non-line-item labels that appear on receipts
+METADATA_EVALUATION_LABELS = {
+    # Validated against ReceiptPlace data
+    "MERCHANT_NAME",
+    "ADDRESS_LINE",
+    "PHONE_NUMBER",
+    "WEBSITE",
+    "STORE_HOURS",
+    # Validated by format patterns
+    "DATE",
+    "TIME",
+    "PAYMENT_METHOD",
+    "COUPON",
+    "LOYALTY_ID",
 }
