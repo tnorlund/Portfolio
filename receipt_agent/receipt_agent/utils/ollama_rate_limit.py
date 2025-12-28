@@ -96,6 +96,7 @@ def is_rate_limit_error(error: Exception) -> bool:
     - HTTP 429 status code
     - "rate limit" or "rate_limit" in error message
     - "too many requests" or "too many concurrent requests"
+    - BothProvidersFailedError (both Ollama and OpenRouter rate limited)
 
     Args:
         error: The exception to check
@@ -103,6 +104,11 @@ def is_rate_limit_error(error: Exception) -> bool:
     Returns:
         True if this appears to be a rate limit error
     """
+    # Check for BothProvidersFailedError from llm_factory
+    error_type = type(error).__name__
+    if error_type == "BothProvidersFailedError":
+        return True
+
     error_str = str(error).lower()
     return (
         "429" in str(error)
@@ -111,6 +117,7 @@ def is_rate_limit_error(error: Exception) -> bool:
         or "too many concurrent requests" in error_str
         or "too many requests" in error_str
         or "ratelimit" in error_str
+        or "both ollama and openrouter" in error_str
     )
 
 
