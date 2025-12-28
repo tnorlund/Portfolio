@@ -648,6 +648,12 @@ def review_single_issue(
         return parse_llm_response(response_text)
 
     except Exception as e:
+        # Check if this is a rate limit error that should trigger Step Function retry
+        from receipt_agent.utils import OllamaRateLimitError, BothProvidersFailedError
+        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+            logger.error("LLM review rate limited, propagating for retry: %s", e)
+            raise  # Let Step Function retry handle this
+
         logger.error("LLM review failed: %s", e)
         return {
             "decision": "NEEDS_REVIEW",
@@ -729,8 +735,14 @@ def review_issues_batch(
         )
 
     except Exception as e:
+        # Check if this is a rate limit error that should trigger Step Function retry
+        from receipt_agent.utils import OllamaRateLimitError, BothProvidersFailedError
+        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+            logger.error("Batched LLM review rate limited, propagating for retry: %s", e)
+            raise  # Let Step Function retry handle this
+
         logger.error("Batched LLM review failed: %s", e)
-        # Return fallback for all issues
+        # Return fallback for all issues (non-rate-limit errors only)
         return [
             {
                 "decision": "NEEDS_REVIEW",
@@ -815,6 +827,12 @@ def review_issues_with_receipt_context(
         )
 
     except Exception as e:
+        # Check if this is a rate limit error that should trigger Step Function retry
+        from receipt_agent.utils import OllamaRateLimitError, BothProvidersFailedError
+        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+            logger.error("Receipt context LLM review rate limited, propagating for retry: %s", e)
+            raise  # Let Step Function retry handle this
+
         logger.error("Receipt context LLM review failed: %s", e)
         return [
             {
@@ -994,6 +1012,8 @@ def apply_llm_decisions(
         "labels_created": 0,
         "conflicts_resolved": 0,
         "skipped_needs_review": 0,
+        "unlabeled_confirmed": 0,
+        "cannot_fix": 0,
         "errors": 0,
     }
 
@@ -1012,23 +1032,66 @@ def apply_llm_decisions(
             suggested_label = llm_review.get("suggested_label")
             confidence = llm_review.get("confidence", "medium")
 
-            if not all(
-                [
-                    image_id,
-                    receipt_id is not None,
-                    line_id,
-                    word_id,
-                    current_label,
-                ]
-            ):
-                logger.warning("Missing required fields for issue: %s", item)
+            # Validate required fields
+            has_required_fields = all([
+                image_id,
+                receipt_id is not None,
+                line_id is not None,
+                word_id is not None,
+            ])
+
+            if not has_required_fields:
+                logger.warning(
+                    "Skipping issue - missing identifiers "
+                    "(image_id, receipt_id, line_id, or word_id): %s",
+                    item,
+                )
                 stats["errors"] += 1
                 continue
+
+            # Handle unlabeled words (current_label is None) separately
+            if current_label is None:
+                if decision == "VALID":
+                    # LLM confirms this word should remain unlabeled - success!
+                    logger.debug(
+                        "Unlabeled word confirmed as correctly unlabeled: "
+                        "%s:%s line=%s word=%s",
+                        image_id,
+                        receipt_id,
+                        line_id,
+                        word_id,
+                    )
+                    stats["unlabeled_confirmed"] += 1
+                    continue
+                elif decision == "NEEDS_REVIEW":
+                    # Unlabeled word needs human review - no action needed
+                    logger.debug(
+                        "Unlabeled word needs human review: %s:%s line=%s word=%s",
+                        image_id,
+                        receipt_id,
+                        line_id,
+                        word_id,
+                    )
+                    stats["skipped_needs_review"] += 1
+                    continue
+                elif decision == "INVALID" and not suggested_label:
+                    # LLM says it's wrong but doesn't know the correct label
+                    logger.info(
+                        "Cannot fix unlabeled word - LLM marked INVALID but "
+                        "provided no suggested label: %s:%s line=%s word=%s",
+                        image_id,
+                        receipt_id,
+                        line_id,
+                        word_id,
+                    )
+                    stats["cannot_fix"] += 1
+                    continue
+                # If decision == "INVALID" and suggested_label exists,
+                # fall through to apply the suggested label below
             assert isinstance(image_id, str)
             assert isinstance(receipt_id, int)
             assert isinstance(line_id, int)
             assert isinstance(word_id, int)
-            assert isinstance(current_label, str)
 
             # Build audit reasoning
             audit_reasoning = (
@@ -1082,7 +1145,7 @@ def apply_llm_decisions(
                         )
 
             elif decision == "INVALID":
-                # 1. Invalidate the current label
+                # 1. Invalidate the current label (if exists)
                 # 2. If suggested_label provided, confirm or create it
 
                 # Get all labels for this word (returns tuple: list, last_key)
@@ -1092,32 +1155,33 @@ def apply_llm_decisions(
                     )
                 )
 
-                # Find and invalidate the current label
-                for label in all_labels:
-                    if label.label == current_label:
-                        updated_label = ReceiptWordLabel(
-                            image_id=image_id,
-                            receipt_id=receipt_id,
-                            line_id=line_id,
-                            word_id=word_id,
-                            label=label.label,
-                            reasoning=audit_reasoning,
-                            timestamp_added=label.timestamp_added,
-                            validation_status="INVALID",
-                            label_proposed_by=label.label_proposed_by,
-                            label_consolidated_from=label.label_consolidated_from,
-                        )
-                        dynamo_client.update_receipt_word_label(updated_label)
-                        stats["labels_invalidated"] += 1
-                        logger.info(
-                            "Invalidated %s on %s:%s:%s:%s",
-                            current_label,
-                            image_id,
-                            receipt_id,
-                            line_id,
-                            word_id,
-                        )
-                        break
+                # Find and invalidate the current label (if it exists)
+                if current_label:
+                    for label in all_labels:
+                        if label.label == current_label:
+                            updated_label = ReceiptWordLabel(
+                                image_id=image_id,
+                                receipt_id=receipt_id,
+                                line_id=line_id,
+                                word_id=word_id,
+                                label=label.label,
+                                reasoning=audit_reasoning,
+                                timestamp_added=label.timestamp_added,
+                                validation_status="INVALID",
+                                label_proposed_by=label.label_proposed_by,
+                                label_consolidated_from=label.label_consolidated_from,
+                            )
+                            dynamo_client.update_receipt_word_label(updated_label)
+                            stats["labels_invalidated"] += 1
+                            logger.info(
+                                "Invalidated %s on %s:%s:%s:%s",
+                                current_label,
+                                image_id,
+                                receipt_id,
+                                line_id,
+                                word_id,
+                            )
+                            break
 
                 # Handle suggested label
                 if suggested_label:

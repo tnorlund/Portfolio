@@ -10,9 +10,27 @@ Tracing is handled by the container-based Lambdas.
 import json
 import logging
 import os
+import uuid
 from typing import Any
 
 import boto3
+
+# Namespace for deterministic trace ID generation (must match tracing.py)
+TRACE_NAMESPACE = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+
+
+def generate_receipt_trace_id(
+    execution_arn: str,
+    image_id: str,
+    receipt_id: int,
+) -> str:
+    """Generate a deterministic trace ID for a specific receipt.
+
+    This must match the logic in tracing.py to ensure all Lambdas
+    use the same trace_id for a given receipt.
+    """
+    parts = [execution_arn, image_id, str(receipt_id)]
+    return str(uuid.uuid5(TRACE_NAMESPACE, ":".join(parts)))
 
 # Import serialization from lambdas
 import sys
@@ -131,10 +149,23 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         data_s3_key,
     )
 
+    # Generate deterministic receipt-level trace_id BEFORE parallel branches
+    # This ensures all parallel evaluators use the same trace_id
+    execution_arn = event.get("execution_arn", f"local:{execution_id}")
+    receipt_trace_id = generate_receipt_trace_id(execution_arn, image_id, receipt_id)
+
+    logger.info(
+        "Generated receipt trace_id: %s for %s#%s",
+        receipt_trace_id[:8],
+        image_id,
+        receipt_id,
+    )
+
     return {
         "data_s3_key": data_s3_key,
         "image_id": image_id,
         "receipt_id": receipt_id,
         "word_count": len(words),
         "label_count": len(labels),
+        "receipt_trace_id": receipt_trace_id,
     }

@@ -3,9 +3,12 @@
 This handler reviews flagged issues for a single receipt. Each Lambda
 invocation handles exactly one receipt's issues.
 
-The trace_id, root_run_id, and root_dotted_order are passed from the
-EvaluateLabels Lambda. This Lambda joins the receipt's existing trace
-as a child, so the complete receipt processing appears in one trace.
+The simplified flow (preferred):
+  FetchReceiptData → ParallelEvaluation → LLMReviewReceipt
+
+The handler accepts issues from EvaluateLabels via `results_s3_key` and
+joins the receipt's existing trace as a child, so the complete receipt
+processing appears in one trace.
 """
 
 import logging
@@ -108,22 +111,24 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
     Each Lambda invocation handles exactly one receipt's issues.
 
-    Input:
+    Input (simplified per-receipt flow):
     {
         "execution_id": "abc123",
         "execution_arn": "arn:aws:states:...",  # From $$.Execution.Id
         "batch_bucket": "bucket-name",
         "merchant_name": "Sprouts Farmers Market",
-        "merchant_receipt_count": 50,
-        "batch_s3_key": "batches/{exec}/{merchant_hash}_r0.json",
-        "batch_index": 0,
-        "llm_batch_index": 0,    # From Map state
+        "results_s3_key": "results/{exec}/{image_id}_{receipt_id}.json",
         "image_id": "img_abc",   # Receipt identification
         "receipt_id": 1,         # Receipt identification
+        "line_item_patterns_s3_key": "line_item_patterns/{merchant_hash}.json",
         "dry_run": false,
         "trace_id": "...",       # From upstream Lambda
         "root_run_id": "..."     # From upstream Lambda
     }
+
+    Alternative inputs (legacy/batched flow):
+    - batch_s3_key: "batches/{exec}/{merchant_hash}_r0.json"
+    - issues_s3_key: "issues/{exec}/{merchant_hash}.json"
 
     Output:
     {
@@ -143,6 +148,12 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
         TRACING_VERSION,
         _tracing_import_source,
     )
+
+    # Allow runtime override of LangSmith project via Step Function input
+    langchain_project = event.get("langchain_project")
+    if langchain_project:
+        os.environ["LANGCHAIN_PROJECT"] = langchain_project
+        logger.info("LangSmith project set to: %s", langchain_project)
 
     execution_id = event.get("execution_id", "unknown")
     execution_arn = event.get("execution_arn", f"local:{execution_id}")
@@ -166,10 +177,14 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     # Check if tracing is enabled
     enable_tracing = event.get("enable_tracing", False)
 
-    # Support both batch format and legacy format
+    # Support multiple input key formats:
+    # - results_s3_key: From simplified per-receipt flow (EvaluateLabels output)
+    # - batch_s3_key: From batched flow (BatchIssues output)
+    # - issues_s3_key: Legacy format
+    results_s3_key = event.get("results_s3_key")
     batch_s3_key = event.get("batch_s3_key")
     issues_s3_key = event.get("issues_s3_key")
-    data_s3_key = batch_s3_key or issues_s3_key
+    data_s3_key = results_s3_key or batch_s3_key or issues_s3_key
 
     # Rate limiting configuration
     circuit_breaker_threshold = int(
@@ -188,7 +203,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
     if not data_s3_key:
-        raise ValueError("batch_s3_key or issues_s3_key is required")
+        raise ValueError("results_s3_key, batch_s3_key, or issues_s3_key is required")
 
     start_time = time.time()
 
@@ -294,43 +309,29 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                 except Exception as e:
                     logger.warning(f"Could not initialize DynamoDB: {e}")
 
-            # 5. Setup Ollama LLM with LangSmith tracing context
+            # 5. Setup LLM with automatic Ollama → OpenRouter fallback
             with child_trace("setup_llm", trace_ctx):
-                ollama_api_key = os.environ.get("RECEIPT_AGENT_OLLAMA_API_KEY")
-                ollama_base_url = os.environ.get(
-                    "RECEIPT_AGENT_OLLAMA_BASE_URL", "https://ollama.com"
-                )
-                ollama_model = os.environ.get(
-                    "RECEIPT_AGENT_OLLAMA_MODEL", "gpt-oss:20b-cloud"
-                )
+                from receipt_agent.utils import create_production_invoker
 
-                if not ollama_api_key:
-                    raise ValueError("RECEIPT_AGENT_OLLAMA_API_KEY not set")
-
-                from langchain_ollama import ChatOllama
-
-                base_llm = ChatOllama(
-                    model=ollama_model,
-                    base_url=ollama_base_url,
-                    client_kwargs={
-                        "headers": {"Authorization": f"Bearer {ollama_api_key}"},
-                        "timeout": 120,
-                    },
-                    temperature=0,
-                )
-
-                # Wrap LLM with rate limiting and circuit breaker
-                circuit_breaker = OllamaCircuitBreaker(
-                    threshold=circuit_breaker_threshold
-                )
-                llm_invoker = RateLimitedLLMInvoker(
-                    llm=base_llm,
-                    circuit_breaker=circuit_breaker,
+                # create_production_invoker() creates:
+                # - ResilientLLM: Ollama (primary) → OpenRouter (fallback)
+                # - RateLimitedLLMInvoker: jitter + circuit breaker
+                # Environment variables used:
+                # - OLLAMA_API_KEY, OLLAMA_BASE_URL, OLLAMA_MODEL (or RECEIPT_AGENT_* variants)
+                # - OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
+                llm_invoker = create_production_invoker(
+                    temperature=0.0,
+                    timeout=120,
+                    circuit_breaker_threshold=circuit_breaker_threshold,
                     max_jitter_seconds=max_jitter_seconds,
                 )
 
+                ollama_model = os.environ.get(
+                    "RECEIPT_AGENT_OLLAMA_MODEL", "gpt-oss:120b-cloud"
+                )
                 logger.info(
-                    f"LLM initialized: {ollama_model} (max jitter: {max_jitter_seconds}s)"
+                    f"LLM initialized with fallback: {ollama_model} → OpenRouter "
+                    f"(max jitter: {max_jitter_seconds}s)"
                 )
 
             # 6. Process issues for this receipt with tracing
@@ -373,7 +374,8 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                 )
                 # Mark all issues as NEEDS_REVIEW
                 for collected in receipt_issues:
-                    issue = collected.get("issue", {})
+                    # The collected item IS the issue (not nested under "issue" key)
+                    issue = collected
                     decisions["NEEDS_REVIEW"] += 1
                     reviewed_issues.append(
                         {
@@ -407,7 +409,8 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     chunk_metadata = []
 
                     for collected in chunk_issues:
-                        issue = collected.get("issue", {})
+                        # The collected item IS the issue (not nested under "issue" key)
+                        issue = collected
                         word_text = issue.get("word_text", "")
                         word_id = issue.get("word_id", 0)
                         line_id = issue.get("line_id", 0)

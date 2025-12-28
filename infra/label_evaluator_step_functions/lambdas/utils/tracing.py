@@ -1011,9 +1011,20 @@ def receipt_state_trace(
     if root_dotted_order:
         child_dotted_order = _generate_child_dotted_order(root_dotted_order, state_run_id)
     else:
-        logger.warning(
-            "[receipt_state_trace] No root_dotted_order provided for %s - trace linking may fail!",
+        # No root_dotted_order provided - but for receipt traces where trace_id == root_run_id,
+        # we can generate a synthetic parent dotted_order. The root dotted_order format is
+        # {timestamp}{trace_id}. We use a synthetic timestamp since the parent may not exist yet.
+        logger.info(
+            "[receipt_state_trace] No root_dotted_order provided for %s - generating synthetic dotted_order",
             state_name,
+        )
+        # Generate a synthetic parent dotted_order (pretend the root was created just before us)
+        synthetic_parent_dotted_order = _generate_root_dotted_order(trace_id)
+        child_dotted_order = _generate_child_dotted_order(synthetic_parent_dotted_order, state_run_id)
+        logger.info(
+            "[receipt_state_trace] Generated synthetic child dotted_order for %s: %s",
+            state_name,
+            child_dotted_order[:50] if child_dotted_order else "None",
         )
 
     # Build metadata with receipt identification
@@ -1073,6 +1084,21 @@ def receipt_state_trace(
                 )
             except Exception as e:
                 logger.warning("Failed to finalize receipt state trace: %s", e, exc_info=True)
+
+
+def _generate_root_dotted_order(trace_id: str) -> str:
+    """Generate a dotted_order for a root run.
+
+    LangSmith dotted_order format for root: {timestamp}{trace_id}
+    - Timestamp: YYYYMMDDTHHMMSSffffffZ (22 chars)
+    - Trace ID: UUID with dashes (36 chars)
+
+    This is used when creating child traces without knowing the parent's exact dotted_order.
+    Since the parent trace_id is deterministic, we can create a synthetic parent dotted_order.
+    """
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime("%Y%m%dT%H%M%S") + f"{now.microsecond:06d}Z"
+    return f"{timestamp}{trace_id}"
 
 
 def _generate_child_dotted_order(parent_dotted_order: str, child_run_id: str) -> str:

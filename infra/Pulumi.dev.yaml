@@ -40,3 +40,5 @@ config:
   docker-build:debug-mode: "false"
   portfolio:force-rebuild: "false"
   label-evaluator:max_concurrency: "3"
+  portfolio:OPENROUTER_API_KEY:
+    secure: AAABAN6ptx7AysWMDQ4oCllzXWxWkIu7uxwgHswFkbfa0B0+DBMbJoVT5RZ2i5uSakARs45iOO6KNuiX1sUgZPRF8o6iWpDmwr06IZJ1GIz8CWUtTEz6A07PC4Hv9LivlK//JXLIXV2/
