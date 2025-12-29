@@ -450,19 +450,25 @@ def parse_financial_evaluation_response(
         "issue_type": "UNKNOWN",
     }
 
-    # Try structured parsing first
+    # Parse JSON once
     try:
         parsed = json.loads(response_text)
+    except json.JSONDecodeError as e:
+        logger.warning("Failed to parse LLM response as JSON: %s", e)
+        return [fallback.copy() for _ in range(num_issues)]
+
+    # Try structured parsing with Pydantic
+    try:
         if isinstance(parsed, list):
             parsed = {"evaluations": parsed}
         structured_response = FinancialEvaluationResponse.model_validate(parsed)
         return structured_response.to_ordered_list(num_issues)
-    except (json.JSONDecodeError, ValidationError) as e:
+    except ValidationError as e:
         logger.debug("Structured parsing failed, falling back to manual parsing: %s", e)
 
-    # Fallback to manual parsing
+    # Fallback to manual parsing (reuse already-parsed JSON)
     try:
-        decisions = json.loads(response_text)
+        decisions = parsed  # Reuse already-parsed JSON
         if isinstance(decisions, dict):
             decisions = decisions.get("evaluations", [])
 
@@ -488,8 +494,8 @@ def parse_financial_evaluation_response(
 
         return result
 
-    except (json.JSONDecodeError, TypeError) as e:
-        logger.warning("Failed to parse LLM response: %s", e)
+    except TypeError as e:
+        logger.warning("Failed to process parsed response: %s", e)
         return [fallback.copy() for _ in range(num_issues)]
 
 
