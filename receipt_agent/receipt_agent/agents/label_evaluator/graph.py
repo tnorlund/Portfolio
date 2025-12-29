@@ -16,6 +16,8 @@ Graph nodes (full workflow):
 - compute_merchant_patterns: Build geometric patterns from training data
 - flag_geometric_anomalies: Run 6 detection rules to flag geometric anomalies
 - review_currency_labels: LLM reviews currency-type labels
+- review_metadata_labels: LLM reviews metadata labels (MERCHANT_NAME, etc.)
+- validate_financial_math: Validate GRAND_TOTAL = SUBTOTAL + TAX, etc.
 - review_flagged_labels: LLM reviews all flagged words
 - persist_label_decisions: Write new labels to DynamoDB
 
@@ -51,11 +53,17 @@ from receipt_agent.agents.label_evaluator.currency_subagent import (
     convert_to_evaluation_issues,
     evaluate_currency_labels_sync,
 )
+from receipt_agent.agents.label_evaluator.financial_subagent import (
+    evaluate_financial_math_sync,
+)
 from receipt_agent.agents.label_evaluator.issue_detection import (
     evaluate_word_contexts,
 )
 from receipt_agent.agents.label_evaluator.llm_review import (
     review_all_issues,
+)
+from receipt_agent.agents.label_evaluator.metadata_subagent import (
+    evaluate_metadata_labels as evaluate_metadata_labels_fn,
 )
 from receipt_agent.agents.label_evaluator.patterns import (
     compute_merchant_patterns as _compute_patterns_from_receipts,
@@ -445,6 +453,100 @@ def create_label_evaluator_graph(
 
         return {}
 
+    def review_metadata_labels(state: EvaluatorState) -> dict:
+        """Evaluate metadata labels using the metadata subagent."""
+        if state.error:
+            return {}
+
+        if not state.visual_lines:
+            return {}
+
+        # Skip metadata evaluation if LLM not available
+        if _llm is None:
+            logger.info("Skipping metadata evaluation - LLM not available")
+            return {}
+
+        merchant_name = "Unknown"
+        if state.place:
+            merchant_name = state.place.merchant_name or "Unknown"
+
+        try:
+            metadata_decisions = evaluate_metadata_labels_fn(
+                visual_lines=state.visual_lines,
+                place=state.place,
+                llm=_llm,
+                image_id=state.image_id,
+                receipt_id=state.receipt_id,
+                merchant_name=merchant_name,
+            )
+
+            if metadata_decisions:
+                # Convert dicts to EvaluationIssue objects and merge
+                metadata_issues = convert_to_evaluation_issues(
+                    metadata_decisions
+                )
+                logger.info(
+                    "Metadata subagent evaluated %s words, found %s issues",
+                    len(metadata_decisions),
+                    len(metadata_issues),
+                )
+                combined_issues = list(state.issues_found) + metadata_issues
+                return {"issues_found": combined_issues}
+
+        except Exception as e:
+            logger.warning("Metadata evaluation failed: %s", e)
+
+        return {}
+
+    def validate_financial_math(state: EvaluatorState) -> dict:
+        """Validate financial math relationships after currency corrections."""
+        if state.error:
+            return {}
+
+        if not state.visual_lines:
+            return {}
+
+        # Skip financial validation if LLM not available
+        if _llm is None:
+            logger.info("Skipping financial validation - LLM not available")
+            return {}
+
+        merchant_name = "Unknown"
+        if state.place:
+            merchant_name = state.place.merchant_name or "Unknown"
+
+        try:
+            financial_results = evaluate_financial_math_sync(
+                visual_lines=state.visual_lines,
+                llm=_llm,
+                image_id=state.image_id,
+                receipt_id=state.receipt_id,
+                merchant_name=merchant_name,
+            )
+
+            if financial_results:
+                # Convert results to EvaluationIssue objects
+                financial_issues = convert_to_evaluation_issues(
+                    financial_results
+                )
+                logger.info(
+                    "Financial validation found %s math issues involving %s values",
+                    len(
+                        {
+                            r.get("issue", {}).get("issue_type")
+                            for r in financial_results
+                        }
+                    ),
+                    len(financial_issues),
+                )
+                combined_issues = list(state.issues_found) + financial_issues
+                return {"issues_found": combined_issues}
+
+        except Exception as e:
+            logger.warning("Financial validation failed: %s", e)
+
+        return {}
+
     def review_flagged_labels(state: EvaluatorState) -> dict:
         """Use LLM to review flagged issues and make semantic decisions."""
         if state.error:
@@ -648,16 +750,20 @@ def create_label_evaluator_graph(
     workflow.add_node("compute_merchant_patterns", compute_merchant_patterns)
     workflow.add_node("flag_geometric_anomalies", flag_geometric_anomalies)
     workflow.add_node("review_currency_labels", review_currency_labels)
+    workflow.add_node("review_metadata_labels", review_metadata_labels)
+    workflow.add_node("validate_financial_math", validate_financial_math)
     workflow.add_node("review_flagged_labels", review_flagged_labels)
     workflow.add_node("persist_label_decisions", persist_label_decisions)
 
-    # Linear flow
+    # Linear flow (matches Step Function conceptually, though SF runs some in parallel)
     workflow.add_edge("load_receipt_data", "load_training_receipts")
     workflow.add_edge("load_training_receipts", "build_spatial_context")
     workflow.add_edge("build_spatial_context", "compute_merchant_patterns")
     workflow.add_edge("compute_merchant_patterns", "flag_geometric_anomalies")
     workflow.add_edge("flag_geometric_anomalies", "review_currency_labels")
-    workflow.add_edge("review_currency_labels", "review_flagged_labels")
+    workflow.add_edge("review_currency_labels", "review_metadata_labels")
+    workflow.add_edge("review_metadata_labels", "validate_financial_math")
+    workflow.add_edge("validate_financial_math", "review_flagged_labels")
     workflow.add_edge("review_flagged_labels", "persist_label_decisions")
     workflow.add_edge("persist_label_decisions", END)
 
