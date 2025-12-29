@@ -41,6 +41,10 @@ class _ReceiptSection(
     TransactionalOperationsMixin,
 ):
     """
+    .. deprecated::
+        This class is deprecated and not used in production. Consider removing
+        if no longer needed for historical data access.
+
     A class providing methods to interact with "ReceiptSection" entities in
     DynamoDB.
     This class is typically used within a DynamoClient to access and manage

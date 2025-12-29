@@ -205,7 +205,7 @@ def test_get_receipt_word_client_errors(
         )
 
         with pytest.raises(expected_exception, match=error_fragment):
-            client.get_receipt_word(1, FIXED_IMAGE_ID, 10, 5)
+            client.get_receipt_word(FIXED_IMAGE_ID, 1, 10, 5)
 
 
 # =============================================================================
@@ -473,7 +473,7 @@ def test_get_receipt_word_parameter_validation(
 ):
     """Test parameter validation for get_receipt_word."""
     with pytest.raises(expected_exception, match=expected_message):
-        client.get_receipt_word(receipt_id, image_id, line_id, word_id)
+        client.get_receipt_word(image_id, receipt_id, line_id, word_id)
 
 
 # =============================================================================
@@ -729,8 +729,8 @@ def test_add_receipt_word_success(
 
     # Verify it was added by retrieving it
     retrieved = client.get_receipt_word(
-        sample_receipt_word.receipt_id,
         sample_receipt_word.image_id,
+        sample_receipt_word.receipt_id,
         sample_receipt_word.line_id,
         sample_receipt_word.word_id,
     )
@@ -776,8 +776,8 @@ def test_update_receipt_word_success(
 
     # Verify update
     retrieved = client.get_receipt_word(
-        sample_receipt_word.receipt_id,
         sample_receipt_word.image_id,
+        sample_receipt_word.receipt_id,
         sample_receipt_word.line_id,
         sample_receipt_word.word_id,
     )
@@ -798,8 +798,8 @@ def test_delete_receipt_word_success(
     # Verify deletion
     with pytest.raises(EntityNotFoundError):
         client.get_receipt_word(
-            sample_receipt_word.receipt_id,
             sample_receipt_word.image_id,
+            sample_receipt_word.receipt_id,
             sample_receipt_word.line_id,
             sample_receipt_word.word_id,
         )
@@ -809,7 +809,7 @@ def test_delete_receipt_word_success(
 def test_get_receipt_word_not_found(client: DynamoClient):
     """Test that getting non-existent receipt word raises EntityNotFoundError."""
     with pytest.raises(EntityNotFoundError, match="not found"):
-        client.get_receipt_word(999, FIXED_IMAGE_ID, 999, 999)
+        client.get_receipt_word(FIXED_IMAGE_ID, 999, 999, 999)
 
 
 # =============================================================================
@@ -827,7 +827,7 @@ def test_add_receipt_words_success(
     # Verify all were added
     for word in sample_receipt_words:
         retrieved = client.get_receipt_word(
-            word.receipt_id, word.image_id, word.line_id, word.word_id
+            word.image_id, word.receipt_id, word.line_id, word.word_id
         )
         assert retrieved == word
 
@@ -865,8 +865,8 @@ def test_update_receipt_words_success(
     # Verify updates
     for updated_word in updated_words:
         retrieved = client.get_receipt_word(
-            updated_word.receipt_id,
             updated_word.image_id,
+            updated_word.receipt_id,
             updated_word.line_id,
             updated_word.word_id,
         )
@@ -888,7 +888,7 @@ def test_delete_receipt_words_success(
     for word in sample_receipt_words:
         with pytest.raises(EntityNotFoundError):
             client.get_receipt_word(
-                word.receipt_id, word.image_id, word.line_id, word.word_id
+                word.image_id, word.receipt_id, word.line_id, word.word_id
             )
 
 
@@ -1085,7 +1085,7 @@ def test_list_receipt_words_from_line(client: DynamoClient):
         client.add_receipt_word(word)
 
     # Query words from specific line
-    line_words = client.list_receipt_words_from_line(1, FIXED_IMAGE_ID, 10)
+    line_words = client.list_receipt_words_from_line(FIXED_IMAGE_ID, 1, 10)
 
     # Verify results
     assert isinstance(line_words, list)

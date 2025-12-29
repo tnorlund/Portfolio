@@ -36,16 +36,16 @@ class _ReceiptLine(FlattenedStandardMixin):
         Adds multiple receipt-lines in batch.
     update_receipt_line(receipt_line: ReceiptLine)
         Updates an existing receipt-line.
-    delete_receipt_line(receipt_id: int, image_id: str, line_id: int)
+    delete_receipt_line(image_id: str, receipt_id: int, line_id: int)
         Deletes a specific receipt-line by IDs.
     delete_receipt_lines(receipt_lines: list[ReceiptLine])
         Deletes multiple receipt-lines in batch.
-    get_receipt_line(receipt_id: int, image_id: str, line_id: int)
+    get_receipt_line(image_id: str, receipt_id: int, line_id: int)
         -> ReceiptLine
         Retrieves a single receipt-line by IDs.
     list_receipt_lines() -> list[ReceiptLine]
         Returns all ReceiptLines from the table.
-    list_receipt_lines_from_receipt(receipt_id: int, image_id: str)
+    list_receipt_lines_from_receipt(image_id: str, receipt_id: int)
         -> list[ReceiptLine]
         Returns all lines under a specific receipt/image.
     """
@@ -103,16 +103,16 @@ class _ReceiptLine(FlattenedStandardMixin):
         self._update_entities(receipt_lines, ReceiptLine, "receipt_lines")
 
     @handle_dynamodb_errors("delete_receipt_line")
-    def delete_receipt_line(self, receipt_id: int, image_id: str, line_id: int) -> None:
+    def delete_receipt_line(self, image_id: str, receipt_id: int, line_id: int) -> None:
         """Deletes a single ReceiptLine by IDs."""
         # Validate parameters
+        if image_id is None:
+            raise EntityValidationError("image_id cannot be None")
+        assert_valid_uuid(image_id)
         if receipt_id is None or not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer")
         if receipt_id <= 0:
             raise EntityValidationError("receipt_id must be a positive integer")
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
         if line_id is None or not isinstance(line_id, int):
             raise EntityValidationError("line_id must be an integer")
         if line_id <= 0:
@@ -146,17 +146,17 @@ class _ReceiptLine(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("get_receipt_line")
     def get_receipt_line(
-        self, receipt_id: int, image_id: str, line_id: int
+        self, image_id: str, receipt_id: int, line_id: int
     ) -> ReceiptLine:
         """Retrieves a single ReceiptLine by IDs."""
         # Validate parameters
+        if image_id is None:
+            raise EntityValidationError("image_id cannot be None")
+        assert_valid_uuid(image_id)
         if receipt_id is None or not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer")
         if receipt_id <= 0:
             raise EntityValidationError("receipt_id must be a positive integer")
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
         if line_id is None or not isinstance(line_id, int):
             raise EntityValidationError("line_id must be an integer")
         if line_id <= 0:

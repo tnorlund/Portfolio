@@ -30,6 +30,10 @@ class _ReceiptValidationSummary(
     QueryByTypeMixin,
 ):
     """
+    .. deprecated::
+        This class is deprecated and not used in production. Consider removing
+        if no longer needed for historical data access.
+
     A class used to access receipt validation summaries in DynamoDB.
 
     Methods
