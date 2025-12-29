@@ -663,7 +663,7 @@ def test_list_receipt_letters_from_word_validation(
     client = DynamoClient(dynamodb_table)
 
     with pytest.raises(expected_error, match=error_match):
-        client.list_receipt_letters_from_word(receipt_id, image_id, line_id, word_id)
+        client.list_receipt_letters_from_word(image_id, receipt_id, line_id, word_id)
 
 
 # -------------------------------------------------------------------
@@ -718,7 +718,7 @@ def test_list_receipt_letters_from_word_client_errors(
     )
 
     with pytest.raises(expected_exception, match=error_match):
-        client.list_receipt_letters_from_word(1, FIXED_UUIDS[0], 1, 1)
+        client.list_receipt_letters_from_word(FIXED_UUIDS[0], 1, 1, 1)
 
     mock_query.assert_called_once()
 
@@ -1235,7 +1235,7 @@ def test_list_receipt_letters_from_word_success(
 
     # Query for specific word only
     word_letters = client.list_receipt_letters_from_word(
-        receipt_id=1, image_id=unique_image_id, line_id=1, word_id=1
+        image_id=unique_image_id, receipt_id=1, line_id=1, word_id=1
     )
 
     # Verify filtering

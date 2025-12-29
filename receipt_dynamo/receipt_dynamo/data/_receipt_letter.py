@@ -45,7 +45,7 @@ class _ReceiptLetter(
         Updates an existing ReceiptLetter in the database.
     update_receipt_letters(receipt_letters: list[ReceiptLetter]):
         Updates multiple ReceiptLetters in the database.
-    delete_receipt_letter(receipt_id, image_id, line_id, word_id, letter_id):
+    delete_receipt_letter(image_id, receipt_id, line_id, word_id, letter_id):
         Deletes a single ReceiptLetter by IDs.
     delete_receipt_letters(receipt_letters: list[ReceiptLetter]):
         Deletes multiple ReceiptLetters in batch.
@@ -371,17 +371,17 @@ class _ReceiptLetter(
 
     @handle_dynamodb_errors("list_receipt_letters_from_word")
     def list_receipt_letters_from_word(
-        self, receipt_id: int, image_id: str, line_id: int, word_id: int
+        self, image_id: str, receipt_id: int, line_id: int, word_id: int
     ) -> list[ReceiptLetter]:
         """
         Returns all ReceiptLetters for a given word.
 
         Parameters
         ----------
-        receipt_id : int
-            The receipt ID.
         image_id : str
             The image ID.
+        receipt_id : int
+            The receipt ID.
         line_id : int
             The line ID.
         word_id : int
