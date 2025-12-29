@@ -205,7 +205,8 @@ def _normalize_word_label(
     if lab == "O":
         return "O"
 
-    # Merge currency labels into AMOUNT
+    # Merge currency labels into AMOUNT (right-side totals only)
+    # Note: UNIT_PRICE excluded - it's left-side with line item details
     if merge_amounts and lab in {
         "LINE_TOTAL",
         "SUBTOTAL",
