@@ -325,8 +325,7 @@ class TestBothProvidersFailedError:
 
         error = BothProvidersFailedError(
             "Both failed",
-            primary_error=primary,
-            fallback_error=fallback,
+            errors=[primary, fallback],
         )
 
         assert error.primary_error is primary
@@ -352,13 +351,15 @@ class TestCreateResilientLLM:
 
         assert isinstance(resilient, ResilientLLM)
         mock_ollama.assert_called_once()
-        mock_openrouter.assert_called_once()
+        # OpenRouter is called twice: once for free model, once for paid model
+        assert mock_openrouter.call_count == 2
 
-        # Check temperature was passed to both
+        # Check temperature was passed to Ollama
         ollama_kwargs = mock_ollama.call_args[1]
-        openrouter_kwargs = mock_openrouter.call_args[1]
         assert ollama_kwargs["temperature"] == 0.5
-        assert openrouter_kwargs["temperature"] == 0.5
+        # Check temperature was passed to both OpenRouter calls
+        for call in mock_openrouter.call_args_list:
+            assert call[1]["temperature"] == 0.5
 
 
 class TestCreateProductionInvoker:
@@ -412,8 +413,7 @@ class TestIntegrationWithOllamaRateLimit:
 
         error = BothProvidersFailedError(
             "Both Ollama and OpenRouter are rate limited",
-            primary_error=Exception("429"),
-            fallback_error=Exception("429"),
+            errors=[Exception("429"), Exception("429")],
         )
 
         assert ollama_is_rate_limit(error)
@@ -429,8 +429,7 @@ class TestIntegrationWithOllamaRateLimit:
 
         error = BothProvidersFailedError(
             "Both failed",
-            primary_error=Exception("429"),
-            fallback_error=Exception("429"),
+            errors=[Exception("429"), Exception("429")],
         )
 
         # First failure
