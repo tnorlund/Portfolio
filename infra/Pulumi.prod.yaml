@@ -36,6 +36,6 @@ config:
   docker-build:sync-mode: "true" # Wait for builds in prod
   docker-build:force-rebuild: "false"
   docker-build:debug-mode: "false"
-  ml-training:enable-minimal: "true"
+  ml-training:enable-sagemaker: "true"
   portfolio:OPENROUTER_API_KEY:
     secure: AAABAO7+SJCT6LDKboMx7/VKP85FJcr+oO6qhoUVkLsMXsuV+9KlnSV1EP6xXDS+2+kU6qSiTOIQVkkS/Mej8F0Joqg615isPExbCJeEkauGxHgpNxSueMVwEAk4dMXkjX+mCC+9I2Sv

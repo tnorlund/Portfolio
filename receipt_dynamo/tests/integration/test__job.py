@@ -888,27 +888,6 @@ def test_listJobsByStatus_raises_client_error_unknown(job_dynamo, mocker):
 
 
 @pytest.mark.integration
-def test_listJobsByUser_raises_client_error_unknown(job_dynamo, mocker):
-    """
-    Test that listJobsByUser raises an exception when an unknown ClientError
-    occurs
-    """
-    # Mock the client to raise a ClientError
-    mocked_response = {
-        "Error": {
-            "Code": "UnknownError",
-            "Message": "An unknown error occurred",
-        }
-    }
-    mocked_error = ClientError(mocked_response, "Query")
-    mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
-
-    # Call the method and verify it raises the expected exception
-    with pytest.raises(DynamoDBError, match="DynamoDB error during"):
-        job_dynamo.list_jobs_by_user("test_user")
-
-
-@pytest.mark.integration
 def test_getJob_raises_client_error_resource_not_found(job_dynamo, mocker):
     """
     Test that getJob raises an exception when ResourceNotFoundException

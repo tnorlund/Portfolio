@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
@@ -11,6 +11,9 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
 from receipt_dynamo.entities.util import assert_valid_uuid
+
+# DynamoDB batch_write_item can only handle up to 25 items per call
+_BATCH_SIZE = 25
 
 if TYPE_CHECKING:
     pass
@@ -51,6 +54,38 @@ class _JobMetric(
                 "attribute_not_exists(PK) OR attribute_not_exists(SK)"
             ),
         )
+
+    @handle_dynamodb_errors("add_job_metrics")
+    def add_job_metrics(self, job_metrics: List[JobMetric]) -> None:
+        """Adds multiple job metrics to the database in a single batch operation.
+
+        This is more efficient than calling add_job_metric multiple times
+        as it uses DynamoDB's batch_write_item to write up to 25 items per call.
+
+        Args:
+            job_metrics (List[JobMetric]): The job metrics to add to the database
+
+        Raises:
+            EntityValidationError: When job_metrics is None or not a list
+        """
+        if job_metrics is None:
+            raise EntityValidationError("job_metrics cannot be None")
+        if not isinstance(job_metrics, list):
+            raise EntityValidationError("job_metrics must be a list of JobMetric")
+        if not job_metrics:
+            return  # Nothing to write
+
+        # Validate all metrics first
+        for metric in job_metrics:
+            self._validate_entity(metric, JobMetric, "job_metric")
+
+        # Write in batches of 25 (DynamoDB limit)
+        for i in range(0, len(job_metrics), _BATCH_SIZE):
+            batch = job_metrics[i : i + _BATCH_SIZE]
+            request_items = [
+                {"PutRequest": {"Item": metric.to_item()}} for metric in batch
+            ]
+            self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("get_job_metric")
     def get_job_metric(

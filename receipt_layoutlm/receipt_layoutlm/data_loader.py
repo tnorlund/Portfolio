@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Tuple, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import hashlib
 
 import importlib
 import random
@@ -7,6 +8,31 @@ import os
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
+
+
+@dataclass
+class SplitMetadata:
+    """Metadata about the train/validation split for reproducibility tracking."""
+
+    random_seed: int
+    num_train_receipts: int
+    num_val_receipts: int
+    num_train_lines: int
+    num_val_lines: int
+    # Hash of sorted receipt keys for verification without storing full list
+    train_receipts_hash: str
+    val_receipts_hash: str
+    # O:entity ratio metrics
+    o_entity_ratio_before_downsample: float
+    o_entity_ratio_after_downsample: float
+    o_entity_ratio_val: float
+    # Downsampling stats
+    o_only_lines_total: int
+    o_only_lines_kept: int
+    o_only_lines_dropped: int
+    entity_lines_total: int
+    # Target ratio used
+    target_o_entity_ratio: float
 
 CORE_LABELS: dict[str, str] = {
     # ── Merchant & store info ───────────────────────────────────
@@ -179,7 +205,8 @@ def _normalize_word_label(
     if lab == "O":
         return "O"
 
-    # Merge currency labels into AMOUNT
+    # Merge currency labels into AMOUNT (right-side totals only)
+    # Note: UNIT_PRICE excluded - it's left-side with line item details
     if merge_amounts and lab in {
         "LINE_TOTAL",
         "SUBTOTAL",
@@ -221,7 +248,8 @@ def _raw_label(
 def load_datasets(
     dynamo: DynamoClient,
     label_status: str = ValidationStatus.VALID.value,
-) -> Any:
+    random_seed: Optional[int] = None,
+) -> Tuple[Any, SplitMetadata]:
     # For now, fetch all labels with status; join to words by PK/SK
     all_labels, _ = dynamo.list_receipt_word_labels_with_status(
         ValidationStatus(label_status), limit=None, last_evaluated_key=None
@@ -320,17 +348,34 @@ def load_datasets(
     )
 
     # Receipt-level split (90/10) by unique (image_id, receipt_id)
-    unique_receipts = list({ex.receipt_key for ex in examples})
+    # Use provided seed or generate one for reproducibility
+    if random_seed is None:
+        random_seed = random.randint(0, 2**31 - 1)
+    random.seed(random_seed)
+
+    unique_receipts = sorted({ex.receipt_key for ex in examples})  # Sort for determinism
     random.shuffle(unique_receipts)
     cut = max(1, int(len(unique_receipts) * 0.9))
-    train_receipts = set(unique_receipts[:cut])
-    val_receipts = set(unique_receipts[cut:])
+    train_receipts_list = unique_receipts[:cut]
+    val_receipts_list = unique_receipts[cut:]
+    train_receipts = set(train_receipts_list)
+    val_receipts = set(val_receipts_list)
+
+    # Compute hashes of receipt lists for verification
+    train_receipts_hash = hashlib.sha256(
+        ",".join(sorted(train_receipts_list)).encode()
+    ).hexdigest()[:16]
+    val_receipts_hash = hashlib.sha256(
+        ",".join(sorted(val_receipts_list)).encode()
+    ).hexdigest()[:16]
+
     train_indices = [
         i for i, ex in enumerate(examples) if ex.receipt_key in train_receipts
     ]
     val_indices = [
         i for i, ex in enumerate(examples) if ex.receipt_key in val_receipts
     ]
+
     # Downsample all-O lines in training to reach target O:entity token ratio
     # Only affects training; validation remains untouched
     # Compute token counts over candidate train set
@@ -341,16 +386,29 @@ def load_datasets(
         target_ratio = 2.0
 
     entity_tokens = 0
+    o_tokens_in_entity_lines = 0
+    o_only_lines_count = 0
+    entity_lines_count = 0
     o_only_tokens_total = 0
     is_o_only_flags: Dict[int, bool] = {}
+
     for idx in train_indices:
         ex = examples[idx]
         has_entity = any(tag != "O" for tag in ex.ner_tags)
         is_o_only_flags[idx] = not has_entity
         if has_entity:
+            entity_lines_count += 1
             entity_tokens += sum(1 for tag in ex.ner_tags if tag != "O")
+            o_tokens_in_entity_lines += sum(1 for tag in ex.ner_tags if tag == "O")
         else:
+            o_only_lines_count += 1
             o_only_tokens_total += len(ex.tokens)
+
+    # Compute O:entity ratio before downsampling
+    total_o_tokens_before = o_tokens_in_entity_lines + o_only_tokens_total
+    o_entity_ratio_before = (
+        total_o_tokens_before / entity_tokens if entity_tokens > 0 else float("inf")
+    )
 
     keep_ratio = 1.0
     if o_only_tokens_total > 0 and entity_tokens > 0:
@@ -359,13 +417,53 @@ def load_datasets(
         )
 
     filtered_train_indices: List[int] = []
+    o_only_lines_kept = 0
+    o_tokens_kept = 0
     for idx in train_indices:
         if not is_o_only_flags.get(idx, False):
             filtered_train_indices.append(idx)
         else:
             if random.random() < keep_ratio:
                 filtered_train_indices.append(idx)
+                o_only_lines_kept += 1
+                o_tokens_kept += len(examples[idx].tokens)
+
+    # Compute O:entity ratio after downsampling
+    total_o_tokens_after = o_tokens_in_entity_lines + o_tokens_kept
+    o_entity_ratio_after = (
+        total_o_tokens_after / entity_tokens if entity_tokens > 0 else float("inf")
+    )
+
+    # Compute validation O:entity ratio
+    val_entity_tokens = 0
+    val_o_tokens = 0
+    for idx in val_indices:
+        ex = examples[idx]
+        val_entity_tokens += sum(1 for tag in ex.ner_tags if tag != "O")
+        val_o_tokens += sum(1 for tag in ex.ner_tags if tag == "O")
+    o_entity_ratio_val = (
+        val_o_tokens / val_entity_tokens if val_entity_tokens > 0 else float("inf")
+    )
+
+    # Create split metadata
+    split_metadata = SplitMetadata(
+        random_seed=random_seed,
+        num_train_receipts=len(train_receipts_list),
+        num_val_receipts=len(val_receipts_list),
+        num_train_lines=len(filtered_train_indices),
+        num_val_lines=len(val_indices),
+        train_receipts_hash=train_receipts_hash,
+        val_receipts_hash=val_receipts_hash,
+        o_entity_ratio_before_downsample=o_entity_ratio_before,
+        o_entity_ratio_after_downsample=o_entity_ratio_after,
+        o_entity_ratio_val=o_entity_ratio_val,
+        o_only_lines_total=o_only_lines_count,
+        o_only_lines_kept=o_only_lines_kept,
+        o_only_lines_dropped=o_only_lines_count - o_only_lines_kept,
+        entity_lines_total=entity_lines_count,
+        target_o_entity_ratio=target_ratio,
+    )
 
     train_ds = dataset.select(filtered_train_indices).remove_columns(["receipt_key"])  # type: ignore[attr-defined]
     val_ds = dataset.select(val_indices).remove_columns(["receipt_key"])  # type: ignore[attr-defined]
-    return DatasetDict({"train": train_ds, "validation": val_ds})
+    return DatasetDict({"train": train_ds, "validation": val_ds}), split_metadata

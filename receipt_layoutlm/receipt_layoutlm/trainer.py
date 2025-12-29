@@ -89,7 +89,11 @@ class ReceiptLayoutLMTrainer:
             os.environ.pop("LAYOUTLM_MERGE_AMOUNTS", None)
 
         # Allow loading a prebuilt tokenized dataset snapshot
+        # Note: When loading from snapshot, split_metadata will be None since
+        # metadata isn't saved with tokenized datasets. This is acceptable for
+        # fast iteration during development.
         ds_mod = importlib.import_module("datasets")
+        split_metadata = None
         if self.data_config.dataset_snapshot_load:
             try:
                 datasets = ds_mod.load_from_disk(
@@ -97,9 +101,9 @@ class ReceiptLayoutLMTrainer:
                 )
             except (FileNotFoundError, OSError, ValueError):
                 # Fallback to normal path if load fails
-                datasets = load_datasets(self.dynamo)
+                datasets, split_metadata = load_datasets(self.dynamo)
         else:
-            datasets = load_datasets(self.dynamo)
+            datasets, split_metadata = load_datasets(self.dynamo)
 
         # Compute dataset counts prior to tokenization for run logging
         def _count_labels(dataset) -> Dict[str, int]:
@@ -216,12 +220,14 @@ class ReceiptLayoutLMTrainer:
         )
 
         # Parallelize preprocessing across CPU cores
+        # Disable cache to minimize local disk usage on SageMaker instances
         num_proc = max(1, min(os.cpu_count() or 1, 8))
         datasets = datasets.map(  # type: ignore[attr-defined]
             preprocess,
             remove_columns=["tokens", "bboxes", "ner_tags"],
             num_proc=num_proc,
             desc="Tokenize+align",
+            load_from_cache_file=False,  # Don't cache to disk
         )
 
         # Optionally save tokenized dataset snapshot for reuse
@@ -265,8 +271,10 @@ class ReceiptLayoutLMTrainer:
             except ModuleNotFoundError:
                 # Fallback to accuracy if seqeval not available
                 args_kwargs["metric_for_best_model"] = "eval_accuracy"
+        # Keep only 2 checkpoints locally to minimize disk usage
+        # on_save callback syncs to S3 before old checkpoints are deleted
         if "save_total_limit" in ta_params:
-            args_kwargs["save_total_limit"] = 1
+            args_kwargs["save_total_limit"] = 2
         if "save_safetensors" in ta_params:
             args_kwargs["save_safetensors"] = True
         if "label_smoothing_factor" in ta_params:
@@ -329,6 +337,7 @@ class ReceiptLayoutLMTrainer:
             "label_list": label_list,
             "num_labels": len(label_list),
             "dataset_counts": dataset_counts,
+            "split_metadata": asdict(split_metadata) if split_metadata else None,
             "epoch_metrics": [],
         }
         with open(run_json_path, "w", encoding="utf-8") as f:
@@ -355,15 +364,32 @@ class ReceiptLayoutLMTrainer:
         )
         self.dynamo.add_job(job)
 
+        # Update status to running
+        job.status = "running"
+        try:
+            self.dynamo.update_job(job)
+        except Exception as e:
+            print(f"Warning: Failed to update job status to running: {e}")
+
         # Per-epoch metric logging to run.json (created after job so we have job_id)
         try:
             TrainerCallback = getattr(self._transformers, "TrainerCallback")
 
             class _MetricLoggerCallback(TrainerCallback):  # type: ignore
-                def __init__(self, run_path: str, job_id: str, dynamo_client: Any) -> None:
+                def __init__(
+                    self,
+                    run_path: str,
+                    job_id: str,
+                    dynamo_client: Any,
+                    s3_bucket: str | None = None,
+                    s3_prefix: str | None = None,
+                ) -> None:
                     self.run_path = run_path
                     self.job_id = job_id
                     self.dynamo = dynamo_client
+                    self.s3_bucket = s3_bucket
+                    self.s3_prefix = s3_prefix
+                    self._synced_checkpoints: set = set()
 
                 def on_evaluate(self, args, state, control, metrics=None, **kwargs):  # type: ignore[override]
                     # Silence unused parameter warnings
@@ -388,6 +414,26 @@ class ReceiptLayoutLMTrainer:
                         "epoch": current_epoch,
                         "global_step": int(getattr(state, "global_step", 0)),
                     }
+
+                    # Set up metric recording (used for both eval metrics and training metrics)
+                    epoch_val = int(current_epoch) if current_epoch is not None else None
+                    step_val = int(getattr(state, "global_step", 0))
+                    metrics_to_write: list = []
+
+                    def _add_metric(name: str, value: float, unit: str = "ratio"):
+                        """Add a metric to the batch for writing."""
+                        metrics_to_write.append(
+                            JobMetric(
+                                job_id=self.job_id,
+                                metric_name=name,
+                                value=float(value),
+                                timestamp=datetime.now().isoformat(),
+                                unit=unit,
+                                epoch=epoch_val,
+                                step=step_val,
+                            )
+                        )
+
                     if isinstance(metrics, dict):
                         # Add scalar metrics
                         entry.update(
@@ -397,33 +443,40 @@ class ReceiptLayoutLMTrainer:
                                 if isinstance(v, (int, float))
                             }
                         )
-                        # Add per-label metrics if available (nested dict)
-                        if "per_label_metrics" in metrics:
-                            entry["per_label_metrics"] = metrics["per_label_metrics"]
 
-                        # Store F1 metric to DynamoDB with epoch if available
-                        if "eval_f1" in metrics or "f1" in metrics:
-                            f1_value = metrics.get("eval_f1") or metrics.get("f1")
-                            if f1_value is not None:
-                                try:
-                                    from receipt_dynamo.data.shared_exceptions import (
-                                        DynamoDBError,
-                                        EntityError,
-                                        OperationError,
-                                    )
-                                    metric = JobMetric(
-                                        job_id=self.job_id,
-                                        metric_name="val_f1",
-                                        value=float(f1_value),
-                                        timestamp=datetime.now().isoformat(),
-                                        unit="ratio",
-                                        epoch=int(current_epoch) if current_epoch is not None else None,
-                                        step=int(getattr(state, "global_step", 0)),
-                                    )
-                                    self.dynamo.add_job_metric(metric)
-                                except (DynamoDBError, EntityError, OperationError):
-                                    # Best-effort write; ignore errors
-                                    pass
+                        # Save per-label metrics to DynamoDB
+                        # Keys are like eval_label_MERCHANT_NAME_f1, eval_label_DATE_precision, etc.
+                        for key, value in metrics.items():
+                            if key.startswith("eval_label_") and isinstance(value, (int, float)):
+                                # Extract metric type (f1, precision, recall, support)
+                                # Key format: eval_label_{LABEL}_{metric_type}
+                                parts = key.split("_")
+                                if len(parts) >= 4:
+                                    metric_type = parts[-1]  # f1, precision, recall, support
+                                    label_name = "_".join(parts[2:-1])  # Handle labels with underscores
+                                    unit = "count" if metric_type == "support" else "ratio"
+                                    _add_metric(f"label_{label_name}_{metric_type}", float(value), unit)
+
+                        # Collect training metrics for batch write
+                        # F1 score
+                        f1_value = metrics.get("eval_f1") or metrics.get("f1")
+                        if f1_value is not None:
+                            _add_metric("val_f1", f1_value, "ratio")
+
+                        # Precision
+                        prec_value = metrics.get("eval_precision") or metrics.get("precision")
+                        if prec_value is not None:
+                            _add_metric("val_precision", prec_value, "ratio")
+
+                        # Recall
+                        recall_value = metrics.get("eval_recall") or metrics.get("recall")
+                        if recall_value is not None:
+                            _add_metric("val_recall", recall_value, "ratio")
+
+                        # Eval loss
+                        eval_loss = metrics.get("eval_loss")
+                        if eval_loss is not None:
+                            _add_metric("eval_loss", eval_loss, "loss")
 
                     # Add training loss from log_history if available
                     if state and hasattr(state, "log_history") and state.log_history:
@@ -433,19 +486,102 @@ class ReceiptLayoutLMTrainer:
                             latest_train = train_logs[-1]
                             if "loss" in latest_train:
                                 entry["train_loss"] = float(latest_train["loss"])
+                                _add_metric("train_loss", latest_train["loss"], "loss")
                             if "learning_rate" in latest_train:
                                 entry["learning_rate"] = float(latest_train["learning_rate"])
+                                _add_metric("learning_rate", latest_train["learning_rate"], "rate")
+
+                    # Write metrics to DynamoDB (one at a time since batch method doesn't exist)
+                    if metrics_to_write:
+                        for metric in metrics_to_write:
+                            try:
+                                self.dynamo.add_job_metric(metric)
+                            except Exception as e:
+                                # Log but don't fail training on metric write errors
+                                print(f"Warning: Failed to write metric {metric.metric_name}: {e}")
 
                     epoch_metrics.append(entry)
                     data["epoch_metrics"] = epoch_metrics
                     with open(self.run_path, "w", encoding="utf-8") as f:
                         json.dump(data, f, indent=2)
 
+                def on_save(self, args, state, control, **kwargs):  # type: ignore[override]
+                    """Sync checkpoint to S3 after each save."""
+                    del control, kwargs  # unused
+                    if not self.s3_bucket or not self.s3_prefix:
+                        return
+
+                    # Get the checkpoint that was just saved
+                    checkpoint_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
+                    if not os.path.exists(checkpoint_dir):
+                        return
+
+                    # Skip if already synced
+                    if checkpoint_dir in self._synced_checkpoints:
+                        return
+
+                    try:
+                        boto3 = importlib.import_module("boto3")
+                        s3_client = boto3.client("s3")
+
+                        # Sync checkpoint to S3
+                        checkpoint_name = f"checkpoint-{state.global_step}"
+                        s3_checkpoint_prefix = f"{self.s3_prefix}checkpoints/{checkpoint_name}/"
+
+                        print(f"📤 Syncing {checkpoint_name} to s3://{self.s3_bucket}/{s3_checkpoint_prefix}")
+                        for root, _dirs, files in os.walk(checkpoint_dir):
+                            for file in files:
+                                local_path = os.path.join(root, file)
+                                rel_path = os.path.relpath(local_path, checkpoint_dir)
+                                s3_key = f"{s3_checkpoint_prefix}{rel_path}"
+                                s3_client.upload_file(local_path, self.s3_bucket, s3_key)
+
+                        self._synced_checkpoints.add(checkpoint_dir)
+                        print(f"✅ Checkpoint {checkpoint_name} synced to S3")
+
+                        # Also sync run.json so we can track progress
+                        if self.run_path and os.path.exists(self.run_path):
+                            run_json_key = f"{self.s3_prefix}run.json"
+                            s3_client.upload_file(self.run_path, self.s3_bucket, run_json_key)
+
+                    except ModuleNotFoundError:
+                        # Fallback to AWS CLI
+                        result = subprocess.run(
+                            ["aws", "s3", "sync", checkpoint_dir, f"s3://{self.s3_bucket}/{self.s3_prefix}checkpoints/checkpoint-{state.global_step}/"],
+                            capture_output=True,
+                            text=True,
+                        )
+                        if result.returncode == 0:
+                            self._synced_checkpoints.add(checkpoint_dir)
+                            print("✅ Checkpoint synced to S3")
+                        else:
+                            print(f"⚠️  Failed to sync checkpoint: {result.stderr}")
+                    except Exception as e:
+                        print(f"⚠️  Failed to sync checkpoint to S3: {e}")
+
+            # Parse S3 config for per-epoch checkpoint syncing
+            s3_bucket = None
+            s3_prefix = None
+            if self.training_config.output_s3_path:
+                s3_path = self.training_config.output_s3_path
+                if s3_path.startswith("s3://"):
+                    parsed = urlparse(s3_path)
+                    s3_bucket = parsed.netloc
+                    s3_prefix = parsed.path.lstrip("/")
+                    if not s3_prefix.endswith("/"):
+                        s3_prefix += "/"
+                    s3_prefix = f"{s3_prefix}{job_name}/"
+                else:
+                    s3_bucket = s3_path
+                    s3_prefix = f"runs/{job_name}/"
+
             callbacks.append(
                 _MetricLoggerCallback(
                     os.path.join(output_dir, "run.json"),
                     job.job_id,
                     self.dynamo,
+                    s3_bucket=s3_bucket,
+                    s3_prefix=s3_prefix,
                 )
             )
         except AttributeError:
@@ -470,8 +606,123 @@ class ReceiptLayoutLMTrainer:
                 source="receipt_layoutlm.trainer",
             )
             self.dynamo.add_job_log(cfg_log)
-        except (DynamoDBError, EntityError, OperationError, ValueError):
-            pass
+
+            # Write dataset quality metrics as individual JobMetric records
+            dataset_metrics: List[JobMetric] = []
+            ts = datetime.now().isoformat()
+
+            # Training set metrics
+            if "train" in dataset_counts:
+                train_stats = dataset_counts["train"]
+                dataset_metrics.append(
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="num_train_samples",
+                        value=train_stats.get("num_lines", 0),
+                        timestamp=ts,
+                        unit="count",
+                        epoch=None,
+                    )
+                )
+                if train_stats.get("o_entity_ratio") is not None:
+                    dataset_metrics.append(
+                        JobMetric(
+                            job_id=job.job_id,
+                            metric_name="o_entity_ratio_train",
+                            value=train_stats["o_entity_ratio"],
+                            timestamp=ts,
+                            unit="ratio",
+                            epoch=None,
+                        )
+                    )
+
+            # Validation set metrics
+            if "validation" in dataset_counts:
+                val_stats = dataset_counts["validation"]
+                dataset_metrics.append(
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="num_val_samples",
+                        value=val_stats.get("num_lines", 0),
+                        timestamp=ts,
+                        unit="count",
+                        epoch=None,
+                    )
+                )
+                if val_stats.get("o_entity_ratio") is not None:
+                    dataset_metrics.append(
+                        JobMetric(
+                            job_id=job.job_id,
+                            metric_name="o_entity_ratio_val",
+                            value=val_stats["o_entity_ratio"],
+                            timestamp=ts,
+                            unit="ratio",
+                            epoch=None,
+                        )
+                    )
+
+            # Add split metadata metrics if available
+            if split_metadata:
+                dataset_metrics.extend([
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="random_seed",
+                        value=split_metadata.random_seed,
+                        timestamp=ts,
+                        unit="seed",
+                        epoch=None,
+                    ),
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="num_train_receipts",
+                        value=split_metadata.num_train_receipts,
+                        timestamp=ts,
+                        unit="count",
+                        epoch=None,
+                    ),
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="num_val_receipts",
+                        value=split_metadata.num_val_receipts,
+                        timestamp=ts,
+                        unit="count",
+                        epoch=None,
+                    ),
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="o_entity_ratio_before_downsample",
+                        value=split_metadata.o_entity_ratio_before_downsample,
+                        timestamp=ts,
+                        unit="ratio",
+                        epoch=None,
+                    ),
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="o_only_lines_dropped",
+                        value=split_metadata.o_only_lines_dropped,
+                        timestamp=ts,
+                        unit="count",
+                        epoch=None,
+                    ),
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="target_o_entity_ratio",
+                        value=split_metadata.target_o_entity_ratio,
+                        timestamp=ts,
+                        unit="ratio",
+                        epoch=None,
+                    ),
+                ])
+
+            # Write metrics one at a time (batch method doesn't exist)
+            for metric in dataset_metrics:
+                try:
+                    self.dynamo.add_job_metric(metric)
+                except Exception as e:
+                    print(f"Warning: Failed to write metric {metric.metric_name}: {e}")
+
+        except (DynamoDBError, EntityError, OperationError, ValueError) as e:
+            print(f"Warning: Failed to write dataset metrics: {e}")
 
         def compute_metrics(eval_pred):
             # seqeval F1 at entity-level (BIO tags)
@@ -505,7 +756,6 @@ class ReceiptLayoutLMTrainer:
                 y_pred.append(p_tags)
 
             metrics = {}
-            per_label_metrics = {}
             if seqeval:
                 f1 = float(f1_fn(y_true, y_pred))
                 prec = float(precision_fn(y_true, y_pred))
@@ -513,26 +763,27 @@ class ReceiptLayoutLMTrainer:
                 metrics = {"f1": f1, "precision": prec, "recall": rec}
 
                 # Get per-label metrics if classification_report is available
+                # Flatten into scalar keys so HuggingFace Trainer passes them to callbacks
                 if classification_report_fn:
                     try:
-                        # Get unique labels (excluding O for per-label metrics)
-                        unique_labels = sorted(set([tag for seq in y_true + y_pred for tag in seq if tag != "O"]))
-                        if unique_labels:
-                            report = classification_report_fn(
-                                y_true, y_pred, labels=unique_labels, output_dict=True, zero_division=0
-                            )
-                            # Extract per-label metrics
-                            for label in unique_labels:
-                                if label in report:
-                                    per_label_metrics[label] = {
-                                        "f1": float(report[label].get("f1-score", 0.0)),
-                                        "precision": float(report[label].get("precision", 0.0)),
-                                        "recall": float(report[label].get("recall", 0.0)),
-                                        "support": int(report[label].get("support", 0)),
-                                    }
-                    except Exception:
+                        # seqeval's classification_report doesn't take a labels param
+                        # It automatically computes metrics for all labels in the data
+                        report = classification_report_fn(
+                            y_true, y_pred, output_dict=True, zero_division=0
+                        )
+                        # Extract per-label metrics as flattened scalar keys
+                        # Skip aggregate keys (micro avg, macro avg, weighted avg)
+                        skip_keys = {"micro avg", "macro avg", "weighted avg"}
+                        for label, label_metrics in report.items():
+                            if label not in skip_keys and isinstance(label_metrics, dict):
+                                # Use flattened keys like label_MERCHANT_NAME_f1
+                                metrics[f"label_{label}_f1"] = float(label_metrics.get("f1-score", 0.0))
+                                metrics[f"label_{label}_precision"] = float(label_metrics.get("precision", 0.0))
+                                metrics[f"label_{label}_recall"] = float(label_metrics.get("recall", 0.0))
+                                metrics[f"label_{label}_support"] = int(label_metrics.get("support", 0))
+                    except Exception as e:
                         # If classification_report fails, continue without per-label metrics
-                        pass
+                        print(f"Warning: Failed to compute per-label metrics: {e}")
 
                 # Note: F1 metric is now stored in _MetricLoggerCallback.on_evaluate()
                 # with epoch information, so we don't need to store it here
@@ -543,10 +794,6 @@ class ReceiptLayoutLMTrainer:
                 correct = (preds == labels).astype(float)
                 acc = float(_np.mean(correct))
                 metrics = {"accuracy": acc}
-
-            # Add per-label metrics to return dict if available
-            if per_label_metrics:
-                metrics["per_label_metrics"] = per_label_metrics
 
             return metrics
 
@@ -702,6 +949,27 @@ class ReceiptLayoutLMTrainer:
                 source="receipt_layoutlm.trainer",
             )
             self.dynamo.add_job_log(summary_log)
+
+            # Update Job with results and mark as succeeded
+            job.status = "succeeded"
+            job.results = {
+                "best_f1": float(best_f1) if best_f1 is not None else None,
+                "best_epoch": int(best_epoch) if best_epoch is not None else None,
+                "early_stopping_triggered": early_stopping_triggered,
+            }
+            # Add training time metrics if available
+            if "train_runtime_seconds" in summary_payload:
+                job.results["train_runtime"] = summary_payload["train_runtime_seconds"]
+            if "total_flos" in summary_payload:
+                job.results["total_flos"] = summary_payload["total_flos"]
+            if "best_checkpoint_s3_path" in summary_payload:
+                job.results["best_checkpoint_s3_path"] = summary_payload["best_checkpoint_s3_path"]
+            elif "best_checkpoint_path" in summary_payload:
+                job.results["best_checkpoint_path"] = summary_payload["best_checkpoint_path"]
+
+            self.dynamo.update_job(job)
+            print(f"Job {job.job_id} completed with status: {job.status}, best_f1: {job.results.get('best_f1')}")
+
         except (
             DynamoDBError,
             EntityError,
@@ -709,8 +977,8 @@ class ReceiptLayoutLMTrainer:
             FileNotFoundError,
             json.JSONDecodeError,
             ValueError,
-        ):
-            pass
+        ) as e:
+            print(f"Warning: Failed to update job completion status: {e}")
 
         return job.job_id
 

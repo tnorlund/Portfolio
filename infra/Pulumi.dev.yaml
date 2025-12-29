@@ -34,7 +34,6 @@ config:
     secure: AAABAC+PSTc8uajZqSWQTNyqcOPjK4cW+DP3snxJOYFRRA6LSBZq4/7mfZiY2bGuw0fOrpHuyXpwPKDHm5+Y+0cCcj02h1fiUb59JXnOPsM4Hvs=
   portfolio:ecr-max-images: "4"
   portfolio:ecr-max-age-days: "7"
-  ml-training:enable-minimal: "true"
   docker-build:sync-mode: "false" # Async mode for faster pulumi up in dev
   docker-build:force-rebuild: "false"
   docker-build:debug-mode: "false"
@@ -42,3 +41,4 @@ config:
   label-evaluator:max_concurrency: "3"
   portfolio:OPENROUTER_API_KEY:
     secure: AAABAN6ptx7AysWMDQ4oCllzXWxWkIu7uxwgHswFkbfa0B0+DBMbJoVT5RZ2i5uSakARs45iOO6KNuiX1sUgZPRF8o6iWpDmwr06IZJ1GIz8CWUtTEz6A07PC4Hv9LivlK//JXLIXV2/
+  ml-training:enable-sagemaker: "true"
