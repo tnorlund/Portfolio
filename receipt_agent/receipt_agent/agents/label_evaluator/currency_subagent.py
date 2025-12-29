@@ -35,7 +35,9 @@ from dataclasses import dataclass
 from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
+
 from receipt_agent.constants import CURRENCY_LABELS
+from receipt_agent.prompts.structured_outputs import CurrencyEvaluationResponse
 
 from .state import EvaluationIssue, VisualLine, WordContext
 
@@ -341,24 +343,57 @@ Respond ONLY with the JSON array, no other text.
     return prompt
 
 
+def _extract_json_from_response(response_text: str) -> str:
+    """Extract JSON from response, handling markdown code blocks."""
+    if "```json" in response_text:
+        start = response_text.find("```json") + 7
+        end = response_text.find("```", start)
+        return response_text[start:end].strip()
+    elif "```" in response_text:
+        start = response_text.find("```") + 3
+        end = response_text.find("```", start)
+        return response_text[start:end].strip()
+    return response_text.strip()
+
+
 def parse_currency_evaluation_response(
     response_text: str,
     num_words: int,
 ) -> list[dict]:
-    """Parse the LLM response into a list of decisions."""
-    # Try to extract JSON from response
-    try:
-        # Handle markdown code blocks
-        if "```json" in response_text:
-            start = response_text.find("```json") + 7
-            end = response_text.find("```", start)
-            response_text = response_text[start:end].strip()
-        elif "```" in response_text:
-            start = response_text.find("```") + 3
-            end = response_text.find("```", start)
-            response_text = response_text[start:end].strip()
+    """Parse the LLM response into a list of decisions.
 
+    First attempts to parse using the CurrencyEvaluationResponse Pydantic model,
+    which validates the schema and constrains suggested_label to valid currency labels.
+    Falls back to manual JSON parsing if structured parsing fails.
+    """
+    response_text = _extract_json_from_response(response_text)
+
+    # Default fallback
+    fallback = {
+        "decision": "NEEDS_REVIEW",
+        "reasoning": "Failed to parse LLM response",
+        "suggested_label": None,
+        "confidence": "low",
+    }
+
+    # Try structured parsing first (validates schema and label values)
+    try:
+        parsed = json.loads(response_text)
+        # Handle both array format and object with evaluations key
+        if isinstance(parsed, list):
+            parsed = {"evaluations": parsed}
+        structured_response = CurrencyEvaluationResponse.model_validate(parsed)
+        return structured_response.to_ordered_list(num_words)
+    except Exception as e:
+        logger.debug(
+            "Structured parsing failed, falling back to manual parsing: %s", e
+        )
+
+    # Fallback to manual parsing for backwards compatibility
+    try:
         decisions = json.loads(response_text)
+        if isinstance(decisions, dict):
+            decisions = decisions.get("evaluations", [])
 
         # Validate and normalize
         result = []
@@ -390,15 +425,7 @@ def parse_currency_evaluation_response(
 
     except (json.JSONDecodeError, TypeError) as e:
         logger.warning("Failed to parse LLM response: %s", e)
-        return [
-            {
-                "decision": "NEEDS_REVIEW",
-                "reasoning": f"Failed to parse LLM response: {e}",
-                "suggested_label": None,
-                "confidence": "low",
-            }
-            for _ in range(num_words)
-        ]
+        return [fallback.copy() for _ in range(num_words)]
 
 
 # =============================================================================

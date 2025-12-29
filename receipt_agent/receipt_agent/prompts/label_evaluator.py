@@ -10,7 +10,12 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, Optional
 
-from receipt_agent.constants import CORE_LABELS as CORE_LABELS_DICT, CORE_LABELS_SET
+from receipt_agent.constants import CORE_LABELS as CORE_LABELS_DICT
+from receipt_agent.constants import CORE_LABELS_SET
+from receipt_agent.prompts.structured_outputs import (
+    BatchedReviewResponse,
+    SingleReview,
+)
 
 if TYPE_CHECKING:
     from receipt_agent.agents.label_evaluator.state import (
@@ -66,7 +71,9 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
             "receipt_type": patterns.get("receipt_type"),
             "receipt_type_reason": patterns.get("receipt_type_reason"),
             "auto_generated": patterns.get("auto_generated", False),
-            "discovered_from_receipts": patterns.get("discovered_from_receipts"),
+            "discovered_from_receipts": patterns.get(
+                "discovered_from_receipts"
+            ),
             **nested,
         }
 
@@ -78,7 +85,9 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
     if receipt_type:
         lines.append(f"**Receipt Type**: {receipt_type}")
         if patterns.get("receipt_type_reason"):
-            lines.append(f"**Classification Reason**: {patterns['receipt_type_reason']}")
+            lines.append(
+                f"**Classification Reason**: {patterns['receipt_type_reason']}"
+            )
 
     # For service receipts, don't show pattern details
     if receipt_type == "service":
@@ -121,11 +130,19 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
         lines.append(f"**Barcode Pattern**: `{patterns['barcode_pattern']}`")
 
     special_markers = patterns.get("special_markers")
-    if special_markers and isinstance(special_markers, list) and special_markers:
+    if (
+        special_markers
+        and isinstance(special_markers, list)
+        and special_markers
+    ):
         lines.append(f"**Special Markers**: {', '.join(special_markers)}")
 
     product_patterns = patterns.get("product_name_patterns")
-    if product_patterns and isinstance(product_patterns, list) and product_patterns:
+    if (
+        product_patterns
+        and isinstance(product_patterns, list)
+        and product_patterns
+    ):
         lines.append("**Product Name Patterns**:")
         for p in product_patterns[:3]:  # Limit to 3 for prompt size
             lines.append(f"  - {p}")
@@ -806,6 +823,15 @@ IMPORTANT: Provide exactly {len(issues_with_context)} reviews, one for each issu
 # =============================================================================
 
 
+def _extract_json_from_response(response_text: str) -> str:
+    """Extract JSON from response, handling markdown code blocks."""
+    if "```" in response_text:
+        match = re.search(r"```(?:json)?\s*(.*?)\s*```", response_text, re.S)
+        if match:
+            return match.group(1).strip()
+    return response_text.strip()
+
+
 def parse_llm_response(response_text: str) -> dict[str, Any]:
     """
     Parse single-issue LLM JSON response.
@@ -813,13 +839,7 @@ def parse_llm_response(response_text: str) -> dict[str, Any]:
     Returns:
         Dict with keys: decision, reasoning, suggested_label, confidence
     """
-    # Handle markdown code blocks
-    if "```" in response_text:
-        match = re.search(r"```(?:json)?\s*(.*?)\s*```", response_text, re.S)
-        if match:
-            response_text = match.group(1)
-
-    response_text = response_text.strip()
+    response_text = _extract_json_from_response(response_text)
 
     try:
         result = json.loads(response_text)
@@ -865,6 +885,10 @@ def parse_batched_llm_response(
     """
     Parse batched LLM JSON response.
 
+    First attempts to parse using the BatchedReviewResponse Pydantic model,
+    which validates the schema and constrains suggested_label to valid values.
+    Falls back to manual JSON parsing if structured parsing fails.
+
     Args:
         response_text: Raw LLM response
         expected_count: Expected number of reviews
@@ -873,13 +897,7 @@ def parse_batched_llm_response(
         List of dicts, one per issue, each with:
             decision, reasoning, suggested_label, confidence
     """
-    # Handle markdown code blocks
-    if "```" in response_text:
-        match = re.search(r"```(?:json)?\s*(.*?)\s*```", response_text, re.S)
-        if match:
-            response_text = match.group(1)
-
-    response_text = response_text.strip()
+    response_text = _extract_json_from_response(response_text)
 
     # Default fallback for all issues
     fallback = {
@@ -889,6 +907,17 @@ def parse_batched_llm_response(
         "confidence": "low",
     }
 
+    # Try structured parsing first (validates schema and label values)
+    try:
+        result = json.loads(response_text)
+        structured_response = BatchedReviewResponse.model_validate(result)
+        return structured_response.to_ordered_list(expected_count)
+    except Exception as e:
+        logger.debug(
+            "Structured parsing failed, falling back to manual parsing: %s", e
+        )
+
+    # Fallback to manual parsing for backwards compatibility
     try:
         result = json.loads(response_text)
         reviews = result.get("reviews", [])
@@ -917,9 +946,6 @@ def parse_batched_llm_response(
                 confidence = "medium"
 
             # Validate suggested_label is in CORE_LABELS
-            # TODO: Try using ChatOllama.with_structured_output() with a Pydantic
-            # model that has suggested_label as Optional[LabelEnum] to constrain
-            # at the token level instead of post-hoc validation.
             suggested_label = review.get("suggested_label")
             if suggested_label:
                 suggested_upper = suggested_label.upper()
@@ -961,3 +987,52 @@ def parse_batched_llm_response(
         logger.error("Failed to parse batched response: %s", e)
         logger.error("Response preview: %s", response_text[:500])
         return [fallback.copy() for _ in range(expected_count)]
+
+
+def invoke_with_structured_output(
+    llm: Any,
+    prompt: str,
+    expected_count: int,
+    run_name: str = "llm_review",
+) -> list[dict[str, Any]]:
+    """
+    Invoke LLM with structured output for batched reviews.
+
+    Uses LangChain's with_structured_output() to constrain the LLM response
+    to the BatchedReviewResponse schema, preventing invalid labels at the
+    token generation level.
+
+    Args:
+        llm: LangChain LLM instance (ChatOllama, ChatOpenAI, etc.)
+        prompt: The review prompt
+        expected_count: Expected number of reviews
+        run_name: Name for tracing
+
+    Returns:
+        List of review dicts, one per issue
+    """
+    from langchain_core.messages import HumanMessage
+
+    try:
+        # Create structured LLM
+        structured_llm = llm.with_structured_output(BatchedReviewResponse)
+
+        # Invoke with structured output
+        response: BatchedReviewResponse = structured_llm.invoke(
+            [HumanMessage(content=prompt)],
+            config={"run_name": run_name},
+        )
+
+        return response.to_ordered_list(expected_count)
+
+    except Exception as e:
+        logger.warning(
+            "Structured output invocation failed, falling back to text parsing: %s",
+            e,
+        )
+        # Fall back to regular invocation + parsing
+        response = llm.invoke(
+            [HumanMessage(content=prompt)],
+            config={"run_name": run_name},
+        )
+        return parse_batched_llm_response(response.content, expected_count)
