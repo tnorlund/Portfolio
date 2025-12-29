@@ -10,7 +10,6 @@ Usage:
     # response is already a BatchedReviewResponse object
 """
 
-import json
 import re
 from enum import Enum
 from typing import Optional

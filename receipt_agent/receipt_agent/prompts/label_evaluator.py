@@ -901,88 +901,87 @@ def parse_batched_llm_response(
         "confidence": "low",
     }
 
-    # Try structured parsing first (validates schema and label values)
+    # Try to parse JSON first
     try:
         result = json.loads(response_text)
+    except json.JSONDecodeError as e:
+        logger.warning("Failed to parse batched LLM response as JSON: %s", e)
+        return [fallback.copy() for _ in range(expected_count)]
+
+    # Try structured validation (validates schema and label values)
+    try:
         structured_response = BatchedReviewResponse.model_validate(result)
         return structured_response.to_ordered_list(expected_count)
-    except (json.JSONDecodeError, ValidationError) as e:
+    except ValidationError as e:
         logger.debug(
-            "Structured parsing failed (type=%s), falling back to manual parsing: %s",
-            type(e).__name__,
+            "Structured validation failed, falling back to manual parsing: %s",
             e,
         )
 
     # Fallback to manual parsing for backwards compatibility
-    try:
-        result = json.loads(response_text)
-        reviews = result.get("reviews", [])
+    # (result is already parsed, reuse it)
+    reviews = result.get("reviews", [])
 
-        if not isinstance(reviews, list):
-            logger.warning("Batched response 'reviews' is not a list")
-            return [fallback.copy() for _ in range(expected_count)]
-
-        # Build a map by issue_index
-        reviews_by_index: dict[int, dict[str, Any]] = {}
-
-        for review in reviews:
-            if not isinstance(review, dict):
-                continue
-
-            idx = review.get("issue_index")
-            if idx is None or not isinstance(idx, int):
-                continue
-
-            decision = review.get("decision", "NEEDS_REVIEW")
-            if decision not in ("VALID", "INVALID", "NEEDS_REVIEW"):
-                decision = "NEEDS_REVIEW"
-
-            confidence = review.get("confidence", "medium")
-            if confidence not in ("low", "medium", "high"):
-                confidence = "medium"
-
-            # Validate suggested_label is in CORE_LABELS
-            suggested_label = review.get("suggested_label")
-            if suggested_label:
-                suggested_upper = suggested_label.upper()
-                if suggested_upper not in CORE_LABELS_SET:
-                    logger.warning(
-                        "Rejecting invalid suggested_label '%s' (not in CORE_LABELS)",
-                        suggested_label,
-                    )
-                    suggested_label = None
-                else:
-                    suggested_label = suggested_upper  # Normalize to uppercase
-
-            reviews_by_index[idx] = {
-                "decision": decision,
-                "reasoning": review.get("reasoning", "No reasoning provided"),
-                "suggested_label": suggested_label,
-                "confidence": confidence,
-            }
-
-        # Build ordered list, using fallback for missing indices
-        ordered_reviews = []
-        for i in range(expected_count):
-            if i in reviews_by_index:
-                ordered_reviews.append(reviews_by_index[i])
-            else:
-                logger.warning("Missing review for issue index %d", i)
-                ordered_reviews.append(
-                    {
-                        "decision": "NEEDS_REVIEW",
-                        "reasoning": f"LLM did not provide review for issue {i}",
-                        "suggested_label": None,
-                        "confidence": "low",
-                    }
-                )
-
-        return ordered_reviews
-
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse batched response: %s", e)
-        logger.error("Response preview: %s", response_text[:500])
+    if not isinstance(reviews, list):
+        logger.warning("Batched response 'reviews' is not a list")
         return [fallback.copy() for _ in range(expected_count)]
+
+    # Build a map by issue_index
+    reviews_by_index: dict[int, dict[str, Any]] = {}
+
+    for review in reviews:
+        if not isinstance(review, dict):
+            continue
+
+        idx = review.get("issue_index")
+        if idx is None or not isinstance(idx, int):
+            continue
+
+        decision = review.get("decision", "NEEDS_REVIEW")
+        if decision not in ("VALID", "INVALID", "NEEDS_REVIEW"):
+            decision = "NEEDS_REVIEW"
+
+        confidence = review.get("confidence", "medium")
+        if confidence not in ("low", "medium", "high"):
+            confidence = "medium"
+
+        # Validate suggested_label is in CORE_LABELS
+        suggested_label = review.get("suggested_label")
+        if suggested_label:
+            suggested_upper = suggested_label.upper()
+            if suggested_upper not in CORE_LABELS_SET:
+                logger.warning(
+                    "Rejecting invalid suggested_label '%s' (not in CORE_LABELS)",
+                    suggested_label,
+                )
+                suggested_label = None
+            else:
+                suggested_label = suggested_upper  # Normalize to uppercase
+
+        reviews_by_index[idx] = {
+            "decision": decision,
+            "reasoning": review.get("reasoning", "No reasoning provided"),
+            "suggested_label": suggested_label,
+            "confidence": confidence,
+        }
+
+    # Build ordered list, using fallback for missing indices
+    ordered_reviews = []
+    for i in range(expected_count):
+        if i in reviews_by_index:
+            ordered_reviews.append(reviews_by_index[i])
+        else:
+            logger.warning("Missing review for issue index %d", i)
+            ordered_reviews.append(
+                {
+                    "decision": "NEEDS_REVIEW",
+                    "reasoning": f"LLM did not provide review for issue {i}",
+                    "suggested_label": None,
+                    "confidence": "low",
+                }
+            )
+
+    return ordered_reviews
 
 
 def invoke_with_structured_output(
