@@ -4,25 +4,22 @@ Unit tests for the currency subagent.
 Tests the various detection functions for currency-related label issues.
 """
 
-import pytest
-from unittest.mock import MagicMock
-from datetime import datetime, UTC
-import uuid
+from datetime import UTC, datetime
 
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
-# Use a fixed valid UUID for testing
-TEST_IMAGE_ID = "12345678-1234-4234-8234-123456789abc"
-
-from receipt_agent.agents.label_evaluator.state import VisualLine, WordContext
 from receipt_agent.agents.label_evaluator.currency_subagent import (
     CurrencyWord,
     LineItemRow,
-    identify_line_item_rows,
-    convert_to_evaluation_issues,
     build_currency_evaluation_prompt,
+    convert_to_evaluation_issues,
+    identify_line_item_rows,
     parse_currency_evaluation_response,
 )
+from receipt_agent.agents.label_evaluator.state import VisualLine, WordContext
+
+# Use a fixed valid UUID for testing
+TEST_IMAGE_ID = "12345678-1234-4234-8234-123456789abc"
 
 
 def _make_word(
@@ -89,9 +86,13 @@ def _make_word_context(
     )
 
 
-def _make_visual_line(words: list[WordContext], line_index: int = 0) -> VisualLine:
+def _make_visual_line(
+    words: list[WordContext], line_index: int = 0
+) -> VisualLine:
     """Helper to create a VisualLine."""
-    y_center = sum(w.normalized_y for w in words) / len(words) if words else 0.5
+    y_center = (
+        sum(w.normalized_y for w in words) / len(words) if words else 0.5
+    )
     return VisualLine(line_index=line_index, words=words, y_center=y_center)
 
 
@@ -241,7 +242,9 @@ class TestFindPositionAnomalies:
         pass
 
 
-@pytest.mark.skip(reason="CurrencyIssue type not implemented - convert_to_evaluation_issues takes different input")
+@pytest.mark.skip(
+    reason="CurrencyIssue type not implemented - convert_to_evaluation_issues takes different input"
+)
 class TestConvertToEvaluationIssues:
     """Tests for convert_to_evaluation_issues function."""
 
@@ -255,12 +258,12 @@ class TestParseCurrencyEvaluationResponse:
 
     def test_parses_valid_response(self):
         """Should parse valid JSON response."""
-        response = '''```json
+        response = """```json
 [
     {"index": 0, "decision": "INVALID", "reasoning": "Phone number", "suggested_label": "PHONE_NUMBER", "confidence": "high"},
     {"index": 1, "decision": "VALID", "reasoning": "Correct", "confidence": "medium"}
 ]
-```'''
+```"""
         reviews = parse_currency_evaluation_response(response, 2)
         assert len(reviews) == 2
         assert reviews[0]["decision"] == "INVALID"

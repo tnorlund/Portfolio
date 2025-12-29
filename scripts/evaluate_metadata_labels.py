@@ -33,7 +33,8 @@ def main():
         help="Apply decisions to DynamoDB",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Verbose output",
     )
@@ -51,30 +52,28 @@ def main():
 
     # Import after path setup
     from langchain_ollama import ChatOllama
-
-    from receipt_dynamo import DynamoClient
-    from receipt_agent.agents.label_evaluator.word_context import (
-        build_word_contexts,
-        assemble_visual_lines,
+    from receipt_agent.agents.label_evaluator.llm_review import (
+        apply_llm_decisions,
     )
     from receipt_agent.agents.label_evaluator.metadata_subagent import (
         evaluate_metadata_labels,
     )
-    from receipt_agent.agents.label_evaluator.llm_review import apply_llm_decisions
+    from receipt_agent.agents.label_evaluator.word_context import (
+        assemble_visual_lines,
+        build_word_contexts,
+    )
+    from receipt_dynamo import DynamoClient
 
     # Get configuration from environment
     table_name = os.environ.get(
-        "RECEIPT_AGENT_DYNAMO_TABLE_NAME",
-        "ReceiptsTable-dc5be22"
+        "RECEIPT_AGENT_DYNAMO_TABLE_NAME", "ReceiptsTable-dc5be22"
     )
     ollama_api_key = os.environ.get("RECEIPT_AGENT_OLLAMA_API_KEY", "")
     ollama_base_url = os.environ.get(
-        "RECEIPT_AGENT_OLLAMA_BASE_URL",
-        "https://ollama.com"
+        "RECEIPT_AGENT_OLLAMA_BASE_URL", "https://ollama.com"
     )
     ollama_model = os.environ.get(
-        "RECEIPT_AGENT_OLLAMA_MODEL",
-        "gpt-oss:120b-cloud"
+        "RECEIPT_AGENT_OLLAMA_MODEL", "gpt-oss:120b-cloud"
     )
 
     # Initialize clients
@@ -83,34 +82,38 @@ def main():
     # =========================================================================
     # Step 1: Fetch Receipt Data
     # =========================================================================
-    logger.info(f"Step 1: Fetching receipt data for {args.image_id}#{args.receipt_id}...")
+    logger.info(
+        "Step 1: Fetching receipt data for %s#%s...",
+        args.image_id,
+        args.receipt_id,
+    )
 
     # Get words
     words = dynamo_client.list_receipt_words_from_receipt(
         args.image_id, args.receipt_id
     )
-    logger.info(f"  Loaded {len(words)} words")
+    logger.info("  Loaded %d words", len(words))
 
     # Get labels (returns tuple: list of labels, last_evaluated_key)
     labels, _ = dynamo_client.list_receipt_word_labels_for_receipt(
         args.image_id, args.receipt_id
     )
-    logger.info(f"  Loaded {len(labels)} labels")
+    logger.info("  Loaded %d labels", len(labels))
 
     # Get place
     place = dynamo_client.get_receipt_place(args.image_id, args.receipt_id)
     if place:
-        logger.info(f"  Loaded place: {place.merchant_name}")
-        logger.info(f"    Address: {place.formatted_address}")
-        logger.info(f"    Phone: {place.phone_number}")
-        logger.info(f"    Website: {place.website}")
+        logger.info("  Loaded place: %s", place.merchant_name)
+        logger.info("    Address: %s", place.formatted_address)
+        logger.info("    Phone: %s", place.phone_number)
+        logger.info("    Website: %s", place.website)
     else:
         logger.warning("  No ReceiptPlace found - validation will be limited")
 
     # Build visual lines
     word_contexts = build_word_contexts(words, labels)
     visual_lines = assemble_visual_lines(word_contexts)
-    logger.info(f"  Built {len(visual_lines)} visual lines")
+    logger.info("  Built %d visual lines", len(visual_lines))
 
     # Get merchant name
     merchant_name = place.merchant_name if place else "Unknown"
@@ -138,7 +141,7 @@ def main():
         merchant_name=merchant_name,
     )
 
-    logger.info(f"  Evaluated {len(decisions)} metadata words")
+    logger.info("  Evaluated %d metadata words", len(decisions))
 
     # Count decisions
     decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
@@ -148,7 +151,7 @@ def main():
             decision_counts[decision] += 1
         else:
             decision_counts["NEEDS_REVIEW"] += 1
-    logger.info(f"  Decisions: {decision_counts}")
+    logger.info("  Decisions: %s", decision_counts)
 
     # =========================================================================
     # Step 3: Apply Decisions (if --apply)
@@ -158,7 +161,8 @@ def main():
 
         # Filter to only INVALID decisions
         invalid_decisions = [
-            d for d in decisions
+            d
+            for d in decisions
             if d.get("llm_review", {}).get("decision") == "INVALID"
         ]
 
@@ -168,7 +172,7 @@ def main():
                 dynamo_client=dynamo_client,
                 execution_id=f"metadata-dev-{args.image_id[:8]}",
             )
-            logger.info(f"  Applied: {stats}")
+            logger.info("  Applied: %s", stats)
         else:
             logger.info("  No INVALID decisions to apply")
     elif args.apply:
@@ -203,7 +207,9 @@ def main():
 
         print(f"  [{i}] {symbol} {decision} ({confidence})")
         print(f"      Word: \"{issue.get('word_text', '')}\"")
-        print(f"      Current Label: {issue.get('current_label') or 'unlabeled'}")
+        print(
+            f"      Current Label: {issue.get('current_label') or 'unlabeled'}"
+        )
         reasoning = review.get("reasoning", "")
         print(f"      Reasoning: {reasoning[:70] if reasoning else ''}")
         if review.get("suggested_label"):

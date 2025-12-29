@@ -32,10 +32,9 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
-
 from receipt_agent.constants import CURRENCY_LABELS
 
 from .state import EvaluationIssue, VisualLine, WordContext
@@ -47,10 +46,19 @@ LINE_ITEM_LABELS = {"PRODUCT_NAME", "LINE_TOTAL", "UNIT_PRICE", "QUANTITY"}
 
 # Patterns that look like numbers but aren't currency
 NON_CURRENCY_PATTERNS = [
-    (re.compile(r"^\d{3}[-.]?\d{3}[-.]?\d{4}$"), "PHONE_NUMBER"),  # 555-123-4567
+    (
+        re.compile(r"^\d{3}[-.]?\d{3}[-.]?\d{4}$"),
+        "PHONE_NUMBER",
+    ),  # 555-123-4567
     (re.compile(r"^\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}$"), "DATE"),  # 12/25/2024
-    (re.compile(r"^\d{5}(-\d{4})?$"), "ADDRESS_LINE"),  # ZIP: 90210, 90210-1234
-    (re.compile(r"^\d{2}:\d{2}(:\d{2})?([ ]?[AP]M)?$", re.I), "TIME"),  # 14:30, 2:30 PM
+    (
+        re.compile(r"^\d{5}(-\d{4})?$"),
+        "ADDRESS_LINE",
+    ),  # ZIP: 90210, 90210-1234
+    (
+        re.compile(r"^\d{2}:\d{2}(:\d{2})?([ ]?[AP]M)?$", re.I),
+        "TIME",
+    ),  # 14:30, 2:30 PM
     (re.compile(r"^#\d{4,}$"), "ORDER_NUMBER"),  # #12345
 ]
 
@@ -126,7 +134,9 @@ def get_non_currency_pattern(text: str) -> Optional[str]:
 
 def identify_line_item_rows(
     visual_lines: list[VisualLine],
-    patterns: Optional[dict] = None,  # Reserved for future pattern-based detection
+    patterns: Optional[
+        dict
+    ] = None,  # Reserved for future pattern-based detection
 ) -> list[LineItemRow]:
     """
     Identify which visual lines are line item rows based on patterns.
@@ -157,7 +167,11 @@ def identify_line_item_rows(
                 and wc.current_label.label in CURRENCY_LABELS
             ]
             rows.append(
-                LineItemRow(line=line, labels=line_labels, currency_words=currency_words)
+                LineItemRow(
+                    line=line,
+                    labels=line_labels,
+                    currency_words=currency_words,
+                )
             )
 
     return rows
@@ -197,13 +211,17 @@ def collect_currency_words(
             # Include if:
             # 1. Has a line item evaluation label (currency OR PRODUCT_NAME/QUANTITY), OR
             # 2. Looks like currency AND on line item row (potential unlabeled currency)
-            if has_eval_label or (is_currency_like and is_on_line_item_row and not non_currency):
+            if has_eval_label or (
+                is_currency_like and is_on_line_item_row and not non_currency
+            ):
                 currency_words.append(
                     CurrencyWord(
                         word_context=wc,
                         current_label=current_label,
                         line_index=line.line_index,
-                        position_zone=get_position_zone(wc.normalized_x, x_zones),
+                        position_zone=get_position_zone(
+                            wc.normalized_x, x_zones
+                        ),
                         looks_like_currency=is_currency_like,
                         non_currency_pattern=non_currency,
                     )
@@ -235,7 +253,9 @@ def build_currency_evaluation_prompt(
         for wc in line.words:
             label = wc.current_label.label if wc.current_label else "unlabeled"
             line_text.append(f"{wc.word.text}[{label}]")
-        receipt_lines.append(f"  Line {line.line_index}: " + " | ".join(line_text))
+        receipt_lines.append(
+            f"  Line {line.line_index}: " + " | ".join(line_text)
+        )
 
     receipt_text = "\n".join(receipt_lines[:50])  # Limit to 50 lines
     if len(visual_lines) > 50:
@@ -247,7 +267,7 @@ def build_currency_evaluation_prompt(
         wc = cw.word_context
         words_table.append(
             f"  [{i}] Line {cw.line_index}, Zone: {cw.position_zone}\n"
-            f"      Text: \"{wc.word.text}\"\n"
+            f'      Text: "{wc.word.text}"\n'
             f"      Current Label: {cw.current_label or 'unlabeled'}\n"
             f"      Looks like currency: {cw.looks_like_currency}"
         )
@@ -341,23 +361,26 @@ def parse_currency_evaluation_response(
         for i in range(num_words):
             # Find decision for this index
             decision = next(
-                (d for d in decisions if d.get("index") == i),
-                None
+                (d for d in decisions if d.get("index") == i), None
             )
             if decision:
-                result.append({
-                    "decision": decision.get("decision", "NEEDS_REVIEW"),
-                    "reasoning": decision.get("reasoning", ""),
-                    "suggested_label": decision.get("suggested_label"),
-                    "confidence": decision.get("confidence", "medium"),
-                })
+                result.append(
+                    {
+                        "decision": decision.get("decision", "NEEDS_REVIEW"),
+                        "reasoning": decision.get("reasoning", ""),
+                        "suggested_label": decision.get("suggested_label"),
+                        "confidence": decision.get("confidence", "medium"),
+                    }
+                )
             else:
-                result.append({
-                    "decision": "NEEDS_REVIEW",
-                    "reasoning": "No decision from LLM",
-                    "suggested_label": None,
-                    "confidence": "low",
-                })
+                result.append(
+                    {
+                        "decision": "NEEDS_REVIEW",
+                        "reasoning": "No decision from LLM",
+                        "suggested_label": None,
+                        "confidence": "low",
+                    }
+                )
 
         return result
 
@@ -426,7 +449,9 @@ def evaluate_currency_labels(
         return []
 
     # Step 2: Collect currency words to evaluate
-    currency_words = collect_currency_words(visual_lines, line_item_rows, patterns)
+    currency_words = collect_currency_words(
+        visual_lines, line_item_rows, patterns
+    )
     logger.info("Found %s currency words to evaluate", len(currency_words))
 
     if not currency_words:
@@ -443,26 +468,32 @@ def evaluate_currency_labels(
 
     try:
         response = llm.invoke(prompt)
-        response_text = response.content if hasattr(response, "content") else str(response)
+        response_text = (
+            response.content if hasattr(response, "content") else str(response)
+        )
 
         # Step 4: Parse response
-        decisions = parse_currency_evaluation_response(response_text, len(currency_words))
+        decisions = parse_currency_evaluation_response(
+            response_text, len(currency_words)
+        )
 
         # Step 5: Format output for apply_llm_decisions
         results = []
         for cw, decision in zip(currency_words, decisions, strict=True):
             wc = cw.word_context
-            results.append({
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "issue": {
-                    "line_id": wc.word.line_id,
-                    "word_id": wc.word.word_id,
-                    "current_label": cw.current_label,
-                    "word_text": wc.word.text,
-                },
-                "llm_review": decision,
-            })
+            results.append(
+                {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "issue": {
+                        "line_id": wc.word.line_id,
+                        "word_id": wc.word.word_id,
+                        "current_label": cw.current_label,
+                        "word_text": wc.word.text,
+                    },
+                    "llm_review": decision,
+                }
+            )
 
         # Log summary
         decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
@@ -474,9 +505,15 @@ def evaluate_currency_labels(
 
     except Exception as e:
         # Check if this is a rate limit error that should trigger Step Function retry
-        from receipt_agent.utils import OllamaRateLimitError, BothProvidersFailedError
+        from receipt_agent.utils import (
+            BothProvidersFailedError,
+            OllamaRateLimitError,
+        )
+
         if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
-            logger.error("Currency LLM rate limited, propagating for retry: %s", e)
+            logger.error(
+                "Currency LLM rate limited, propagating for retry: %s", e
+            )
             raise  # Let Step Function retry handle this
 
         logger.error("Currency LLM call failed: %s", e)
@@ -484,22 +521,24 @@ def evaluate_currency_labels(
         results = []
         for cw in currency_words:
             wc = cw.word_context
-            results.append({
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "issue": {
-                    "line_id": wc.word.line_id,
-                    "word_id": wc.word.word_id,
-                    "current_label": cw.current_label,
-                    "word_text": wc.word.text,
-                },
-                "llm_review": {
-                    "decision": "NEEDS_REVIEW",
-                    "reasoning": f"LLM call failed: {e}",
-                    "suggested_label": None,
-                    "confidence": "low",
-                },
-            })
+            results.append(
+                {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "issue": {
+                        "line_id": wc.word.line_id,
+                        "word_id": wc.word.word_id,
+                        "current_label": cw.current_label,
+                        "word_text": wc.word.text,
+                    },
+                    "llm_review": {
+                        "decision": "NEEDS_REVIEW",
+                        "reasoning": f"LLM call failed: {e}",
+                        "suggested_label": None,
+                        "confidence": "low",
+                    },
+                }
+            )
         return results
 
 

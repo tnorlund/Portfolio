@@ -32,10 +32,9 @@ import logging
 import re
 import string
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from langchain_core.language_models import BaseChatModel
-
 from receipt_agent.constants import METADATA_EVALUATION_LABELS
 
 from .state import VisualLine, WordContext
@@ -64,11 +63,16 @@ FORMAT_VALIDATED_LABELS = {
 PHONE_PATTERN = re.compile(r"^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$")
 DATE_PATTERNS = [
     re.compile(r"^\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}$"),  # 12/25/2024
-    re.compile(r"^\d{4}[/.-]\d{1,2}[/.-]\d{1,2}$"),    # 2024-12-25
-    re.compile(r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}$", re.I),
+    re.compile(r"^\d{4}[/.-]\d{1,2}[/.-]\d{1,2}$"),  # 2024-12-25
+    re.compile(
+        r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}$",
+        re.I,
+    ),
 ]
 TIME_PATTERN = re.compile(r"^\d{1,2}:\d{2}(:\d{2})?\s*([AP]M)?$", re.I)
-WEBSITE_PATTERN = re.compile(r"^(www\.)?\w+\.(com|org|net|edu|gov|io|co)$", re.I)
+WEBSITE_PATTERN = re.compile(
+    r"^(www\.)?\w+\.(com|org|net|edu|gov|io|co)$", re.I
+)
 PAYMENT_PATTERNS = [
     re.compile(r"^(VISA|MASTERCARD|AMEX|DISCOVER|DEBIT|CREDIT)\b", re.I),
     re.compile(r"^(CASH|CHECK|EBT|SNAP)\b", re.I),
@@ -77,9 +81,25 @@ PAYMENT_PATTERNS = [
 
 # Common stop words that are never metadata
 # Note: Single characters are handled separately to preserve state abbreviations (CA, TX)
-METADATA_STOP_WORDS = frozenset({
-    "for", "to", "and", "or", "the", "a", "an", "is", "by", "of", "in", "on", "at", "we", "it"
-})
+METADATA_STOP_WORDS = frozenset(
+    {
+        "for",
+        "to",
+        "and",
+        "or",
+        "the",
+        "a",
+        "an",
+        "is",
+        "by",
+        "of",
+        "in",
+        "on",
+        "at",
+        "we",
+        "it",
+    }
+)
 
 
 def should_skip_for_metadata_evaluation(word_text: str) -> bool:
@@ -120,10 +140,10 @@ class MetadataWord:
     """A word that is metadata-related (labeled or should be labeled)."""
 
     word_context: WordContext
-    current_label: Optional[str]
+    current_label: str | None
     line_index: int
-    detected_type: Optional[str]  # What pattern it matches (if unlabeled)
-    place_match: Optional[str]  # What ReceiptPlace field it might match
+    detected_type: str | None  # What pattern it matches (if unlabeled)
+    place_match: str | None  # What ReceiptPlace field it might match
 
 
 # =============================================================================
@@ -151,7 +171,9 @@ def check_merchant_match(word_text: str, merchant_name: str) -> bool:
     return len(word_norm) >= 3 and word_norm in merchant_norm
 
 
-def check_address_match(word_text: str, address: str, components: dict) -> bool:
+def check_address_match(
+    word_text: str, address: str, components: dict
+) -> bool:
     """Check if word could be part of address."""
     if not address and not components:
         return False
@@ -163,8 +185,16 @@ def check_address_match(word_text: str, address: str, components: dict) -> bool:
         return True
     # Check against components (street, city, state, zip)
     if components:
-        for key in ["street_number", "route", "locality", "administrative_area_level_1", "postal_code"]:
-            if key in components and word_norm in normalize_text(str(components[key])):
+        for key in [
+            "street_number",
+            "route",
+            "locality",
+            "administrative_area_level_1",
+            "postal_code",
+        ]:
+            if key in components and word_norm in normalize_text(
+                str(components[key])
+            ):
                 return True
     return False
 
@@ -184,13 +214,25 @@ def check_website_match(word_text: str, website: str) -> bool:
     """Check if word matches website."""
     if not website:
         return False
-    word_norm = word_text.lower().replace("www.", "").replace("http://", "").replace("https://", "")
-    site_norm = website.lower().replace("www.", "").replace("http://", "").replace("https://", "")
+    word_norm = (
+        word_text.lower()
+        .replace("www.", "")
+        .replace("http://", "")
+        .replace("https://", "")
+    )
+    site_norm = (
+        website.lower()
+        .replace("www.", "")
+        .replace("http://", "")
+        .replace("https://", "")
+    )
     # Check domain match
-    return word_norm in site_norm or site_norm.startswith(word_norm.split(".")[0])
+    return word_norm in site_norm or site_norm.startswith(
+        word_norm.split(".")[0]
+    )
 
 
-def detect_pattern_type(text: str) -> Optional[str]:
+def detect_pattern_type(text: str) -> str | None:
     """Detect what type of metadata pattern a text matches."""
     if PHONE_PATTERN.match(text):
         return "PHONE_NUMBER"
@@ -209,7 +251,7 @@ def detect_pattern_type(text: str) -> Optional[str]:
 
 def collect_metadata_words(
     visual_lines: list[VisualLine],
-    place: Optional[Any] = None,
+    place: Any | None = None,
 ) -> tuple[list[MetadataWord], int]:
     """
     Collect all words that need metadata evaluation.
@@ -230,7 +272,9 @@ def collect_metadata_words(
     # Extract place data if available
     merchant_name = getattr(place, "merchant_name", "") if place else ""
     address = getattr(place, "formatted_address", "") if place else ""
-    address_components = getattr(place, "address_components", {}) if place else {}
+    address_components = (
+        getattr(place, "address_components", {}) if place else {}
+    )
     phone = getattr(place, "phone_number", "") if place else ""
     phone_intl = getattr(place, "phone_intl", "") if place else ""
     website = getattr(place, "website", "") if place else ""
@@ -247,7 +291,9 @@ def collect_metadata_words(
 
             # Pre-filter: Skip obvious non-metadata tokens for unlabeled words
             # Words with metadata labels are always evaluated (to catch mislabeling)
-            if not has_metadata_label and should_skip_for_metadata_evaluation(text):
+            if not has_metadata_label and should_skip_for_metadata_evaluation(
+                text
+            ):
                 prefiltered_count += 1
                 continue
 
@@ -290,7 +336,7 @@ def collect_metadata_words(
 def build_metadata_evaluation_prompt(
     visual_lines: list[VisualLine],
     metadata_words: list[MetadataWord],
-    place: Optional[Any] = None,
+    place: Any | None = None,
     merchant_name: str = "Unknown",
 ) -> str:
     """
@@ -305,7 +351,9 @@ def build_metadata_evaluation_prompt(
         for wc in line.words:
             label = wc.current_label.label if wc.current_label else "unlabeled"
             line_text.append(f"{wc.word.text}[{label}]")
-        receipt_lines.append(f"  Line {line.line_index}: " + " | ".join(line_text))
+        receipt_lines.append(
+            f"  Line {line.line_index}: " + " | ".join(line_text)
+        )
 
     receipt_text = "\n".join(receipt_lines)
     if len(visual_lines) > 30:
@@ -341,7 +389,7 @@ def build_metadata_evaluation_prompt(
 
         words_table.append(
             f"  [{i}] Line {mw.line_index}\n"
-            f"      Text: \"{wc.word.text}\"\n"
+            f'      Text: "{wc.word.text}"\n'
             f"      Current Label: {mw.current_label or 'unlabeled'}{notes_str}"
         )
 
@@ -424,28 +472,31 @@ def parse_metadata_evaluation_response(
         result = []
         for i in range(num_words):
             decision = next(
-                (d for d in decisions if d.get("index") == i),
-                None
+                (d for d in decisions if d.get("index") == i), None
             )
             if decision:
-                result.append({
-                    "decision": decision.get("decision", "NEEDS_REVIEW"),
-                    "reasoning": decision.get("reasoning", ""),
-                    "suggested_label": decision.get("suggested_label"),
-                    "confidence": decision.get("confidence", "medium"),
-                })
+                result.append(
+                    {
+                        "decision": decision.get("decision", "NEEDS_REVIEW"),
+                        "reasoning": decision.get("reasoning", ""),
+                        "suggested_label": decision.get("suggested_label"),
+                        "confidence": decision.get("confidence", "medium"),
+                    }
+                )
             else:
-                result.append({
-                    "decision": "NEEDS_REVIEW",
-                    "reasoning": "No decision from LLM",
-                    "suggested_label": None,
-                    "confidence": "low",
-                })
+                result.append(
+                    {
+                        "decision": "NEEDS_REVIEW",
+                        "reasoning": "No decision from LLM",
+                        "suggested_label": None,
+                        "confidence": "low",
+                    }
+                )
 
         return result
 
     except (json.JSONDecodeError, TypeError) as e:
-        logger.warning(f"Failed to parse LLM response: {e}")
+        logger.warning("Failed to parse LLM response: %s", e)
         return [
             {
                 "decision": "NEEDS_REVIEW",
@@ -464,7 +515,7 @@ def parse_metadata_evaluation_response(
 
 def evaluate_metadata_labels(
     visual_lines: list[VisualLine],
-    place: Optional[Any],
+    place: Any | None,
     llm: BaseChatModel,
     image_id: str,
     receipt_id: int,
@@ -487,13 +538,15 @@ def evaluate_metadata_labels(
         List of decisions ready for apply_llm_decisions()
     """
     # Step 1: Collect metadata words to evaluate (with pre-filtering)
-    metadata_words, prefiltered_count = collect_metadata_words(visual_lines, place)
+    metadata_words, prefiltered_count = collect_metadata_words(
+        visual_lines, place
+    )
 
     # Log pre-filtering results
     if prefiltered_count > 0:
         logger.debug("Pre-filtered %d non-metadata tokens", prefiltered_count)
 
-    logger.info(f"Found {len(metadata_words)} metadata words to evaluate")
+    logger.info("Found %d metadata words to evaluate", len(metadata_words))
 
     if not metadata_words:
         logger.info("No metadata words found to evaluate")
@@ -509,26 +562,32 @@ def evaluate_metadata_labels(
 
     try:
         response = llm.invoke(prompt)
-        response_text = response.content if hasattr(response, "content") else str(response)
+        response_text = (
+            response.content if hasattr(response, "content") else str(response)
+        )
 
         # Step 3: Parse response
-        decisions = parse_metadata_evaluation_response(response_text, len(metadata_words))
+        decisions = parse_metadata_evaluation_response(
+            response_text, len(metadata_words)
+        )
 
         # Step 4: Format output for apply_llm_decisions
         results = []
         for mw, decision in zip(metadata_words, decisions, strict=True):
             wc = mw.word_context
-            results.append({
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "issue": {
-                    "line_id": wc.word.line_id,
-                    "word_id": wc.word.word_id,
-                    "current_label": mw.current_label,
-                    "word_text": wc.word.text,
-                },
-                "llm_review": decision,
-            })
+            results.append(
+                {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "issue": {
+                        "line_id": wc.word.line_id,
+                        "word_id": wc.word.word_id,
+                        "current_label": mw.current_label,
+                        "word_text": wc.word.text,
+                    },
+                    "llm_review": decision,
+                }
+            )
 
         # Log summary
         decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
@@ -538,36 +597,44 @@ def evaluate_metadata_labels(
                 decision_counts[decision] += 1
             else:
                 decision_counts["NEEDS_REVIEW"] += 1
-        logger.info(f"Metadata evaluation results: {decision_counts}")
+        logger.info("Metadata evaluation results: %s", decision_counts)
 
         return results
 
     except Exception as e:
         # Check if this is a rate limit error that should trigger Step Function retry
-        from receipt_agent.utils import OllamaRateLimitError, BothProvidersFailedError
+        from receipt_agent.utils import (
+            BothProvidersFailedError,
+            OllamaRateLimitError,
+        )
+
         if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
-            logger.error(f"Metadata LLM rate limited, propagating for retry: {e}")
+            logger.error(
+                "Metadata LLM rate limited, propagating for retry: %s", e
+            )
             raise  # Let Step Function retry handle this
 
-        logger.error(f"Metadata LLM call failed: {e}")
+        logger.error("Metadata LLM call failed: %s", e)
         # Return NEEDS_REVIEW for all words (non-rate-limit errors only)
         results = []
         for mw in metadata_words:
             wc = mw.word_context
-            results.append({
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "issue": {
-                    "line_id": wc.word.line_id,
-                    "word_id": wc.word.word_id,
-                    "current_label": mw.current_label,
-                    "word_text": wc.word.text,
-                },
-                "llm_review": {
-                    "decision": "NEEDS_REVIEW",
-                    "reasoning": f"LLM call failed: {e}",
-                    "suggested_label": None,
-                    "confidence": "low",
-                },
-            })
+            results.append(
+                {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "issue": {
+                        "line_id": wc.word.line_id,
+                        "word_id": wc.word.word_id,
+                        "current_label": mw.current_label,
+                        "word_text": wc.word.text,
+                    },
+                    "llm_review": {
+                        "decision": "NEEDS_REVIEW",
+                        "reasoning": f"LLM call failed: {e}",
+                        "suggested_label": None,
+                        "confidence": "low",
+                    },
+                }
+            )
         return results

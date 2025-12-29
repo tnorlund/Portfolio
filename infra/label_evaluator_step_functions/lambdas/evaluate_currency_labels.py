@@ -13,7 +13,7 @@ import logging
 import os
 import sys
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import boto3
 
@@ -26,25 +26,36 @@ try:
         flush_langsmith_traces,
         receipt_state_trace,
     )
+
     from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+
     _tracing_import_source = "container"
 except ImportError:
     # Local/development environment: use path relative to this file
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "lambdas", "utils"
-    ))
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "lambdas",
+            "utils",
+        ),
+    )
     from tracing import (
         TRACING_VERSION,
         child_trace,
         flush_langsmith_traces,
         receipt_state_trace,
     )
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "lambdas"
-    ))
+
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "lambdas",
+        ),
+    )
     from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+
     _tracing_import_source = "local"
 
 
@@ -167,16 +178,22 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 target_data = load_json_from_s3(s3, batch_bucket, data_s3_key)
 
                 if target_data is None:
-                    raise ValueError(f"Receipt data not found at {data_s3_key}")
+                    raise ValueError(
+                        f"Receipt data not found at {data_s3_key}"
+                    )
 
                 image_id = target_data.get("image_id")
                 receipt_id = target_data.get("receipt_id")
 
                 if not image_id or receipt_id is None:
-                    raise ValueError("image_id and receipt_id are required in data")
+                    raise ValueError(
+                        "image_id and receipt_id are required in data"
+                    )
 
                 # Deserialize entities
-                words = [deserialize_word(w) for w in target_data.get("words", [])]
+                words = [
+                    deserialize_word(w) for w in target_data.get("words", [])
+                ]
                 labels = [
                     deserialize_label(label_data)
                     for label_data in target_data.get("labels", [])
@@ -211,14 +228,18 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                             patterns = patterns_data
                         logger.info(
                             "Loaded patterns: item_structure=%s",
-                            patterns.get("item_structure") if patterns else None,
+                            (
+                                patterns.get("item_structure")
+                                if patterns
+                                else None
+                            ),
                         )
 
             # 3. Build visual lines from words and labels
             with child_trace("build_visual_lines", trace_ctx):
                 from receipt_agent.agents.label_evaluator.word_context import (
-                    build_word_contexts,
                     assemble_visual_lines,
+                    build_word_contexts,
                 )
 
                 word_contexts = build_word_contexts(words, labels)
@@ -227,11 +248,15 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 logger.info("Built %s visual lines", len(visual_lines))
 
             # 4. Create LLM instance with automatic Ollama → OpenRouter fallback
-            with child_trace("llm_currency_evaluation", trace_ctx, metadata={
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "word_count": len(words),
-            }):
+            with child_trace(
+                "llm_currency_evaluation",
+                trace_ctx,
+                metadata={
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "word_count": len(words),
+                },
+            ):
                 from receipt_agent.utils import create_production_invoker
 
                 # create_production_invoker() creates:
@@ -266,7 +291,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             # Count decisions
             decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
             for d in decisions:
-                decision = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
+                decision = d.get("llm_review", {}).get(
+                    "decision", "NEEDS_REVIEW"
+                )
                 if decision in decision_counts:
                     decision_counts[decision] += 1
                 else:
@@ -279,24 +306,31 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             if not dry_run and decisions:
                 # Filter to only INVALID decisions
                 invalid_decisions = [
-                    d for d in decisions
+                    d
+                    for d in decisions
                     if d.get("llm_review", {}).get("decision") == "INVALID"
                 ]
 
                 if invalid_decisions:
-                    with child_trace("apply_decisions", trace_ctx, metadata={
-                        "invalid_count": len(invalid_decisions),
-                    }):
-                        from receipt_dynamo import DynamoClient
+                    with child_trace(
+                        "apply_decisions",
+                        trace_ctx,
+                        metadata={
+                            "invalid_count": len(invalid_decisions),
+                        },
+                    ):
                         from receipt_agent.agents.label_evaluator.llm_review import (
                             apply_llm_decisions,
                         )
+                        from receipt_dynamo import DynamoClient
 
-                        dynamo_table = os.environ.get("DYNAMODB_TABLE_NAME") or os.environ.get(
-                            "RECEIPT_AGENT_DYNAMO_TABLE_NAME"
-                        )
+                        dynamo_table = os.environ.get(
+                            "DYNAMODB_TABLE_NAME"
+                        ) or os.environ.get("RECEIPT_AGENT_DYNAMO_TABLE_NAME")
                         if dynamo_table:
-                            dynamo_client = DynamoClient(table_name=dynamo_table)
+                            dynamo_client = DynamoClient(
+                                table_name=dynamo_table
+                            )
                             applied_stats = apply_llm_decisions(
                                 reviewed_issues=invalid_decisions,
                                 dynamo_client=dynamo_client,
@@ -311,7 +345,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
             # 6. Upload results to S3
             with child_trace("upload_results", trace_ctx):
-                results_s3_key = f"currency/{execution_id}/{image_id}_{receipt_id}.json"
+                results_s3_key = (
+                    f"currency/{execution_id}/{image_id}_{receipt_id}.json"
+                )
                 results_data = {
                     "image_id": image_id,
                     "receipt_id": receipt_id,
@@ -324,8 +360,14 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "duration_seconds": time.time() - start_time,
                 }
 
-                upload_json_to_s3(s3, batch_bucket, results_s3_key, results_data)
-                logger.info("Uploaded results to s3://%s/%s", batch_bucket, results_s3_key)
+                upload_json_to_s3(
+                    s3, batch_bucket, results_s3_key, results_data
+                )
+                logger.info(
+                    "Uploaded results to s3://%s/%s",
+                    batch_bucket,
+                    results_s3_key,
+                )
 
             result = {
                 "status": "completed",
