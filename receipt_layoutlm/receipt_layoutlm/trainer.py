@@ -677,20 +677,21 @@ class ReceiptLayoutLMTrainer:
                 # Flatten into scalar keys so HuggingFace Trainer passes them to callbacks
                 if classification_report_fn:
                     try:
-                        # Get unique labels (excluding O for per-label metrics)
-                        unique_labels = sorted(set([tag for seq in y_true + y_pred for tag in seq if tag != "O"]))
-                        if unique_labels:
-                            report = classification_report_fn(
-                                y_true, y_pred, labels=unique_labels, output_dict=True, zero_division=0
-                            )
-                            # Extract per-label metrics as flattened scalar keys
-                            for label in unique_labels:
-                                if label in report:
-                                    # Use flattened keys like label_MERCHANT_NAME_f1
-                                    metrics[f"label_{label}_f1"] = float(report[label].get("f1-score", 0.0))
-                                    metrics[f"label_{label}_precision"] = float(report[label].get("precision", 0.0))
-                                    metrics[f"label_{label}_recall"] = float(report[label].get("recall", 0.0))
-                                    metrics[f"label_{label}_support"] = int(report[label].get("support", 0))
+                        # seqeval's classification_report doesn't take a labels param
+                        # It automatically computes metrics for all labels in the data
+                        report = classification_report_fn(
+                            y_true, y_pred, output_dict=True, zero_division=0
+                        )
+                        # Extract per-label metrics as flattened scalar keys
+                        # Skip aggregate keys (micro avg, macro avg, weighted avg)
+                        skip_keys = {"micro avg", "macro avg", "weighted avg"}
+                        for label, label_metrics in report.items():
+                            if label not in skip_keys and isinstance(label_metrics, dict):
+                                # Use flattened keys like label_MERCHANT_NAME_f1
+                                metrics[f"label_{label}_f1"] = float(label_metrics.get("f1-score", 0.0))
+                                metrics[f"label_{label}_precision"] = float(label_metrics.get("precision", 0.0))
+                                metrics[f"label_{label}_recall"] = float(label_metrics.get("recall", 0.0))
+                                metrics[f"label_{label}_support"] = int(label_metrics.get("support", 0))
                     except Exception as e:
                         # If classification_report fails, continue without per-label metrics
                         print(f"Warning: Failed to compute per-label metrics: {e}")
