@@ -186,7 +186,7 @@ def collect_currency_words(
                 wc.current_label.label if wc.current_label else None
             )
 
-            # Check if word has a line item evaluation label (currency or PRODUCT_NAME/QUANTITY)
+            # Check if word has a currency label (LINE_TOTAL, UNIT_PRICE, etc.)
             has_eval_label = current_label in CURRENCY_LABELS
 
             # Check if word looks like currency and is on a line item row
@@ -420,7 +420,7 @@ def evaluate_currency_labels(
     """
     # Step 1: Identify line item rows
     line_item_rows = identify_line_item_rows(visual_lines, patterns)
-    logger.info(f"Identified {len(line_item_rows)} line item rows")
+    logger.info("Identified %s line item rows", len(line_item_rows))
 
     if not line_item_rows:
         logger.info("No line item rows found, skipping currency evaluation")
@@ -428,7 +428,7 @@ def evaluate_currency_labels(
 
     # Step 2: Collect currency words to evaluate
     currency_words = collect_currency_words(visual_lines, line_item_rows, patterns)
-    logger.info(f"Found {len(currency_words)} currency words to evaluate")
+    logger.info("Found %s currency words to evaluate", len(currency_words))
 
     if not currency_words:
         logger.info("No currency words found to evaluate")
@@ -469,7 +469,7 @@ def evaluate_currency_labels(
         decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
         for r in results:
             decision_counts[r["llm_review"]["decision"]] += 1
-        logger.info(f"Currency evaluation results: {decision_counts}")
+        logger.info("Currency evaluation results: %s", decision_counts)
 
         return results
 
@@ -477,10 +477,10 @@ def evaluate_currency_labels(
         # Check if this is a rate limit error that should trigger Step Function retry
         from receipt_agent.utils import OllamaRateLimitError, BothProvidersFailedError
         if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
-            logger.error(f"Currency LLM rate limited, propagating for retry: {e}")
+            logger.error("Currency LLM rate limited, propagating for retry: %s", e)
             raise  # Let Step Function retry handle this
 
-        logger.error(f"Currency LLM call failed: {e}")
+        logger.error("Currency LLM call failed: %s", e)
         # Return NEEDS_REVIEW for all words (non-rate-limit errors only)
         results = []
         for cw in currency_words:
