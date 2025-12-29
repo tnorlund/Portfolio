@@ -10,7 +10,15 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, Optional
 
-from receipt_agent.constants import CORE_LABELS as CORE_LABELS_DICT, CORE_LABELS_SET
+from langchain_core.messages import HumanMessage
+from pydantic import ValidationError
+
+from receipt_agent.constants import CORE_LABELS as CORE_LABELS_DICT
+from receipt_agent.constants import CORE_LABELS_SET
+from receipt_agent.prompts.structured_outputs import (
+    BatchedReviewResponse,
+    extract_json_from_response,
+)
 
 if TYPE_CHECKING:
     from receipt_agent.agents.label_evaluator.state import (
@@ -66,7 +74,9 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
             "receipt_type": patterns.get("receipt_type"),
             "receipt_type_reason": patterns.get("receipt_type_reason"),
             "auto_generated": patterns.get("auto_generated", False),
-            "discovered_from_receipts": patterns.get("discovered_from_receipts"),
+            "discovered_from_receipts": patterns.get(
+                "discovered_from_receipts"
+            ),
             **nested,
         }
 
@@ -78,7 +88,9 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
     if receipt_type:
         lines.append(f"**Receipt Type**: {receipt_type}")
         if patterns.get("receipt_type_reason"):
-            lines.append(f"**Classification Reason**: {patterns['receipt_type_reason']}")
+            lines.append(
+                f"**Classification Reason**: {patterns['receipt_type_reason']}"
+            )
 
     # For service receipts, don't show pattern details
     if receipt_type == "service":
@@ -121,11 +133,19 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
         lines.append(f"**Barcode Pattern**: `{patterns['barcode_pattern']}`")
 
     special_markers = patterns.get("special_markers")
-    if special_markers and isinstance(special_markers, list) and special_markers:
+    if (
+        special_markers
+        and isinstance(special_markers, list)
+        and special_markers
+    ):
         lines.append(f"**Special Markers**: {', '.join(special_markers)}")
 
     product_patterns = patterns.get("product_name_patterns")
-    if product_patterns and isinstance(product_patterns, list) and product_patterns:
+    if (
+        product_patterns
+        and isinstance(product_patterns, list)
+        and product_patterns
+    ):
         lines.append("**Product Name Patterns**:")
         for p in product_patterns[:3]:  # Limit to 3 for prompt size
             lines.append(f"  - {p}")
@@ -412,8 +432,8 @@ Based on all evidence above, determine:
 
 2. **Reasoning**: Cite specific evidence from the similar words
 
-3. **Suggested Label**: If INVALID, what should it be? Use a label from the
-   definitions above, or null if no label applies.
+3. **Suggested Label**: If INVALID, what should it be? Use ONLY a label from the
+   definitions above. If uncertain or no label applies, use null (not "OTHER").
 
 4. **Confidence**: low / medium / high
 
@@ -564,7 +584,7 @@ For EACH issue above (0 to {len(issues_with_context) - 1}), determine:
 
 1. **Decision**: VALID (label is correct), INVALID (label is wrong), or NEEDS_REVIEW
 2. **Reasoning**: Brief justification citing evidence
-3. **Suggested Label**: If INVALID, the correct label (or null)
+3. **Suggested Label**: If INVALID, the correct label. Use null if unsure (never "OTHER")
 4. **Confidence**: low / medium / high
 
 Respond with ONLY a JSON object containing a "reviews" array:
@@ -778,7 +798,7 @@ For EACH issue (0 to {len(issues_with_context) - 1}), analyze the receipt contex
 
 1. **Decision**: VALID (label is correct), INVALID (label is wrong), or NEEDS_REVIEW (insufficient evidence)
 2. **Reasoning**: Brief justification referencing the receipt context and/or similar word patterns
-3. **Suggested Label**: If INVALID, the correct label (or null if unsure)
+3. **Suggested Label**: If INVALID, the correct label. Use null if unsure (never "OTHER")
 4. **Confidence**: low / medium / high
 
 Respond with ONLY a JSON object:
@@ -813,13 +833,7 @@ def parse_llm_response(response_text: str) -> dict[str, Any]:
     Returns:
         Dict with keys: decision, reasoning, suggested_label, confidence
     """
-    # Handle markdown code blocks
-    if "```" in response_text:
-        match = re.search(r"```(?:json)?\s*(.*?)\s*```", response_text, re.S)
-        if match:
-            response_text = match.group(1)
-
-    response_text = response_text.strip()
+    response_text = extract_json_from_response(response_text)
 
     try:
         result = json.loads(response_text)
@@ -865,6 +879,10 @@ def parse_batched_llm_response(
     """
     Parse batched LLM JSON response.
 
+    First attempts to parse using the BatchedReviewResponse Pydantic model,
+    which validates the schema and constrains suggested_label to valid values.
+    Falls back to manual JSON parsing if structured parsing fails.
+
     Args:
         response_text: Raw LLM response
         expected_count: Expected number of reviews
@@ -873,13 +891,7 @@ def parse_batched_llm_response(
         List of dicts, one per issue, each with:
             decision, reasoning, suggested_label, confidence
     """
-    # Handle markdown code blocks
-    if "```" in response_text:
-        match = re.search(r"```(?:json)?\s*(.*?)\s*```", response_text, re.S)
-        if match:
-            response_text = match.group(1)
-
-    response_text = response_text.strip()
+    response_text = extract_json_from_response(response_text)
 
     # Default fallback for all issues
     fallback = {
@@ -889,75 +901,132 @@ def parse_batched_llm_response(
         "confidence": "low",
     }
 
+    # Try to parse JSON first
     try:
         result = json.loads(response_text)
-        reviews = result.get("reviews", [])
-
-        if not isinstance(reviews, list):
-            logger.warning("Batched response 'reviews' is not a list")
-            return [fallback.copy() for _ in range(expected_count)]
-
-        # Build a map by issue_index
-        reviews_by_index: dict[int, dict[str, Any]] = {}
-
-        for review in reviews:
-            if not isinstance(review, dict):
-                continue
-
-            idx = review.get("issue_index")
-            if idx is None or not isinstance(idx, int):
-                continue
-
-            decision = review.get("decision", "NEEDS_REVIEW")
-            if decision not in ("VALID", "INVALID", "NEEDS_REVIEW"):
-                decision = "NEEDS_REVIEW"
-
-            confidence = review.get("confidence", "medium")
-            if confidence not in ("low", "medium", "high"):
-                confidence = "medium"
-
-            # Validate suggested_label is in CORE_LABELS
-            # TODO: Try using ChatOllama.with_structured_output() with a Pydantic
-            # model that has suggested_label as Optional[LabelEnum] to constrain
-            # at the token level instead of post-hoc validation.
-            suggested_label = review.get("suggested_label")
-            if suggested_label:
-                suggested_upper = suggested_label.upper()
-                if suggested_upper not in CORE_LABELS_SET:
-                    logger.warning(
-                        "Rejecting invalid suggested_label '%s' (not in CORE_LABELS)",
-                        suggested_label,
-                    )
-                    suggested_label = None
-                else:
-                    suggested_label = suggested_upper  # Normalize to uppercase
-
-            reviews_by_index[idx] = {
-                "decision": decision,
-                "reasoning": review.get("reasoning", "No reasoning provided"),
-                "suggested_label": suggested_label,
-                "confidence": confidence,
-            }
-
-        # Build ordered list, using fallback for missing indices
-        ordered_reviews = []
-        for i in range(expected_count):
-            if i in reviews_by_index:
-                ordered_reviews.append(reviews_by_index[i])
-            else:
-                logger.warning("Missing review for issue index %d", i)
-                ordered_reviews.append(
-                    {
-                        "decision": "NEEDS_REVIEW",
-                        "reasoning": f"LLM did not provide review for issue {i}",
-                        "suggested_label": None,
-                        "confidence": "low",
-                    }
-                )
-
-        return ordered_reviews
-
     except json.JSONDecodeError as e:
-        logger.error("Failed to parse batched response: %s", e)
-        logger.error("Response preview: %s", response_text[:500])
+        logger.warning("Failed to parse batched LLM response as JSON: %s", e)
         return [fallback.copy() for _ in range(expected_count)]
+
+    # Try structured validation (validates schema and label values)
+    try:
+        structured_response = BatchedReviewResponse.model_validate(result)
+        return structured_response.to_ordered_list(expected_count)
+    except ValidationError as e:
+        logger.debug(
+            "Structured validation failed, falling back to manual parsing: %s",
+            e,
+        )
+
+    # Fallback to manual parsing for backwards compatibility
+    # (result is already parsed, reuse it)
+    reviews = result.get("reviews", [])
+
+    if not isinstance(reviews, list):
+        logger.warning("Batched response 'reviews' is not a list")
+        return [fallback.copy() for _ in range(expected_count)]
+
+    # Build a map by issue_index
+    reviews_by_index: dict[int, dict[str, Any]] = {}
+
+    for review in reviews:
+        if not isinstance(review, dict):
+            continue
+
+        idx = review.get("issue_index")
+        if idx is None or not isinstance(idx, int):
+            continue
+
+        decision = review.get("decision", "NEEDS_REVIEW")
+        if decision not in ("VALID", "INVALID", "NEEDS_REVIEW"):
+            decision = "NEEDS_REVIEW"
+
+        confidence = review.get("confidence", "medium")
+        if confidence not in ("low", "medium", "high"):
+            confidence = "medium"
+
+        # Validate suggested_label is in CORE_LABELS
+        suggested_label = review.get("suggested_label")
+        if suggested_label:
+            suggested_upper = suggested_label.upper()
+            if suggested_upper not in CORE_LABELS_SET:
+                logger.warning(
+                    "Rejecting invalid suggested_label '%s' (not in CORE_LABELS)",
+                    suggested_label,
+                )
+                suggested_label = None
+            else:
+                suggested_label = suggested_upper  # Normalize to uppercase
+
+        reviews_by_index[idx] = {
+            "decision": decision,
+            "reasoning": review.get("reasoning", "No reasoning provided"),
+            "suggested_label": suggested_label,
+            "confidence": confidence,
+        }
+
+    # Build ordered list, using fallback for missing indices
+    ordered_reviews = []
+    for i in range(expected_count):
+        if i in reviews_by_index:
+            ordered_reviews.append(reviews_by_index[i])
+        else:
+            logger.warning("Missing review for issue index %d", i)
+            ordered_reviews.append(
+                {
+                    "decision": "NEEDS_REVIEW",
+                    "reasoning": f"LLM did not provide review for issue {i}",
+                    "suggested_label": None,
+                    "confidence": "low",
+                }
+            )
+
+    return ordered_reviews
+
+
+def invoke_with_structured_output(
+    llm: Any,
+    prompt: str,
+    expected_count: int,
+    run_name: str = "llm_review",
+) -> list[dict[str, Any]]:
+    """
+    Invoke LLM with structured output for batched reviews.
+
+    Uses LangChain's with_structured_output() to constrain the LLM response
+    to the BatchedReviewResponse schema, preventing invalid labels at the
+    token generation level.
+
+    Args:
+        llm: LangChain LLM instance (ChatOllama, ChatOpenAI, etc.)
+        prompt: The review prompt
+        expected_count: Expected number of reviews
+        run_name: Name for tracing
+
+    Returns:
+        List of review dicts, one per issue
+    """
+    try:
+        # Create structured LLM
+        structured_llm = llm.with_structured_output(BatchedReviewResponse)
+
+        # Invoke with structured output
+        response: BatchedReviewResponse = structured_llm.invoke(
+            [HumanMessage(content=prompt)],
+            config={"run_name": run_name},
+        )
+
+        return response.to_ordered_list(expected_count)
+
+    except Exception as e:
+        logger.warning(
+            "Structured output invocation failed (type=%s), falling back to text parsing: %s",
+            type(e).__name__,
+            e,
+        )
+        # Fall back to regular invocation + parsing
+        response = llm.invoke(
+            [HumanMessage(content=prompt)],
+            config={"run_name": run_name},
+        )
+        return parse_batched_llm_response(response.content, expected_count)
