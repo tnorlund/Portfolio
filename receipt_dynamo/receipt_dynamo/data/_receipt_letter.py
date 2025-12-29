@@ -189,8 +189,8 @@ class _ReceiptLetter(
         ValueError
             If parameters are invalid or letter does not exist.
         """
-        self._validate_receipt_id(receipt_id)
         self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
         if line_id is None:
             raise EntityValidationError("line_id cannot be None")
         if not isinstance(line_id, int):
