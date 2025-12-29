@@ -49,7 +49,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 # Version identifier for debugging - helps verify correct module is loaded in Lambda
-TRACING_VERSION = "2024-12-26-v4-per-receipt"
+TRACING_VERSION = "2025-12-28-v4-per-receipt"
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,9 @@ _get_current_run_tree: Optional[Callable[..., Any]] = None
 
 try:
     from langsmith import tracing_context as _ls_tracing_context
-    from langsmith.run_helpers import get_current_run_tree as _ls_get_current_run_tree
+    from langsmith.run_helpers import (
+        get_current_run_tree as _ls_get_current_run_tree,
+    )
     from langsmith.run_trees import RunTree as _LsRunTree
     from langsmith.run_trees import get_cached_client
 
@@ -200,7 +202,13 @@ def generate_receipt_state_run_id(
     Returns:
         Deterministic UUID string for this state invocation
     """
-    parts = [execution_arn, image_id, str(receipt_id), state_name, str(attempt)]
+    parts = [
+        execution_arn,
+        image_id,
+        str(receipt_id),
+        state_name,
+        str(attempt),
+    ]
     return str(uuid.uuid5(TRACE_NAMESPACE, ":".join(parts)))
 
 
@@ -334,7 +342,11 @@ def start_trace(
                 return trace_ctx.wrap_output(result)
     """
     if not HAS_LANGSMITH or _RunTree is None:
-        logger.info("LangSmith not available (HAS_LANGSMITH=%s, _RunTree=%s)", HAS_LANGSMITH, _RunTree)
+        logger.info(
+            "LangSmith not available (HAS_LANGSMITH=%s, _RunTree=%s)",
+            HAS_LANGSMITH,
+            _RunTree,
+        )
         yield TraceContext()
         return
 
@@ -351,7 +363,9 @@ def start_trace(
     if "merchant_name" in event:
         trace_metadata["merchant_name"] = event["merchant_name"]
     if "merchant" in event and isinstance(event["merchant"], dict):
-        trace_metadata["merchant_name"] = event["merchant"].get("merchant_name")
+        trace_metadata["merchant_name"] = event["merchant"].get(
+            "merchant_name"
+        )
 
     trace_tags = list(tags) if tags else []
     trace_tags.extend(["step-function", "label-evaluator"])
@@ -393,7 +407,9 @@ def start_trace(
                 run_tree.patch()
                 logger.info("Trace ended and patched (run_id=%s)", run_tree.id)
             except Exception as e:
-                logger.warning("Failed to finalize trace: %s", e, exc_info=True)
+                logger.warning(
+                    "Failed to finalize trace: %s", e, exc_info=True
+                )
 
 
 @contextmanager
@@ -509,7 +525,9 @@ def resume_trace(
                 child_run.end()
                 child_run.patch()
             except Exception as e:
-                logger.warning("Failed to finalize resumed trace: %s", e, exc_info=True)
+                logger.warning(
+                    "Failed to finalize resumed trace: %s", e, exc_info=True
+                )
 
 
 @contextmanager
@@ -548,12 +566,16 @@ def child_trace(
     )
 
     if not HAS_LANGSMITH or parent_ctx.run_tree is None:
-        logger.warning("[child_trace] No LangSmith or no parent run_tree - yielding empty context")
+        logger.warning(
+            "[child_trace] No LangSmith or no parent run_tree - yielding empty context"
+        )
         yield TraceContext(headers=parent_ctx.headers)
         return
 
     if not hasattr(parent_ctx.run_tree, "create_child"):
-        logger.warning("[child_trace] Parent run_tree has no create_child method")
+        logger.warning(
+            "[child_trace] Parent run_tree has no create_child method"
+        )
         yield TraceContext(headers=parent_ctx.headers)
         return
 
@@ -587,20 +609,28 @@ def child_trace(
 
     try:
         if _tracing_context is not None:
-            logger.info("[child_trace] Activating tracing_context with parent=headers")
+            logger.info(
+                "[child_trace] Activating tracing_context with parent=headers"
+            )
             with _tracing_context(parent=child_headers):
                 yield ctx
         else:
-            logger.warning("[child_trace] _tracing_context is None - LangGraph/LLM calls may not be nested")
+            logger.warning(
+                "[child_trace] _tracing_context is None - LangGraph/LLM calls may not be nested"
+            )
             yield ctx
     finally:
         if child is not None:
             try:
                 child.end()
                 child.patch()
-                logger.info("[child_trace] Child '%s' completed and patched", name)
+                logger.info(
+                    "[child_trace] Child '%s' completed and patched", name
+                )
             except Exception as e:
-                logger.warning("Failed to finalize child trace: %s", e, exc_info=True)
+                logger.warning(
+                    "Failed to finalize child trace: %s", e, exc_info=True
+                )
 
 
 def log_trace_event(
@@ -720,11 +750,15 @@ def create_execution_trace(
         )
 
     except Exception as e:
-        logger.warning("Failed to create execution trace: %s", e, exc_info=True)
+        logger.warning(
+            "Failed to create execution trace: %s", e, exc_info=True
+        )
         return ExecutionTraceInfo(trace_id=trace_id, root_run_id=root_run_id)
 
 
-def end_execution_trace(trace_info: ExecutionTraceInfo, outputs: Optional[dict] = None) -> None:
+def end_execution_trace(
+    trace_info: ExecutionTraceInfo, outputs: Optional[dict] = None
+) -> None:
     """End the root execution trace.
 
     Call this at the end of the FIRST Lambda, after all work is done.
@@ -737,7 +771,10 @@ def end_execution_trace(trace_info: ExecutionTraceInfo, outputs: Optional[dict] 
             trace_info.run_tree.outputs = outputs
         trace_info.run_tree.end()
         trace_info.run_tree.patch()
-        logger.info("Execution trace ended (root_run_id=%s)", trace_info.root_run_id[:8])
+        logger.info(
+            "Execution trace ended (root_run_id=%s)",
+            trace_info.root_run_id[:8],
+        )
     except Exception as e:
         logger.warning("Failed to end execution trace: %s", e)
 
@@ -809,7 +846,9 @@ def create_receipt_trace(
         ReceiptTraceInfo with trace_id, root_run_id, and run_tree
     """
     trace_id = generate_receipt_trace_id(execution_arn, image_id, receipt_id)
-    root_run_id = generate_receipt_root_run_id(execution_arn, image_id, receipt_id)
+    root_run_id = generate_receipt_root_run_id(
+        execution_arn, image_id, receipt_id
+    )
 
     # Build base trace info (returned even if tracing disabled)
     base_info = ReceiptTraceInfo(
@@ -825,7 +864,9 @@ def create_receipt_trace(
         return base_info
 
     if not HAS_LANGSMITH or _RunTree is None:
-        logger.info("LangSmith not available, returning empty receipt trace info")
+        logger.info(
+            "LangSmith not available, returning empty receipt trace info"
+        )
         return base_info
 
     # Build metadata with receipt identification
@@ -901,7 +942,11 @@ def end_receipt_trace(
         trace_info.run_tree.patch()
         logger.info(
             "Receipt trace ended (image_id=%s, receipt_id=%s)",
-            trace_info.image_id[:8] if len(trace_info.image_id) > 8 else trace_info.image_id,
+            (
+                trace_info.image_id[:8]
+                if len(trace_info.image_id) > 8
+                else trace_info.image_id
+            ),
             trace_info.receipt_id,
         )
     except Exception as e:
@@ -945,7 +990,9 @@ def end_receipt_trace_by_id(
             root_run_id[:8] if len(root_run_id) > 8 else root_run_id,
         )
     except Exception as e:
-        logger.warning("Failed to end receipt trace by ID: %s", e, exc_info=True)
+        logger.warning(
+            "Failed to end receipt trace by ID: %s", e, exc_info=True
+        )
 
 
 @contextmanager
@@ -985,7 +1032,9 @@ def receipt_state_trace(
         TraceContext with run_tree for this state
     """
     if not enable_tracing:
-        logger.info("Tracing disabled for receipt state '%s', skipping", state_name)
+        logger.info(
+            "Tracing disabled for receipt state '%s', skipping", state_name
+        )
         yield TraceContext()
         return
 
@@ -1009,11 +1058,26 @@ def receipt_state_trace(
     # Generate child dotted_order from parent's
     child_dotted_order = None
     if root_dotted_order:
-        child_dotted_order = _generate_child_dotted_order(root_dotted_order, state_run_id)
+        child_dotted_order = _generate_child_dotted_order(
+            root_dotted_order, state_run_id
+        )
     else:
-        logger.warning(
-            "[receipt_state_trace] No root_dotted_order provided for %s - trace linking may fail!",
+        # No root_dotted_order provided - but for receipt traces where trace_id == root_run_id,
+        # we can generate a synthetic parent dotted_order. The root dotted_order format is
+        # {timestamp}{trace_id}. We use a synthetic timestamp since the parent may not exist yet.
+        logger.info(
+            "[receipt_state_trace] No root_dotted_order provided for %s - generating synthetic dotted_order",
             state_name,
+        )
+        # Generate a synthetic parent dotted_order (pretend the root was created just before us)
+        synthetic_parent_dotted_order = _generate_root_dotted_order(trace_id)
+        child_dotted_order = _generate_child_dotted_order(
+            synthetic_parent_dotted_order, state_run_id
+        )
+        logger.info(
+            "[receipt_state_trace] Generated synthetic child dotted_order for %s: %s",
+            state_name,
+            child_dotted_order[:50] if child_dotted_order else "None",
         )
 
     # Build metadata with receipt identification
@@ -1050,7 +1114,9 @@ def receipt_state_trace(
             root_run_id=root_run_id,
         )
     except Exception as e:
-        logger.warning("Failed to create receipt state trace: %s", e, exc_info=True)
+        logger.warning(
+            "Failed to create receipt state trace: %s", e, exc_info=True
+        )
         yield TraceContext()
         return
 
@@ -1072,10 +1138,31 @@ def receipt_state_trace(
                     receipt_id,
                 )
             except Exception as e:
-                logger.warning("Failed to finalize receipt state trace: %s", e, exc_info=True)
+                logger.warning(
+                    "Failed to finalize receipt state trace: %s",
+                    e,
+                    exc_info=True,
+                )
 
 
-def _generate_child_dotted_order(parent_dotted_order: str, child_run_id: str) -> str:
+def _generate_root_dotted_order(trace_id: str) -> str:
+    """Generate a dotted_order for a root run.
+
+    LangSmith dotted_order format for root: {timestamp}{trace_id}
+    - Timestamp: YYYYMMDDTHHMMSSffffffZ (22 chars)
+    - Trace ID: UUID with dashes (36 chars)
+
+    This is used when creating child traces without knowing the parent's exact dotted_order.
+    Since the parent trace_id is deterministic, we can create a synthetic parent dotted_order.
+    """
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime("%Y%m%dT%H%M%S") + f"{now.microsecond:06d}Z"
+    return f"{timestamp}{trace_id}"
+
+
+def _generate_child_dotted_order(
+    parent_dotted_order: str, child_run_id: str
+) -> str:
     """Generate a dotted_order for a child run.
 
     LangSmith dotted_order format: {parent_dotted_order}.{timestamp}{run_id}
@@ -1134,7 +1221,9 @@ def state_trace(
         yield TraceContext()
         return
 
-    state_run_id = generate_state_run_id(execution_arn, state_name, map_index, attempt)
+    state_run_id = generate_state_run_id(
+        execution_arn, state_name, map_index, attempt
+    )
 
     logger.info(
         "[state_trace v%s] Starting trace for '%s' (has_langsmith=%s, has_RunTree=%s, has_tracing_context=%s)",
@@ -1153,7 +1242,9 @@ def state_trace(
     # Generate child dotted_order from parent's (required for cross-Lambda trace linking)
     child_dotted_order = None
     if root_dotted_order:
-        child_dotted_order = _generate_child_dotted_order(root_dotted_order, state_run_id)
+        child_dotted_order = _generate_child_dotted_order(
+            root_dotted_order, state_run_id
+        )
         logger.info(
             "[state_trace v%s] Creating state trace: %s (run_id=%s, parent=%s, dotted_order_len=%d)",
             TRACING_VERSION,
@@ -1215,11 +1306,15 @@ def state_trace(
 
     try:
         if _tracing_context is not None:
-            logger.info("[state_trace] Activating tracing_context with parent=headers")
+            logger.info(
+                "[state_trace] Activating tracing_context with parent=headers"
+            )
             with _tracing_context(parent=run_tree_headers):
                 yield ctx
         else:
-            logger.warning("[state_trace] _tracing_context is None - nested calls may not be linked")
+            logger.warning(
+                "[state_trace] _tracing_context is None - nested calls may not be linked"
+            )
             yield ctx
     finally:
         if run_tree is not None:
@@ -1228,4 +1323,6 @@ def state_trace(
                 run_tree.patch()
                 logger.info("State trace ended (run_id=%s)", state_run_id[:8])
             except Exception as e:
-                logger.warning("Failed to finalize state trace: %s", e, exc_info=True)
+                logger.warning(
+                    "Failed to finalize state trace: %s", e, exc_info=True
+                )

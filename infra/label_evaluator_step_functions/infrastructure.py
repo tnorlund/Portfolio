@@ -64,6 +64,7 @@ except ImportError as e:
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
 ollama_api_key = config.require_secret("OLLAMA_API_KEY")
+openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 
 # Label evaluator specific config
@@ -466,72 +467,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # collect_issues Lambda
-        collect_issues_lambda = Function(
-            f"{name}-collect-issues",
-            name=f"{name}-collect-issues",
-            role=lambda_role.arn,
-            runtime="python3.12",
-            architectures=["arm64"],
-            handler="collect_issues.handler",
-            code=AssetArchive(
-                {
-                    "collect_issues.py": FileAsset(
-                        os.path.join(HANDLERS_DIR, "collect_issues.py")
-                    ),
-                    "tracing.py": FileAsset(
-                        os.path.join(UTILS_DIR, "tracing.py")
-                    ),
-                    "s3_helpers.py": FileAsset(
-                        os.path.join(UTILS_DIR, "s3_helpers.py")
-                    ),
-                }
-            ),
-            timeout=300,
-            memory_size=512,
-            tags={"environment": stack},
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "BATCH_BUCKET": self.batch_bucket.bucket,
-                    **tracing_env,
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # batch_issues Lambda
-        batch_issues_lambda = Function(
-            f"{name}-batch-issues",
-            name=f"{name}-batch-issues",
-            role=lambda_role.arn,
-            runtime="python3.12",
-            architectures=["arm64"],
-            handler="batch_issues.handler",
-            code=AssetArchive(
-                {
-                    "batch_issues.py": FileAsset(
-                        os.path.join(HANDLERS_DIR, "batch_issues.py")
-                    ),
-                    "tracing.py": FileAsset(
-                        os.path.join(UTILS_DIR, "tracing.py")
-                    ),
-                    "s3_helpers.py": FileAsset(
-                        os.path.join(UTILS_DIR, "s3_helpers.py")
-                    ),
-                }
-            ),
-            timeout=300,
-            memory_size=512,
-            tags={"environment": stack},
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "BATCH_BUCKET": self.batch_bucket.bucket,
-                    **tracing_env,
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
         # final_aggregate Lambda
         final_aggregate_lambda = Function(
             f"{name}-final-aggregate",
@@ -574,9 +509,15 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "environment": {
                 "BATCH_BUCKET": self.batch_bucket.bucket,
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                # Ollama (primary LLM provider)
                 "OLLAMA_API_KEY": ollama_api_key,
                 "OLLAMA_BASE_URL": "https://ollama.com",
                 "OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter (fallback LLM provider)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
+                "OPENROUTER_PAID_MODEL": "openai/gpt-oss-120b",
                 **tracing_env,
             },
         }
@@ -656,9 +597,15 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "environment": {
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "BATCH_BUCKET": self.batch_bucket.bucket,
+                # Ollama (primary LLM provider)
                 "OLLAMA_API_KEY": ollama_api_key,
                 "OLLAMA_BASE_URL": "https://ollama.com",
                 "OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter (fallback LLM provider)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
+                "OPENROUTER_PAID_MODEL": "openai/gpt-oss-120b",
                 **tracing_env,
             },
         }
@@ -684,7 +631,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
         )
 
-        discover_patterns_lambda = discover_patterns_docker_image.lambda_function
+        discover_patterns_lambda = (
+            discover_patterns_docker_image.lambda_function
+        )
 
         # ============================================================
         # Container Lambda: llm_review (LLM)
@@ -700,9 +649,15 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "CHROMADB_BUCKET": chromadb_bucket_name or "",
                 "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
+                # Ollama (primary LLM provider)
                 "RECEIPT_AGENT_OLLAMA_API_KEY": ollama_api_key,
                 "RECEIPT_AGENT_OLLAMA_BASE_URL": "https://ollama.com",
                 "RECEIPT_AGENT_OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter (fallback LLM provider)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
+                "OPENROUTER_PAID_MODEL": "openai/gpt-oss-120b",
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
                 **tracing_env,
                 "MAX_ISSUES_PER_LLM_CALL": "15",
@@ -735,6 +690,136 @@ class LabelEvaluatorStepFunction(ComponentResource):
         llm_review_lambda = llm_review_docker_image.lambda_function
 
         # ============================================================
+        # Container Lambda: evaluate_currency_labels (LLM)
+        # Evaluates currency labels using line item patterns
+        # ============================================================
+        currency_lambda_config = {
+            "role_arn": lambda_role.arn,
+            "timeout": 300,  # 5 minutes
+            "memory_size": 512,
+            "tags": {"environment": stack},
+            "ephemeral_storage": 512,
+            "environment": {
+                "BATCH_BUCKET": self.batch_bucket.bucket,
+                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                # Ollama (primary LLM provider)
+                "OLLAMA_API_KEY": ollama_api_key,
+                "OLLAMA_BASE_URL": "https://ollama.com",
+                "OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter (fallback LLM provider)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
+                "OPENROUTER_PAID_MODEL": "openai/gpt-oss-120b",
+                **tracing_env,
+            },
+        }
+
+        currency_docker_image = CodeBuildDockerImage(
+            f"{name}-currency-img",
+            dockerfile_path=(
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.currency"
+            ),
+            build_context_path=".",
+            source_paths=[
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
+                "receipt_chroma",
+                "receipt_places",
+                "receipt_agent",
+                "infra/label_evaluator_step_functions/lambdas",
+            ],
+            lambda_function_name=f"{name}-evaluate-currency",
+            lambda_config=currency_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
+        )
+
+        evaluate_currency_lambda = currency_docker_image.lambda_function
+
+        # ============================================================
+        # Container Lambda: evaluate_metadata_labels (LLM)
+        # Evaluates metadata labels using ReceiptPlace data
+        # ============================================================
+        metadata_lambda_config = {
+            "role_arn": lambda_role.arn,
+            "timeout": 300,  # 5 minutes
+            "memory_size": 512,
+            "tags": {"environment": stack},
+            "ephemeral_storage": 512,
+            "environment": {
+                "BATCH_BUCKET": self.batch_bucket.bucket,
+                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                # Ollama (primary LLM provider)
+                "OLLAMA_API_KEY": ollama_api_key,
+                "OLLAMA_BASE_URL": "https://ollama.com",
+                "OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter (fallback LLM provider)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
+                "OPENROUTER_PAID_MODEL": "openai/gpt-oss-120b",
+                **tracing_env,
+            },
+        }
+
+        metadata_docker_image = CodeBuildDockerImage(
+            f"{name}-metadata-img",
+            dockerfile_path=(
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.metadata"
+            ),
+            build_context_path=".",
+            source_paths=[
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
+                "receipt_chroma",
+                "receipt_places",
+                "receipt_agent",
+                "infra/label_evaluator_step_functions/lambdas",
+            ],
+            lambda_function_name=f"{name}-evaluate-metadata",
+            lambda_config=metadata_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
+        )
+
+        evaluate_metadata_lambda = metadata_docker_image.lambda_function
+
+        # ============================================================
+        # Container Lambda: close_receipt_trace (minimal)
+        # Closes receipt trace after parallel evaluation completes
+        # ============================================================
+        close_trace_lambda_config = {
+            "role_arn": lambda_role.arn,
+            "timeout": 30,  # 30 seconds (minimal work)
+            "memory_size": 256,  # Minimal memory
+            "tags": {"environment": stack},
+            "environment": {
+                **tracing_env,
+            },
+        }
+
+        close_trace_docker_image = CodeBuildDockerImage(
+            f"{name}-close-trace-img",
+            dockerfile_path=(
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.close_trace"
+            ),
+            build_context_path=".",
+            source_paths=[
+                "infra/label_evaluator_step_functions/lambdas",
+            ],
+            lambda_function_name=f"{name}-close-trace",
+            lambda_config=close_trace_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
+        )
+
+        close_trace_lambda = close_trace_docker_image.lambda_function
+
+        # ============================================================
         # Step Function role policies
         # ============================================================
         RolePolicy(
@@ -746,9 +831,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 fetch_receipt_data_lambda.arn,
                 compute_patterns_lambda.arn,
                 evaluate_labels_lambda.arn,
+                evaluate_currency_lambda.arn,
+                evaluate_metadata_lambda.arn,
+                close_trace_lambda.arn,
                 aggregate_results_lambda.arn,
-                collect_issues_lambda.arn,
-                batch_issues_lambda.arn,
                 final_aggregate_lambda.arn,
                 discover_patterns_lambda.arn,
                 llm_review_lambda.arn,
@@ -830,9 +916,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 fetch_receipt_data_lambda.arn,
                 compute_patterns_lambda.arn,
                 evaluate_labels_lambda.arn,
+                evaluate_currency_lambda.arn,
+                evaluate_metadata_lambda.arn,
+                close_trace_lambda.arn,
                 aggregate_results_lambda.arn,
-                collect_issues_lambda.arn,
-                batch_issues_lambda.arn,
                 final_aggregate_lambda.arn,
                 discover_patterns_lambda.arn,
                 llm_review_lambda.arn,
@@ -844,13 +931,14 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     fetch_receipt_data_arn=args[2],
                     compute_patterns_arn=args[3],
                     evaluate_labels_arn=args[4],
-                    aggregate_results_arn=args[5],
-                    collect_issues_arn=args[6],
-                    batch_issues_arn=args[7],
-                    final_aggregate_arn=args[8],
-                    discover_patterns_arn=args[9],
-                    llm_review_arn=args[10],
-                    batch_bucket=args[11],
+                    evaluate_currency_arn=args[5],
+                    evaluate_metadata_arn=args[6],
+                    close_trace_arn=args[7],
+                    aggregate_results_arn=args[8],
+                    final_aggregate_arn=args[9],
+                    discover_patterns_arn=args[10],
+                    llm_review_arn=args[11],
+                    batch_bucket=args[12],
                     max_concurrency=self.max_concurrency,
                     batch_size=self.batch_size,
                 )
@@ -872,11 +960,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "list_merchants_lambda_arn": list_merchants_lambda.arn,
                 "list_receipts_lambda_arn": list_receipts_lambda.arn,
                 "evaluate_labels_lambda_arn": evaluate_labels_lambda.arn,
+                "evaluate_currency_lambda_arn": evaluate_currency_lambda.arn,
+                "evaluate_metadata_lambda_arn": evaluate_metadata_lambda.arn,
+                "close_trace_lambda_arn": close_trace_lambda.arn,
                 "llm_review_lambda_arn": llm_review_lambda.arn,
                 "aggregate_results_lambda_arn": aggregate_results_lambda.arn,
                 "final_aggregate_lambda_arn": final_aggregate_lambda.arn,
-                "collect_issues_lambda_arn": collect_issues_lambda.arn,
-                "batch_issues_lambda_arn": batch_issues_lambda.arn,
                 "discover_patterns_lambda_arn": discover_patterns_lambda.arn,
             }
         )
@@ -888,9 +977,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
         fetch_receipt_data_arn: str,
         compute_patterns_arn: str,
         evaluate_labels_arn: str,
+        evaluate_currency_arn: str,
+        evaluate_metadata_arn: str,
+        close_trace_arn: str,
         aggregate_results_arn: str,
-        collect_issues_arn: str,
-        batch_issues_arn: str,
         final_aggregate_arn: str,
         discover_patterns_arn: str,
         llm_review_arn: str,
@@ -898,22 +988,28 @@ class LabelEvaluatorStepFunction(ComponentResource):
         max_concurrency: int,
         batch_size: int,
     ) -> str:
-        """Create Step Function definition with trace propagation.
+        """Create Step Function definition with parallel evaluation and trace propagation.
 
-        Key difference from non-traced version:
+        Simplified per-receipt flow:
+        1. FetchReceiptData - Load receipt from DynamoDB
+        2. ParallelEvaluation:
+           - EvaluateLabels (deterministic checks)
+           - EvaluateCurrencyLabels (LLM-based line item validation)
+           - EvaluateMetadataLabels (LLM-based metadata validation)
+        3. LLMReviewReceipt - Review issues from EvaluateLabels (if any)
+        4. Return combined result
+
+        Key features:
         - Container-based Lambdas handle LangSmith tracing
         - DiscoverLineItemPatterns STARTS the trace (first container Lambda)
-        - Other container Lambdas receive `langsmith_headers` from trace origin
-        - Zip-based Lambdas don't have langsmith access, no headers needed
+        - EvaluateLabels, EvaluateCurrencyLabels, and EvaluateMetadataLabels run in parallel
+        - LLMReviewReceipt only runs if EvaluateLabels found issues
+        - Currency and metadata evaluation write directly to DynamoDB
 
         Runtime inputs (from Step Function execution input):
         - dry_run: bool (default: False) - Don't write to DynamoDB
         - merchant_name: str (optional) - Process single merchant
         - limit: int (optional) - Limit receipts per merchant
-
-        Note: Unlike the original Step Function, this traced version always
-        runs the full LLM workflow (no skip_llm_review option) since the
-        purpose is LangSmith observability of LLM calls.
         """
         definition = {
             "Comment": f"Label Evaluator with LangSmith Trace Propagation (maxConcurrency={max_concurrency})",
@@ -937,6 +1033,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "force_rediscovery": False,
                         "enable_tracing": True,
                         "limit": None,
+                        "langchain_project": None,
                     },
                     "ResultPath": "$.defaults",
                     "Next": "MergeInputWithDefaults",
@@ -974,6 +1071,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "dry_run.$": "$.config.merged.dry_run",
                         "force_rediscovery.$": "$.config.merged.force_rediscovery",
                         "enable_tracing.$": "$.config.merged.enable_tracing",
+                        "langchain_project.$": "$.config.merged.langchain_project",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
                         "limit.$": "$.config.merged.limit",
@@ -994,6 +1092,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "dry_run.$": "$.config.merged.dry_run",
                         "force_rediscovery.$": "$.config.merged.force_rediscovery",
                         "enable_tracing.$": "$.config.merged.enable_tracing",
+                        "langchain_project.$": "$.config.merged.langchain_project",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
                         "limit.$": "$.config.merged.limit",
@@ -1071,6 +1170,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "dry_run.$": "$.init.dry_run",
                         "force_rediscovery.$": "$.init.force_rediscovery",
                         "enable_tracing.$": "$.init.enable_tracing",
+                        "langchain_project.$": "$.init.langchain_project",
                     },
                     "ItemProcessor": {
                         "ProcessorConfig": {"Mode": "INLINE"},
@@ -1131,6 +1231,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     "merchant_name.$": "$.merchant.merchant_name",
                                     "force_rediscovery.$": "$.force_rediscovery",
                                     "enable_tracing.$": "$.enable_tracing",
+                                    "langchain_project.$": "$.langchain_project",
                                     # Pass execution ARN for deterministic trace ID
                                     "execution_arn.$": "$$.Execution.Id",
                                 },
@@ -1156,6 +1257,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     "merchant.$": "$.merchant",
                                     "max_training_receipts.$": "$.max_training_receipts",
                                     "enable_tracing.$": "$.enable_tracing",
+                                    "langchain_project.$": "$.langchain_project",
                                     # Deterministic trace propagation
                                     "execution_arn.$": "$$.Execution.Id",
                                     "trace_id.$": "$.line_item_patterns.trace_id",
@@ -1173,18 +1275,22 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                 ],
                                 "Next": "ProcessBatches",
                             },
-                            # Process receipt batches
+                            # Process receipt batches - simplified flow with parallel evaluation
                             "ProcessBatches": {
                                 "Type": "Map",
                                 "ItemsPath": "$.receipts_data.receipt_batches",
-                                "MaxConcurrency": max_concurrency,
+                                "MaxConcurrency": 3,
                                 "Parameters": {
                                     "batch.$": "$$.Map.Item.Value",
                                     "batch_index.$": "$$.Map.Item.Index",
                                     "execution_id.$": "$.execution_id",
                                     "batch_bucket.$": "$.batch_bucket",
                                     "patterns_s3_key.$": "$.patterns_result.patterns_s3_key",
+                                    "line_item_patterns_s3_key.$": "$.line_item_patterns.patterns_s3_key",
+                                    "merchant_name.$": "$.merchant.merchant_name",
+                                    "dry_run.$": "$.dry_run",
                                     "enable_tracing.$": "$.enable_tracing",
+                                    "langchain_project.$": "$.langchain_project",
                                     # Deterministic trace propagation
                                     "execution_arn.$": "$$.Execution.Id",
                                     "trace_id.$": "$.line_item_patterns.trace_id",
@@ -1198,7 +1304,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                         "ProcessReceipts": {
                                             "Type": "Map",
                                             "ItemsPath": "$.batch",
-                                            "MaxConcurrency": 5,
+                                            "MaxConcurrency": 3,
                                             "Parameters": {
                                                 "receipt.$": "$$.Map.Item.Value",
                                                 "receipt_index.$": "$$.Map.Item.Index",
@@ -1206,7 +1312,11 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                 "execution_id.$": "$.execution_id",
                                                 "batch_bucket.$": "$.batch_bucket",
                                                 "patterns_s3_key.$": "$.patterns_s3_key",
+                                                "line_item_patterns_s3_key.$": "$.line_item_patterns_s3_key",
+                                                "merchant_name.$": "$.merchant_name",
+                                                "dry_run.$": "$.dry_run",
                                                 "enable_tracing.$": "$.enable_tracing",
+                                                "langchain_project.$": "$.langchain_project",
                                                 # Deterministic trace propagation
                                                 "execution_arn.$": "$.execution_arn",
                                                 "trace_id.$": "$.trace_id",
@@ -1214,9 +1324,13 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                 "root_dotted_order.$": "$.root_dotted_order",
                                             },
                                             "ItemProcessor": {
-                                                "ProcessorConfig": {"Mode": "INLINE"},
+                                                "ProcessorConfig": {
+                                                    "Mode": "INLINE"
+                                                },
                                                 "StartAt": "FetchReceiptData",
                                                 "States": {
+                                                    # Fetch receipt data from DynamoDB
+                                                    # Also generates receipt-level trace_id for parallel evaluators
                                                     "FetchReceiptData": {
                                                         "Type": "Task",
                                                         "Resource": fetch_receipt_data_arn,
@@ -1225,39 +1339,245 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                             "receipt.$": "$.receipt",
                                                             "execution_id.$": "$.execution_id",
                                                             "batch_bucket.$": "$.batch_bucket",
+                                                            # Pass execution_arn for receipt trace_id generation
+                                                            "execution_arn.$": "$.execution_arn",
                                                         },
                                                         "ResultPath": "$.receipt_data",
                                                         "Retry": [
                                                             {
-                                                                "ErrorEquals": ["States.TaskFailed"],
+                                                                "ErrorEquals": [
+                                                                    "States.TaskFailed"
+                                                                ],
                                                                 "IntervalSeconds": 1,
                                                                 "MaxAttempts": 2,
                                                                 "BackoffRate": 2.0,
                                                             }
                                                         ],
-                                                        "Next": "EvaluateLabels",
+                                                        "Next": "ParallelEvaluation",
                                                     },
-                                                    "EvaluateLabels": {
+                                                    # Run EvaluateLabels and EvaluateCurrencyLabels in parallel
+                                                    "ParallelEvaluation": {
+                                                        "Type": "Parallel",
+                                                        "Branches": [
+                                                            {
+                                                                "StartAt": "EvaluateLabels",
+                                                                "States": {
+                                                                    "EvaluateLabels": {
+                                                                        "Type": "Task",
+                                                                        "Resource": evaluate_labels_arn,
+                                                                        "TimeoutSeconds": 300,
+                                                                        "Parameters": {
+                                                                            "data_s3_key.$": "$.receipt_data.data_s3_key",
+                                                                            "patterns_s3_key.$": "$.patterns_s3_key",
+                                                                            "execution_id.$": "$.execution_id",
+                                                                            "batch_bucket.$": "$.batch_bucket",
+                                                                            "enable_tracing.$": "$.enable_tracing",
+                                                                            "langchain_project.$": "$.langchain_project",
+                                                                            # Receipt-level trace_id from FetchReceiptData
+                                                                            "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
+                                                                            # Execution-level trace propagation (for reference)
+                                                                            "execution_arn.$": "$.execution_arn",
+                                                                            "trace_id.$": "$.trace_id",
+                                                                            "root_run_id.$": "$.root_run_id",
+                                                                            "root_dotted_order.$": "$.root_dotted_order",
+                                                                            "batch_index.$": "$.batch_index",
+                                                                            "receipt_index.$": "$.receipt_index",
+                                                                        },
+                                                                        "Retry": [
+                                                                            {
+                                                                                "ErrorEquals": [
+                                                                                    "States.TaskFailed"
+                                                                                ],
+                                                                                "IntervalSeconds": 2,
+                                                                                "MaxAttempts": 2,
+                                                                                "BackoffRate": 2.0,
+                                                                            }
+                                                                        ],
+                                                                        "End": True,
+                                                                    },
+                                                                },
+                                                            },
+                                                            {
+                                                                "StartAt": "EvaluateCurrencyLabels",
+                                                                "States": {
+                                                                    "EvaluateCurrencyLabels": {
+                                                                        "Type": "Task",
+                                                                        "Resource": evaluate_currency_arn,
+                                                                        "TimeoutSeconds": 300,
+                                                                        "Parameters": {
+                                                                            "data_s3_key.$": "$.receipt_data.data_s3_key",
+                                                                            "line_item_patterns_s3_key.$": "$.line_item_patterns_s3_key",
+                                                                            "execution_id.$": "$.execution_id",
+                                                                            "batch_bucket.$": "$.batch_bucket",
+                                                                            "merchant_name.$": "$.merchant_name",
+                                                                            "dry_run.$": "$.dry_run",
+                                                                            "enable_tracing.$": "$.enable_tracing",
+                                                                            "langchain_project.$": "$.langchain_project",
+                                                                            # Receipt-level trace_id from FetchReceiptData
+                                                                            "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
+                                                                            # Execution-level trace propagation (for reference)
+                                                                            "execution_arn.$": "$.execution_arn",
+                                                                            "trace_id.$": "$.trace_id",
+                                                                            "root_run_id.$": "$.root_run_id",
+                                                                            "root_dotted_order.$": "$.root_dotted_order",
+                                                                        },
+                                                                        "Retry": [
+                                                                            {
+                                                                                "ErrorEquals": [
+                                                                                    "OllamaRateLimitError"
+                                                                                ],
+                                                                                "IntervalSeconds": 30,
+                                                                                "MaxAttempts": 5,
+                                                                                "BackoffRate": 2.0,
+                                                                            },
+                                                                            {
+                                                                                "ErrorEquals": [
+                                                                                    "States.TaskFailed"
+                                                                                ],
+                                                                                "IntervalSeconds": 2,
+                                                                                "MaxAttempts": 2,
+                                                                                "BackoffRate": 2.0,
+                                                                            },
+                                                                        ],
+                                                                        "End": True,
+                                                                    },
+                                                                },
+                                                            },
+                                                            {
+                                                                "StartAt": "EvaluateMetadataLabels",
+                                                                "States": {
+                                                                    "EvaluateMetadataLabels": {
+                                                                        "Type": "Task",
+                                                                        "Resource": evaluate_metadata_arn,
+                                                                        "TimeoutSeconds": 300,
+                                                                        "Parameters": {
+                                                                            "data_s3_key.$": "$.receipt_data.data_s3_key",
+                                                                            "execution_id.$": "$.execution_id",
+                                                                            "batch_bucket.$": "$.batch_bucket",
+                                                                            "merchant_name.$": "$.merchant_name",
+                                                                            "dry_run.$": "$.dry_run",
+                                                                            "enable_tracing.$": "$.enable_tracing",
+                                                                            "langchain_project.$": "$.langchain_project",
+                                                                            # Receipt-level trace_id from FetchReceiptData
+                                                                            "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
+                                                                            # Execution-level trace propagation (for reference)
+                                                                            "execution_arn.$": "$.execution_arn",
+                                                                            "trace_id.$": "$.trace_id",
+                                                                            "root_run_id.$": "$.root_run_id",
+                                                                            "root_dotted_order.$": "$.root_dotted_order",
+                                                                        },
+                                                                        "Retry": [
+                                                                            {
+                                                                                "ErrorEquals": [
+                                                                                    "OllamaRateLimitError"
+                                                                                ],
+                                                                                "IntervalSeconds": 30,
+                                                                                "MaxAttempts": 5,
+                                                                                "BackoffRate": 2.0,
+                                                                            },
+                                                                            {
+                                                                                "ErrorEquals": [
+                                                                                    "States.TaskFailed"
+                                                                                ],
+                                                                                "IntervalSeconds": 2,
+                                                                                "MaxAttempts": 2,
+                                                                                "BackoffRate": 2.0,
+                                                                            },
+                                                                        ],
+                                                                        "End": True,
+                                                                    },
+                                                                },
+                                                            },
+                                                        ],
+                                                        "ResultPath": "$.parallel_results",
+                                                        "Next": "CheckForIssues",
+                                                    },
+                                                    # Check if EvaluateLabels found issues
+                                                    "CheckForIssues": {
+                                                        "Type": "Choice",
+                                                        "Choices": [
+                                                            {
+                                                                # EvaluateLabels result is first in array
+                                                                "Variable": "$.parallel_results[0].issues_found",
+                                                                "NumericGreaterThan": 0,
+                                                                "Next": "LLMReviewReceipt",
+                                                            }
+                                                        ],
+                                                        # No issues - close trace and return
+                                                        "Default": "CloseReceiptTrace",
+                                                    },
+                                                    # LLM reviews issues for this receipt
+                                                    "LLMReviewReceipt": {
                                                         "Type": "Task",
-                                                        "Resource": evaluate_labels_arn,
-                                                        "TimeoutSeconds": 300,
+                                                        "Resource": llm_review_arn,
+                                                        "TimeoutSeconds": 900,
                                                         "Parameters": {
-                                                            "data_s3_key.$": "$.receipt_data.data_s3_key",
-                                                            "patterns_s3_key.$": "$.patterns_s3_key",
                                                             "execution_id.$": "$.execution_id",
                                                             "batch_bucket.$": "$.batch_bucket",
+                                                            "merchant_name.$": "$.merchant_name",
+                                                            # Results from EvaluateLabels (index 0)
+                                                            "results_s3_key.$": "$.parallel_results[0].results_s3_key",
+                                                            "image_id.$": "$.parallel_results[0].image_id",
+                                                            "receipt_id.$": "$.parallel_results[0].receipt_id",
+                                                            "line_item_patterns_s3_key.$": "$.line_item_patterns_s3_key",
+                                                            "dry_run.$": "$.dry_run",
+                                                            "enable_tracing.$": "$.enable_tracing",
+                                                            "langchain_project.$": "$.langchain_project",
                                                             # Deterministic trace propagation
                                                             "execution_arn.$": "$.execution_arn",
-                                                            "trace_id.$": "$.trace_id",
-                                                            "root_run_id.$": "$.root_run_id",
-                                                            "root_dotted_order.$": "$.root_dotted_order",
-                                                            "batch_index.$": "$.batch_index",
-                                                            "receipt_index.$": "$.receipt_index",
+                                                            "trace_id.$": "$.parallel_results[0].trace_id",
+                                                            "root_run_id.$": "$.parallel_results[0].root_run_id",
+                                                            "root_dotted_order.$": "$.parallel_results[0].root_dotted_order",
                                                         },
-                                                        "ResultPath": "$.eval_result",
+                                                        "ResultPath": "$.llm_review_result",
                                                         "Retry": [
                                                             {
-                                                                "ErrorEquals": ["States.TaskFailed"],
+                                                                "ErrorEquals": [
+                                                                    "OllamaRateLimitError"
+                                                                ],
+                                                                "IntervalSeconds": 30,
+                                                                "MaxAttempts": 5,
+                                                                "BackoffRate": 2.0,
+                                                            },
+                                                            {
+                                                                "ErrorEquals": [
+                                                                    "States.TaskFailed"
+                                                                ],
+                                                                "IntervalSeconds": 5,
+                                                                "MaxAttempts": 2,
+                                                                "BackoffRate": 2.0,
+                                                            },
+                                                        ],
+                                                        "Next": "ReturnResult",
+                                                    },
+                                                    # Close receipt trace when no issues found
+                                                    # (LLMReviewReceipt closes it when there ARE issues)
+                                                    "CloseReceiptTrace": {
+                                                        "Type": "Task",
+                                                        "Resource": close_trace_arn,
+                                                        "TimeoutSeconds": 30,
+                                                        "Parameters": {
+                                                            # Trace info from EvaluateLabels
+                                                            "trace_id.$": "$.parallel_results[0].trace_id",
+                                                            "root_run_id.$": "$.parallel_results[0].root_run_id",
+                                                            "image_id.$": "$.parallel_results[0].image_id",
+                                                            "receipt_id.$": "$.parallel_results[0].receipt_id",
+                                                            "issues_found.$": "$.parallel_results[0].issues_found",
+                                                            "enable_tracing.$": "$.enable_tracing",
+                                                            "langchain_project.$": "$.langchain_project",
+                                                            # Currency results (index 1)
+                                                            "currency_words_evaluated.$": "$.parallel_results[1].currency_words_evaluated",
+                                                            "currency_decisions.$": "$.parallel_results[1].decisions",
+                                                            # Metadata results (index 2)
+                                                            "metadata_words_evaluated.$": "$.parallel_results[2].metadata_words_evaluated",
+                                                            "metadata_decisions.$": "$.parallel_results[2].decisions",
+                                                        },
+                                                        "ResultPath": "$.close_trace_result",
+                                                        "Retry": [
+                                                            {
+                                                                "ErrorEquals": [
+                                                                    "States.TaskFailed"
+                                                                ],
                                                                 "IntervalSeconds": 2,
                                                                 "MaxAttempts": 2,
                                                                 "BackoffRate": 2.0,
@@ -1265,18 +1585,28 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                         ],
                                                         "Next": "ReturnResult",
                                                     },
+                                                    # Return combined result
                                                     "ReturnResult": {
                                                         "Type": "Pass",
                                                         "Parameters": {
-                                                            "status.$": "$.eval_result.status",
-                                                            "image_id.$": "$.eval_result.image_id",
-                                                            "receipt_id.$": "$.eval_result.receipt_id",
-                                                            "issues_found.$": "$.eval_result.issues_found",
-                                                            "results_s3_key.$": "$.eval_result.results_s3_key",
-                                                            # Per-receipt trace info for LLMReview
-                                                            "trace_id.$": "$.eval_result.trace_id",
-                                                            "root_run_id.$": "$.eval_result.root_run_id",
-                                                            "root_dotted_order.$": "$.eval_result.root_dotted_order",
+                                                            # From EvaluateLabels (index 0)
+                                                            "status.$": "$.parallel_results[0].status",
+                                                            "image_id.$": "$.parallel_results[0].image_id",
+                                                            "receipt_id.$": "$.parallel_results[0].receipt_id",
+                                                            "issues_found.$": "$.parallel_results[0].issues_found",
+                                                            "results_s3_key.$": "$.parallel_results[0].results_s3_key",
+                                                            # From EvaluateCurrencyLabels (index 1)
+                                                            "currency_words_evaluated.$": "$.parallel_results[1].currency_words_evaluated",
+                                                            "currency_decisions.$": "$.parallel_results[1].decisions",
+                                                            "currency_results_s3_key.$": "$.parallel_results[1].results_s3_key",
+                                                            # From EvaluateMetadataLabels (index 2)
+                                                            "metadata_words_evaluated.$": "$.parallel_results[2].metadata_words_evaluated",
+                                                            "metadata_decisions.$": "$.parallel_results[2].decisions",
+                                                            "metadata_results_s3_key.$": "$.parallel_results[2].results_s3_key",
+                                                            # Per-receipt trace info
+                                                            "trace_id.$": "$.parallel_results[0].trace_id",
+                                                            "root_run_id.$": "$.parallel_results[0].root_run_id",
+                                                            "root_dotted_order.$": "$.parallel_results[0].root_dotted_order",
                                                         },
                                                         "End": True,
                                                     },
@@ -1287,151 +1617,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     },
                                 },
                                 "ResultPath": "$.batch_results",
-                                "Next": "CollectIssues",
-                            },
-                            # Collect all issues from evaluations
-                            "CollectIssues": {
-                                "Type": "Task",
-                                "Resource": collect_issues_arn,
-                                "TimeoutSeconds": 300,
-                                "Parameters": {
-                                    "execution_id.$": "$.execution_id",
-                                    "batch_bucket.$": "$.batch_bucket",
-                                    "merchant_name.$": "$.merchant.merchant_name",
-                                    "process_results.$": "$.batch_results",
-                                },
-                                "ResultPath": "$.collected_issues",
-                                "Retry": [
-                                    {
-                                        "ErrorEquals": ["States.TaskFailed"],
-                                        "IntervalSeconds": 2,
-                                        "MaxAttempts": 2,
-                                        "BackoffRate": 2.0,
-                                    }
-                                ],
-                                "Next": "CheckHasIssues",
-                            },
-                            # Check if there are issues to review
-                            "CheckHasIssues": {
-                                "Type": "Choice",
-                                "Choices": [
-                                    {
-                                        "Variable": "$.collected_issues.total_issues",
-                                        "NumericGreaterThan": 0,
-                                        "Next": "BatchIssues",
-                                    }
-                                ],
-                                "Default": "AggregateResults",
-                            },
-                            # Batch issues for parallel LLM review
-                            "BatchIssues": {
-                                "Type": "Task",
-                                "Resource": batch_issues_arn,
-                                "TimeoutSeconds": 300,
-                                "Parameters": {
-                                    "execution_id.$": "$.execution_id",
-                                    "batch_bucket.$": "$.batch_bucket",
-                                    "merchant_name.$": "$.merchant.merchant_name",
-                                    "merchant_receipt_count.$": "$.receipts_data.total_receipts",
-                                    "issues_s3_key.$": "$.collected_issues.issues_s3_key",
-                                    "batch_size": 25,
-                                    "dry_run.$": "$.dry_run",
-                                },
-                                "ResultPath": "$.batched_issues",
-                                "Retry": [
-                                    {
-                                        "ErrorEquals": ["States.TaskFailed"],
-                                        "IntervalSeconds": 2,
-                                        "MaxAttempts": 2,
-                                        "BackoffRate": 2.0,
-                                    }
-                                ],
-                                "Next": "CheckHasBatches",
-                            },
-                            "CheckHasBatches": {
-                                "Type": "Choice",
-                                "Choices": [
-                                    {
-                                        "Variable": "$.batched_issues.batch_count",
-                                        "NumericGreaterThan": 0,
-                                        "Next": "ProcessLLMBatches",
-                                    }
-                                ],
-                                "Default": "AggregateResults",
-                            },
-                            # Process LLM review batches in parallel (one per receipt)
-                            "ProcessLLMBatches": {
-                                "Type": "Map",
-                                "ItemsPath": "$.batched_issues.batches",
-                                "MaxConcurrency": 5,
-                                "Parameters": {
-                                    "batch_info.$": "$$.Map.Item.Value",
-                                    "llm_batch_index.$": "$$.Map.Item.Index",
-                                    "execution_id.$": "$.execution_id",
-                                    "batch_bucket.$": "$.batch_bucket",
-                                    "merchant_name.$": "$.merchant.merchant_name",
-                                    "merchant_receipt_count.$": "$.receipts_data.total_receipts",
-                                    "line_item_patterns_s3_key.$": "$.line_item_patterns.patterns_s3_key",
-                                    "dry_run.$": "$.dry_run",
-                                    "enable_tracing.$": "$.enable_tracing",
-                                    # Receipt identification (one batch per receipt)
-                                    "image_id.$": "$$.Map.Item.Value.image_id",
-                                    "receipt_id.$": "$$.Map.Item.Value.receipt_id",
-                                    # Per-receipt trace propagation (from EvaluateLabels)
-                                    "execution_arn.$": "$$.Execution.Id",
-                                    "trace_id.$": "$$.Map.Item.Value.trace_id",
-                                    "root_run_id.$": "$$.Map.Item.Value.root_run_id",
-                                    "root_dotted_order.$": "$$.Map.Item.Value.root_dotted_order",
-                                },
-                                "ItemProcessor": {
-                                    "ProcessorConfig": {"Mode": "INLINE"},
-                                    "StartAt": "LLMReviewBatch",
-                                    "States": {
-                                        "LLMReviewBatch": {
-                                            "Type": "Task",
-                                            "Resource": llm_review_arn,
-                                            "TimeoutSeconds": 900,
-                                            "Parameters": {
-                                                "execution_id.$": "$.execution_id",
-                                                "batch_bucket.$": "$.batch_bucket",
-                                                "merchant_name.$": "$.merchant_name",
-                                                "merchant_receipt_count.$": "$.merchant_receipt_count",
-                                                "batch_s3_key.$": "$.batch_info.batch_s3_key",
-                                                "batch_index.$": "$.batch_info.batch_index",
-                                                "llm_batch_index.$": "$.llm_batch_index",
-                                                "line_item_patterns_s3_key.$": "$.line_item_patterns_s3_key",
-                                                "dry_run.$": "$.dry_run",
-                                                "enable_tracing.$": "$.enable_tracing",
-                                                # Receipt identification (one batch per receipt)
-                                                "image_id.$": "$.image_id",
-                                                "receipt_id.$": "$.receipt_id",
-                                                # Deterministic trace propagation
-                                                "execution_arn.$": "$.execution_arn",
-                                                "trace_id.$": "$.trace_id",
-                                                "root_run_id.$": "$.root_run_id",
-                                                "root_dotted_order.$": "$.root_dotted_order",
-                                            },
-                                            "Retry": [
-                                                {
-                                                    "ErrorEquals": [
-                                                        "OllamaRateLimitError"
-                                                    ],
-                                                    "IntervalSeconds": 30,
-                                                    "MaxAttempts": 5,
-                                                    "BackoffRate": 2.0,
-                                                },
-                                                {
-                                                    "ErrorEquals": ["States.TaskFailed"],
-                                                    "IntervalSeconds": 5,
-                                                    "MaxAttempts": 2,
-                                                    "BackoffRate": 2.0,
-                                                },
-                                            ],
-                                            "End": True,
-                                        },
-                                    },
-                                },
-                                "ResultPath": "$.llm_review_results",
                                 "Next": "AggregateResults",
                             },
                             # Aggregate results

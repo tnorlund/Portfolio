@@ -219,7 +219,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                         line_item_patterns_s3_key,
                     )
                     patterns_data = load_json_from_s3(
-                        s3, batch_bucket, line_item_patterns_s3_key
+                        s3, batch_bucket, line_item_patterns_s3_key, logger=logger
                     )
                     if patterns_data:
                         # DiscoverPatterns writes patterns dict directly to S3

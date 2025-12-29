@@ -16,13 +16,13 @@ The LLMReview Lambda will join this receipt's trace as a child.
 
 import logging
 import os
+
+# Import tracing utilities - works in both container and local environments
+import sys
 import time
 from typing import TYPE_CHECKING, Any
 
 import boto3
-
-# Import tracing utilities - works in both container and local environments
-import sys
 
 try:
     # Container environment: tracing.py is in same directory
@@ -30,29 +30,38 @@ try:
         TRACING_VERSION,
         child_trace,
         create_receipt_trace,
-        end_receipt_trace,
         flush_langsmith_traces,
     )
+
     from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+
     _tracing_import_source = "container"
 except ImportError:
     # Local/development environment: use path relative to this file
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "lambdas", "utils"
-    ))
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "lambdas",
+            "utils",
+        ),
+    )
     from tracing import (
         TRACING_VERSION,
         child_trace,
         create_receipt_trace,
-        end_receipt_trace,
         flush_langsmith_traces,
     )
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "lambdas"
-    ))
+
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "lambdas",
+        ),
+    )
     from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+
     _tracing_import_source = "local"
 
 if TYPE_CHECKING:
@@ -73,7 +82,10 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
     Run compute-only label evaluator with per-receipt tracing.
 
     Creates a ROOT trace for this receipt (not a child of execution trace).
-    Each receipt gets its own complete trace in LangSmith.
+    Each receipt gets its own complete trace in LangSmith. The trace_id is
+    deterministic (computed from execution_arn, image_id, receipt_id), so
+    parallel evaluators (Currency, Metadata) can join this trace using the
+    receipt_trace_id from FetchReceiptData.
 
     Input:
     {
@@ -84,7 +96,8 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         "execution_arn": "arn:aws:states:...",
         "batch_bucket": "bucket-name",
         "merchant_name": "Costco",
-        "enable_tracing": true
+        "enable_tracing": true,
+        "receipt_trace_id": "..."  # From FetchReceiptData (for verification)
     }
 
     Output:
@@ -105,6 +118,12 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         TRACING_VERSION,
         _tracing_import_source,
     )
+
+    # Allow runtime override of LangSmith project via Step Function input
+    langchain_project = event.get("langchain_project")
+    if langchain_project:
+        os.environ["LANGCHAIN_PROJECT"] = langchain_project
+        logger.info("LangSmith project set to: %s", langchain_project)
 
     data_s3_key = event.get("data_s3_key")
     patterns_s3_key = event.get("patterns_s3_key")
@@ -144,7 +163,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             batch_bucket,
             data_s3_key,
         )
-        target_data = load_json_from_s3(s3, batch_bucket, data_s3_key)
+        target_data = load_json_from_s3(
+            s3, batch_bucket, data_s3_key, logger=logger
+        )
 
         image_id = target_data.get("image_id")
         receipt_id = target_data.get("receipt_id")
@@ -169,6 +190,8 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         )
 
         # 2. Create ROOT trace for this receipt
+        # The trace_id is deterministic, so parallel evaluators (Currency, Metadata)
+        # can join this trace using the same receipt_trace_id from FetchReceiptData.
         receipt_trace = create_receipt_trace(
             execution_arn=execution_arn,
             image_id=image_id,
@@ -187,11 +210,30 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             enable_tracing=enable_tracing,
         )
 
+        # Verify trace_id matches FetchReceiptData (for debugging)
+        expected_trace_id = event.get("receipt_trace_id")
+        if expected_trace_id and expected_trace_id != receipt_trace.trace_id:
+            logger.warning(
+                "TRACE ID MISMATCH: FetchReceiptData=%s, EvaluateLabels=%s",
+                expected_trace_id[:8],
+                receipt_trace.trace_id[:8],
+            )
+        else:
+            logger.info(
+                "Receipt trace created: trace_id=%s (matches FetchReceiptData)",
+                receipt_trace.trace_id[:8],
+            )
+
         # Create a TraceContext for child_trace compatibility
         from tracing import TraceContext
+
         trace_ctx = TraceContext(
             run_tree=receipt_trace.run_tree,
-            headers=receipt_trace.run_tree.to_headers() if receipt_trace.run_tree else None,
+            headers=(
+                receipt_trace.run_tree.to_headers()
+                if receipt_trace.run_tree
+                else None
+            ),
             trace_id=receipt_trace.trace_id,
             root_run_id=receipt_trace.root_run_id,
         )
@@ -208,23 +250,28 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 },
             ):
                 logger.info(
-                    "Added DiscoverPatterns reference: %s", line_item_patterns_s3_key
+                    "Added DiscoverPatterns reference: %s",
+                    line_item_patterns_s3_key,
                 )
 
         # 4. Load pre-computed merchant patterns from S3
         merchant_patterns = None
         if patterns_s3_key:
-            with child_trace("ComputePatterns", trace_ctx, metadata={
-                "patterns_s3_key": patterns_s3_key,
-                "merchant_name": merchant_name,
-            }):
+            with child_trace(
+                "ComputePatterns",
+                trace_ctx,
+                metadata={
+                    "patterns_s3_key": patterns_s3_key,
+                    "merchant_name": merchant_name,
+                },
+            ):
                 logger.info(
                     "Loading patterns from s3://%s/%s",
                     batch_bucket,
                     patterns_s3_key,
                 )
                 patterns_data = load_json_from_s3(
-                    s3, batch_bucket, patterns_s3_key
+                    s3, batch_bucket, patterns_s3_key, logger=logger
                 )
                 merchant_patterns = deserialize_patterns(patterns_data)
 
@@ -331,18 +378,11 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             "root_dotted_order": receipt_trace.root_dotted_order,
         }
 
-        # End the receipt trace if no issues found (LLMReview won't run)
-        # If there ARE issues, LLMReview will end the trace after processing
-        issues_found = result.get("issues_found", 0)
-        if issues_found == 0:
-            end_receipt_trace(
-                receipt_trace,
-                outputs={
-                    "status": "completed",
-                    "issues_found": 0,
-                    "llm_review": "skipped",
-                },
-            )
+        # NOTE: Do NOT close the receipt trace here!
+        # The trace is closed by either:
+        # - LLMReviewReceipt (if issues > 0)
+        # - CloseReceiptTrace (if issues == 0, after all parallel branches complete)
+        # This ensures Currency and Metadata evaluators finish before trace closes.
 
         # Flush LangSmith traces
         flush_langsmith_traces()
@@ -371,9 +411,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             },
         )
 
-        # End receipt trace with error if it was created
-        if receipt_trace:
-            end_receipt_trace(receipt_trace, outputs={"error": str(e)})
+        # NOTE: Do NOT close the receipt trace on error here.
+        # The trace will be closed by CloseReceiptTrace or left open.
+        # Parallel branches (Currency/Metadata) may still be running.
 
         # Flush LangSmith traces even on error
         flush_langsmith_traces()

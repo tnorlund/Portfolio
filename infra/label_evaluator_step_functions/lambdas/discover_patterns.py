@@ -25,13 +25,19 @@ try:
         end_execution_trace,
         flush_langsmith_traces,
     )
+
     from utils.s3_helpers import get_merchant_hash, upload_json_to_s3
 except ImportError:
     # Local/development environment: use path relative to this file
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "lambdas", "utils"
-    ))
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "lambdas",
+            "utils",
+        ),
+    )
+    from s3_helpers import get_merchant_hash, upload_json_to_s3
     from tracing import (
         TraceContext,
         child_trace,
@@ -39,7 +45,6 @@ except ImportError:
         end_execution_trace,
         flush_langsmith_traces,
     )
-    from s3_helpers import get_merchant_hash, upload_json_to_s3
 
 # Import pattern discovery from receipt_agent
 from receipt_agent.agents.label_evaluator.pattern_discovery import (
@@ -84,6 +89,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
     from receipt_dynamo import DynamoClient
 
+    # Allow runtime override of LangSmith project via Step Function input
+    langchain_project = event.get("langchain_project")
+    if langchain_project:
+        os.environ["LANGCHAIN_PROJECT"] = langchain_project
+        logger.info("LangSmith project set to: %s", langchain_project)
+
     execution_id = event.get("execution_id", "unknown")
     execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
@@ -123,7 +134,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     # Create a TraceContext for child_trace compatibility
     trace_ctx = TraceContext(
         run_tree=trace_info.run_tree,
-        headers=trace_info.run_tree.to_headers() if trace_info.run_tree else None,
+        headers=(
+            trace_info.run_tree.to_headers() if trace_info.run_tree else None
+        ),
         trace_id=trace_info.trace_id,
         root_run_id=trace_info.root_run_id,
     )
@@ -142,7 +155,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     try:
         # Always run pattern discovery (no caching)
-        logger.info(f"Discovering patterns for {merchant_name}")
+        logger.info("Discovering patterns for %s", merchant_name)
         table_name = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable")
         dynamo_client = DynamoClient(table_name=table_name)
 
@@ -152,11 +165,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             )
 
         if not receipts_data:
-            logger.warning(f"No receipt data found for {merchant_name}")
+            logger.warning("No receipt data found for %s", merchant_name)
             default_patterns = get_default_patterns(
                 merchant_name, reason="no_receipt_data"
             )
-            upload_json_to_s3(s3, batch_bucket, patterns_s3_key, default_patterns)
+            upload_json_to_s3(
+                s3, batch_bucket, patterns_s3_key, default_patterns
+            )
             result = {
                 "execution_id": execution_id,
                 "merchant_name": merchant_name,
@@ -195,7 +210,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
                 # Store patterns
                 with child_trace("upload_patterns", trace_ctx):
-                    upload_json_to_s3(s3, batch_bucket, patterns_s3_key, patterns)
+                    upload_json_to_s3(
+                        s3, batch_bucket, patterns_s3_key, patterns
+                    )
                     logger.info(
                         f"Stored patterns for {merchant_name} at {patterns_s3_key}"
                     )
