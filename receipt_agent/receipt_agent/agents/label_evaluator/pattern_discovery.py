@@ -42,6 +42,8 @@ from typing import Any, Protocol
 
 import httpx
 
+from receipt_agent.prompts.structured_outputs import PatternDiscoveryResponse
+
 logger = logging.getLogger(__name__)
 
 
@@ -88,7 +90,9 @@ class LabelExample:
 class LabelExamples:
     """Collection of validated label examples by label type."""
 
-    examples_by_label: dict[str, list[LabelExample]] = field(default_factory=dict)
+    examples_by_label: dict[str, list[LabelExample]] = field(
+        default_factory=dict
+    )
     merchant_name: str = ""
     total_examples: int = 0
 
@@ -108,14 +112,16 @@ class LabelExamples:
         if not self.examples_by_label:
             return ""
 
-        lines = [f"VALIDATED LABEL EXAMPLES FROM \"{self.merchant_name}\":"]
+        lines = [f'VALIDATED LABEL EXAMPLES FROM "{self.merchant_name}":']
         for label in LINE_ITEM_LABELS:
             examples = self.get_examples(label, limit=5)
             if examples:
                 example_strs = []
                 for ex in examples:
                     context = f"[{ex.left_neighbor}] {ex.word_text} [{ex.right_neighbor}]"
-                    example_strs.append(f'"{ex.word_text}" at x={ex.x_position:.2f} ({context})')
+                    example_strs.append(
+                        f'"{ex.word_text}" at x={ex.x_position:.2f} ({context})'
+                    )
                 lines.append(f"  {label}: {', '.join(example_strs)}")
             else:
                 lines.append(f"  {label}: (no validated examples found)")
@@ -139,7 +145,9 @@ class PatternDiscoveryConfig:
         """Create config from environment variables."""
         return cls(
             ollama_api_key=os.environ.get("OLLAMA_API_KEY", ""),
-            ollama_base_url=os.environ.get("OLLAMA_BASE_URL", "https://ollama.com"),
+            ollama_base_url=os.environ.get(
+                "OLLAMA_BASE_URL", "https://ollama.com"
+            ),
             ollama_model=os.environ.get("OLLAMA_MODEL", "gpt-oss:120b-cloud"),
         )
 
@@ -189,7 +197,11 @@ def query_label_examples_from_chroma(
                     where={
                         "$and": [
                             {"merchant_name": {"$eq": merchant_name}},
-                            {"label_status": {"$in": ["validated", "auto_suggested"]}},
+                            {
+                                "label_status": {
+                                    "$in": ["validated", "auto_suggested"]
+                                }
+                            },
                         ]
                     },
                     include=["metadatas", "distances"],
@@ -277,7 +289,11 @@ def query_label_examples_simple(
         for metadata in metadatas:
             # Parse valid_labels (comma-separated string)
             valid_labels_str = metadata.get("valid_labels", "")
-            valid_labels = [lbl.strip() for lbl in valid_labels_str.split(",") if lbl.strip()]
+            valid_labels = [
+                lbl.strip()
+                for lbl in valid_labels_str.split(",")
+                if lbl.strip()
+            ]
 
             for label in valid_labels:
                 if label in LINE_ITEM_LABELS:
@@ -321,11 +337,15 @@ def build_receipt_structure(
     Returns:
         List of receipt structures with lines and word data
     """
-    result = dynamo_client.get_receipt_places_by_merchant(merchant_name, limit=limit)
+    result = dynamo_client.get_receipt_places_by_merchant(
+        merchant_name, limit=limit
+    )
     receipt_places = result[0] if result else []
 
     if not receipt_places:
-        logger.warning("No receipt places found for merchant: %s", merchant_name)
+        logger.warning(
+            "No receipt places found for merchant: %s", merchant_name
+        )
         return []
 
     receipts_data = []
@@ -372,7 +392,9 @@ def build_receipt_structure(
         # Sort lines by y-position (top to bottom)
         sorted_lines = []
         for line_id, line_words in lines.items():
-            avg_y = sum(w.bounding_box["y"] for w in line_words) / len(line_words)
+            avg_y = sum(w.bounding_box["y"] for w in line_words) / len(
+                line_words
+            )
             line_words.sort(key=lambda w: w.bounding_box["x"])
             sorted_lines.append((line_id, avg_y, line_words))
         sorted_lines.sort(key=lambda x: -x[1])  # Highest y (top) first
@@ -417,7 +439,9 @@ def build_receipt_structure(
             # Include some context before and after
             context_lines = 5
             start_idx = max(0, first_item_idx - context_lines)
-            end_idx = min(len(receipt_lines), last_item_idx + context_lines + 1)
+            end_idx = min(
+                len(receipt_lines), last_item_idx + context_lines + 1
+            )
 
             # If the section is too large, prioritize from the start
             if end_idx - start_idx > max_lines:
@@ -598,7 +622,9 @@ def discover_patterns_with_llm(
     try:
         # If we have a trace context with child_trace, use it
         if trace_ctx is not None:
-            return _call_llm_with_tracing(prompt, config, llm_inputs, trace_ctx)
+            return _call_llm_with_tracing(
+                prompt, config, llm_inputs, trace_ctx
+            )
 
         # No tracing - direct call
         return _call_llm_direct(config, llm_inputs)
@@ -683,7 +709,9 @@ def _call_llm_with_tracing(
         # Capture raw output in trace
         llm_trace_ctx.set_outputs(
             {
-                "raw_response": content[:2000] if len(content) > 2000 else content,
+                "raw_response": (
+                    content[:2000] if len(content) > 2000 else content
+                ),
                 "model": result.get("model"),
                 "done_reason": result.get("done_reason"),
             }
@@ -693,7 +721,12 @@ def _call_llm_with_tracing(
 
 
 def _parse_llm_response(content: str) -> dict | None:
-    """Parse LLM response, handling markdown code blocks."""
+    """Parse LLM response, handling markdown code blocks.
+
+    First attempts to parse using the PatternDiscoveryResponse Pydantic model,
+    which validates the schema and constrains enum values.
+    Falls back to manual JSON parsing if structured parsing fails.
+    """
     content = content.strip()
 
     # Remove markdown code blocks if present
@@ -705,6 +738,17 @@ def _parse_llm_response(content: str) -> dict | None:
         content = content[:-3]
     content = content.strip()
 
+    # Try structured parsing first (validates schema and enum values)
+    try:
+        parsed = json.loads(content)
+        structured_response = PatternDiscoveryResponse.model_validate(parsed)
+        return structured_response.to_dict()
+    except Exception as e:
+        logger.debug(
+            "Structured parsing failed, falling back to manual parsing: %s", e
+        )
+
+    # Fallback to manual JSON parsing for backwards compatibility
     try:
         return json.loads(content)
     except json.JSONDecodeError as e:
