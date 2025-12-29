@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 async def run_test():
     """Run constellation anomaly detection test with Ollama."""
     # Import after path setup
+    from receipt_dynamo import DynamoClient
+
     from receipt_agent.agents.label_evaluator import (
         create_label_evaluator_graph,
     )
@@ -39,7 +41,6 @@ async def run_test():
     from receipt_agent.agents.label_evaluator import (
         run_label_evaluator,
     )
-    from receipt_dynamo import DynamoClient
 
     # Limit receipts for faster testing
     original_max = evaluator_graph.MAX_OTHER_RECEIPTS
@@ -56,8 +57,10 @@ async def run_test():
 
         table_name = os.environ.get("DYNAMODB_TABLE_NAME")
         if not table_name:
-            logger.warning("DYNAMODB_TABLE_NAME not set, using dev default")
-            table_name = "ReceiptsTable-dc5be22"
+            logger.error(
+                "DYNAMODB_TABLE_NAME environment variable is required"
+            )
+            return
         dynamo = DynamoClient(table_name=table_name)
         logger.info("Using DynamoDB table: %s", table_name)
 

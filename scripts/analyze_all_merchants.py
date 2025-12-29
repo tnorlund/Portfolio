@@ -107,9 +107,9 @@ def get_all_merchants(dynamo_client) -> list[tuple[str, int]]:
         all_places.extend(result[0])
         page_count += 1
         if page_count % 10 == 0:
-            logger.info(f"  Fetched {len(all_places)} places so far...")
+            logger.info("  Fetched %d places so far...", len(all_places))
 
-    logger.info(f"Found {len(all_places)} total receipt places")
+    logger.info("Found %d total receipt places", len(all_places))
 
     # Count receipts per merchant
     merchant_counts: Counter = Counter()
@@ -119,7 +119,7 @@ def get_all_merchants(dynamo_client) -> list[tuple[str, int]]:
     # Sort by count descending
     sorted_merchants = sorted(merchant_counts.items(), key=lambda x: -x[1])
 
-    logger.info(f"Found {len(sorted_merchants)} unique merchants")
+    logger.info("Found %d unique merchants", len(sorted_merchants))
     return sorted_merchants
 
 
@@ -259,7 +259,7 @@ def main():
         )
         sys.exit(1)
 
-    logger.info(f"Using DynamoDB table: {config['dynamodb_table_name']}")
+    logger.info("Using DynamoDB table: %s", config["dynamodb_table_name"])
 
     # Import pattern_discovery module directly (avoid chromadb import issues with Python 3.14)
     import importlib.util
@@ -300,7 +300,7 @@ def main():
     # Limit if specified
     if args.max_merchants:
         merchants = merchants[: args.max_merchants]
-        logger.info(f"Limited to first {args.max_merchants} merchants")
+        logger.info("Limited to first %d merchants", args.max_merchants)
 
     # Analyze each merchant
     results: list[MerchantAnalysis] = []
@@ -308,7 +308,11 @@ def main():
 
     for i, (merchant_name, receipt_count) in enumerate(merchants):
         logger.info(
-            f"[{i+1}/{len(merchants)}] Analyzing: {merchant_name} ({receipt_count} receipts)"
+            "[%d/%d] Analyzing: %s (%d receipts)",
+            i + 1,
+            len(merchants),
+            merchant_name,
+            receipt_count,
         )
 
         analysis = analyze_merchant(
@@ -326,9 +330,9 @@ def main():
 
         # Print progress
         if analysis.error:
-            logger.warning(f"  Error: {analysis.error}")
+            logger.warning("  Error: %s", analysis.error)
         elif analysis.llm_error:
-            logger.warning(f"  LLM Error: {analysis.llm_error}")
+            logger.warning("  LLM Error: %s", analysis.llm_error)
         else:
             type_str = (
                 analysis.receipt_type.upper()
@@ -458,7 +462,7 @@ def main():
                         r.error or "",
                     ]
                 )
-        logger.info(f"Results written to {args.output}")
+        logger.info("Results written to %s", args.output)
 
     print("=" * 80)
 

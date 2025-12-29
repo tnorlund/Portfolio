@@ -274,8 +274,8 @@ def main():
             if chroma_client is not None:
                 try:
                     chroma_client.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("ChromaDB cleanup failed: %s", e)
 
     # 6. Apply decisions
     if args.apply and reviewed_issues:

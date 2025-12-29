@@ -8,6 +8,7 @@ agent nodes with retry logic, eliminating code duplication across workflows.
 import logging
 import random
 import time
+import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -44,6 +45,12 @@ def create_ollama_llm(
     Returns:
         Configured LLM instance (ChatOllama or ChatOpenAI depending on provider)
     """
+    warnings.warn(
+        "create_ollama_llm is deprecated. Use create_llm() or "
+        "create_llm_from_settings() from receipt_agent.utils.llm_factory instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if settings is None:
         settings = get_settings()
 

@@ -53,10 +53,14 @@ import pickle
 import subprocess
 import sys
 import time
+from collections.abc import Generator
 from contextlib import contextmanager, nullcontext
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Generator, Optional
+from typing import Optional
+
+from receipt_dynamo.data._pulumi import load_env
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
 from receipt_agent.agents.label_evaluator.patterns import (
     compute_merchant_patterns,
@@ -65,8 +69,6 @@ from receipt_agent.agents.label_evaluator.state import (
     MerchantPatterns,
     OtherReceiptData,
 )
-from receipt_dynamo.data._pulumi import load_env
-from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger(__name__)
 
@@ -287,7 +289,7 @@ def build_metrics(
 
     metrics = {
         "profiling_metadata": {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "merchant_name": merchant_name,
             "receipt_count": len(data),
             "function": "compute_merchant_patterns",
@@ -355,7 +357,7 @@ def run_with_scalene(
             "pip install -e 'receipt_agent[perf]'"
         )
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     html_path = output_dir / f"pattern_computation_{timestamp}.html"
     repo_root = find_repo_root()
 
@@ -572,7 +574,7 @@ def main() -> None:
             max_relationship_dimension=args.dimension,
         )
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         metrics_path = output_dir / f"pattern_computation_{timestamp}.json"
         with open(metrics_path, "w") as f:
             json.dump(metrics, f, indent=2)

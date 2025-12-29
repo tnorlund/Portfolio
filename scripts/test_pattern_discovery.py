@@ -69,7 +69,7 @@ def load_chroma_client(chromadb_bucket: str):
     """Load ChromaDB client and embed function from S3 snapshot."""
     from receipt_agent.utils.chroma_helpers import load_dual_chroma_from_s3
 
-    logger.info(f"Loading ChromaDB from s3://{chromadb_bucket}")
+    logger.info("Loading ChromaDB from s3://%s", chromadb_bucket)
     chroma_client, embed_fn = load_dual_chroma_from_s3(chromadb_bucket)
     return chroma_client, embed_fn
 
@@ -187,11 +187,11 @@ def main():
                     "No label examples found in Chroma for this merchant"
                 )
         except Exception as e:
-            logger.warning(f"Failed to load Chroma: {e}")
+            logger.warning("Failed to load Chroma: %s", e)
             logger.info("Continuing without Chroma examples...")
 
     # Build receipt structure with smart line selection
-    logger.info(f"Building receipt structure for: {args.merchant_name}")
+    logger.info("Building receipt structure for: %s", args.merchant_name)
     receipts_data = build_receipt_structure(
         dynamo_client,
         args.merchant_name,
@@ -202,15 +202,17 @@ def main():
 
     if not receipts_data:
         logger.error(
-            f"No receipt data found for merchant: {args.merchant_name}"
+            "No receipt data found for merchant: %s", args.merchant_name
         )
         sys.exit(1)
 
-    logger.info(f"Found {len(receipts_data)} receipts")
+    logger.info("Found %d receipts", len(receipts_data))
     for receipt in receipts_data:
         logger.info(
-            f"  - {receipt['receipt_id']}: {receipt['line_count']} lines "
-            f"(of {receipt.get('total_lines', 'unknown')} total)"
+            "  - %s: %d lines (of %s total)",
+            receipt["receipt_id"],
+            receipt["line_count"],
+            receipt.get("total_lines", "unknown"),
         )
 
     # Build prompt with optional Chroma examples

@@ -82,7 +82,7 @@ class TestTraceIdConsistency:
     def test_namespace_matches(self):
         """Verify TRACE_NAMESPACE is consistent."""
         expected = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
-        assert TRACE_NAMESPACE == expected
+        assert expected == TRACE_NAMESPACE
 
     def test_deterministic(self):
         """Same inputs should always produce same output."""
