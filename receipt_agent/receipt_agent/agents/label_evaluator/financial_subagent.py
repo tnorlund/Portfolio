@@ -52,8 +52,10 @@ from .state import VisualLine, WordContext
 
 logger = logging.getLogger(__name__)
 
-# Tolerance for floating point comparison (cents)
-MATH_TOLERANCE = 0.02
+# Tiny epsilon for floating point comparison (not a business tolerance)
+# We only filter out differences that are essentially zero due to floating point math
+# The LLM decides if a real discrepancy is acceptable based on receipt context
+FLOAT_EPSILON = 0.001
 
 
 @dataclass
@@ -197,7 +199,9 @@ def check_grand_total_math(
     actual = grand_total.numeric_value
     difference = actual - expected
 
-    if abs(difference) <= MATH_TOLERANCE:
+    # Only skip if difference is essentially zero (floating point precision)
+    # Let LLM decide if real discrepancies are acceptable
+    if abs(difference) <= FLOAT_EPSILON:
         return None
 
     involved = [grand_total, subtotal]
@@ -242,7 +246,9 @@ def check_subtotal_math(
     actual = subtotal.numeric_value
     difference = actual - expected
 
-    if abs(difference) <= MATH_TOLERANCE:
+    # Only skip if difference is essentially zero (floating point precision)
+    # Let LLM decide if real discrepancies are acceptable
+    if abs(difference) <= FLOAT_EPSILON:
         return None
 
     involved = [subtotal] + line_totals + discounts
@@ -292,7 +298,9 @@ def check_line_item_math(
         actual = line_total.numeric_value
         difference = actual - expected
 
-        if abs(difference) <= MATH_TOLERANCE:
+        # Only skip if difference is essentially zero (floating point precision)
+        # Let LLM decide if real discrepancies are acceptable
+        if abs(difference) <= FLOAT_EPSILON:
             continue
 
         issues.append(
@@ -400,12 +408,19 @@ For each math issue detected, determine which value is most likely WRONG.
 {issues_str}
 
 ## Your Task
-For each issue above, analyze the receipt context and determine which value is incorrect.
+For each issue above, analyze the receipt context and determine:
+1. Whether the discrepancy is significant enough to be a real error
+2. If it is a real error, which value is most likely wrong
 
 Consider:
-1. OCR errors (common misreads: 8↔6, 1↔7, 0↔O)
-2. Receipt structure (totals usually at bottom, line items in middle)
-3. Which value "looks wrong" based on surrounding text
+1. **Acceptable rounding**: Small discrepancies (e.g., $0.01-0.02) on large receipts
+   are often acceptable due to per-item rounding. A $0.01 difference on a $500 receipt
+   is likely rounding; the same difference on a $5 receipt may be significant.
+2. **Cumulative rounding**: Receipts with many line items accumulate rounding errors.
+   A $0.05 difference with 20 line items is probably acceptable.
+3. **OCR errors**: Common misreads include 8↔6, 1↔7, 0↔O, causing larger differences.
+4. **Receipt structure**: Totals usually appear at bottom, line items in middle.
+5. **Context clues**: Which value "looks wrong" based on surrounding text.
 
 Respond with a JSON array:
 
@@ -424,9 +439,9 @@ Respond with a JSON array:
 ```
 
 ## Decision Guide
-- VALID: The labeled value is correct, another value in the relationship is wrong
+- VALID: The discrepancy is acceptable (e.g., rounding) OR the labeled value is correct
 - INVALID: This specific value's label is wrong (suggest correction if applicable)
-- NEEDS_REVIEW: Cannot determine which value is wrong
+- NEEDS_REVIEW: Cannot determine if the discrepancy is acceptable or which value is wrong
 
 For each issue, evaluate ALL involved values. Return one decision per involved value.
 
