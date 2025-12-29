@@ -217,12 +217,14 @@ class ReceiptLayoutLMTrainer:
         )
 
         # Parallelize preprocessing across CPU cores
+        # Disable cache to minimize local disk usage on SageMaker instances
         num_proc = max(1, min(os.cpu_count() or 1, 8))
         datasets = datasets.map(  # type: ignore[attr-defined]
             preprocess,
             remove_columns=["tokens", "bboxes", "ner_tags"],
             num_proc=num_proc,
             desc="Tokenize+align",
+            load_from_cache_file=False,  # Don't cache to disk
         )
 
         # Optionally save tokenized dataset snapshot for reuse
@@ -266,10 +268,10 @@ class ReceiptLayoutLMTrainer:
             except ModuleNotFoundError:
                 # Fallback to accuracy if seqeval not available
                 args_kwargs["metric_for_best_model"] = "eval_accuracy"
-        # Don't limit checkpoints locally - we sync all to S3 per epoch
-        # S3 lifecycle policy handles cleanup of old checkpoints
-        # if "save_total_limit" in ta_params:
-        #     args_kwargs["save_total_limit"] = 1
+        # Keep only 2 checkpoints locally to minimize disk usage
+        # on_save callback syncs to S3 before old checkpoints are deleted
+        if "save_total_limit" in ta_params:
+            args_kwargs["save_total_limit"] = 2
         if "save_safetensors" in ta_params:
             args_kwargs["save_safetensors"] = True
         if "label_smoothing_factor" in ta_params:
