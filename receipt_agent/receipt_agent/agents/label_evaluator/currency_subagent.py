@@ -44,7 +44,7 @@ from .state import EvaluationIssue, VisualLine, WordContext
 logger = logging.getLogger(__name__)
 
 # Labels that indicate a line item row
-LINE_ITEM_LABELS = {"PRODUCT_NAME", "LINE_TOTAL", "UNIT_PRICE", "QUANTITY", "SKU"}
+LINE_ITEM_LABELS = {"PRODUCT_NAME", "LINE_TOTAL", "UNIT_PRICE", "QUANTITY"}
 
 # Patterns that look like numbers but aren't currency
 NON_CURRENCY_PATTERNS = [
