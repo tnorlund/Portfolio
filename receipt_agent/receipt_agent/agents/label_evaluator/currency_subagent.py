@@ -37,7 +37,6 @@ from typing import Any, Optional
 from langchain_core.language_models import BaseChatModel
 
 from receipt_agent.constants import CURRENCY_LABELS
-from receipt_agent.subagents.financial_validation.utils import extract_number
 
 from .state import EvaluationIssue, VisualLine, WordContext
 

@@ -289,13 +289,17 @@ class TestBuildCurrencyEvaluationPrompt:
     def test_builds_prompt_with_currency_words(self):
         """Should build prompt with currency words context."""
         wc = _make_word_context("4.99", "LINE_TOTAL", x=0.8)
+        line = _make_visual_line([wc])
         currency_word = CurrencyWord(
-            word=wc.word,
             word_context=wc,
             current_label="LINE_TOTAL",
+            line_index=0,
             position_zone="right",
+            looks_like_currency=True,
+            non_currency_pattern=None,
         )
         prompt = build_currency_evaluation_prompt(
+            visual_lines=[line],
             currency_words=[currency_word],
             patterns=None,
             merchant_name="Test Merchant",
@@ -306,17 +310,21 @@ class TestBuildCurrencyEvaluationPrompt:
     def test_includes_pattern_context(self):
         """Should include pattern context when available."""
         wc = _make_word_context("4.99", "LINE_TOTAL", x=0.8)
+        line = _make_visual_line([wc])
         currency_word = CurrencyWord(
-            word=wc.word,
             word_context=wc,
             current_label="LINE_TOTAL",
+            line_index=0,
             position_zone="right",
+            looks_like_currency=True,
+            non_currency_pattern=None,
         )
         patterns = {
             "item_structure": "single-line",
             "label_positions": {"LINE_TOTAL": "right"},
         }
         prompt = build_currency_evaluation_prompt(
+            visual_lines=[line],
             currency_words=[currency_word],
             patterns=patterns,
             merchant_name="Test",

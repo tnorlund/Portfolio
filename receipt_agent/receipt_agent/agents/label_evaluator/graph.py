@@ -406,6 +406,7 @@ def create_label_evaluator_graph(
             patterns = {
                 "merchant": state.merchant_patterns.merchant_name,
                 "receipt_count": state.merchant_patterns.receipt_count,
+                "label_positions": state.merchant_patterns.label_positions,
             }
 
         try:
