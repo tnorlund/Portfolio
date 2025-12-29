@@ -27,6 +27,10 @@ class _ReceiptValidationResult(
     FlattenedStandardMixin,
 ):
     """
+    .. deprecated::
+        This class is deprecated and not used in production. Consider removing
+        if no longer needed for historical data access.
+
     A class used to access receipt validation results in DynamoDB.
 
     Methods

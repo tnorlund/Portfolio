@@ -45,7 +45,7 @@ class _ReceiptLetter(
         Updates an existing ReceiptLetter in the database.
     update_receipt_letters(receipt_letters: list[ReceiptLetter]):
         Updates multiple ReceiptLetters in the database.
-    delete_receipt_letter(receipt_id, image_id, line_id, word_id, letter_id):
+    delete_receipt_letter(image_id, receipt_id, line_id, word_id, letter_id):
         Deletes a single ReceiptLetter by IDs.
     delete_receipt_letters(receipt_letters: list[ReceiptLetter]):
         Deletes multiple ReceiptLetters in batch.
@@ -162,8 +162,8 @@ class _ReceiptLetter(
     @handle_dynamodb_errors("delete_receipt_letter")
     def delete_receipt_letter(
         self,
-        receipt_id: int,
         image_id: str,
+        receipt_id: int,
         line_id: int,
         word_id: int,
         letter_id: int,
@@ -173,10 +173,10 @@ class _ReceiptLetter(
 
         Parameters
         ----------
-        receipt_id : int
-            The receipt ID.
         image_id : str
             The image ID.
+        receipt_id : int
+            The receipt ID.
         line_id : int
             The line ID.
         word_id : int
@@ -189,8 +189,8 @@ class _ReceiptLetter(
         ValueError
             If parameters are invalid or letter does not exist.
         """
-        self._validate_receipt_id(receipt_id)
         self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
         if line_id is None:
             raise EntityValidationError("line_id cannot be None")
         if not isinstance(line_id, int):
@@ -371,17 +371,17 @@ class _ReceiptLetter(
 
     @handle_dynamodb_errors("list_receipt_letters_from_word")
     def list_receipt_letters_from_word(
-        self, receipt_id: int, image_id: str, line_id: int, word_id: int
+        self, image_id: str, receipt_id: int, line_id: int, word_id: int
     ) -> list[ReceiptLetter]:
         """
         Returns all ReceiptLetters for a given word.
 
         Parameters
         ----------
-        receipt_id : int
-            The receipt ID.
         image_id : str
             The image ID.
+        receipt_id : int
+            The receipt ID.
         line_id : int
             The line ID.
         word_id : int
@@ -398,15 +398,15 @@ class _ReceiptLetter(
             If parameters are invalid.
         """
         # Validate parameters
+        if image_id is None:
+            raise EntityValidationError("image_id cannot be None")
+        self._validate_image_id(image_id)
         if receipt_id is None:
             raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be a positive integer")
         if receipt_id <= 0:
             raise EntityValidationError("receipt_id must be a positive integer")
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        self._validate_image_id(image_id)
         if line_id is None:
             raise EntityValidationError("line_id cannot be None")
         if not isinstance(line_id, int):

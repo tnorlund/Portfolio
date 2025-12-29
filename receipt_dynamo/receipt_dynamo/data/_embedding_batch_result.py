@@ -29,7 +29,12 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 class _EmbeddingBatchResult(
     FlattenedStandardMixin,
 ):
-    """DynamoDB accessor for EmbeddingBatchResult items."""
+    """DynamoDB accessor for EmbeddingBatchResult items.
+
+    .. deprecated::
+        This class is deprecated and not used in production. Consider removing
+        if no longer needed for historical data access.
+    """
 
     @handle_dynamodb_errors("add_embedding_batch_result")
     def add_embedding_batch_result(self, embedding_batch_result: EmbeddingBatchResult):

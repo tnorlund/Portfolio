@@ -54,6 +54,11 @@ class _CompletionBatchResult(
     DynamoDBBaseOperations,
     FlattenedStandardMixin,
 ):
+    """
+    .. deprecated::
+        This class is deprecated and not used in production. Consider removing
+        if no longer needed for historical data access.
+    """
     @handle_dynamodb_errors("add_completion_batch_result")
     def add_completion_batch_result(self, result: CompletionBatchResult) -> None:
         """Add a new completion batch result to DynamoDB.

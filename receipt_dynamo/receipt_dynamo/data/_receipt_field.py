@@ -50,6 +50,10 @@ class _ReceiptField(
     This class is typically used within a DynamoClient to access and manage
     receipt field records.
 
+    .. deprecated::
+        This class is deprecated and not used in production. Consider removing
+        if no longer needed for historical data access.
+
     Attributes
     ----------
     _client : boto3.client

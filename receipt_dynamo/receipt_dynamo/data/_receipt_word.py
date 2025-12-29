@@ -48,14 +48,14 @@ class _ReceiptWord(
     delete_receipt_words(receipt_words: list[ReceiptWord])
         Deletes multiple ReceiptWords.
     delete_receipt_words_from_line(
-        receipt_id: int,
         image_id: str,
+        receipt_id: int,
         line_id: int,
     )
         Deletes all ReceiptWords from a given line within a receipt/image.
     get_receipt_word(
-        receipt_id: int,
         image_id: str,
+        receipt_id: int,
         line_id: int,
         word_id: int,
     ) -> ReceiptWord
@@ -67,8 +67,8 @@ class _ReceiptWord(
     ) -> list[ReceiptWord]
         Returns all ReceiptWords from the table with a given embedding status.
     list_receipt_words_from_line(
-        receipt_id: int,
         image_id: str,
+        receipt_id: int,
         line_id: int,
     ) -> list[ReceiptWord]
         Returns all ReceiptWords that match the given receipt/image/line IDs.
@@ -160,28 +160,28 @@ class _ReceiptWord(
     @handle_dynamodb_errors("delete_receipt_words_from_line")
     def delete_receipt_words_from_line(
         self,
-        receipt_id: int,
         image_id: str,
+        receipt_id: int,
         line_id: int,
     ):
         """Deletes all ReceiptWords from a given line within a
         receipt/image."""
-        receipt_words = self.list_receipt_words_from_line(receipt_id, image_id, line_id)
+        receipt_words = self.list_receipt_words_from_line(image_id, receipt_id, line_id)
         self.delete_receipt_words(receipt_words)
 
     @handle_dynamodb_errors("get_receipt_word")
     def get_receipt_word(
-        self, receipt_id: int, image_id: str, line_id: int, word_id: int
+        self, image_id: str, receipt_id: int, line_id: int, word_id: int
     ) -> ReceiptWord:
         """Retrieves a single ReceiptWord by IDs."""
         # Validate parameters
+        if image_id is None:
+            raise EntityValidationError("image_id cannot be None")
+        assert_valid_uuid(image_id)
         if receipt_id is None or not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer")
         if receipt_id <= 0:
             raise EntityValidationError("receipt_id must be a positive integer")
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
         if line_id is None or not isinstance(line_id, int):
             raise EntityValidationError("line_id must be an integer")
         if line_id <= 0:
@@ -358,7 +358,7 @@ class _ReceiptWord(
 
     @handle_dynamodb_errors("list_receipt_words_from_line")
     def list_receipt_words_from_line(
-        self, receipt_id: int, image_id: str, line_id: int
+        self, image_id: str, receipt_id: int, line_id: int
     ) -> list[ReceiptWord]:
         """Returns all ReceiptWords that match the given
         receipt/image/line IDs."""

@@ -186,8 +186,8 @@ def test_delete_receipt_line_client_errors(
 
     with pytest.raises(expected_exception, match=error_match):
         client.delete_receipt_line(
-            sample_receipt_line.receipt_id,
             sample_receipt_line.image_id,
+            sample_receipt_line.receipt_id,
             sample_receipt_line.line_id,
         )
 
@@ -217,8 +217,8 @@ def test_get_receipt_line_client_errors(
 
     with pytest.raises(expected_exception, match=error_match):
         client.get_receipt_line(
-            sample_receipt_line.receipt_id,
             sample_receipt_line.image_id,
+            sample_receipt_line.receipt_id,
             sample_receipt_line.line_id,
         )
 
@@ -472,7 +472,7 @@ def test_get_receipt_line_parameter_validation(
     client = DynamoClient(dynamodb_table)
 
     with pytest.raises(expected_error, match=error_match):
-        client.get_receipt_line(receipt_id, image_id, line_id)
+        client.get_receipt_line(image_id, receipt_id, line_id)
 
 
 # -------------------------------------------------------------------
@@ -736,8 +736,8 @@ def test_delete_receipt_line_conditional_check_failed(
         EntityNotFoundError, match="not found during delete_receipt_line"
     ):
         client.delete_receipt_line(
-            sample_receipt_line.receipt_id,
             sample_receipt_line.image_id,
+            sample_receipt_line.receipt_id,
             sample_receipt_line.line_id,
         )
 
@@ -763,8 +763,8 @@ def test_add_receipt_line_success(
 
     # Assert
     retrieved = client.get_receipt_line(
-        sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
+        sample_receipt_line.receipt_id,
         sample_receipt_line.line_id,
     )
     assert retrieved == sample_receipt_line
@@ -803,8 +803,8 @@ def test_update_receipt_line_success(
 
     # Verify
     retrieved = client.get_receipt_line(
-        sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
+        sample_receipt_line.receipt_id,
         sample_receipt_line.line_id,
     )
     assert retrieved.text == "Updated line text"
@@ -823,16 +823,16 @@ def test_delete_receipt_line_success(
 
     # Delete
     client.delete_receipt_line(
-        sample_receipt_line.receipt_id,
         sample_receipt_line.image_id,
+        sample_receipt_line.receipt_id,
         sample_receipt_line.line_id,
     )
 
     # Verify
     with pytest.raises(EntityNotFoundError, match="ReceiptLine with.*not found"):
         client.get_receipt_line(
-            sample_receipt_line.receipt_id,
             sample_receipt_line.image_id,
+            sample_receipt_line.receipt_id,
             sample_receipt_line.line_id,
         )
 
@@ -850,7 +850,7 @@ def test_get_receipt_line_not_found(
         EntityNotFoundError,
         match="ReceiptLine with.*not found",
     ):
-        client.get_receipt_line(999, unique_image_id, 999)
+        client.get_receipt_line(unique_image_id, 999, 999)
 
 
 # -------------------------------------------------------------------
@@ -890,7 +890,7 @@ def test_add_receipt_lines_success(
     # Verify all were added
     for line in lines:
         retrieved = client.get_receipt_line(
-            line.receipt_id, line.image_id, line.line_id
+            line.image_id, line.receipt_id, line.line_id
         )
         assert retrieved == line
 
@@ -990,7 +990,7 @@ def test_update_receipt_lines_success(
     # Verify updates
     for line in lines:
         retrieved = client.get_receipt_line(
-            line.receipt_id, line.image_id, line.line_id
+            line.image_id, line.receipt_id, line.line_id
         )
         assert retrieved.text == f"Updated line {line.line_id}"
         assert retrieved.confidence == 0.99
@@ -1031,7 +1031,7 @@ def test_delete_receipt_lines_success(
     # Verify deletion
     for line in lines:
         with pytest.raises(EntityNotFoundError):
-            client.get_receipt_line(line.receipt_id, line.image_id, line.line_id)
+            client.get_receipt_line(line.image_id, line.receipt_id, line.line_id)
 
 
 # -------------------------------------------------------------------

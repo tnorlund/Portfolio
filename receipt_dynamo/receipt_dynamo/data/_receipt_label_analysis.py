@@ -57,6 +57,10 @@ class _ReceiptLabelAnalysis(
 
     This refactored version uses base operations to eliminate code duplication
     while maintaining full backward compatibility.
+
+    .. deprecated::
+        This class is deprecated and not used in production. Consider removing
+        if no longer needed for historical data access.
     """
 
     @handle_dynamodb_errors("add_receipt_label_analysis")
