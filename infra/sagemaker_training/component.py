@@ -12,10 +12,22 @@ replacing the custom EC2-based training setup. Benefits include:
 import json
 import hashlib
 import os
+from pathlib import Path
 import pulumi
 import pulumi_aws as aws
 import pulumi_command as command
-from pulumi import ComponentResource, ResourceOptions, Output
+from pulumi import (
+    ComponentResource,
+    ResourceOptions,
+    Output,
+    AssetArchive,
+    FileArchive,
+    FileAsset,
+)
+
+
+# Get repo root at module load time (two levels up from this file)
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class SageMakerTrainingInfra(ComponentResource):
@@ -224,16 +236,29 @@ class SageMakerTrainingInfra(ComponentResource):
         # Compute content hash for the Docker build context
         self.content_hash = self._compute_source_hash()
 
-        # Upload source to S3 when content changes
-        self.upload_source = command.local.Command(
-            f"{name}-upload-source",
-            create=Output.all(self.source_bucket.bucket).apply(
-                lambda args: self._generate_upload_script(args[0])
+        # Create source archive using Pulumi's native asset system
+        # This automatically handles change detection and uploads
+        sagemaker_training_dir = REPO_ROOT / "infra" / "sagemaker_training"
+        self.source_archive = AssetArchive({
+            "receipt_layoutlm": FileArchive(str(REPO_ROOT / "receipt_layoutlm")),
+            "receipt_dynamo": FileArchive(str(REPO_ROOT / "receipt_dynamo")),
+            "infra/sagemaker_training/Dockerfile": FileAsset(
+                str(sagemaker_training_dir / "Dockerfile")
             ),
-            update=Output.all(self.source_bucket.bucket).apply(
-                lambda args: self._generate_upload_script(args[0])
+            "infra/sagemaker_training/requirements.txt": FileAsset(
+                str(sagemaker_training_dir / "requirements.txt")
             ),
-            triggers=[self.content_hash],
+            "infra/sagemaker_training/train.py": FileAsset(
+                str(sagemaker_training_dir / "train.py")
+            ),
+        })
+
+        # Upload source archive to S3 (Pulumi handles change detection automatically)
+        self.source_object = aws.s3.BucketObjectv2(
+            f"{name}-source-object",
+            bucket=self.source_bucket.id,
+            key="source.zip",
+            source=self.source_archive,
             opts=ResourceOptions(parent=self.source_bucket),
         )
 
@@ -351,11 +376,12 @@ class SageMakerTrainingInfra(ComponentResource):
             tags={"Component": name},
             opts=ResourceOptions(
                 parent=self,
-                depends_on=[self.upload_source],
+                depends_on=[self.source_object],
             ),
         )
 
         # Trigger build when source changes
+        # Use source_object's etag as trigger - it changes when file content changes
         self.trigger_build = command.local.Command(
             f"{name}-trigger-build",
             create=Output.all(self.codebuild_project.name).apply(
@@ -364,10 +390,10 @@ class SageMakerTrainingInfra(ComponentResource):
             update=Output.all(self.codebuild_project.name).apply(
                 lambda args: f'aws codebuild start-build --project-name "{args[0]}" --query "build.id" --output text'
             ),
-            triggers=[self.content_hash],
+            triggers=[self.source_object.etag],
             opts=ResourceOptions(
                 parent=self.codebuild_project,
-                depends_on=[self.upload_source],
+                depends_on=[self.source_object],
             ),
         )
 
@@ -566,56 +592,36 @@ def handler(event, context):
 '''
 
     def _compute_source_hash(self) -> str:
-        """Compute a hash of the source files that affect the Docker image."""
-        # Get the repo root (parent of infra/)
-        infra_dir = os.path.dirname(os.path.abspath(__file__))
-        repo_root = os.path.dirname(infra_dir)
+        """Compute a hash of the source files that affect the Docker image.
+
+        Used for the Docker image tag to ensure unique tags per build.
+        """
+        sagemaker_training_dir = REPO_ROOT / "infra" / "sagemaker_training"
 
         # Files/directories to include in hash
         paths_to_hash = [
-            os.path.join(infra_dir, "sagemaker_training", "Dockerfile"),
-            os.path.join(infra_dir, "sagemaker_training", "requirements.txt"),
-            os.path.join(infra_dir, "sagemaker_training", "train.py"),
-            os.path.join(repo_root, "receipt_layoutlm"),
-            os.path.join(repo_root, "receipt_dynamo"),
+            sagemaker_training_dir / "Dockerfile",
+            sagemaker_training_dir / "requirements.txt",
+            sagemaker_training_dir / "train.py",
+            REPO_ROOT / "receipt_layoutlm",
+            REPO_ROOT / "receipt_dynamo",
         ]
 
         hasher = hashlib.sha256()
 
         for path in paths_to_hash:
-            if os.path.isfile(path):
-                with open(path, "rb") as f:
-                    hasher.update(f.read())
-            elif os.path.isdir(path):
+            if path.is_file():
+                hasher.update(path.read_bytes())
+            elif path.is_dir():
                 # Hash all Python files in directory
-                for root, _, files in os.walk(path):
-                    for fname in sorted(files):
-                        if fname.endswith((".py", ".txt", ".json")):
-                            fpath = os.path.join(root, fname)
-                            with open(fpath, "rb") as f:
-                                hasher.update(f.read())
+                for fpath in sorted(path.rglob("*.py")):
+                    hasher.update(fpath.read_bytes())
+                for fpath in sorted(path.rglob("*.txt")):
+                    hasher.update(fpath.read_bytes())
+                for fpath in sorted(path.rglob("*.json")):
+                    hasher.update(fpath.read_bytes())
 
         return hasher.hexdigest()[:16]
-
-    def _generate_upload_script(self, bucket: str) -> str:
-        """Generate script to zip and upload source to S3."""
-        # Get the repo root
-        infra_dir = os.path.dirname(os.path.abspath(__file__))
-        repo_root = os.path.dirname(infra_dir)
-
-        return f'''
-cd "{repo_root}"
-zip -r /tmp/source.zip \
-    receipt_layoutlm/ \
-    receipt_dynamo/ \
-    infra/sagemaker_training/Dockerfile \
-    infra/sagemaker_training/requirements.txt \
-    infra/sagemaker_training/train.py \
-    -x "*.pyc" -x "__pycache__/*" -x "*.egg-info/*" -x ".git/*"
-aws s3 cp /tmp/source.zip s3://{bucket}/source.zip
-rm /tmp/source.zip
-echo "Uploaded source.zip to s3://{bucket}/source.zip"
-'''
 
     def _generate_buildspec(self) -> str:
         """Generate the buildspec for CodeBuild."""

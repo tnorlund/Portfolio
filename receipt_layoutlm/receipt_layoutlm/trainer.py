@@ -90,6 +90,7 @@ class ReceiptLayoutLMTrainer:
 
         # Allow loading a prebuilt tokenized dataset snapshot
         ds_mod = importlib.import_module("datasets")
+        split_metadata = None
         if self.data_config.dataset_snapshot_load:
             try:
                 datasets = ds_mod.load_from_disk(
@@ -97,9 +98,9 @@ class ReceiptLayoutLMTrainer:
                 )
             except (FileNotFoundError, OSError, ValueError):
                 # Fallback to normal path if load fails
-                datasets = load_datasets(self.dynamo)
+                datasets, split_metadata = load_datasets(self.dynamo)
         else:
-            datasets = load_datasets(self.dynamo)
+            datasets, split_metadata = load_datasets(self.dynamo)
 
         # Compute dataset counts prior to tokenization for run logging
         def _count_labels(dataset) -> Dict[str, int]:
@@ -329,6 +330,7 @@ class ReceiptLayoutLMTrainer:
             "label_list": label_list,
             "num_labels": len(label_list),
             "dataset_counts": dataset_counts,
+            "split_metadata": asdict(split_metadata) if split_metadata else None,
             "epoch_metrics": [],
         }
         with open(run_json_path, "w", encoding="utf-8") as f:
@@ -354,6 +356,13 @@ class ReceiptLayoutLMTrainer:
             tags={},
         )
         self.dynamo.add_job(job)
+
+        # Update status to running
+        job.status = "running"
+        try:
+            self.dynamo.update_job(job)
+        except Exception as e:
+            print(f"Warning: Failed to update job status to running: {e}")
 
         # Per-epoch metric logging to run.json (created after job so we have job_id)
         try:
@@ -468,13 +477,14 @@ class ReceiptLayoutLMTrainer:
                                 entry["learning_rate"] = float(latest_train["learning_rate"])
                                 _add_metric("learning_rate", latest_train["learning_rate"], "rate")
 
-                    # Batch write all metrics in a single DynamoDB call
+                    # Write metrics to DynamoDB (one at a time since batch method doesn't exist)
                     if metrics_to_write:
-                        try:
-                            self.dynamo.add_job_metrics(metrics_to_write)
-                        except Exception:
-                            # Best-effort write; ignore all errors
-                            pass
+                        for metric in metrics_to_write:
+                            try:
+                                self.dynamo.add_job_metric(metric)
+                            except Exception as e:
+                                # Log but don't fail training on metric write errors
+                                print(f"Warning: Failed to write metric {metric.metric_name}: {e}")
 
                     epoch_metrics.append(entry)
                     data["epoch_metrics"] = epoch_metrics
@@ -565,11 +575,68 @@ class ReceiptLayoutLMTrainer:
                         )
                     )
 
-            if dataset_metrics:
-                self.dynamo.add_job_metrics(dataset_metrics)
+            # Add split metadata metrics if available
+            if split_metadata:
+                dataset_metrics.extend([
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="random_seed",
+                        value=split_metadata.random_seed,
+                        timestamp=ts,
+                        unit="seed",
+                        epoch=None,
+                    ),
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="num_train_receipts",
+                        value=split_metadata.num_train_receipts,
+                        timestamp=ts,
+                        unit="count",
+                        epoch=None,
+                    ),
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="num_val_receipts",
+                        value=split_metadata.num_val_receipts,
+                        timestamp=ts,
+                        unit="count",
+                        epoch=None,
+                    ),
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="o_entity_ratio_before_downsample",
+                        value=split_metadata.o_entity_ratio_before_downsample,
+                        timestamp=ts,
+                        unit="ratio",
+                        epoch=None,
+                    ),
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="o_only_lines_dropped",
+                        value=split_metadata.o_only_lines_dropped,
+                        timestamp=ts,
+                        unit="count",
+                        epoch=None,
+                    ),
+                    JobMetric(
+                        job_id=job.job_id,
+                        metric_name="target_o_entity_ratio",
+                        value=split_metadata.target_o_entity_ratio,
+                        timestamp=ts,
+                        unit="ratio",
+                        epoch=None,
+                    ),
+                ])
 
-        except (DynamoDBError, EntityError, OperationError, ValueError):
-            pass
+            # Write metrics one at a time (batch method doesn't exist)
+            for metric in dataset_metrics:
+                try:
+                    self.dynamo.add_job_metric(metric)
+                except Exception as e:
+                    print(f"Warning: Failed to write metric {metric.metric_name}: {e}")
+
+        except (DynamoDBError, EntityError, OperationError, ValueError) as e:
+            print(f"Warning: Failed to write dataset metrics: {e}")
 
         def compute_metrics(eval_pred):
             # seqeval F1 at entity-level (BIO tags)
@@ -819,6 +886,7 @@ class ReceiptLayoutLMTrainer:
                 job.results["best_checkpoint_path"] = summary_payload["best_checkpoint_path"]
 
             self.dynamo.update_job(job)
+            print(f"Job {job.job_id} completed with status: {job.status}, best_f1: {job.results.get('best_f1')}")
 
         except (
             DynamoDBError,
@@ -827,8 +895,8 @@ class ReceiptLayoutLMTrainer:
             FileNotFoundError,
             json.JSONDecodeError,
             ValueError,
-        ):
-            pass
+        ) as e:
+            print(f"Warning: Failed to update job completion status: {e}")
 
         return job.job_id
 
