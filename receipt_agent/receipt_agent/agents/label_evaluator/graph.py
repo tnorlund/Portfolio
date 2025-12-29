@@ -16,6 +16,7 @@ Graph nodes (full workflow):
 - compute_merchant_patterns: Build geometric patterns from training data
 - flag_geometric_anomalies: Run 6 detection rules to flag geometric anomalies
 - review_currency_labels: LLM reviews currency-type labels
+- review_metadata_labels: LLM reviews metadata labels (MERCHANT_NAME, etc.)
 - validate_financial_math: Validate GRAND_TOTAL = SUBTOTAL + TAX, etc.
 - review_flagged_labels: LLM reviews all flagged words
 - persist_label_decisions: Write new labels to DynamoDB
@@ -60,6 +61,9 @@ from receipt_agent.agents.label_evaluator.issue_detection import (
 )
 from receipt_agent.agents.label_evaluator.llm_review import (
     review_all_issues,
+)
+from receipt_agent.agents.label_evaluator.metadata_subagent import (
+    evaluate_metadata_labels as evaluate_metadata_labels_fn,
 )
 from receipt_agent.agents.label_evaluator.patterns import (
     compute_merchant_patterns as _compute_patterns_from_receipts,
@@ -145,7 +149,9 @@ def create_label_evaluator_graph(
     if _chroma_client:
         logger.info("ChromaDB client provided for similar word lookup")
     else:
-        logger.info("ChromaDB not configured - similar word lookup will be skipped")
+        logger.info(
+            "ChromaDB not configured - similar word lookup will be skipped"
+        )
 
     # Initialize LLM for review (uses Ollama)
     if llm is not None:
@@ -153,7 +159,9 @@ def create_label_evaluator_graph(
     elif HAS_OLLAMA and ChatOllama is not None:
         client_kwargs: dict[str, Any] = {"timeout": 120}
         if ollama_api_key:
-            client_kwargs["headers"] = {"Authorization": f"Bearer {ollama_api_key}"}
+            client_kwargs["headers"] = {
+                "Authorization": f"Bearer {ollama_api_key}"
+            }
         _llm = ChatOllama(
             base_url=ollama_base_url,
             model=llm_model,
@@ -221,18 +229,26 @@ def create_label_evaluator_graph(
             return {}  # Skip if previous step failed
 
         if not state.place:
-            logger.info("No place data available, skipping merchant pattern learning")
+            logger.info(
+                "No place data available, skipping merchant pattern learning"
+            )
             return {"other_receipt_data": []}
 
         merchant_name = state.place.merchant_name
         if not merchant_name:
-            logger.info("No merchant name available, skipping pattern learning")
+            logger.info(
+                "No merchant name available, skipping pattern learning"
+            )
             return {"other_receipt_data": []}
 
         try:
             # Query for other receipts with same merchant
             # If MAX_OTHER_RECEIPTS is None, fetch all receipts
-            limit = MAX_OTHER_RECEIPTS + 1 if MAX_OTHER_RECEIPTS is not None else None
+            limit = (
+                MAX_OTHER_RECEIPTS + 1
+                if MAX_OTHER_RECEIPTS is not None
+                else None
+            )
             other_places, _ = _dynamo_client.get_receipt_places_by_merchant(
                 merchant_name,
                 limit=limit,  # None means fetch all available
@@ -243,7 +259,8 @@ def create_label_evaluator_graph(
                 p
                 for p in other_places
                 if not (
-                    p.image_id == state.image_id and p.receipt_id == state.receipt_id
+                    p.image_id == state.image_id
+                    and p.receipt_id == state.receipt_id
                 )
             ]
 
@@ -274,8 +291,10 @@ def create_label_evaluator_graph(
                     if isinstance(words, tuple):
                         words = words[0]
 
-                    labels, _ = _dynamo_client.list_receipt_word_labels_for_receipt(
-                        other_place.image_id, other_place.receipt_id
+                    labels, _ = (
+                        _dynamo_client.list_receipt_word_labels_for_receipt(
+                            other_place.image_id, other_place.receipt_id
+                        )
                     )
 
                     other_receipt_data.append(
@@ -418,7 +437,9 @@ def create_label_evaluator_graph(
 
             if currency_decisions:
                 # Convert dicts to EvaluationIssue objects and merge
-                currency_issues = convert_to_evaluation_issues(currency_decisions)
+                currency_issues = convert_to_evaluation_issues(
+                    currency_decisions
+                )
                 logger.info(
                     "Currency subagent evaluated %s words, found %s issues",
                     len(currency_decisions),
@@ -429,6 +450,51 @@ def create_label_evaluator_graph(
 
         except Exception as e:
             logger.warning("Currency evaluation failed: %s", e)
+
+        return {}
+
+    def review_metadata_labels(state: EvaluatorState) -> dict:
+        """Evaluate metadata labels using the metadata subagent."""
+        if state.error:
+            return {}
+
+        if not state.visual_lines:
+            return {}
+
+        # Skip metadata evaluation if LLM not available
+        if _llm is None:
+            logger.info("Skipping metadata evaluation - LLM not available")
+            return {}
+
+        merchant_name = "Unknown"
+        if state.place:
+            merchant_name = state.place.merchant_name or "Unknown"
+
+        try:
+            metadata_decisions = evaluate_metadata_labels_fn(
+                visual_lines=state.visual_lines,
+                place=state.place,
+                llm=_llm,
+                image_id=state.image_id,
+                receipt_id=state.receipt_id,
+                merchant_name=merchant_name,
+            )
+
+            if metadata_decisions:
+                # Convert dicts to EvaluationIssue objects and merge
+                metadata_issues = convert_to_evaluation_issues(
+                    metadata_decisions
+                )
+                logger.info(
+                    "Metadata subagent evaluated %s words, found %s issues",
+                    len(metadata_decisions),
+                    len(metadata_issues),
+                )
+                combined_issues = list(state.issues_found) + metadata_issues
+                return {"issues_found": combined_issues}
+
+        except Exception as e:
+            logger.warning("Metadata evaluation failed: %s", e)
 
         return {}
 
@@ -460,11 +526,16 @@ def create_label_evaluator_graph(
 
             if financial_results:
                 # Convert results to EvaluationIssue objects
-                financial_issues = convert_to_evaluation_issues(financial_results)
+                financial_issues = convert_to_evaluation_issues(
+                    financial_results
+                )
                 logger.info(
                     "Financial validation found %s math issues involving %s values",
                     len(
-                        {r.get("issue", {}).get("issue_type") for r in financial_results}
+                        {
+                            r.get("issue", {}).get("issue_type")
+                            for r in financial_results
+                        }
                     ),
                     len(financial_issues),
                 )
@@ -495,7 +566,9 @@ def create_label_evaluator_graph(
 
         # Skip LLM review if LLM is not available
         if _llm is None:
-            logger.warning("LLM not available, using evaluator results directly")
+            logger.warning(
+                "LLM not available, using evaluator results directly"
+            )
             fallback_labels: list[ReceiptWordLabel] = []
             for issue in state.issues_found:
                 eval_label = _create_evaluation_label(issue, None)
@@ -677,17 +750,19 @@ def create_label_evaluator_graph(
     workflow.add_node("compute_merchant_patterns", compute_merchant_patterns)
     workflow.add_node("flag_geometric_anomalies", flag_geometric_anomalies)
     workflow.add_node("review_currency_labels", review_currency_labels)
+    workflow.add_node("review_metadata_labels", review_metadata_labels)
     workflow.add_node("validate_financial_math", validate_financial_math)
     workflow.add_node("review_flagged_labels", review_flagged_labels)
     workflow.add_node("persist_label_decisions", persist_label_decisions)
 
-    # Linear flow
+    # Linear flow (matches Step Function conceptually, though SF runs some in parallel)
     workflow.add_edge("load_receipt_data", "load_training_receipts")
     workflow.add_edge("load_training_receipts", "build_spatial_context")
     workflow.add_edge("build_spatial_context", "compute_merchant_patterns")
     workflow.add_edge("compute_merchant_patterns", "flag_geometric_anomalies")
     workflow.add_edge("flag_geometric_anomalies", "review_currency_labels")
-    workflow.add_edge("review_currency_labels", "validate_financial_math")
+    workflow.add_edge("review_currency_labels", "review_metadata_labels")
+    workflow.add_edge("review_metadata_labels", "validate_financial_math")
     workflow.add_edge("validate_financial_math", "review_flagged_labels")
     workflow.add_edge("review_flagged_labels", "persist_label_decisions")
     workflow.add_edge("persist_label_decisions", END)
@@ -714,7 +789,10 @@ def _create_evaluation_label(
     """
     if review_result:
         # Use LLM review result
-        if review_result.decision == "INVALID" and review_result.suggested_label:
+        if (
+            review_result.decision == "INVALID"
+            and review_result.suggested_label
+        ):
             label = review_result.suggested_label
         elif issue.suggested_label:
             label = issue.suggested_label
@@ -825,7 +903,9 @@ async def run_label_evaluator(
         }
 
         if merchant_patterns:
-            result["merchant_receipts_analyzed"] = merchant_patterns.receipt_count
+            result["merchant_receipts_analyzed"] = (
+                merchant_patterns.receipt_count
+            )
 
         logger.info(
             "Evaluation complete: %s issues, %s reviewed, %s labels written",
@@ -981,7 +1061,9 @@ def create_compute_only_graph(
 
         # other_receipt_data can be empty (no merchant match)
         if not state.other_receipt_data:
-            logger.info("No other_receipt_data provided - pattern learning disabled")
+            logger.info(
+                "No other_receipt_data provided - pattern learning disabled"
+            )
 
         if errors:
             error_msg = f"Validation failed: {'; '.join(errors)}"
@@ -1142,7 +1224,9 @@ async def run_compute_only(
     try:
         invoke_config = {
             "recursion_limit": 10,
-            "configurable": {"thread_id": f"{state.image_id}#{state.receipt_id}"},
+            "configurable": {
+                "thread_id": f"{state.image_id}#{state.receipt_id}"
+            },
         }
         # Merge in provided config (e.g., callbacks for tracing)
         if config:
@@ -1176,8 +1260,12 @@ async def run_compute_only(
         }
 
         if merchant_patterns:
-            result["merchant_receipts_analyzed"] = merchant_patterns.receipt_count
-            result["label_types_found"] = len(merchant_patterns.label_positions)
+            result["merchant_receipts_analyzed"] = (
+                merchant_patterns.receipt_count
+            )
+            result["label_types_found"] = len(
+                merchant_patterns.label_positions
+            )
 
         logger.info(
             "Compute-only evaluation complete: %s issues",
