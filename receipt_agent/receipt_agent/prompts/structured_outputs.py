@@ -15,10 +15,11 @@ import re
 from enum import Enum
 from typing import Optional
 
-logger = logging.getLogger(__name__)
-
 from pydantic import BaseModel, Field
+
 from receipt_agent.constants import CORE_LABELS_SET
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # Shared Enums
