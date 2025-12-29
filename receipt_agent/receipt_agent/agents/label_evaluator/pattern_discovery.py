@@ -733,22 +733,23 @@ def _parse_llm_response(content: str) -> dict | None:
     """
     content = extract_json_from_response(content)
 
-    # Try structured parsing first (validates schema and enum values)
+    # Try to parse JSON first
     try:
         parsed = json.loads(content)
-        structured_response = PatternDiscoveryResponse.model_validate(parsed)
-        return structured_response.to_dict()
-    except (json.JSONDecodeError, ValidationError) as e:
-        logger.debug(
-            "Structured parsing failed, falling back to manual parsing: %s", e
-        )
-
-    # Fallback to manual JSON parsing for backwards compatibility
-    try:
-        return json.loads(content)
     except json.JSONDecodeError as e:
         logger.warning("Failed to parse LLM response as JSON: %s", e)
         return None
+
+    # Try structured validation (validates schema and enum values)
+    try:
+        structured_response = PatternDiscoveryResponse.model_validate(parsed)
+        return structured_response.to_dict()
+    except ValidationError as e:
+        logger.debug(
+            "Structured validation failed, returning raw parsed JSON: %s", e
+        )
+        # Return the already-parsed dict for backwards compatibility
+        return parsed
 
 
 def get_default_patterns(merchant_name: str, reason: str = "unknown") -> dict:

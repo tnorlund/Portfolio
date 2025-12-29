@@ -10,6 +10,7 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, Optional
 
+from langchain_core.messages import HumanMessage
 from pydantic import ValidationError
 
 from receipt_agent.constants import CORE_LABELS as CORE_LABELS_DICT
@@ -1006,8 +1007,6 @@ def invoke_with_structured_output(
     Returns:
         List of review dicts, one per issue
     """
-    from langchain_core.messages import HumanMessage
-
     try:
         # Create structured LLM
         structured_llm = llm.with_structured_output(BatchedReviewResponse)
