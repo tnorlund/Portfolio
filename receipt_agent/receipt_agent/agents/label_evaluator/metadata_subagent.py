@@ -35,9 +35,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
+from pydantic import ValidationError
 
 from receipt_agent.constants import METADATA_EVALUATION_LABELS
-from receipt_agent.prompts.structured_outputs import MetadataEvaluationResponse
+from receipt_agent.prompts.structured_outputs import (
+    MetadataEvaluationResponse,
+    extract_json_from_response,
+)
 
 from .state import VisualLine, WordContext
 
@@ -456,19 +460,6 @@ Respond ONLY with the JSON array, no other text.
     return prompt
 
 
-def _extract_json_from_response(response_text: str) -> str:
-    """Extract JSON from response, handling markdown code blocks."""
-    if "```json" in response_text:
-        start = response_text.find("```json") + 7
-        end = response_text.find("```", start)
-        return response_text[start:end].strip()
-    elif "```" in response_text:
-        start = response_text.find("```") + 3
-        end = response_text.find("```", start)
-        return response_text[start:end].strip()
-    return response_text.strip()
-
-
 def parse_metadata_evaluation_response(
     response_text: str,
     num_words: int,
@@ -479,7 +470,7 @@ def parse_metadata_evaluation_response(
     which validates the schema and constrains suggested_label to valid metadata labels.
     Falls back to manual JSON parsing if structured parsing fails.
     """
-    response_text = _extract_json_from_response(response_text)
+    response_text = extract_json_from_response(response_text)
 
     # Default fallback
     fallback = {
@@ -497,7 +488,7 @@ def parse_metadata_evaluation_response(
             parsed = {"evaluations": parsed}
         structured_response = MetadataEvaluationResponse.model_validate(parsed)
         return structured_response.to_ordered_list(num_words)
-    except Exception as e:
+    except (json.JSONDecodeError, ValidationError) as e:
         logger.debug(
             "Structured parsing failed, falling back to manual parsing: %s", e
         )

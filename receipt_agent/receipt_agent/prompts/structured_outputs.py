@@ -10,10 +10,14 @@ Usage:
     # response is already a BatchedReviewResponse object
 """
 
+import json
+import re
 from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field
+
+from receipt_agent.constants import CORE_LABELS_SET
 
 # =============================================================================
 # Shared Enums
@@ -62,6 +66,15 @@ class LabelEnum(str, Enum):
     REFUND = "REFUND"
 
 
+# Runtime assertion to ensure LabelEnum stays in sync with CORE_LABELS_SET
+_label_enum_values = {e.value for e in LabelEnum}
+assert _label_enum_values == CORE_LABELS_SET, (
+    f"LabelEnum out of sync with CORE_LABELS_SET. "
+    f"Missing from LabelEnum: {CORE_LABELS_SET - _label_enum_values}. "
+    f"Extra in LabelEnum: {_label_enum_values - CORE_LABELS_SET}."
+)
+
+
 class ReceiptTypeEnum(str, Enum):
     """Type of receipt for pattern discovery."""
 
@@ -84,6 +97,63 @@ class PositionEnum(str, Enum):
     RIGHT = "right"
     VARIES = "varies"
     NOT_FOUND = "not_found"
+
+
+# =============================================================================
+# Shared Helper Functions
+# =============================================================================
+
+
+def extract_json_from_response(response_text: str) -> str:
+    """Extract JSON from LLM response, handling markdown code blocks.
+
+    Args:
+        response_text: Raw LLM response that may contain markdown code blocks
+
+    Returns:
+        Extracted JSON string
+    """
+    if "```" in response_text:
+        match = re.search(
+            r"```(?:json)?\s*(.*?)\s*```", response_text, re.DOTALL
+        )
+        if match:
+            return match.group(1).strip()
+    return response_text.strip()
+
+
+def build_ordered_list(
+    items: list,
+    expected_count: int,
+    index_attr: str = "index",
+    fallback_reasoning: str = "No decision from LLM",
+) -> list[dict]:
+    """Build ordered list of dicts from indexed items with fallbacks.
+
+    Args:
+        items: List of items with to_dict() method and index attribute
+        expected_count: Expected number of items in result
+        index_attr: Name of the index attribute on items
+        fallback_reasoning: Reasoning text for missing items
+
+    Returns:
+        List of dicts, one per index, with fallbacks for missing
+    """
+    by_index = {getattr(item, index_attr): item for item in items}
+    result = []
+    for i in range(expected_count):
+        if i in by_index:
+            result.append(by_index[i].to_dict())
+        else:
+            result.append(
+                {
+                    "decision": "NEEDS_REVIEW",
+                    "reasoning": fallback_reasoning,
+                    "suggested_label": None,
+                    "confidence": "low",
+                }
+            )
+    return result
 
 
 # =============================================================================
@@ -140,21 +210,12 @@ class BatchedReviewResponse(BaseModel):
         Returns:
             List of review dicts, one per issue index, with fallbacks for missing
         """
-        reviews_by_index = {r.issue_index: r for r in self.reviews}
-        result = []
-        for i in range(expected_count):
-            if i in reviews_by_index:
-                result.append(reviews_by_index[i].to_dict())
-            else:
-                result.append(
-                    {
-                        "decision": "NEEDS_REVIEW",
-                        "reasoning": f"LLM did not provide review for issue {i}",
-                        "suggested_label": None,
-                        "confidence": "low",
-                    }
-                )
-        return result
+        return build_ordered_list(
+            self.reviews,
+            expected_count,
+            index_attr="issue_index",
+            fallback_reasoning="LLM did not provide review for this issue",
+        )
 
 
 # =============================================================================
@@ -217,21 +278,7 @@ class CurrencyEvaluationResponse(BaseModel):
 
     def to_ordered_list(self, expected_count: int) -> list[dict]:
         """Convert to ordered list of dicts for backwards compatibility."""
-        evals_by_index = {e.index: e for e in self.evaluations}
-        result = []
-        for i in range(expected_count):
-            if i in evals_by_index:
-                result.append(evals_by_index[i].to_dict())
-            else:
-                result.append(
-                    {
-                        "decision": "NEEDS_REVIEW",
-                        "reasoning": "No decision from LLM",
-                        "suggested_label": None,
-                        "confidence": "low",
-                    }
-                )
-        return result
+        return build_ordered_list(self.evaluations, expected_count)
 
 
 # =============================================================================
@@ -293,21 +340,7 @@ class MetadataEvaluationResponse(BaseModel):
 
     def to_ordered_list(self, expected_count: int) -> list[dict]:
         """Convert to ordered list of dicts for backwards compatibility."""
-        evals_by_index = {e.index: e for e in self.evaluations}
-        result = []
-        for i in range(expected_count):
-            if i in evals_by_index:
-                result.append(evals_by_index[i].to_dict())
-            else:
-                result.append(
-                    {
-                        "decision": "NEEDS_REVIEW",
-                        "reasoning": "No decision from LLM",
-                        "suggested_label": None,
-                        "confidence": "low",
-                    }
-                )
-        return result
+        return build_ordered_list(self.evaluations, expected_count)
 
 
 # =============================================================================
@@ -347,6 +380,9 @@ class LabelPositions(BaseModel):
 class PatternDiscoveryResponse(BaseModel):
     """Response for line item pattern discovery."""
 
+    merchant: Optional[str] = Field(
+        default=None, description="Name of the merchant"
+    )
     receipt_type: ReceiptTypeEnum = Field(
         description="Whether receipt has itemized products or is a service receipt"
     )
@@ -396,6 +432,8 @@ class PatternDiscoveryResponse(BaseModel):
             "special_markers": self.special_markers,
             "product_name_patterns": self.product_name_patterns,
         }
+        if self.merchant:
+            result["merchant"] = self.merchant
         if self.lines_per_item:
             result["lines_per_item"] = {
                 "typical": self.lines_per_item.typical,

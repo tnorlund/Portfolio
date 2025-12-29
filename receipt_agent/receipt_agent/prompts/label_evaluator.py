@@ -10,11 +10,13 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, Optional
 
+from pydantic import ValidationError
+
 from receipt_agent.constants import CORE_LABELS as CORE_LABELS_DICT
 from receipt_agent.constants import CORE_LABELS_SET
 from receipt_agent.prompts.structured_outputs import (
     BatchedReviewResponse,
-    SingleReview,
+    extract_json_from_response,
 )
 
 if TYPE_CHECKING:
@@ -823,15 +825,6 @@ IMPORTANT: Provide exactly {len(issues_with_context)} reviews, one for each issu
 # =============================================================================
 
 
-def _extract_json_from_response(response_text: str) -> str:
-    """Extract JSON from response, handling markdown code blocks."""
-    if "```" in response_text:
-        match = re.search(r"```(?:json)?\s*(.*?)\s*```", response_text, re.S)
-        if match:
-            return match.group(1).strip()
-    return response_text.strip()
-
-
 def parse_llm_response(response_text: str) -> dict[str, Any]:
     """
     Parse single-issue LLM JSON response.
@@ -839,7 +832,7 @@ def parse_llm_response(response_text: str) -> dict[str, Any]:
     Returns:
         Dict with keys: decision, reasoning, suggested_label, confidence
     """
-    response_text = _extract_json_from_response(response_text)
+    response_text = extract_json_from_response(response_text)
 
     try:
         result = json.loads(response_text)
@@ -897,7 +890,7 @@ def parse_batched_llm_response(
         List of dicts, one per issue, each with:
             decision, reasoning, suggested_label, confidence
     """
-    response_text = _extract_json_from_response(response_text)
+    response_text = extract_json_from_response(response_text)
 
     # Default fallback for all issues
     fallback = {
@@ -912,9 +905,11 @@ def parse_batched_llm_response(
         result = json.loads(response_text)
         structured_response = BatchedReviewResponse.model_validate(result)
         return structured_response.to_ordered_list(expected_count)
-    except Exception as e:
+    except (json.JSONDecodeError, ValidationError) as e:
         logger.debug(
-            "Structured parsing failed, falling back to manual parsing: %s", e
+            "Structured parsing failed (type=%s), falling back to manual parsing: %s",
+            type(e).__name__,
+            e,
         )
 
     # Fallback to manual parsing for backwards compatibility
@@ -1027,7 +1022,8 @@ def invoke_with_structured_output(
 
     except Exception as e:
         logger.warning(
-            "Structured output invocation failed, falling back to text parsing: %s",
+            "Structured output invocation failed (type=%s), falling back to text parsing: %s",
+            type(e).__name__,
             e,
         )
         # Fall back to regular invocation + parsing

@@ -35,9 +35,13 @@ from dataclasses import dataclass
 from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
+from pydantic import ValidationError
 
 from receipt_agent.constants import CURRENCY_LABELS
-from receipt_agent.prompts.structured_outputs import CurrencyEvaluationResponse
+from receipt_agent.prompts.structured_outputs import (
+    CurrencyEvaluationResponse,
+    extract_json_from_response,
+)
 
 from .state import EvaluationIssue, VisualLine, WordContext
 
@@ -343,19 +347,6 @@ Respond ONLY with the JSON array, no other text.
     return prompt
 
 
-def _extract_json_from_response(response_text: str) -> str:
-    """Extract JSON from response, handling markdown code blocks."""
-    if "```json" in response_text:
-        start = response_text.find("```json") + 7
-        end = response_text.find("```", start)
-        return response_text[start:end].strip()
-    elif "```" in response_text:
-        start = response_text.find("```") + 3
-        end = response_text.find("```", start)
-        return response_text[start:end].strip()
-    return response_text.strip()
-
-
 def parse_currency_evaluation_response(
     response_text: str,
     num_words: int,
@@ -366,7 +357,7 @@ def parse_currency_evaluation_response(
     which validates the schema and constrains suggested_label to valid currency labels.
     Falls back to manual JSON parsing if structured parsing fails.
     """
-    response_text = _extract_json_from_response(response_text)
+    response_text = extract_json_from_response(response_text)
 
     # Default fallback
     fallback = {
@@ -384,7 +375,7 @@ def parse_currency_evaluation_response(
             parsed = {"evaluations": parsed}
         structured_response = CurrencyEvaluationResponse.model_validate(parsed)
         return structured_response.to_ordered_list(num_words)
-    except Exception as e:
+    except (json.JSONDecodeError, ValidationError) as e:
         logger.debug(
             "Structured parsing failed, falling back to manual parsing: %s", e
         )

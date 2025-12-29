@@ -41,8 +41,12 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import httpx
+from pydantic import ValidationError
 
-from receipt_agent.prompts.structured_outputs import PatternDiscoveryResponse
+from receipt_agent.prompts.structured_outputs import (
+    PatternDiscoveryResponse,
+    extract_json_from_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -727,23 +731,14 @@ def _parse_llm_response(content: str) -> dict | None:
     which validates the schema and constrains enum values.
     Falls back to manual JSON parsing if structured parsing fails.
     """
-    content = content.strip()
-
-    # Remove markdown code blocks if present
-    if content.startswith("```json"):
-        content = content[7:]
-    if content.startswith("```"):
-        content = content[3:]
-    if content.endswith("```"):
-        content = content[:-3]
-    content = content.strip()
+    content = extract_json_from_response(content)
 
     # Try structured parsing first (validates schema and enum values)
     try:
         parsed = json.loads(content)
         structured_response = PatternDiscoveryResponse.model_validate(parsed)
         return structured_response.to_dict()
-    except Exception as e:
+    except (json.JSONDecodeError, ValidationError) as e:
         logger.debug(
             "Structured parsing failed, falling back to manual parsing: %s", e
         )
