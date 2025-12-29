@@ -114,7 +114,11 @@ def get_position_zone(x: float, zones: Optional[dict] = None) -> str:
 
 def looks_like_currency(text: str) -> bool:
     """Check if text looks like a currency value."""
-    # Remove $ and check pattern
+    # Fast regex check first (matches $1,234.56 format)
+    if CURRENCY_PATTERN.match(text):
+        return True
+
+    # Fallback: remove symbols and try numeric heuristic
     clean = text.replace("$", "").replace(",", "")
     try:
         val = float(clean)

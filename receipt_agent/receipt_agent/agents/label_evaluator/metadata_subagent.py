@@ -41,6 +41,9 @@ from .state import VisualLine, WordContext
 
 logger = logging.getLogger(__name__)
 
+# Maximum receipt lines to include in LLM prompt for context
+MAX_RECEIPT_LINES_FOR_PROMPT = 30
+
 # Labels validated against ReceiptPlace data
 PLACE_VALIDATED_LABELS = {
     "MERCHANT_NAME",
@@ -71,7 +74,8 @@ DATE_PATTERNS = [
 ]
 TIME_PATTERN = re.compile(r"^\d{1,2}:\d{2}(:\d{2})?\s*([AP]M)?$", re.I)
 WEBSITE_PATTERN = re.compile(
-    r"^(www\.)?\w+\.(com|org|net|edu|gov|io|co)$", re.I
+    r"^(www\.)?\w+\.(com|org|net|edu|gov|io|co|biz|info|store|shop|app|dev|ai)$",
+    re.I,
 )
 PAYMENT_PATTERNS = [
     re.compile(r"^(VISA|MASTERCARD|AMEX|DISCOVER|DEBIT|CREDIT)\b", re.I),
@@ -129,10 +133,7 @@ def should_skip_for_metadata_evaluation(word_text: str) -> bool:
         return True
 
     # Common stop words (case-insensitive)
-    if word_text.lower() in METADATA_STOP_WORDS:
-        return True
-
-    return False
+    return word_text.lower() in METADATA_STOP_WORDS
 
 
 @dataclass
@@ -344,9 +345,9 @@ def build_metadata_evaluation_prompt(
 
     Shows the receipt structure, ReceiptPlace data, and asks the LLM to evaluate.
     """
-    # Build receipt text representation (first 30 lines for context)
+    # Build receipt text representation (first N lines for context)
     receipt_lines = []
-    for line in visual_lines[:30]:
+    for line in visual_lines[:MAX_RECEIPT_LINES_FOR_PROMPT]:
         line_text = []
         for wc in line.words:
             label = wc.current_label.label if wc.current_label else "unlabeled"
@@ -356,8 +357,11 @@ def build_metadata_evaluation_prompt(
         )
 
     receipt_text = "\n".join(receipt_lines)
-    if len(visual_lines) > 30:
-        receipt_text += f"\n  ... ({len(visual_lines) - 30} more lines)"
+    if len(visual_lines) > MAX_RECEIPT_LINES_FOR_PROMPT:
+        receipt_text += (
+            f"\n  ... ({len(visual_lines) - MAX_RECEIPT_LINES_FOR_PROMPT} "
+            "more lines)"
+        )
 
     # Build ReceiptPlace context
     place_context = ""

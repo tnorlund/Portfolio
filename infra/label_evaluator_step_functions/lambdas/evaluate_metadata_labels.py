@@ -174,7 +174,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     batch_bucket,
                     data_s3_key,
                 )
-                target_data = load_json_from_s3(s3, batch_bucket, data_s3_key)
+                target_data = load_json_from_s3(
+                    s3, batch_bucket, data_s3_key, logger=logger
+                )
 
                 if target_data is None:
                     raise ValueError(

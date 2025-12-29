@@ -102,6 +102,16 @@ from receipt_agent.agents.label_evaluator.currency_subagent import (
     identify_line_item_rows,
     parse_currency_evaluation_response,
 )
+from receipt_agent.agents.label_evaluator.metadata_subagent import (
+    FORMAT_VALIDATED_LABELS,
+    MAX_RECEIPT_LINES_FOR_PROMPT,
+    PLACE_VALIDATED_LABELS,
+    MetadataWord,
+    build_metadata_evaluation_prompt,
+    collect_metadata_words,
+    evaluate_metadata_labels,
+    parse_metadata_evaluation_response,
+)
 from receipt_agent.agents.label_evaluator.geometry import (
     angle_difference,
     calculate_angle_degrees,
@@ -268,4 +278,13 @@ __all__ = [
     "evaluate_currency_labels_sync",
     "identify_line_item_rows",
     "parse_currency_evaluation_response",
+    # Metadata subagent (for metadata label validation)
+    "MetadataWord",
+    "PLACE_VALIDATED_LABELS",
+    "FORMAT_VALIDATED_LABELS",
+    "MAX_RECEIPT_LINES_FOR_PROMPT",
+    "build_metadata_evaluation_prompt",
+    "collect_metadata_words",
+    "evaluate_metadata_labels",
+    "parse_metadata_evaluation_response",
 ]
