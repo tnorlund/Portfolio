@@ -303,6 +303,11 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                                 execution_id=f"currency-{execution_id}",
                             )
                             logger.info("Applied decisions: %s", applied_stats)
+                        else:
+                            logger.warning(
+                                "DYNAMODB_TABLE_NAME not configured, skipping apply of %s invalid decisions",
+                                len(invalid_decisions),
+                            )
 
             # 6. Upload results to S3
             with child_trace("upload_results", trace_ctx):

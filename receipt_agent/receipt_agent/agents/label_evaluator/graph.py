@@ -419,12 +419,13 @@ def create_label_evaluator_graph(
             )
 
             if currency_decisions:
-                logger.info(
-                    "Currency subagent found %s issues",
-                    len(currency_decisions),
-                )
                 # Convert dicts to EvaluationIssue objects and merge
                 currency_issues = convert_to_evaluation_issues(currency_decisions)
+                logger.info(
+                    "Currency subagent evaluated %s words, found %s issues",
+                    len(currency_decisions),
+                    len(currency_issues),
+                )
                 combined_issues = list(state.issues_found) + currency_issues
                 return {"issues_found": combined_issues}
 

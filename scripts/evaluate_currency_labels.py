@@ -127,7 +127,7 @@ def main():
     # ==========================================================================
     # Step 1: FetchReceiptData - Load receipt data from DynamoDB
     # ==========================================================================
-    logger.info(f"Step 1: Fetching receipt data for {args.image_id}#{args.receipt_id}...")
+    logger.info("Step 1: Fetching receipt data for %s#%s...", args.image_id, args.receipt_id)
     words = dynamo_client.list_receipt_words_from_receipt(
         args.image_id, args.receipt_id
     )
@@ -137,13 +137,13 @@ def main():
     place = dynamo_client.get_receipt_place(args.image_id, args.receipt_id)
     merchant_name = place.merchant_name if place else "Unknown"
 
-    logger.info(f"  Merchant: {merchant_name}")
-    logger.info(f"  Words: {len(words)}, Labels: {len(labels)}")
+    logger.info("  Merchant: %s", merchant_name)
+    logger.info("  Words: %s, Labels: %s", len(words), len(labels))
 
     # Build word contexts and visual lines
     word_contexts = build_word_contexts(words, labels)
     visual_lines = assemble_visual_lines(word_contexts)
-    logger.info(f"  Visual lines: {len(visual_lines)}")
+    logger.info("  Visual lines: %s", len(visual_lines))
 
     # ==========================================================================
     # Step 2: DiscoverLineItemPatterns - Get line item patterns
@@ -164,12 +164,12 @@ def main():
                 llm_config = PatternDiscoveryConfig.from_env()
                 patterns = discover_patterns_with_llm(prompt, llm_config)
                 if patterns:
-                    logger.info(f"  Item structure: {patterns.get('item_structure')}")
-                    logger.info(f"  Label positions: {patterns.get('label_positions')}")
+                    logger.info("  Item structure: %s", patterns.get('item_structure'))
+                    logger.info("  Label positions: %s", patterns.get('label_positions'))
                 else:
                     logger.warning("  Pattern discovery returned no patterns")
         except Exception as e:
-            logger.warning(f"  Pattern discovery failed: {e}")
+            logger.warning("  Pattern discovery failed: %s", e)
 
     if patterns is None:
         logger.info("  Using default patterns")
@@ -190,7 +190,7 @@ def main():
         merchant_name=merchant_name,
     )
 
-    logger.info(f"  Evaluated {len(decisions)} currency words")
+    logger.info("  Evaluated %s currency words", len(decisions))
 
     # Count decisions
     decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
@@ -200,7 +200,7 @@ def main():
             decision_counts[decision] += 1
         else:
             decision_counts["NEEDS_REVIEW"] += 1
-    logger.info(f"  Decisions: {decision_counts}")
+    logger.info("  Decisions: %s", decision_counts)
 
     # ==========================================================================
     # Step 4: Apply decisions (optional)
@@ -213,13 +213,13 @@ def main():
         ]
 
         if apply_decisions:
-            logger.info(f"Step 4: Applying {len(apply_decisions)} INVALID decisions to DynamoDB...")
+            logger.info("Step 4: Applying %s INVALID decisions to DynamoDB...", len(apply_decisions))
             stats = apply_llm_decisions(
                 reviewed_issues=apply_decisions,
                 dynamo_client=dynamo_client,
                 execution_id=f"currency-{args.image_id[:8]}",
             )
-            logger.info(f"  Applied: {stats}")
+            logger.info("  Applied: %s", stats)
         else:
             logger.info("Step 4: No INVALID decisions to apply")
 

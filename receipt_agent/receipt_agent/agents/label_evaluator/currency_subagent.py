@@ -363,7 +363,7 @@ def parse_currency_evaluation_response(
         return result
 
     except (json.JSONDecodeError, TypeError) as e:
-        logger.warning(f"Failed to parse LLM response: {e}")
+        logger.warning("Failed to parse LLM response: %s", e)
         return [
             {
                 "decision": "NEEDS_REVIEW",
