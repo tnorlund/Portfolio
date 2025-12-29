@@ -32,9 +32,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY receipt_dynamo/ /opt/ml/code/receipt_dynamo/
 COPY receipt_layoutlm/ /opt/ml/code/receipt_layoutlm/
 
-# Install the packages
-RUN pip install --no-cache-dir -e /opt/ml/code/receipt_dynamo && \
-    pip install --no-cache-dir -e /opt/ml/code/receipt_layoutlm
+# Install the packages (non-editable for production)
+RUN pip install --no-cache-dir /opt/ml/code/receipt_dynamo && \
+    pip install --no-cache-dir /opt/ml/code/receipt_layoutlm
 
 # Pre-download model weights to speed up training start
 RUN python -c "\

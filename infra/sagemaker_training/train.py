@@ -35,15 +35,15 @@ def get_hyperparameters() -> dict:
         try:
             with open(hp_file) as f:
                 hps = json.load(f)
-        except (json.JSONDecodeError, IOError):
-            pass
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Warning: Failed to parse {hp_file}: {e}")
 
     # Try SM_HPS (JSON format)
     if not hps and "SM_HPS" in os.environ:
         try:
             hps = json.loads(os.environ["SM_HPS"])
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            print(f"Warning: Failed to parse SM_HPS: {e}")
 
     # Also check individual SM_HP_* variables
     for key, value in os.environ.items():

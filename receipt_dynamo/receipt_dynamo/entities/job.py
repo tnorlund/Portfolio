@@ -212,6 +212,7 @@ class Job:
             f"job_config={self.job_config}, "
             f"estimated_duration={self.estimated_duration}, "
             f"tags={self.tags}, "
+            f"storage={self.storage}, "
             f"results={self.results}"
             ")"
         )

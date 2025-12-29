@@ -695,9 +695,9 @@ class ReceiptLayoutLMTrainer:
                                         "recall": float(report[label].get("recall", 0.0)),
                                         "support": int(report[label].get("support", 0)),
                                     }
-                    except Exception:
+                    except Exception as e:
                         # If classification_report fails, continue without per-label metrics
-                        pass
+                        print(f"Warning: Failed to compute per-label metrics: {e}")
 
                 # Note: F1 metric is now stored in _MetricLoggerCallback.on_evaluate()
                 # with epoch information, so we don't need to store it here

@@ -454,10 +454,7 @@ class SageMakerTrainingInfra(ComponentResource):
         )
 
         # Lambda function code (inline for simplicity)
-        lambda_code = self._generate_lambda_code(
-            region=region,
-            account_id=account_id,
-        )
+        lambda_code = self._generate_lambda_code()
 
         self.start_training_lambda = aws.lambda_.Function(
             f"{name}-start-training",
@@ -499,7 +496,7 @@ class SageMakerTrainingInfra(ComponentResource):
             "codebuild_project_name": self.codebuild_project.name,
         })
 
-    def _generate_lambda_code(self, region: str, account_id: str) -> str:
+    def _generate_lambda_code(self) -> str:
         """Generate the Lambda function code for starting training jobs."""
         return '''
 import json
