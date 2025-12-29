@@ -185,8 +185,8 @@ def test_delete_receipt_letter_client_errors(
 
     with pytest.raises(expected_exception, match=error_match):
         client.delete_receipt_letter(
-            sample_receipt_letter.receipt_id,
             sample_receipt_letter.image_id,
+            sample_receipt_letter.receipt_id,
             sample_receipt_letter.line_id,
             sample_receipt_letter.word_id,
             sample_receipt_letter.letter_id,
@@ -805,8 +805,8 @@ def test_delete_receipt_letter_conditional_check_failed(
         EntityNotFoundError, match="not found during delete_receipt_letter"
     ):
         client.delete_receipt_letter(
-            sample_receipt_letter.receipt_id,
             sample_receipt_letter.image_id,
+            sample_receipt_letter.receipt_id,
             sample_receipt_letter.line_id,
             sample_receipt_letter.word_id,
             sample_receipt_letter.letter_id,
@@ -898,8 +898,8 @@ def test_delete_receipt_letter_success(
 
     # Delete
     client.delete_receipt_letter(
-        sample_receipt_letter.receipt_id,
         sample_receipt_letter.image_id,
+        sample_receipt_letter.receipt_id,
         sample_receipt_letter.line_id,
         sample_receipt_letter.word_id,
         sample_receipt_letter.letter_id,
