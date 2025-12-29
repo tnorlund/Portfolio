@@ -631,7 +631,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
         )
 
-        discover_patterns_lambda = discover_patterns_docker_image.lambda_function
+        discover_patterns_lambda = (
+            discover_patterns_docker_image.lambda_function
+        )
 
         # ============================================================
         # Container Lambda: llm_review (LLM)
@@ -1322,7 +1324,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                 "root_dotted_order.$": "$.root_dotted_order",
                                             },
                                             "ItemProcessor": {
-                                                "ProcessorConfig": {"Mode": "INLINE"},
+                                                "ProcessorConfig": {
+                                                    "Mode": "INLINE"
+                                                },
                                                 "StartAt": "FetchReceiptData",
                                                 "States": {
                                                     # Fetch receipt data from DynamoDB
@@ -1341,7 +1345,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                         "ResultPath": "$.receipt_data",
                                                         "Retry": [
                                                             {
-                                                                "ErrorEquals": ["States.TaskFailed"],
+                                                                "ErrorEquals": [
+                                                                    "States.TaskFailed"
+                                                                ],
                                                                 "IntervalSeconds": 1,
                                                                 "MaxAttempts": 2,
                                                                 "BackoffRate": 2.0,
@@ -1379,7 +1385,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                         },
                                                                         "Retry": [
                                                                             {
-                                                                                "ErrorEquals": ["States.TaskFailed"],
+                                                                                "ErrorEquals": [
+                                                                                    "States.TaskFailed"
+                                                                                ],
                                                                                 "IntervalSeconds": 2,
                                                                                 "MaxAttempts": 2,
                                                                                 "BackoffRate": 2.0,
@@ -1423,11 +1431,13 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                                 "BackoffRate": 2.0,
                                                                             },
                                                                             {
-                                                                                "ErrorEquals": ["States.TaskFailed"],
+                                                                                "ErrorEquals": [
+                                                                                    "States.TaskFailed"
+                                                                                ],
                                                                                 "IntervalSeconds": 2,
                                                                                 "MaxAttempts": 2,
                                                                                 "BackoffRate": 2.0,
-                                                                            }
+                                                                            },
                                                                         ],
                                                                         "End": True,
                                                                     },
@@ -1466,11 +1476,13 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                                 "BackoffRate": 2.0,
                                                                             },
                                                                             {
-                                                                                "ErrorEquals": ["States.TaskFailed"],
+                                                                                "ErrorEquals": [
+                                                                                    "States.TaskFailed"
+                                                                                ],
                                                                                 "IntervalSeconds": 2,
                                                                                 "MaxAttempts": 2,
                                                                                 "BackoffRate": 2.0,
-                                                                            }
+                                                                            },
                                                                         ],
                                                                         "End": True,
                                                                     },
@@ -1528,7 +1540,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                 "BackoffRate": 2.0,
                                                             },
                                                             {
-                                                                "ErrorEquals": ["States.TaskFailed"],
+                                                                "ErrorEquals": [
+                                                                    "States.TaskFailed"
+                                                                ],
                                                                 "IntervalSeconds": 5,
                                                                 "MaxAttempts": 2,
                                                                 "BackoffRate": 2.0,
@@ -1561,7 +1575,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                         "ResultPath": "$.close_trace_result",
                                                         "Retry": [
                                                             {
-                                                                "ErrorEquals": ["States.TaskFailed"],
+                                                                "ErrorEquals": [
+                                                                    "States.TaskFailed"
+                                                                ],
                                                                 "IntervalSeconds": 2,
                                                                 "MaxAttempts": 2,
                                                                 "BackoffRate": 2.0,

@@ -55,7 +55,9 @@ def load_config() -> dict:
 
     os.environ.setdefault("OLLAMA_BASE_URL", "https://ollama.com")
     os.environ.setdefault("OLLAMA_MODEL", "gpt-oss:120b-cloud")
-    os.environ.setdefault("RECEIPT_AGENT_OLLAMA_BASE_URL", "https://ollama.com")
+    os.environ.setdefault(
+        "RECEIPT_AGENT_OLLAMA_BASE_URL", "https://ollama.com"
+    )
     os.environ.setdefault("RECEIPT_AGENT_OLLAMA_MODEL", "gpt-oss:120b-cloud")
 
     return config
@@ -65,10 +67,18 @@ def main():
     parser = argparse.ArgumentParser(description="Evaluate a single receipt")
     parser.add_argument("image_id", help="Image ID")
     parser.add_argument("receipt_id", type=int, help="Receipt ID")
-    parser.add_argument("--apply", action="store_true", help="Apply decisions to DynamoDB")
-    parser.add_argument("--skip-llm", action="store_true", help="Skip LLM review")
-    parser.add_argument("--skip-patterns", action="store_true", help="Skip pattern discovery")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    parser.add_argument(
+        "--apply", action="store_true", help="Apply decisions to DynamoDB"
+    )
+    parser.add_argument(
+        "--skip-llm", action="store_true", help="Skip LLM review"
+    )
+    parser.add_argument(
+        "--skip-patterns", action="store_true", help="Skip pattern discovery"
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Verbose output"
+    )
     args = parser.parse_args()
 
     if args.verbose:
@@ -83,35 +93,35 @@ def main():
         sys.exit(1)
 
     # Import after setting env vars
-    from receipt_dynamo import DynamoClient
     from langchain_ollama import ChatOllama
-    from receipt_agent.agents.label_evaluator import (
-        # Pattern discovery
-        build_receipt_structure,
-        build_discovery_prompt,
-        get_default_patterns,
-        PatternDiscoveryConfig,
-        # Patterns
-        compute_merchant_patterns,
-        OtherReceiptData,
-        # Evaluation
-        create_compute_only_graph,
-        run_compute_only_sync,
+    from receipt_agent.agents.label_evaluator import (  # Pattern discovery; Patterns; Evaluation; LLM Review
         EvaluatorState,
-        # LLM Review
-        review_all_issues,
+        OtherReceiptData,
+        PatternDiscoveryConfig,
         apply_llm_decisions,
+        build_discovery_prompt,
+        build_receipt_structure,
+        compute_merchant_patterns,
+        create_compute_only_graph,
+        get_default_patterns,
+        review_all_issues,
+        run_compute_only_sync,
     )
     from receipt_agent.agents.label_evaluator.pattern_discovery import (
         discover_patterns_with_llm,
     )
+    from receipt_dynamo import DynamoClient
 
     dynamo_client = DynamoClient(table_name=config["dynamodb_table_name"])
 
     # 1. Load receipt data
     logger.info(f"Loading receipt {args.image_id}#{args.receipt_id}...")
-    words = dynamo_client.list_receipt_words_from_receipt(args.image_id, args.receipt_id)
-    labels, _ = dynamo_client.list_receipt_word_labels_for_receipt(args.image_id, args.receipt_id)
+    words = dynamo_client.list_receipt_words_from_receipt(
+        args.image_id, args.receipt_id
+    )
+    labels, _ = dynamo_client.list_receipt_word_labels_for_receipt(
+        args.image_id, args.receipt_id
+    )
     place = dynamo_client.get_receipt_place(args.image_id, args.receipt_id)
     merchant_name = place.merchant_name if place else "Unknown"
 
@@ -124,7 +134,11 @@ def main():
     else:
         logger.info("Running pattern discovery...")
         receipts_data = build_receipt_structure(
-            dynamo_client, merchant_name, limit=3, focus_on_line_items=True, max_lines=80
+            dynamo_client,
+            merchant_name,
+            limit=3,
+            focus_on_line_items=True,
+            max_lines=80,
         )
         if receipts_data:
             prompt = build_discovery_prompt(merchant_name, receipts_data)
@@ -136,26 +150,44 @@ def main():
             patterns = get_default_patterns(merchant_name, "no_data")
 
     logger.info(f"  Receipt type: {patterns.get('receipt_type', 'unknown')}")
-    logger.info(f"  Item structure: {patterns.get('item_structure', 'unknown')}")
+    logger.info(
+        f"  Item structure: {patterns.get('item_structure', 'unknown')}"
+    )
 
     # 3. Load training receipts and compute merchant patterns
     logger.info("Loading training receipts...")
     other_receipts = []
-    places, _ = dynamo_client.get_receipt_places_by_merchant(merchant_name, limit=20)
+    places, _ = dynamo_client.get_receipt_places_by_merchant(
+        merchant_name, limit=20
+    )
     for p in places:
         if p.image_id == args.image_id and p.receipt_id == args.receipt_id:
             continue
         if len(other_receipts) >= 10:
             break
         try:
-            other_words = dynamo_client.list_receipt_words_from_receipt(p.image_id, p.receipt_id)
-            other_labels, _ = dynamo_client.list_receipt_word_labels_for_receipt(p.image_id, p.receipt_id)
-            other_receipts.append(OtherReceiptData(place=p, words=other_words, labels=other_labels))
+            other_words = dynamo_client.list_receipt_words_from_receipt(
+                p.image_id, p.receipt_id
+            )
+            other_labels, _ = (
+                dynamo_client.list_receipt_word_labels_for_receipt(
+                    p.image_id, p.receipt_id
+                )
+            )
+            other_receipts.append(
+                OtherReceiptData(
+                    place=p, words=other_words, labels=other_labels
+                )
+            )
         except Exception as e:
-            logger.warning(f"  Failed to load {p.image_id}#{p.receipt_id}: {e}")
+            logger.warning(
+                f"  Failed to load {p.image_id}#{p.receipt_id}: {e}"
+            )
 
     logger.info(f"  Loaded {len(other_receipts)} training receipts")
-    merchant_patterns = compute_merchant_patterns(other_receipts, merchant_name)
+    merchant_patterns = compute_merchant_patterns(
+        other_receipts, merchant_name
+    )
 
     # 4. Run evaluation
     logger.info("Running label evaluation...")
@@ -183,15 +215,27 @@ def main():
         chroma_client = None
         if config.get("chromadb_bucket"):
             try:
-                import boto3
                 import tempfile
-                sys.path.insert(0, os.path.join(PROJECT_ROOT, "infra/label_evaluator_step_functions/lambdas/utils"))
-                from s3_helpers import download_chromadb_snapshot
+
+                import boto3
+
+                sys.path.insert(
+                    0,
+                    os.path.join(
+                        PROJECT_ROOT,
+                        "infra/label_evaluator_step_functions/lambdas/utils",
+                    ),
+                )
                 from receipt_chroma import ChromaClient
+                from s3_helpers import download_chromadb_snapshot
 
                 s3 = boto3.client("s3")
-                chroma_path = os.path.join(tempfile.gettempdir(), "chromadb_dev")
-                download_chromadb_snapshot(s3, config["chromadb_bucket"], "words", chroma_path)
+                chroma_path = os.path.join(
+                    tempfile.gettempdir(), "chromadb_dev"
+                )
+                download_chromadb_snapshot(
+                    s3, config["chromadb_bucket"], "words", chroma_path
+                )
                 chroma_client = ChromaClient(persist_directory=chroma_path)
                 logger.info("  ChromaDB loaded")
             except Exception as e:
@@ -201,7 +245,9 @@ def main():
             # Create LLM for review
             llm = ChatOllama(
                 model=os.environ.get("OLLAMA_MODEL", "gpt-oss:120b-cloud"),
-                base_url=os.environ.get("OLLAMA_BASE_URL", "https://ollama.com"),
+                base_url=os.environ.get(
+                    "OLLAMA_BASE_URL", "https://ollama.com"
+                ),
                 api_key=os.environ.get("OLLAMA_API_KEY", ""),
                 temperature=0.0,
             )
@@ -262,16 +308,20 @@ def main():
         issue_type = issue.get("type", "unknown")
         word_text = issue.get("word_text", "")
         current_label = issue.get("current_label", "")
-        print(f"\n  [{i}] {issue_type}: \"{word_text}\"")
+        print(f'\n  [{i}] {issue_type}: "{word_text}"')
         print(f"      Current: {current_label}")
         if i < len(reviewed_issues):
             r = reviewed_issues[i]
-            print(f"      Decision: {r.get('decision')} - {r.get('reasoning', '')[:60]}...")
+            print(
+                f"      Decision: {r.get('decision')} - {r.get('reasoning', '')[:60]}..."
+            )
 
     print("=" * 60)
 
     if config["langchain_api_key"]:
-        print("\nTrace: https://smith.langchain.com/ (project: label-evaluator-dev)")
+        print(
+            "\nTrace: https://smith.langchain.com/ (project: label-evaluator-dev)"
+        )
 
 
 if __name__ == "__main__":

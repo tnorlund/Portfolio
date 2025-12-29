@@ -3,7 +3,6 @@
 from datetime import datetime, timezone
 
 import pytest
-
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 # Use a valid UUIDv4 for tests
@@ -24,7 +23,12 @@ from receipt_agent.agents.label_evaluator.langsmith_evaluator import (
 def _make_word_geometry(x: float, y: float, w: float, h: float) -> dict:
     """Create geometry dicts for a word at (x, y) with width w and height h."""
     return {
-        "bounding_box": {"x": x - w / 2, "y": y - h / 2, "width": w, "height": h},
+        "bounding_box": {
+            "x": x - w / 2,
+            "y": y - h / 2,
+            "width": w,
+            "height": h,
+        },
         "top_left": {"x": x - w / 2, "y": y - h / 2},
         "top_right": {"x": x + w / 2, "y": y - h / 2},
         "bottom_left": {"x": x - w / 2, "y": y + h / 2},
@@ -208,14 +212,18 @@ class TestEvaluationQualityMetrics:
             issues_by_type={"position_anomaly": 2, "geometric_anomaly": 1},
         )
         assert metrics.get_issue_rate("position_anomaly") == pytest.approx(0.2)
-        assert metrics.get_issue_rate("geometric_anomaly") == pytest.approx(0.1)
+        assert metrics.get_issue_rate("geometric_anomaly") == pytest.approx(
+            0.1
+        )
         assert metrics.get_issue_rate("unknown") == 0.0
 
 
 class TestCompareLabels:
     """Tests for _compare_labels function."""
 
-    def test_perfect_match(self, ground_truth_labels: list[ReceiptWordLabel]) -> None:
+    def test_perfect_match(
+        self, ground_truth_labels: list[ReceiptWordLabel]
+    ) -> None:
         """Should return perfect scores when predictions match ground truth."""
         # Use same labels as predictions
         predicted = ground_truth_labels.copy()
@@ -229,7 +237,9 @@ class TestCompareLabels:
         assert metrics.recall == 1.0
         assert metrics.f1_score == 1.0
 
-    def test_no_predictions(self, ground_truth_labels: list[ReceiptWordLabel]) -> None:
+    def test_no_predictions(
+        self, ground_truth_labels: list[ReceiptWordLabel]
+    ) -> None:
         """Should return 0 precision/recall when no predictions."""
         metrics = _compare_labels([], ground_truth_labels)
 
@@ -318,7 +328,9 @@ class TestEvaluatePredictionQuality:
         assert metrics.total_words == 0
         assert metrics.total_issues == 0
 
-    def test_with_words_no_labels(self, sample_words: list[ReceiptWord]) -> None:
+    def test_with_words_no_labels(
+        self, sample_words: list[ReceiptWord]
+    ) -> None:
         """Should detect missing labels when words have no labels."""
         metrics = _evaluate_prediction_quality(sample_words, [], None)
         assert metrics.total_words == 5

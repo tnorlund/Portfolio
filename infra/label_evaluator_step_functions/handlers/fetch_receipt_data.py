@@ -32,13 +32,21 @@ def generate_receipt_trace_id(
     parts = [execution_arn, image_id, str(receipt_id)]
     return str(uuid.uuid5(TRACE_NAMESPACE, ":".join(parts)))
 
+
 # Import serialization from lambdas
 import sys
-sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "lambdas"
-))
-from utils.serialization import serialize_label, serialize_place, serialize_word
+
+sys.path.insert(
+    0,
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lambdas"
+    ),
+)
+from utils.serialization import (
+    serialize_label,
+    serialize_place,
+    serialize_word,
+)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -74,7 +82,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
 
     if not image_id or receipt_id is None:
-        raise ValueError("receipt.image_id and receipt.receipt_id are required")
+        raise ValueError(
+            "receipt.image_id and receipt.receipt_id are required"
+        )
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
 
@@ -107,9 +117,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         words = []
 
     try:
-        labels, _ = dynamo.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+        labels, _ = dynamo.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id
+        )
     except Exception:
-        logger.warning("Failed to fetch labels for %s#%s", image_id, receipt_id)
+        logger.warning(
+            "Failed to fetch labels for %s#%s", image_id, receipt_id
+        )
         labels = []
 
     logger.info(
@@ -140,7 +154,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             ContentType="application/json",
         )
     except Exception:
-        logger.exception("Failed to upload data to s3://%s/%s", batch_bucket, data_s3_key)
+        logger.exception(
+            "Failed to upload data to s3://%s/%s", batch_bucket, data_s3_key
+        )
         raise
 
     logger.info(
@@ -152,7 +168,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     # Generate deterministic receipt-level trace_id BEFORE parallel branches
     # This ensures all parallel evaluators use the same trace_id
     execution_arn = event.get("execution_arn", f"local:{execution_id}")
-    receipt_trace_id = generate_receipt_trace_id(execution_arn, image_id, receipt_id)
+    receipt_trace_id = generate_receipt_trace_id(
+        execution_arn, image_id, receipt_id
+    )
 
     logger.info(
         "Generated receipt trace_id: %s for %s#%s",

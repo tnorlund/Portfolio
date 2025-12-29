@@ -26,18 +26,24 @@ try:
         end_receipt_trace_by_id,
         flush_langsmith_traces,
     )
+
     _tracing_import_source = "container"
 except ImportError:
     # Local/development environment: use path relative to this file
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "lambdas", "utils"
-    ))
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "lambdas",
+            "utils",
+        ),
+    )
     from tracing import (
         TRACING_VERSION,
         end_receipt_trace_by_id,
         flush_langsmith_traces,
     )
+
     _tracing_import_source = "local"
 
 logger = logging.getLogger()
@@ -102,10 +108,14 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "issues_found": event.get("issues_found", 0),
             "llm_review": "skipped",
             # Currency evaluation results
-            "currency_words_evaluated": event.get("currency_words_evaluated", 0),
+            "currency_words_evaluated": event.get(
+                "currency_words_evaluated", 0
+            ),
             "currency_decisions": event.get("currency_decisions"),
             # Metadata evaluation results
-            "metadata_words_evaluated": event.get("metadata_words_evaluated", 0),
+            "metadata_words_evaluated": event.get(
+                "metadata_words_evaluated", 0
+            ),
             "metadata_decisions": event.get("metadata_decisions"),
         }
 

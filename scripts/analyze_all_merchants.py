@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MerchantAnalysis:
     """Analysis results for a single merchant."""
+
     merchant_name: str
     total_receipts: int
     receipts_with_words: int = 0
@@ -100,7 +101,9 @@ def get_all_merchants(dynamo_client) -> list[tuple[str, int]]:
 
     page_count = 1
     while result[1]:
-        result = dynamo_client.list_receipt_places(last_evaluated_key=result[1])
+        result = dynamo_client.list_receipt_places(
+            last_evaluated_key=result[1]
+        )
         all_places.extend(result[0])
         page_count += 1
         if page_count % 10 == 0:
@@ -114,10 +117,7 @@ def get_all_merchants(dynamo_client) -> list[tuple[str, int]]:
         merchant_counts[place.merchant_name] += 1
 
     # Sort by count descending
-    sorted_merchants = sorted(
-        merchant_counts.items(),
-        key=lambda x: -x[1]
-    )
+    sorted_merchants = sorted(merchant_counts.items(), key=lambda x: -x[1])
 
     logger.info(f"Found {len(sorted_merchants)} unique merchants")
     return sorted_merchants
@@ -166,7 +166,10 @@ def analyze_merchant(
 
         # Calculate line stats
         total_lines = sum(len(r.get("lines", [])) for r in receipts_data)
-        total_original = sum(r.get("total_lines", len(r.get("lines", []))) for r in receipts_data)
+        total_original = sum(
+            r.get("total_lines", len(r.get("lines", [])))
+            for r in receipts_data
+        )
         analysis.avg_lines_selected = total_lines / len(receipts_data)
         analysis.avg_total_lines = total_original / len(receipts_data)
 
@@ -180,7 +183,9 @@ def analyze_merchant(
 
                 if result:
                     analysis.receipt_type = result.get("receipt_type", "")
-                    analysis.receipt_type_reason = result.get("receipt_type_reason", "")
+                    analysis.receipt_type_reason = result.get(
+                        "receipt_type_reason", ""
+                    )
 
                     # Flat schema: item_structure is at top level
                     item_structure = result.get("item_structure")
@@ -249,7 +254,9 @@ def main():
         sys.exit(1)
 
     if not args.no_llm and not config["ollama_api_key"]:
-        logger.error("OLLAMA_API_KEY not found. Use --no-llm to skip LLM calls.")
+        logger.error(
+            "OLLAMA_API_KEY not found. Use --no-llm to skip LLM calls."
+        )
         sys.exit(1)
 
     logger.info(f"Using DynamoDB table: {config['dynamodb_table_name']}")
@@ -259,9 +266,11 @@ def main():
 
     pattern_discovery_path = os.path.join(
         PROJECT_ROOT,
-        "receipt_agent/receipt_agent/agents/label_evaluator/pattern_discovery.py"
+        "receipt_agent/receipt_agent/agents/label_evaluator/pattern_discovery.py",
     )
-    spec = importlib.util.spec_from_file_location("pattern_discovery", pattern_discovery_path)
+    spec = importlib.util.spec_from_file_location(
+        "pattern_discovery", pattern_discovery_path
+    )
     pattern_discovery = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(pattern_discovery)
 
@@ -280,14 +289,17 @@ def main():
 
     # Filter by min_receipts
     merchants = [
-        (name, count) for name, count in all_merchants
+        (name, count)
+        for name, count in all_merchants
         if count >= args.min_receipts
     ]
-    logger.info(f"Filtered to {len(merchants)} merchants with >= {args.min_receipts} receipts")
+    logger.info(
+        f"Filtered to {len(merchants)} merchants with >= {args.min_receipts} receipts"
+    )
 
     # Limit if specified
     if args.max_merchants:
-        merchants = merchants[:args.max_merchants]
+        merchants = merchants[: args.max_merchants]
         logger.info(f"Limited to first {args.max_merchants} merchants")
 
     # Analyze each merchant
@@ -295,7 +307,9 @@ def main():
     run_llm = not args.no_llm
 
     for i, (merchant_name, receipt_count) in enumerate(merchants):
-        logger.info(f"[{i+1}/{len(merchants)}] Analyzing: {merchant_name} ({receipt_count} receipts)")
+        logger.info(
+            f"[{i+1}/{len(merchants)}] Analyzing: {merchant_name} ({receipt_count} receipts)"
+        )
 
         analysis = analyze_merchant(
             dynamo_client,
@@ -316,7 +330,11 @@ def main():
         elif analysis.llm_error:
             logger.warning(f"  LLM Error: {analysis.llm_error}")
         else:
-            type_str = analysis.receipt_type.upper() if analysis.receipt_type else "N/A"
+            type_str = (
+                analysis.receipt_type.upper()
+                if analysis.receipt_type
+                else "N/A"
+            )
             logger.info(
                 f"  Type: {type_str}, "
                 f"Patterns: {analysis.has_patterns}, "
@@ -333,11 +351,15 @@ def main():
     print("=" * 80)
 
     total_merchants = len(results)
-    merchants_with_data = len([r for r in results if r.receipts_with_words > 0])
+    merchants_with_data = len(
+        [r for r in results if r.receipts_with_words > 0]
+    )
     merchants_with_errors = len([r for r in results if r.error])
 
     print(f"Total merchants analyzed: {total_merchants}")
-    print(f"Merchants with word data: {merchants_with_data} ({100*merchants_with_data/total_merchants:.1f}%)")
+    print(
+        f"Merchants with word data: {merchants_with_data} ({100*merchants_with_data/total_merchants:.1f}%)"
+    )
     print(f"Merchants with errors: {merchants_with_errors}")
 
     if run_llm:
@@ -347,8 +369,12 @@ def main():
         llm_errors = [r for r in results if r.llm_error]
 
         print(f"\n=== RECEIPT TYPE CLASSIFICATION ===")
-        print(f"ITEMIZED: {len(itemized)} merchants ({100*len(itemized)/total_merchants:.1f}%)")
-        print(f"SERVICE: {len(service)} merchants ({100*len(service)/total_merchants:.1f}%)")
+        print(
+            f"ITEMIZED: {len(itemized)} merchants ({100*len(itemized)/total_merchants:.1f}%)"
+        )
+        print(
+            f"SERVICE: {len(service)} merchants ({100*len(service)/total_merchants:.1f}%)"
+        )
         print(f"LLM Errors: {len(llm_errors)}")
 
         # Show service merchants
@@ -359,11 +385,21 @@ def main():
 
         # Show itemized merchants with patterns
         itemized_with_patterns = [r for r in itemized if r.has_patterns]
-        print(f"\n=== ITEMIZED MERCHANTS WITH PATTERNS ({len(itemized_with_patterns)}) ===")
+        print(
+            f"\n=== ITEMIZED MERCHANTS WITH PATTERNS ({len(itemized_with_patterns)}) ==="
+        )
 
         # Group by item structure
-        single_line = [r for r in itemized_with_patterns if r.item_structure == "single-line"]
-        multi_line = [r for r in itemized_with_patterns if r.item_structure == "multi-line"]
+        single_line = [
+            r
+            for r in itemized_with_patterns
+            if r.item_structure == "single-line"
+        ]
+        multi_line = [
+            r
+            for r in itemized_with_patterns
+            if r.item_structure == "multi-line"
+        ]
 
         print(f"  Single-line structure: {len(single_line)}")
         for r in single_line[:5]:
@@ -385,35 +421,39 @@ def main():
     if args.output:
         with open(args.output, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([
-                "merchant_name",
-                "total_receipts",
-                "receipts_with_words",
-                "receipts_analyzed",
-                "avg_lines_selected",
-                "avg_total_lines",
-                "receipt_type",
-                "receipt_type_reason",
-                "has_patterns",
-                "item_structure",
-                "llm_error",
-                "error",
-            ])
+            writer.writerow(
+                [
+                    "merchant_name",
+                    "total_receipts",
+                    "receipts_with_words",
+                    "receipts_analyzed",
+                    "avg_lines_selected",
+                    "avg_total_lines",
+                    "receipt_type",
+                    "receipt_type_reason",
+                    "has_patterns",
+                    "item_structure",
+                    "llm_error",
+                    "error",
+                ]
+            )
             for r in results:
-                writer.writerow([
-                    r.merchant_name,
-                    r.total_receipts,
-                    r.receipts_with_words,
-                    r.receipts_analyzed,
-                    f"{r.avg_lines_selected:.2f}",
-                    f"{r.avg_total_lines:.2f}",
-                    r.receipt_type,
-                    r.receipt_type_reason,
-                    r.has_patterns,
-                    r.item_structure,
-                    r.llm_error or "",
-                    r.error or "",
-                ])
+                writer.writerow(
+                    [
+                        r.merchant_name,
+                        r.total_receipts,
+                        r.receipts_with_words,
+                        r.receipts_analyzed,
+                        f"{r.avg_lines_selected:.2f}",
+                        f"{r.avg_total_lines:.2f}",
+                        r.receipt_type,
+                        r.receipt_type_reason,
+                        r.has_patterns,
+                        r.item_structure,
+                        r.llm_error or "",
+                        r.error or "",
+                    ]
+                )
         logger.info(f"Results written to {args.output}")
 
     print("=" * 80)

@@ -16,13 +16,13 @@ The LLMReview Lambda will join this receipt's trace as a child.
 
 import logging
 import os
+
+# Import tracing utilities - works in both container and local environments
+import sys
 import time
 from typing import TYPE_CHECKING, Any
 
 import boto3
-
-# Import tracing utilities - works in both container and local environments
-import sys
 
 try:
     # Container environment: tracing.py is in same directory
@@ -32,25 +32,36 @@ try:
         create_receipt_trace,
         flush_langsmith_traces,
     )
+
     from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+
     _tracing_import_source = "container"
 except ImportError:
     # Local/development environment: use path relative to this file
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "lambdas", "utils"
-    ))
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "lambdas",
+            "utils",
+        ),
+    )
     from tracing import (
         TRACING_VERSION,
         child_trace,
         create_receipt_trace,
         flush_langsmith_traces,
     )
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "lambdas"
-    ))
+
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "lambdas",
+        ),
+    )
     from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+
     _tracing_import_source = "local"
 
 if TYPE_CHECKING:
@@ -152,7 +163,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             batch_bucket,
             data_s3_key,
         )
-        target_data = load_json_from_s3(s3, batch_bucket, data_s3_key)
+        target_data = load_json_from_s3(
+            s3, batch_bucket, data_s3_key, logger=logger
+        )
 
         image_id = target_data.get("image_id")
         receipt_id = target_data.get("receipt_id")
@@ -213,9 +226,14 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
 
         # Create a TraceContext for child_trace compatibility
         from tracing import TraceContext
+
         trace_ctx = TraceContext(
             run_tree=receipt_trace.run_tree,
-            headers=receipt_trace.run_tree.to_headers() if receipt_trace.run_tree else None,
+            headers=(
+                receipt_trace.run_tree.to_headers()
+                if receipt_trace.run_tree
+                else None
+            ),
             trace_id=receipt_trace.trace_id,
             root_run_id=receipt_trace.root_run_id,
         )
@@ -232,23 +250,28 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 },
             ):
                 logger.info(
-                    "Added DiscoverPatterns reference: %s", line_item_patterns_s3_key
+                    "Added DiscoverPatterns reference: %s",
+                    line_item_patterns_s3_key,
                 )
 
         # 4. Load pre-computed merchant patterns from S3
         merchant_patterns = None
         if patterns_s3_key:
-            with child_trace("ComputePatterns", trace_ctx, metadata={
-                "patterns_s3_key": patterns_s3_key,
-                "merchant_name": merchant_name,
-            }):
+            with child_trace(
+                "ComputePatterns",
+                trace_ctx,
+                metadata={
+                    "patterns_s3_key": patterns_s3_key,
+                    "merchant_name": merchant_name,
+                },
+            ):
                 logger.info(
                     "Loading patterns from s3://%s/%s",
                     batch_bucket,
                     patterns_s3_key,
                 )
                 patterns_data = load_json_from_s3(
-                    s3, batch_bucket, patterns_s3_key
+                    s3, batch_bucket, patterns_s3_key, logger=logger
                 )
                 merchant_patterns = deserialize_patterns(patterns_data)
 

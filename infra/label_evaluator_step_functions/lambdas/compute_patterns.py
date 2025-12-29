@@ -21,15 +21,20 @@ import boto3
 try:
     # Container environment: tracing.py is in same directory
     from tracing import child_trace, flush_langsmith_traces, state_trace
+
     from utils.s3_helpers import get_merchant_hash
 except ImportError:
     # Local/development environment: use path relative to this file
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "lambdas", "utils"
-    ))
-    from tracing import child_trace, flush_langsmith_traces, state_trace
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "lambdas",
+            "utils",
+        ),
+    )
     from s3_helpers import get_merchant_hash
+    from tracing import child_trace, flush_langsmith_traces, state_trace
 
 if TYPE_CHECKING:
     from handlers.evaluator_types import ComputePatternsOutput
@@ -128,16 +133,24 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
 
         table_name = os.environ.get("DYNAMODB_TABLE_NAME")
         if not table_name:
-            raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
+            raise ValueError(
+                "DYNAMODB_TABLE_NAME environment variable not set"
+            )
 
         dynamo = DynamoClient(table_name=table_name)
 
         # Create child trace for data loading
-        with child_trace("load_training_data", trace_ctx, metadata={
-            "merchant_name": merchant_name,
-        }):
+        with child_trace(
+            "load_training_data",
+            trace_ctx,
+            metadata={
+                "merchant_name": merchant_name,
+            },
+        ):
             # Load training receipts
-            from receipt_agent.agents.label_evaluator.state import OtherReceiptData
+            from receipt_agent.agents.label_evaluator.state import (
+                OtherReceiptData,
+            )
 
             other_receipt_data: list[OtherReceiptData] = []
             last_key = None
@@ -145,7 +158,9 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
             while len(other_receipt_data) < max_training_receipts:
                 places, last_key = dynamo.get_receipt_places_by_merchant(
                     merchant_name,
-                    limit=min(100, max_training_receipts - len(other_receipt_data)),
+                    limit=min(
+                        100, max_training_receipts - len(other_receipt_data)
+                    ),
                     last_evaluated_key=last_key,
                 )
 
@@ -160,8 +175,10 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
                         words = dynamo.list_receipt_words_from_receipt(
                             place.image_id, place.receipt_id
                         )
-                        labels, _ = dynamo.list_receipt_word_labels_for_receipt(
-                            place.image_id, place.receipt_id
+                        labels, _ = (
+                            dynamo.list_receipt_word_labels_for_receipt(
+                                place.image_id, place.receipt_id
+                            )
                         )
 
                         other_receipt_data.append(
@@ -186,9 +203,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
 
         if not other_receipt_data:
             # No training data - save empty patterns
-            patterns_s3_key = (
-                f"patterns/{execution_id}/{get_merchant_hash(merchant_name)}.json"
-            )
+            patterns_s3_key = f"patterns/{execution_id}/{get_merchant_hash(merchant_name)}.json"
             s3.put_object(
                 Bucket=batch_bucket,
                 Key=patterns_s3_key,
@@ -209,9 +224,13 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
             return result
 
         # Create child trace for pattern computation
-        with child_trace("compute_merchant_patterns", trace_ctx, metadata={
-            "receipt_count": len(other_receipt_data),
-        }):
+        with child_trace(
+            "compute_merchant_patterns",
+            trace_ctx,
+            metadata={
+                "receipt_count": len(other_receipt_data),
+            },
+        ):
             logger.info("Computing merchant patterns...")
             compute_start = time.time()
 

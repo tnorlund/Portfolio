@@ -19,9 +19,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage
-from receipt_dynamo import ReceiptWordLabel
-from receipt_dynamo.entities import ReceiptWord
-
+from receipt_agent.constants import CURRENCY_LABELS
 from receipt_agent.prompts.label_evaluator import (
     build_batched_review_prompt,
     build_receipt_context_prompt,
@@ -37,8 +35,8 @@ from receipt_agent.utils.chroma_helpers import (
     enrich_evidence_with_dynamo_reasoning,
     query_similar_words,
 )
-
-from receipt_agent.constants import CURRENCY_LABELS
+from receipt_dynamo import ReceiptWordLabel
+from receipt_dynamo.entities import ReceiptWord
 
 from .state import (
     EvaluationIssue,
@@ -50,7 +48,6 @@ from .word_context import get_same_line_words
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
-
     from receipt_agent.utils.ollama_rate_limit import RateLimitedLLMInvoker
 
 logger = logging.getLogger(__name__)
@@ -649,9 +646,15 @@ def review_single_issue(
 
     except Exception as e:
         # Check if this is a rate limit error that should trigger Step Function retry
-        from receipt_agent.utils import OllamaRateLimitError, BothProvidersFailedError
+        from receipt_agent.utils import (
+            BothProvidersFailedError,
+            OllamaRateLimitError,
+        )
+
         if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
-            logger.error("LLM review rate limited, propagating for retry: %s", e)
+            logger.error(
+                "LLM review rate limited, propagating for retry: %s", e
+            )
             raise  # Let Step Function retry handle this
 
         logger.error("LLM review failed: %s", e)
@@ -736,9 +739,15 @@ def review_issues_batch(
 
     except Exception as e:
         # Check if this is a rate limit error that should trigger Step Function retry
-        from receipt_agent.utils import OllamaRateLimitError, BothProvidersFailedError
+        from receipt_agent.utils import (
+            BothProvidersFailedError,
+            OllamaRateLimitError,
+        )
+
         if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
-            logger.error("Batched LLM review rate limited, propagating for retry: %s", e)
+            logger.error(
+                "Batched LLM review rate limited, propagating for retry: %s", e
+            )
             raise  # Let Step Function retry handle this
 
         logger.error("Batched LLM review failed: %s", e)
@@ -828,9 +837,16 @@ def review_issues_with_receipt_context(
 
     except Exception as e:
         # Check if this is a rate limit error that should trigger Step Function retry
-        from receipt_agent.utils import OllamaRateLimitError, BothProvidersFailedError
+        from receipt_agent.utils import (
+            BothProvidersFailedError,
+            OllamaRateLimitError,
+        )
+
         if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
-            logger.error("Receipt context LLM review rate limited, propagating for retry: %s", e)
+            logger.error(
+                "Receipt context LLM review rate limited, propagating for retry: %s",
+                e,
+            )
             raise  # Let Step Function retry handle this
 
         logger.error("Receipt context LLM review failed: %s", e)
@@ -1033,12 +1049,14 @@ def apply_llm_decisions(
             confidence = llm_review.get("confidence", "medium")
 
             # Validate required fields
-            has_required_fields = all([
-                image_id,
-                receipt_id is not None,
-                line_id is not None,
-                word_id is not None,
-            ])
+            has_required_fields = all(
+                [
+                    image_id,
+                    receipt_id is not None,
+                    line_id is not None,
+                    word_id is not None,
+                ]
+            )
 
             if not has_required_fields:
                 logger.warning(
@@ -1171,7 +1189,9 @@ def apply_llm_decisions(
                                 label_proposed_by=label.label_proposed_by,
                                 label_consolidated_from=label.label_consolidated_from,
                             )
-                            dynamo_client.update_receipt_word_label(updated_label)
+                            dynamo_client.update_receipt_word_label(
+                                updated_label
+                            )
                             stats["labels_invalidated"] += 1
                             logger.info(
                                 "Invalidated %s on %s:%s:%s:%s",

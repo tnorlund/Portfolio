@@ -128,9 +128,11 @@ def main():
 
     pattern_discovery_path = os.path.join(
         PROJECT_ROOT,
-        "receipt_agent/receipt_agent/agents/label_evaluator/pattern_discovery.py"
+        "receipt_agent/receipt_agent/agents/label_evaluator/pattern_discovery.py",
     )
-    spec = importlib.util.spec_from_file_location("pattern_discovery", pattern_discovery_path)
+    spec = importlib.util.spec_from_file_location(
+        "pattern_discovery", pattern_discovery_path
+    )
     pattern_discovery = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(pattern_discovery)
 
@@ -154,12 +156,18 @@ def main():
             logger.error("ChromaDB bucket not found in Pulumi outputs")
             sys.exit(1)
         if not config["openai_api_key"]:
-            logger.error("OpenAI API key not found in Pulumi secrets (needed for Chroma)")
+            logger.error(
+                "OpenAI API key not found in Pulumi secrets (needed for Chroma)"
+            )
             sys.exit(1)
 
         try:
-            chroma_client, embed_fn = load_chroma_client(config["chromadb_bucket"])
-            logger.info(f"Querying Chroma for label examples from: {args.merchant_name}")
+            chroma_client, embed_fn = load_chroma_client(
+                config["chromadb_bucket"]
+            )
+            logger.info(
+                f"Querying Chroma for label examples from: {args.merchant_name}"
+            )
             label_examples = query_label_examples_simple(
                 chroma_client,
                 args.merchant_name,
@@ -167,14 +175,18 @@ def main():
                 max_total=50,
             )
             if label_examples.total_examples > 0:
-                logger.info(f"Found {label_examples.total_examples} label examples from Chroma")
+                logger.info(
+                    f"Found {label_examples.total_examples} label examples from Chroma"
+                )
                 print("\n" + "=" * 80)
                 print("CHROMA LABEL EXAMPLES:")
                 print("=" * 80)
                 print(label_examples.format_for_prompt())
                 print("=" * 80 + "\n")
             else:
-                logger.warning("No label examples found in Chroma for this merchant")
+                logger.warning(
+                    "No label examples found in Chroma for this merchant"
+                )
         except Exception as e:
             logger.warning(f"Failed to load Chroma: {e}")
             logger.info("Continuing without Chroma examples...")
@@ -190,7 +202,9 @@ def main():
     )
 
     if not receipts_data:
-        logger.error(f"No receipt data found for merchant: {args.merchant_name}")
+        logger.error(
+            f"No receipt data found for merchant: {args.merchant_name}"
+        )
         sys.exit(1)
 
     logger.info(f"Found {len(receipts_data)} receipts")

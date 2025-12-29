@@ -31,13 +31,18 @@ try:
         flush_langsmith_traces,
         receipt_state_trace,
     )
+
     _tracing_import_source = "container"
 except ImportError:
     # Local/development environment: use path relative to this file
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "lambdas", "utils"
-    ))
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "lambdas",
+            "utils",
+        ),
+    )
     from tracing import (
         TRACING_VERSION,
         child_trace,
@@ -45,10 +50,14 @@ except ImportError:
         flush_langsmith_traces,
         receipt_state_trace,
     )
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "lambdas"
-    ))
+
+    sys.path.insert(
+        0,
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "lambdas",
+        ),
+    )
     _tracing_import_source = "local"
 
 from receipt_agent import (
@@ -83,7 +92,9 @@ s3 = boto3.client(
 
 
 # Import from receipt_agent instead of duplicate llm_review module
-from receipt_agent.agents.label_evaluator.llm_review import assemble_receipt_text
+from receipt_agent.agents.label_evaluator.llm_review import (
+    assemble_receipt_text,
+)
 from receipt_agent.prompts.label_evaluator import (
     build_receipt_context_prompt,
     parse_batched_llm_response,
@@ -203,7 +214,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
     if not data_s3_key:
-        raise ValueError("results_s3_key, batch_s3_key, or issues_s3_key is required")
+        raise ValueError(
+            "results_s3_key, batch_s3_key, or issues_s3_key is required"
+        )
 
     start_time = time.time()
 
@@ -233,8 +246,12 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
         try:
             # 1. Load collected issues from S3
             with child_trace("load_issues", trace_ctx):
-                logger.info(f"Loading issues from s3://{batch_bucket}/{data_s3_key}")
-                issues_data = load_json_from_s3(s3, batch_bucket, data_s3_key)
+                logger.info(
+                    "Loading issues from s3://%s/%s", batch_bucket, data_s3_key
+                )
+                issues_data = load_json_from_s3(
+                    s3, batch_bucket, data_s3_key, logger=logger
+                )
                 collected_issues = issues_data.get("issues", [])
 
             total_issues = len(collected_issues)
@@ -253,8 +270,10 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                 return result
 
             logger.info(
-                f"Reviewing {total_issues} issues for {merchant_name} "
-                f"({merchant_receipt_count} receipts)"
+                "Reviewing %d issues for %s (%d receipts)",
+                total_issues,
+                merchant_name,
+                merchant_receipt_count,
             )
 
             # 2. Load line item patterns (if available)
@@ -263,18 +282,26 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                 with child_trace("load_line_item_patterns", trace_ctx):
                     try:
                         logger.info(
-                            f"Loading line item patterns from "
-                            f"s3://{batch_bucket}/{line_item_patterns_s3_key}"
+                            "Loading line item patterns from s3://%s/%s",
+                            batch_bucket,
+                            line_item_patterns_s3_key,
                         )
                         line_item_patterns = load_json_from_s3(
-                            s3, batch_bucket, line_item_patterns_s3_key
+                            s3,
+                            batch_bucket,
+                            line_item_patterns_s3_key,
+                            logger=logger,
                         )
                         logger.info(
-                            f"Loaded patterns: {line_item_patterns.get('item_structure', 'unknown')} "
-                            f"structure"
+                            "Loaded patterns: %s structure",
+                            line_item_patterns.get(
+                                "item_structure", "unknown"
+                            ),
                         )
                     except Exception as e:
-                        logger.warning(f"Could not load line item patterns: {e}")
+                        logger.warning(
+                            "Could not load line item patterns: %s", e
+                        )
 
             # 3. Setup ChromaDB
             chroma_client = None
@@ -282,21 +309,24 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                 with child_trace("setup_chromadb", trace_ctx):
                     try:
                         chroma_path = os.environ.get(
-                            "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY", "/tmp/chromadb"
+                            "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
+                            "/tmp/chromadb",
                         )
                         download_chromadb_snapshot(
                             s3, chromadb_bucket, "words", chroma_path
                         )
-                        os.environ["RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"] = (
-                            chroma_path
-                        )
+                        os.environ[
+                            "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"
+                        ] = chroma_path
 
                         from receipt_chroma import ChromaClient
 
-                        chroma_client = ChromaClient(persist_directory=chroma_path)
+                        chroma_client = ChromaClient(
+                            persist_directory=chroma_path
+                        )
                         logger.info("ChromaDB client initialized")
                     except Exception as e:
-                        logger.warning(f"Could not initialize ChromaDB: {e}")
+                        logger.warning("Could not initialize ChromaDB: %s", e)
 
             # 4. Setup DynamoDB client
             dynamo_client = None
@@ -307,7 +337,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     dynamo_client = DynamoClient(table_name=table_name)
                     logger.info("DynamoDB client initialized")
                 except Exception as e:
-                    logger.warning(f"Could not initialize DynamoDB: {e}")
+                    logger.warning("Could not initialize DynamoDB: %s", e)
 
             # 5. Setup LLM with automatic Ollama → OpenRouter fallback
             with child_trace("setup_llm", trace_ctx):
@@ -330,8 +360,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     "RECEIPT_AGENT_OLLAMA_MODEL", "gpt-oss:120b-cloud"
                 )
                 logger.info(
-                    f"LLM initialized with fallback: {ollama_model} → OpenRouter "
-                    f"(max jitter: {max_jitter_seconds}s)"
+                    "LLM initialized with fallback: %s → OpenRouter (max jitter: %ss)",
+                    ollama_model,
+                    max_jitter_seconds,
                 )
 
             # 6. Process issues for this receipt with tracing
@@ -348,8 +379,10 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             receipt_issues = collected_issues
 
             logger.info(
-                f"Processing {total_issues} issues for receipt "
-                f"{image_id}:{receipt_id}"
+                "Processing %d issues for receipt %s:%s",
+                total_issues,
+                image_id,
+                receipt_id,
             )
 
             from langchain_core.messages import HumanMessage
@@ -362,7 +395,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             )
             try:
                 receipt_data = load_json_from_s3(
-                    s3, batch_bucket, receipt_data_key
+                    s3, batch_bucket, receipt_data_key, logger=logger
                 )
                 receipt_words = receipt_data.get("words", [])
                 receipt_labels = receipt_data.get("labels", [])
@@ -463,7 +496,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
                         except Exception as e:
                             logger.warning(
-                                f"Error gathering context for issue: {e}"
+                                "Error gathering context for issue: %s", e
                             )
                             issues_with_context.append(
                                 {
@@ -540,8 +573,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
                     except OllamaRateLimitError:
                         logger.warning(
-                            f"Rate limit hit after {len(reviewed_issues)}/{total_issues} "
-                            f"issues. Saving partial progress."
+                            "Rate limit hit after %d/%d issues. Saving partial progress.",
+                            len(reviewed_issues),
+                            total_issues,
                         )
                         raise  # Re-raise for Step Function retry
 
@@ -577,8 +611,10 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                             )
 
             logger.info(
-                f"Reviewed {total_issues} issues in {llm_call_count} LLM calls: "
-                f"{dict(decisions)}"
+                "Reviewed %d issues in %d LLM calls: %s",
+                total_issues,
+                llm_call_count,
+                dict(decisions),
             )
 
             # 7. Upload reviewed results to S3
@@ -602,9 +638,13 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     "rate_limit_stats": rate_limit_stats,
                 }
 
-                upload_json_to_s3(s3, batch_bucket, reviewed_s3_key, reviewed_data)
+                upload_json_to_s3(
+                    s3, batch_bucket, reviewed_s3_key, reviewed_data
+                )
                 logger.info(
-                    f"Uploaded reviewed results to s3://{batch_bucket}/{reviewed_s3_key}"
+                    "Uploaded reviewed results to s3://%s/%s",
+                    batch_bucket,
+                    reviewed_s3_key,
                 )
 
             # 8. Apply decisions to DynamoDB (if not dry_run)
@@ -612,14 +652,15 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             if not dry_run and dynamo_client and reviewed_issues:
                 with child_trace("apply_decisions", trace_ctx):
                     logger.info(
-                        f"Applying {len(reviewed_issues)} LLM decisions to DynamoDB..."
+                        "Applying %d LLM decisions to DynamoDB...",
+                        len(reviewed_issues),
                     )
                     apply_stats = apply_llm_decisions(
                         reviewed_issues=reviewed_issues,
                         dynamo_client=dynamo_client,
                         execution_id=execution_id,
                     )
-                    logger.info(f"Applied decisions: {apply_stats}")
+                    logger.info("Applied decisions: %s", apply_stats)
             elif dry_run:
                 logger.info("Skipping DynamoDB writes (dry_run=true)")
 
@@ -636,8 +677,12 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                 "LLMCallCount": llm_call_count,
             }
             if apply_stats:
-                metrics["LabelsConfirmed"] = apply_stats.get("labels_confirmed", 0)
-                metrics["LabelsInvalidated"] = apply_stats.get("labels_invalidated", 0)
+                metrics["LabelsConfirmed"] = apply_stats.get(
+                    "labels_confirmed", 0
+                )
+                metrics["LabelsInvalidated"] = apply_stats.get(
+                    "labels_invalidated", 0
+                )
                 metrics["LabelsCreated"] = apply_stats.get("labels_created", 0)
 
             emf_metrics.log_metrics(
@@ -665,7 +710,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             trace_ctx.set_outputs(result)
 
         except Exception as e:
-            logger.error(f"Error in LLM review batch: {e}", exc_info=True)
+            logger.error("Error in LLM review batch: %s", e, exc_info=True)
 
             from utils.emf_metrics import emf_metrics
 
