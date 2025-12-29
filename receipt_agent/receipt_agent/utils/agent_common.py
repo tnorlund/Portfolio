@@ -12,12 +12,8 @@ import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
 
-from receipt_agent.config.settings import Settings, get_settings
-from receipt_agent.utils.llm_factory import (
-    LLMProvider,
-    create_llm,
-    create_llm_from_settings,
-)
+from receipt_agent.config.settings import Settings
+from receipt_agent.utils.llm_factory import create_llm_from_settings
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
@@ -26,7 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 def create_ollama_llm(
-    settings: Optional[Settings] = None,
+    settings: Optional[
+        Settings
+    ] = None,  # noqa: ARG001 - kept for backwards compat
     temperature: float = 0.0,
     timeout: int = 120,
 ) -> "BaseChatModel":
@@ -38,7 +36,7 @@ def create_ollama_llm(
     backwards compatibility and now delegates to the factory.
 
     Args:
-        settings: Optional settings (uses get_settings() if None)
+        settings: Ignored. Kept for backwards compatibility.
         temperature: LLM temperature (default 0.0 for deterministic)
         timeout: Request timeout in seconds
 
@@ -51,35 +49,8 @@ def create_ollama_llm(
         DeprecationWarning,
         stacklevel=2,
     )
-    if settings is None:
-        settings = get_settings()
-
-    # Determine provider from settings
-    provider_str = getattr(settings, "llm_provider", "ollama")
-    try:
-        provider = LLMProvider(provider_str)
-    except ValueError:
-        provider = LLMProvider.OLLAMA
-
-    if provider == LLMProvider.OPENROUTER:
-        return create_llm(
-            provider=provider,
-            model=settings.openrouter_model,
-            base_url=settings.openrouter_base_url,
-            api_key=settings.openrouter_api_key.get_secret_value(),
-            temperature=temperature,
-            timeout=timeout,
-        )
-    else:
-        # Default to Ollama
-        return create_llm(
-            provider=LLMProvider.OLLAMA,
-            model=settings.ollama_model,
-            base_url=settings.ollama_base_url,
-            api_key=settings.ollama_api_key.get_secret_value(),
-            temperature=temperature,
-            timeout=timeout,
-        )
+    # Delegate to the factory function which handles all provider logic
+    return create_llm_from_settings(temperature=temperature, timeout=timeout)
 
 
 def create_agent_node_with_retry(
