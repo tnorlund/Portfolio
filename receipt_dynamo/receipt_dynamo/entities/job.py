@@ -161,6 +161,17 @@ class Job:
             "GSI1SK": {"S": f"CREATED#{self.created_at}"},
         }
 
+    def gsi2_key(self) -> Dict[str, Any]:
+        """Generates the GSI2 key for the job (lookup by name).
+
+        Returns:
+            dict: The GSI2 key for the job.
+        """
+        return {
+            "GSI2PK": {"S": f"JOB_NAME#{self.name}"},
+            "GSI2SK": {"S": f"CREATED#{self.created_at}"},
+        }
+
     def to_item(self) -> Dict[str, Any]:
         """Converts the Job object to a DynamoDB item.
 
@@ -170,6 +181,7 @@ class Job:
         item = {
             **self.key,
             **self.gsi1_key(),
+            **self.gsi2_key(),
             "TYPE": {"S": "JOB"},
             "name": {"S": self.name},
             "description": {"S": self.description},

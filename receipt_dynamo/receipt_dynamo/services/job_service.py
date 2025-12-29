@@ -120,14 +120,14 @@ class JobService(
         """List jobs by status."""
         return super().list_jobs_by_status(status, limit, last_evaluated_key)
 
-    def list_jobs_by_user(
+    def get_job_by_name(
         self,
-        user_id: str,
+        name: str,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Job], Optional[Dict[str, Any]]]:
-        """List jobs by user."""
-        return super().list_jobs_by_user(user_id, limit, last_evaluated_key)
+        """Get jobs by name using GSI2."""
+        return super().get_job_by_name(name, limit, last_evaluated_key)
 
     def check_job_dependencies(self, job_id: str) -> Tuple[bool, List[Dict[str, Any]]]:
         """Check if all dependencies for a job are satisfied.

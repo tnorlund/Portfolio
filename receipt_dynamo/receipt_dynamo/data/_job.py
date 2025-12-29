@@ -59,6 +59,8 @@ class _Job(
         Deletes multiple jobs from the database.
     get_job(job_id: str) -> Job
         Gets a job from the database.
+    get_job_by_name(name: str, ...) -> tuple[list[Job], dict | None]
+        Gets jobs by name using GSI2.
     get_job_with_status(job_id: str) -> Tuple[Job, List[JobStatus]]
         Gets a job with all its status updates.
     list_jobs(
@@ -72,12 +74,6 @@ class _Job(
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]
         Lists jobs filtered by status.
-    list_jobs_by_user(
-        user_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: dict | None = None,
-    ) -> tuple[list[Job], dict | None]
-        Lists jobs created by a specific user.
     """
 
     @handle_dynamodb_errors("add_job")
@@ -216,6 +212,61 @@ class _Job(
 
         return result
 
+    @handle_dynamodb_errors("get_job_by_name")
+    def get_job_by_name(
+        self,
+        name: str,
+        limit: Optional[int] = None,
+        last_evaluated_key: dict | None = None,
+    ) -> tuple[list[Job], dict | None]:
+        """
+        Retrieves jobs by name using GSI2.
+
+        Since job names are not required to be unique, this returns a list of
+        jobs sorted by creation time (newest first).
+
+        Args:
+            name (str): The name of the job(s) to retrieve.
+            limit (int, optional): Maximum number of jobs to return.
+            last_evaluated_key (dict, optional): Pagination key from previous query.
+
+        Returns:
+            tuple[list[Job], dict | None]: A tuple containing:
+                - A list of Job objects with the specified name.
+                - The LastEvaluatedKey for pagination, or None if no more pages.
+
+        Raises:
+            EntityValidationError: If parameters are invalid.
+            Exception: For underlying DynamoDB errors.
+        """
+        if not isinstance(name, str) or not name:
+            raise EntityValidationError("name must be a non-empty string")
+
+        if last_evaluated_key is not None:
+            if not isinstance(last_evaluated_key, dict):
+                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+            if not all(
+                k in last_evaluated_key for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
+            ):
+                raise EntityValidationError(
+                    "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys"
+                )
+
+        return self._query_entities(
+            index_name="GSI2",
+            key_condition_expression="GSI2PK = :name",
+            expression_attribute_names={"#type": "TYPE"},
+            expression_attribute_values={
+                ":name": {"S": f"JOB_NAME#{name}"},
+                ":job_type": {"S": "JOB"},
+            },
+            converter_func=item_to_job,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+            filter_expression="#type = :job_type",
+            scan_index_forward=False,  # Newest first
+        )
+
     @handle_dynamodb_errors("get_job_with_status")
     def get_job_with_status(self, job_id: str) -> Tuple[Job, List[JobStatus]]:
         """Get a job with all its status updates
@@ -339,60 +390,6 @@ class _Job(
             expression_attribute_names={"#type": "TYPE"},
             expression_attribute_values={
                 ":status": {"S": f"STATUS#{status.lower()}"},
-                ":job_type": {"S": "JOB"},
-            },
-            converter_func=item_to_job,
-            limit=limit,
-            last_evaluated_key=last_evaluated_key,
-            filter_expression="#type = :job_type",
-        )
-
-    @handle_dynamodb_errors("list_jobs_by_user")
-    def list_jobs_by_user(
-        self,
-        user_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: dict | None = None,
-    ) -> tuple[list[Job], dict | None]:
-        """
-        Retrieve job records created by a specific user from the database.
-
-        Parameters:
-            user_id (str): The ID of the user who created the jobs.
-            limit (int, optional): The maximum number of job items to return.
-            last_evaluated_key (dict, optional): A key that marks the starting
-                point for the query.
-
-        Returns:
-            tuple:
-                - A list of Job objects created by the specified user.
-                - A dict representing the LastEvaluatedKey from the final query
-                    page, or None if no further pages.
-
-        Raises:
-            ValueError: If parameters are invalid.
-            Exception: If the underlying database query fails.
-        """
-        if not isinstance(user_id, str) or not user_id:
-            raise EntityValidationError("user_id must be a non-empty string")
-
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
-            # Validate the LastEvaluatedKey structure specific to GSI2
-            if not all(
-                k in last_evaluated_key for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
-            ):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK" " keys"
-                )
-
-        return self._query_entities(
-            index_name="GSI2",
-            key_condition_expression="GSI2PK = :user",
-            expression_attribute_names={"#type": "TYPE"},
-            expression_attribute_values={
-                ":user": {"S": f"USER#{user_id}"},
                 ":job_type": {"S": "JOB"},
             },
             converter_func=item_to_job,
