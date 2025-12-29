@@ -35,14 +35,9 @@ try:
     _tracing_import_source = "container"
 except ImportError:
     # Local/development environment: use path relative to this file
-    sys.path.insert(
-        0,
-        os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "lambdas",
-            "utils",
-        ),
-    )
+    _base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(_base_dir, "lambdas", "utils"))
+    sys.path.insert(0, os.path.join(_base_dir, "lambdas"))
     from tracing import (
         TRACING_VERSION,
         child_trace,
@@ -51,13 +46,6 @@ except ImportError:
         receipt_state_trace,
     )
 
-    sys.path.insert(
-        0,
-        os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "lambdas",
-        ),
-    )
     _tracing_import_source = "local"
 
 from receipt_agent import (
@@ -91,6 +79,14 @@ s3 = boto3.client(
 )
 
 
+# Lambda-specific S3 utilities
+from utils.s3_helpers import (
+    download_chromadb_snapshot,
+    get_merchant_hash,
+    load_json_from_s3,
+    upload_json_to_s3,
+)
+
 # Import from receipt_agent instead of duplicate llm_review module
 from receipt_agent.agents.label_evaluator.llm_review import (
     assemble_receipt_text,
@@ -105,14 +101,6 @@ from receipt_agent.utils.chroma_helpers import (
     compute_similarity_distribution,
     enrich_evidence_with_dynamo_reasoning,
     query_similar_words,
-)
-
-# Lambda-specific S3 utilities
-from utils.s3_helpers import (
-    download_chromadb_snapshot,
-    get_merchant_hash,
-    load_json_from_s3,
-    upload_json_to_s3,
 )
 
 

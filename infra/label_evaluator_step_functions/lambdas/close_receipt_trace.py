@@ -97,7 +97,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     if trace_id and root_run_id:
         logger.info(
             "Closing receipt trace (image_id=%s, receipt_id=%s, trace_id=%s)",
-            image_id[:8] if len(str(image_id)) > 8 else image_id,
+            image_id[:8] if len(image_id) > 8 else image_id,
             receipt_id,
             trace_id[:8] if len(trace_id) > 8 else trace_id,
         )

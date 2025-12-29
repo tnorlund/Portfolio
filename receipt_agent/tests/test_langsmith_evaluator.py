@@ -1,8 +1,9 @@
 """Unit tests for LangSmith custom evaluator functions."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
+
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 # Use a valid UUIDv4 for tests
@@ -102,7 +103,7 @@ def sample_words() -> list[ReceiptWord]:
 @pytest.fixture
 def ground_truth_labels() -> list[ReceiptWordLabel]:
     """Create ground truth labels (VALID only)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return [
         ReceiptWordLabel(
             image_id=TEST_IMAGE_ID,
@@ -252,7 +253,7 @@ class TestCompareLabels:
         self, ground_truth_labels: list[ReceiptWordLabel]
     ) -> None:
         """Wrong label type should count as FP and FN."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         predicted = [
             ReceiptWordLabel(
                 image_id=TEST_IMAGE_ID,
@@ -274,7 +275,7 @@ class TestCompareLabels:
 
     def test_filters_non_valid_ground_truth(self) -> None:
         """Should only compare against VALID ground truth labels."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         ground_truth = [
             ReceiptWordLabel(
                 image_id=TEST_IMAGE_ID,
@@ -357,7 +358,7 @@ class TestLabelAccuracyEvaluator:
 
     def test_handles_dict_input(self) -> None:
         """Should handle labels as dicts (from JSON)."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         label_dict = {
             "image_id": TEST_IMAGE_ID,
             "receipt_id": 1,

@@ -8,7 +8,8 @@ agent nodes with retry logic, eliminating code duplication across workflows.
 import logging
 import random
 import time
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Optional
 
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.utils.llm_factory import (

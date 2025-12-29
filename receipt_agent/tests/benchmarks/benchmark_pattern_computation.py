@@ -56,7 +56,7 @@ import time
 from contextlib import contextmanager, nullcontext
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Generator, Optional
 
 from receipt_agent.agents.label_evaluator.patterns import (
     compute_merchant_patterns,
@@ -199,7 +199,7 @@ def load_receipt_data(
 
 
 @contextmanager
-def mock_batch_classification() -> None:
+def mock_batch_classification() -> Generator[None, None, None]:
     """Temporarily skip LLM batch classification during benchmarking."""
     import receipt_agent.agents.label_evaluator.helpers as helpers
 

@@ -94,6 +94,7 @@ def main():
 
     # Import after setting env vars
     from langchain_ollama import ChatOllama
+
     from receipt_agent.agents.label_evaluator import (  # Pattern discovery; Patterns; Evaluation; LLM Review
         EvaluatorState,
         OtherReceiptData,
@@ -115,7 +116,7 @@ def main():
     dynamo_client = DynamoClient(table_name=config["dynamodb_table_name"])
 
     # 1. Load receipt data
-    logger.info(f"Loading receipt {args.image_id}#{args.receipt_id}...")
+    logger.info("Loading receipt %s#%s...", args.image_id, args.receipt_id)
     words = dynamo_client.list_receipt_words_from_receipt(
         args.image_id, args.receipt_id
     )
@@ -125,8 +126,8 @@ def main():
     place = dynamo_client.get_receipt_place(args.image_id, args.receipt_id)
     merchant_name = place.merchant_name if place else "Unknown"
 
-    logger.info(f"  Merchant: {merchant_name}")
-    logger.info(f"  Words: {len(words)}, Labels: {len(labels)}")
+    logger.info("  Merchant: %s", merchant_name)
+    logger.info("  Words: %d, Labels: %d", len(words), len(labels))
 
     # 2. Pattern discovery
     if args.skip_patterns:
@@ -149,9 +150,9 @@ def main():
         else:
             patterns = get_default_patterns(merchant_name, "no_data")
 
-    logger.info(f"  Receipt type: {patterns.get('receipt_type', 'unknown')}")
+    logger.info("  Receipt type: %s", patterns.get("receipt_type", "unknown"))
     logger.info(
-        f"  Item structure: {patterns.get('item_structure', 'unknown')}"
+        "  Item structure: %s", patterns.get("item_structure", "unknown")
     )
 
     # 3. Load training receipts and compute merchant patterns
@@ -181,10 +182,10 @@ def main():
             )
         except Exception as e:
             logger.warning(
-                f"  Failed to load {p.image_id}#{p.receipt_id}: {e}"
+                "  Failed to load %s#%s: %s", p.image_id, p.receipt_id, e
             )
 
-    logger.info(f"  Loaded {len(other_receipts)} training receipts")
+    logger.info("  Loaded %d training receipts", len(other_receipts))
     merchant_patterns = compute_merchant_patterns(
         other_receipts, merchant_name
     )
@@ -205,7 +206,7 @@ def main():
     result = run_compute_only_sync(graph, state)
 
     issues = result.get("issues", [])
-    logger.info(f"  Found {len(issues)} issues")
+    logger.info("  Found %d issues", len(issues))
 
     # 5. LLM Review
     reviewed_issues = []
@@ -226,8 +227,9 @@ def main():
                         "infra/label_evaluator_step_functions/lambdas/utils",
                     ),
                 )
-                from receipt_chroma import ChromaClient
                 from s3_helpers import download_chromadb_snapshot
+
+                from receipt_chroma import ChromaClient
 
                 s3 = boto3.client("s3")
                 chroma_path = os.path.join(
@@ -239,7 +241,7 @@ def main():
                 chroma_client = ChromaClient(persist_directory=chroma_path)
                 logger.info("  ChromaDB loaded")
             except Exception as e:
-                logger.warning(f"  ChromaDB failed: {e}")
+                logger.warning("  ChromaDB failed: %s", e)
 
         try:
             # Create LLM for review
@@ -267,7 +269,7 @@ def main():
                 dynamo_client=dynamo_client,
                 line_item_patterns=patterns,
             )
-            logger.info(f"  Reviewed {len(reviewed_issues)} issues")
+            logger.info("  Reviewed %d issues", len(reviewed_issues))
         finally:
             # Cleanup ChromaDB client
             if chroma_client is not None:
@@ -284,7 +286,7 @@ def main():
             dynamo_client=dynamo_client,
             execution_id=f"dev-{args.image_id[:8]}",
         )
-        logger.info(f"  Applied: {stats}")
+        logger.info("  Applied: %s", stats)
 
     # Print summary
     print("\n" + "=" * 60)

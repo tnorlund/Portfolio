@@ -54,9 +54,10 @@ async def run_test():
         # Get table name from environment or use dev default
         import os
 
-        table_name = os.environ.get(
-            "DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22"
-        )
+        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
+        if not table_name:
+            logger.warning("DYNAMODB_TABLE_NAME not set, using dev default")
+            table_name = "ReceiptsTable-dc5be22"
         dynamo = DynamoClient(table_name=table_name)
         logger.info("Using DynamoDB table: %s", table_name)
 
