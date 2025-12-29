@@ -55,7 +55,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
@@ -269,10 +269,10 @@ def _create_openrouter_llm(
 
 
 def create_llm(
-    provider: Optional[Union[LLMProvider, str]] = None,
-    model: Optional[str] = None,
-    base_url: Optional[str] = None,
-    api_key: Optional[str] = None,
+    provider: LLMProvider | str | None = None,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
     temperature: float = 0.0,
     timeout: int = 120,
     **kwargs: Any,

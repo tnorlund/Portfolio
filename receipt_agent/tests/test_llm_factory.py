@@ -379,7 +379,7 @@ class TestCreateProductionInvoker:
             "OLLAMA_API_KEY": "ollama-key",
             "OPENROUTER_API_KEY": "openrouter-key",
         }):
-            invoker = create_production_invoker(
+            _ = create_production_invoker(
                 temperature=0.5,
                 timeout=60,
                 circuit_breaker_threshold=3,
