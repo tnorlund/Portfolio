@@ -624,18 +624,5 @@ def evaluate_financial_math(
         return results
 
 
-def evaluate_financial_math_sync(
-    visual_lines: list[VisualLine],
-    llm: BaseChatModel,
-    image_id: str,
-    receipt_id: int,
-    merchant_name: str = "Unknown",
-) -> list[dict]:
-    """Synchronous wrapper for evaluate_financial_math."""
-    return evaluate_financial_math(
-        visual_lines=visual_lines,
-        llm=llm,
-        image_id=image_id,
-        receipt_id=receipt_id,
-        merchant_name=merchant_name,
-    )
+# Alias for API consistency with other subagents
+evaluate_financial_math_sync = evaluate_financial_math
