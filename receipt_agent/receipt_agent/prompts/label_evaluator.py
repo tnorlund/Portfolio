@@ -426,16 +426,17 @@ price on separate lines that all belong to the same item.
 Based on all evidence above, determine:
 
 1. **Decision**:
-   - VALID: The current label IS correct (the flag was a false positive)
-   - INVALID: The current label IS wrong - provide the correct label
+   - VALID: The current label is correct (including "NONE (unlabeled)" for words that don't need a label - like footer text, legal disclaimers, or promotional messages)
+   - INVALID: The current label is wrong AND you can specify the correct label from the definitions above
    - NEEDS_REVIEW: Genuinely ambiguous, needs human review
 
 2. **Reasoning**: Cite specific evidence from the similar words
 
-3. **Suggested Label**: If INVALID, what should it be? Use ONLY a label from the
-   definitions above. If uncertain or no label applies, use null (not "OTHER").
+3. **Suggested Label**: If INVALID, the correct label from the definitions above. Use null if the word should remain unlabeled. NEVER invent labels like "OTHER" or "WEIGHT" - only use labels from the definitions above.
 
 4. **Confidence**: low / medium / high
+
+**IMPORTANT**: Many receipt words (promotional text, legal disclaimers, survey info) correctly have no label. For these, use VALID with null suggested_label - do NOT mark them INVALID with "OTHER".
 
 Respond with ONLY a JSON object:
 ```json
@@ -582,10 +583,18 @@ receipts from **{merchant_name}**. Analyze each issue and provide decisions.
 
 For EACH issue above (0 to {len(issues_with_context) - 1}), determine:
 
-1. **Decision**: VALID (label is correct), INVALID (label is wrong), or NEEDS_REVIEW
+1. **Decision**:
+   - VALID: The current label is correct (including "NONE (unlabeled)" for words that don't need a label - like footer text, legal disclaimers, or promotional messages)
+   - INVALID: The current label is wrong AND you can specify the correct label from the definitions above
+   - NEEDS_REVIEW: Genuinely ambiguous, needs human review
+
 2. **Reasoning**: Brief justification citing evidence
-3. **Suggested Label**: If INVALID, the correct label. Use null if unsure (never "OTHER")
+
+3. **Suggested Label**: If INVALID, the correct label from the definitions above. Use null if the word should remain unlabeled. NEVER invent labels like "OTHER" or "WEIGHT" - only use labels from the definitions above.
+
 4. **Confidence**: low / medium / high
+
+**IMPORTANT**: Many receipt words (promotional text, legal disclaimers, survey info) correctly have no label. For these, use VALID with null suggested_label - do NOT mark them INVALID with "OTHER".
 
 Respond with ONLY a JSON object containing a "reviews" array:
 ```json
@@ -796,10 +805,18 @@ Words marked with [brackets] are the issues to review. Labels shown in (parenthe
 
 For EACH issue (0 to {len(issues_with_context) - 1}), analyze the receipt context and similar word evidence to determine:
 
-1. **Decision**: VALID (label is correct), INVALID (label is wrong), or NEEDS_REVIEW (insufficient evidence)
+1. **Decision**:
+   - VALID: The current label is correct (including "NONE (unlabeled)" for words that don't need a label - like footer text, legal disclaimers, or promotional messages)
+   - INVALID: The current label is wrong AND you can specify the correct label from the definitions above
+   - NEEDS_REVIEW: Genuinely ambiguous, needs human review
+
 2. **Reasoning**: Brief justification referencing the receipt context and/or similar word patterns
-3. **Suggested Label**: If INVALID, the correct label. Use null if unsure (never "OTHER")
+
+3. **Suggested Label**: If INVALID, the correct label from the definitions above. Use null if the word should remain unlabeled. NEVER invent labels like "OTHER" or "WEIGHT" - only use labels from the definitions above.
+
 4. **Confidence**: low / medium / high
+
+**IMPORTANT**: Many receipt words (promotional text, legal disclaimers, survey info) correctly have no label. For these, use VALID with null suggested_label - do NOT mark them INVALID with "OTHER".
 
 Respond with ONLY a JSON object:
 ```json
@@ -850,7 +867,10 @@ def parse_llm_response(response_text: str) -> dict[str, Any]:
         if suggested_label:
             suggested_upper = suggested_label.upper()
             if suggested_upper not in CORE_LABELS_SET:
-                logger.warning(
+                # Debug level: This is expected behavior - LLM may suggest
+                # invalid labels like "OTHER" which we reject, causing the
+                # word to remain unlabeled (which is often correct)
+                logger.debug(
                     "Rejecting invalid suggested_label '%s' (not in CORE_LABELS)",
                     suggested_label,
                 )
@@ -950,7 +970,10 @@ def parse_batched_llm_response(
         if suggested_label:
             suggested_upper = suggested_label.upper()
             if suggested_upper not in CORE_LABELS_SET:
-                logger.warning(
+                # Debug level: This is expected behavior - LLM may suggest
+                # invalid labels like "OTHER" which we reject, causing the
+                # word to remain unlabeled (which is often correct)
+                logger.debug(
                     "Rejecting invalid suggested_label '%s' (not in CORE_LABELS)",
                     suggested_label,
                 )
