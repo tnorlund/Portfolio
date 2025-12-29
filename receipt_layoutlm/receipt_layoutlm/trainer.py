@@ -89,6 +89,9 @@ class ReceiptLayoutLMTrainer:
             os.environ.pop("LAYOUTLM_MERGE_AMOUNTS", None)
 
         # Allow loading a prebuilt tokenized dataset snapshot
+        # Note: When loading from snapshot, split_metadata will be None since
+        # metadata isn't saved with tokenized datasets. This is acceptable for
+        # fast iteration during development.
         ds_mod = importlib.import_module("datasets")
         split_metadata = None
         if self.data_config.dataset_snapshot_load:
