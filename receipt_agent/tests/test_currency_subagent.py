@@ -6,6 +6,7 @@ Tests the various detection functions for currency-related label issues.
 
 from datetime import UTC, datetime
 
+import pytest
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 from receipt_agent.agents.label_evaluator.currency_subagent import (
