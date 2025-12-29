@@ -426,22 +426,19 @@ class ReceiptLayoutLMTrainer:
                                 if isinstance(v, (int, float))
                             }
                         )
-                        # Add per-label metrics if available (nested dict)
-                        if "per_label_metrics" in metrics:
-                            entry["per_label_metrics"] = metrics["per_label_metrics"]
-                            # Also record each label as a separate JobMetric with Dict value
-                            for label_name, label_stats in metrics["per_label_metrics"].items():
-                                metrics_to_write.append(
-                                    JobMetric(
-                                        job_id=self.job_id,
-                                        metric_name=f"label_{label_name}",
-                                        value=label_stats,  # Dict with f1, precision, recall, support
-                                        timestamp=datetime.now().isoformat(),
-                                        unit="per_label",
-                                        epoch=epoch_val,
-                                        step=step_val,
-                                    )
-                                )
+
+                        # Save per-label metrics to DynamoDB
+                        # Keys are like eval_label_MERCHANT_NAME_f1, eval_label_DATE_precision, etc.
+                        for key, value in metrics.items():
+                            if key.startswith("eval_label_") and isinstance(value, (int, float)):
+                                # Extract metric type (f1, precision, recall, support)
+                                # Key format: eval_label_{LABEL}_{metric_type}
+                                parts = key.split("_")
+                                if len(parts) >= 4:
+                                    metric_type = parts[-1]  # f1, precision, recall, support
+                                    label_name = "_".join(parts[2:-1])  # Handle labels with underscores
+                                    unit = "count" if metric_type == "support" else "ratio"
+                                    _add_metric(f"label_{label_name}_{metric_type}", float(value), unit)
 
                         # Collect training metrics for batch write
                         # F1 score
@@ -670,7 +667,6 @@ class ReceiptLayoutLMTrainer:
                 y_pred.append(p_tags)
 
             metrics = {}
-            per_label_metrics = {}
             if seqeval:
                 f1 = float(f1_fn(y_true, y_pred))
                 prec = float(precision_fn(y_true, y_pred))
@@ -678,6 +674,7 @@ class ReceiptLayoutLMTrainer:
                 metrics = {"f1": f1, "precision": prec, "recall": rec}
 
                 # Get per-label metrics if classification_report is available
+                # Flatten into scalar keys so HuggingFace Trainer passes them to callbacks
                 if classification_report_fn:
                     try:
                         # Get unique labels (excluding O for per-label metrics)
@@ -686,15 +683,14 @@ class ReceiptLayoutLMTrainer:
                             report = classification_report_fn(
                                 y_true, y_pred, labels=unique_labels, output_dict=True, zero_division=0
                             )
-                            # Extract per-label metrics
+                            # Extract per-label metrics as flattened scalar keys
                             for label in unique_labels:
                                 if label in report:
-                                    per_label_metrics[label] = {
-                                        "f1": float(report[label].get("f1-score", 0.0)),
-                                        "precision": float(report[label].get("precision", 0.0)),
-                                        "recall": float(report[label].get("recall", 0.0)),
-                                        "support": int(report[label].get("support", 0)),
-                                    }
+                                    # Use flattened keys like label_MERCHANT_NAME_f1
+                                    metrics[f"label_{label}_f1"] = float(report[label].get("f1-score", 0.0))
+                                    metrics[f"label_{label}_precision"] = float(report[label].get("precision", 0.0))
+                                    metrics[f"label_{label}_recall"] = float(report[label].get("recall", 0.0))
+                                    metrics[f"label_{label}_support"] = int(report[label].get("support", 0))
                     except Exception as e:
                         # If classification_report fails, continue without per-label metrics
                         print(f"Warning: Failed to compute per-label metrics: {e}")
@@ -708,10 +704,6 @@ class ReceiptLayoutLMTrainer:
                 correct = (preds == labels).astype(float)
                 acc = float(_np.mean(correct))
                 metrics = {"accuracy": acc}
-
-            # Add per-label metrics to return dict if available
-            if per_label_metrics:
-                metrics["per_label_metrics"] = per_label_metrics
 
             return metrics
 
