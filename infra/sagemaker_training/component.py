@@ -110,6 +110,37 @@ class SageMakerTrainingInfra(ComponentResource):
             opts=ResourceOptions(parent=self.output_bucket),
         )
 
+        # Lifecycle policy for checkpoint cleanup
+        # - Per-epoch checkpoints expire after 7 days (keep recent for debugging)
+        # - Full run directories expire after 30 days
+        aws.s3.BucketLifecycleConfiguration(
+            f"{name}-output-lifecycle",
+            bucket=self.output_bucket.id,
+            rules=[
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="expire-epoch-checkpoints",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                        prefix="checkpoints/",  # Per-epoch checkpoints from on_save
+                    ),
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=7,
+                    ),
+                ),
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="expire-run-directories",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                        prefix="runs/",  # Full run directories
+                    ),
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=30,
+                    ),
+                ),
+            ],
+            opts=ResourceOptions(parent=self.output_bucket),
+        )
+
         # ---------------------------------------------------------------------
         # IAM Role for SageMaker Execution
         # ---------------------------------------------------------------------

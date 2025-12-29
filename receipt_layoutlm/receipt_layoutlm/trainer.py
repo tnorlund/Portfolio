@@ -266,8 +266,10 @@ class ReceiptLayoutLMTrainer:
             except ModuleNotFoundError:
                 # Fallback to accuracy if seqeval not available
                 args_kwargs["metric_for_best_model"] = "eval_accuracy"
-        if "save_total_limit" in ta_params:
-            args_kwargs["save_total_limit"] = 1
+        # Don't limit checkpoints locally - we sync all to S3 per epoch
+        # S3 lifecycle policy handles cleanup of old checkpoints
+        # if "save_total_limit" in ta_params:
+        #     args_kwargs["save_total_limit"] = 1
         if "save_safetensors" in ta_params:
             args_kwargs["save_safetensors"] = True
         if "label_smoothing_factor" in ta_params:
@@ -369,10 +371,20 @@ class ReceiptLayoutLMTrainer:
             TrainerCallback = getattr(self._transformers, "TrainerCallback")
 
             class _MetricLoggerCallback(TrainerCallback):  # type: ignore
-                def __init__(self, run_path: str, job_id: str, dynamo_client: Any) -> None:
+                def __init__(
+                    self,
+                    run_path: str,
+                    job_id: str,
+                    dynamo_client: Any,
+                    s3_bucket: str | None = None,
+                    s3_prefix: str | None = None,
+                ) -> None:
                     self.run_path = run_path
                     self.job_id = job_id
                     self.dynamo = dynamo_client
+                    self.s3_bucket = s3_bucket
+                    self.s3_prefix = s3_prefix
+                    self._synced_checkpoints: set = set()
 
                 def on_evaluate(self, args, state, control, metrics=None, **kwargs):  # type: ignore[override]
                     # Silence unused parameter warnings
@@ -488,11 +500,83 @@ class ReceiptLayoutLMTrainer:
                     with open(self.run_path, "w", encoding="utf-8") as f:
                         json.dump(data, f, indent=2)
 
+                def on_save(self, args, state, control, **kwargs):  # type: ignore[override]
+                    """Sync checkpoint to S3 after each save."""
+                    del control, kwargs  # unused
+                    if not self.s3_bucket or not self.s3_prefix:
+                        return
+
+                    # Get the checkpoint that was just saved
+                    checkpoint_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
+                    if not os.path.exists(checkpoint_dir):
+                        return
+
+                    # Skip if already synced
+                    if checkpoint_dir in self._synced_checkpoints:
+                        return
+
+                    try:
+                        boto3 = importlib.import_module("boto3")
+                        s3_client = boto3.client("s3")
+
+                        # Sync checkpoint to S3
+                        checkpoint_name = f"checkpoint-{state.global_step}"
+                        s3_checkpoint_prefix = f"{self.s3_prefix}checkpoints/{checkpoint_name}/"
+
+                        print(f"📤 Syncing {checkpoint_name} to s3://{self.s3_bucket}/{s3_checkpoint_prefix}")
+                        for root, dirs, files in os.walk(checkpoint_dir):
+                            for file in files:
+                                local_path = os.path.join(root, file)
+                                rel_path = os.path.relpath(local_path, checkpoint_dir)
+                                s3_key = f"{s3_checkpoint_prefix}{rel_path}"
+                                s3_client.upload_file(local_path, self.s3_bucket, s3_key)
+
+                        self._synced_checkpoints.add(checkpoint_dir)
+                        print(f"✅ Checkpoint {checkpoint_name} synced to S3")
+
+                        # Also sync run.json so we can track progress
+                        if self.run_path and os.path.exists(self.run_path):
+                            run_json_key = f"{self.s3_prefix}run.json"
+                            s3_client.upload_file(self.run_path, self.s3_bucket, run_json_key)
+
+                    except ModuleNotFoundError:
+                        # Fallback to AWS CLI
+                        result = subprocess.run(
+                            ["aws", "s3", "sync", checkpoint_dir, f"s3://{self.s3_bucket}/{self.s3_prefix}checkpoints/checkpoint-{state.global_step}/"],
+                            capture_output=True,
+                            text=True,
+                        )
+                        if result.returncode == 0:
+                            self._synced_checkpoints.add(checkpoint_dir)
+                            print(f"✅ Checkpoint synced to S3")
+                        else:
+                            print(f"⚠️  Failed to sync checkpoint: {result.stderr}")
+                    except Exception as e:
+                        print(f"⚠️  Failed to sync checkpoint to S3: {e}")
+
+            # Parse S3 config for per-epoch checkpoint syncing
+            s3_bucket = None
+            s3_prefix = None
+            if self.training_config.output_s3_path:
+                s3_path = self.training_config.output_s3_path
+                if s3_path.startswith("s3://"):
+                    parsed = urlparse(s3_path)
+                    s3_bucket = parsed.netloc
+                    s3_prefix = parsed.path.lstrip("/")
+                    if not s3_prefix.endswith("/"):
+                        s3_prefix += "/"
+                    s3_prefix = f"{s3_prefix}{job_name}/"
+                else:
+                    s3_bucket = s3_path
+                    s3_prefix = f"runs/{job_name}/"
+
             callbacks.append(
                 _MetricLoggerCallback(
                     os.path.join(output_dir, "run.json"),
                     job.job_id,
                     self.dynamo,
+                    s3_bucket=s3_bucket,
+                    s3_prefix=s3_prefix,
                 )
             )
         except AttributeError:
