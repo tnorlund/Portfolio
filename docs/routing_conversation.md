@@ -52,8 +52,8 @@ I just signed up for open router, and I got an email saying if I buy $10 in cred
    OpenRouter also exposes a **usage endpoint** you can call with your API key:
 
 ```bash
-# Replace YOUR_API_KEY with your actual OpenRouter API key
-curl -H "Authorization: Bearer YOUR_API_KEY" \
+# First, set your API key: export OPENROUTER_API_KEY="or_XXXXXXXXXXXXXXXXXXXXXXXX"
+curl -H "Authorization: Bearer $OPENROUTER_API_KEY" \
      https://openrouter.ai/api/v1/usage
 ```
 
@@ -150,9 +150,9 @@ Below is a step‑by‑step guide that shows how to:
 #### a) Using `curl`
 
 ```bash
-# Replace YOUR_API_KEY with your actual OpenRouter API key
+# First, set your API key: export OPENROUTER_API_KEY="or_XXXXXXXXXXXXXXXXXXXXXXXX"
 curl -X POST https://openrouter.ai/api/v1/chat/completions \
-     -H "Authorization: Bearer YOUR_API_KEY" \
+     -H "Authorization: Bearer $OPENROUTER_API_KEY" \
      -H "Content-Type: application/json" \
      -d '{
            "model": "gpt-oss-120b",
@@ -168,10 +168,11 @@ curl -X POST https://openrouter.ai/api/v1/chat/completions \
 #### b) Using Python (`requests`)
 
 ```python
+import os
 import requests
 import json
 
-API_KEY = "YOUR_API_KEY"  # Replace with your actual OpenRouter API key
+API_KEY = os.getenv("OPENROUTER_API_KEY")  # Set via: export OPENROUTER_API_KEY="or_XXX..."
 url = "https://openrouter.ai/api/v1/chat/completions"
 
 payload = {
@@ -210,8 +211,8 @@ OpenRouter tracks usage per‑model. After you've sent a request, you can:
 #### b) Call the usage endpoint programmatically
 
 ```bash
-# Replace YOUR_API_KEY with your actual OpenRouter API key
-curl -H "Authorization: Bearer YOUR_API_KEY" \
+# First, set your API key: export OPENROUTER_API_KEY="or_XXXXXXXXXXXXXXXXXXXXXXXX"
+curl -H "Authorization: Bearer $OPENROUTER_API_KEY" \
      https://openrouter.ai/api/v1/usage
 ```
 
