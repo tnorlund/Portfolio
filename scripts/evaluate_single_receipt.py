@@ -94,6 +94,7 @@ def main():
 
     # Import after setting env vars
     from langchain_ollama import ChatOllama
+    from receipt_dynamo import DynamoClient
 
     from receipt_agent.agents.label_evaluator import (  # Pattern discovery; Patterns; Evaluation; LLM Review
         EvaluatorState,
@@ -111,7 +112,6 @@ def main():
     from receipt_agent.agents.label_evaluator.pattern_discovery import (
         discover_patterns_with_llm,
     )
-    from receipt_dynamo import DynamoClient
 
     dynamo_client = DynamoClient(table_name=config["dynamodb_table_name"])
 
@@ -227,9 +227,8 @@ def main():
                         "infra/label_evaluator_step_functions/lambdas/utils",
                     ),
                 )
-                from s3_helpers import download_chromadb_snapshot
-
                 from receipt_chroma import ChromaClient
+                from s3_helpers import download_chromadb_snapshot
 
                 s3 = boto3.client("s3")
                 chroma_path = os.path.join(
@@ -312,10 +311,21 @@ def main():
         current_label = issue.get("current_label", "")
         print(f'\n  [{i}] {issue_type}: "{word_text}"')
         print(f"      Current: {current_label}")
-        if i < len(reviewed_issues):
-            r = reviewed_issues[i]
+        # Find matching reviewed issue by word identity (not by index)
+        matching_review = next(
+            (
+                r
+                for r in reviewed_issues
+                if r.get("word_text") == word_text
+                and r.get("line_id") == issue.get("line_id")
+                and r.get("word_id") == issue.get("word_id")
+            ),
+            None,
+        )
+        if matching_review:
             print(
-                f"      Decision: {r.get('decision')} - {r.get('reasoning', '')[:60]}..."
+                f"      Decision: {matching_review.get('decision')} - "
+                f"{matching_review.get('reasoning', '')[:60]}..."
             )
 
     print("=" * 60)
