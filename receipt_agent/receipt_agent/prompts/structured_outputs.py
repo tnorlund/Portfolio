@@ -377,6 +377,28 @@ class LabelPositions(BaseModel):
         return result
 
 
+class XPositionZones(BaseModel):
+    """X-position zone boundaries for label positioning."""
+
+    left: tuple[float, float] = Field(
+        default=(0.0, 0.3), description="Left zone boundaries"
+    )
+    center: tuple[float, float] = Field(
+        default=(0.3, 0.6), description="Center zone boundaries"
+    )
+    right: tuple[float, float] = Field(
+        default=(0.6, 1.0), description="Right zone boundaries"
+    )
+
+    def to_dict(self) -> dict:
+        """Convert to dict format for backwards compatibility."""
+        return {
+            "left": list(self.left),
+            "center": list(self.center),
+            "right": list(self.right),
+        }
+
+
 class PatternDiscoveryResponse(BaseModel):
     """Response for line item pattern discovery."""
 
@@ -405,6 +427,10 @@ class PatternDiscoveryResponse(BaseModel):
     )
     barcode_pattern: Optional[str] = Field(
         default=None, description="Regex pattern for barcodes if found"
+    )
+    x_position_zones: Optional[XPositionZones] = Field(
+        default=None,
+        description="Horizontal zone boundaries for label positioning",
     )
     label_positions: Optional[LabelPositions] = Field(
         default=None,
@@ -446,6 +472,8 @@ class PatternDiscoveryResponse(BaseModel):
             result["item_end_marker"] = self.item_end_marker
         if self.barcode_pattern:
             result["barcode_pattern"] = self.barcode_pattern
+        if self.x_position_zones:
+            result["x_position_zones"] = self.x_position_zones.to_dict()
         if self.label_positions:
             result["label_positions"] = self.label_positions.to_dict()
         if self.grouping_rule:
