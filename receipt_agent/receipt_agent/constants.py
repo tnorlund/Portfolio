@@ -6,14 +6,10 @@ CORE_LABELS = {
     "PHONE_NUMBER": "Telephone number printed on the receipt (store's main line).",
     "WEBSITE": "Web or email address printed on the receipt (e.g., sprouts.com).",
     "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
-    "ADDRESS_LINE": (
-        "Full address line (street + city etc.) printed on the receipt."
-    ),
+    "ADDRESS_LINE": ("Full address line (street + city etc.) printed on the receipt."),
     "DATE": "Calendar date of the transaction.",
     "TIME": "Time of the transaction.",
-    "PAYMENT_METHOD": (
-        "Payment instrument summary (e.g., VISA ••••1234, CASH)."
-    ),
+    "PAYMENT_METHOD": ("Payment instrument summary (e.g., VISA ••••1234, CASH)."),
     "COUPON": "Coupon code or description that reduces price.",
     "DISCOUNT": "Any non-coupon discount line item (e.g., '10% OFF').",
     "PRODUCT_NAME": "Name of a product or item being purchased.",
@@ -22,9 +18,7 @@ CORE_LABELS = {
     "LINE_TOTAL": "Total price for a line item (quantity × unit_price).",
     "SUBTOTAL": "Subtotal before tax and discounts.",
     "TAX": "Tax amount (sales tax, VAT, etc.).",
-    "GRAND_TOTAL": (
-        "Final total amount paid (after all discounts and taxes)."
-    ),
+    "GRAND_TOTAL": ("Final total amount paid (after all discounts and taxes)."),
     # Payment-related labels (added 2025-12-18)
     # These were missing from original schema and caused mislabeling in
     # training data. When these values appeared on receipts, they were
@@ -60,9 +54,7 @@ LABEL_GROUPS = {
 
 # Map each label to its group
 LABEL_TO_GROUP = {
-    label: group_name
-    for group_name, labels in LABEL_GROUPS.items()
-    for label in labels
+    label: group_name for group_name, labels in LABEL_GROUPS.items() for label in labels
 }
 
 # Priority within-group pairs (important relationships within semantic groups)
@@ -134,6 +126,18 @@ LINE_ITEM_EVALUATION_LABELS = {
 
 # Backward compatibility alias
 CURRENCY_LABELS = LINE_ITEM_EVALUATION_LABELS
+
+# Financial math labels - labels involved in receipt math validation
+# Used by financial_subagent to verify: GRAND_TOTAL = SUBTOTAL + TAX, etc.
+FINANCIAL_MATH_LABELS = {
+    "GRAND_TOTAL",
+    "SUBTOTAL",
+    "TAX",
+    "LINE_TOTAL",
+    "UNIT_PRICE",
+    "QUANTITY",
+    "DISCOUNT",
+}
 
 # Metadata evaluation labels - labels validated against ReceiptPlace or format patterns
 # These are non-line-item labels that appear on receipts

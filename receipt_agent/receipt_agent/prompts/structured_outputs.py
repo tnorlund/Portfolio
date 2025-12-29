@@ -348,6 +348,75 @@ class MetadataEvaluationResponse(BaseModel):
 
 
 # =============================================================================
+# Financial Validation Subagent Models (financial_subagent.py)
+# =============================================================================
+
+
+class FinancialLabelEnum(str, Enum):
+    """Labels valid for financial math validation."""
+
+    GRAND_TOTAL = "GRAND_TOTAL"
+    SUBTOTAL = "SUBTOTAL"
+    TAX = "TAX"
+    LINE_TOTAL = "LINE_TOTAL"
+    UNIT_PRICE = "UNIT_PRICE"
+    QUANTITY = "QUANTITY"
+    DISCOUNT = "DISCOUNT"
+
+
+class MathIssueTypeEnum(str, Enum):
+    """Type of math issue detected."""
+
+    GRAND_TOTAL_MISMATCH = "GRAND_TOTAL_MISMATCH"
+    SUBTOTAL_MISMATCH = "SUBTOTAL_MISMATCH"
+    LINE_ITEM_MISMATCH = "LINE_ITEM_MISMATCH"
+
+
+class FinancialEvaluation(BaseModel):
+    """Evaluation result for a single financial value with math issue."""
+
+    index: int = Field(description="The index of the issue being evaluated (0-based)")
+    issue_type: MathIssueTypeEnum = Field(description="Type of math issue detected")
+    decision: DecisionEnum = Field(
+        description="Which value is wrong: VALID means current label correct, INVALID means it should change"
+    )
+    reasoning: str = Field(
+        description="Brief explanation of why this value is likely wrong based on math and context"
+    )
+    suggested_label: Optional[FinancialLabelEnum] = Field(
+        default=None, description="If INVALID, the correct label for this word"
+    )
+    confidence: ConfidenceEnum = Field(
+        default=ConfidenceEnum.MEDIUM,
+        description="Confidence in this decision",
+    )
+
+    def to_dict(self) -> dict:
+        """Convert to dict format for backwards compatibility."""
+        return {
+            "issue_type": self.issue_type.value,
+            "decision": self.decision.value,
+            "reasoning": self.reasoning,
+            "suggested_label": (
+                self.suggested_label.value if self.suggested_label else None
+            ),
+            "confidence": self.confidence.value,
+        }
+
+
+class FinancialEvaluationResponse(BaseModel):
+    """Response for financial math validation."""
+
+    evaluations: list[FinancialEvaluation] = Field(
+        description="One evaluation per math issue detected"
+    )
+
+    def to_ordered_list(self, expected_count: int) -> list[dict]:
+        """Convert to ordered list of dicts for backwards compatibility."""
+        return build_ordered_list(self.evaluations, expected_count)
+
+
+# =============================================================================
 # Pattern Discovery Models (pattern_discovery.py)
 # =============================================================================
 

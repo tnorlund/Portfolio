@@ -102,15 +102,19 @@ from receipt_agent.agents.label_evaluator.currency_subagent import (
     identify_line_item_rows,
     parse_currency_evaluation_response,
 )
-from receipt_agent.agents.label_evaluator.metadata_subagent import (
-    FORMAT_VALIDATED_LABELS,
-    MAX_RECEIPT_LINES_FOR_PROMPT,
-    PLACE_VALIDATED_LABELS,
-    MetadataWord,
-    build_metadata_evaluation_prompt,
-    collect_metadata_words,
-    evaluate_metadata_labels,
-    parse_metadata_evaluation_response,
+from receipt_agent.agents.label_evaluator.financial_subagent import (
+    FinancialValue,
+    MathIssue,
+    build_financial_validation_prompt,
+    check_grand_total_math,
+    check_line_item_math,
+    check_subtotal_math,
+    detect_math_issues,
+    evaluate_financial_math,
+    evaluate_financial_math_sync,
+    extract_financial_values,
+    extract_number,
+    parse_financial_evaluation_response,
 )
 from receipt_agent.agents.label_evaluator.geometry import (
     angle_difference,
@@ -157,6 +161,16 @@ from receipt_agent.agents.label_evaluator.llm_review import (
     review_issues_batch,
     review_issues_with_receipt_context,
     review_single_issue,
+)
+from receipt_agent.agents.label_evaluator.metadata_subagent import (
+    FORMAT_VALIDATED_LABELS,
+    MAX_RECEIPT_LINES_FOR_PROMPT,
+    PLACE_VALIDATED_LABELS,
+    MetadataWord,
+    build_metadata_evaluation_prompt,
+    collect_metadata_words,
+    evaluate_metadata_labels,
+    parse_metadata_evaluation_response,
 )
 from receipt_agent.agents.label_evaluator.pattern_discovery import (
     PatternDiscoveryConfig,
@@ -287,4 +301,17 @@ __all__ = [
     "collect_metadata_words",
     "evaluate_metadata_labels",
     "parse_metadata_evaluation_response",
+    # Financial subagent (for financial math validation)
+    "FinancialValue",
+    "MathIssue",
+    "build_financial_validation_prompt",
+    "check_grand_total_math",
+    "check_line_item_math",
+    "check_subtotal_math",
+    "detect_math_issues",
+    "evaluate_financial_math",
+    "evaluate_financial_math_sync",
+    "extract_financial_values",
+    "extract_number",
+    "parse_financial_evaluation_response",
 ]

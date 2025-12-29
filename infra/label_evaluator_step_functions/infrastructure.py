@@ -769,6 +769,55 @@ class LabelEvaluatorStepFunction(ComponentResource):
         evaluate_metadata_lambda = metadata_docker_image.lambda_function
 
         # ============================================================
+        # Container Lambda: evaluate_financial_labels (LLM)
+        # Validates financial math after currency/metadata corrections
+        # Runs AFTER ParallelReview to get corrected labels
+        # ============================================================
+        financial_lambda_config = {
+            "role_arn": lambda_role.arn,
+            "timeout": 300,  # 5 minutes
+            "memory_size": 512,
+            "tags": {"environment": stack},
+            "ephemeral_storage": 512,
+            "environment": {
+                "BATCH_BUCKET": self.batch_bucket.bucket,
+                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                # Ollama (primary LLM provider)
+                "OLLAMA_API_KEY": ollama_api_key,
+                "OLLAMA_BASE_URL": "https://ollama.com",
+                "OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter (fallback LLM provider)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
+                "OPENROUTER_PAID_MODEL": "openai/gpt-oss-120b",
+                **tracing_env,
+            },
+        }
+
+        financial_docker_image = CodeBuildDockerImage(
+            f"{name}-financial-img",
+            dockerfile_path=(
+                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.financial"
+            ),
+            build_context_path=".",
+            source_paths=[
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
+                "receipt_chroma",
+                "receipt_places",
+                "receipt_agent",
+                "infra/label_evaluator_step_functions/lambdas",
+            ],
+            lambda_function_name=f"{name}-evaluate-financial",
+            lambda_config=financial_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
+        )
+
+        evaluate_financial_lambda = financial_docker_image.lambda_function
+
+        # ============================================================
         # Container Lambda: close_receipt_trace (minimal)
         # Closes receipt trace after parallel evaluation completes
         # ============================================================
@@ -813,6 +862,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 evaluate_labels_lambda.arn,
                 evaluate_currency_lambda.arn,
                 evaluate_metadata_lambda.arn,
+                evaluate_financial_lambda.arn,
                 close_trace_lambda.arn,
                 aggregate_results_lambda.arn,
                 final_aggregate_lambda.arn,
@@ -898,6 +948,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 evaluate_labels_lambda.arn,
                 evaluate_currency_lambda.arn,
                 evaluate_metadata_lambda.arn,
+                evaluate_financial_lambda.arn,
                 close_trace_lambda.arn,
                 aggregate_results_lambda.arn,
                 final_aggregate_lambda.arn,
@@ -913,12 +964,13 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     evaluate_labels_arn=args[4],
                     evaluate_currency_arn=args[5],
                     evaluate_metadata_arn=args[6],
-                    close_trace_arn=args[7],
-                    aggregate_results_arn=args[8],
-                    final_aggregate_arn=args[9],
-                    discover_patterns_arn=args[10],
-                    llm_review_arn=args[11],
-                    batch_bucket=args[12],
+                    evaluate_financial_arn=args[7],
+                    close_trace_arn=args[8],
+                    aggregate_results_arn=args[9],
+                    final_aggregate_arn=args[10],
+                    discover_patterns_arn=args[11],
+                    llm_review_arn=args[12],
+                    batch_bucket=args[13],
                     max_concurrency=self.max_concurrency,
                     batch_size=self.batch_size,
                 )
@@ -942,6 +994,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "evaluate_labels_lambda_arn": evaluate_labels_lambda.arn,
                 "evaluate_currency_lambda_arn": evaluate_currency_lambda.arn,
                 "evaluate_metadata_lambda_arn": evaluate_metadata_lambda.arn,
+                "evaluate_financial_lambda_arn": evaluate_financial_lambda.arn,
                 "close_trace_lambda_arn": close_trace_lambda.arn,
                 "llm_review_lambda_arn": llm_review_lambda.arn,
                 "aggregate_results_lambda_arn": aggregate_results_lambda.arn,
@@ -959,6 +1012,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         evaluate_labels_arn: str,
         evaluate_currency_arn: str,
         evaluate_metadata_arn: str,
+        evaluate_financial_arn: str,
         close_trace_arn: str,
         aggregate_results_arn: str,
         final_aggregate_arn: str,
@@ -976,15 +1030,18 @@ class LabelEvaluatorStepFunction(ComponentResource):
            - FlagGeometricAnomalies (deterministic pattern analysis)
            - ReviewCurrencyLabels (LLM-based line item validation)
            - ReviewMetadataLabels (LLM-based metadata validation)
-        3. ReviewFlaggedLabels - LLM reviews flagged words (if any)
-        4. Return combined result
+        3. ValidateFinancialMath - Validate math relationships (after corrections)
+        4. CheckFlaggedWords - Only proceed to LLM review if needed
+        5. ReviewFlaggedLabels - LLM reviews flagged words (if any)
+        6. Return combined result
 
         Key features:
         - Container-based Lambdas handle LangSmith tracing
         - LearnLineItemPatterns STARTS the trace (first container Lambda)
         - FlagGeometricAnomalies, ReviewCurrencyLabels, and ReviewMetadataLabels run in parallel
+        - ValidateFinancialMath runs AFTER parallel review to use corrected labels
         - ReviewFlaggedLabels only runs if FlagGeometricAnomalies flagged words
-        - Currency and metadata review write directly to DynamoDB
+        - Currency, metadata, and financial review write directly to DynamoDB
 
         Runtime inputs (from Step Function execution input):
         - dry_run: bool (default: False) - Don't write to DynamoDB
@@ -1468,6 +1525,48 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                             },
                                                         ],
                                                         "ResultPath": "$.parallel_results",
+                                                        "Next": "ValidateFinancialMath",
+                                                    },
+                                                    # Validate financial math after currency/metadata corrections
+                                                    "ValidateFinancialMath": {
+                                                        "Type": "Task",
+                                                        "Resource": evaluate_financial_arn,
+                                                        "TimeoutSeconds": 300,
+                                                        "Parameters": {
+                                                            "data_s3_key.$": "$.receipt_data.data_s3_key",
+                                                            "execution_id.$": "$.execution_id",
+                                                            "batch_bucket.$": "$.batch_bucket",
+                                                            "merchant_name.$": "$.merchant_name",
+                                                            "dry_run.$": "$.dry_run",
+                                                            "enable_tracing.$": "$.enable_tracing",
+                                                            "langchain_project.$": "$.langchain_project",
+                                                            # Receipt-level trace_id from LoadReceiptData
+                                                            "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
+                                                            # Execution-level trace propagation (for reference)
+                                                            "execution_arn.$": "$.execution_arn",
+                                                            "trace_id.$": "$.trace_id",
+                                                            "root_run_id.$": "$.root_run_id",
+                                                            "root_dotted_order.$": "$.root_dotted_order",
+                                                        },
+                                                        "ResultPath": "$.financial_result",
+                                                        "Retry": [
+                                                            {
+                                                                "ErrorEquals": [
+                                                                    "OllamaRateLimitError"
+                                                                ],
+                                                                "IntervalSeconds": 30,
+                                                                "MaxAttempts": 5,
+                                                                "BackoffRate": 2.0,
+                                                            },
+                                                            {
+                                                                "ErrorEquals": [
+                                                                    "States.TaskFailed"
+                                                                ],
+                                                                "IntervalSeconds": 2,
+                                                                "MaxAttempts": 2,
+                                                                "BackoffRate": 2.0,
+                                                            },
+                                                        ],
                                                         "Next": "CheckFlaggedWords",
                                                     },
                                                     # Check if FlagGeometricAnomalies flagged any words
@@ -1549,6 +1648,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                             # Metadata results (index 2)
                                                             "metadata_words_evaluated.$": "$.parallel_results[2].metadata_words_evaluated",
                                                             "metadata_decisions.$": "$.parallel_results[2].decisions",
+                                                            # Financial results (from ValidateFinancialMath)
+                                                            "financial_values_evaluated.$": "$.financial_result.values_evaluated",
+                                                            "financial_decisions.$": "$.financial_result.decisions",
                                                         },
                                                         "ResultPath": "$.close_trace_result",
                                                         "Retry": [
@@ -1581,6 +1683,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                             "metadata_words_evaluated.$": "$.parallel_results[2].metadata_words_evaluated",
                                                             "metadata_decisions.$": "$.parallel_results[2].decisions",
                                                             "metadata_results_s3_key.$": "$.parallel_results[2].results_s3_key",
+                                                            # From ValidateFinancialMath
+                                                            "financial_values_evaluated.$": "$.financial_result.values_evaluated",
+                                                            "financial_decisions.$": "$.financial_result.decisions",
+                                                            "financial_results_s3_key.$": "$.financial_result.results_s3_key",
                                                             # Per-receipt trace info
                                                             "trace_id.$": "$.parallel_results[0].trace_id",
                                                             "root_run_id.$": "$.parallel_results[0].root_run_id",
