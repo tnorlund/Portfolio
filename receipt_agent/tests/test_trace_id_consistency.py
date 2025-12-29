@@ -9,12 +9,34 @@ cannot import from the container-based tracing.py module. This test ensures
 both implementations produce identical trace IDs for the same inputs.
 """
 
+import sys
 import uuid
+from pathlib import Path
 
 import pytest
 
-# Namespace for deterministic trace ID generation (must match both modules)
-TRACE_NAMESPACE = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+# Add paths to import from actual source modules
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_HANDLERS_PATH = (
+    _PROJECT_ROOT / "infra" / "label_evaluator_step_functions" / "handlers"
+)
+_TRACING_PATH = (
+    _PROJECT_ROOT / "infra" / "label_evaluator_step_functions" / "lambdas"
+)
+sys.path.insert(0, str(_HANDLERS_PATH))
+sys.path.insert(0, str(_TRACING_PATH))
+
+# Import TRACE_NAMESPACE from the actual source modules
+# pylint: disable=wrong-import-position,import-error
+from fetch_receipt_data import (  # noqa: E402
+    TRACE_NAMESPACE as FETCH_TRACE_NAMESPACE,
+)
+from utils.tracing import (  # noqa: E402
+    TRACE_NAMESPACE as TRACING_TRACE_NAMESPACE,
+)
+
+# Use fetch_receipt_data as the reference namespace
+TRACE_NAMESPACE = FETCH_TRACE_NAMESPACE
 
 
 def generate_receipt_trace_id_fetch(
@@ -80,9 +102,17 @@ class TestTraceIdConsistency:
         )
 
     def test_namespace_matches(self):
-        """Verify TRACE_NAMESPACE is consistent."""
+        """Verify TRACE_NAMESPACE is consistent across both source modules."""
         expected = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
-        assert expected == TRACE_NAMESPACE
+        assert (
+            FETCH_TRACE_NAMESPACE == expected
+        ), f"fetch_receipt_data.TRACE_NAMESPACE mismatch: {FETCH_TRACE_NAMESPACE}"
+        assert (
+            TRACING_TRACE_NAMESPACE == expected
+        ), f"tracing.TRACE_NAMESPACE mismatch: {TRACING_TRACE_NAMESPACE}"
+        assert (
+            FETCH_TRACE_NAMESPACE == TRACING_TRACE_NAMESPACE
+        ), "TRACE_NAMESPACE differs between fetch_receipt_data.py and tracing.py"
 
     def test_deterministic(self):
         """Same inputs should always produce same output."""

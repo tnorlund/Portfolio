@@ -57,10 +57,9 @@ async def run_test():
 
         table_name = os.environ.get("DYNAMODB_TABLE_NAME")
         if not table_name:
-            logger.error(
+            raise RuntimeError(
                 "DYNAMODB_TABLE_NAME environment variable is required"
             )
-            return
         dynamo = DynamoClient(table_name=table_name)
         logger.info("Using DynamoDB table: %s", table_name)
 
@@ -72,8 +71,7 @@ async def run_test():
         )
 
         if not metadatas:
-            logger.error("No Sprouts receipts found")
-            return
+            raise RuntimeError("No Sprouts receipts found in database")
 
         # Find a receipt with words and labels
         image_id = None
@@ -96,10 +94,9 @@ async def run_test():
                 break
 
         if image_id is None:
-            logger.error(
+            raise RuntimeError(
                 "No Sprouts receipt found with sufficient words/labels"
             )
-            return
 
         logger.info("Testing receipt: %s#%s", image_id, receipt_id)
         logger.info(
@@ -118,7 +115,11 @@ async def run_test():
         logger.info("  Ollama model: gpt-oss:20b-cloud")
 
         # Get API key from settings or Pulumi secrets
-        ollama_api_key = settings.ollama_api_key.get_secret_value()
+        ollama_api_key = (
+            settings.ollama_api_key.get_secret_value()
+            if settings.ollama_api_key
+            else None
+        )
         if not ollama_api_key:
             try:
                 from receipt_dynamo.data._pulumi import (
@@ -145,11 +146,9 @@ async def run_test():
                 )
 
         if not ollama_api_key:
-            logger.error(
-                "RECEIPT_AGENT_OLLAMA_API_KEY not set - cannot use Ollama "
-                "Cloud"
+            raise RuntimeError(
+                "RECEIPT_AGENT_OLLAMA_API_KEY not set - cannot use Ollama Cloud"
             )
-            return
 
         graph = create_label_evaluator_graph(
             dynamo,
@@ -166,6 +165,12 @@ async def run_test():
             receipt_id,
             skip_llm_review=False,  # Use LLM for validation
         )
+
+        # Validate result structure
+        assert result is not None, "Expected non-None result from evaluator"
+        assert (
+            "error" not in result or result.get("error") is None
+        ), f"Evaluator returned error: {result.get('error')}"
 
         # Print results
         print("\n" + "=" * 80)
