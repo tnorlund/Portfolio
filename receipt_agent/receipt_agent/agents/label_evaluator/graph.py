@@ -5,10 +5,19 @@ A LangGraph agent that validates receipt word labels by analyzing spatial
 patterns within receipts and across receipts from the same merchant.
 
 The workflow has two phases:
-1. Deterministic evaluation: Uses geometric analysis and pattern matching to
-   flag issues
-2. LLM review: Uses a cheap LLM (Haiku) to make semantic decisions on flagged
-   issues
+1. Pattern-based flagging: Uses geometric analysis and pattern matching to
+   flag suspicious labels for review
+2. LLM review: Uses an LLM to make semantic decisions on flagged words
+
+Graph nodes (full workflow):
+- load_receipt_data: Fetch words/labels from DynamoDB
+- load_training_receipts: Fetch other receipts from same merchant
+- build_spatial_context: Create WordContext and VisualLine objects
+- compute_merchant_patterns: Build geometric patterns from training data
+- flag_suspicious_labels: Run 6 detection rules to flag suspicious words
+- review_currency_labels: LLM reviews currency-type labels
+- review_flagged_labels: LLM reviews all flagged words
+- persist_label_decisions: Write new labels to DynamoDB
 
 Detects labeling errors such as:
 - Position anomalies (MERCHANT_NAME appearing in the middle of the receipt)
@@ -632,26 +641,26 @@ def create_label_evaluator_graph(
     workflow = StateGraph(EvaluatorState)
 
     # Add nodes
-    workflow.add_node("fetch_receipt_data", fetch_receipt_data)
-    workflow.add_node("fetch_merchant_receipts", fetch_merchant_receipts)
+    workflow.add_node("load_receipt_data", fetch_receipt_data)
+    workflow.add_node("load_training_receipts", fetch_merchant_receipts)
     workflow.add_node("build_spatial_context", build_spatial_context)
-    workflow.add_node("compute_patterns", compute_patterns)
-    workflow.add_node("evaluate_labels", evaluate_labels)
-    workflow.add_node("evaluate_currency", evaluate_currency)
-    workflow.add_node("review_issues_with_llm", review_issues_with_llm)
-    workflow.add_node("write_evaluation_results", write_evaluation_results)
+    workflow.add_node("compute_merchant_patterns", compute_patterns)
+    workflow.add_node("flag_suspicious_labels", evaluate_labels)
+    workflow.add_node("review_currency_labels", evaluate_currency)
+    workflow.add_node("review_flagged_labels", review_issues_with_llm)
+    workflow.add_node("persist_label_decisions", write_evaluation_results)
 
     # Linear flow
-    workflow.add_edge("fetch_receipt_data", "fetch_merchant_receipts")
-    workflow.add_edge("fetch_merchant_receipts", "build_spatial_context")
-    workflow.add_edge("build_spatial_context", "compute_patterns")
-    workflow.add_edge("compute_patterns", "evaluate_labels")
-    workflow.add_edge("evaluate_labels", "evaluate_currency")
-    workflow.add_edge("evaluate_currency", "review_issues_with_llm")
-    workflow.add_edge("review_issues_with_llm", "write_evaluation_results")
-    workflow.add_edge("write_evaluation_results", END)
+    workflow.add_edge("load_receipt_data", "load_training_receipts")
+    workflow.add_edge("load_training_receipts", "build_spatial_context")
+    workflow.add_edge("build_spatial_context", "compute_merchant_patterns")
+    workflow.add_edge("compute_merchant_patterns", "flag_suspicious_labels")
+    workflow.add_edge("flag_suspicious_labels", "review_currency_labels")
+    workflow.add_edge("review_currency_labels", "review_flagged_labels")
+    workflow.add_edge("review_flagged_labels", "persist_label_decisions")
+    workflow.add_edge("persist_label_decisions", END)
 
-    workflow.set_entry_point("fetch_receipt_data")
+    workflow.set_entry_point("load_receipt_data")
 
     return workflow.compile()
 
@@ -1062,22 +1071,22 @@ def create_compute_only_graph(
 
         return {"issues_found": issues}
 
-    # Build the compute-only graph
+    # Build the compute-only graph (used by Step Function Lambdas)
     workflow = StateGraph(EvaluatorState)
 
-    # Add nodes (no fetch, no LLM, no write)
-    workflow.add_node("validate_state", validate_state)
+    # Add nodes (no fetch, no LLM, no write - those happen in separate Lambdas)
+    workflow.add_node("validate_input", validate_state)
     workflow.add_node("build_spatial_context", build_spatial_context)
-    workflow.add_node("compute_patterns", compute_patterns)
-    workflow.add_node("evaluate_labels", evaluate_labels)
+    workflow.add_node("compute_merchant_patterns", compute_patterns)
+    workflow.add_node("flag_suspicious_labels", evaluate_labels)
 
     # Linear flow
-    workflow.add_edge("validate_state", "build_spatial_context")
-    workflow.add_edge("build_spatial_context", "compute_patterns")
-    workflow.add_edge("compute_patterns", "evaluate_labels")
-    workflow.add_edge("evaluate_labels", END)
+    workflow.add_edge("validate_input", "build_spatial_context")
+    workflow.add_edge("build_spatial_context", "compute_merchant_patterns")
+    workflow.add_edge("compute_merchant_patterns", "flag_suspicious_labels")
+    workflow.add_edge("flag_suspicious_labels", END)
 
-    workflow.set_entry_point("validate_state")
+    workflow.set_entry_point("validate_input")
 
     return workflow.compile()
 

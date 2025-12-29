@@ -657,21 +657,21 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
             processing_time = time.time() - start_time
             metrics = {
-                "IssuesReviewed": total_issues,
-                "DecisionsValid": decisions.get("VALID", 0),
-                "DecisionsInvalid": decisions.get("INVALID", 0),
-                "DecisionsNeedsReview": decisions.get("NEEDS_REVIEW", 0),
+                "WordsLLMReviewed": total_issues,
+                "LLMConfirmedValid": decisions.get("VALID", 0),
+                "LLMFoundInvalid": decisions.get("INVALID", 0),
+                "LLMUncertain": decisions.get("NEEDS_REVIEW", 0),
                 "ProcessingTimeSeconds": round(processing_time, 2),
                 "LLMCallCount": llm_call_count,
             }
             if apply_stats:
-                metrics["LabelsConfirmed"] = apply_stats.get(
+                metrics["LabelsVerified"] = apply_stats.get(
                     "labels_confirmed", 0
                 )
-                metrics["LabelsInvalidated"] = apply_stats.get(
+                metrics["LabelsRemoved"] = apply_stats.get(
                     "labels_invalidated", 0
                 )
-                metrics["LabelsCreated"] = apply_stats.get("labels_created", 0)
+                metrics["LabelsAdded"] = apply_stats.get("labels_created", 0)
 
             emf_metrics.log_metrics(
                 metrics=metrics,
@@ -705,7 +705,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             processing_time = time.time() - start_time
             emf_metrics.log_metrics(
                 metrics={
-                    "LLMReviewBatchFailed": 1,
+                    "LLMReviewFailed": 1,
                     "ProcessingTimeSeconds": round(processing_time, 2),
                 },
                 dimensions={"Merchant": merchant_name[:50]},

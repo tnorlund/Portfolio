@@ -2,27 +2,28 @@
 Pulumi infrastructure for Label Evaluator Step Function with LangSmith Tracing.
 
 This component creates a Step Function with per-receipt traces in LangSmith,
-providing complete visibility into each receipt's evaluation and LLM review.
+providing complete visibility into each receipt's label validation and LLM review.
 
-The trace hierarchy (per-receipt traces):
-- Execution-level trace (label_evaluator:{merchant_name}):
-  - DiscoverLineItemPatterns: LLM discovers line item patterns
-  - ComputePatterns: Compute spatial patterns
+The workflow has two phases:
+1. Pattern Learning (per-merchant, once):
+   - LearnLineItemPatterns: LLM learns line item structure (single/multi-line, positions)
+   - BuildMerchantPatterns: Compute geometric patterns from training receipts
 
-- Per-receipt trace (ReceiptEvaluation):
-  - DiscoverPatterns: Reference to line item patterns
-  - ComputePatterns: Reference to merchant patterns
-  - EvaluateLabels: Run 6 issue detection strategies
-  - LLMReview: LLM reviews issues for this receipt
-    - llm_call: Individual LLM call with ChromaDB similarity evidence
+2. Per-Receipt Validation (parallel):
+   - LoadReceiptData: Load words/labels from DynamoDB
+   - ParallelReview:
+     - FlagSuspiciousLabels: Deterministic pattern analysis (6 detection rules)
+     - ReviewCurrencyLabels: LLM reviews currency-type labels (prices, totals)
+     - ReviewMetadataLabels: LLM reviews metadata-type labels (merchant, address)
+   - ReviewFlaggedLabels: LLM reviews flagged words with ChromaDB similarity evidence
 
-Each receipt gets its own trace with metadata:
+Each receipt gets its own LangSmith trace with metadata:
   - image_id: Receipt image identifier
   - receipt_id: Receipt number within image
   - merchant_name: Merchant name for filtering
 
 This enables filtering by specific receipts in LangSmith and provides
-complete visibility into each receipt's evaluation process.
+complete visibility into each receipt's validation process.
 """
 
 import json
@@ -991,20 +992,20 @@ class LabelEvaluatorStepFunction(ComponentResource):
         """Create Step Function definition with parallel evaluation and trace propagation.
 
         Simplified per-receipt flow:
-        1. FetchReceiptData - Load receipt from DynamoDB
-        2. ParallelEvaluation:
-           - EvaluateLabels (deterministic checks)
-           - EvaluateCurrencyLabels (LLM-based line item validation)
-           - EvaluateMetadataLabels (LLM-based metadata validation)
-        3. LLMReviewReceipt - Review issues from EvaluateLabels (if any)
+        1. LoadReceiptData - Load receipt from DynamoDB
+        2. ParallelReview:
+           - FlagSuspiciousLabels (deterministic pattern analysis)
+           - ReviewCurrencyLabels (LLM-based line item validation)
+           - ReviewMetadataLabels (LLM-based metadata validation)
+        3. ReviewFlaggedLabels - LLM reviews flagged words (if any)
         4. Return combined result
 
         Key features:
         - Container-based Lambdas handle LangSmith tracing
-        - DiscoverLineItemPatterns STARTS the trace (first container Lambda)
-        - EvaluateLabels, EvaluateCurrencyLabels, and EvaluateMetadataLabels run in parallel
-        - LLMReviewReceipt only runs if EvaluateLabels found issues
-        - Currency and metadata evaluation write directly to DynamoDB
+        - LearnLineItemPatterns STARTS the trace (first container Lambda)
+        - FlagSuspiciousLabels, ReviewCurrencyLabels, and ReviewMetadataLabels run in parallel
+        - ReviewFlaggedLabels only runs if FlagSuspiciousLabels flagged words
+        - Currency and metadata review write directly to DynamoDB
 
         Runtime inputs (from Step Function execution input):
         - dry_run: bool (default: False) - Don't write to DynamoDB
@@ -1059,7 +1060,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     ],
                     "Default": "InitializeAllMerchants",
                 },
-                # Initialize for single merchant mode
+                # Initialize for single merchant (skip QueryMerchants)
                 "InitializeSingleMerchant": {
                     "Type": "Pass",
                     "Parameters": {
@@ -1099,7 +1100,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "original_input.$": "$.normalized.original_input",
                     },
                     "ResultPath": "$.init",
-                    "Next": "ListMerchants",
+                    "Next": "QueryMerchants",
                 },
                 # Single merchant mode - process just one merchant
                 "SingleMerchantMode": {
@@ -1117,8 +1118,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "ResultPath": "$.merchants_data",
                     "Next": "ProcessMerchants",
                 },
-                # List all merchants (zip-based, no tracing)
-                "ListMerchants": {
+                # Query merchants with enough receipts for pattern learning
+                "QueryMerchants": {
                     "Type": "Task",
                     "Resource": list_merchants_arn,
                     "TimeoutSeconds": 300,
@@ -1174,10 +1175,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     },
                     "ItemProcessor": {
                         "ProcessorConfig": {"Mode": "INLINE"},
-                        "StartAt": "ListReceipts",
+                        "StartAt": "BatchReceiptsByMerchant",
                         "States": {
-                            # List receipts (zip-based, no tracing)
-                            "ListReceipts": {
+                            # Batch receipts for parallel processing
+                            "BatchReceiptsByMerchant": {
                                 "Type": "Task",
                                 "Resource": list_receipts_arn,
                                 "TimeoutSeconds": 300,
@@ -1206,7 +1207,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     {
                                         "Variable": "$.receipts_data.total_receipts",
                                         "NumericGreaterThan": 0,
-                                        "Next": "DiscoverLineItemPatterns",
+                                        "Next": "LearnLineItemPatterns",
                                     }
                                 ],
                                 "Default": "NoReceipts",
@@ -1220,8 +1221,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                 },
                                 "End": True,
                             },
-                            # Discover line item patterns with LLM - STARTS trace
-                            "DiscoverLineItemPatterns": {
+                            # LLM learns line item structure (single/multi-line, positions) - STARTS trace
+                            "LearnLineItemPatterns": {
                                 "Type": "Task",
                                 "Resource": discover_patterns_arn,
                                 "TimeoutSeconds": 600,
@@ -1244,10 +1245,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                         "BackoffRate": 2.0,
                                     }
                                 ],
-                                "Next": "ComputePatterns",
+                                "Next": "BuildMerchantPatterns",
                             },
-                            # Compute spatial patterns - resumes trace
-                            "ComputePatterns": {
+                            # Build geometric patterns from training receipts (no LLM)
+                            "BuildMerchantPatterns": {
                                 "Type": "Task",
                                 "Resource": compute_patterns_arn,
                                 "TimeoutSeconds": 600,
@@ -1327,11 +1328,11 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                 "ProcessorConfig": {
                                                     "Mode": "INLINE"
                                                 },
-                                                "StartAt": "FetchReceiptData",
+                                                "StartAt": "LoadReceiptData",
                                                 "States": {
-                                                    # Fetch receipt data from DynamoDB
-                                                    # Also generates receipt-level trace_id for parallel evaluators
-                                                    "FetchReceiptData": {
+                                                    # Load receipt words/labels from DynamoDB
+                                                    # Also generates receipt-level trace_id for parallel reviewers
+                                                    "LoadReceiptData": {
                                                         "Type": "Task",
                                                         "Resource": fetch_receipt_data_arn,
                                                         "TimeoutSeconds": 60,
@@ -1353,16 +1354,16 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                 "BackoffRate": 2.0,
                                                             }
                                                         ],
-                                                        "Next": "ParallelEvaluation",
+                                                        "Next": "ParallelReview",
                                                     },
-                                                    # Run EvaluateLabels and EvaluateCurrencyLabels in parallel
-                                                    "ParallelEvaluation": {
+                                                    # Run pattern flagging and LLM reviews in parallel
+                                                    "ParallelReview": {
                                                         "Type": "Parallel",
                                                         "Branches": [
                                                             {
-                                                                "StartAt": "EvaluateLabels",
+                                                                "StartAt": "FlagSuspiciousLabels",
                                                                 "States": {
-                                                                    "EvaluateLabels": {
+                                                                    "FlagSuspiciousLabels": {
                                                                         "Type": "Task",
                                                                         "Resource": evaluate_labels_arn,
                                                                         "TimeoutSeconds": 300,
@@ -1398,9 +1399,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                 },
                                                             },
                                                             {
-                                                                "StartAt": "EvaluateCurrencyLabels",
+                                                                "StartAt": "ReviewCurrencyLabels",
                                                                 "States": {
-                                                                    "EvaluateCurrencyLabels": {
+                                                                    "ReviewCurrencyLabels": {
                                                                         "Type": "Task",
                                                                         "Resource": evaluate_currency_arn,
                                                                         "TimeoutSeconds": 300,
@@ -1444,9 +1445,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                 },
                                                             },
                                                             {
-                                                                "StartAt": "EvaluateMetadataLabels",
+                                                                "StartAt": "ReviewMetadataLabels",
                                                                 "States": {
-                                                                    "EvaluateMetadataLabels": {
+                                                                    "ReviewMetadataLabels": {
                                                                         "Type": "Task",
                                                                         "Resource": evaluate_metadata_arn,
                                                                         "TimeoutSeconds": 300,
@@ -1490,24 +1491,24 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                             },
                                                         ],
                                                         "ResultPath": "$.parallel_results",
-                                                        "Next": "CheckForIssues",
+                                                        "Next": "CheckFlaggedWords",
                                                     },
-                                                    # Check if EvaluateLabels found issues
-                                                    "CheckForIssues": {
+                                                    # Check if FlagSuspiciousLabels flagged any words
+                                                    "CheckFlaggedWords": {
                                                         "Type": "Choice",
                                                         "Choices": [
                                                             {
-                                                                # EvaluateLabels result is first in array
+                                                                # FlagSuspiciousLabels result is first in array
                                                                 "Variable": "$.parallel_results[0].issues_found",
                                                                 "NumericGreaterThan": 0,
-                                                                "Next": "LLMReviewReceipt",
+                                                                "Next": "ReviewFlaggedLabels",
                                                             }
                                                         ],
-                                                        # No issues - close trace and return
-                                                        "Default": "CloseReceiptTrace",
+                                                        # No flagged words - finalize trace and return
+                                                        "Default": "FinalizeReceiptTrace",
                                                     },
-                                                    # LLM reviews issues for this receipt
-                                                    "LLMReviewReceipt": {
+                                                    # LLM reviews flagged words for this receipt
+                                                    "ReviewFlaggedLabels": {
                                                         "Type": "Task",
                                                         "Resource": llm_review_arn,
                                                         "TimeoutSeconds": 900,
@@ -1550,9 +1551,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                         ],
                                                         "Next": "ReturnResult",
                                                     },
-                                                    # Close receipt trace when no issues found
-                                                    # (LLMReviewReceipt closes it when there ARE issues)
-                                                    "CloseReceiptTrace": {
+                                                    # Finalize receipt trace when no flagged words
+                                                    # (ReviewFlaggedLabels closes trace when there ARE flagged words)
+                                                    "FinalizeReceiptTrace": {
                                                         "Type": "Task",
                                                         "Resource": close_trace_arn,
                                                         "TimeoutSeconds": 30,
@@ -1617,10 +1618,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     },
                                 },
                                 "ResultPath": "$.batch_results",
-                                "Next": "AggregateResults",
+                                "Next": "SummarizeBatchResults",
                             },
-                            # Aggregate results
-                            "AggregateResults": {
+                            # Summarize results from all receipts in batch
+                            "SummarizeBatchResults": {
                                 "Type": "Task",
                                 "Resource": aggregate_results_arn,
                                 "TimeoutSeconds": 120,
@@ -1648,10 +1649,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         },
                     },
                     "ResultPath": "$.all_results",
-                    "Next": "FinalAggregate",
+                    "Next": "SummarizeExecutionResults",
                 },
-                # Final aggregation across all merchants
-                "FinalAggregate": {
+                # Summarize results across all merchants
+                "SummarizeExecutionResults": {
                     "Type": "Task",
                     "Resource": final_aggregate_arn,
                     "TimeoutSeconds": 300,
