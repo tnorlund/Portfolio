@@ -35,7 +35,7 @@ I just signed up for open router, and I got an email saying if I buy $10 in cred
 ### Where to see your usage
 
 1. **Log in to the OpenRouter dashboard**
-   https://openrouter.ai/dashboard
+   [https://openrouter.ai/dashboard](https://openrouter.ai/dashboard)
 
 2. **Navigate to the "Usage" tab** (usually on the left‑hand sidebar).
    You'll see a table broken down by:
@@ -52,6 +52,7 @@ I just signed up for open router, and I got an email saying if I buy $10 in cred
    OpenRouter also exposes a **usage endpoint** you can call with your API key:
 
 ```bash
+# Replace YOUR_API_KEY with your actual OpenRouter API key
 curl -H "Authorization: Bearer YOUR_API_KEY" \
      https://openrouter.ai/api/v1/usage
 ```
@@ -149,6 +150,7 @@ Below is a step‑by‑step guide that shows how to:
 #### a) Using `curl`
 
 ```bash
+# Replace YOUR_API_KEY with your actual OpenRouter API key
 curl -X POST https://openrouter.ai/api/v1/chat/completions \
      -H "Authorization: Bearer YOUR_API_KEY" \
      -H "Content-Type: application/json" \
@@ -169,7 +171,7 @@ curl -X POST https://openrouter.ai/api/v1/chat/completions \
 import requests
 import json
 
-API_KEY = "YOUR_API_KEY"
+API_KEY = "YOUR_API_KEY"  # Replace with your actual OpenRouter API key
 url = "https://openrouter.ai/api/v1/chat/completions"
 
 payload = {
@@ -208,6 +210,7 @@ OpenRouter tracks usage per‑model. After you've sent a request, you can:
 #### b) Call the usage endpoint programmatically
 
 ```bash
+# Replace YOUR_API_KEY with your actual OpenRouter API key
 curl -H "Authorization: Bearer YOUR_API_KEY" \
      https://openrouter.ai/api/v1/usage
 ```
@@ -321,7 +324,7 @@ Below is a **complete playbook** for running the OSS model at scale while stayin
 
 Below is a **recommended stack** that works for most production workloads:
 
-```
+```text
 ┌─────────────────────┐
 │  Client / Front‑end │
 └───────┬─────────────┘
@@ -452,11 +455,11 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-**What this does**
+### What this does
 
 - **Rate‑limits** to ≤ 8 rps (a safe margin under the 10 rps public limit).
 - **Retries** on 429 with exponential back‑off, respecting `Retry‑After`.
-- **Keeps a single session per request** – you can further optimise by re‑using a global `ClientSession` if you have many workers on the same process.
+- **Keeps a single session per request** – you can further optimize by re‑using a global `ClientSession` if you have many workers on the same process.
 
 ---
 
@@ -528,7 +531,7 @@ I'm using Langchain and langgraph. Is there anything that's built into that depe
 
 ### GPT-OSS-120B (Assistant)
 
-## TL;DR
+## LangChain Integration Summary
 
 **Yes – LangChain + LangGraph already give you most of the plumbing you need to stay inside OpenRouter's free‑model limits.**
 
@@ -1025,7 +1028,7 @@ async def invoke_llm(messages: list[dict]) -> dict:
 
 ### 3.1 High‑level architecture diagram
 
-```
+```text
 +-------------------+          +-------------------+          +-------------------+
 |  Step Functions   |  Map (maxConcurrency=N)  |  Lambda (LangGraph)  |
 |  (orchestrates)  |  --------------------->  |  (node execution)   |
@@ -1136,7 +1139,7 @@ def lambda_handler(event: Dict[str, Any], context):
 ```
 
 - **Statelessness** – the Lambda never keeps anything in memory between invocations; all coordination happens via DynamoDB (rate‑limit) and S3 (state).
-- **Tracing** – you can add `print(json.dumps(...))` or CloudWatch Logs to emit the request ID, token usage, and whether a fallback was used. Those logs can be shipped to **AWS OpenTelemetry** or **CloudWatch Logs Insights** for ad‑hoc queries.
+- **Tracing** – you can add `print(json.dumps(...))` or CloudWatch Logs to emit the request ID, token usage, and whether a fallback was used. Those logs can be shipped to **AWS OpenTelemetry** or **CloudWatch Logs Insights** for ad-hoc queries.
 
 ---
 

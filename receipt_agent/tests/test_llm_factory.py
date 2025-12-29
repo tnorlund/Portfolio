@@ -124,7 +124,7 @@ class TestCreateLLMOllama:
             "OLLAMA_BASE_URL": "https://test.ollama.com",
             "OLLAMA_API_KEY": "test-key",
         }):
-            llm = create_llm(provider=LLMProvider.OLLAMA)
+            _ = create_llm(provider=LLMProvider.OLLAMA)
 
         mock_chat_ollama.assert_called_once()
         call_kwargs = mock_chat_ollama.call_args[1]
@@ -137,7 +137,7 @@ class TestCreateLLMOllama:
         """Test that create_llm respects custom parameters."""
         mock_chat_ollama.return_value = MagicMock()
 
-        llm = create_llm(
+        _ = create_llm(
             provider=LLMProvider.OLLAMA,
             model="custom-model",
             base_url="https://custom.url",
@@ -166,7 +166,7 @@ class TestCreateLLMOpenRouter:
             "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
             "OPENROUTER_API_KEY": "or_test_key",
         }):
-            llm = create_llm(provider=LLMProvider.OPENROUTER)
+            _ = create_llm(provider=LLMProvider.OPENROUTER)
 
         mock_chat_openai.assert_called_once()
         call_kwargs = mock_chat_openai.call_args[1]
@@ -189,7 +189,7 @@ class TestCreateLLMOpenRouter:
         mock_chat_openai.return_value = MagicMock()
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
-            llm = create_llm(provider=LLMProvider.OPENROUTER)
+            _ = create_llm(provider=LLMProvider.OPENROUTER)
 
         call_kwargs = mock_chat_openai.call_args[1]
         headers = call_kwargs.get("default_headers", {})
@@ -420,7 +420,10 @@ class TestIntegrationWithOllamaRateLimit:
 
     def test_circuit_breaker_triggers_on_both_failed(self):
         """Test that circuit breaker counts BothProvidersFailedError."""
-        from receipt_agent.utils.ollama_rate_limit import OllamaCircuitBreaker
+        from receipt_agent.utils.ollama_rate_limit import (
+            OllamaCircuitBreaker,
+            OllamaRateLimitError,
+        )
 
         breaker = OllamaCircuitBreaker(threshold=2)
 
@@ -431,14 +434,14 @@ class TestIntegrationWithOllamaRateLimit:
         )
 
         # First failure
-        with pytest.raises(Exception):
+        with pytest.raises(OllamaRateLimitError):
             breaker.record_error(error)
 
         assert breaker.consecutive_errors == 1
         assert not breaker.triggered
 
         # Second failure - should trigger
-        with pytest.raises(Exception):
+        with pytest.raises(OllamaRateLimitError):
             breaker.record_error(error)
 
         assert breaker.consecutive_errors == 2

@@ -104,9 +104,9 @@ def is_rate_limit_error(error: Exception) -> bool:
     Returns:
         True if this appears to be a rate limit error
     """
-    # Check for BothProvidersFailedError from llm_factory
+    # Check for BothProvidersFailedError/AllProvidersFailedError from llm_factory
     error_type = type(error).__name__
-    if error_type == "BothProvidersFailedError":
+    if error_type in ("BothProvidersFailedError", "AllProvidersFailedError"):
         return True
 
     error_str = str(error).lower()
@@ -118,6 +118,7 @@ def is_rate_limit_error(error: Exception) -> bool:
         or "too many requests" in error_str
         or "ratelimit" in error_str
         or "both ollama and openrouter" in error_str
+        or "all llm providers failed" in error_str
     )
 
 

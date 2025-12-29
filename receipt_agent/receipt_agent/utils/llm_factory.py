@@ -57,10 +57,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional, Union
 
-from pydantic import SecretStr
-
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
+
+    from receipt_agent.utils.ollama_rate_limit import RateLimitedLLMInvoker
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +156,15 @@ def is_fallback_error(error: Exception) -> bool:
 
 
 def get_default_provider() -> LLMProvider:
-    """Get the default LLM provider from environment."""
-    provider_str = os.environ.get("LLM_PROVIDER", "ollama").lower()
+    """Get the default LLM provider from environment.
+
+    Checks both LLM_PROVIDER and RECEIPT_AGENT_LLM_PROVIDER for compatibility
+    with both direct environment variable usage and pydantic-settings.
+    """
+    provider_str = (
+        os.environ.get("LLM_PROVIDER")
+        or os.environ.get("RECEIPT_AGENT_LLM_PROVIDER", "ollama")
+    ).lower()
     try:
         return LLMProvider(provider_str)
     except ValueError:
@@ -344,13 +351,9 @@ def create_llm_from_settings(
     elif provider == LLMProvider.OPENROUTER:
         return create_llm(
             provider=provider,
-            model=getattr(settings, "openrouter_model", None),
-            base_url=getattr(settings, "openrouter_base_url", None),
-            api_key=(
-                settings.openrouter_api_key.get_secret_value()
-                if hasattr(settings, "openrouter_api_key")
-                else None
-            ),
+            model=settings.openrouter_model,
+            base_url=settings.openrouter_base_url,
+            api_key=settings.openrouter_api_key.get_secret_value(),
             temperature=temperature,
             timeout=timeout,
             **kwargs,
@@ -436,6 +439,11 @@ class ResilientLLM:
         """Handle backward compatibility for fallback_llm parameter."""
         if self.fallback_llm is not None and self.fallback_free_llm is None:
             self.fallback_free_llm = self.fallback_llm
+        elif self.fallback_llm is not None and self.fallback_free_llm is not None:
+            logger.warning(
+                "Both fallback_llm and fallback_free_llm provided; "
+                "fallback_llm is ignored"
+            )
         elif self.fallback_free_llm is None:
             raise ValueError("fallback_free_llm is required")
 
