@@ -432,8 +432,8 @@ Based on all evidence above, determine:
 
 2. **Reasoning**: Cite specific evidence from the similar words
 
-3. **Suggested Label**: If INVALID, what should it be? Use a label from the
-   definitions above, or null if no label applies.
+3. **Suggested Label**: If INVALID, what should it be? Use ONLY a label from the
+   definitions above. If uncertain or no label applies, use null (not "OTHER").
 
 4. **Confidence**: low / medium / high
 
@@ -584,7 +584,7 @@ For EACH issue above (0 to {len(issues_with_context) - 1}), determine:
 
 1. **Decision**: VALID (label is correct), INVALID (label is wrong), or NEEDS_REVIEW
 2. **Reasoning**: Brief justification citing evidence
-3. **Suggested Label**: If INVALID, the correct label (or null)
+3. **Suggested Label**: If INVALID, the correct label. Use null if unsure (never "OTHER")
 4. **Confidence**: low / medium / high
 
 Respond with ONLY a JSON object containing a "reviews" array:
@@ -798,7 +798,7 @@ For EACH issue (0 to {len(issues_with_context) - 1}), analyze the receipt contex
 
 1. **Decision**: VALID (label is correct), INVALID (label is wrong), or NEEDS_REVIEW (insufficient evidence)
 2. **Reasoning**: Brief justification referencing the receipt context and/or similar word patterns
-3. **Suggested Label**: If INVALID, the correct label (or null if unsure)
+3. **Suggested Label**: If INVALID, the correct label. Use null if unsure (never "OTHER")
 4. **Confidence**: low / medium / high
 
 Respond with ONLY a JSON object:
