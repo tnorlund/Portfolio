@@ -526,7 +526,7 @@ class ReceiptLayoutLMTrainer:
                         s3_checkpoint_prefix = f"{self.s3_prefix}checkpoints/{checkpoint_name}/"
 
                         print(f"📤 Syncing {checkpoint_name} to s3://{self.s3_bucket}/{s3_checkpoint_prefix}")
-                        for root, dirs, files in os.walk(checkpoint_dir):
+                        for root, _dirs, files in os.walk(checkpoint_dir):
                             for file in files:
                                 local_path = os.path.join(root, file)
                                 rel_path = os.path.relpath(local_path, checkpoint_dir)
@@ -550,7 +550,7 @@ class ReceiptLayoutLMTrainer:
                         )
                         if result.returncode == 0:
                             self._synced_checkpoints.add(checkpoint_dir)
-                            print(f"✅ Checkpoint synced to S3")
+                            print("✅ Checkpoint synced to S3")
                         else:
                             print(f"⚠️  Failed to sync checkpoint: {result.stderr}")
                     except Exception as e:

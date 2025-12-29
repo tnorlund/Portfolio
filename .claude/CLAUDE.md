@@ -3,7 +3,7 @@
 ## Current Focus: PR #567 - SageMaker Training Infrastructure
 
 **Branch:** `feat/sagemaker-training`
-**PR:** https://github.com/tnorlund/Portfolio/pull/567
+**PR:** [#567](https://github.com/tnorlund/Portfolio/pull/567)
 
 ### Summary
 Adding SageMaker-based training infrastructure for LayoutLM models with GPU support (ml.g5.xlarge spot instances) and comprehensive training metrics recording to DynamoDB.

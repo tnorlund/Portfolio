@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from typing import Optional
@@ -119,8 +120,8 @@ def format_config(config: dict) -> str:
     if label_list:
         # Filter to just entity labels (not O, B-, I-)
         entity_labels = sorted(set(
-            l.replace("B-", "").replace("I-", "")
-            for l in label_list if l != "O"
+            label.replace("B-", "").replace("I-", "")
+            for label in label_list if label != "O"
         ))
         lines.append(f"\n  Entity Labels ({len(entity_labels)}):")
         lines.append(f"    {', '.join(entity_labels)}")
@@ -141,10 +142,11 @@ def format_config(config: dict) -> str:
             lines.append(f"      Lines: {stats.get('num_lines', 'N/A')}")
             lines.append(f"      Entity Tokens: {stats.get('num_entity_tokens', 'N/A')}")
             lines.append(f"      O Tokens: {stats.get('num_o_tokens', 'N/A')}")
-            lines.append(f"      O:Entity Ratio: {stats.get('o_entity_ratio', 'N/A'):.2f}")
+            o_ratio = stats.get('o_entity_ratio')
+            lines.append(f"      O:Entity Ratio: {o_ratio:.2f}" if o_ratio is not None else "      O:Entity Ratio: N/A")
 
             if label_counts:
-                lines.append(f"\n      Label Counts:")
+                lines.append("\n      Label Counts:")
                 # Sort by count descending
                 sorted_labels = sorted(label_counts.items(), key=lambda x: x[1], reverse=True)
                 for label, count in sorted_labels:
@@ -240,7 +242,11 @@ def format_metrics_summary(metrics: list[JobMetric]) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="Query training job status and metrics")
-    parser.add_argument("--table", default="ReceiptsTable-dc5be22", help="DynamoDB table name")
+    parser.add_argument(
+        "--table",
+        default=os.environ.get("DYNAMO_TABLE_NAME", "ReceiptsTable-dc5be22"),
+        help="DynamoDB table name (or set DYNAMO_TABLE_NAME env var)"
+    )
     parser.add_argument("--region", default="us-east-1", help="AWS region")
 
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
