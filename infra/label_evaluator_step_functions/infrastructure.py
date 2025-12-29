@@ -96,9 +96,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         batch_size: Optional[int] = None,
         opts: Optional[ResourceOptions] = None,
     ):
-        super().__init__(
-            f"label-evaluator-step-function:{name}", name, None, opts
-        )
+        super().__init__(f"label-evaluator-step-function:{name}", name, None, opts)
         stack = pulumi.get_stack()
 
         self.max_concurrency = max_concurrency or max_concurrency_default
@@ -173,8 +171,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             f"{name}-lambda-basic-exec",
             role=lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/"
-                "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
@@ -245,9 +242,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             RolePolicy(
                 f"{name}-lambda-s3-policy",
                 role=lambda_role.id,
-                policy=Output.all(
-                    self.batch_bucket.arn, chromadb_bucket_arn
-                ).apply(
+                policy=Output.all(self.batch_bucket.arn, chromadb_bucket_arn).apply(
                     lambda args: json.dumps(
                         {
                             "Version": "2012-10-17",
@@ -311,8 +306,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "LANGCHAIN_API_KEY": langchain_api_key,
             "LANGCHAIN_TRACING_V2": "true",
             "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-            "LANGCHAIN_PROJECT": config.get("langchain_project")
-            or "label-evaluator",
+            "LANGCHAIN_PROJECT": config.get("langchain_project") or "label-evaluator",
         }
 
         # ============================================================
@@ -340,9 +334,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         os.path.join(CURRENT_DIR, "evaluator_types.py")
                     ),
                     # Include tracing utilities
-                    "tracing.py": FileAsset(
-                        os.path.join(UTILS_DIR, "tracing.py")
-                    ),
+                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
                 }
             ),
             timeout=300,
@@ -375,9 +367,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "list_receipts.py": FileAsset(
                         os.path.join(HANDLERS_DIR, "list_receipts.py")
                     ),
-                    "tracing.py": FileAsset(
-                        os.path.join(UTILS_DIR, "tracing.py")
-                    ),
+                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
                 }
             ),
             timeout=300,
@@ -451,9 +441,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "aggregate_results.py": FileAsset(
                         os.path.join(HANDLERS_DIR, "aggregate_results.py")
                     ),
-                    "tracing.py": FileAsset(
-                        os.path.join(UTILS_DIR, "tracing.py")
-                    ),
+                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
                 }
             ),
             timeout=120,
@@ -481,9 +469,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "final_aggregate.py": FileAsset(
                         os.path.join(HANDLERS_DIR, "final_aggregate.py")
                     ),
-                    "tracing.py": FileAsset(
-                        os.path.join(UTILS_DIR, "tracing.py")
-                    ),
+                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
                 }
             ),
             timeout=300,
@@ -565,8 +551,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         evaluate_docker_image = CodeBuildDockerImage(
             f"{name}-eval-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/"
-                "Dockerfile.evaluate"
+                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.evaluate"
             ),
             build_context_path=".",
             source_paths=[
@@ -632,9 +617,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
         )
 
-        discover_patterns_lambda = (
-            discover_patterns_docker_image.lambda_function
-        )
+        discover_patterns_lambda = discover_patterns_docker_image.lambda_function
 
         # ============================================================
         # Container Lambda: llm_review (LLM)
@@ -670,8 +653,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         llm_review_docker_image = CodeBuildDockerImage(
             f"{name}-llm-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/"
-                "Dockerfile.llm"
+                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.llm"
             ),
             build_context_path=".",
             source_paths=[
@@ -719,8 +701,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         currency_docker_image = CodeBuildDockerImage(
             f"{name}-currency-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/"
-                "Dockerfile.currency"
+                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.currency"
             ),
             build_context_path=".",
             source_paths=[
@@ -768,8 +749,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         metadata_docker_image = CodeBuildDockerImage(
             f"{name}-metadata-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/"
-                "Dockerfile.metadata"
+                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.metadata"
             ),
             build_context_path=".",
             source_paths=[
@@ -805,8 +785,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         close_trace_docker_image = CodeBuildDockerImage(
             f"{name}-close-trace-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/"
-                "Dockerfile.close_trace"
+                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.close_trace"
             ),
             build_context_path=".",
             source_paths=[
@@ -1325,9 +1304,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                 "root_dotted_order.$": "$.root_dotted_order",
                                             },
                                             "ItemProcessor": {
-                                                "ProcessorConfig": {
-                                                    "Mode": "INLINE"
-                                                },
+                                                "ProcessorConfig": {"Mode": "INLINE"},
                                                 "StartAt": "LoadReceiptData",
                                                 "States": {
                                                     # Load receipt words/labels from DynamoDB
@@ -1374,7 +1351,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                             "batch_bucket.$": "$.batch_bucket",
                                                                             "enable_tracing.$": "$.enable_tracing",
                                                                             "langchain_project.$": "$.langchain_project",
-                                                                            # Receipt-level trace_id from FetchReceiptData
+                                                                            # Receipt-level trace_id from LoadReceiptData
                                                                             "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
                                                                             # Execution-level trace propagation (for reference)
                                                                             "execution_arn.$": "$.execution_arn",
@@ -1414,7 +1391,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                             "dry_run.$": "$.dry_run",
                                                                             "enable_tracing.$": "$.enable_tracing",
                                                                             "langchain_project.$": "$.langchain_project",
-                                                                            # Receipt-level trace_id from FetchReceiptData
+                                                                            # Receipt-level trace_id from LoadReceiptData
                                                                             "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
                                                                             # Execution-level trace propagation (for reference)
                                                                             "execution_arn.$": "$.execution_arn",
@@ -1459,7 +1436,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                             "dry_run.$": "$.dry_run",
                                                                             "enable_tracing.$": "$.enable_tracing",
                                                                             "langchain_project.$": "$.langchain_project",
-                                                                            # Receipt-level trace_id from FetchReceiptData
+                                                                            # Receipt-level trace_id from LoadReceiptData
                                                                             "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
                                                                             # Execution-level trace propagation (for reference)
                                                                             "execution_arn.$": "$.execution_arn",
@@ -1516,7 +1493,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                             "execution_id.$": "$.execution_id",
                                                             "batch_bucket.$": "$.batch_bucket",
                                                             "merchant_name.$": "$.merchant_name",
-                                                            # Results from EvaluateLabels (index 0)
+                                                            # Results from FlagSuspiciousLabels (index 0)
                                                             "results_s3_key.$": "$.parallel_results[0].results_s3_key",
                                                             "image_id.$": "$.parallel_results[0].image_id",
                                                             "receipt_id.$": "$.parallel_results[0].receipt_id",
@@ -1558,7 +1535,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                         "Resource": close_trace_arn,
                                                         "TimeoutSeconds": 30,
                                                         "Parameters": {
-                                                            # Trace info from EvaluateLabels
+                                                            # Trace info from FlagSuspiciousLabels
                                                             "trace_id.$": "$.parallel_results[0].trace_id",
                                                             "root_run_id.$": "$.parallel_results[0].root_run_id",
                                                             "image_id.$": "$.parallel_results[0].image_id",
@@ -1590,17 +1567,17 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                     "ReturnResult": {
                                                         "Type": "Pass",
                                                         "Parameters": {
-                                                            # From EvaluateLabels (index 0)
+                                                            # From FlagSuspiciousLabels (index 0)
                                                             "status.$": "$.parallel_results[0].status",
                                                             "image_id.$": "$.parallel_results[0].image_id",
                                                             "receipt_id.$": "$.parallel_results[0].receipt_id",
                                                             "issues_found.$": "$.parallel_results[0].issues_found",
                                                             "results_s3_key.$": "$.parallel_results[0].results_s3_key",
-                                                            # From EvaluateCurrencyLabels (index 1)
+                                                            # From ReviewCurrencyLabels (index 1)
                                                             "currency_words_evaluated.$": "$.parallel_results[1].currency_words_evaluated",
                                                             "currency_decisions.$": "$.parallel_results[1].decisions",
                                                             "currency_results_s3_key.$": "$.parallel_results[1].results_s3_key",
-                                                            # From EvaluateMetadataLabels (index 2)
+                                                            # From ReviewMetadataLabels (index 2)
                                                             "metadata_words_evaluated.$": "$.parallel_results[2].metadata_words_evaluated",
                                                             "metadata_decisions.$": "$.parallel_results[2].decisions",
                                                             "metadata_results_s3_key.$": "$.parallel_results[2].results_s3_key",

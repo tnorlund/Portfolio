@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage
 from pydantic import ValidationError
-
 from receipt_agent.constants import CORE_LABELS as CORE_LABELS_DICT
 from receipt_agent.constants import CORE_LABELS_SET
 from receipt_agent.prompts.structured_outputs import (
@@ -74,9 +73,7 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
             "receipt_type": patterns.get("receipt_type"),
             "receipt_type_reason": patterns.get("receipt_type_reason"),
             "auto_generated": patterns.get("auto_generated", False),
-            "discovered_from_receipts": patterns.get(
-                "discovered_from_receipts"
-            ),
+            "discovered_from_receipts": patterns.get("discovered_from_receipts"),
             **nested,
         }
 
@@ -133,19 +130,11 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
         lines.append(f"**Barcode Pattern**: `{patterns['barcode_pattern']}`")
 
     special_markers = patterns.get("special_markers")
-    if (
-        special_markers
-        and isinstance(special_markers, list)
-        and special_markers
-    ):
+    if special_markers and isinstance(special_markers, list) and special_markers:
         lines.append(f"**Special Markers**: {', '.join(special_markers)}")
 
     product_patterns = patterns.get("product_name_patterns")
-    if (
-        product_patterns
-        and isinstance(product_patterns, list)
-        and product_patterns
-    ):
+    if product_patterns and isinstance(product_patterns, list) and product_patterns:
         lines.append("**Product Name Patterns**:")
         for p in product_patterns[:3]:  # Limit to 3 for prompt size
             lines.append(f"  - {p}")
@@ -210,9 +199,7 @@ def compute_currency_math_hints(currency_items: list[dict]) -> str:
             label_desc.append(f"{len(line_totals)} LINE_TOTAL")
         if unit_prices:
             label_desc.append(f"{len(unit_prices)} UNIT_PRICE")
-        hints.append(
-            f"- Item amounts ({', '.join(label_desc)}): sum to ${total:.2f}"
-        )
+        hints.append(f"- Item amounts ({', '.join(label_desc)}): sum to ${total:.2f}")
 
     # Check for GRAND_TOTAL match against item amounts
     grand_totals = by_label.get("GRAND_TOTAL", [])
@@ -288,9 +275,7 @@ def build_review_prompt(
     other_merchant_examples = []
 
     for e in similar_evidence[:30]:  # Show top 30
-        line = (
-            f"- \"{e['word_text']}\" (similarity: {e['similarity_score']:.0%})"
-        )
+        line = f"- \"{e['word_text']}\" (similarity: {e['similarity_score']:.0%})"
         line += f"\n  Context: `{e['left_neighbor']}` | **{e['word_text']}** "
         line += f"| `{e['right_neighbor']}`"
         line += f"\n  Position: {e['position_description']}"
@@ -298,9 +283,7 @@ def build_review_prompt(
         if e["validated_as"]:
             for v in e["validated_as"][:2]:
                 reasoning = v.get("reasoning") or "no reasoning recorded"
-                line += (
-                    f"\n  VALIDATED as **{v['label']}**: \"{reasoning[:100]}\""
-                )
+                line += f"\n  VALIDATED as **{v['label']}**: \"{reasoning[:100]}\""
 
         if e["invalidated_as"]:
             for v in e["invalidated_as"][:2]:
@@ -325,9 +308,7 @@ def build_review_prompt(
 
     # Build label distribution
     label_summary_lines = []
-    for label, stats in sorted(
-        label_dist.items(), key=lambda x: -x[1]["count"]
-    )[:10]:
+    for label, stats in sorted(label_dist.items(), key=lambda x: -x[1]["count"])[:10]:
         examples = ", ".join(stats["example_words"][:3])
         label_summary_lines.append(
             f"- **{label}**: {stats['count']} occurrences "
@@ -519,9 +500,9 @@ def build_batched_review_prompt(
 
         # Condensed label distribution
         label_lines = []
-        for label, stats in sorted(
-            label_dist.items(), key=lambda x: -x[1]["count"]
-        )[:5]:
+        for label, stats in sorted(label_dist.items(), key=lambda x: -x[1]["count"])[
+            :5
+        ]:
             label_lines.append(
                 f"{label}: {stats['count']} ({stats['valid_count']} valid)"
             )
@@ -703,9 +684,7 @@ def build_receipt_context_prompt(
             validated_info = []
             validated_as = e.get("validated_as")
             if validated_as is None:
-                logger.debug(
-                    "Issue %d: evidence[%d] validated_as is None", idx, e_idx
-                )
+                logger.debug("Issue %d: evidence[%d] validated_as is None", idx, e_idx)
             elif not isinstance(validated_as, list):
                 logger.warning(
                     "Issue %d: evidence[%d] validated_as is %s, not list",
@@ -751,9 +730,7 @@ def build_receipt_context_prompt(
             similar_lines.append(line)
 
         similar_text = (
-            "\n".join(similar_lines)
-            if similar_lines
-            else "No similar words found"
+            "\n".join(similar_lines) if similar_lines else "No similar words found"
         )
 
         issue_block = f"""
@@ -1029,6 +1006,18 @@ def invoke_with_structured_output(
     Returns:
         List of review dicts, one per issue
     """
+    # Check if LLM supports structured output
+    if not hasattr(llm, "with_structured_output"):
+        logger.debug(
+            "LLM %s does not support with_structured_output, using text parsing",
+            type(llm).__name__,
+        )
+        response = llm.invoke(
+            [HumanMessage(content=prompt)],
+            config={"run_name": run_name},
+        )
+        return parse_batched_llm_response(response.content, expected_count)
+
     try:
         # Create structured LLM
         structured_llm = llm.with_structured_output(BatchedReviewResponse)

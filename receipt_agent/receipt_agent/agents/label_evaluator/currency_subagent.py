@@ -36,7 +36,6 @@ from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
 from pydantic import ValidationError
-
 from receipt_agent.constants import CURRENCY_LABELS
 from receipt_agent.prompts.structured_outputs import (
     CurrencyEvaluationResponse,
@@ -144,9 +143,7 @@ def get_non_currency_pattern(text: str) -> Optional[str]:
 
 def identify_line_item_rows(
     visual_lines: list[VisualLine],
-    patterns: Optional[
-        dict
-    ] = None,  # Reserved for future pattern-based detection
+    patterns: Optional[dict] = None,  # Reserved for future pattern-based detection
 ) -> list[LineItemRow]:
     """
     Identify which visual lines are line item rows based on patterns.
@@ -162,9 +159,7 @@ def identify_line_item_rows(
     rows = []
     for line in visual_lines:
         line_labels = {
-            wc.current_label.label
-            for wc in line.words
-            if wc.current_label is not None
+            wc.current_label.label for wc in line.words if wc.current_label is not None
         }
 
         # A line is a line item row if it contains any line item labels
@@ -205,9 +200,7 @@ def collect_currency_words(
 
     for line in visual_lines:
         for wc in line.words:
-            current_label = (
-                wc.current_label.label if wc.current_label else None
-            )
+            current_label = wc.current_label.label if wc.current_label else None
 
             # Check if word has a currency label (LINE_TOTAL, UNIT_PRICE, etc.)
             has_eval_label = current_label in CURRENCY_LABELS
@@ -229,9 +222,7 @@ def collect_currency_words(
                         word_context=wc,
                         current_label=current_label,
                         line_index=line.line_index,
-                        position_zone=get_position_zone(
-                            wc.normalized_x, x_zones
-                        ),
+                        position_zone=get_position_zone(wc.normalized_x, x_zones),
                         looks_like_currency=is_currency_like,
                         non_currency_pattern=non_currency,
                     )
@@ -263,9 +254,7 @@ def build_currency_evaluation_prompt(
         for wc in line.words:
             label = wc.current_label.label if wc.current_label else "unlabeled"
             line_text.append(f"{wc.word.text}[{label}]")
-        receipt_lines.append(
-            f"  Line {line.line_index}: " + " | ".join(line_text)
-        )
+        receipt_lines.append(f"  Line {line.line_index}: " + " | ".join(line_text))
 
     receipt_text = "\n".join(receipt_lines[:50])  # Limit to 50 lines
     if len(visual_lines) > 50:
@@ -376,9 +365,7 @@ def parse_currency_evaluation_response(
         structured_response = CurrencyEvaluationResponse.model_validate(parsed)
         return structured_response.to_ordered_list(num_words)
     except (json.JSONDecodeError, ValidationError) as e:
-        logger.debug(
-            "Structured parsing failed, falling back to manual parsing: %s", e
-        )
+        logger.debug("Structured parsing failed, falling back to manual parsing: %s", e)
 
     # Fallback to manual parsing for backwards compatibility
     try:
@@ -386,13 +373,16 @@ def parse_currency_evaluation_response(
         if isinstance(decisions, dict):
             decisions = decisions.get("evaluations", [])
 
+        # Ensure decisions is a list before iterating
+        if not isinstance(decisions, list):
+            logger.warning("Decisions is not a list: %s", type(decisions).__name__)
+            return [fallback.copy() for _ in range(num_words)]
+
         # Validate and normalize
         result = []
         for i in range(num_words):
             # Find decision for this index
-            decision = next(
-                (d for d in decisions if d.get("index") == i), None
-            )
+            decision = next((d for d in decisions if d.get("index") == i), None)
             if decision:
                 result.append(
                     {
@@ -471,9 +461,7 @@ def evaluate_currency_labels(
         return []
 
     # Step 2: Collect currency words to evaluate
-    currency_words = collect_currency_words(
-        visual_lines, line_item_rows, patterns
-    )
+    currency_words = collect_currency_words(visual_lines, line_item_rows, patterns)
     logger.info("Found %s currency words to evaluate", len(currency_words))
 
     if not currency_words:
@@ -533,9 +521,7 @@ def evaluate_currency_labels(
         )
 
         if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
-            logger.error(
-                "Currency LLM rate limited, propagating for retry: %s", e
-            )
+            logger.error("Currency LLM rate limited, propagating for retry: %s", e)
             raise  # Let Step Function retry handle this
 
         logger.error("Currency LLM call failed: %s", e)

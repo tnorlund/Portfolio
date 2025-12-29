@@ -10,12 +10,14 @@ Usage:
     # response is already a BatchedReviewResponse object
 """
 
+import logging
 import re
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+logger = logging.getLogger(__name__)
 
+from pydantic import BaseModel, Field
 from receipt_agent.constants import CORE_LABELS_SET
 
 # =============================================================================
@@ -65,13 +67,15 @@ class LabelEnum(str, Enum):
     REFUND = "REFUND"
 
 
-# Runtime assertion to ensure LabelEnum stays in sync with CORE_LABELS_SET
+# Runtime check to ensure LabelEnum stays in sync with CORE_LABELS_SET
+# (using RuntimeError instead of assert so it's always active, even with -O)
 _label_enum_values = {e.value for e in LabelEnum}
-assert _label_enum_values == CORE_LABELS_SET, (
-    f"LabelEnum out of sync with CORE_LABELS_SET. "
-    f"Missing from LabelEnum: {CORE_LABELS_SET - _label_enum_values}. "
-    f"Extra in LabelEnum: {_label_enum_values - CORE_LABELS_SET}."
-)
+if _label_enum_values != CORE_LABELS_SET:
+    raise RuntimeError(
+        "LabelEnum out of sync with CORE_LABELS_SET. "
+        f"Missing from LabelEnum: {CORE_LABELS_SET - _label_enum_values}. "
+        f"Extra in LabelEnum: {_label_enum_values - CORE_LABELS_SET}."
+    )
 
 
 class ReceiptTypeEnum(str, Enum):
@@ -113,9 +117,8 @@ def extract_json_from_response(response_text: str) -> str:
         Extracted JSON string
     """
     if "```" in response_text:
-        match = re.search(
-            r"```(?:json)?\s*(.*?)\s*```", response_text, re.DOTALL
-        )
+        # Handle any language tag (json, javascript, etc.) or no tag at all
+        match = re.search(r"```[a-zA-Z0-9_-]*\s*(.*?)\s*```", response_text, re.DOTALL)
         if match:
             return match.group(1).strip()
     return response_text.strip()
@@ -139,6 +142,17 @@ def build_ordered_list(
         List of dicts, one per index, with fallbacks for missing
     """
     by_index = {getattr(item, index_attr): item for item in items}
+
+    # Warn about out-of-range indexes that will be silently dropped
+    out_of_range = [idx for idx in by_index if idx >= expected_count]
+    if out_of_range:
+        logger.warning(
+            "LLM returned %d items with out-of-range indexes (>= %d): %s",
+            len(out_of_range),
+            expected_count,
+            out_of_range,
+        )
+
     result = []
     for i in range(expected_count):
         if i in by_index:
@@ -166,9 +180,7 @@ class SingleReview(BaseModel):
     issue_index: int = Field(
         description="The index of the issue being reviewed (0-based)"
     )
-    decision: DecisionEnum = Field(
-        description="Whether the current label is correct"
-    )
+    decision: DecisionEnum = Field(description="Whether the current label is correct")
     reasoning: str = Field(
         description="Brief explanation citing evidence from similar words or receipt context"
     )
@@ -241,12 +253,8 @@ class CurrencyLabelEnum(str, Enum):
 class CurrencyEvaluation(BaseModel):
     """Evaluation result for a single currency word."""
 
-    index: int = Field(
-        description="The index of the word being evaluated (0-based)"
-    )
-    decision: DecisionEnum = Field(
-        description="Whether the current label is correct"
-    )
+    index: int = Field(description="The index of the word being evaluated (0-based)")
+    decision: DecisionEnum = Field(description="Whether the current label is correct")
     reasoning: str = Field(description="Brief explanation of the decision")
     suggested_label: Optional[CurrencyLabelEnum] = Field(
         default=None, description="If INVALID, the correct label"
@@ -303,12 +311,8 @@ class MetadataLabelEnum(str, Enum):
 class MetadataEvaluation(BaseModel):
     """Evaluation result for a single metadata word."""
 
-    index: int = Field(
-        description="The index of the word being evaluated (0-based)"
-    )
-    decision: DecisionEnum = Field(
-        description="Whether the current label is correct"
-    )
+    index: int = Field(description="The index of the word being evaluated (0-based)")
+    decision: DecisionEnum = Field(description="Whether the current label is correct")
     reasoning: str = Field(description="Brief explanation of the decision")
     suggested_label: Optional[MetadataLabelEnum] = Field(
         default=None, description="If INVALID, the correct label"
@@ -401,9 +405,7 @@ class XPositionZones(BaseModel):
 class PatternDiscoveryResponse(BaseModel):
     """Response for line item pattern discovery."""
 
-    merchant: Optional[str] = Field(
-        default=None, description="Name of the merchant"
-    )
+    merchant: Optional[str] = Field(default=None, description="Name of the merchant")
     receipt_type: ReceiptTypeEnum = Field(
         description="Whether receipt has itemized products or is a service receipt"
     )

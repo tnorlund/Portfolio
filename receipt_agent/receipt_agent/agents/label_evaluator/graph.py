@@ -140,9 +140,7 @@ def create_label_evaluator_graph(
     if _chroma_client:
         logger.info("ChromaDB client provided for similar word lookup")
     else:
-        logger.info(
-            "ChromaDB not configured - similar word lookup will be skipped"
-        )
+        logger.info("ChromaDB not configured - similar word lookup will be skipped")
 
     # Initialize LLM for review (uses Ollama)
     if llm is not None:
@@ -150,9 +148,7 @@ def create_label_evaluator_graph(
     elif HAS_OLLAMA and ChatOllama is not None:
         client_kwargs: dict[str, Any] = {"timeout": 120}
         if ollama_api_key:
-            client_kwargs["headers"] = {
-                "Authorization": f"Bearer {ollama_api_key}"
-            }
+            client_kwargs["headers"] = {"Authorization": f"Bearer {ollama_api_key}"}
         _llm = ChatOllama(
             base_url=ollama_base_url,
             model=llm_model,
@@ -220,26 +216,18 @@ def create_label_evaluator_graph(
             return {}  # Skip if previous step failed
 
         if not state.place:
-            logger.info(
-                "No place data available, skipping merchant pattern learning"
-            )
+            logger.info("No place data available, skipping merchant pattern learning")
             return {"other_receipt_data": []}
 
         merchant_name = state.place.merchant_name
         if not merchant_name:
-            logger.info(
-                "No merchant name available, skipping pattern learning"
-            )
+            logger.info("No merchant name available, skipping pattern learning")
             return {"other_receipt_data": []}
 
         try:
             # Query for other receipts with same merchant
             # If MAX_OTHER_RECEIPTS is None, fetch all receipts
-            limit = (
-                MAX_OTHER_RECEIPTS + 1
-                if MAX_OTHER_RECEIPTS is not None
-                else None
-            )
+            limit = MAX_OTHER_RECEIPTS + 1 if MAX_OTHER_RECEIPTS is not None else None
             other_places, _ = _dynamo_client.get_receipt_places_by_merchant(
                 merchant_name,
                 limit=limit,  # None means fetch all available
@@ -250,8 +238,7 @@ def create_label_evaluator_graph(
                 p
                 for p in other_places
                 if not (
-                    p.image_id == state.image_id
-                    and p.receipt_id == state.receipt_id
+                    p.image_id == state.image_id and p.receipt_id == state.receipt_id
                 )
             ]
 
@@ -282,10 +269,8 @@ def create_label_evaluator_graph(
                     if isinstance(words, tuple):
                         words = words[0]
 
-                    labels, _ = (
-                        _dynamo_client.list_receipt_word_labels_for_receipt(
-                            other_place.image_id, other_place.receipt_id
-                        )
+                    labels, _ = _dynamo_client.list_receipt_word_labels_for_receipt(
+                        other_place.image_id, other_place.receipt_id
                     )
 
                     other_receipt_data.append(
@@ -428,9 +413,7 @@ def create_label_evaluator_graph(
 
             if currency_decisions:
                 # Convert dicts to EvaluationIssue objects and merge
-                currency_issues = convert_to_evaluation_issues(
-                    currency_decisions
-                )
+                currency_issues = convert_to_evaluation_issues(currency_decisions)
                 logger.info(
                     "Currency subagent evaluated %s words, found %s issues",
                     len(currency_decisions),
@@ -463,9 +446,7 @@ def create_label_evaluator_graph(
 
         # Skip LLM review if LLM is not available
         if _llm is None:
-            logger.warning(
-                "LLM not available, using evaluator results directly"
-            )
+            logger.warning("LLM not available, using evaluator results directly")
             fallback_labels: list[ReceiptWordLabel] = []
             for issue in state.issues_found:
                 eval_label = _create_evaluation_label(issue, None)
@@ -682,10 +663,7 @@ def _create_evaluation_label(
     """
     if review_result:
         # Use LLM review result
-        if (
-            review_result.decision == "INVALID"
-            and review_result.suggested_label
-        ):
+        if review_result.decision == "INVALID" and review_result.suggested_label:
             label = review_result.suggested_label
         elif issue.suggested_label:
             label = issue.suggested_label
@@ -796,9 +774,7 @@ async def run_label_evaluator(
         }
 
         if merchant_patterns:
-            result["merchant_receipts_analyzed"] = (
-                merchant_patterns.receipt_count
-            )
+            result["merchant_receipts_analyzed"] = merchant_patterns.receipt_count
 
         logger.info(
             "Evaluation complete: %s issues, %s reviewed, %s labels written",
@@ -876,10 +852,10 @@ def create_compute_only_graph(
     Create a compute-only label evaluator graph for Lambda/Step Functions.
 
     This graph expects pre-loaded state and performs only pure computation:
-    1. validate_state: Check that required data is present
+    1. validate_input: Check that required data is present
     2. build_spatial_context: Build word contexts and visual lines
-    3. compute_patterns: Compute merchant patterns from training data
-    4. evaluate_labels: Apply validation rules and detect issues
+    3. compute_merchant_patterns: Compute patterns from training data
+    4. flag_suspicious_labels: Apply validation rules and detect issues
 
     No DynamoDB fetches, no LLM calls, no writes. Perfect for:
     - AWS Lambda with data passed via S3
@@ -954,9 +930,7 @@ def create_compute_only_graph(
 
         # other_receipt_data can be empty (no merchant match)
         if not state.other_receipt_data:
-            logger.info(
-                "No other_receipt_data provided - pattern learning disabled"
-            )
+            logger.info("No other_receipt_data provided - pattern learning disabled")
 
         if errors:
             error_msg = f"Validation failed: {'; '.join(errors)}"
@@ -1018,9 +992,7 @@ def create_compute_only_graph(
             return {}  # Don't overwrite existing patterns
 
         if not state.other_receipt_data:
-            logger.info(
-                "compute_patterns: no other_receipt_data, returning None"
-            )
+            logger.info("compute_patterns: no other_receipt_data, returning None")
             return {"merchant_patterns": None}
 
         merchant_name = "Unknown"
@@ -1117,9 +1089,7 @@ async def run_compute_only(
     try:
         invoke_config = {
             "recursion_limit": 10,
-            "configurable": {
-                "thread_id": f"{state.image_id}#{state.receipt_id}"
-            },
+            "configurable": {"thread_id": f"{state.image_id}#{state.receipt_id}"},
         }
         # Merge in provided config (e.g., callbacks for tracing)
         if config:
@@ -1153,12 +1123,8 @@ async def run_compute_only(
         }
 
         if merchant_patterns:
-            result["merchant_receipts_analyzed"] = (
-                merchant_patterns.receipt_count
-            )
-            result["label_types_found"] = len(
-                merchant_patterns.label_positions
-            )
+            result["merchant_receipts_analyzed"] = merchant_patterns.receipt_count
+            result["label_types_found"] = len(merchant_patterns.label_positions)
 
         logger.info(
             "Compute-only evaluation complete: %s issues",
