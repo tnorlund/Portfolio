@@ -262,7 +262,6 @@ def check_subtotal_math(
 
 def check_line_item_math(
     values: dict[str, list[FinancialValue]],
-    visual_lines: list[VisualLine],
 ) -> list[MathIssue]:
     """
     Check: QTY × UNIT_PRICE = LINE_TOTAL for each line item row.
@@ -336,7 +335,7 @@ def detect_math_issues(
         issues.append(subtotal_issue)
 
     # Check QTY × UNIT_PRICE = LINE_TOTAL per line
-    line_issues = check_line_item_math(values, visual_lines)
+    line_issues = check_line_item_math(values)
     issues.extend(line_issues)
 
     return issues

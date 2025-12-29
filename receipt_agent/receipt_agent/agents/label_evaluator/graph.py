@@ -464,10 +464,7 @@ def create_label_evaluator_graph(
                 logger.info(
                     "Financial validation found %s math issues involving %s values",
                     len(
-                        set(
-                            r.get("issue", {}).get("issue_type")
-                            for r in financial_results
-                        )
+                        {r.get("issue", {}).get("issue_type") for r in financial_results}
                     ),
                     len(financial_issues),
                 )
