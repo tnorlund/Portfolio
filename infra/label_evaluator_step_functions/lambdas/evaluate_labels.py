@@ -346,9 +346,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         )
         emf_metrics.log_metrics(
             metrics={
-                "IssuesFound": result.get("issues_found", 0),
-                "PatternReceiptCount": pattern_receipt_count,
-                "ComputeTimeSeconds": round(compute_time, 3),
+                "WordsFlaggedForReview": result.get("issues_found", 0),
+                "TrainingReceiptCount": pattern_receipt_count,
+                "PatternAnalysisSeconds": round(compute_time, 3),
                 "ProcessingTimeSeconds": round(processing_time, 2),
             },
             dimensions={},
@@ -358,7 +358,7 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 "receipt_id": receipt_id,
             },
             units={
-                "ComputeTimeSeconds": "Seconds",
+                "PatternAnalysisSeconds": "Seconds",
                 "ProcessingTimeSeconds": "Seconds",
             },
         )
@@ -398,7 +398,7 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         processing_time = time.time() - start_time
         emf_metrics.log_metrics(
             metrics={
-                "EvaluationFailed": 1,
+                "PatternAnalysisFailed": 1,
                 "ProcessingTimeSeconds": round(processing_time, 2),
             },
             dimensions={},

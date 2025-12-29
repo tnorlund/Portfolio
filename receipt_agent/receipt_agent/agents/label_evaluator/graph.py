@@ -5,10 +5,19 @@ A LangGraph agent that validates receipt word labels by analyzing spatial
 patterns within receipts and across receipts from the same merchant.
 
 The workflow has two phases:
-1. Deterministic evaluation: Uses geometric analysis and pattern matching to
-   flag issues
-2. LLM review: Uses a cheap LLM (Haiku) to make semantic decisions on flagged
-   issues
+1. Geometric analysis: Uses spatial patterns and constellation matching to
+   flag geometric anomalies for review
+2. LLM review: Uses an LLM to make semantic decisions on flagged words
+
+Graph nodes (full workflow):
+- load_receipt_data: Fetch words/labels from DynamoDB
+- load_training_receipts: Fetch other receipts from same merchant
+- build_spatial_context: Create WordContext and VisualLine objects
+- compute_merchant_patterns: Build geometric patterns from training data
+- flag_geometric_anomalies: Run 6 detection rules to flag geometric anomalies
+- review_currency_labels: LLM reviews currency-type labels
+- review_flagged_labels: LLM reviews all flagged words
+- persist_label_decisions: Write new labels to DynamoDB
 
 Detects labeling errors such as:
 - Position anomalies (MERCHANT_NAME appearing in the middle of the receipt)
@@ -36,6 +45,8 @@ except ImportError:
     HAS_OLLAMA = False
     ChatOllama = None  # type: ignore
 
+from receipt_dynamo.entities import ReceiptWordLabel
+
 from receipt_agent.agents.label_evaluator.currency_subagent import (
     convert_to_evaluation_issues,
     evaluate_currency_labels_sync,
@@ -47,7 +58,7 @@ from receipt_agent.agents.label_evaluator.llm_review import (
     review_all_issues,
 )
 from receipt_agent.agents.label_evaluator.patterns import (
-    compute_merchant_patterns,
+    compute_merchant_patterns as _compute_patterns_from_receipts,
 )
 from receipt_agent.agents.label_evaluator.state import (
     EvaluationIssue,
@@ -60,7 +71,6 @@ from receipt_agent.agents.label_evaluator.word_context import (
     build_word_contexts,
 )
 from receipt_agent.constants import CORE_LABELS
-from receipt_dynamo.entities import ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
@@ -158,8 +168,8 @@ def create_label_evaluator_graph(
             "Install with: pip install langchain-ollama"
         )
 
-    def fetch_receipt_data(state: EvaluatorState) -> dict:
-        """Fetch words, labels, and place data for the receipt being
+    def load_receipt_data(state: EvaluatorState) -> dict:
+        """Load words, labels, and place data for the receipt being
         evaluated."""
         try:
             # Get all words for this receipt
@@ -205,8 +215,8 @@ def create_label_evaluator_graph(
             logger.error("Error fetching receipt data: %s", e)
             return {"error": f"Failed to fetch receipt data: {e}"}
 
-    def fetch_merchant_receipts(state: EvaluatorState) -> dict:
-        """Fetch other receipts from the same merchant for pattern learning."""
+    def load_training_receipts(state: EvaluatorState) -> dict:
+        """Load other receipts from the same merchant for pattern learning."""
         if state.error:
             return {}  # Skip if previous step failed
 
@@ -327,7 +337,7 @@ def create_label_evaluator_graph(
             "visual_lines": visual_lines,
         }
 
-    def compute_patterns(state: EvaluatorState) -> dict:
+    def compute_merchant_patterns(state: EvaluatorState) -> dict:
         """Compute merchant patterns from other receipts."""
         if state.error:
             return {}
@@ -345,7 +355,7 @@ def create_label_evaluator_graph(
 
         merchant_name = state.place.merchant_name if state.place else "Unknown"
 
-        patterns = compute_merchant_patterns(
+        patterns = _compute_patterns_from_receipts(
             state.other_receipt_data,
             merchant_name,
             max_pair_patterns=_max_pair_patterns,
@@ -361,7 +371,7 @@ def create_label_evaluator_graph(
 
         return {"merchant_patterns": patterns}
 
-    def evaluate_labels(state: EvaluatorState) -> dict:
+    def flag_geometric_anomalies(state: EvaluatorState) -> dict:
         """Apply validation rules and detect issues."""
         if state.error:
             return {}
@@ -381,7 +391,7 @@ def create_label_evaluator_graph(
 
         return {"issues_found": issues}
 
-    def evaluate_currency(state: EvaluatorState) -> dict:
+    def review_currency_labels(state: EvaluatorState) -> dict:
         """Evaluate currency labels using the currency subagent."""
         if state.error:
             return {}
@@ -435,7 +445,7 @@ def create_label_evaluator_graph(
 
         return {}
 
-    def review_issues_with_llm(state: EvaluatorState) -> dict:
+    def review_flagged_labels(state: EvaluatorState) -> dict:
         """Use LLM to review flagged issues and make semantic decisions."""
         if state.error:
             return {}
@@ -607,7 +617,7 @@ def create_label_evaluator_graph(
             "new_labels": new_labels,
         }
 
-    def write_evaluation_results(state: EvaluatorState) -> dict:
+    def persist_label_decisions(state: EvaluatorState) -> dict:
         """Write new evaluation labels to DynamoDB."""
         if state.error:
             return {}
@@ -632,26 +642,26 @@ def create_label_evaluator_graph(
     workflow = StateGraph(EvaluatorState)
 
     # Add nodes
-    workflow.add_node("fetch_receipt_data", fetch_receipt_data)
-    workflow.add_node("fetch_merchant_receipts", fetch_merchant_receipts)
+    workflow.add_node("load_receipt_data", load_receipt_data)
+    workflow.add_node("load_training_receipts", load_training_receipts)
     workflow.add_node("build_spatial_context", build_spatial_context)
-    workflow.add_node("compute_patterns", compute_patterns)
-    workflow.add_node("evaluate_labels", evaluate_labels)
-    workflow.add_node("evaluate_currency", evaluate_currency)
-    workflow.add_node("review_issues_with_llm", review_issues_with_llm)
-    workflow.add_node("write_evaluation_results", write_evaluation_results)
+    workflow.add_node("compute_merchant_patterns", compute_merchant_patterns)
+    workflow.add_node("flag_geometric_anomalies", flag_geometric_anomalies)
+    workflow.add_node("review_currency_labels", review_currency_labels)
+    workflow.add_node("review_flagged_labels", review_flagged_labels)
+    workflow.add_node("persist_label_decisions", persist_label_decisions)
 
     # Linear flow
-    workflow.add_edge("fetch_receipt_data", "fetch_merchant_receipts")
-    workflow.add_edge("fetch_merchant_receipts", "build_spatial_context")
-    workflow.add_edge("build_spatial_context", "compute_patterns")
-    workflow.add_edge("compute_patterns", "evaluate_labels")
-    workflow.add_edge("evaluate_labels", "evaluate_currency")
-    workflow.add_edge("evaluate_currency", "review_issues_with_llm")
-    workflow.add_edge("review_issues_with_llm", "write_evaluation_results")
-    workflow.add_edge("write_evaluation_results", END)
+    workflow.add_edge("load_receipt_data", "load_training_receipts")
+    workflow.add_edge("load_training_receipts", "build_spatial_context")
+    workflow.add_edge("build_spatial_context", "compute_merchant_patterns")
+    workflow.add_edge("compute_merchant_patterns", "flag_geometric_anomalies")
+    workflow.add_edge("flag_geometric_anomalies", "review_currency_labels")
+    workflow.add_edge("review_currency_labels", "review_flagged_labels")
+    workflow.add_edge("review_flagged_labels", "persist_label_decisions")
+    workflow.add_edge("persist_label_decisions", END)
 
-    workflow.set_entry_point("fetch_receipt_data")
+    workflow.set_entry_point("load_receipt_data")
 
     return workflow.compile()
 
@@ -867,10 +877,10 @@ def create_compute_only_graph(
     Create a compute-only label evaluator graph for Lambda/Step Functions.
 
     This graph expects pre-loaded state and performs only pure computation:
-    1. validate_state: Check that required data is present
+    1. validate_input: Check that required data is present
     2. build_spatial_context: Build word contexts and visual lines
-    3. compute_patterns: Compute merchant patterns from training data
-    4. evaluate_labels: Apply validation rules and detect issues
+    3. compute_merchant_patterns: Compute patterns from training data
+    4. flag_geometric_anomalies: Apply validation rules and detect anomalies
 
     No DynamoDB fetches, no LLM calls, no writes. Perfect for:
     - AWS Lambda with data passed via S3
@@ -988,10 +998,10 @@ def create_compute_only_graph(
             "visual_lines": visual_lines,
         }
 
-    def compute_patterns(state: EvaluatorState) -> dict:
+    def compute_merchant_patterns(state: EvaluatorState) -> dict:
         """Compute merchant patterns from other receipts."""
         logger.info(
-            "compute_patterns: entered, error=%s, merchant_patterns=%s, "
+            "compute_merchant_patterns: entered, error=%s, merchant_patterns=%s, "
             "other_receipt_data=%s",
             state.error,
             state.merchant_patterns is not None,
@@ -1010,7 +1020,7 @@ def create_compute_only_graph(
 
         if not state.other_receipt_data:
             logger.info(
-                "compute_patterns: no other_receipt_data, returning None"
+                "compute_merchant_patterns: no other_receipt_data, returning None"
             )
             return {"merchant_patterns": None}
 
@@ -1018,7 +1028,7 @@ def create_compute_only_graph(
         if state.place:
             merchant_name = state.place.merchant_name or "Unknown"
 
-        patterns = compute_merchant_patterns(
+        patterns = _compute_patterns_from_receipts(
             state.other_receipt_data,
             merchant_name,
             max_pair_patterns=_max_pair_patterns,
@@ -1034,10 +1044,10 @@ def create_compute_only_graph(
 
         return {"merchant_patterns": patterns}
 
-    def evaluate_labels(state: EvaluatorState) -> dict:
+    def flag_geometric_anomalies(state: EvaluatorState) -> dict:
         """Apply validation rules and detect issues."""
         logger.info(
-            "evaluate_labels: entered, error=%s, word_contexts=%s, "
+            "flag_geometric_anomalies: entered, error=%s, word_contexts=%s, "
             "merchant_patterns=%s",
             state.error,
             len(state.word_contexts) if state.word_contexts else 0,
@@ -1049,7 +1059,7 @@ def create_compute_only_graph(
         if not state.word_contexts:
             return {"issues_found": []}
 
-        logger.info("evaluate_labels: starting evaluation...")
+        logger.info("flag_geometric_anomalies: starting evaluation...")
         # Evaluate all word contexts against validation rules
         issues = evaluate_word_contexts(
             state.word_contexts,
@@ -1062,22 +1072,22 @@ def create_compute_only_graph(
 
         return {"issues_found": issues}
 
-    # Build the compute-only graph
+    # Build the compute-only graph (used by Step Function Lambdas)
     workflow = StateGraph(EvaluatorState)
 
-    # Add nodes (no fetch, no LLM, no write)
-    workflow.add_node("validate_state", validate_state)
+    # Add nodes (no fetch, no LLM, no write - those happen in separate Lambdas)
+    workflow.add_node("validate_input", validate_state)
     workflow.add_node("build_spatial_context", build_spatial_context)
-    workflow.add_node("compute_patterns", compute_patterns)
-    workflow.add_node("evaluate_labels", evaluate_labels)
+    workflow.add_node("compute_merchant_patterns", compute_merchant_patterns)
+    workflow.add_node("flag_geometric_anomalies", flag_geometric_anomalies)
 
     # Linear flow
-    workflow.add_edge("validate_state", "build_spatial_context")
-    workflow.add_edge("build_spatial_context", "compute_patterns")
-    workflow.add_edge("compute_patterns", "evaluate_labels")
-    workflow.add_edge("evaluate_labels", END)
+    workflow.add_edge("validate_input", "build_spatial_context")
+    workflow.add_edge("build_spatial_context", "compute_merchant_patterns")
+    workflow.add_edge("compute_merchant_patterns", "flag_geometric_anomalies")
+    workflow.add_edge("flag_geometric_anomalies", END)
 
-    workflow.set_entry_point("validate_state")
+    workflow.set_entry_point("validate_input")
 
     return workflow.compile()
 
