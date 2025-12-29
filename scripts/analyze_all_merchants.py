@@ -59,12 +59,12 @@ class MerchantAnalysis:
     error: str | None = None
 
 
-def load_config():
+def load_config(env: str = "dev"):
     """Load configuration from Pulumi stack outputs and secrets."""
     from receipt_dynamo.data._pulumi import load_env, load_secrets
 
-    outputs = load_env("dev")
-    secrets = load_secrets("dev")
+    outputs = load_env(env)
+    secrets = load_secrets(env)
 
     config = {
         "dynamodb_table_name": outputs.get("dynamodb_table_name"),
@@ -247,7 +247,7 @@ def main():
 
     # Load config from Pulumi
     logger.info("Loading configuration from Pulumi...")
-    config = load_config()
+    config = load_config(args.env)
 
     if not config["dynamodb_table_name"]:
         logger.error("Could not load dynamodb_table_name from Pulumi outputs")
@@ -351,6 +351,10 @@ def main():
     print("=" * 80)
 
     total_merchants = len(results)
+    if total_merchants == 0:
+        print("No merchants analyzed.")
+        return
+
     merchants_with_data = len(
         [r for r in results if r.receipts_with_words > 0]
     )
@@ -368,7 +372,7 @@ def main():
         service = [r for r in results if r.receipt_type == "service"]
         llm_errors = [r for r in results if r.llm_error]
 
-        print(f"\n=== RECEIPT TYPE CLASSIFICATION ===")
+        print("\n=== RECEIPT TYPE CLASSIFICATION ===")
         print(
             f"ITEMIZED: {len(itemized)} merchants ({100*len(itemized)/total_merchants:.1f}%)"
         )
@@ -379,7 +383,7 @@ def main():
 
         # Show service merchants
         if service:
-            print(f"\n=== SERVICE MERCHANTS (no line items) ===")
+            print("\n=== SERVICE MERCHANTS (no line items) ===")
             for r in service:
                 print(f"  {r.merchant_name}: {r.receipt_type_reason}")
 
@@ -413,7 +417,7 @@ def main():
     total_receipts = sum(r.total_receipts for r in results)
     analyzed_receipts = sum(r.receipts_analyzed for r in results)
 
-    print(f"\n=== RECEIPT COUNTS ===")
+    print("\n=== RECEIPT COUNTS ===")
     print(f"Total receipts in DB: {total_receipts}")
     print(f"Receipts analyzed: {analyzed_receipts}")
 

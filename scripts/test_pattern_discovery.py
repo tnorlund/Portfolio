@@ -33,12 +33,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def load_config():
+def load_config(env: str = "dev"):
     """Load configuration from Pulumi stack outputs and secrets."""
     from receipt_dynamo.data._pulumi import load_env, load_secrets
 
-    outputs = load_env("dev")
-    secrets = load_secrets("dev")
+    outputs = load_env(env)
+    secrets = load_secrets(env)
 
     config = {
         "dynamodb_table_name": outputs.get("dynamodb_table_name"),
@@ -108,13 +108,13 @@ def main():
 
     # Load config from Pulumi
     logger.info("Loading configuration from Pulumi...")
-    config = load_config()
+    config = load_config(args.env)
 
     if not config["dynamodb_table_name"]:
         logger.error("Could not load dynamodb_table_name from Pulumi outputs")
         sys.exit(1)
 
-    logger.info(f"Using DynamoDB table: {config['dynamodb_table_name']}")
+    logger.info("Using DynamoDB table: %s", config["dynamodb_table_name"])
 
     # Check for required config
     if not args.prompt_only and not config["ollama_api_key"]:
