@@ -162,8 +162,8 @@ class _ReceiptLetter(
     @handle_dynamodb_errors("delete_receipt_letter")
     def delete_receipt_letter(
         self,
-        receipt_id: int,
         image_id: str,
+        receipt_id: int,
         line_id: int,
         word_id: int,
         letter_id: int,
@@ -173,10 +173,10 @@ class _ReceiptLetter(
 
         Parameters
         ----------
-        receipt_id : int
-            The receipt ID.
         image_id : str
             The image ID.
+        receipt_id : int
+            The receipt ID.
         line_id : int
             The line ID.
         word_id : int
@@ -398,15 +398,15 @@ class _ReceiptLetter(
             If parameters are invalid.
         """
         # Validate parameters
+        if image_id is None:
+            raise EntityValidationError("image_id cannot be None")
+        self._validate_image_id(image_id)
         if receipt_id is None:
             raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be a positive integer")
         if receipt_id <= 0:
             raise EntityValidationError("receipt_id must be a positive integer")
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        self._validate_image_id(image_id)
         if line_id is None:
             raise EntityValidationError("line_id cannot be None")
         if not isinstance(line_id, int):

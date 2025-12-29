@@ -831,8 +831,8 @@ def test_delete_receipt_line_success(
     # Verify
     with pytest.raises(EntityNotFoundError, match="ReceiptLine with.*not found"):
         client.get_receipt_line(
-            sample_receipt_line.receipt_id,
             sample_receipt_line.image_id,
+            sample_receipt_line.receipt_id,
             sample_receipt_line.line_id,
         )
 

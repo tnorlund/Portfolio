@@ -798,8 +798,8 @@ def test_delete_receipt_word_success(
     # Verify deletion
     with pytest.raises(EntityNotFoundError):
         client.get_receipt_word(
-            sample_receipt_word.receipt_id,
             sample_receipt_word.image_id,
+            sample_receipt_word.receipt_id,
             sample_receipt_word.line_id,
             sample_receipt_word.word_id,
         )
@@ -827,7 +827,7 @@ def test_add_receipt_words_success(
     # Verify all were added
     for word in sample_receipt_words:
         retrieved = client.get_receipt_word(
-            word.receipt_id, word.image_id, word.line_id, word.word_id
+            word.image_id, word.receipt_id, word.line_id, word.word_id
         )
         assert retrieved == word
 
@@ -865,8 +865,8 @@ def test_update_receipt_words_success(
     # Verify updates
     for updated_word in updated_words:
         retrieved = client.get_receipt_word(
-            updated_word.receipt_id,
             updated_word.image_id,
+            updated_word.receipt_id,
             updated_word.line_id,
             updated_word.word_id,
         )
@@ -888,7 +888,7 @@ def test_delete_receipt_words_success(
     for word in sample_receipt_words:
         with pytest.raises(EntityNotFoundError):
             client.get_receipt_word(
-                word.receipt_id, word.image_id, word.line_id, word.word_id
+                word.image_id, word.receipt_id, word.line_id, word.word_id
             )
 
 
