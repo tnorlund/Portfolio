@@ -5,8 +5,8 @@ A LangGraph agent that validates receipt word labels by analyzing spatial
 patterns within receipts and across receipts from the same merchant.
 
 The workflow has two phases:
-1. Pattern-based flagging: Uses geometric analysis and pattern matching to
-   flag suspicious labels for review
+1. Geometric analysis: Uses spatial patterns and constellation matching to
+   flag geometric anomalies for review
 2. LLM review: Uses an LLM to make semantic decisions on flagged words
 
 Graph nodes (full workflow):
@@ -14,7 +14,7 @@ Graph nodes (full workflow):
 - load_training_receipts: Fetch other receipts from same merchant
 - build_spatial_context: Create WordContext and VisualLine objects
 - compute_merchant_patterns: Build geometric patterns from training data
-- flag_suspicious_labels: Run 6 detection rules to flag suspicious words
+- flag_geometric_anomalies: Run 6 detection rules to flag geometric anomalies
 - review_currency_labels: LLM reviews currency-type labels
 - review_flagged_labels: LLM reviews all flagged words
 - persist_label_decisions: Write new labels to DynamoDB
@@ -45,6 +45,8 @@ except ImportError:
     HAS_OLLAMA = False
     ChatOllama = None  # type: ignore
 
+from receipt_dynamo.entities import ReceiptWordLabel
+
 from receipt_agent.agents.label_evaluator.currency_subagent import (
     convert_to_evaluation_issues,
     evaluate_currency_labels_sync,
@@ -69,7 +71,6 @@ from receipt_agent.agents.label_evaluator.word_context import (
     build_word_contexts,
 )
 from receipt_agent.constants import CORE_LABELS
-from receipt_dynamo.entities import ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
@@ -626,7 +627,7 @@ def create_label_evaluator_graph(
     workflow.add_node("load_training_receipts", fetch_merchant_receipts)
     workflow.add_node("build_spatial_context", build_spatial_context)
     workflow.add_node("compute_merchant_patterns", compute_patterns)
-    workflow.add_node("flag_suspicious_labels", evaluate_labels)
+    workflow.add_node("flag_geometric_anomalies", evaluate_labels)
     workflow.add_node("review_currency_labels", evaluate_currency)
     workflow.add_node("review_flagged_labels", review_issues_with_llm)
     workflow.add_node("persist_label_decisions", write_evaluation_results)
@@ -635,8 +636,8 @@ def create_label_evaluator_graph(
     workflow.add_edge("load_receipt_data", "load_training_receipts")
     workflow.add_edge("load_training_receipts", "build_spatial_context")
     workflow.add_edge("build_spatial_context", "compute_merchant_patterns")
-    workflow.add_edge("compute_merchant_patterns", "flag_suspicious_labels")
-    workflow.add_edge("flag_suspicious_labels", "review_currency_labels")
+    workflow.add_edge("compute_merchant_patterns", "flag_geometric_anomalies")
+    workflow.add_edge("flag_geometric_anomalies", "review_currency_labels")
     workflow.add_edge("review_currency_labels", "review_flagged_labels")
     workflow.add_edge("review_flagged_labels", "persist_label_decisions")
     workflow.add_edge("persist_label_decisions", END)
@@ -855,7 +856,7 @@ def create_compute_only_graph(
     1. validate_input: Check that required data is present
     2. build_spatial_context: Build word contexts and visual lines
     3. compute_merchant_patterns: Compute patterns from training data
-    4. flag_suspicious_labels: Apply validation rules and detect issues
+    4. flag_geometric_anomalies: Apply validation rules and detect anomalies
 
     No DynamoDB fetches, no LLM calls, no writes. Perfect for:
     - AWS Lambda with data passed via S3
@@ -1050,13 +1051,13 @@ def create_compute_only_graph(
     workflow.add_node("validate_input", validate_state)
     workflow.add_node("build_spatial_context", build_spatial_context)
     workflow.add_node("compute_merchant_patterns", compute_patterns)
-    workflow.add_node("flag_suspicious_labels", evaluate_labels)
+    workflow.add_node("flag_geometric_anomalies", evaluate_labels)
 
     # Linear flow
     workflow.add_edge("validate_input", "build_spatial_context")
     workflow.add_edge("build_spatial_context", "compute_merchant_patterns")
-    workflow.add_edge("compute_merchant_patterns", "flag_suspicious_labels")
-    workflow.add_edge("flag_suspicious_labels", END)
+    workflow.add_edge("compute_merchant_patterns", "flag_geometric_anomalies")
+    workflow.add_edge("flag_geometric_anomalies", END)
 
     workflow.set_entry_point("validate_input")
 

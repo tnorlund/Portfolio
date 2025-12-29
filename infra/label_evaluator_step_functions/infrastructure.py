@@ -12,7 +12,7 @@ The workflow has two phases:
 2. Per-Receipt Validation (parallel):
    - LoadReceiptData: Load words/labels from DynamoDB
    - ParallelReview:
-     - FlagSuspiciousLabels: Deterministic pattern analysis (6 detection rules)
+     - FlagGeometricAnomalies: Deterministic pattern analysis (6 detection rules)
      - ReviewCurrencyLabels: LLM reviews currency-type labels (prices, totals)
      - ReviewMetadataLabels: LLM reviews metadata-type labels (merchant, address)
    - ReviewFlaggedLabels: LLM reviews flagged words with ChromaDB similarity evidence
@@ -973,7 +973,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
         Simplified per-receipt flow:
         1. LoadReceiptData - Load receipt from DynamoDB
         2. ParallelReview:
-           - FlagSuspiciousLabels (deterministic pattern analysis)
+           - FlagGeometricAnomalies (deterministic pattern analysis)
            - ReviewCurrencyLabels (LLM-based line item validation)
            - ReviewMetadataLabels (LLM-based metadata validation)
         3. ReviewFlaggedLabels - LLM reviews flagged words (if any)
@@ -982,8 +982,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         Key features:
         - Container-based Lambdas handle LangSmith tracing
         - LearnLineItemPatterns STARTS the trace (first container Lambda)
-        - FlagSuspiciousLabels, ReviewCurrencyLabels, and ReviewMetadataLabels run in parallel
-        - ReviewFlaggedLabels only runs if FlagSuspiciousLabels flagged words
+        - FlagGeometricAnomalies, ReviewCurrencyLabels, and ReviewMetadataLabels run in parallel
+        - ReviewFlaggedLabels only runs if FlagGeometricAnomalies flagged words
         - Currency and metadata review write directly to DynamoDB
 
         Runtime inputs (from Step Function execution input):
@@ -1338,9 +1338,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                         "Type": "Parallel",
                                                         "Branches": [
                                                             {
-                                                                "StartAt": "FlagSuspiciousLabels",
+                                                                "StartAt": "FlagGeometricAnomalies",
                                                                 "States": {
-                                                                    "FlagSuspiciousLabels": {
+                                                                    "FlagGeometricAnomalies": {
                                                                         "Type": "Task",
                                                                         "Resource": evaluate_labels_arn,
                                                                         "TimeoutSeconds": 300,
@@ -1470,12 +1470,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                         "ResultPath": "$.parallel_results",
                                                         "Next": "CheckFlaggedWords",
                                                     },
-                                                    # Check if FlagSuspiciousLabels flagged any words
+                                                    # Check if FlagGeometricAnomalies flagged any words
                                                     "CheckFlaggedWords": {
                                                         "Type": "Choice",
                                                         "Choices": [
                                                             {
-                                                                # FlagSuspiciousLabels result is first in array
+                                                                # FlagGeometricAnomalies result is first in array
                                                                 "Variable": "$.parallel_results[0].issues_found",
                                                                 "NumericGreaterThan": 0,
                                                                 "Next": "ReviewFlaggedLabels",
@@ -1493,7 +1493,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                             "execution_id.$": "$.execution_id",
                                                             "batch_bucket.$": "$.batch_bucket",
                                                             "merchant_name.$": "$.merchant_name",
-                                                            # Results from FlagSuspiciousLabels (index 0)
+                                                            # Results from FlagGeometricAnomalies (index 0)
                                                             "results_s3_key.$": "$.parallel_results[0].results_s3_key",
                                                             "image_id.$": "$.parallel_results[0].image_id",
                                                             "receipt_id.$": "$.parallel_results[0].receipt_id",
@@ -1535,7 +1535,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                         "Resource": close_trace_arn,
                                                         "TimeoutSeconds": 30,
                                                         "Parameters": {
-                                                            # Trace info from FlagSuspiciousLabels
+                                                            # Trace info from FlagGeometricAnomalies
                                                             "trace_id.$": "$.parallel_results[0].trace_id",
                                                             "root_run_id.$": "$.parallel_results[0].root_run_id",
                                                             "image_id.$": "$.parallel_results[0].image_id",
@@ -1567,7 +1567,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                     "ReturnResult": {
                                                         "Type": "Pass",
                                                         "Parameters": {
-                                                            # From FlagSuspiciousLabels (index 0)
+                                                            # From FlagGeometricAnomalies (index 0)
                                                             "status.$": "$.parallel_results[0].status",
                                                             "image_id.$": "$.parallel_results[0].image_id",
                                                             "receipt_id.$": "$.parallel_results[0].receipt_id",
