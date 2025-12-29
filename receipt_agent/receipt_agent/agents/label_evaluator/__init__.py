@@ -91,6 +91,33 @@ For LangSmith evaluations:
     )
 """
 
+from receipt_agent.agents.label_evaluator.currency_subagent import (
+    CurrencyWord,
+    LineItemRow,
+    build_currency_evaluation_prompt,
+    collect_currency_words,
+    convert_to_evaluation_issues,
+    evaluate_currency_labels,
+    evaluate_currency_labels_sync,
+    identify_line_item_rows,
+    parse_currency_evaluation_response,
+)
+from receipt_agent.agents.label_evaluator.metadata_subagent import (
+    FORMAT_VALIDATED_LABELS,
+    MAX_RECEIPT_LINES_FOR_PROMPT,
+    PLACE_VALIDATED_LABELS,
+    MetadataWord,
+    build_metadata_evaluation_prompt,
+    collect_metadata_words,
+    evaluate_metadata_labels,
+    parse_metadata_evaluation_response,
+)
+from receipt_agent.agents.label_evaluator.geometry import (
+    angle_difference,
+    calculate_angle_degrees,
+    calculate_distance,
+    convert_polar_to_cartesian,
+)
 from receipt_agent.agents.label_evaluator.graph import (
     create_compute_only_graph,
     create_label_evaluator_graph,
@@ -98,11 +125,6 @@ from receipt_agent.agents.label_evaluator.graph import (
     run_compute_only_sync,
     run_label_evaluator,
     run_label_evaluator_sync,
-)
-from receipt_agent.agents.label_evaluator.word_context import (
-    assemble_visual_lines,
-    build_word_contexts,
-    get_same_line_words,
 )
 from receipt_agent.agents.label_evaluator.issue_detection import (
     check_constellation_anomaly,
@@ -114,11 +136,12 @@ from receipt_agent.agents.label_evaluator.issue_detection import (
     check_unexpected_label_pair,
     evaluate_word_contexts,
 )
-from receipt_agent.agents.label_evaluator.geometry import (
-    angle_difference,
-    calculate_angle_degrees,
-    calculate_distance,
-    convert_polar_to_cartesian,
+from receipt_agent.agents.label_evaluator.langsmith_evaluator import (
+    EvaluationQualityMetrics,
+    LabelComparisonMetrics,
+    create_label_evaluator,
+    label_accuracy_evaluator,
+    label_quality_evaluator,
 )
 from receipt_agent.agents.label_evaluator.llm_review import (
     CURRENCY_LABELS,
@@ -135,11 +158,12 @@ from receipt_agent.agents.label_evaluator.llm_review import (
     review_issues_with_receipt_context,
     review_single_issue,
 )
-from receipt_agent.utils.chroma_helpers import (
-    SimilarWordResult,
-    build_word_chroma_id,
-    format_similar_words_for_prompt,
-    query_similar_validated_words,
+from receipt_agent.agents.label_evaluator.pattern_discovery import (
+    PatternDiscoveryConfig,
+    build_discovery_prompt,
+    build_receipt_structure,
+    discover_patterns_with_llm,
+    get_default_patterns,
 )
 from receipt_agent.agents.label_evaluator.patterns import (
     batch_receipts_by_quality,
@@ -159,30 +183,16 @@ from receipt_agent.agents.label_evaluator.state import (
     VisualLine,
     WordContext,
 )
-from receipt_agent.agents.label_evaluator.langsmith_evaluator import (
-    EvaluationQualityMetrics,
-    LabelComparisonMetrics,
-    create_label_evaluator,
-    label_accuracy_evaluator,
-    label_quality_evaluator,
+from receipt_agent.agents.label_evaluator.word_context import (
+    assemble_visual_lines,
+    build_word_contexts,
+    get_same_line_words,
 )
-from receipt_agent.agents.label_evaluator.pattern_discovery import (
-    PatternDiscoveryConfig,
-    build_discovery_prompt,
-    build_receipt_structure,
-    discover_patterns_with_llm,
-    get_default_patterns,
-)
-from receipt_agent.agents.label_evaluator.currency_subagent import (
-    CurrencyWord,
-    LineItemRow,
-    build_currency_evaluation_prompt,
-    collect_currency_words,
-    convert_to_evaluation_issues,
-    evaluate_currency_labels,
-    evaluate_currency_labels_sync,
-    identify_line_item_rows,
-    parse_currency_evaluation_response,
+from receipt_agent.utils.chroma_helpers import (
+    SimilarWordResult,
+    build_word_chroma_id,
+    format_similar_words_for_prompt,
+    query_similar_validated_words,
 )
 
 __all__ = [
@@ -268,4 +278,13 @@ __all__ = [
     "evaluate_currency_labels_sync",
     "identify_line_item_rows",
     "parse_currency_evaluation_response",
+    # Metadata subagent (for metadata label validation)
+    "MetadataWord",
+    "PLACE_VALIDATED_LABELS",
+    "FORMAT_VALIDATED_LABELS",
+    "MAX_RECEIPT_LINES_FOR_PROMPT",
+    "build_metadata_evaluation_prompt",
+    "collect_metadata_words",
+    "evaluate_metadata_labels",
+    "parse_metadata_evaluation_response",
 ]

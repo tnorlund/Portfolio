@@ -56,7 +56,9 @@ def load_config() -> dict:
 
     os.environ.setdefault("OLLAMA_BASE_URL", "https://ollama.com")
     os.environ.setdefault("OLLAMA_MODEL", "gpt-oss:120b-cloud")
-    os.environ.setdefault("RECEIPT_AGENT_OLLAMA_BASE_URL", "https://ollama.com")
+    os.environ.setdefault(
+        "RECEIPT_AGENT_OLLAMA_BASE_URL", "https://ollama.com"
+    )
     os.environ.setdefault("RECEIPT_AGENT_OLLAMA_MODEL", "gpt-oss:120b-cloud")
 
     return config
@@ -88,7 +90,9 @@ def main():
         action="store_true",
         help="Skip pattern discovery, use default patterns",
     )
-    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Verbose output"
+    )
     args = parser.parse_args()
 
     if args.verbose:
@@ -105,29 +109,35 @@ def main():
         sys.exit(1)
 
     # Import after setting env vars
-    from receipt_dynamo import DynamoClient
-    from receipt_agent.agents.label_evaluator.word_context import (
-        build_word_contexts,
-        assemble_visual_lines,
-    )
     from receipt_agent.agents.label_evaluator.currency_subagent import (
         evaluate_currency_labels,
     )
+    from receipt_agent.agents.label_evaluator.llm_review import (
+        apply_llm_decisions,
+    )
     from receipt_agent.agents.label_evaluator.pattern_discovery import (
-        build_receipt_structure,
+        PatternDiscoveryConfig,
         build_discovery_prompt,
+        build_receipt_structure,
         discover_patterns_with_llm,
         get_default_patterns,
-        PatternDiscoveryConfig,
     )
-    from receipt_agent.agents.label_evaluator.llm_review import apply_llm_decisions
+    from receipt_agent.agents.label_evaluator.word_context import (
+        assemble_visual_lines,
+        build_word_contexts,
+    )
+    from receipt_dynamo import DynamoClient
 
     dynamo_client = DynamoClient(table_name=config["dynamodb_table_name"])
 
     # ==========================================================================
     # Step 1: FetchReceiptData - Load receipt data from DynamoDB
     # ==========================================================================
-    logger.info("Step 1: Fetching receipt data for %s#%s...", args.image_id, args.receipt_id)
+    logger.info(
+        "Step 1: Fetching receipt data for %s#%s...",
+        args.image_id,
+        args.receipt_id,
+    )
     words = dynamo_client.list_receipt_words_from_receipt(
         args.image_id, args.receipt_id
     )
@@ -164,8 +174,13 @@ def main():
                 llm_config = PatternDiscoveryConfig.from_env()
                 patterns = discover_patterns_with_llm(prompt, llm_config)
                 if patterns:
-                    logger.info("  Item structure: %s", patterns.get('item_structure'))
-                    logger.info("  Label positions: %s", patterns.get('label_positions'))
+                    logger.info(
+                        "  Item structure: %s", patterns.get("item_structure")
+                    )
+                    logger.info(
+                        "  Label positions: %s",
+                        patterns.get("label_positions"),
+                    )
                 else:
                     logger.warning("  Pattern discovery returned no patterns")
         except Exception as e:
@@ -208,12 +223,16 @@ def main():
     if args.apply and decisions:
         # Filter to only INVALID decisions (VALID and NEEDS_REVIEW don't change anything)
         apply_decisions = [
-            d for d in decisions
+            d
+            for d in decisions
             if d.get("llm_review", {}).get("decision") == "INVALID"
         ]
 
         if apply_decisions:
-            logger.info("Step 4: Applying %s INVALID decisions to DynamoDB...", len(apply_decisions))
+            logger.info(
+                "Step 4: Applying %s INVALID decisions to DynamoDB...",
+                len(apply_decisions),
+            )
             stats = apply_llm_decisions(
                 reviewed_issues=apply_decisions,
                 dynamo_client=dynamo_client,
@@ -240,11 +259,15 @@ def main():
         review = d.get("llm_review", {})
         decision = review.get("decision", "NEEDS_REVIEW")
         confidence = review.get("confidence", "unknown")
-        status_icon = {"VALID": "✓", "INVALID": "✗", "NEEDS_REVIEW": "?"}.get(decision, "?")
+        status_icon = {"VALID": "✓", "INVALID": "✗", "NEEDS_REVIEW": "?"}.get(
+            decision, "?"
+        )
 
         print(f"\n  [{i}] {status_icon} {decision} ({confidence})")
         print(f"      Word: \"{issue.get('word_text', '')}\"")
-        print(f"      Current Label: {issue.get('current_label') or 'unlabeled'}")
+        print(
+            f"      Current Label: {issue.get('current_label') or 'unlabeled'}"
+        )
         reasoning = review.get("reasoning", "")
         print(f"      Reasoning: {reasoning[:80] if reasoning else ''}")
         if review.get("suggested_label"):
@@ -256,7 +279,9 @@ def main():
     print("=" * 70)
 
     if config["langchain_api_key"]:
-        print("\nTrace: https://smith.langchain.com/ (project: currency-evaluator-dev)")
+        print(
+            "\nTrace: https://smith.langchain.com/ (project: currency-evaluator-dev)"
+        )
 
 
 if __name__ == "__main__":

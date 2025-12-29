@@ -37,8 +37,8 @@ except ImportError:
     ChatOllama = None  # type: ignore
 
 from receipt_agent.agents.label_evaluator.currency_subagent import (
-    evaluate_currency_labels_sync,
     convert_to_evaluation_issues,
+    evaluate_currency_labels_sync,
 )
 from receipt_agent.agents.label_evaluator.issue_detection import (
     evaluate_word_contexts,
@@ -391,9 +391,7 @@ def create_label_evaluator_graph(
 
         # Skip currency evaluation if LLM not available
         if _llm is None:
-            logger.info(
-                "Skipping currency evaluation - LLM not available"
-            )
+            logger.info("Skipping currency evaluation - LLM not available")
             return {}
 
         merchant_name = "Unknown"
@@ -421,7 +419,9 @@ def create_label_evaluator_graph(
 
             if currency_decisions:
                 # Convert dicts to EvaluationIssue objects and merge
-                currency_issues = convert_to_evaluation_issues(currency_decisions)
+                currency_issues = convert_to_evaluation_issues(
+                    currency_decisions
+                )
                 logger.info(
                     "Currency subagent evaluated %s words, found %s issues",
                     len(currency_decisions),
