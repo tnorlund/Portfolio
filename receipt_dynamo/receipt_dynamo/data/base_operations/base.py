@@ -130,7 +130,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
     def _execute_put_item(
         self,
         entity: Any,
-        condition_expression: str | None,
+        condition_expression: str,
         **kwargs: Any,
     ) -> None:
         """
@@ -138,21 +138,18 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
         Args:
             entity: The entity to put
-            condition_expression: Condition expression for the operation (optional)
+            condition_expression: Condition expression for the operation
             **kwargs: Additional arguments for put_item
         """
         item = entity.to_item()
 
         # Build put_item parameters
-        put_params: dict[str, Any] = {
+        put_params = {
             "TableName": self.table_name,
             "Item": item,
+            "ConditionExpression": condition_expression,
             **kwargs,
         }
-
-        # Only include ConditionExpression if provided
-        if condition_expression is not None:
-            put_params["ConditionExpression"] = condition_expression
 
         self._client.put_item(**put_params)
 
