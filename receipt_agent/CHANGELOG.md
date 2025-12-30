@@ -8,19 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] - 2025-12-30
 
 ### Removed
-- **BREAKING**: Removed `label_harmonizer` agent - functionality absorbed by `label_evaluator`
-  - Deleted `receipt_agent/agents/label_harmonizer/` directory
-  - Deleted `infra/label_harmonizer_step_functions/` infrastructure
-  - Deleted `test_label_harmonizer_workflow_tools.py` tests
+- **BREAKING**: Removed deprecated label agents (replaced by unified labeling pipeline):
+  - `agents/label_harmonizer/` - functionality absorbed by `label_evaluator`
+  - `agents/label_suggestion/` - replaced by LayoutLM + ChromaDB pipeline
+  - `agents/label_validation/` - replaced by unified validation in new pipeline
+  - `infra/label_harmonizer_step_functions/`
+  - `infra/label_suggestion_step_functions/`
+  - `infra/label_validation_agent_step_functions/`
 
 ### Changed
-- Financial validation now handled by `label_evaluator.financial_subagent`
-- Currency validation now handled by `label_evaluator.currency_subagent`
-- Metadata validation now handled by `label_evaluator.metadata_subagent`
+- Consolidated label processing to use:
+  - LayoutLM for initial predictions
+  - ChromaDB for validation/refinement
+  - Google Places for metadata validation
+  - `label_evaluator` for financial math validation
 
 ### Migration Notes
-- If you were using `receipt_agent.agents.label_harmonizer`, migrate to `receipt_agent.agents.label_evaluator`
-- The `LabelHarmonizerV3StepFunction` has been removed from Pulumi infrastructure
+- The old multi-stage label pipeline (suggest → validate → harmonize) is replaced by a unified pipeline during upload.
+  See `docs/UNIFIED_LABELING_PIPELINE.md` for detailed architecture and integration guidance.
+- Use `label_evaluator` for financial validation during the pipeline and post-hoc label quality checks
 
 ## [0.2.0] - 2025-12-11
 
