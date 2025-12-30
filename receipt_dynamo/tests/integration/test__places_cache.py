@@ -143,6 +143,57 @@ def test_addPlacesCache_client_errors(
 
 
 @pytest.mark.integration
+def test_putPlacesCache_success(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_places_cache: PlacesCache,
+) -> None:
+    """Test successful unconditional put of a PlacesCache."""
+    # Arrange
+    dynamo = DynamoClient(dynamodb_table)
+
+    # Act - put without prior existence (should succeed)
+    dynamo.put_places_cache(sample_places_cache)
+
+    # Assert
+    response = dynamo._client.get_item(
+        TableName=dynamo.table_name, Key=sample_places_cache.key
+    )
+    assert "Item" in response
+
+
+@pytest.mark.integration
+def test_putPlacesCache_overwrites_existing(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_places_cache: PlacesCache,
+) -> None:
+    """Test that put_places_cache can overwrite an existing entry."""
+    # Arrange
+    dynamo = DynamoClient(dynamodb_table)
+    dynamo.add_places_cache(sample_places_cache)
+
+    # Create updated version
+    updated_cache = PlacesCache(
+        search_type=sample_places_cache.search_type,
+        search_value=sample_places_cache.search_value,
+        place_id=sample_places_cache.place_id,
+        places_response={"name": "Updated Place", "rating": 5.0},
+        last_updated=datetime.now().isoformat(),
+        query_count=10,
+    )
+
+    # Act - put should overwrite without error
+    dynamo.put_places_cache(updated_cache)
+
+    # Assert - verify the update
+    result = dynamo.get_places_cache(
+        sample_places_cache.search_type, sample_places_cache.search_value
+    )
+    assert result is not None
+    assert result.places_response["name"] == "Updated Place"
+    assert result.query_count == 10
+
+
+@pytest.mark.integration
 def test_updatePlacesCache_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_places_cache: PlacesCache,
