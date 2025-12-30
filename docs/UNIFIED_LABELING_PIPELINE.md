@@ -6,7 +6,7 @@ This document describes the unified labeling pipeline that processes receipts du
 
 ## Pipeline Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                            IMAGE UPLOAD                                      │
 │                     (existing upload_receipt Lambda)                         │
@@ -155,7 +155,7 @@ This document describes the unified labeling pipeline that processes receipts du
 
 The unified labeling logic should be added to:
 
-```
+```text
 receipt_upload/
 └── receipt_upload/
     └── labeling/                    # NEW

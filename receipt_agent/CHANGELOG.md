@@ -24,8 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `label_evaluator` for financial math validation
 
 ### Migration Notes
-- The old multi-stage label pipeline (suggest → validate → harmonize) is replaced by a unified pipeline during upload
-- Use `label_evaluator` for post-hoc label quality checks
+- The old multi-stage label pipeline (suggest → validate → harmonize) is replaced by a unified pipeline during upload.
+  See `docs/UNIFIED_LABELING_PIPELINE.md` for detailed architecture and integration guidance.
+- Use `label_evaluator` for financial validation during the pipeline and post-hoc label quality checks
 
 ## [0.2.0] - 2025-12-11
 
