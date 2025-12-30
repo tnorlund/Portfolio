@@ -79,6 +79,7 @@ def list_batch_status(env: str, limit: int = 200, show_openai: bool = False):
     # Optionally check OpenAI status
     if show_openai and (in_progress or pending):
         try:
+            import openai
             from openai import OpenAI
 
             openai_client = OpenAI()
@@ -87,7 +88,7 @@ def list_batch_status(env: str, limit: int = 200, show_openai: bool = False):
                 try:
                     oai_batch = openai_client.batches.retrieve(b.openai_batch_id)
                     print(f"  {b.openai_batch_id[:30]}: {oai_batch.status}")
-                except Exception as e:
+                except openai.APIError as e:
                     print(f"  {b.openai_batch_id[:30]}: Error - {e}")
         except ImportError:
             print("\nNote: Install openai package to check OpenAI status directly")

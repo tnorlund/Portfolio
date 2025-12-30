@@ -25,9 +25,9 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 
+from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities.receipt_word import EmbeddingStatus
 
 # Configure logging
 logging.basicConfig(
@@ -66,15 +66,15 @@ def delete_all_batch_summaries(dynamo: DynamoClient, dry_run: bool = True) -> in
             deleted += len(chunk)
             if deleted % 100 == 0 or deleted == len(batch_summaries):
                 logger.info(f"Deleted {deleted}/{len(batch_summaries)} BatchSummary records")
-        except Exception as e:
-            logger.error(f"Error deleting batch summaries chunk: {e}")
+        except Exception:
+            logger.exception("Error deleting batch summaries chunk")
             # Try one by one
             for bs in chunk:
                 try:
                     dynamo.delete_batch_summary(bs)
                     deleted += 1
-                except Exception as e2:
-                    logger.error(f"Failed to delete {bs.batch_id}: {e2}")
+                except Exception:
+                    logger.exception("Failed to delete %s", bs.batch_id)
 
     return deleted
 
@@ -111,9 +111,9 @@ def reset_embedding_status(dynamo: DynamoClient, dry_run: bool = True) -> dict:
 
         try:
             details = dynamo.get_image_details(img.image_id)
-        except Exception as e:
-            logger.error(f"Error getting details for {img.image_id}: {e}")
-            stats["errors"].append(f"get_details:{img.image_id}:{e}")
+        except Exception:
+            logger.exception("Error getting details for %s", img.image_id)
+            stats["errors"].append(f"get_details:{img.image_id}")
             continue
 
         # Process ReceiptWords
@@ -143,9 +143,9 @@ def reset_embedding_status(dynamo: DynamoClient, dry_run: bool = True) -> dict:
                         chunk = words_to_update[i : i + 25]
                         dynamo.update_receipt_words(chunk)
                     stats["words_reset"] += len(words_to_update)
-                except Exception as e:
-                    logger.error(f"Error updating words for {img.image_id}: {e}")
-                    stats["errors"].append(f"update_words:{img.image_id}:{e}")
+                except Exception:
+                    logger.exception("Error updating words for %s", img.image_id)
+                    stats["errors"].append(f"update_words:{img.image_id}")
 
         # Process ReceiptLines
         lines_to_update = []
@@ -172,9 +172,9 @@ def reset_embedding_status(dynamo: DynamoClient, dry_run: bool = True) -> dict:
                         chunk = lines_to_update[i : i + 25]
                         dynamo.update_receipt_lines(chunk)
                     stats["lines_reset"] += len(lines_to_update)
-                except Exception as e:
-                    logger.error(f"Error updating lines for {img.image_id}: {e}")
-                    stats["errors"].append(f"update_lines:{img.image_id}:{e}")
+                except Exception:
+                    logger.exception("Error updating lines for %s", img.image_id)
+                    stats["errors"].append(f"update_lines:{img.image_id}")
 
     return stats
 

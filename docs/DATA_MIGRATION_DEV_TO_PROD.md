@@ -22,7 +22,7 @@ The DynamoDB stream handler processes events differently based on entity type an
 
 ### Embedding Flow
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    INITIAL EMBEDDING FLOW                           │
 ├─────────────────────────────────────────────────────────────────────┤
@@ -48,7 +48,7 @@ The DynamoDB stream handler processes events differently based on entity type an
 ## Migration Script
 
 ### Location
-```
+```text
 scripts/copy_dynamodb_dev_to_prod.py
 ```
 
@@ -96,7 +96,7 @@ python scripts/copy_dynamodb_dev_to_prod.py --dry-run
 ```
 
 Expected output:
-```
+```text
 Mode: DRY RUN
 No records will be copied. Use --no-dry-run to actually copy.
 ...
