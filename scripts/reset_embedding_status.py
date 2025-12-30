@@ -99,7 +99,6 @@ def reset_embedding_status(dynamo: DynamoClient, dry_run: bool = True) -> dict:
         "words_already_none": 0,
         "lines_already_none": 0,
         "words_success": 0,
-        "lines_success": 0,
         "errors": [],
     }
 
@@ -157,13 +156,11 @@ def reset_embedding_status(dynamo: DynamoClient, dry_run: bool = True) -> dict:
             elif hasattr(status, "value"):
                 status = status.value
 
-            if status == "PENDING":
+            if status in ("PENDING", "SUCCESS"):
                 rl.embedding_status = EmbeddingStatus.NONE.value
                 lines_to_update.append(rl)
             elif status == "NONE":
                 stats["lines_already_none"] += 1
-            elif status == "SUCCESS":
-                stats["lines_success"] += 1
 
         if lines_to_update:
             if dry_run:
@@ -242,9 +239,8 @@ def main():
     logger.info(f"ReceiptWords reset PENDING -> NONE: {stats['words_reset']}")
     logger.info(f"ReceiptWords already NONE: {stats['words_already_none']}")
     logger.info(f"ReceiptWords SUCCESS (unchanged): {stats['words_success']}")
-    logger.info(f"ReceiptLines reset PENDING -> NONE: {stats['lines_reset']}")
+    logger.info(f"ReceiptLines reset PENDING/SUCCESS -> NONE: {stats['lines_reset']}")
     logger.info(f"ReceiptLines already NONE: {stats['lines_already_none']}")
-    logger.info(f"ReceiptLines SUCCESS (unchanged): {stats['lines_success']}")
 
     if stats["errors"]:
         logger.warning(f"\n{len(stats['errors'])} errors occurred:")
