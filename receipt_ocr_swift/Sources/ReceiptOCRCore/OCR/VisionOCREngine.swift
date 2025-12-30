@@ -16,84 +16,151 @@ import Vision
 // Future refactoring could extract shared code into a common Swift Package module if
 // deployment targets converge. For now, changes must be manually synchronized between files.
 
-struct CodablePoint: Codable {
-    let x: CGFloat
-    let y: CGFloat
+public struct CodablePoint: Codable {
+    public let x: CGFloat
+    public let y: CGFloat
+
+    public init(x: CGFloat, y: CGFloat) {
+        self.x = x
+        self.y = y
+    }
 }
 
-struct NormalizedRect: Codable {
-    let x: CGFloat
-    let y: CGFloat
-    let width: CGFloat
-    let height: CGFloat
+public struct NormalizedRect: Codable {
+    public let x: CGFloat
+    public let y: CGFloat
+    public let width: CGFloat
+    public let height: CGFloat
+
+    public init(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
 }
 
-struct ExtractedData: Codable {
-    let type: String
-    let value: String
+public struct ExtractedData: Codable {
+    public let type: String
+    public let value: String
+
+    public init(type: String, value: String) {
+        self.type = type
+        self.value = value
+    }
 }
 
-struct Letter: Codable {
-    let text: String
-    let boundingBox: NormalizedRect
-    let topLeft: CodablePoint
-    let topRight: CodablePoint
-    let bottomLeft: CodablePoint
-    let bottomRight: CodablePoint
-    let angleDegrees: CGFloat
-    let angleRadians: CGFloat
-    let confidence: VNConfidence
+public struct Letter: Codable {
+    public let text: String
+    public let boundingBox: NormalizedRect
+    public let topLeft: CodablePoint
+    public let topRight: CodablePoint
+    public let bottomLeft: CodablePoint
+    public let bottomRight: CodablePoint
+    public let angleDegrees: CGFloat
+    public let angleRadians: CGFloat
+    public let confidence: VNConfidence
+
+    public init(text: String, boundingBox: NormalizedRect, topLeft: CodablePoint, topRight: CodablePoint, bottomLeft: CodablePoint, bottomRight: CodablePoint, angleDegrees: CGFloat, angleRadians: CGFloat, confidence: VNConfidence) {
+        self.text = text
+        self.boundingBox = boundingBox
+        self.topLeft = topLeft
+        self.topRight = topRight
+        self.bottomLeft = bottomLeft
+        self.bottomRight = bottomRight
+        self.angleDegrees = angleDegrees
+        self.angleRadians = angleRadians
+        self.confidence = confidence
+    }
 }
 
-struct Word: Codable {
-    let text: String
-    let boundingBox: NormalizedRect
-    let topLeft: CodablePoint
-    let topRight: CodablePoint
-    let bottomLeft: CodablePoint
-    let bottomRight: CodablePoint
-    let angleDegrees: CGFloat
-    let angleRadians: CGFloat
-    let confidence: VNConfidence
-    var letters: [Letter]
-    var extractedData: ExtractedData?
+public struct Word: Codable {
+    public let text: String
+    public let boundingBox: NormalizedRect
+    public let topLeft: CodablePoint
+    public let topRight: CodablePoint
+    public let bottomLeft: CodablePoint
+    public let bottomRight: CodablePoint
+    public let angleDegrees: CGFloat
+    public let angleRadians: CGFloat
+    public let confidence: VNConfidence
+    public var letters: [Letter]
+    public var extractedData: ExtractedData?
+
+    public init(text: String, boundingBox: NormalizedRect, topLeft: CodablePoint, topRight: CodablePoint, bottomLeft: CodablePoint, bottomRight: CodablePoint, angleDegrees: CGFloat, angleRadians: CGFloat, confidence: VNConfidence, letters: [Letter], extractedData: ExtractedData?) {
+        self.text = text
+        self.boundingBox = boundingBox
+        self.topLeft = topLeft
+        self.topRight = topRight
+        self.bottomLeft = bottomLeft
+        self.bottomRight = bottomRight
+        self.angleDegrees = angleDegrees
+        self.angleRadians = angleRadians
+        self.confidence = confidence
+        self.letters = letters
+        self.extractedData = extractedData
+    }
 }
 
-struct Line: Codable {
-    let text: String
-    let boundingBox: NormalizedRect
-    let topLeft: CodablePoint
-    let topRight: CodablePoint
-    let bottomLeft: CodablePoint
-    let bottomRight: CodablePoint
-    let angleDegrees: CGFloat
-    let angleRadians: CGFloat
-    let confidence: VNConfidence
-    var words: [Word]
+public struct Line: Codable {
+    public let text: String
+    public let boundingBox: NormalizedRect
+    public let topLeft: CodablePoint
+    public let topRight: CodablePoint
+    public let bottomLeft: CodablePoint
+    public let bottomRight: CodablePoint
+    public let angleDegrees: CGFloat
+    public let angleRadians: CGFloat
+    public let confidence: VNConfidence
+    public var words: [Word]
+
+    public init(text: String, boundingBox: NormalizedRect, topLeft: CodablePoint, topRight: CodablePoint, bottomLeft: CodablePoint, bottomRight: CodablePoint, angleDegrees: CGFloat, angleRadians: CGFloat, confidence: VNConfidence, words: [Word]) {
+        self.text = text
+        self.boundingBox = boundingBox
+        self.topLeft = topLeft
+        self.topRight = topRight
+        self.bottomLeft = bottomLeft
+        self.bottomRight = bottomRight
+        self.angleDegrees = angleDegrees
+        self.angleRadians = angleRadians
+        self.confidence = confidence
+        self.words = words
+    }
 }
 
+/// Enhanced OCR result including classification and clustering metadata
 private struct ImageResult: Codable {
     let imagePath: String
     let lines: [Line]
+    let classification: ClassificationResult?
+    let clustering: ClusteringResult?
 
     private enum CodingKeys: String, CodingKey {
         case lines
+        case classification
+        case clustering
     }
 
-    init(imagePath: String, lines: [Line]) {
+    init(imagePath: String, lines: [Line], classification: ClassificationResult? = nil, clustering: ClusteringResult? = nil) {
         self.imagePath = imagePath
         self.lines = lines
+        self.classification = classification
+        self.clustering = clustering
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.lines = try container.decode([Line].self, forKey: .lines)
+        self.classification = try container.decodeIfPresent(ClassificationResult.self, forKey: .classification)
+        self.clustering = try container.decodeIfPresent(ClusteringResult.self, forKey: .clustering)
         self.imagePath = ""
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(lines, forKey: .lines)
+        try container.encodeIfPresent(classification, forKey: .classification)
+        try container.encodeIfPresent(clustering, forKey: .clustering)
     }
 }
 
@@ -294,6 +361,12 @@ private func performNLExtraction(on aggregatedText: String, mutableLines: inout 
 }
 
 public struct VisionOCREngine: OCREngineProtocol {
+    private let classifier = ImageClassifier()
+    private let clusterer = LineClusterer()
+
+    /// Whether to include classification and clustering in output
+    public var includeClassification: Bool = true
+
     public init() {}
 
     public func process(images: [URL], outputDirectory: URL) throws -> [URL] {
@@ -317,7 +390,42 @@ public struct VisionOCREngine: OCREngineProtocol {
             }
             performNLExtraction(on: aggregatedText, mutableLines: &mutableLines, wordMappings: wordMappings)
 
-            let result = ImageResult(imagePath: imageURL.path, lines: mutableLines)
+            // Perform classification and clustering if enabled
+            var classification: ClassificationResult? = nil
+            var clustering: ClusteringResult? = nil
+
+            if includeClassification, let imageDimensions = getImageDimensions(from: imageURL) {
+                // Classify the image
+                classification = classifier.classify(
+                    lines: mutableLines,
+                    imageWidth: imageDimensions.width,
+                    imageHeight: imageDimensions.height
+                )
+
+                // Cluster based on image type
+                if let classResult = classification {
+                    switch classResult.imageType {
+                    case .native:
+                        // Single receipt, no clustering needed
+                        clustering = ClusteringResult(clusters: [1: Array(0..<mutableLines.count)])
+                    case .photo:
+                        // Use 2D DBSCAN for photos
+                        let avgDiagonal = clusterer.averageDiagonalLength(lines: mutableLines)
+                        let eps = avgDiagonal * 2  // Dynamic eps based on line size
+                        clustering = clusterer.dbscanLines(lines: mutableLines, eps: eps, minSamples: 10)
+                    case .scan:
+                        // Use X-axis clustering for scans
+                        clustering = clusterer.dbscanLinesXAxis(lines: mutableLines, eps: 0.08, minSamples: 2)
+                    }
+                }
+            }
+
+            let result = ImageResult(
+                imagePath: imageURL.path,
+                lines: mutableLines,
+                classification: classification,
+                clustering: clustering
+            )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted]
             encoder.keyEncodingStrategy = .convertToSnakeCase
@@ -328,6 +436,13 @@ public struct VisionOCREngine: OCREngineProtocol {
             outputs.append(outURL)
         }
         return outputs
+    }
+
+    /// Get image dimensions from a file URL
+    private func getImageDimensions(from url: URL) -> (width: Int, height: Int)? {
+        guard let nsImage = NSImage(contentsOf: url) else { return nil }
+        guard let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        return (width: cgImage.width, height: cgImage.height)
     }
 }
 #endif
