@@ -44,7 +44,6 @@ from dynamo_db import (
 )
 from embedding_step_functions import EmbeddingInfrastructure
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
-from label_harmonizer_step_functions import LabelHarmonizerV3StepFunction
 from label_suggestion_step_functions import LabelSuggestionStepFunction
 from label_validation_agent_step_functions import (
     LabelValidationAgentStepFunction,
@@ -1142,25 +1141,6 @@ pulumi.export("combine_receipts_sf_arn", combine_receipts_sf.state_machine_arn)
 pulumi.export(
     "combine_receipts_batch_bucket_name",
     combine_receipts_sf.batch_bucket_name,
-)
-
-# Label Harmonizer V3 Step Function (whole receipt processing)
-label_harmonizer_v3_sf = LabelHarmonizerV3StepFunction(
-    f"label-harmonizer-v3-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
-    max_concurrency=5,  # Process 5 batches in parallel
-    batch_size=50,  # 50 receipts per batch
-)
-
-pulumi.export(
-    "label_harmonizer_v3_sf_arn", label_harmonizer_v3_sf.state_machine_arn
-)
-pulumi.export(
-    "label_harmonizer_v3_batch_bucket_name",
-    label_harmonizer_v3_sf.batch_bucket_name,
 )
 
 # Label Validation Agent Step Function (NEEDS_REVIEW labels)

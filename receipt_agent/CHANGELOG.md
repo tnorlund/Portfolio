@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-12-30
+
+### Removed
+- **BREAKING**: Removed `label_harmonizer` agent - functionality absorbed by `label_evaluator`
+  - Deleted `receipt_agent/agents/label_harmonizer/` directory
+  - Deleted `infra/label_harmonizer_step_functions/` infrastructure
+  - Deleted `test_label_harmonizer_workflow_tools.py` tests
+
+### Changed
+- Financial validation now handled by `label_evaluator.financial_subagent`
+- Currency validation now handled by `label_evaluator.currency_subagent`
+- Metadata validation now handled by `label_evaluator.metadata_subagent`
+
+### Migration Notes
+- If you were using `receipt_agent.agents.label_harmonizer`, migrate to `receipt_agent.agents.label_evaluator`
+- The `LabelHarmonizerV3StepFunction` has been removed from Pulumi infrastructure
+
 ## [0.2.0] - 2025-12-11
 
 ### Removed
@@ -28,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Migration Notes
 - If you were using deprecated `receipt_agent.graph.*_workflow` imports, update to:
   - `receipt_agent.agents.harmonizer` (was `graph.harmonizer_workflow`)
-  - `receipt_agent.agents.label_harmonizer` (was `graph.label_harmonizer_workflow`)
+  - `receipt_agent.agents.label_evaluator` (was `graph.label_harmonizer_workflow`) - **Note: label_harmonizer removed in v0.3.0**
   - `receipt_agent.agents.label_validation` (was `graph.label_validation_workflow`)
   - `receipt_agent.agents.label_suggestion` (was `graph.label_suggestion_workflow`)
   - `receipt_agent.agents.place_id_finder` (was `graph.place_id_finder_workflow`)

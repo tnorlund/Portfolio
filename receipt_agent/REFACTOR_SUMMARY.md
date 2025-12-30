@@ -2,7 +2,7 @@
 
 ## ✅ Migration Complete
 
-All 8 primary agents have been successfully migrated to the new modular structure following the LangGraph monorepo example pattern.
+All 7 primary agents have been successfully migrated to the new modular structure following the LangGraph monorepo example pattern.
 
 ## New Structure
 
@@ -15,19 +15,19 @@ receipt_agent/
 │   ├── tool_base.py               # Tool interface base
 │   └── domain.py                  # Shared domain models
 │
-├── agents/                        # Primary agents (8 total)
-│   ├── label_harmonizer/         # ✅ Complete (with tools/)
-│   │   ├── state.py
-│   │   ├── graph.py
-│   │   └── tools/
-│   │       ├── factory.py
-│   │       └── helpers.py
+├── agents/                        # Primary agents (7 total)
 │   ├── harmonizer/                # ✅ Complete
 │   │   ├── state.py
 │   │   └── graph.py
 │   ├── label_validation/          # ✅ Complete
 │   │   ├── state.py
 │   │   └── graph.py
+│   ├── label_evaluator/           # ✅ Complete (with subagents)
+│   │   ├── state.py
+│   │   ├── graph.py
+│   │   ├── currency_subagent.py
+│   │   ├── metadata_subagent.py
+│   │   └── financial_subagent.py
 │   ├── place_id_finder/           # ✅ Complete
 │   │   ├── state.py
 │   │   └── graph.py
@@ -46,25 +46,25 @@ receipt_agent/
     ├── financial_validation/      # Re-exports from graph/
     ├── cove_text_consistency/     # Re-exports from graph/
     ├── place_finder/              # Re-exports from graph/
-    └── table_columns/             # Placeholder (embedded in label_harmonizer)
+    └── table_columns/             # Placeholder
 ```
 
 ## Agents at a Glance
 
 - `agentic/` — Agentic validation workflow (LLM-driven validation)
 - `validation/` — Deterministic validation workflow (non-agentic)
-- `label_harmonizer/` — Label harmonizer v3 (whole-receipt consistency); uses `subagents/financial_validation`
 - `harmonizer/` — Metadata/merchant harmonizer (place_id groups); uses `subagents/place_finder` + `subagents/cove_text_consistency`
 - `label_suggestion/` — Label suggestion helper (async, non-LangGraph)
 - `label_validation/` — Label validation agent/state
+- `label_evaluator/` — LLM-based label evaluation with currency, metadata, and financial validation subagents
 - `place_id_finder/` — Finds missing place_ids
-- `receipt_grouping/` — Combines/splits receipts (the “combiner” logic)
+- `receipt_grouping/` — Combines/splits receipts (the "combiner" logic)
 
 Subagents:
-- `financial_validation/` — Financial consistency checks (used by label_harmonizer)
+- `financial_validation/` — Financial consistency checks (used by label_evaluator)
 - `cove_text_consistency/` — Cross-line text consistency (used by harmonizer)
 - `place_finder/` — Place data fill-in (used by harmonizer)
-- `table_columns/` — Placeholder/embedded helper for label_harmonizer
+- `table_columns/` — Placeholder table column helper
 
 ## Migration Pattern
 
@@ -76,7 +76,8 @@ Each agent follows this structure:
 ## Cleanup Completed ✅
 
 All deprecated `graph/*_workflow.py` shim files have been removed. The migration is complete and all code now uses the new `agents/*` import paths.
-- Legacy harmonizer/label_harmonizer v1/v2 removed; v3 agents live under `agents/<name>/tools`.
+- Legacy harmonizer v1/v2 removed; v3 agents live under `agents/<name>/tools`.
+- `label_harmonizer` agent removed (functionality absorbed by `label_evaluator`).
 - Top-level `tools/` now limited to shared connectors (`chroma.py`, `dynamo.py`, `places.py`, `registry.py`); agent-specific tools reside under each agent.
 
 ## Updated Imports
@@ -84,10 +85,8 @@ All deprecated `graph/*_workflow.py` shim files have been removed. The migration
 The following files have been updated to use new import paths:
 - `receipt_agent/__init__.py`
 - `receipt_agent/agent/metadata_validator.py`
-- `receipt_agent/tools/label_harmonizer_v3.py`
 - `receipt_agent/tools/harmonizer_v3.py`
 - `receipt_agent/tools/place_id_finder.py`
-- `receipt_agent/tests/test_label_harmonizer_workflow_tools.py`
 
 ## Benefits
 
