@@ -50,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Migration Notes
 - If you were using deprecated `receipt_agent.graph.*_workflow` imports, update to:
   - `receipt_agent.agents.harmonizer` (was `graph.harmonizer_workflow`)
-  - `receipt_agent.agents.label_harmonizer` (was `graph.label_harmonizer_workflow`)
+  - `receipt_agent.agents.label_evaluator` (was `graph.label_harmonizer_workflow`) - **Note: label_harmonizer removed in v0.3.0**
   - `receipt_agent.agents.label_validation` (was `graph.label_validation_workflow`)
   - `receipt_agent.agents.label_suggestion` (was `graph.label_suggestion_workflow`)
   - `receipt_agent.agents.place_id_finder` (was `graph.place_id_finder_workflow`)

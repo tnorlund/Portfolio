@@ -195,7 +195,7 @@ except ImportError:
 - Ensured zero breaking changes
 - **Status**: Protected imports in production code:
   - `receipt_agent/agents/label_validation/graph.py` (try/except for CORE_LABELS)
-  - `receipt_agent/agents/label_harmonizer/tools/label_harmonizer_v3.py` (try/except for CORE_LABELS)
+  - `receipt_agent/agents/label_evaluator/` (currency, metadata, financial subagents)
   - `receipt_agent/examples/validate_single_receipt.py` (try/except for PlacesAPI)
 
 ### Phase 2: Functional Migration (✅ Complete)
