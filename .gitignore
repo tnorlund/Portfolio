@@ -246,3 +246,4 @@ infra/backups/
 .github/pr-reviews/reports/*-detailed-review.md
 .github/pr-reviews/reports/*-review-tracking.md
 .venv312/
+backups/
