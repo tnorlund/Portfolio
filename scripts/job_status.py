@@ -111,9 +111,23 @@ def format_config(config: dict) -> str:
     dc = config.get("data_config", {})
     if dc:
         lines.append("\n  Data Config:")
-        lines.append(f"    Merge Amounts: {dc.get('merge_amounts', False)}")
+        # Display label merges (new universal format) or legacy merge_amounts
+        label_merges = dc.get("label_merges")
+        if label_merges:
+            lines.append("    Label Merges:")
+            for target, sources in label_merges.items():
+                lines.append(f"      {target} ← {', '.join(sources)}")
+        elif dc.get("merge_amounts", False):
+            lines.append("    Merge Amounts: True (legacy flag)")
+        else:
+            lines.append("    Label Merges: None")
         lines.append(f"    Allowed Labels: {dc.get('allowed_labels', 'all')}")
         lines.append(f"    Max Seq Length: {dc.get('max_seq_length', 'N/A')}")
+
+    # Resulting label set (from merge_info)
+    resulting_labels = config.get("resulting_labels", [])
+    if resulting_labels:
+        lines.append(f"\n  Resulting Labels ({len(resulting_labels)}): {', '.join(resulting_labels)}")
 
     # Label list
     label_list = config.get("label_list", [])

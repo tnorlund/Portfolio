@@ -86,13 +86,27 @@ def build_train_command(hps: dict) -> list[str]:
         if hp_name in hps:
             cmd.extend([cli_flag, str(hps[hp_name])])
 
-    # Boolean flags
-    if hps.get("merge_amounts", "").lower() == "true":
-        cmd.append("--merge-amounts")
-    if hps.get("merge_date_time", "").lower() == "true":
-        cmd.append("--merge-date-time")
-    if hps.get("merge_address_phone", "").lower() == "true":
-        cmd.append("--merge-address-phone")
+    # New universal label merges (preferred over legacy boolean flags)
+    if "label_merges" in hps:
+        label_merges_value = hps["label_merges"]
+        # Handle both string (JSON) and dict forms
+        if isinstance(label_merges_value, dict):
+            label_merges_value = json.dumps(label_merges_value)
+        cmd.extend(["--label-merges", label_merges_value])
+
+    # Merge preset shortcut
+    if "merge_preset" in hps:
+        cmd.extend(["--merge-preset", str(hps["merge_preset"])])
+
+    # Legacy boolean flags (kept for backwards compatibility)
+    # Only applied if no label_merges or merge_preset is specified
+    if "label_merges" not in hps and "merge_preset" not in hps:
+        if hps.get("merge_amounts", "").lower() == "true":
+            cmd.append("--merge-amounts")
+        if hps.get("merge_date_time", "").lower() == "true":
+            cmd.append("--merge-date-time")
+        if hps.get("merge_address_phone", "").lower() == "true":
+            cmd.append("--merge-address-phone")
 
     # Allowed labels (can be comma-separated)
     if "allowed_labels" in hps:
