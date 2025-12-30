@@ -7,28 +7,23 @@
 - ✅ `receipt_agent/core/domain.py` - Shared domain models
 
 ### Fully Migrated Agents
-1. **Label Harmonizer** (`agents/label_harmonizer/`)
-   - ✅ State, graph, tools fully migrated
-   - ✅ Backward compatibility shims added
-   - ✅ Tests updated
-
-2. **Label Validation** (`agents/label_validation/`)
+1. **Label Validation** (`agents/label_validation/`)
    - ✅ State, graph migrated
    - ✅ Backward compatibility shims added
 
-3. **Place ID Finder** (`agents/place_id_finder/`)
+2. **Place ID Finder** (`agents/place_id_finder/`)
    - ✅ State, graph migrated
    - ✅ Backward compatibility shims added
 
-4. **Receipt Grouping** (`agents/receipt_grouping/`)
+3. **Receipt Grouping** (`agents/receipt_grouping/`)
    - ✅ State, graph migrated
    - ✅ Backward compatibility shims added
 
-5. **Agentic Workflow** (`agents/agentic/`)
+4. **Agentic Workflow** (`agents/agentic/`)
    - ✅ State, graph migrated
    - ✅ Backward compatibility shims added
 
-6. **Validation Workflow** (`agents/validation/`)
+5. **Validation Workflow** (`agents/validation/`)
    - ✅ Graph migrated (uses ValidationState from state.models)
    - ✅ Backward compatibility shims added
 
@@ -36,16 +31,16 @@
 - ✅ `subagents/financial_validation/` - Re-exports from current location
 - ✅ `subagents/cove_text_consistency/` - Re-exports from current location
 - ✅ `subagents/place_finder/` - Re-exports from current location
-- ✅ `subagents/table_columns/` - Placeholder (embedded in label_harmonizer)
+- ✅ `subagents/table_columns/` - Placeholder
 
-## Fully Migrated Agents (All 8) ✅
+## Fully Migrated Agents (All 7) ✅
 
-7. **Harmonizer** (`agents/harmonizer/`)
+6. **Harmonizer** (`agents/harmonizer/`)
    - ✅ State, graph migrated
    - ✅ Backward compatibility shims added
    - ✅ Imports updated in harmonizer_v3.py
 
-8. **Label Suggestion** (`agents/label_suggestion/`)
+7. **Label Suggestion** (`agents/label_suggestion/`)
    - ✅ Graph migrated (async function, not full LangGraph)
    - ✅ Backward compatibility shims added
 
@@ -58,9 +53,7 @@
 ### Internal Import Updates
 - ✅ All internal imports updated to use `subagents/*` paths instead of `graph/*`
 - ✅ `agents/harmonizer/graph.py` - Updated place_finder and cove_text_consistency imports
-- ✅ `agents/label_harmonizer/tools/factory.py` - Updated financial_validation import
 - ✅ `tools/receipt_place_finder.py` - Updated place_finder imports
-- ✅ Deprecated shims (`graph/harmonizer_workflow.py`, `graph/label_harmonizer_workflow.py`) also updated
 
 ## Remaining Work 📝
 
@@ -151,7 +144,8 @@ This design maximizes speed while maintaining accuracy, using LLMs only when sim
 - ✅ `graph/__init__.py` updated to reflect cleanup
 - ✅ No remaining imports of deprecated modules found in codebase
 - ✅ Only `graph/nodes.py` remains (used by validation workflow)
-- ✅ Legacy v1/v2 harmonizer and label harmonizer implementations removed; v3 agents only
+- ✅ Legacy v1/v2 harmonizer implementations removed; v3 agents only
+- ✅ `label_harmonizer` agent removed (functionality absorbed by `label_evaluator`)
 - ✅ Top-level `tools/` trimmed to shared connectors (chroma/dynamo/places/registry); agent-specific tools live under `agents/<name>/tools`
 
 ## Migration Pattern
@@ -176,18 +170,18 @@ subagents/<subagent_name>/
 
 - `agentic/` — Agentic validation workflow (LLM-driven validation)
 - `validation/` — Deterministic validation workflow (non-agentic)
-- `label_harmonizer/` — Label harmonizer v3 (whole-receipt consistency); uses `subagents/financial_validation`
 - `harmonizer/` — Metadata/merchant harmonizer (place_id groups); uses `subagents/place_finder` and `subagents/cove_text_consistency`
 - `label_suggestion/` — Label suggestion helper (async, non-LangGraph)
 - `label_validation/` — Label validation agent/state
 - `place_id_finder/` — Finds missing place_ids
-- `receipt_grouping/` — Combines/splits receipts (the “combiner” logic)
+- `receipt_grouping/` — Combines/splits receipts (the "combiner" logic)
+- `label_evaluator/` — LLM-based label evaluation with currency, metadata, and financial validation subagents
 
 Subagents:
-- `financial_validation/` — Financial consistency checks (used by label_harmonizer)
+- `financial_validation/` — Financial consistency checks (used by label_evaluator)
 - `cove_text_consistency/` — Cross-line text consistency (used by harmonizer)
 - `place_finder/` — Place data fill-in (used by harmonizer)
-- `table_columns/` — Placeholder/embedded table column helper for label_harmonizer
+- `table_columns/` — Placeholder table column helper
 
 ## Migration Complete ✅
 
