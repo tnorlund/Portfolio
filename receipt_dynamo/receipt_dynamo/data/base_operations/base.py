@@ -159,7 +159,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
     def _execute_delete_item(
         self,
         entity: Any,
-        condition_expression: str,
+        condition_expression: Optional[str],
         **kwargs: Any,
     ) -> None:
         """
@@ -167,7 +167,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
         Args:
             entity: The entity to delete
-            condition_expression: Condition expression for the operation
+            condition_expression: Condition expression for the operation (optional)
             **kwargs: Additional arguments for delete_item
         """
         # Build delete_item parameters

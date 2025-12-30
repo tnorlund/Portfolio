@@ -146,7 +146,7 @@ def test_addPlacesCache_client_errors(
 def test_putPlacesCache_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_places_cache: PlacesCache,
-):
+) -> None:
     """Test successful unconditional put of a PlacesCache."""
     # Arrange
     dynamo = DynamoClient(dynamodb_table)
@@ -165,7 +165,7 @@ def test_putPlacesCache_success(
 def test_putPlacesCache_overwrites_existing(
     dynamodb_table: Literal["MyMockedTable"],
     sample_places_cache: PlacesCache,
-):
+) -> None:
     """Test that put_places_cache can overwrite an existing entry."""
     # Arrange
     dynamo = DynamoClient(dynamodb_table)
