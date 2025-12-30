@@ -83,8 +83,9 @@ def list_batch_status(env: str, limit: int = 200, show_openai: bool = False):
             from openai import OpenAI
 
             openai_client = OpenAI()
-            print("\n=== OpenAI Status Check ===")
-            for b in (in_progress + pending)[:10]:
+            batches_to_check = (in_progress + pending)[:10]
+            print(f"\n=== OpenAI Status Check (first {len(batches_to_check)} batches) ===")
+            for b in batches_to_check:
                 try:
                     oai_batch = openai_client.batches.retrieve(b.openai_batch_id)
                     print(f"  {b.openai_batch_id[:30]}: {oai_batch.status}")
