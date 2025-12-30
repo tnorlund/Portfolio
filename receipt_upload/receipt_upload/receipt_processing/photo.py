@@ -8,20 +8,8 @@ from PIL import Image as PIL_Image
 from PIL.Image import Resampling, Transform
 from receipt_upload.cluster import dbscan_lines
 from receipt_upload.geometry import (
-    compute_final_receipt_tilt,
-    compute_hull_centroid,
-    compute_receipt_box_from_boundaries,
-    compute_receipt_box_from_skewed_extents,
     convex_hull,
-    create_boundary_line_from_points,
-    create_boundary_line_from_theil_sen,
-    create_horizontal_boundary_line_from_points,
-    find_hull_extents_relative_to_centroid,
-    find_hull_extremes_along_angle,
-    find_line_edges_at_secondary_extremes,
     find_perspective_coeffs,
-    refine_hull_extremes_with_hull_edge_alignment,
-    theil_sen,
 )
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.utils import (
@@ -193,70 +181,58 @@ def process_photo(
                 )
                 continue
 
-            cx, cy = compute_hull_centroid(hull)
-            find_hull_extents_relative_to_centroid(hull, cx, cy)
-            # Get average angle of lines in cluster
-            avg_angle = sum(
-                line.angle_degrees for line in cluster_lines
-            ) / len(cluster_lines)
+            # Find top and bottom lines by Y position
+            # In normalized coords with flip_y=True: higher pixel Y = lower in image
+            # Sort by top_left["y"] descending (highest Y in normalized = topmost in image after flip)
+            sorted_lines = sorted(
+                cluster_lines,
+                key=lambda line: line.top_left["y"],
+                reverse=True,  # Highest normalized Y first (topmost line after flip)
+            )
+            top_line = sorted_lines[0]
+            bottom_line = sorted_lines[-1]
 
-            # Compute receipt box corners using step-by-step geometry utilities
-            final_angle = compute_final_receipt_tilt(
-                cluster_lines, hull, (cx, cy), avg_angle
+            # Get corners from top and bottom lines in pixel coordinates
+            # calculate_corners returns: (top_left, top_right, bottom_left, bottom_right)
+            top_line_corners = top_line.calculate_corners(
+                width=image.width, height=image.height, flip_y=True
             )
-            extremes = find_hull_extremes_along_angle(
-                hull, (cx, cy), final_angle
-            )
-            refined = refine_hull_extremes_with_hull_edge_alignment(
-                hull,
-                extremes["leftPoint"],
-                extremes["rightPoint"],
-                final_angle,
-            )
-            edge_points = find_line_edges_at_secondary_extremes(
-                cluster_lines, hull, (cx, cy), final_angle
-            )
-            boundaries = {
-                "top": create_horizontal_boundary_line_from_points(
-                    edge_points["topEdge"]
-                ),
-                "bottom": create_horizontal_boundary_line_from_points(
-                    edge_points["bottomEdge"]
-                ),
-                "left": create_boundary_line_from_points(
-                    refined["leftSegment"]["extreme"],
-                    refined["leftSegment"]["optimizedNeighbor"],
-                ),
-                "right": create_boundary_line_from_points(
-                    refined["rightSegment"]["extreme"],
-                    refined["rightSegment"]["optimizedNeighbor"],
-                ),
-            }
-            receipt_box_corners = compute_receipt_box_from_boundaries(
-                boundaries["top"],
-                boundaries["bottom"],
-                boundaries["left"],
-                boundaries["right"],
-                (cx, cy),
+            bottom_line_corners = bottom_line.calculate_corners(
+                width=image.width, height=image.height, flip_y=True
             )
 
-            # DEBUG: Log the corner points to understand the geometry
-            print(f"Cluster {cluster_id} receipt_box_corners:")
-            for i, corner in enumerate(receipt_box_corners):
-                print(f"  Point {i}: ({corner[0]:.2f}, {corner[1]:.2f})")
+            # Use hull to constrain left/right edges
+            hull_xs = [p[0] for p in hull]
+            min_hull_x = min(hull_xs)
+            max_hull_x = max(hull_xs)
 
-            # Reorder corners to match dst_corners order (top-left, top-right, bottom-right, bottom-left)
-            # Current geometry pipeline returns: [bottom-left, bottom-right, top-right, top-left]
-            # We need: [top-left, top-right, bottom-right, bottom-left]
-            # So reorder: [3, 2, 1, 0]
-            receipt_box_corners = [
-                receipt_box_corners[3],  # top-left
-                receipt_box_corners[2],  # top-right
-                receipt_box_corners[1],  # bottom-right
-                receipt_box_corners[0],  # bottom-left
-            ]
+            # Receipt corners:
+            # - Top edge: from top line's TL and TR
+            # - Bottom edge: from bottom line's BL and BR
+            # - Left/right constrained by hull X bounds
+            top_left = (
+                max(min_hull_x, top_line_corners[0][0]),  # TL x, constrained by hull
+                top_line_corners[0][1],  # TL y from top line
+            )
+            top_right = (
+                min(max_hull_x, top_line_corners[1][0]),  # TR x, constrained by hull
+                top_line_corners[1][1],  # TR y from top line
+            )
+            bottom_left = (
+                max(min_hull_x, bottom_line_corners[2][0]),  # BL x, constrained by hull
+                bottom_line_corners[2][1],  # BL y from bottom line
+            )
+            bottom_right = (
+                min(max_hull_x, bottom_line_corners[3][0]),  # BR x, constrained by hull
+                bottom_line_corners[3][1],  # BR y from bottom line
+            )
 
-            print(f"Cluster {cluster_id} reordered corners:")
+            receipt_box_corners = [top_left, top_right, bottom_right, bottom_left]
+
+            # DEBUG: Log the corner points
+            print(f"Cluster {cluster_id} receipt_box_corners (simplified):")
+            print(f"  Top line: '{top_line.text[:50]}...' (y={top_line.top_left['y']:.3f})")
+            print(f"  Bottom line: '{bottom_line.text[:50]}...' (y={bottom_line.top_left['y']:.3f})")
             for i, corner in enumerate(receipt_box_corners):
                 print(f"  Point {i}: ({corner[0]:.2f}, {corner[1]:.2f})")
 
