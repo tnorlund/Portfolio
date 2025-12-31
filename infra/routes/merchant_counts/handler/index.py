@@ -13,6 +13,14 @@ dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
 dynamo_client = DynamoClient(dynamodb_table_name)
 
 
+def normalize_for_display(name: str) -> str:
+    """Convert normalized name to display format.
+
+    Example: "SPROUTS_FARMERS_MARKET" -> "Sprouts Farmers Market"
+    """
+    return " ".join(word.capitalize() for word in name.split("_"))
+
+
 def fetch_merchant_counts():
     receipt_places, last_evaluated_key = (
         dynamo_client.list_receipt_places(
@@ -58,9 +66,10 @@ def handler(event, _):
             sorted_merchant_counts = sorted(
                 merchant_counts.items(), key=lambda x: x[1], reverse=True
             )
-            # Convert back to JSON
+            # Convert to display-friendly format
             sorted_merchant_counts = [
-                {name: count} for name, count in sorted_merchant_counts
+                {normalize_for_display(name): count}
+                for name, count in sorted_merchant_counts
             ]
             return {
                 "statusCode": 200,
