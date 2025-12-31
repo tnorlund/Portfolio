@@ -21,9 +21,12 @@ def get_default_table_name(env: str = "dev") -> Optional[str]:
     Falls back to DYNAMO_TABLE_NAME env var if Pulumi is unavailable.
     """
     # Try Pulumi first
-    stack_outputs = load_env(env)
-    if stack_outputs and "dynamodb_table_name" in stack_outputs:
-        return stack_outputs["dynamodb_table_name"]
+    try:
+        stack_outputs = load_env(env)
+        if stack_outputs and "dynamodb_table_name" in stack_outputs:
+            return stack_outputs["dynamodb_table_name"]
+    except Exception:
+        pass  # Fall back to environment variable
 
     # Fall back to environment variable
     return os.environ.get("DYNAMO_TABLE_NAME")

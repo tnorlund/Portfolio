@@ -340,7 +340,7 @@ def load_datasets(
     # Build allowed set from parameter or environment variable
     allowed: Optional[set[str]] = None
     if allowed_labels:
-        allowed = {l.upper() for l in allowed_labels}
+        allowed = {label.upper() for label in allowed_labels}
     else:
         # Backwards compat: check env var
         allowed_labels_env = os.getenv("LAYOUTLM_ALLOWED_LABELS")
@@ -360,7 +360,7 @@ def load_datasets(
     if merge_lookup:
         valid_labels.update(merge_lookup.values())
     if allowed:
-        allowed = {l for l in allowed if l in valid_labels}
+        allowed = {label for label in allowed if label in valid_labels}
 
     # Track resulting labels for metrics
     resulting_labels_set: set[str] = set()

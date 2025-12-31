@@ -42,7 +42,7 @@ def _build_label_merges(args: argparse.Namespace) -> Optional[Dict[str, List[str
                 )
             result.update(explicit_merges)
         except json.JSONDecodeError as e:
-            raise SystemExit(f"Invalid JSON for --label-merges: {e}")
+            raise SystemExit(f"Invalid JSON for --label-merges: {e}") from e
 
     # 3. Apply legacy boolean flags (only if no preset and no explicit merges)
     if not getattr(args, "merge_preset", None) and not getattr(
