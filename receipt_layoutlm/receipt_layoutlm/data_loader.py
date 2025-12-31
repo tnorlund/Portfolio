@@ -194,62 +194,106 @@ def _normalize_box_from_extents(
 _CORE_SET = set(CORE_LABELS.keys())
 
 
+def _build_merge_lookup(
+    label_merges: Optional[Dict[str, List[str]]]
+) -> Dict[str, str]:
+    """Build reverse lookup: source_label -> target_label.
+
+    Args:
+        label_merges: Dict mapping target labels to lists of source labels.
+            E.g., {"AMOUNT": ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"]}
+
+    Returns:
+        Dict mapping each source label to its target.
+            E.g., {"LINE_TOTAL": "AMOUNT", "SUBTOTAL": "AMOUNT", ...}
+    """
+    lookup: Dict[str, str] = {}
+    if not label_merges:
+        return lookup
+
+    for target, sources in label_merges.items():
+        target_upper = target.upper()
+        for source in sources:
+            lookup[source.upper()] = target_upper
+
+    return lookup
+
+
 def _normalize_word_label(
     raw: str,
     allowed: Optional[set[str]] = None,
-    merge_amounts: bool = False,
-    merge_date_time: bool = False,
-    merge_address_phone: bool = False,
+    merge_lookup: Optional[Dict[str, str]] = None,
 ) -> str:
+    """Normalize a raw label, applying merges and filtering.
+
+    Args:
+        raw: Raw label string from DynamoDB.
+        allowed: Optional set of allowed labels. Others map to "O".
+        merge_lookup: Dict mapping source labels to target labels.
+
+    Returns:
+        Normalized label string.
+    """
     lab = (raw or "").upper()
     if lab == "O":
         return "O"
 
-    # Merge currency labels into AMOUNT (right-side totals only)
-    # Note: UNIT_PRICE excluded - it's left-side with line item details
-    if merge_amounts and lab in {
-        "LINE_TOTAL",
-        "SUBTOTAL",
-        "TAX",
-        "GRAND_TOTAL",
-    }:
-        lab = "AMOUNT"
+    # Apply merge lookup if provided
+    if merge_lookup and lab in merge_lookup:
+        lab = merge_lookup[lab]
 
-    # Merge DATE and TIME into DATE
-    if merge_date_time and lab == "TIME":
-        lab = "DATE"
-
-    # Merge ADDRESS_LINE and PHONE_NUMBER into ADDRESS
-    if merge_address_phone and lab == "PHONE_NUMBER":
-        lab = "ADDRESS"
-    elif merge_address_phone and lab == "ADDRESS_LINE":
-        lab = "ADDRESS"
-
+    # Filter to allowed labels
     if allowed is not None and lab not in allowed:
         return "O"
-    return lab if lab in _CORE_SET or lab == "AMOUNT" or lab == "ADDRESS" else "O"
+
+    # Allow core labels plus any target labels from merges
+    valid_labels = _CORE_SET.copy()
+    if merge_lookup:
+        valid_labels.update(merge_lookup.values())
+
+    return lab if lab in valid_labels else "O"
 
 
 def _raw_label(
     labels: List[str],
     allowed: Optional[set[str]] = None,
-    merge_amounts: bool = False,
-    merge_date_time: bool = False,
-    merge_address_phone: bool = False,
+    merge_lookup: Optional[Dict[str, str]] = None,
 ) -> str:
-    # Pick first label if present; else 'O'. Normalize to CORE set or 'O'
+    """Pick first label if present; else 'O'. Normalize to valid set or 'O'."""
     if not labels:
         return "O"
-    return _normalize_word_label(
-        labels[0], allowed, merge_amounts, merge_date_time, merge_address_phone
-    )
+    return _normalize_word_label(labels[0], allowed, merge_lookup)
+
+
+@dataclass
+class MergeInfo:
+    """Information about label merging applied during dataset loading."""
+
+    label_merges: Optional[Dict[str, List[str]]]
+    merge_lookup: Dict[str, str]
+    resulting_labels: List[str]
 
 
 def load_datasets(
     dynamo: DynamoClient,
     label_status: str = ValidationStatus.VALID.value,
     random_seed: Optional[int] = None,
-) -> Tuple[Any, SplitMetadata]:
+    label_merges: Optional[Dict[str, List[str]]] = None,
+    allowed_labels: Optional[List[str]] = None,
+) -> Tuple[Any, SplitMetadata, MergeInfo]:
+    """Load and process datasets from DynamoDB.
+
+    Args:
+        dynamo: DynamoDB client instance.
+        label_status: Filter labels by validation status.
+        random_seed: Random seed for reproducible train/val split.
+        label_merges: Dict mapping target labels to source labels to merge.
+            E.g., {"AMOUNT": ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"]}
+        allowed_labels: Optional list of allowed labels (whitelist).
+
+    Returns:
+        Tuple of (DatasetDict, SplitMetadata, MergeInfo).
+    """
     # For now, fetch all labels with status; join to words by PK/SK
     all_labels, _ = dynamo.list_receipt_word_labels_with_status(
         ValidationStatus(label_status), limit=None, last_evaluated_key=None
@@ -276,21 +320,50 @@ def load_datasets(
         max_y = max(y1, image_extents.get(w.image_id, (0.0, 0.0))[1])
         image_extents[w.image_id] = (max_x, max_y)
 
-    # Build allowed set from environment-configured whitelist via DataConfig
-    allowed_labels_env = os.getenv("LAYOUTLM_ALLOWED_LABELS")
-    allowed: Optional[set[str]] = None
-    if allowed_labels_env:
-        allowed = {
-            s.strip().upper()
-            for s in allowed_labels_env.split(",")
-            if s.strip()
-        }
-        # Only keep labels that are in core set or special merged labels ('AMOUNT', 'ADDRESS')
-        allowed = {l for l in allowed if l in _CORE_SET or l == "AMOUNT" or l == "ADDRESS"}
+    # Build label_merges from parameter or environment variables (backwards compat)
+    effective_label_merges = label_merges
+    if effective_label_merges is None:
+        # Backwards compatibility: check env vars for legacy merge flags
+        env_merges: Dict[str, List[str]] = {}
+        if os.getenv("LAYOUTLM_MERGE_AMOUNTS", "0") == "1":
+            env_merges["AMOUNT"] = ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"]
+        if os.getenv("LAYOUTLM_MERGE_DATE_TIME", "0") == "1":
+            env_merges["DATE"] = ["TIME"]
+        if os.getenv("LAYOUTLM_MERGE_ADDRESS_PHONE", "0") == "1":
+            env_merges["ADDRESS"] = ["PHONE_NUMBER", "ADDRESS_LINE"]
+        if env_merges:
+            effective_label_merges = env_merges
 
-    merge_amounts = os.getenv("LAYOUTLM_MERGE_AMOUNTS", "0") == "1"
-    merge_date_time = os.getenv("LAYOUTLM_MERGE_DATE_TIME", "0") == "1"
-    merge_address_phone = os.getenv("LAYOUTLM_MERGE_ADDRESS_PHONE", "0") == "1"
+    # Build the merge lookup for efficient label transformation
+    merge_lookup = _build_merge_lookup(effective_label_merges)
+
+    # Build allowed set from parameter or environment variable
+    allowed: Optional[set[str]] = None
+    if allowed_labels:
+        allowed = {label.upper() for label in allowed_labels}
+    else:
+        # Backwards compat: check env var
+        allowed_labels_env = os.getenv("LAYOUTLM_ALLOWED_LABELS")
+        if allowed_labels_env:
+            allowed = {
+                s.strip().upper()
+                for s in allowed_labels_env.split(",")
+                if s.strip()
+            }
+
+    # Add merge targets to allowed set so they pass through filtering
+    if allowed and merge_lookup:
+        allowed.update(merge_lookup.values())
+
+    # Filter allowed to valid labels (core set + merge targets)
+    valid_labels = _CORE_SET.copy()
+    if merge_lookup:
+        valid_labels.update(merge_lookup.values())
+    if allowed:
+        allowed = {label for label in allowed if label in valid_labels}
+
+    # Track resulting labels for metrics
+    resulting_labels_set: set[str] = set()
 
     # Group by line so each example is a sequence of tokens
     seq_map: Dict[
@@ -304,10 +377,11 @@ def load_datasets(
         label = _raw_label(
             label_map.get(word_key, []),
             allowed,
-            merge_amounts,
-            merge_date_time,
-            merge_address_phone,
+            merge_lookup,
         )
+        # Track non-O labels for resulting_labels
+        if label != "O":
+            resulting_labels_set.add(label)
         max_x, max_y = image_extents.get(w.image_id, (1.0, 1.0))
         x0, y0, x1, y1 = _box_from_word(w)
         norm_box = _normalize_box_from_extents(x0, y0, x1, y1, max_x, max_y)
@@ -466,4 +540,12 @@ def load_datasets(
 
     train_ds = dataset.select(filtered_train_indices).remove_columns(["receipt_key"])  # type: ignore[attr-defined]
     val_ds = dataset.select(val_indices).remove_columns(["receipt_key"])  # type: ignore[attr-defined]
-    return DatasetDict({"train": train_ds, "validation": val_ds}), split_metadata
+
+    # Build merge info for tracking
+    merge_info = MergeInfo(
+        label_merges=effective_label_merges,
+        merge_lookup=merge_lookup,
+        resulting_labels=sorted(resulting_labels_set),
+    )
+
+    return DatasetDict({"train": train_ds, "validation": val_ds}), split_metadata, merge_info

@@ -16,7 +16,7 @@ from receipt_dynamo.entities.job_metric import JobMetric
 from receipt_dynamo.entities.job_log import JobLog
 
 from .config import DataConfig, TrainingConfig
-from .data_loader import load_datasets
+from .data_loader import load_datasets, MergeInfo
 
 
 class ReceiptLayoutLMTrainer:
@@ -74,36 +74,40 @@ class ReceiptLayoutLMTrainer:
         output_dir = f"/tmp/receipt_layoutlm/{job_name}"
         # Best-effort create output directory
         os.makedirs(output_dir, exist_ok=True)
-        # Pass allowed labels via env so data_loader can collapse others to O
-        if self.data_config.allowed_labels:
-            os.environ["LAYOUTLM_ALLOWED_LABELS"] = ",".join(
-                [l.upper() for l in self.data_config.allowed_labels]
-            )
-        else:
-            os.environ.pop("LAYOUTLM_ALLOWED_LABELS", None)
 
-        # Merge currency-like amounts if requested
-        if getattr(self.data_config, "merge_amounts", False):
-            os.environ["LAYOUTLM_MERGE_AMOUNTS"] = "1"
-        else:
-            os.environ.pop("LAYOUTLM_MERGE_AMOUNTS", None)
+        # Get effective label merges from config
+        effective_label_merges = self.data_config.get_effective_label_merges()
 
         # Allow loading a prebuilt tokenized dataset snapshot
-        # Note: When loading from snapshot, split_metadata will be None since
-        # metadata isn't saved with tokenized datasets. This is acceptable for
-        # fast iteration during development.
+        # Note: When loading from snapshot, split_metadata and merge_info will be
+        # None/empty since metadata isn't saved with tokenized datasets.
         ds_mod = importlib.import_module("datasets")
         split_metadata = None
+        merge_info: MergeInfo | None = None
         if self.data_config.dataset_snapshot_load:
             try:
                 datasets = ds_mod.load_from_disk(
                     self.data_config.dataset_snapshot_load
                 )
+                # Create a minimal merge_info for snapshot loads
+                merge_info = MergeInfo(
+                    label_merges=effective_label_merges,
+                    merge_lookup={},
+                    resulting_labels=[],
+                )
             except (FileNotFoundError, OSError, ValueError):
                 # Fallback to normal path if load fails
-                datasets, split_metadata = load_datasets(self.dynamo)
+                datasets, split_metadata, merge_info = load_datasets(
+                    self.dynamo,
+                    label_merges=effective_label_merges,
+                    allowed_labels=self.data_config.allowed_labels,
+                )
         else:
-            datasets, split_metadata = load_datasets(self.dynamo)
+            datasets, split_metadata, merge_info = load_datasets(
+                self.dynamo,
+                label_merges=effective_label_merges,
+                allowed_labels=self.data_config.allowed_labels,
+            )
 
         # Compute dataset counts prior to tokenization for run logging
         def _count_labels(dataset) -> Dict[str, int]:
@@ -328,7 +332,7 @@ class ReceiptLayoutLMTrainer:
 
         training_args = ta_cls(**args_kwargs)
 
-        # Write initial run.json (configs + dataset counts)
+        # Write initial run.json (configs + dataset counts + merge info)
         run_json_path = os.path.join(output_dir, "run.json")
         run_payload = {
             "job_name": job_name,
@@ -338,6 +342,8 @@ class ReceiptLayoutLMTrainer:
             "num_labels": len(label_list),
             "dataset_counts": dataset_counts,
             "split_metadata": asdict(split_metadata) if split_metadata else None,
+            "label_merges": merge_info.label_merges if merge_info else None,
+            "resulting_labels": merge_info.resulting_labels if merge_info else [],
             "epoch_metrics": [],
         }
         with open(run_json_path, "w", encoding="utf-8") as f:
@@ -346,6 +352,15 @@ class ReceiptLayoutLMTrainer:
         import uuid
         from datetime import datetime
 
+        # Build job_config with explicit merge info for experiment tracking
+        job_config_dict = {
+            "model": "layoutlm",
+            **asdict(self.training_config),
+            **asdict(self.data_config),
+            # Explicit merge info for reproducibility and comparison
+            "label_merges": merge_info.label_merges if merge_info else None,
+            "resulting_label_set": merge_info.resulting_labels if merge_info else [],
+        }
         job = Job(
             job_id=str(uuid.uuid4()),
             name=job_name,
@@ -354,15 +369,26 @@ class ReceiptLayoutLMTrainer:
             created_by=created_by,
             status="pending",
             priority="medium",
-            job_config={
-                "model": "layoutlm",
-                **asdict(self.training_config),
-                **asdict(self.data_config),
-            },
+            job_config=job_config_dict,
             estimated_duration=None,
             tags={},
         )
         self.dynamo.add_job(job)
+
+        # Write label merge config as JobMetric for experiment tracking
+        if merge_info and merge_info.label_merges:
+            try:
+                merge_metric = JobMetric(
+                    job_id=job.job_id,
+                    metric_name="label_merge_config",
+                    value=merge_info.label_merges,
+                    timestamp=datetime.now().isoformat(),
+                    unit="config",
+                    epoch=None,
+                )
+                self.dynamo.add_job_metric(merge_metric)
+            except Exception as e:
+                print(f"Warning: Failed to write label merge config metric: {e}")
 
         # Update status to running
         job.status = "running"

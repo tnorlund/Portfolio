@@ -1,9 +1,61 @@
 import argparse
+import json
 import os
+from typing import Dict, List, Optional
 
-from .config import DataConfig, TrainingConfig
+from .config import DataConfig, TrainingConfig, MERGE_PRESETS
 from .trainer import ReceiptLayoutLMTrainer
 from .inference import LayoutLMInference
+
+
+def _build_label_merges(args: argparse.Namespace) -> Optional[Dict[str, List[str]]]:
+    """Build label_merges dict from CLI arguments.
+
+    Priority order:
+    1. --merge-preset (if specified and not 'none')
+    2. --label-merges JSON (overrides/extends preset)
+    3. Legacy boolean flags (only if no preset and no explicit merges)
+
+    Args:
+        args: Parsed CLI arguments.
+
+    Returns:
+        Dict mapping target labels to source labels, or None if no merges.
+    """
+    result: Dict[str, List[str]] = {}
+
+    # 1. Apply preset if specified
+    if getattr(args, "merge_preset", None):
+        if args.merge_preset != "none":
+            preset = MERGE_PRESETS.get(args.merge_preset)
+            if preset:
+                result.update(preset)
+
+    # 2. Apply explicit JSON merges (overrides/extends preset)
+    if getattr(args, "label_merges", None):
+        try:
+            explicit_merges = json.loads(args.label_merges)
+            if not isinstance(explicit_merges, dict):
+                raise SystemExit(
+                    "--label-merges must be a JSON object, e.g., "
+                    "'{\"AMOUNT\": [\"LINE_TOTAL\", \"SUBTOTAL\"]}'"
+                )
+            result.update(explicit_merges)
+        except json.JSONDecodeError as e:
+            raise SystemExit(f"Invalid JSON for --label-merges: {e}") from e
+
+    # 3. Apply legacy boolean flags (only if no preset and no explicit merges)
+    if not getattr(args, "merge_preset", None) and not getattr(
+        args, "label_merges", None
+    ):
+        if getattr(args, "merge_amounts", False):
+            result["AMOUNT"] = ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"]
+        if getattr(args, "merge_date_time", False):
+            result["DATE"] = ["TIME"]
+        if getattr(args, "merge_address_phone", False):
+            result["ADDRESS"] = ["PHONE_NUMBER", "ADDRESS_LINE"]
+
+    return result if result else None
 
 
 def main() -> None:
@@ -91,6 +143,30 @@ def main() -> None:
         help=(
             "Map ADDRESS_LINE and PHONE_NUMBER to a single ADDRESS label. "
             "Useful for matching SROIE dataset structure (4 labels)."
+        ),
+    )
+    train_p.add_argument(
+        "--label-merges",
+        type=str,
+        default=None,
+        help=(
+            "JSON string of label merges. E.g., "
+            "'{\"AMOUNT\": [\"LINE_TOTAL\", \"SUBTOTAL\", \"TAX\", \"GRAND_TOTAL\"]}'. "
+            "Overrides legacy merge flags. Can be combined with --merge-preset."
+        ),
+    )
+    train_p.add_argument(
+        "--merge-preset",
+        type=str,
+        choices=["amounts", "date_time", "address_phone", "sroie", "none"],
+        default=None,
+        help=(
+            "Use a predefined merge preset: "
+            "'amounts' (amount labels → AMOUNT), "
+            "'date_time' (TIME → DATE), "
+            "'address_phone' (address labels → ADDRESS), "
+            "'sroie' (all three for 4-label setup), "
+            "'none' (no merging)."
         ),
     )
     train_p.add_argument(
@@ -183,12 +259,12 @@ def main() -> None:
             args.allowed_label if args.allowed_label else None
         )
 
+        # Build label merges from CLI arguments (preset, JSON, or legacy flags)
+        data_cfg.label_merges = _build_label_merges(args)
+
+        # Keep legacy merge_amounts for backwards compatibility with DataConfig
         data_cfg.merge_amounts = bool(args.merge_amounts)
-        # Set environment variables for label merging
-        if args.merge_date_time:
-            os.environ["LAYOUTLM_MERGE_DATE_TIME"] = "1"
-        if args.merge_address_phone:
-            os.environ["LAYOUTLM_MERGE_ADDRESS_PHONE"] = "1"
+
         data_cfg.dataset_snapshot_load = args.dataset_snapshot_load
         data_cfg.dataset_snapshot_save = args.dataset_snapshot_save
         train_cfg.output_s3_path = args.output_s3_path

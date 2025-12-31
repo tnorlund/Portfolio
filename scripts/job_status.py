@@ -12,6 +12,24 @@ from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_metric import JobMetric
 from receipt_dynamo.entities.job_log import JobLog
+from receipt_dynamo.data._pulumi import load_env
+
+
+def get_default_table_name(env: str = "dev") -> Optional[str]:
+    """Get the DynamoDB table name from Pulumi stack outputs.
+
+    Falls back to DYNAMO_TABLE_NAME env var if Pulumi is unavailable.
+    """
+    # Try Pulumi first
+    try:
+        stack_outputs = load_env(env)
+        if stack_outputs and "dynamodb_table_name" in stack_outputs:
+            return stack_outputs["dynamodb_table_name"]
+    except Exception:
+        pass  # Fall back to environment variable
+
+    # Fall back to environment variable
+    return os.environ.get("DYNAMO_TABLE_NAME")
 
 
 def get_client(table_name: str, region: str = "us-east-1") -> DynamoClient:
@@ -111,9 +129,23 @@ def format_config(config: dict) -> str:
     dc = config.get("data_config", {})
     if dc:
         lines.append("\n  Data Config:")
-        lines.append(f"    Merge Amounts: {dc.get('merge_amounts', False)}")
+        # Display label merges (new universal format) or legacy merge_amounts
+        label_merges = dc.get("label_merges")
+        if label_merges:
+            lines.append("    Label Merges:")
+            for target, sources in label_merges.items():
+                lines.append(f"      {target} ← {', '.join(sources)}")
+        elif dc.get("merge_amounts", False):
+            lines.append("    Merge Amounts: True (legacy flag)")
+        else:
+            lines.append("    Label Merges: None")
         lines.append(f"    Allowed Labels: {dc.get('allowed_labels', 'all')}")
         lines.append(f"    Max Seq Length: {dc.get('max_seq_length', 'N/A')}")
+
+    # Resulting label set (from merge_info)
+    resulting_labels = config.get("resulting_labels", [])
+    if resulting_labels:
+        lines.append(f"\n  Resulting Labels ({len(resulting_labels)}): {', '.join(resulting_labels)}")
 
     # Label list
     label_list = config.get("label_list", [])
@@ -244,8 +276,14 @@ def main():
     parser = argparse.ArgumentParser(description="Query training job status and metrics")
     parser.add_argument(
         "--table",
-        default=os.environ.get("DYNAMO_TABLE_NAME", "ReceiptsTable-dc5be22"),
-        help="DynamoDB table name (or set DYNAMO_TABLE_NAME env var)"
+        default=None,
+        help="DynamoDB table name (auto-detected from Pulumi or DYNAMO_TABLE_NAME env var)"
+    )
+    parser.add_argument(
+        "--env",
+        default="dev",
+        choices=["dev", "prod"],
+        help="Pulumi environment for auto-detecting table name (default: dev)"
     )
     parser.add_argument("--region", default="us-east-1", help="AWS region")
 
@@ -275,7 +313,14 @@ def main():
         parser.print_help()
         return 1
 
-    client = get_client(args.table, args.region)
+    # Resolve table name: CLI arg > Pulumi stack output > env var
+    table_name = args.table or get_default_table_name(args.env)
+    if not table_name:
+        print("Error: Could not determine DynamoDB table name.", file=sys.stderr)
+        print("  Specify --table, set DYNAMO_TABLE_NAME env var, or ensure Pulumi is configured.", file=sys.stderr)
+        return 1
+
+    client = get_client(table_name, args.region)
 
     if args.command == "list":
         jobs = list_jobs(client, args.status, args.limit)
