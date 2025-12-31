@@ -79,6 +79,7 @@ class CornerComparison:
     simplified_corners: List[Tuple[float, float]]
     complex_corners: List[Tuple[float, float]]
     stored_corners: List[Tuple[float, float]]
+    stored_corners_valid: bool  # Whether stored corners are within [0,1] normalized range
     corner_distances: List[float]  # Distance between simplified and complex
     max_distance: float
     avg_distance: float
@@ -272,8 +273,13 @@ def compute_complex_corners(
 
 def corners_from_receipt(
     receipt: Receipt, image_width: int, image_height: int
-) -> List[Tuple[float, float]]:
-    """Convert stored normalized corners to pixel coordinates."""
+) -> Tuple[List[Tuple[float, float]], bool]:
+    """Convert stored normalized corners to pixel coordinates.
+
+    Returns:
+        Tuple of (corners, is_valid) where is_valid indicates if all
+        normalized values are within [0, 1] range.
+    """
     # Note: stored corners are already normalized (0-1)
     # Convert to pixel coordinates for comparison
     tl = (receipt.top_left["x"] * image_width, receipt.top_left["y"] * image_height)
@@ -286,7 +292,17 @@ def corners_from_receipt(
         receipt.bottom_left["x"] * image_width,
         receipt.bottom_left["y"] * image_height,
     )
-    return [tl, tr, br, bl]
+
+    # Check if normalized values are valid (0-1 range)
+    all_normalized = [
+        receipt.top_left["x"], receipt.top_left["y"],
+        receipt.top_right["x"], receipt.top_right["y"],
+        receipt.bottom_left["x"], receipt.bottom_left["y"],
+        receipt.bottom_right["x"], receipt.bottom_right["y"],
+    ]
+    is_valid = all(0 <= v <= 1.0 for v in all_normalized)
+
+    return [tl, tr, br, bl], is_valid
 
 
 def compute_corner_distances(
@@ -385,7 +401,7 @@ def compare_image(
                 matching_receipts = [receipts[0]]
 
             receipt = matching_receipts[0]
-            stored = corners_from_receipt(receipt, image.width, image.height)
+            stored, stored_valid = corners_from_receipt(receipt, image.width, image.height)
 
             distances = compute_corner_distances(simplified, complex_corners)
             max_dist = max(distances)
@@ -398,6 +414,7 @@ def compare_image(
                     simplified_corners=simplified,
                     complex_corners=complex_corners,
                     stored_corners=stored,
+                    stored_corners_valid=stored_valid,
                     corner_distances=distances,
                     max_distance=max_dist,
                     avg_distance=avg_dist,
@@ -490,10 +507,21 @@ def main():
         print(f"    Max: {max(max_dists):.2f} px")
         print(f"    Avg: {sum(max_dists)/len(max_dists):.2f} px")
 
+        # Check for invalid stored corners
+        invalid_stored = [r for r in all_results if not r.stored_corners_valid]
+        if invalid_stored:
+            print(f"\n⚠️  WARNING: {len(invalid_stored)} receipts have INVALID stored corners (normalized values outside [0,1]):")
+            for r in invalid_stored:
+                print(f"    {r.image_id} receipt {r.receipt_id}")
+
         # Also compare simplified to stored corners
+        # Only use results with valid stored corners for statistics
+        valid_results = [r for r in all_results if r.stored_corners_valid]
         print(f"\nSimplified vs STORED corners (what was actually computed):")
+        print(f"  Valid stored corners: {len(valid_results)} / {len(all_results)}")
+
         simplified_vs_stored = []
-        for r in all_results:
+        for r in valid_results:
             dists = compute_corner_distances(r.simplified_corners, r.stored_corners)
             simplified_vs_stored.append({
                 'image_id': r.image_id,
@@ -504,34 +532,37 @@ def main():
                 'stored': r.stored_corners,
             })
 
-        max_dists_stored = [x['max'] for x in simplified_vs_stored]
-        avg_dists_stored = [x['avg'] for x in simplified_vs_stored]
+        if simplified_vs_stored:
+            max_dists_stored = [x['max'] for x in simplified_vs_stored]
+            avg_dists_stored = [x['avg'] for x in simplified_vs_stored]
 
-        print(f"  Max corner distance:")
-        print(f"    Min: {min(max_dists_stored):.2f} px")
-        print(f"    Max: {max(max_dists_stored):.2f} px")
-        print(f"    Avg: {sum(max_dists_stored)/len(max_dists_stored):.2f} px")
+            print(f"\n  Max corner distance:")
+            print(f"    Min: {min(max_dists_stored):.2f} px")
+            print(f"    Max: {max(max_dists_stored):.2f} px")
+            print(f"    Avg: {sum(max_dists_stored)/len(max_dists_stored):.2f} px")
 
-        print(f"\n  Avg corner distance per image:")
-        print(f"    Min: {min(avg_dists_stored):.2f} px")
-        print(f"    Max: {max(avg_dists_stored):.2f} px")
-        print(f"    Avg: {sum(avg_dists_stored)/len(avg_dists_stored):.2f} px")
+            print(f"\n  Avg corner distance per image:")
+            print(f"    Min: {min(avg_dists_stored):.2f} px")
+            print(f"    Max: {max(avg_dists_stored):.2f} px")
+            print(f"    Avg: {sum(avg_dists_stored)/len(avg_dists_stored):.2f} px")
 
-        # Top differences simplified vs stored
-        sorted_stored = sorted(simplified_vs_stored, key=lambda x: x['max'], reverse=True)
-        print(f"\n  Top 5 differences (simplified vs stored):")
-        for r in sorted_stored[:5]:
-            print(f"    {r['image_id']}: max={r['max']:.2f}px, avg={r['avg']:.2f}px")
+            # Top differences simplified vs stored
+            sorted_stored = sorted(simplified_vs_stored, key=lambda x: x['max'], reverse=True)
+            print(f"\n  Top 5 differences (simplified vs stored):")
+            for r in sorted_stored[:5]:
+                print(f"    {r['image_id']}: max={r['max']:.2f}px, avg={r['avg']:.2f}px")
 
-        # Detailed comparison
-        if sorted_stored:
-            top = sorted_stored[0]
-            print(f"\n  Detailed comparison for {top['image_id']}:")
-            corner_names = ["TL", "TR", "BR", "BL"]
-            for i, (s, st, d) in enumerate(
-                zip(top['simplified'], top['stored'], top['dists'])
-            ):
-                print(f"    {corner_names[i]}: simplified=({s[0]:.1f}, {s[1]:.1f}), stored=({st[0]:.1f}, {st[1]:.1f}), diff={d:.2f}px")
+            # Detailed comparison
+            if sorted_stored:
+                top = sorted_stored[0]
+                print(f"\n  Detailed comparison for {top['image_id']}:")
+                corner_names = ["TL", "TR", "BR", "BL"]
+                for i, (s, st, d) in enumerate(
+                    zip(top['simplified'], top['stored'], top['dists'])
+                ):
+                    print(f"    {corner_names[i]}: simplified=({s[0]:.1f}, {s[1]:.1f}), stored=({st[0]:.1f}, {st[1]:.1f}), diff={d:.2f}px")
+        else:
+            print("\n  No valid stored corners to compare against.")
 
     # Save results to JSON if requested
     if args.output:
