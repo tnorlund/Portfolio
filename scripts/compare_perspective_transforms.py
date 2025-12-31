@@ -48,6 +48,7 @@ from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import Line, Receipt, Word
 
+from receipt_upload.cluster import dbscan_lines
 from receipt_upload.geometry import (
     compute_final_receipt_tilt,
     compute_hull_centroid,
@@ -337,22 +338,53 @@ def compare_image(
             logger.debug(f"Skipping {image_id}: no receipts")
             return []
 
-        # For each receipt, we need to figure out which lines belong to it
-        # The original processing clustered lines using DBSCAN
-        # For comparison, we'll use all lines/words as a single cluster
-        # (This is a simplification - in production, we'd need to re-cluster)
+        # Cluster the lines using DBSCAN (same as original processing)
+        avg_diagonal_length = sum(
+            [line.calculate_diagonal_length() for line in lines]
+        ) / len(lines)
+        clusters = dbscan_lines(lines, eps=avg_diagonal_length * 2, min_samples=10)
+        # Drop noise clusters
+        clusters = {k: v for k, v in clusters.items() if k != -1}
 
-        # For now, compare using all lines as one cluster
-        simplified = compute_simplified_corners(
-            lines, all_words, image.width, image.height
-        )
-        complex_corners = compute_complex_corners(
-            lines, all_words, image.width, image.height
-        )
+        if not clusters:
+            logger.debug(f"Skipping {image_id}: no valid clusters")
+            return []
 
-        if simplified and complex_corners:
-            # Compare to first stored receipt
-            receipt = receipts[0]
+        # For each cluster, compute corners and compare to stored receipt
+        for cluster_id, cluster_lines in clusters.items():
+            if len(cluster_lines) < 3:
+                continue
+
+            # Get words for this cluster
+            line_ids = [line.line_id for line in cluster_lines]
+            cluster_words = [w for w in all_words if w.line_id in line_ids]
+
+            if len(cluster_words) < 4:
+                continue
+
+            # Compute simplified corners for this cluster
+            simplified = compute_simplified_corners(
+                cluster_lines, cluster_words, image.width, image.height
+            )
+
+            # Compute complex corners for this cluster
+            complex_corners = compute_complex_corners(
+                cluster_lines, cluster_words, image.width, image.height
+            )
+
+            if not simplified or not complex_corners:
+                continue
+
+            # Find matching stored receipt by cluster_id (receipt_id)
+            matching_receipts = [r for r in receipts if r.receipt_id == cluster_id]
+            if not matching_receipts:
+                # Try to find by proximity (sometimes receipt_ids differ)
+                logger.debug(f"No exact match for cluster {cluster_id}, using first receipt")
+                if not receipts:
+                    continue
+                matching_receipts = [receipts[0]]
+
+            receipt = matching_receipts[0]
             stored = corners_from_receipt(receipt, image.width, image.height)
 
             distances = compute_corner_distances(simplified, complex_corners)
@@ -374,6 +406,8 @@ def compare_image(
 
     except Exception as e:
         logger.error(f"Error processing {image_id}: {e}")
+        import traceback
+        traceback.print_exc()
 
     return results
 
