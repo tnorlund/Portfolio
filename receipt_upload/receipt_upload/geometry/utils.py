@@ -52,17 +52,51 @@ def circular_mean_angle(angle1: float, angle2: float) -> float:
     return math.atan2(sin_sum, cos_sum)
 
 
+def _find_hull_extremes(
+    hull: List[Tuple[float, float]],
+    angle_rad: float,
+) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    """Find leftmost and rightmost hull points projected along an angle."""
+    centroid = (
+        sum(p[0] for p in hull) / len(hull),
+        sum(p[1] for p in hull) / len(hull),
+    )
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+
+    min_proj = float("inf")
+    max_proj = float("-inf")
+    left_pt = hull[0]
+    right_pt = hull[0]
+
+    for p in hull:
+        rel = (p[0] - centroid[0], p[1] - centroid[1])
+        proj = rel[0] * cos_a + rel[1] * sin_a
+        if proj < min_proj:
+            min_proj = proj
+            left_pt = p
+        if proj > max_proj:
+            max_proj = proj
+            right_pt = p
+
+    return left_pt, right_pt
+
+
 def compute_rotated_bounding_box_corners(
     hull: List[Tuple[float, float]],
     top_line_corners: List[Tuple[float, float]],
     bottom_line_corners: List[Tuple[float, float]],
 ) -> List[Tuple[float, float]]:
     """
-    Compute receipt corners using the rotated bounding box approach.
+    Compute receipt corners using perspective-aware transformation.
 
-    This derives left/right edges from the receipt tilt (average of top/bottom
-    edge angles) and projects hull points onto the perpendicular axis to find
-    extremes.
+    This creates a quadrilateral by:
+    - Top edge: follows top line's natural angle
+    - Bottom edge: follows bottom line's natural angle
+    - Left/Right edges: perpendicular to average angle, positioned at hull extremes
+
+    The top/bottom edges can have different angles (perspective from text lines),
+    while left/right edges are parallel to each other (perpendicular to average).
 
     Args:
         hull: Convex hull points of all word corners
@@ -73,65 +107,41 @@ def compute_rotated_bounding_box_corners(
         Receipt corners [top_left, top_right, bottom_right, bottom_left]
     """
     # Extract key points from line corners
-    top_left_pt = top_line_corners[0]  # (x, y)
-    top_right_pt = top_line_corners[1]  # (x, y)
-    bottom_left_pt = bottom_line_corners[2]  # (x, y)
-    bottom_right_pt = bottom_line_corners[3]  # (x, y)
+    top_left_pt = top_line_corners[0]
+    top_right_pt = top_line_corners[1]
+    bottom_left_pt = bottom_line_corners[2]
+    bottom_right_pt = bottom_line_corners[3]
 
-    # Compute angle of top edge
+    # Compute angles of top and bottom edges
     top_dx = top_right_pt[0] - top_left_pt[0]
     top_dy = top_right_pt[1] - top_left_pt[1]
     top_angle = math.atan2(top_dy, top_dx)
 
-    # Compute angle of bottom edge
     bottom_dx = bottom_right_pt[0] - bottom_left_pt[0]
     bottom_dy = bottom_right_pt[1] - bottom_left_pt[1]
     bottom_angle = math.atan2(bottom_dy, bottom_dx)
 
-    # Average angle using circular mean (handles wraparound at ±π)
-    avg_angle = circular_mean_angle(top_angle, bottom_angle)
-
-    # Left edge direction: perpendicular to horizontal edges
-    left_edge_angle = avg_angle + math.pi / 2
-    left_dx = math.cos(left_edge_angle)
-    left_dy = math.sin(left_edge_angle)
-
-    # Edge directions
+    # Edge directions from the lines (these preserve perspective)
     top_dir = (top_dx, top_dy)
     bottom_dir = (bottom_dx, bottom_dy)
-    left_dir = (left_dx, left_dy)
 
-    # Project hull points onto perpendicular axis to find left/right extremes
-    # Use hull centroid as reference
-    centroid = (
-        sum(p[0] for p in hull) / len(hull),
-        sum(p[1] for p in hull) / len(hull),
-    )
+    # Average angle for left/right edge direction
+    avg_angle = circular_mean_angle(top_angle, bottom_angle)
 
-    # Horizontal direction (along receipt tilt)
-    horiz_dir = (math.cos(avg_angle), math.sin(avg_angle))
+    # Left/right edges are perpendicular to the average horizontal angle
+    side_angle = avg_angle + math.pi / 2
+    side_dir = (math.cos(side_angle), math.sin(side_angle))
 
-    perp_projections = []
-    for p in hull:
-        rel = (p[0] - centroid[0], p[1] - centroid[1])
-        proj = rel[0] * horiz_dir[0] + rel[1] * horiz_dir[1]
-        perp_projections.append((proj, p))
+    # Find extreme hull points along the tilt direction
+    left_extreme, right_extreme = _find_hull_extremes(hull, avg_angle)
 
-    perp_projections.sort(key=lambda x: x[0])
-    leftmost_hull_pt = perp_projections[0][1]
-    rightmost_hull_pt = perp_projections[-1][1]
+    # Intersect edges to get corners
+    top_left = line_intersection(top_left_pt, top_dir, left_extreme, side_dir)
+    top_right = line_intersection(top_left_pt, top_dir, right_extreme, side_dir)
+    bottom_left = line_intersection(bottom_left_pt, bottom_dir, left_extreme, side_dir)
+    bottom_right = line_intersection(bottom_left_pt, bottom_dir, right_extreme, side_dir)
 
-    # Final corners: intersect edges
-    top_left = line_intersection(top_left_pt, top_dir, leftmost_hull_pt, left_dir)
-    top_right = line_intersection(top_left_pt, top_dir, rightmost_hull_pt, left_dir)
-    bottom_left = line_intersection(
-        bottom_left_pt, bottom_dir, leftmost_hull_pt, left_dir
-    )
-    bottom_right = line_intersection(
-        bottom_left_pt, bottom_dir, rightmost_hull_pt, left_dir
-    )
-
-    # Handle intersection failures - fallback to axis-aligned bounds
+    # Fallback for intersection failures - axis-aligned bounds
     if any(p is None for p in [top_left, top_right, bottom_left, bottom_right]):
         hull_xs = [p[0] for p in hull]
         min_hull_x = min(hull_xs)

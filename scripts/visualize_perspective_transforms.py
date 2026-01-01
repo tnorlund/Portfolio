@@ -34,8 +34,9 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import Line, Word
 
 from receipt_upload.cluster import dbscan_lines
-from receipt_upload.geometry import convex_hull
 from receipt_upload.utils import download_image_from_s3
+from receipt_upload.geometry.utils import compute_rotated_bounding_box_corners
+from receipt_upload.geometry.hull_operations import convex_hull
 
 # Configure logging
 logging.basicConfig(
@@ -51,36 +52,23 @@ def compute_simplified_corners(
     image_width: int,
     image_height: int,
 ) -> Optional[List[Tuple[float, float]]]:
-    """Compute receipt corners using the simplified approach."""
+    """Compute receipt corners using hull-based perspective approach.
+
+    Uses weighted hull edge directions at extremes for true perspective
+    (left/right edges can converge) rather than forcing parallel edges.
+    """
     if len(cluster_lines) < 2 or len(cluster_words) < 4:
         return None
 
-    # Get all word corners for hull
-    all_word_corners = []
-    for word in cluster_words:
-        corners = word.calculate_corners(
-            width=image_width,
-            height=image_height,
-            flip_y=True,
-        )
-        all_word_corners.extend([(int(x), int(y)) for x, y in corners])
-
-    if len(all_word_corners) < 4:
-        return None
-
-    # Compute hull
-    hull = convex_hull(all_word_corners)
-    if len(hull) < 4:
-        return None
-
     # Find top and bottom lines by Y position
+    # OCR normalized coords: y=0 at bottom, y=1 at top
     sorted_lines = sorted(
         cluster_lines,
         key=lambda line: line.top_left["y"],
         reverse=True,
     )
-    top_line = sorted_lines[0]
-    bottom_line = sorted_lines[-1]
+    top_line = sorted_lines[0]      # Highest Y = top of image
+    bottom_line = sorted_lines[-1]  # Lowest Y = bottom of image
 
     # Get corners from top and bottom lines
     top_line_corners = top_line.calculate_corners(
@@ -90,30 +78,25 @@ def compute_simplified_corners(
         width=image_width, height=image_height, flip_y=True
     )
 
-    # Use hull to constrain left/right edges
-    hull_xs = [p[0] for p in hull]
-    min_hull_x = min(hull_xs)
-    max_hull_x = max(hull_xs)
+    # Compute convex hull from all word corners
+    all_corners = []
+    for word in cluster_words:
+        word_corners = word.calculate_corners(
+            width=image_width, height=image_height, flip_y=True
+        )
+        all_corners.extend(word_corners)
 
-    # Receipt corners
-    top_left = (
-        max(min_hull_x, top_line_corners[0][0]),
-        top_line_corners[0][1],
-    )
-    top_right = (
-        min(max_hull_x, top_line_corners[1][0]),
-        top_line_corners[1][1],
-    )
-    bottom_left = (
-        max(min_hull_x, bottom_line_corners[2][0]),
-        bottom_line_corners[2][1],
-    )
-    bottom_right = (
-        min(max_hull_x, bottom_line_corners[3][0]),
-        bottom_line_corners[3][1],
-    )
+    if len(all_corners) < 3:
+        return None
 
-    return [top_left, top_right, bottom_right, bottom_left]
+    hull = convex_hull(all_corners)
+
+    # Use the new hull-based perspective algorithm
+    return compute_rotated_bounding_box_corners(
+        hull=hull,
+        top_line_corners=top_line_corners,
+        bottom_line_corners=bottom_line_corners,
+    )
 
 
 def draw_quadrilateral(

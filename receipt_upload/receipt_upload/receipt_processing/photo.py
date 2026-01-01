@@ -221,7 +221,10 @@ def process_photo(
                 width=image.width, height=image.height, flip_y=True
             )
 
-            # Compute receipt corners using rotated bounding box approach
+            # Compute receipt corners using true perspective transformation
+            # - Top/bottom edges: follow natural angles of top/bottom text lines
+            # - Left/right edges: fitted through hull points (not forced perpendicular)
+            # This creates a general quadrilateral matching actual perspective distortion
             receipt_box_corners = compute_rotated_bounding_box_corners(
                 hull, top_line_corners, bottom_line_corners
             )
