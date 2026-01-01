@@ -141,15 +141,20 @@ def compute_rotated_bounding_box_corners(
     bottom_left = line_intersection(bottom_left_pt, bottom_dir, left_extreme, side_dir)
     bottom_right = line_intersection(bottom_left_pt, bottom_dir, right_extreme, side_dir)
 
-    # Fallback for intersection failures - axis-aligned bounds
+    # Fallback for intersection failures - axis-aligned bounds from hull
     if any(p is None for p in [top_left, top_right, bottom_left, bottom_right]):
         hull_xs = [p[0] for p in hull]
+        hull_ys = [p[1] for p in hull]
         min_hull_x = min(hull_xs)
         max_hull_x = max(hull_xs)
-        top_left = (min_hull_x, top_left_pt[1])
-        top_right = (max_hull_x, top_right_pt[1])
-        bottom_left = (min_hull_x, bottom_left_pt[1])
-        bottom_right = (max_hull_x, bottom_right_pt[1])
+        min_hull_y = min(hull_ys)
+        max_hull_y = max(hull_ys)
+        # Use hull bounds for consistent axis-aligned box
+        # In image coords (flip_y=True): higher Y = top of image
+        top_left = (min_hull_x, min_hull_y)      # top-left (low Y in image coords)
+        top_right = (max_hull_x, min_hull_y)     # top-right
+        bottom_right = (max_hull_x, max_hull_y)  # bottom-right (high Y in image coords)
+        bottom_left = (min_hull_x, max_hull_y)   # bottom-left
 
     return [top_left, top_right, bottom_right, bottom_left]
 
