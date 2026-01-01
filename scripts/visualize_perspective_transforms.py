@@ -62,9 +62,16 @@ def compute_simplified_corners(
 
     # Find top and bottom lines by Y position
     # OCR normalized coords: y=0 at bottom, y=1 at top
+    # Use line centroid (average of all 4 corners) for more robust sorting
+    def get_line_centroid_y(line):
+        return (
+            line.top_left["y"] + line.top_right["y"] +
+            line.bottom_left["y"] + line.bottom_right["y"]
+        ) / 4
+
     sorted_lines = sorted(
         cluster_lines,
-        key=lambda line: line.top_left["y"],
+        key=get_line_centroid_y,
         reverse=True,
     )
     top_line = sorted_lines[0]      # Highest Y = top of image
