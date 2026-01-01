@@ -111,14 +111,14 @@ const AnimatedTopAndBottom: React.FC<AnimatedTopAndBottomProps> = ({
   });
 
   const cornerTransitions = useTransition(keyCorners, {
-    keys: (point, idx) => `corner-${idx}-${point.x}-${point.y}`,
+    keys: (point: Point) => `corner-${point.x}-${point.y}`,
     from: { opacity: 0, scale: 0 },
-    enter: (_pt, idx) => ({
+    enter: (_pt: Point, index: number) => ({
       opacity: 1,
       scale: 1,
-      delay: delay + 800 + idx * 150,
+      delay: delay + 800 + index * 150,
     }),
-    config: { duration: 400 },
+    config: { duration: 600 },
   });
 
   // Early return after all hooks have been called
@@ -140,13 +140,13 @@ const AnimatedTopAndBottom: React.FC<AnimatedTopAndBottomProps> = ({
       ))}
 
       {/* Animated corner points */}
-      {cornerTransitions((style, pt, _item, idx) => {
+      {cornerTransitions((style, pt, _transition, idx) => {
         const svgPt = toSvg(pt);
         // First two are from top line (green), last two from bottom line (yellow)
         const color = idx < 2 ? "var(--color-green)" : "var(--color-yellow)";
         return (
           <animated.circle
-            key={`corner-${idx}`}
+            key={`corner-${pt.x}-${pt.y}`}
             style={style}
             cx={svgPt.x}
             cy={svgPt.y}
