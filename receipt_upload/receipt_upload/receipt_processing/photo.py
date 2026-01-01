@@ -190,15 +190,15 @@ def process_photo(
                 continue
 
             # Find top and bottom lines by Y position
-            # In normalized coords with flip_y=True: higher pixel Y = lower in image
-            # Sort by top_left["y"] descending (highest Y in normalized = topmost in image after flip)
+            # OCR normalized coords: y=0 at bottom, y=1 at top (standard math coords)
+            # Sort descending so highest Y (top of image) comes first
             sorted_lines = sorted(
                 cluster_lines,
                 key=lambda line: line.top_left["y"],
-                reverse=True,  # Highest normalized Y first (topmost line after flip)
+                reverse=True,
             )
-            top_line = sorted_lines[0]
-            bottom_line = sorted_lines[-1]
+            top_line = sorted_lines[0]      # Highest Y = top of receipt
+            bottom_line = sorted_lines[-1]  # Lowest Y = bottom of receipt
 
             # Get corners from top and bottom lines in pixel coordinates
             # calculate_corners returns: (top_left, top_right, bottom_left, bottom_right)
