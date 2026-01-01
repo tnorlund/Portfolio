@@ -197,8 +197,20 @@ def process_photo(
                 key=lambda line: line.top_left["y"],
                 reverse=True,
             )
-            top_line = sorted_lines[0]      # Highest Y = top of receipt
-            bottom_line = sorted_lines[-1]  # Lowest Y = bottom of receipt
+            top_line = sorted_lines[0]      # Highest Y = top of image
+            bottom_line = sorted_lines[-1]  # Lowest Y = bottom of image
+
+            # Check if receipt is upside down based on line angles
+            # Line angles near 0° = right-side up, near ±180° = upside down
+            angles = [line.angle_degrees for line in cluster_lines]
+            avg_angle = sum(angles) / len(angles) if angles else 0.0
+            if abs(avg_angle) > 90:
+                # Receipt is upside down - swap top and bottom
+                logger.debug(
+                    "Cluster %d appears upside down (avg_angle=%.1f°), swapping top/bottom",
+                    cluster_id, avg_angle
+                )
+                top_line, bottom_line = bottom_line, top_line
 
             # Get corners from top and bottom lines in pixel coordinates
             # calculate_corners returns: (top_left, top_right, bottom_left, bottom_right)
