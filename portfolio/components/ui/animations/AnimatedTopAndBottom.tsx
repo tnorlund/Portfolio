@@ -1,184 +1,135 @@
 import React from "react";
 import { useTransition, animated } from "@react-spring/web";
 import type { Line, Point } from "../../../types/api";
-import {
-  findLineEdgesAtSecondaryExtremes,
-  theilSen,
-} from "../../../utils/geometry";
-
-interface LineSegment {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  key: string;
-}
 
 interface AnimatedTopAndBottomProps {
-  lines: Line[];
-  hull: Point[];
-  centroid: Point;
-  avgAngle: number; // Receives avgAngle (preliminary angle) for Step 5 boundary detection
+  topLine: Line | null;
+  bottomLine: Line | null;
+  topLineCorners: Point[];
+  bottomLineCorners: Point[];
   svgWidth: number;
   svgHeight: number;
   delay: number;
 }
 
+/**
+ * Animated visualization of top/bottom line selection.
+ *
+ * Shows:
+ * 1. The top line highlighted (highest Y position) - GREEN
+ * 2. The bottom line highlighted (lowest Y position) - YELLOW
+ * 3. The corner points used for edge angle computation
+ */
 const AnimatedTopAndBottom: React.FC<AnimatedTopAndBottomProps> = ({
-  lines,
-  hull,
-  centroid,
-  avgAngle,
+  topLine,
+  bottomLine,
+  topLineCorners,
+  bottomLineCorners,
   svgWidth,
   svgHeight,
   delay,
 }) => {
-  let bottomPts: Point[] = [];
-  let topPts: Point[] = [];
-  let lineSegments: LineSegment[] = [];
+  if (!topLine || !bottomLine) return null;
 
-  if (hull.length >= 3) {
-    // Step 6: Find top and bottom boundary lines and compute final tilt
-    const { topEdge, bottomEdge } = findLineEdgesAtSecondaryExtremes(
-      lines,
-      hull,
-      centroid,
-      avgAngle
-    );
+  // Convert line corners to SVG coordinates
+  const toSvg = (p: Point) => ({
+    x: p.x * svgWidth,
+    y: (1 - p.y) * svgHeight,
+  });
 
-    topPts = topEdge;
-    bottomPts = bottomEdge;
+  // Top line polygon points
+  const topLinePoints = [
+    toSvg({ x: topLine.top_left.x, y: topLine.top_left.y }),
+    toSvg({ x: topLine.top_right.x, y: topLine.top_right.y }),
+    toSvg({ x: topLine.bottom_right.x, y: topLine.bottom_right.y }),
+    toSvg({ x: topLine.bottom_left.x, y: topLine.bottom_left.y }),
+  ];
+  const topPolygonStr = topLinePoints.map((p) => `${p.x},${p.y}`).join(" ");
 
-    // Create line segments that pass through the top and bottom boundary points
-    const createBoundaryLine = (
-      pA: Point,
-      pB: Point,
-      key: string
-    ): LineSegment | null => {
-      const xA = pA.x * svgWidth;
-      const yA = (1 - pA.y) * svgHeight;
-      const xB = pB.x * svgWidth;
-      const yB = (1 - pB.y) * svgHeight;
+  // Bottom line polygon points
+  const bottomLinePoints = [
+    toSvg({ x: bottomLine.top_left.x, y: bottomLine.top_left.y }),
+    toSvg({ x: bottomLine.top_right.x, y: bottomLine.top_right.y }),
+    toSvg({ x: bottomLine.bottom_right.x, y: bottomLine.bottom_right.y }),
+    toSvg({ x: bottomLine.bottom_left.x, y: bottomLine.bottom_left.y }),
+  ];
+  const bottomPolygonStr = bottomLinePoints
+    .map((p) => `${p.x},${p.y}`)
+    .join(" ");
 
-      const dx = xB - xA;
-      const dy = yB - yA;
+  // Key corner points for edge angle computation
+  const keyCorners = [
+    // Top line: TL and TR (indices 0, 1)
+    ...(topLineCorners.length >= 2
+      ? [topLineCorners[0], topLineCorners[1]]
+      : []),
+    // Bottom line: BL and BR (indices 2, 3)
+    ...(bottomLineCorners.length >= 4
+      ? [bottomLineCorners[2], bottomLineCorners[3]]
+      : []),
+  ];
 
-      // Handle nearly vertical lines (avoid division by zero)
-      if (Math.abs(dx) < 1e-6) {
-        const avgX = (xA + xB) / 2;
-        return {
-          key,
-          x1: avgX,
-          y1: 0,
-          x2: avgX,
-          y2: svgHeight,
-        };
-      }
-
-      // Calculate slope and extend line across full width
-      const slope = dy / dx;
-      const intercept = yA - slope * xA;
-
-      // Calculate line endpoints
-      const y1 = intercept;
-      const y2 = slope * svgWidth + intercept;
-
-      // Validate all values are finite
-      if (
-        !isFinite(slope) ||
-        !isFinite(intercept) ||
-        !isFinite(y1) ||
-        !isFinite(y2)
-      ) {
-        return null;
-      }
-
-      return {
-        key,
-        x1: 0,
-        y1: y1,
-        x2: svgWidth,
-        y2: y2,
-      };
-    };
-
-    const segments: (LineSegment | null)[] = [];
-
-    // Create top boundary line
-    if (topPts.length >= 2) {
-      const topLine = createBoundaryLine(topPts[0], topPts[1], "top-boundary");
-      if (topLine) segments.push(topLine);
+  const lineTransitions = useTransition(
+    [
+      { key: "top", polygon: topPolygonStr, color: "var(--color-green)" },
+      { key: "bottom", polygon: bottomPolygonStr, color: "var(--color-yellow)" },
+    ],
+    {
+      keys: (item) => item.key,
+      from: { opacity: 0, strokeDasharray: "10,10", strokeDashoffset: 20 },
+      enter: (_item, index) => ({
+        opacity: 1,
+        strokeDashoffset: 0,
+        delay: delay + index * 400,
+      }),
+      config: { duration: 600 },
     }
+  );
 
-    // Create bottom boundary line
-    if (bottomPts.length >= 2) {
-      const bottomLine = createBoundaryLine(
-        bottomPts[0],
-        bottomPts[1],
-        "bottom-boundary"
-      );
-      if (bottomLine) segments.push(bottomLine);
-    }
-
-    lineSegments = segments.filter((seg): seg is LineSegment => seg !== null);
-  }
-
-  const allBoundaryPoints = [...topPts, ...bottomPts];
-
-  const pointTransitions = useTransition(allBoundaryPoints, {
-    keys: (point) => `boundary-point-${point.x}-${point.y}`,
+  const cornerTransitions = useTransition(keyCorners, {
+    keys: (point, idx) => `corner-${idx}-${point.x}-${point.y}`,
     from: { opacity: 0, scale: 0 },
     enter: (_pt, idx) => ({
       opacity: 1,
       scale: 1,
-      delay: delay + idx * 200,
+      delay: delay + 800 + idx * 150,
     }),
     config: { duration: 400 },
   });
 
-  const lineTransitions = useTransition(lineSegments, {
-    keys: (line) => line.key,
-    from: { opacity: 0, strokeDasharray: "10,10", strokeDashoffset: 20 },
-    enter: (_item, index) => ({
-      opacity: 1,
-      strokeDashoffset: 0,
-      delay: delay + allBoundaryPoints.length * 200 + index * 300,
-    }),
-    config: { duration: 800 },
-  });
-
-  if (hull.length < 3) return null;
-
   return (
     <g>
-      {/* Animated boundary points (yellow dots) */}
-      {pointTransitions((style, pt, _item, idx) => (
-        <animated.circle
-          key={`boundary-point-${idx}`}
+      {/* Animated line highlights */}
+      {lineTransitions((style, item) => (
+        <animated.polygon
+          key={item.key}
           style={style}
-          cx={pt.x * svgWidth}
-          cy={(1 - pt.y) * svgHeight}
-          r={8}
-          fill="var(--color-yellow)"
-          stroke="var(--color-yellow)"
-          strokeWidth="2"
+          points={item.polygon}
+          fill={item.color}
+          fillOpacity={0.3}
+          stroke={item.color}
+          strokeWidth="4"
         />
       ))}
 
-      {/* Animated boundary lines (yellow dashed lines) */}
-      {lineTransitions((style, seg) => (
-        <animated.line
-          key={seg.key}
-          style={style}
-          x1={seg.x1}
-          y1={seg.y1}
-          x2={seg.x2}
-          y2={seg.y2}
-          stroke="var(--color-yellow)"
-          strokeWidth="6"
-          strokeDasharray="10,10"
-        />
-      ))}
+      {/* Animated corner points */}
+      {cornerTransitions((style, pt, _item, idx) => {
+        const svgPt = toSvg(pt);
+        // First two are from top line (green), last two from bottom line (yellow)
+        const color = idx < 2 ? "var(--color-green)" : "var(--color-yellow)";
+        return (
+          <animated.circle
+            key={`corner-${idx}`}
+            style={style}
+            cx={svgPt.x}
+            cy={svgPt.y}
+            r={8}
+            fill={color}
+            stroke="white"
+            strokeWidth="2"
+          />
+        );
+      })}
     </g>
   );
 };

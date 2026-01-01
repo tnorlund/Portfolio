@@ -87,6 +87,134 @@ export const computeHullCentroid = (hull: Point[]): Point => {
   return { x: cx, y: cy };
 };
 /**
+ * Circular mean of two angles (handles ±π wraparound).
+ * For example, averaging +179° and -179° gives ±180° instead of 0°.
+ *
+ * @param angle1 - First angle in radians
+ * @param angle2 - Second angle in radians
+ * @returns Mean angle in radians
+ */
+export const circularMeanAngle = (angle1: number, angle2: number): number => {
+  const sinSum = Math.sin(angle1) + Math.sin(angle2);
+  const cosSum = Math.cos(angle1) + Math.cos(angle2);
+  return Math.atan2(sinSum, cosSum);
+};
+
+/**
+ * Find intersection of two lines defined by point + direction.
+ *
+ * @param p1 - Point on first line
+ * @param d1 - Direction vector of first line
+ * @param p2 - Point on second line
+ * @param d2 - Direction vector of second line
+ * @returns Intersection point, or null if lines are parallel
+ */
+export const lineIntersection = (
+  p1: Point,
+  d1: Point,
+  p2: Point,
+  d2: Point
+): Point | null => {
+  const cross = d1.x * d2.y - d1.y * d2.x;
+  if (Math.abs(cross) < 1e-9) {
+    return null; // Parallel
+  }
+  const dp = { x: p2.x - p1.x, y: p2.y - p1.y };
+  const t = (dp.x * d2.y - dp.y * d2.x) / cross;
+  return { x: p1.x + t * d1.x, y: p1.y + t * d1.y };
+};
+
+/**
+ * Compute receipt corners using the rotated bounding box approach.
+ *
+ * This derives left/right edges from the receipt tilt (average of top/bottom
+ * edge angles) and projects hull points onto the perpendicular axis to find
+ * extremes.
+ *
+ * @param hull - Convex hull points of all word corners
+ * @param topLineCorners - Corners from top line [TL, TR, BL, BR]
+ * @param bottomLineCorners - Corners from bottom line [TL, TR, BL, BR]
+ * @returns Receipt corners [top_left, top_right, bottom_right, bottom_left]
+ */
+export const computeRotatedBoundingBoxCorners = (
+  hull: Point[],
+  topLineCorners: Point[],
+  bottomLineCorners: Point[]
+): Point[] => {
+  if (hull.length < 3 || topLineCorners.length < 4 || bottomLineCorners.length < 4) {
+    return [];
+  }
+
+  // Extract key points from line corners
+  const topLeftPt = topLineCorners[0]; // TL
+  const topRightPt = topLineCorners[1]; // TR
+  const bottomLeftPt = bottomLineCorners[2]; // BL
+  const bottomRightPt = bottomLineCorners[3]; // BR
+
+  // Compute angle of top edge
+  const topDx = topRightPt.x - topLeftPt.x;
+  const topDy = topRightPt.y - topLeftPt.y;
+  const topAngle = Math.atan2(topDy, topDx);
+
+  // Compute angle of bottom edge
+  const bottomDx = bottomRightPt.x - bottomLeftPt.x;
+  const bottomDy = bottomRightPt.y - bottomLeftPt.y;
+  const bottomAngle = Math.atan2(bottomDy, bottomDx);
+
+  // Average angle using circular mean (handles wraparound at ±π)
+  const avgAngle = circularMeanAngle(topAngle, bottomAngle);
+
+  // Left edge direction: perpendicular to horizontal edges
+  const leftEdgeAngle = avgAngle + Math.PI / 2;
+  const leftDx = Math.cos(leftEdgeAngle);
+  const leftDy = Math.sin(leftEdgeAngle);
+
+  // Edge directions
+  const topDir = { x: topDx, y: topDy };
+  const bottomDir = { x: bottomDx, y: bottomDy };
+  const leftDir = { x: leftDx, y: leftDy };
+
+  // Compute hull centroid
+  const centroid = computeHullCentroid(hull);
+
+  // Horizontal direction (along receipt tilt)
+  const horizDir = { x: Math.cos(avgAngle), y: Math.sin(avgAngle) };
+
+  // Project hull points onto perpendicular axis to find left/right extremes
+  const perpProjections: Array<{ proj: number; point: Point }> = [];
+  for (const p of hull) {
+    const rel = { x: p.x - centroid.x, y: p.y - centroid.y };
+    const proj = rel.x * horizDir.x + rel.y * horizDir.y;
+    perpProjections.push({ proj, point: p });
+  }
+
+  perpProjections.sort((a, b) => a.proj - b.proj);
+  const leftmostHullPt = perpProjections[0].point;
+  const rightmostHullPt = perpProjections[perpProjections.length - 1].point;
+
+  // Final corners: intersect edges
+  const topLeft = lineIntersection(topLeftPt, topDir, leftmostHullPt, leftDir);
+  const topRight = lineIntersection(topLeftPt, topDir, rightmostHullPt, leftDir);
+  const bottomLeft = lineIntersection(bottomLeftPt, bottomDir, leftmostHullPt, leftDir);
+  const bottomRight = lineIntersection(bottomLeftPt, bottomDir, rightmostHullPt, leftDir);
+
+  // Handle intersection failures - fallback to axis-aligned bounds
+  if (!topLeft || !topRight || !bottomLeft || !bottomRight) {
+    const hullXs = hull.map((p) => p.x);
+    const minHullX = Math.min(...hullXs);
+    const maxHullX = Math.max(...hullXs);
+    return [
+      { x: minHullX, y: topLeftPt.y },
+      { x: maxHullX, y: topRightPt.y },
+      { x: maxHullX, y: bottomRightPt.y },
+      { x: minHullX, y: bottomLeftPt.y },
+    ];
+  }
+
+  return [topLeft, topRight, bottomRight, bottomLeft];
+};
+
+/**
  * Perform Theil–Sen regression to estimate a line through a set of
  * points.
  *
