@@ -93,13 +93,9 @@ const PhotoReceiptBoundingBox: React.FC = () => {
 
   // Compute animation timing
   const {
-    totalDelayForLines,
     convexHullDelay,
-    convexHullDuration,
     centroidDelay,
     extentsDelay,
-    extentsDuration,
-    hullEdgeAlignmentDuration,
     receiptDelay,
   } = getAnimationConfig(lines.length, convexHullPoints.length);
 

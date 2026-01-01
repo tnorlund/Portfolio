@@ -201,13 +201,16 @@ export const computeRotatedBoundingBoxCorners = (
   // Handle intersection failures - fallback to axis-aligned bounds
   if (!topLeft || !topRight || !bottomLeft || !bottomRight) {
     const hullXs = hull.map((p) => p.x);
+    const hullYs = hull.map((p) => p.y);
     const minHullX = Math.min(...hullXs);
     const maxHullX = Math.max(...hullXs);
+    const minHullY = Math.min(...hullYs);
+    const maxHullY = Math.max(...hullYs);
     return [
-      { x: minHullX, y: topLeftPt.y },
-      { x: maxHullX, y: topRightPt.y },
-      { x: maxHullX, y: bottomRightPt.y },
-      { x: minHullX, y: bottomLeftPt.y },
+      { x: minHullX, y: maxHullY }, // top-left (high Y in normalized coords)
+      { x: maxHullX, y: maxHullY }, // top-right
+      { x: maxHullX, y: minHullY }, // bottom-right (low Y in normalized coords)
+      { x: minHullX, y: minHullY }, // bottom-left
     ];
   }
 

@@ -29,62 +29,86 @@ const AnimatedTopAndBottom: React.FC<AnimatedTopAndBottomProps> = ({
   svgHeight,
   delay,
 }) => {
-  if (!topLine || !bottomLine) return null;
-
   // Convert line corners to SVG coordinates
   const toSvg = (p: Point) => ({
     x: p.x * svgWidth,
     y: (1 - p.y) * svgHeight,
   });
 
-  // Top line polygon points
-  const topLinePoints = [
-    toSvg({ x: topLine.top_left.x, y: topLine.top_left.y }),
-    toSvg({ x: topLine.top_right.x, y: topLine.top_right.y }),
-    toSvg({ x: topLine.bottom_right.x, y: topLine.bottom_right.y }),
-    toSvg({ x: topLine.bottom_left.x, y: topLine.bottom_left.y }),
-  ];
-  const topPolygonStr = topLinePoints.map((p) => `${p.x},${p.y}`).join(" ");
+  // Compute polygon strings and key corners only when lines exist
+  const { topPolygonStr, bottomPolygonStr, keyCorners, lineItems } =
+    React.useMemo(() => {
+      if (!topLine || !bottomLine) {
+        return {
+          topPolygonStr: "",
+          bottomPolygonStr: "",
+          keyCorners: [] as Point[],
+          lineItems: [] as Array<{
+            key: string;
+            polygon: string;
+            color: string;
+          }>,
+        };
+      }
 
-  // Bottom line polygon points
-  const bottomLinePoints = [
-    toSvg({ x: bottomLine.top_left.x, y: bottomLine.top_left.y }),
-    toSvg({ x: bottomLine.top_right.x, y: bottomLine.top_right.y }),
-    toSvg({ x: bottomLine.bottom_right.x, y: bottomLine.bottom_right.y }),
-    toSvg({ x: bottomLine.bottom_left.x, y: bottomLine.bottom_left.y }),
-  ];
-  const bottomPolygonStr = bottomLinePoints
-    .map((p) => `${p.x},${p.y}`)
-    .join(" ");
+      // Top line polygon points
+      const topLinePoints = [
+        toSvg({ x: topLine.top_left.x, y: topLine.top_left.y }),
+        toSvg({ x: topLine.top_right.x, y: topLine.top_right.y }),
+        toSvg({ x: topLine.bottom_right.x, y: topLine.bottom_right.y }),
+        toSvg({ x: topLine.bottom_left.x, y: topLine.bottom_left.y }),
+      ];
+      const topStr = topLinePoints.map((p) => `${p.x},${p.y}`).join(" ");
 
-  // Key corner points for edge angle computation
-  const keyCorners = [
-    // Top line: TL and TR (indices 0, 1)
-    ...(topLineCorners.length >= 2
-      ? [topLineCorners[0], topLineCorners[1]]
-      : []),
-    // Bottom line: BL and BR (indices 2, 3)
-    ...(bottomLineCorners.length >= 4
-      ? [bottomLineCorners[2], bottomLineCorners[3]]
-      : []),
-  ];
+      // Bottom line polygon points
+      const bottomLinePoints = [
+        toSvg({ x: bottomLine.top_left.x, y: bottomLine.top_left.y }),
+        toSvg({ x: bottomLine.top_right.x, y: bottomLine.top_right.y }),
+        toSvg({ x: bottomLine.bottom_right.x, y: bottomLine.bottom_right.y }),
+        toSvg({ x: bottomLine.bottom_left.x, y: bottomLine.bottom_left.y }),
+      ];
+      const bottomStr = bottomLinePoints.map((p) => `${p.x},${p.y}`).join(" ");
 
-  const lineTransitions = useTransition(
-    [
-      { key: "top", polygon: topPolygonStr, color: "var(--color-green)" },
-      { key: "bottom", polygon: bottomPolygonStr, color: "var(--color-yellow)" },
-    ],
-    {
-      keys: (item) => item.key,
-      from: { opacity: 0, strokeDasharray: "10,10", strokeDashoffset: 20 },
-      enter: (_item, index) => ({
-        opacity: 1,
-        strokeDashoffset: 0,
-        delay: delay + index * 400,
-      }),
-      config: { duration: 600 },
-    }
-  );
+      // Key corner points for edge angle computation
+      const corners = [
+        // Top line: TL and TR (indices 0, 1)
+        ...(topLineCorners.length >= 2
+          ? [topLineCorners[0], topLineCorners[1]]
+          : []),
+        // Bottom line: BL and BR (indices 2, 3)
+        ...(bottomLineCorners.length >= 4
+          ? [bottomLineCorners[2], bottomLineCorners[3]]
+          : []),
+      ];
+
+      return {
+        topPolygonStr: topStr,
+        bottomPolygonStr: bottomStr,
+        keyCorners: corners,
+        lineItems: [
+          { key: "top", polygon: topStr, color: "var(--color-green)" },
+          { key: "bottom", polygon: bottomStr, color: "var(--color-yellow)" },
+        ],
+      };
+    }, [
+      topLine,
+      bottomLine,
+      topLineCorners,
+      bottomLineCorners,
+      svgWidth,
+      svgHeight,
+    ]);
+
+  const lineTransitions = useTransition(lineItems, {
+    keys: (item) => item.key,
+    from: { opacity: 0, strokeDasharray: "10,10", strokeDashoffset: 20 },
+    enter: (_item, index) => ({
+      opacity: 1,
+      strokeDashoffset: 0,
+      delay: delay + index * 400,
+    }),
+    config: { duration: 600 },
+  });
 
   const cornerTransitions = useTransition(keyCorners, {
     keys: (point, idx) => `corner-${idx}-${point.x}-${point.y}`,
@@ -96,6 +120,9 @@ const AnimatedTopAndBottom: React.FC<AnimatedTopAndBottomProps> = ({
     }),
     config: { duration: 400 },
   });
+
+  // Early return after all hooks have been called
+  if (!topLine || !bottomLine) return null;
 
   return (
     <g>
