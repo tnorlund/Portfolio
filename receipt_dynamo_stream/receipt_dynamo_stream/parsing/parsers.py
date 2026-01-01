@@ -10,7 +10,10 @@ from typing import Mapping, Optional, Protocol, cast
 
 from receipt_dynamo_stream.models import ParsedStreamRecord, StreamEntity
 
+from receipt_dynamo.entities.receipt import item_to_receipt
+from receipt_dynamo.entities.receipt_line import item_to_receipt_line
 from receipt_dynamo.entities.receipt_place import item_to_receipt_place
+from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
 )
@@ -36,13 +39,33 @@ StreamRecord = Mapping[str, object]
 
 
 def detect_entity_type(sk: str) -> Optional[str]:
-    """Detect entity type from SK pattern."""
+    """Detect entity type from SK pattern.
+
+    SK patterns (most specific first):
+    - RECEIPT_WORD_LABEL: RECEIPT#00001#LINE#00001#WORD#00001#LABEL#...
+    - RECEIPT_WORD: RECEIPT#00001#LINE#00001#WORD#00001
+    - RECEIPT_LINE: RECEIPT#00001#LINE#00001
+    - RECEIPT_PLACE: IMAGE#...#RECEIPT#00001#PLACE
+    - COMPACTION_RUN: IMAGE#...#COMPACTION_RUN#...
+    - RECEIPT: RECEIPT#00001 (no suffix)
+    """
     if "#PLACE" in sk:
         return "RECEIPT_PLACE"
     if "#LABEL#" in sk:
         return "RECEIPT_WORD_LABEL"
     if "#COMPACTION_RUN#" in sk:
         return "COMPACTION_RUN"
+    # Check for RECEIPT_WORD before RECEIPT_LINE (more specific first)
+    # RECEIPT_WORD: RECEIPT#00001#LINE#00001#WORD#00001
+    if "#WORD#" in sk and "#LINE#" in sk:
+        return "RECEIPT_WORD"
+    # RECEIPT_LINE: RECEIPT#00001#LINE#00001
+    if "#LINE#" in sk:
+        return "RECEIPT_LINE"
+    # RECEIPT entity: SK is just "RECEIPT#{receipt_id:05d}" without any suffix
+    # Must check after more specific patterns to avoid false matches
+    if sk.startswith("RECEIPT#") and sk.count("#") == 1:
+        return "RECEIPT"
     return None
 
 
@@ -82,6 +105,12 @@ def parse_entity(  # pylint: disable=too-many-arguments,too-many-positional-argu
             return item_to_receipt_place(complete_item)
         if entity_type == "RECEIPT_WORD_LABEL":
             return item_to_receipt_word_label(complete_item)
+        if entity_type == "RECEIPT":
+            return item_to_receipt(complete_item)
+        if entity_type == "RECEIPT_WORD":
+            return item_to_receipt_word(complete_item)
+        if entity_type == "RECEIPT_LINE":
+            return item_to_receipt_line(complete_item)
 
     except ValueError as exc:
         logger.exception(
