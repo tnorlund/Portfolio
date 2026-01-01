@@ -121,7 +121,7 @@ def draw_quadrilateral(
     corners: List[Tuple[float, float]],
     color: str,
     width: int = 3,
-    label: str = None,
+    label: str | None = None,
 ):
     """Draw a quadrilateral on the image."""
     # Draw the four edges
@@ -144,7 +144,7 @@ def draw_quadrilateral(
         # Draw corner label
         try:
             font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 20)
-        except:
+        except (OSError, IOError):
             font = ImageFont.load_default()
 
         label_text = f"{corner_names[i]}"
@@ -154,7 +154,7 @@ def draw_quadrilateral(
     if label:
         try:
             font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 24)
-        except:
+        except (OSError, IOError):
             font = ImageFont.load_default()
 
         # Position label near top-left corner

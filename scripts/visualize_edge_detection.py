@@ -98,18 +98,18 @@ def visualize_edge_detection(client, image_id, output_dir):
         draw = ImageDraw.Draw(pil_image)
 
         # Cluster lines
-        avg_diag = sum([l.calculate_diagonal_length() for l in lines]) / len(lines)
+        avg_diag = sum([line.calculate_diagonal_length() for line in lines]) / len(lines)
         clusters = dbscan_lines(lines, eps=avg_diag * 2, min_samples=10)
         clusters = {k: v for k, v in clusters.items() if k != -1}
 
         if not clusters:
             return None
 
-        for cluster_id, cluster_lines in clusters.items():
+        for _cluster_id, cluster_lines in clusters.items():
             if len(cluster_lines) < 3:
                 continue
 
-            line_ids = [l.line_id for l in cluster_lines]
+            line_ids = [line.line_id for line in cluster_lines]
             cluster_words = [w for w in all_words if w.line_id in line_ids]
             if len(cluster_words) < 4:
                 continue
@@ -137,7 +137,7 @@ def visualize_edge_detection(client, image_id, output_dir):
                         fill="blue", outline="white")
 
             # === Compute average angle ===
-            angles = [l.angle_degrees for l in cluster_lines if l.angle_degrees != 0]
+            angles = [line.angle_degrees for line in cluster_lines if line.angle_degrees != 0]
             avg_angle = sum(angles) / len(angles) if angles else 0.0
 
             # Compute final tilt
@@ -153,7 +153,7 @@ def visualize_edge_detection(client, image_id, output_dir):
                 draw.ellipse([pt[0]-8, pt[1]-8, pt[0]+8, pt[1]+8], fill="magenta", outline="white")
                 try:
                     font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 18)
-                except:
+                except (OSError, IOError):
                     font = ImageFont.load_default()
                 draw.text((pt[0]+12, pt[1]-8), f"{label}(old)", fill="magenta", font=font)
 
@@ -187,7 +187,7 @@ def visualize_edge_detection(client, image_id, output_dir):
             # Labels
             try:
                 font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 24)
-            except:
+            except (OSError, IOError):
                 font = ImageFont.load_default()
             draw.text((min_hull_x + 5, 50), "NEW L", fill="cyan", font=font)
             draw.text((max_hull_x - 80, 50), "NEW R", fill="cyan", font=font)
@@ -195,7 +195,7 @@ def visualize_edge_detection(client, image_id, output_dir):
         # Add legend
         try:
             font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 28)
-        except:
+        except (OSError, IOError):
             font = ImageFont.load_default()
 
         legend_y = 20
@@ -215,9 +215,7 @@ def visualize_edge_detection(client, image_id, output_dir):
         return str(output_path)
 
     except Exception as e:
-        logger.error(f"Error: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("Error processing image: %s", e)
         return None
 
 

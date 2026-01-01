@@ -858,6 +858,8 @@ class GeometryMixin:
         bottom_right_x = self.bottom_right["x"] * x_scale
 
         if flip_y:
+            if height is None:
+                raise ValueError("height is required when flip_y=True")
             top_left_y = height - (self.top_left["y"] * y_scale)
             top_right_y = height - (self.top_right["y"] * y_scale)
             bottom_left_y = height - (self.bottom_left["y"] * y_scale)
