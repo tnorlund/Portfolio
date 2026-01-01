@@ -8,6 +8,7 @@ from PIL import Image as PIL_Image
 from PIL.Image import Resampling, Transform
 from receipt_upload.cluster import dbscan_lines
 from receipt_upload.geometry import (
+    compute_rotated_bounding_box_corners,
     convex_hull,
     find_perspective_coeffs,
 )
@@ -201,33 +202,10 @@ def process_photo(
                 width=image.width, height=image.height, flip_y=True
             )
 
-            # Use hull to constrain left/right edges
-            hull_xs = [p[0] for p in hull]
-            min_hull_x = min(hull_xs)
-            max_hull_x = max(hull_xs)
-
-            # Receipt corners:
-            # - Top edge: from top line's TL and TR
-            # - Bottom edge: from bottom line's BL and BR
-            # - Left/right constrained by hull X bounds
-            top_left = (
-                max(min_hull_x, top_line_corners[0][0]),  # TL x, constrained by hull
-                top_line_corners[0][1],  # TL y from top line
+            # Compute receipt corners using rotated bounding box approach
+            receipt_box_corners = compute_rotated_bounding_box_corners(
+                hull, top_line_corners, bottom_line_corners
             )
-            top_right = (
-                min(max_hull_x, top_line_corners[1][0]),  # TR x, constrained by hull
-                top_line_corners[1][1],  # TR y from top line
-            )
-            bottom_left = (
-                max(min_hull_x, bottom_line_corners[2][0]),  # BL x, constrained by hull
-                bottom_line_corners[2][1],  # BL y from bottom line
-            )
-            bottom_right = (
-                min(max_hull_x, bottom_line_corners[3][0]),  # BR x, constrained by hull
-                bottom_line_corners[3][1],  # BR y from bottom line
-            )
-
-            receipt_box_corners = [top_left, top_right, bottom_right, bottom_left]
 
             # DEBUG: Log the corner points
             print(f"Cluster {cluster_id} receipt_box_corners (simplified):")

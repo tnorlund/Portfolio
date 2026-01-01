@@ -53,6 +53,7 @@ from receipt_upload.geometry import (
     compute_final_receipt_tilt,
     compute_hull_centroid,
     compute_receipt_box_from_boundaries,
+    compute_rotated_bounding_box_corners,
     convex_hull,
     create_boundary_line_from_points,
     create_boundary_line_from_theil_sen,
@@ -103,14 +104,14 @@ def compute_simplified_corners(
     image_height: int,
 ) -> Optional[List[Tuple[float, float]]]:
     """
-    Compute receipt corners using the SIMPLIFIED approach.
+    Compute receipt corners using APPROACH 2 (Rotated Bounding Box).
 
-    This mirrors the logic in photo.py:
-    - Get corners from all words to build convex hull
-    - Sort lines by Y position
-    - Use top line's TL/TR for receipt top edge
-    - Use bottom line's BL/BR for receipt bottom edge
-    - Constrain by hull X bounds
+    Uses compute_rotated_bounding_box_corners from geometry.utils which:
+    - Computes angle of top and bottom edges
+    - Averages angles using circular mean (handles wraparound)
+    - Creates left/right edges perpendicular to average tilt
+    - Projects hull points onto perpendicular axis to find extremes
+    - Uses line intersection to compute final corners
     """
     if len(cluster_lines) < 2 or len(cluster_words) < 4:
         return None
@@ -150,30 +151,10 @@ def compute_simplified_corners(
         width=image_width, height=image_height, flip_y=True
     )
 
-    # Use hull to constrain left/right edges
-    hull_xs = [p[0] for p in hull]
-    min_hull_x = min(hull_xs)
-    max_hull_x = max(hull_xs)
-
-    # Receipt corners
-    top_left = (
-        max(min_hull_x, top_line_corners[0][0]),
-        top_line_corners[0][1],
+    # Use shared utility function
+    return compute_rotated_bounding_box_corners(
+        hull, top_line_corners, bottom_line_corners
     )
-    top_right = (
-        min(max_hull_x, top_line_corners[1][0]),
-        top_line_corners[1][1],
-    )
-    bottom_left = (
-        max(min_hull_x, bottom_line_corners[2][0]),
-        bottom_line_corners[2][1],
-    )
-    bottom_right = (
-        min(max_hull_x, bottom_line_corners[3][0]),
-        bottom_line_corners[3][1],
-    )
-
-    return [top_left, top_right, bottom_right, bottom_left]
 
 
 def compute_complex_corners(
