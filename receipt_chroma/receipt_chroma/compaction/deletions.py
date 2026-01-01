@@ -330,31 +330,37 @@ def _delete_receipt_embeddings(
                     error=str(exc),
                 )
 
-    # Fallback: prefix scan if DynamoDB lookup returned nothing
+    # Fallback: use metadata-based query if DynamoDB lookup returned nothing
+    # This is more efficient than a full collection scan as ChromaDB filters server-side
     if not ids_to_delete:
-        logger.warning(
-            "DynamoDB entities already deleted, using prefix scan fallback",
+        logger.info(
+            "Using metadata-based query for receipt deletion",
             image_id=image_id,
             receipt_id=receipt_id,
             collection=collection.value,
         )
         if metrics:
             metrics.count(
-                "ReceiptDeletionPrefixScanFallback",
+                "ReceiptDeletionMetadataQuery",
                 1,
                 {"collection": collection.value},
             )
 
-        id_prefix = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
         try:
-            all_results = chroma_collection.get(include=[])
-            ids_to_delete = [
-                id for id in all_results.get("ids", [])
-                if id.startswith(id_prefix)
-            ]
+            # Query ChromaDB using metadata fields (stored during embedding creation)
+            results = chroma_collection.get(
+                where={
+                    "$and": [
+                        {"image_id": {"$eq": image_id}},
+                        {"receipt_id": {"$eq": receipt_id}},
+                    ]
+                },
+                include=[],  # Only get IDs, not embeddings or metadata
+            )
+            ids_to_delete = results.get("ids", [])
         except Exception as exc:
             logger.error(
-                "Prefix scan failed",
+                "Metadata query failed",
                 image_id=image_id,
                 receipt_id=receipt_id,
                 error=str(exc),
@@ -363,7 +369,7 @@ def _delete_receipt_embeddings(
                 image_id=image_id,
                 receipt_id=receipt_id,
                 deleted_count=0,
-                error=f"Prefix scan failed: {exc}",
+                error=f"Metadata query failed: {exc}",
             )
 
     if not ids_to_delete:

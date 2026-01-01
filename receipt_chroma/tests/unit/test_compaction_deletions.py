@@ -48,8 +48,13 @@ class MockChromaCollection:
     def __init__(self, ids: list[str] | None = None):
         self.ids = ids or []
         self.deleted_ids = []
+        self.last_where_query = None
 
-    def get(self, include=None):
+    def get(self, include=None, where=None):
+        self.last_where_query = where
+        if where:
+            # Filter by metadata if where clause provided
+            return {"ids": self.ids}  # Return all for testing
         return {"ids": self.ids}
 
     def delete(self, ids: list[str]):
@@ -288,8 +293,8 @@ class TestDeleteReceiptEmbeddings:
         assert result.error is None
         assert len(collection.deleted_ids) == 2
 
-    def test_delete_receipt_fallback_to_prefix_scan(self):
-        """Test fallback to prefix scan when DynamoDB returns empty."""
+    def test_delete_receipt_fallback_to_metadata_query(self):
+        """Test fallback to metadata query when DynamoDB returns empty."""
         # Pre-populate ChromaDB with matching IDs
         matching_ids = [
             "IMAGE#img-123#RECEIPT#00001#LINE#00001#WORD#00001",
@@ -312,9 +317,11 @@ class TestDeleteReceiptEmbeddings:
 
         assert result.deleted_count == 2
         assert result.error is None
-        # Check warning was logged
-        warnings = [log for log in logger.logs if log[0] == "warning"]
-        assert any("prefix scan fallback" in log[1] for log in warnings)
+        # Check metadata query was used
+        assert collection.last_where_query is not None
+        # Check info was logged about using metadata query
+        infos = [log for log in logger.logs if log[0] == "info"]
+        assert any("metadata-based query" in log[1] for log in infos)
 
     def test_delete_receipt_no_embeddings_found(self):
         """Test when no embeddings exist for the receipt."""
@@ -343,7 +350,7 @@ class TestDeleteReceiptEmbeddings:
         collection = MockChromaCollection(ids=matching_ids)
         logger = MockLogger()
         metrics = MockMetrics()
-        dynamo_client = MockDynamoClient(lines=[])  # Force prefix scan
+        dynamo_client = MockDynamoClient(lines=[])  # Force metadata query
 
         result = _delete_receipt_embeddings(
             chroma_collection=collection,
@@ -356,9 +363,9 @@ class TestDeleteReceiptEmbeddings:
         )
 
         assert result.deleted_count == 2
-        # Check prefix scan fallback metric was recorded
+        # Check metadata query metric was recorded
         metric_names = [m[0] for m in metrics.counts]
-        assert "ReceiptDeletionPrefixScanFallback" in metric_names
+        assert "ReceiptDeletionMetadataQuery" in metric_names
 
 
 # Tests for apply_receipt_deletions
