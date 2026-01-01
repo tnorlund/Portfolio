@@ -38,14 +38,14 @@ class MockMetrics:
     def __init__(self):
         self.counts = []
 
-    def count(self, name: str, value: int, dimensions: dict = None):
+    def count(self, name: str, value: int, dimensions: dict | None = None):
         self.counts.append((name, value, dimensions))
 
 
 class MockChromaCollection:
     """Mock ChromaDB collection for testing."""
 
-    def __init__(self, ids: list[str] = None):
+    def __init__(self, ids: list[str] | None = None):
         self.ids = ids or []
         self.deleted_ids = []
 

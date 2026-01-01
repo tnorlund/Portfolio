@@ -123,8 +123,8 @@ def delete_receipt_and_children(
             for lbl in labels:
                 try:
                     client.delete_receipt_word_label(lbl)
-                except Exception:
-                    pass
+                except Exception as label_err:
+                    logger.debug(f"Failed to delete individual label: {label_err}")
 
     if words:
         client.delete_receipt_words(words)
@@ -147,8 +147,8 @@ def delete_receipt_and_children(
         if md:
             client.delete_receipt_metadata(image_id, receipt_id)
             logger.info("  ✓ Deleted metadata")
-    except Exception:
-        pass
+    except Exception as md_err:
+        logger.debug(f"Failed to delete metadata: {md_err}")
 
     # Delete compaction runs (best effort)
     try:
@@ -361,8 +361,8 @@ def reprocess_photo_receipts(
                 logger.warning(f"Skipping cluster {cluster_id}: too small")
                 continue
 
-            warped_width = int(round(source_width))
-            warped_height = int(round(source_height))
+            warped_width = round(source_width)
+            warped_height = round(source_height)
             dst_corners = [
                 (0.0, 0.0),
                 (float(warped_width - 1), 0.0),
@@ -556,7 +556,7 @@ def main():
         logger.error(f"  ocr_job_queue_url: {ocr_job_queue_url}")
         sys.exit(1)
 
-    logger.info(f"Configuration:")
+    logger.info("Configuration:")
     logger.info(f"  DynamoDB table: {table_name}")
     logger.info(f"  Raw S3 bucket: {raw_bucket}")
     logger.info(f"  Site S3 bucket: {site_bucket}")
