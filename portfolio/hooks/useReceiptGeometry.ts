@@ -50,9 +50,14 @@ export const useReceiptGeometry = (lines: Line[]): ReceiptGeometryResult => {
       return { topLine: null, bottomLine: null };
     }
 
-    // Sort lines by Y position (higher Y = top of receipt in normalized coords)
+    // Helper to compute line centroid Y (average of all 4 corners)
+    // This is more robust than using a single corner for tilted lines
+    const getLineCentroidY = (line: Line) =>
+      (line.top_left.y + line.top_right.y + line.bottom_left.y + line.bottom_right.y) / 4;
+
+    // Sort lines by centroid Y position (higher Y = top of receipt in normalized coords)
     const sortedLines = [...lines].sort(
-      (a, b) => b.top_left.y - a.top_left.y
+      (a, b) => getLineCentroidY(b) - getLineCentroidY(a)
     );
 
     const top = sortedLines[0];
