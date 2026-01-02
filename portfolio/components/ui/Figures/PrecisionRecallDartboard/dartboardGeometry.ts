@@ -37,6 +37,11 @@ export const SEGMENT_ANGLE = 18;
 export const START_ANGLE_OFFSET = -90 - SEGMENT_ANGLE / 2;
 
 /**
+ * Convert degrees to radians.
+ */
+const toRadians = (deg: number) => (deg * Math.PI) / 180;
+
+/**
  * Calculate the SVG path for a dartboard segment (arc wedge).
  */
 export function calculateSegmentPath(
@@ -48,10 +53,8 @@ export function calculateSegmentPath(
   endAngleDeg: number,
   scale: number
 ): string {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-
-  const startAngle = toRad(startAngleDeg);
-  const endAngle = toRad(endAngleDeg);
+  const startAngle = toRadians(startAngleDeg);
+  const endAngle = toRadians(endAngleDeg);
 
   // Inner arc start/end points
   const innerX1 = centerX + Math.cos(startAngle) * innerRadius * scale;
@@ -114,7 +117,7 @@ export function polarToCartesian(
   centerY: number,
   scale: number
 ): { x: number; y: number } {
-  const angleRad = (angleDeg * Math.PI) / 180;
+  const angleRad = toRadians(angleDeg);
   return {
     x: centerX + Math.cos(angleRad) * radius * scale,
     y: centerY + Math.sin(angleRad) * radius * scale,

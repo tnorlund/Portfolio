@@ -118,7 +118,6 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
   }
 
   const gap = 16;
-  const gridWidth = dartboardSize * 2 + gap;
 
   return (
     <div

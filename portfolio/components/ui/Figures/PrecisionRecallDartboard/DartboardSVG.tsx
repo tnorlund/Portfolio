@@ -113,7 +113,7 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
     });
 
     return result;
-  }, [centerX, centerY, scale]);
+  }, [size]);
 
   // Number labels positioned around the board
   const numberLabels = useMemo(() => {
@@ -147,7 +147,7 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
         </text>
       );
     });
-  }, [centerX, centerY, scale, size]);
+  }, [size]);
 
   return (
     <svg
