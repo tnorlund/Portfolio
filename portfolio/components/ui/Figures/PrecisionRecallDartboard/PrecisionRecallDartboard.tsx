@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { animated, useSprings } from "@react-spring/web";
 import useOptimizedInView from "../../../../hooks/useOptimizedInView";
 import type { PrecisionRecallDartboardProps } from "./types";
@@ -29,6 +29,7 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
   });
   const [mounted, setMounted] = useState(false);
   const [resetKey, setResetKey] = useState(0);
+  const timeoutIds = useRef<NodeJS.Timeout[]>([]);
 
   useEffect(() => {
     setMounted(true);
@@ -54,14 +55,23 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
     []
   );
 
+  // Clear all pending timeouts
+  const clearAllTimeouts = () => {
+    timeoutIds.current.forEach((id) => clearTimeout(id));
+    timeoutIds.current = [];
+  };
+
   // Trigger animations when in view
   useEffect(() => {
     if (!mounted) return;
 
     if (inView) {
+      // Clear any pending timeouts from previous animations
+      clearAllTimeouts();
+
       // Staggered fade-in
       DARTBOARD_SCENARIOS.forEach((_, index) => {
-        setTimeout(() => {
+        const id = setTimeout(() => {
           api.start((i) => {
             if (i === index) {
               return {
@@ -73,8 +83,12 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
             return false;
           });
         }, index * staggerDelay);
+        timeoutIds.current.push(id);
       });
     } else {
+      // Clear pending timeouts when going out of view
+      clearAllTimeouts();
+
       // Reset when out of view
       api.start(() => ({
         opacity: 0,
@@ -83,6 +97,9 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
       }));
       setResetKey((k) => k + 1);
     }
+
+    // Cleanup on unmount
+    return () => clearAllTimeouts();
   }, [inView, mounted, staggerDelay, api]);
 
   if (!mounted) {

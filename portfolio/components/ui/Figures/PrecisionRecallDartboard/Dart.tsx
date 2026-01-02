@@ -15,10 +15,17 @@ const Dart: React.FC<DartProps> = ({
   const [shouldAnimate, setShouldAnimate] = useState(false);
 
   useEffect(() => {
+    // Reset state when delay changes (component remounted via key)
+    setShouldAnimate(false);
+
     const timer = setTimeout(() => {
       setShouldAnimate(true);
     }, animationDelay);
-    return () => clearTimeout(timer);
+
+    return () => {
+      clearTimeout(timer);
+      setShouldAnimate(false);
+    };
   }, [animationDelay]);
 
   const springProps = useSpring({
