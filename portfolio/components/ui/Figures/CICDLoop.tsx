@@ -193,16 +193,6 @@ function parseAndSamplePath(samples: number): Pt[] {
 }
 
 /**
- * Get a point on the figure-8 path, scaled and centered for the component.
- * This uses the exact path from the Illustrator export.
- */
-function fig8Point(t: number, cx: number, cy: number, a: number, b: number): Pt {
-  // We'll compute this in sampleCurve instead using the parsed path
-  // This function is kept for API compatibility but won't be used directly
-  return { x: cx, y: cy };
-}
-
-/**
  * Sample the figure-8 curve and compute cumulative arc lengths.
  * Uses the exact path from the Illustrator export, scaled to fit the component.
  */
@@ -776,9 +766,14 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
       // Find arc-length positions for these points
       const s0 = findArcLengthForPoint(pts, cum, notchBase);
       const s1 = findArcLengthForPoint(pts, cum, arrowBase);
-      const segmentLength = s1 - s0;
-
-      const centerPts = sliceByArcLength(pts, cum, s0, s1);
+      const wrapsAround = s1 < s0;
+      const segmentLength = wrapsAround ? total - s0 + s1 : s1 - s0;
+      const centerPts = wrapsAround
+        ? [
+            ...sliceByArcLength(pts, cum, s0, total),
+            ...sliceByArcLength(pts, cum, 0, s1),
+          ]
+        : sliceByArcLength(pts, cum, s0, s1);
 
       // Use reversed path for text if the segment goes right-to-left
       const needsReverse = shouldReverseTextPath(centerPts);
