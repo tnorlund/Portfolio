@@ -25,6 +25,10 @@ export interface PrecisionRecallDartboardProps {
   showTitles?: boolean;
   /** Whether to show precision/recall axis labels (default: true) */
   showLabels?: boolean;
+  /** Duration for all darts to animate in on one dartboard in ms (default: 400) */
+  dartSpreadDuration?: number;
+  /** Pause between dartboard dart animations in ms (default: 300) */
+  dartPauseDuration?: number;
 }
 
 export interface DartboardSVGProps {
@@ -36,6 +40,8 @@ export interface DartboardSVGProps {
   animateDarts?: boolean;
   /** Delay before dart animation starts in ms */
   dartAnimationDelay?: number;
+  /** Duration to spread dart animations across in ms */
+  dartSpreadDuration?: number;
 }
 
 export interface DartProps {

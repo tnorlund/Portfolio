@@ -20,6 +20,8 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
   animationDuration = 600,
   showTitles = true,
   showLabels = true,
+  dartSpreadDuration = 400,
+  dartPauseDuration = 300,
 }) => {
   const [ref, inView] = useOptimizedInView({
     threshold: 0.3,
@@ -224,7 +226,12 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
                 size={dartboardSize}
                 darts={scenario.darts}
                 animateDarts={inView}
-                dartAnimationDelay={index * staggerDelay + animationDuration}
+                dartAnimationDelay={
+                  // Wait for all dartboards to appear, then sequence darts
+                  (DARTBOARD_SCENARIOS.length * staggerDelay + animationDuration) +
+                  (index * (dartSpreadDuration + dartPauseDuration))
+                }
+                dartSpreadDuration={dartSpreadDuration}
               />
               {showTitles && (
                 <div
