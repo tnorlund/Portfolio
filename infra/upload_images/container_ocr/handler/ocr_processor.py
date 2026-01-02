@@ -32,7 +32,15 @@ from receipt_upload.utils import (
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
-from receipt_dynamo.entities import Letter, Line, Word
+from receipt_dynamo.entities import (
+    Letter,
+    Line,
+    Receipt,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+    Word,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +104,16 @@ class OCRProcessor:
             with open(ocr_json_path, "r", encoding="utf-8") as f:
                 ocr_json = json.load(f)
 
+            # Check if this is a Swift single-pass result (has receipts with OCR)
+            if ocr_json.get("receipts") and ocr_json.get("classification"):
+                logger.info(
+                    f"Detected Swift single-pass OCR for image {image_id}"
+                )
+                return self._process_swift_single_pass(
+                    ocr_json, ocr_job, ocr_routing_decision
+                )
+
+            # Legacy multi-pass flow: parse OCR and process with geometry
             ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(
                 ocr_json, image_id
             )
@@ -175,6 +193,182 @@ class OCRProcessor:
             "receipt_lines": receipt_lines,
             "receipt_words": receipt_words,
         }
+
+    def _process_swift_single_pass(
+        self, ocr_json: Dict[str, Any], ocr_job, ocr_routing_decision
+    ) -> Dict[str, Any]:
+        """
+        Process Swift single-pass OCR results.
+
+        Swift has already done:
+        - OCR on original image
+        - Classification (NATIVE/PHOTO/SCAN)
+        - Clustering
+        - Perspective/affine transforms
+        - OCR on warped receipts (REFINEMENT)
+        - Upload of warped images to S3
+
+        This method just creates DynamoDB entities from the pre-processed data.
+        """
+        image_id = ocr_job.image_id
+        current_time = datetime.now(timezone.utc)
+
+        # Get image type from classification
+        classification = ocr_json.get("classification", {})
+        image_type_str = classification.get("image_type", "NATIVE").upper()
+        try:
+            image_type = ImageType[image_type_str]
+        except KeyError:
+            image_type = ImageType.NATIVE
+
+        receipts = ocr_json.get("receipts", [])
+        receipt_count = len(receipts)
+
+        logger.info(
+            f"Processing Swift single-pass: image_id={image_id}, "
+            f"image_type={image_type_str}, receipt_count={receipt_count}"
+        )
+
+        all_receipt_lines = []
+        all_receipt_words = []
+
+        for receipt_data in receipts:
+            receipt_id = receipt_data["cluster_id"]
+            bounds = receipt_data["bounds"]
+
+            # Create Receipt entity
+            # Note: warped images already uploaded by Swift OCRWorker
+            raw_s3_key = f"receipts/{image_id}/{receipt_data['s3_key']}"
+
+            receipt = Receipt(
+                image_id=image_id,
+                receipt_id=receipt_id,
+                width=receipt_data["warped_width"],
+                height=receipt_data["warped_height"],
+                timestamp_added=current_time,
+                raw_s3_bucket=ocr_job.s3_bucket,
+                raw_s3_key=raw_s3_key,
+                top_left=bounds["top_left"],
+                top_right=bounds["top_right"],
+                bottom_left=bounds["bottom_left"],
+                bottom_right=bounds["bottom_right"],
+            )
+            self.dynamo.add_receipt(receipt)
+
+            # Process OCR lines from warped image (already refined by Swift)
+            lines_data = receipt_data.get("lines", [])
+            receipt_lines, receipt_words, receipt_letters = (
+                self._parse_receipt_ocr_from_swift(
+                    image_id, receipt_id, lines_data
+                )
+            )
+
+            # Store receipt OCR entities
+            if receipt_lines:
+                self.dynamo.add_receipt_lines(receipt_lines)
+                all_receipt_lines.extend(receipt_lines)
+            if receipt_words:
+                self.dynamo.add_receipt_words(receipt_words)
+                all_receipt_words.extend(receipt_words)
+            if receipt_letters:
+                self.dynamo.add_receipt_letters(receipt_letters)
+
+            logger.info(
+                f"Created receipt {receipt_id}: {len(receipt_lines)} lines, "
+                f"{len(receipt_words)} words, {len(receipt_letters)} letters"
+            )
+
+        # Update routing decision
+        ocr_routing_decision.status = OCRStatus.COMPLETED.value
+        ocr_routing_decision.receipt_count = receipt_count
+        ocr_routing_decision.updated_at = current_time
+        self.dynamo.update_ocr_routing_decision(ocr_routing_decision)
+
+        return {
+            "success": True,
+            "image_id": image_id,
+            "image_type": image_type_str,
+            "receipt_count": receipt_count,
+            "receipt_lines": all_receipt_lines,
+            "receipt_words": all_receipt_words,
+        }
+
+    def _parse_receipt_ocr_from_swift(
+        self,
+        image_id: str,
+        receipt_id: int,
+        lines_data: list,
+    ) -> tuple:
+        """
+        Parse Swift OCR output into ReceiptLine/ReceiptWord/ReceiptLetter entities.
+
+        The Swift JSON structure matches the standard OCR format with nested
+        lines -> words -> letters.
+        """
+        receipt_lines = []
+        receipt_words = []
+        receipt_letters = []
+
+        for line_idx, line_data in enumerate(lines_data, start=1):
+            receipt_line = ReceiptLine(
+                image_id=image_id,
+                receipt_id=receipt_id,
+                line_id=line_idx,
+                text=line_data.get("text", ""),
+                bounding_box=line_data.get("bounding_box", {}),
+                top_left=line_data.get("top_left", {}),
+                top_right=line_data.get("top_right", {}),
+                bottom_left=line_data.get("bottom_left", {}),
+                bottom_right=line_data.get("bottom_right", {}),
+                angle_degrees=line_data.get("angle_degrees", 0.0),
+                angle_radians=line_data.get("angle_radians", 0.0),
+                confidence=line_data.get("confidence", 0.0),
+            )
+            receipt_lines.append(receipt_line)
+
+            for word_idx, word_data in enumerate(
+                line_data.get("words", []), start=1
+            ):
+                receipt_word = ReceiptWord(
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    line_id=line_idx,
+                    word_id=word_idx,
+                    text=word_data.get("text", ""),
+                    bounding_box=word_data.get("bounding_box", {}),
+                    top_left=word_data.get("top_left", {}),
+                    top_right=word_data.get("top_right", {}),
+                    bottom_left=word_data.get("bottom_left", {}),
+                    bottom_right=word_data.get("bottom_right", {}),
+                    angle_degrees=word_data.get("angle_degrees", 0.0),
+                    angle_radians=word_data.get("angle_radians", 0.0),
+                    confidence=word_data.get("confidence", 0.0),
+                    extracted_data=word_data.get("extracted_data"),
+                )
+                receipt_words.append(receipt_word)
+
+                for letter_idx, letter_data in enumerate(
+                    word_data.get("letters", []), start=1
+                ):
+                    receipt_letter = ReceiptLetter(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        line_id=line_idx,
+                        word_id=word_idx,
+                        letter_id=letter_idx,
+                        text=letter_data.get("text", ""),
+                        bounding_box=letter_data.get("bounding_box", {}),
+                        top_left=letter_data.get("top_left", {}),
+                        top_right=letter_data.get("top_right", {}),
+                        bottom_left=letter_data.get("bottom_left", {}),
+                        bottom_right=letter_data.get("bottom_right", {}),
+                        angle_degrees=letter_data.get("angle_degrees", 0.0),
+                        angle_radians=letter_data.get("angle_radians", 0.0),
+                        confidence=letter_data.get("confidence", 0.0),
+                    )
+                    receipt_letters.append(receipt_letter)
+
+        return receipt_lines, receipt_words, receipt_letters
 
     def _process_first_pass_job(
         self, image, ocr_data, ocr_job, ocr_routing_decision

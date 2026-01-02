@@ -128,24 +128,27 @@ public struct Line: Codable {
     }
 }
 
-/// Enhanced OCR result including classification and clustering metadata
+/// Enhanced OCR result including classification, clustering, and geometry metadata
 private struct ImageResult: Codable {
     let imagePath: String
     let lines: [Line]
     let classification: ClassificationResult?
     let clustering: ClusteringResult?
+    let receipts: [ReceiptOutput]?
 
     private enum CodingKeys: String, CodingKey {
         case lines
         case classification
         case clustering
+        case receipts
     }
 
-    init(imagePath: String, lines: [Line], classification: ClassificationResult? = nil, clustering: ClusteringResult? = nil) {
+    init(imagePath: String, lines: [Line], classification: ClassificationResult? = nil, clustering: ClusteringResult? = nil, receipts: [ReceiptOutput]? = nil) {
         self.imagePath = imagePath
         self.lines = lines
         self.classification = classification
         self.clustering = clustering
+        self.receipts = receipts
     }
 
     init(from decoder: Decoder) throws {
@@ -153,6 +156,7 @@ private struct ImageResult: Codable {
         self.lines = try container.decode([Line].self, forKey: .lines)
         self.classification = try container.decodeIfPresent(ClassificationResult.self, forKey: .classification)
         self.clustering = try container.decodeIfPresent(ClusteringResult.self, forKey: .clustering)
+        self.receipts = try container.decodeIfPresent([ReceiptOutput].self, forKey: .receipts)
         self.imagePath = ""
     }
 
@@ -161,6 +165,7 @@ private struct ImageResult: Codable {
         try container.encode(lines, forKey: .lines)
         try container.encodeIfPresent(classification, forKey: .classification)
         try container.encodeIfPresent(clustering, forKey: .clustering)
+        try container.encodeIfPresent(receipts, forKey: .receipts)
     }
 }
 
@@ -203,7 +208,10 @@ private func cornerPoints(from rect: CGRect) -> (topLeft: CGPoint, topRight: CGP
 private func performOCRSync(from imageURL: URL) throws -> [Line] {
     guard let nsImage = NSImage(contentsOf: imageURL) else { return [] }
     guard let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return [] }
+    return try performOCRSync(from: cgImage)
+}
 
+private func performOCRSync(from cgImage: CGImage) throws -> [Line] {
     // Set up the Vision request.
     // NOTE: We use .accurate mode for better text recognition accuracy.
     // Word-level bounding boxes work fine with .accurate mode using boundingBox(for: wordRange).
@@ -393,6 +401,7 @@ public struct VisionOCREngine: OCREngineProtocol {
             // Perform classification and clustering if enabled
             var classification: ClassificationResult? = nil
             var clustering: ClusteringResult? = nil
+            var receiptOutputs: [ReceiptOutput]? = nil
 
             if includeClassification, let imageDimensions = getImageDimensions(from: imageURL) {
                 // Classify the image
@@ -417,6 +426,50 @@ public struct VisionOCREngine: OCREngineProtocol {
                         // Use X-axis clustering for scans
                         clustering = clusterer.dbscanLinesXAxis(lines: mutableLines, eps: 0.08, minSamples: 2)
                     }
+
+                    // Process receipts if we have clustering (PHOTO or SCAN)
+                    if classResult.imageType != .native,
+                       let clusterResult = clustering,
+                       let cgImage = loadCGImage(from: imageURL) {
+                        let receiptProcessor = ReceiptProcessor()
+                        let processedReceipts = receiptProcessor.process(
+                            image: cgImage,
+                            lines: mutableLines,
+                            classification: classResult,
+                            clustering: clusterResult
+                        )
+
+                        // Save warped images, run OCR on them, and create output records
+                        let imageBaseName = imageURL.deletingPathExtension().lastPathComponent
+                        var outputs: [ReceiptOutput] = []
+
+                        for receipt in processedReceipts {
+                            let receiptFileName = "\(imageBaseName)_RECEIPT_\(String(format: "%05d", receipt.clusterId)).png"
+                            let receiptURL = outputDirectory.appendingPathComponent(receiptFileName)
+
+                            do {
+                                // Save warped image
+                                try saveImageToPNG(receipt.warpedImage, to: receiptURL)
+
+                                // Run OCR on warped image (REFINEMENT)
+                                let receiptLines = try performOCRSync(from: receipt.warpedImage)
+
+                                let output = ReceiptOutput(
+                                    from: receipt,
+                                    s3Key: receiptFileName,
+                                    lines: receiptLines
+                                )
+                                outputs.append(output)
+                            } catch {
+                                // Log error but continue processing other receipts
+                                print("Failed to process receipt \(receiptFileName): \(error)")
+                            }
+                        }
+
+                        if !outputs.isEmpty {
+                            receiptOutputs = outputs
+                        }
+                    }
                 }
             }
 
@@ -424,7 +477,8 @@ public struct VisionOCREngine: OCREngineProtocol {
                 imagePath: imageURL.path,
                 lines: mutableLines,
                 classification: classification,
-                clustering: clustering
+                clustering: clustering,
+                receipts: receiptOutputs
             )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted]
@@ -443,6 +497,12 @@ public struct VisionOCREngine: OCREngineProtocol {
         guard let nsImage = NSImage(contentsOf: url) else { return nil }
         guard let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         return (width: cgImage.width, height: cgImage.height)
+    }
+
+    /// Load a CGImage from a file URL
+    private func loadCGImage(from url: URL) -> CGImage? {
+        guard let nsImage = NSImage(contentsOf: url) else { return nil }
+        return nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 }
 #endif
