@@ -17,6 +17,7 @@ import {
   LockingSwimlane,
   MerchantCount,
   PhotoReceiptBoundingBox,
+  PrecisionRecallDartboard,
   RandomReceiptWithLabels,
   ReceiptStack,
   ScanReceiptBoundingBox,
@@ -562,6 +563,15 @@ export default function ReceiptPage({
       <ClientOnly>
         <LayoutLMInferenceVisualization />
       </ClientOnly>
+
+      <p>
+        Evaluating the model requires understanding precision and recall.
+        Precision measures how accurate the predictions are, while recall
+        measures how many of the actual positives were found. Think of it like
+        throwing darts at a dartboard:
+      </p>
+
+      <PrecisionRecallDartboard />
 
       <p>
         Training the model to produce the best results means finding the right
