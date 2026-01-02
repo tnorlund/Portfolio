@@ -8,7 +8,6 @@ import styles from "../styles/Receipt.module.css";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
-  CICDLoop,
   ClientImageCounts,
   ClientReceiptCounts,
   CodeBuildDiagram,
@@ -590,10 +589,6 @@ export default function ReceiptPage({
       </p>
 
       <h2>Pulumi</h2>
-
-      <ClientOnly>
-        <CICDLoop />
-      </ClientOnly>
 
       <p>
         I&apos;ve been able to iterate quickly using Pulumi&apos;s
