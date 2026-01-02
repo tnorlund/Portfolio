@@ -12,7 +12,7 @@ public enum ImageType: String, Codable, CaseIterable {
 
 /// Reference dimensions for known image formats
 public struct ReferenceFormat {
-    /// Standard scanner dimensions (300 DPI, 8.5" x 11")
+    /// Standard scanner dimensions (300 DPI, A4: 11.7" x 8.27")
     public static let scanner = (width: 3508, height: 2480)
 
     /// Typical phone camera dimensions
