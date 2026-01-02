@@ -39,4 +39,5 @@ export { default as ImageStack } from "./ImageStack";
 export { default as LayoutLMInferenceVisualization } from "./LayoutLMInferenceCarousel";
 export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
 export { default as CICDLoop } from "./CICDLoop";
+export { default as CICDLoopDynamic } from "./CICDLoopDynamic";
 export { default as PrecisionRecallDartboard } from "./PrecisionRecallDartboard";
