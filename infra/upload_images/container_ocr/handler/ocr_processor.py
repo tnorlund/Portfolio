@@ -80,13 +80,22 @@ class OCRProcessor:
             Dict with success status, image_type, and receipt_id
         """
         try:
+            # Debug: Log which table we're using
+            logger.info(
+                f"[DEBUG] Processing job: image_id={image_id}, job_id={job_id}, "
+                f"table={self.table_name}"
+            )
+
             # Get job and routing decision
             ocr_job = get_ocr_job(self.table_name, image_id, job_id)
             ocr_routing_decision = get_ocr_routing_decision(
                 self.table_name, image_id, job_id
             )
 
-            logger.info(f"Got OCR job type: {ocr_job.job_type}")
+            logger.info(
+                f"Got OCR job type: {ocr_job.job_type}, "
+                f"routing s3_key={ocr_routing_decision.s3_key}"
+            )
 
             # Handle refinement jobs differently
             if ocr_job.job_type == OCRJobType.REFINEMENT.value:
@@ -95,6 +104,10 @@ class OCRProcessor:
                 )
 
             # Download and parse OCR JSON
+            logger.info(
+                f"[DEBUG] Downloading OCR JSON: bucket={ocr_routing_decision.s3_bucket}, "
+                f"key={ocr_routing_decision.s3_key}"
+            )
             ocr_json_path = download_file_from_s3(
                 ocr_routing_decision.s3_bucket,
                 ocr_routing_decision.s3_key,
@@ -103,6 +116,17 @@ class OCRProcessor:
 
             with open(ocr_json_path, "r", encoding="utf-8") as f:
                 ocr_json = json.load(f)
+
+            # Debug logging for Swift single-pass detection
+            json_keys = list(ocr_json.keys())
+            has_receipts = bool(ocr_json.get("receipts"))
+            has_classification = bool(ocr_json.get("classification"))
+            receipts_count = len(ocr_json.get("receipts", []))
+            logger.info(
+                f"[DEBUG] OCR JSON keys: {json_keys}, "
+                f"has_receipts={has_receipts} (count={receipts_count}), "
+                f"has_classification={has_classification}"
+            )
 
             # Check if this is a Swift single-pass result (has receipts with OCR)
             if ocr_json.get("receipts") and ocr_json.get("classification"):
