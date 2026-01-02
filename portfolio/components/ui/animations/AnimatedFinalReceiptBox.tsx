@@ -1,49 +1,48 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useCallback } from "react";
 import { useTransition, animated } from "@react-spring/web";
 import type { Point } from "../../../types/api";
-import {
-  computeReceiptBoxFromBoundaries,
-  type BoundaryLine,
-} from "../../../utils/receipt/boundingBox";
 
 interface AnimatedFinalReceiptBoxProps {
-  boundaries: {
-    top: BoundaryLine | null;
-    bottom: BoundaryLine | null;
-    left: BoundaryLine | null;
-    right: BoundaryLine | null;
-  };
-  fallbackCentroid: Point | null;
+  finalReceiptBox: Point[];
+  topLineCorners: Point[];
+  bottomLineCorners: Point[];
+  leftmostHullPoint: Point | null;
+  rightmostHullPoint: Point | null;
+  avgAngleRad: number;
   svgWidth: number;
   svgHeight: number;
   delay: number;
 }
 
+/**
+ * Animated visualization of the final receipt bounding box.
+ *
+ * Shows:
+ * 1. Extended boundary lines (top/bottom from line edges, left/right perpendicular)
+ * 2. Intersection points (the 4 corners)
+ * 3. Final receipt quadrilateral
+ */
 const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
-  boundaries,
-  fallbackCentroid,
+  finalReceiptBox,
+  topLineCorners,
+  bottomLineCorners,
+  leftmostHullPoint,
+  rightmostHullPoint,
+  avgAngleRad,
   svgWidth,
   svgHeight,
   delay,
 }) => {
-  // Step 9: Compute Final Receipt Quadrilateral from boundaries
-  const finalReceiptBox = useMemo(() => {
-    const { top, bottom, left, right } = boundaries;
+  // Helper to convert normalized coords to SVG coords
+  const toSvg = useCallback(
+    (p: Point) => ({
+      x: p.x * svgWidth,
+      y: (1 - p.y) * svgHeight,
+    }),
+    [svgWidth, svgHeight]
+  );
 
-    if (!top || !bottom || !left || !right || !fallbackCentroid) {
-      return [];
-    }
-
-    return computeReceiptBoxFromBoundaries(
-      top,
-      bottom,
-      left,
-      right,
-      fallbackCentroid
-    );
-  }, [boundaries, fallbackCentroid]);
-
-  // Memoize corner calculations to avoid recalculating on every render
+  // Memoize corner calculations
   const corners = useMemo(() => {
     const cornerLabels = [
       "Top-Left",
@@ -64,7 +63,15 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
 
   // Create visual boundary lines for animation
   const boundaryLines = useMemo(() => {
-    const { top, bottom, left, right } = boundaries;
+    if (
+      topLineCorners.length < 4 ||
+      bottomLineCorners.length < 4 ||
+      !leftmostHullPoint ||
+      !rightmostHullPoint
+    ) {
+      return [];
+    }
+
     const lines: Array<{
       x1: number;
       y1: number;
@@ -74,150 +81,90 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
       key: string;
     }> = [];
 
-    const margin = 100; // Extension beyond viewport
+    const margin = 200; // Extension beyond viewport
 
-    // Top boundary (yellow)
-    if (top) {
-      if (top.isVertical && top.x !== undefined) {
-        lines.push({
-          x1: top.x * svgWidth,
-          y1: -margin,
-          x2: top.x * svgWidth,
-          y2: svgHeight + margin,
-          color: "var(--color-yellow)",
-          key: "top",
-        });
-      } else if (top.isInverted) {
-        // Top boundary is inverted: x = slope * y + intercept
-        // We need to calculate X values for Y values at the extended viewport edges
-        // Note: In normalized coords, y increases upward, but in SVG y increases downward
-        const y1_normalized = 1 + margin / svgHeight;  // Above the top (in normalized space)
-        const y2_normalized = -margin / svgHeight;      // Below the bottom (in normalized space)
-        const x1 = top.slope * y1_normalized + top.intercept;
-        const x2 = top.slope * y2_normalized + top.intercept;
-        lines.push({
-          x1: x1 * svgWidth,
-          y1: -margin,
-          x2: x2 * svgWidth,
-          y2: svgHeight + margin,
-          color: "var(--color-yellow)",
-          key: "top",
-        });
-      } else if (!top.isVertical) {
-        const y1 = top.slope * -margin + top.intercept;
-        const y2 = top.slope * (svgWidth + margin) + top.intercept;
-        lines.push({
-          x1: -margin,
-          y1: (1 - y1) * svgHeight,
-          x2: svgWidth + margin,
-          y2: (1 - y2) * svgHeight,
-          color: "var(--color-yellow)",
-          key: "top",
-        });
-      }
+    // Top edge direction
+    const topLeft = toSvg(topLineCorners[0]);
+    const topRight = toSvg(topLineCorners[1]);
+    const topDx = topRight.x - topLeft.x;
+    const topDy = topRight.y - topLeft.y;
+    const topLen = Math.sqrt(topDx * topDx + topDy * topDy);
+
+    // Guard against zero-length edges to prevent NaN propagation
+    if (topLen > 0) {
+      const topUnitX = topDx / topLen;
+      const topUnitY = topDy / topLen;
+
+      // Top boundary line (extended)
+      lines.push({
+        x1: topLeft.x - topUnitX * margin,
+        y1: topLeft.y - topUnitY * margin,
+        x2: topRight.x + topUnitX * margin,
+        y2: topRight.y + topUnitY * margin,
+        color: "var(--color-yellow)",
+        key: "top",
+      });
     }
 
-    // Bottom boundary (yellow)
-    if (bottom) {
-      if (bottom.isVertical && bottom.x !== undefined) {
-        lines.push({
-          x1: bottom.x * svgWidth,
-          y1: -margin,
-          x2: bottom.x * svgWidth,
-          y2: svgHeight + margin,
-          color: "var(--color-yellow)",
-          key: "bottom",
-        });
-      } else if (bottom.isInverted) {
-        // Bottom boundary is inverted: x = slope * y + intercept
-        // We need to calculate X values for Y values at the extended viewport edges
-        // Note: In normalized coords, y increases upward, but in SVG y increases downward
-        const y1_normalized = 1 + margin / svgHeight;  // Above the top (in normalized space)
-        const y2_normalized = -margin / svgHeight;      // Below the bottom (in normalized space)
-        const x1 = bottom.slope * y1_normalized + bottom.intercept;
-        const x2 = bottom.slope * y2_normalized + bottom.intercept;
-        lines.push({
-          x1: x1 * svgWidth,
-          y1: -margin,
-          x2: x2 * svgWidth,
-          y2: svgHeight + margin,
-          color: "var(--color-yellow)",
-          key: "bottom",
-        });
-      } else if (!bottom.isVertical) {
-        const y1 = bottom.slope * -margin + bottom.intercept;
-        const y2 = bottom.slope * (svgWidth + margin) + bottom.intercept;
-        lines.push({
-          x1: -margin,
-          y1: (1 - y1) * svgHeight,
-          x2: svgWidth + margin,
-          y2: (1 - y2) * svgHeight,
-          color: "var(--color-yellow)",
-          key: "bottom",
-        });
-      }
+    // Bottom edge direction
+    const bottomLeft = toSvg(bottomLineCorners[2]);
+    const bottomRight = toSvg(bottomLineCorners[3]);
+    const bottomDx = bottomRight.x - bottomLeft.x;
+    const bottomDy = bottomRight.y - bottomLeft.y;
+    const bottomLen = Math.sqrt(bottomDx * bottomDx + bottomDy * bottomDy);
+
+    // Guard against zero-length edges to prevent NaN propagation
+    if (bottomLen > 0) {
+      const bottomUnitX = bottomDx / bottomLen;
+      const bottomUnitY = bottomDy / bottomLen;
+
+      // Bottom boundary line (extended)
+      lines.push({
+        x1: bottomLeft.x - bottomUnitX * margin,
+        y1: bottomLeft.y - bottomUnitY * margin,
+        x2: bottomRight.x + bottomUnitX * margin,
+        y2: bottomRight.y + bottomUnitY * margin,
+        color: "var(--color-yellow)",
+        key: "bottom",
+      });
     }
 
-    // Left boundary (green)
-    if (left) {
-      if (left.isVertical && left.x !== undefined) {
-        lines.push({
-          x1: left.x * svgWidth,
-          y1: -margin,
-          x2: left.x * svgWidth,
-          y2: svgHeight + margin,
-          color: "var(--color-green)",
-          key: "left",
-        });
-      } else if (!left.isVertical) {
-        // Left boundary is a standard line: y = slope * x + intercept
-        // Calculate Y values at the left and right edges of the extended viewport
-        const x1 = -margin / svgWidth;
-        const x2 = (svgWidth + margin) / svgWidth;
-        const y1 = left.slope * x1 + left.intercept;
-        const y2 = left.slope * x2 + left.intercept;
-        lines.push({
-          x1: -margin,
-          y1: (1 - y1) * svgHeight,
-          x2: svgWidth + margin,
-          y2: (1 - y2) * svgHeight,
-          color: "var(--color-green)",
-          key: "left",
-        });
-      }
-    }
+    // Left/right edge direction (perpendicular to average angle)
+    const leftEdgeAngle = avgAngleRad + Math.PI / 2;
+    const leftDirX = Math.cos(leftEdgeAngle);
+    const leftDirY = -Math.sin(leftEdgeAngle); // Flip for SVG
 
-    // Right boundary (green)
-    if (right) {
-      if (right.isVertical && right.x !== undefined) {
-        lines.push({
-          x1: right.x * svgWidth,
-          y1: -margin,
-          x2: right.x * svgWidth,
-          y2: svgHeight + margin,
-          color: "var(--color-green)",
-          key: "right",
-        });
-      } else if (!right.isVertical) {
-        // Right boundary is a standard line: y = slope * x + intercept
-        // Calculate Y values at the left and right edges of the extended viewport
-        const x1 = -margin / svgWidth;
-        const x2 = (svgWidth + margin) / svgWidth;
-        const y1 = right.slope * x1 + right.intercept;
-        const y2 = right.slope * x2 + right.intercept;
-        lines.push({
-          x1: -margin,
-          y1: (1 - y1) * svgHeight,
-          x2: svgWidth + margin,
-          y2: (1 - y2) * svgHeight,
-          color: "var(--color-green)",
-          key: "right",
-        });
-      }
-    }
+    // Left boundary line through leftmost hull point
+    const leftHullSvg = toSvg(leftmostHullPoint);
+    lines.push({
+      x1: leftHullSvg.x - leftDirX * margin,
+      y1: leftHullSvg.y - leftDirY * margin,
+      x2: leftHullSvg.x + leftDirX * margin,
+      y2: leftHullSvg.y + leftDirY * margin,
+      color: "var(--color-green)",
+      key: "left",
+    });
+
+    // Right boundary line through rightmost hull point
+    const rightHullSvg = toSvg(rightmostHullPoint);
+    lines.push({
+      x1: rightHullSvg.x - leftDirX * margin,
+      y1: rightHullSvg.y - leftDirY * margin,
+      x2: rightHullSvg.x + leftDirX * margin,
+      y2: rightHullSvg.y + leftDirY * margin,
+      color: "var(--color-green)",
+      key: "right",
+    });
 
     return lines;
-  }, [boundaries, svgWidth, svgHeight]);
+  }, [
+    topLineCorners,
+    bottomLineCorners,
+    leftmostHullPoint,
+    rightmostHullPoint,
+    avgAngleRad,
+    toSvg,
+  ]);
 
   // Memoize polygon points string for the final quadrilateral
   const polygonPoints = useMemo(
@@ -233,7 +180,7 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
   // 2. Show intersection points (delay + 800)
   // 3. Show final quadrilateral (delay + 1600)
 
-  // Animation for boundary lines (show the intersecting lines first)
+  // Animation for boundary lines
   const boundaryTransitions = useTransition(boundaryLines, {
     keys: (line) => `boundary-${line.key}`,
     from: { opacity: 0, strokeDasharray: "20,10", strokeDashoffset: 40 },
@@ -247,17 +194,17 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
 
   // Animation for corner points (intersection points)
   const cornerTransitions = useTransition(corners, {
-    keys: (corner: any) => `final-corner-${corner.index}`,
+    keys: (corner: (typeof corners)[0]) => `final-corner-${corner.index}`,
     from: { opacity: 0, scale: 0 },
-    enter: (_item: any, index: number) => ({
+    enter: (_item, index) => ({
       opacity: 1,
       scale: 1,
-      delay: delay + 800 + index * 200, // After boundary lines
+      delay: delay + 800 + index * 200,
     }),
     config: { duration: 600 },
   });
 
-  // Animation for the final polygon outline (appears after intersections)
+  // Animation for the final polygon outline
   const polygonTransition = useTransition(
     polygonPoints ? [polygonPoints] : [],
     {
@@ -265,7 +212,7 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
       from: { opacity: 0 },
       enter: {
         opacity: 1,
-        delay: delay + 1600, // After all intersections appear
+        delay: delay + 1600,
       },
       config: { duration: 800 },
     }
@@ -278,7 +225,7 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
 
   return (
     <g>
-      {/* Step 9a: Show boundary lines (yellow top/bottom, green left/right) */}
+      {/* Show boundary lines (yellow top/bottom, green left/right) */}
       {boundaryTransitions((style, line) => (
         <animated.line
           key={`boundary-${line.key}`}
@@ -293,7 +240,7 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
         />
       ))}
 
-      {/* Step 9b: Show intersection points (where boundaries meet) */}
+      {/* Show intersection points (where boundaries meet) */}
       {cornerTransitions((style, corner) => (
         <animated.g key={`corner-${corner.index}`} style={style}>
           <circle
@@ -307,7 +254,7 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
         </animated.g>
       ))}
 
-      {/* Step 9c: Final receipt quadrilateral (intersection result) */}
+      {/* Final receipt quadrilateral */}
       {polygonTransition((style, points) => (
         <animated.polygon
           key="final-receipt-polygon"

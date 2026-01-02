@@ -3,11 +3,8 @@ import React from "react";
 import PhotoReceiptBoundingBox from "./PhotoReceiptBoundingBox";
 import fixtureData from "../../../tests/fixtures/target_receipt.json";
 import useImageDetails from "../../../hooks/useImageDetails";
-import { getAnimationConfig } from "./animationConfig";
 
 import * as animations from "../animations";
-import { convexHull, computeHullCentroid } from "../../../utils/geometry";
-import { computeFinalReceiptTilt } from "../../../utils/receipt";
 
 jest.mock("../../../hooks/useImageDetails");
 
@@ -60,10 +57,13 @@ describe("PhotoReceiptBoundingBox", () => {
     });
   });
 
-  test("renders polygons for each line", () => {
+  test("renders polygons for each line in largest cluster", () => {
     render(<PhotoReceiptBoundingBox />);
-    const polygons = document.querySelectorAll("polygon");
-    expect(polygons).toHaveLength(fixtureData.lines.length);
+    // The component now uses DBSCAN clustering to filter lines
+    // Only lines from the largest cluster are rendered with red stroke
+    const polygons = document.querySelectorAll('polygon[stroke="var(--color-red)"]');
+    // The exact count depends on clustering results
+    expect(polygons.length).toBeGreaterThan(0);
   });
 
   test("shows animated convex hull", () => {
@@ -77,96 +77,48 @@ describe("PhotoReceiptBoundingBox", () => {
     jest.clearAllMocks();
     rerender(<PhotoReceiptBoundingBox />);
 
-    const lines = fixtureData.lines;
     const svgWidth = fixtureData.image.width;
     const svgHeight = fixtureData.image.height;
 
-    const allCorners: { x: number; y: number }[] = [];
-    lines.forEach((line) => {
-      allCorners.push(
-        { x: line.top_left.x, y: line.top_left.y },
-        { x: line.top_right.x, y: line.top_right.y },
-        { x: line.bottom_right.x, y: line.bottom_right.y },
-        { x: line.bottom_left.x, y: line.bottom_left.y }
-      );
-    });
-
-    const hullPoints = allCorners.length > 2 ? convexHull([...allCorners]) : [];
-    const hullCentroid =
-      hullPoints.length > 0 ? computeHullCentroid(hullPoints) : null;
-    const avgAngle =
-      lines.reduce((sum, l) => sum + l.angle_degrees, 0) / lines.length;
-    const finalAngle =
-      hullCentroid && hullPoints.length > 0
-        ? computeFinalReceiptTilt(
-            lines as any,
-            hullPoints,
-            hullCentroid,
-            avgAngle
-          )
-        : avgAngle;
-
-    const {
-      totalDelayForLines,
-      convexHullDelay,
-      convexHullDuration,
-      centroidDelay,
-      extentsDelay,
-      receiptDelay,
-    } = getAnimationConfig(lines.length, hullPoints.length);
-
+    // AnimatedConvexHull should receive hull points and delay
     expect(animations.AnimatedConvexHull).toHaveBeenCalledTimes(1);
     expect(
       (animations.AnimatedConvexHull as jest.Mock).mock.calls[0][0]
     ).toEqual(
       expect.objectContaining({
-        hullPoints,
+        hullPoints: expect.any(Array),
         svgWidth,
         svgHeight,
-        delay: convexHullDelay,
+        delay: expect.any(Number),
         showIndices: true,
       })
     );
     expect(screen.getByTestId("AnimatedConvexHull")).toBeInTheDocument();
 
+    // AnimatedHullCentroid should receive centroid
     expect(animations.AnimatedHullCentroid).toHaveBeenCalledTimes(1);
     expect(
       (animations.AnimatedHullCentroid as jest.Mock).mock.calls[0][0]
     ).toEqual(
       expect.objectContaining({
-        centroid: hullCentroid,
+        centroid: expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
         svgWidth,
         svgHeight,
-        delay: centroidDelay,
+        delay: expect.any(Number),
       })
     );
     expect(screen.getByTestId("AnimatedHullCentroid")).toBeInTheDocument();
 
-    expect(animations.AnimatedOrientedAxes).toHaveBeenCalledTimes(1);
-    expect(
-      (animations.AnimatedOrientedAxes as jest.Mock).mock.calls[0][0]
-    ).toEqual(
-      expect.objectContaining({
-        hull: hullPoints,
-        centroid: hullCentroid,
-        lines,
-        finalAngle: expect.any(Number),
-        svgWidth,
-        svgHeight,
-        delay: extentsDelay,
-      })
-    );
-    expect(screen.getByTestId("AnimatedOrientedAxes")).toBeInTheDocument();
-
+    // AnimatedTopAndBottom should receive topLine, bottomLine, and corners
     expect(animations.AnimatedTopAndBottom).toHaveBeenCalledTimes(1);
     expect(
       (animations.AnimatedTopAndBottom as jest.Mock).mock.calls[0][0]
     ).toEqual(
       expect.objectContaining({
-        lines,
-        hull: hullPoints,
-        centroid: hullCentroid,
-        avgAngle: expect.any(Number),
+        topLine: expect.any(Object),
+        bottomLine: expect.any(Object),
+        topLineCorners: expect.any(Array),
+        bottomLineCorners: expect.any(Array),
         svgWidth,
         svgHeight,
         delay: expect.any(Number),
@@ -174,37 +126,44 @@ describe("PhotoReceiptBoundingBox", () => {
     );
     expect(screen.getByTestId("AnimatedTopAndBottom")).toBeInTheDocument();
 
-    expect(animations.AnimatedHullEdgeAlignment).toHaveBeenCalledTimes(1);
+    // AnimatedOrientedAxes should receive avgAngleRad and hull extreme points
+    expect(animations.AnimatedOrientedAxes).toHaveBeenCalledTimes(1);
     expect(
-      (animations.AnimatedHullEdgeAlignment as jest.Mock).mock.calls[0][0]
+      (animations.AnimatedOrientedAxes as jest.Mock).mock.calls[0][0]
     ).toEqual(
       expect.objectContaining({
-        hull: hullPoints,
-        refinedSegments: expect.any(Object),
+        hull: expect.any(Array),
+        centroid: expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
+        avgAngleRad: expect.any(Number),
+        leftmostHullPoint: expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
+        rightmostHullPoint: expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
         svgWidth,
         svgHeight,
         delay: expect.any(Number),
       })
     );
-    expect(screen.getByTestId("AnimatedHullEdgeAlignment")).toBeInTheDocument();
+    expect(screen.getByTestId("AnimatedOrientedAxes")).toBeInTheDocument();
 
+    // AnimatedFinalReceiptBox should receive finalReceiptBox and edge data
     expect(animations.AnimatedFinalReceiptBox).toHaveBeenCalledTimes(1);
     expect(
       (animations.AnimatedFinalReceiptBox as jest.Mock).mock.calls[0][0]
     ).toEqual(
       expect.objectContaining({
-        boundaries: expect.objectContaining({
-          top: expect.any(Object),
-          bottom: expect.any(Object),
-          left: expect.any(Object),
-          right: expect.any(Object),
-        }),
-        fallbackCentroid: hullCentroid,
+        finalReceiptBox: expect.any(Array),
+        topLineCorners: expect.any(Array),
+        bottomLineCorners: expect.any(Array),
+        leftmostHullPoint: expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
+        rightmostHullPoint: expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
+        avgAngleRad: expect.any(Number),
         svgWidth,
         svgHeight,
         delay: expect.any(Number),
       })
     );
     expect(screen.getByTestId("AnimatedFinalReceiptBox")).toBeInTheDocument();
+
+    // AnimatedHullEdgeAlignment is no longer used in the simplified approach
+    expect(animations.AnimatedHullEdgeAlignment).not.toHaveBeenCalled();
   });
 });

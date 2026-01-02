@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 
-import { type Point as ApiPoint } from "../../../types/api";
 import { useTransition, animated } from "@react-spring/web";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
@@ -8,7 +7,6 @@ import {
   AnimatedHullCentroid,
   AnimatedOrientedAxes,
   AnimatedTopAndBottom,
-  AnimatedHullEdgeAlignment,
   AnimatedFinalReceiptBox,
 } from "../animations";
 import { getBestImageUrl } from "../../../utils/imageFormat";
@@ -18,20 +16,18 @@ import useReceiptGeometry from "../../../hooks/useReceiptGeometry";
 import useReceiptClustering from "../../../hooks/useReceiptClustering";
 import { getAnimationConfig } from "./animationConfig";
 
-// Define simple point and line-segment shapes
 const isDevelopment = process.env.NODE_ENV === "development";
-
-/**
- * Find the top and bottom edges of lines at the secondary axis extremes
- */
 
 /**
  * Display a random photo image with animated overlays that illustrate
  * how the receipt bounding box is derived from OCR line data.
  *
- * Uses the same Hull Edge Alignment geometry calculations as tested in
- * receipt.fixture.test.ts to ensure accurate CW/CCW neighbor selection
- * for skewed boundary lines.
+ * Uses the simplified rotated bounding box algorithm:
+ * 1. Compute convex hull of all line corners
+ * 2. Find top/bottom lines by Y position
+ * 3. Compute average edge angle from top/bottom line corners
+ * 4. Project hull onto avg_angle to find left/right extremes
+ * 5. Intersect boundary lines to get final corners
  */
 const PhotoReceiptBoundingBox: React.FC = () => {
   const { imageDetails, formatSupport, error } = useImageDetails("PHOTO");
@@ -50,44 +46,42 @@ const PhotoReceiptBoundingBox: React.FC = () => {
 
   // Extract lines and receipts
   const allLines = imageDetails?.lines ?? [];
-  
+
   // Use DBSCAN clustering to filter out noise lines
-  // Use pixel-based clustering to match Python implementation
   const { clusters, noiseLines } = useReceiptClustering(allLines, {
-    minPoints: 10, // Match Python's min_samples=10
+    minPoints: 10,
     imageWidth: imageDetails?.image?.width,
     imageHeight: imageDetails?.image?.height,
   });
-  
+
   // Use only the lines from the largest cluster (main receipt)
-  const lines = clusters.length > 0 
-    ? clusters.sort((a, b) => b.lines.length - a.lines.length)[0].lines
-    : [];
-    
+  // Spread to avoid mutating the original clusters array from the hook
+  const lines =
+    clusters.length > 0
+      ? [...clusters].sort((a, b) => b.lines.length - a.lines.length)[0].lines
+      : [];
+
   const computedReceipt = estimateReceiptPolygonFromLines(lines);
   const receipts = computedReceipt
     ? [computedReceipt]
     : imageDetails?.receipts ?? [];
 
-  const avgAngle =
-    lines.length > 0
-      ? lines.reduce((sum, l) => sum + l.angle_degrees, 0) / lines.length
-      : 0;
-
+  // Use the simplified geometry hook
   const {
     convexHullPoints,
     hullCentroid,
-    finalAngle,
-    hullExtremes,
-    refinedSegments,
-    boundaries,
+    topLine,
+    bottomLine,
+    topLineCorners,
+    bottomLineCorners,
+    avgAngleRad,
+    leftmostHullPoint,
+    rightmostHullPoint,
     finalReceiptBox,
   } = useReceiptGeometry(lines);
 
-  // Step 1 – Display OCR line boxes (see components/ui/Figures/PhotoReceiptBoundingBox.md)
-  // Animate line bounding boxes using a transition.
+  // Step 1 – Display OCR line boxes
   const lineTransitions = useTransition(inView ? lines : [], {
-    // Include resetKey in the key so that each item gets a new key on reset.
     keys: (line) => `${resetKey}-${line.line_id}`,
     from: { opacity: 0, transform: "scale(0.8)" },
     enter: (item, index) => ({
@@ -100,26 +94,19 @@ const PhotoReceiptBoundingBox: React.FC = () => {
 
   // Compute animation timing
   const {
-    totalDelayForLines,
     convexHullDelay,
-    convexHullDuration,
     centroidDelay,
     extentsDelay,
-    extentsDuration,
-    hullEdgeAlignmentDuration,
     receiptDelay,
   } = getAnimationConfig(lines.length, convexHullPoints.length);
 
   // Use the first image from the API.
   const firstImage = imageDetails?.image;
 
-
   // Get the optimal image URL based on browser support and available formats
-  // Use medium size for PhotoReceiptBoundingBox to balance quality and performance
-  // Use fallback URL during SSR/initial render to prevent hydration mismatch
   const cdnUrl =
     firstImage && formatSupport && isClient
-      ? getBestImageUrl(firstImage, formatSupport, 'medium')
+      ? getBestImageUrl(firstImage, formatSupport, "medium")
       : firstImage
       ? `${
           isDevelopment
@@ -128,12 +115,11 @@ const PhotoReceiptBoundingBox: React.FC = () => {
         }/${firstImage.cdn_s3_key}`
       : "";
 
-  // When imageDetails is loaded, compute these values;
-  // otherwise, fall back on default dimensions.
+  // When imageDetails is loaded, compute these values
   const svgWidth = firstImage ? firstImage.width : defaultSvgWidth;
   const svgHeight = firstImage ? firstImage.height : defaultSvgHeight;
 
-  // Scale the displayed SVG (using the API data if available).
+  // Scale the displayed SVG
   const maxDisplayWidth = 400;
   const scaleFactor = Math.min(1, maxDisplayWidth / svgWidth);
   const displayWidth = svgWidth * scaleFactor;
@@ -204,7 +190,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                 height={svgHeight}
               />
 
-              {/* Render animated word bounding boxes (via transition) */}
+              {/* Step 1: Render animated word bounding boxes */}
               {lineTransitions((style, line) => {
                 const x1 = line.top_left.x * svgWidth;
                 const y1 = (1 - line.top_left.y) * svgHeight;
@@ -226,33 +212,33 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                   />
                 );
               })}
-              
-              {/* Optionally show noise lines in a subtle way */}
-              {inView && noiseLines.map((line) => {
-                const x1 = line.top_left.x * svgWidth;
-                const y1 = (1 - line.top_left.y) * svgHeight;
-                const x2 = line.top_right.x * svgWidth;
-                const y2 = (1 - line.top_right.y) * svgHeight;
-                const x3 = line.bottom_right.x * svgWidth;
-                const y3 = (1 - line.bottom_right.y) * svgHeight;
-                const x4 = line.bottom_left.x * svgWidth;
-                const y4 = (1 - line.bottom_left.y) * svgHeight;
-                const points = `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`;
-                return (
-                  <polygon
-                    key={`noise-${line.line_id}`}
-                    points={points}
-                    fill="none"
-                    stroke="gray"
-                    strokeWidth="1"
-                    opacity="0.3"
-                    strokeDasharray="2,2"
-                  />
-                );
-              })}
 
-              {/* Step 2 – Compute the Convex Hull */}
-              {/* Use Graham-scan algorithm to find minimal convex polygon enclosing all corners */}
+              {/* Show noise lines in a subtle way */}
+              {inView &&
+                noiseLines.map((line) => {
+                  const x1 = line.top_left.x * svgWidth;
+                  const y1 = (1 - line.top_left.y) * svgHeight;
+                  const x2 = line.top_right.x * svgWidth;
+                  const y2 = (1 - line.top_right.y) * svgHeight;
+                  const x3 = line.bottom_right.x * svgWidth;
+                  const y3 = (1 - line.bottom_right.y) * svgHeight;
+                  const x4 = line.bottom_left.x * svgWidth;
+                  const y4 = (1 - line.bottom_left.y) * svgHeight;
+                  const points = `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`;
+                  return (
+                    <polygon
+                      key={`noise-${line.line_id}`}
+                      points={points}
+                      fill="none"
+                      stroke="gray"
+                      strokeWidth="1"
+                      opacity="0.3"
+                      strokeDasharray="2,2"
+                    />
+                  );
+                })}
+
+              {/* Step 2: Compute the Convex Hull */}
               {inView && convexHullPoints.length > 0 && (
                 <AnimatedConvexHull
                   key={`convex-hull-${resetKey}`}
@@ -264,8 +250,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                 />
               )}
 
-              {/* Step 3 – Compute Hull Centroid */}
-              {/* Calculate the average of all hull vertices to find the polygon's center point */}
+              {/* Step 3: Compute Hull Centroid */}
               {inView && hullCentroid && (
                 <AnimatedHullCentroid
                   key={`hull-centroid-${resetKey}`}
@@ -276,81 +261,52 @@ const PhotoReceiptBoundingBox: React.FC = () => {
                 />
               )}
 
-              {/* Step 4 – Estimate Initial Skew from OCR */}
-              {/* Calculate each line's bottom-edge angle, filter near-zero angles, and average */}
-              {inView && convexHullPoints.length > 0 && hullCentroid && (
-                <AnimatedOrientedAxes
-                  key={`oriented-axes-${resetKey}`}
-                  hull={convexHullPoints}
-                  centroid={hullCentroid}
-                  lines={lines}
-                  finalAngle={finalAngle}
+              {/* Step 4: Show Top/Bottom Line Selection */}
+              {inView && topLine && bottomLine && (
+                <AnimatedTopAndBottom
+                  key={`top-and-bottom-${resetKey}`}
+                  topLine={topLine}
+                  bottomLine={bottomLine}
+                  topLineCorners={topLineCorners}
+                  bottomLineCorners={bottomLineCorners}
                   svgWidth={svgWidth}
                   svgHeight={svgHeight}
                   delay={extentsDelay}
                 />
               )}
 
-              {/* Step 5 – Find Top and Bottom Boundary Candidates */}
-              {/* Project hull vertices onto axis perpendicular to preliminary tilt, */}
-              {/* then take the 2 smallest and 2 largest projections as boundary extremes */}
-              {inView &&
-                convexHullPoints.length > 0 &&
-                hullCentroid &&
-                lines.length > 0 && (
-                  <AnimatedTopAndBottom
-                    key={`top-and-bottom-${resetKey}`}
-                    lines={lines}
-                    hull={convexHullPoints}
-                    centroid={hullCentroid}
-                    avgAngle={avgAngle}
-                    svgWidth={svgWidth}
-                    svgHeight={svgHeight}
-                    delay={extentsDelay + 1500}
-                  />
-                )}
+              {/* Step 5: Show Average Angle and Hull Extremes */}
+              {inView && convexHullPoints.length > 0 && hullCentroid && (
+                <AnimatedOrientedAxes
+                  key={`oriented-axes-${resetKey}`}
+                  hull={convexHullPoints}
+                  centroid={hullCentroid}
+                  avgAngleRad={avgAngleRad}
+                  leftmostHullPoint={leftmostHullPoint}
+                  rightmostHullPoint={rightmostHullPoint}
+                  svgWidth={svgWidth}
+                  svgHeight={svgHeight}
+                  delay={extentsDelay + 1500}
+                />
+              )}
 
-              {/* Step 5 & 6 – Find Top/Bottom Boundaries and Compute Final Tilt */}
-              {/* Step 5: Project hull vertices onto axis perpendicular to preliminary tilt */}
-              {/* Step 6: Fit lines through extremes, compute angles, and average for final tilt */}
-              {/* Step 7 – Find Left and Right Extremes Along Receipt Tilt */}
-              {/* Project hull vertices onto axis defined by final receipt tilt */}
-              {/* Step 8 – Refine with Hull Edge Alignment (CW/CCW Neighbor Comparison) */}
-              {/* Compare adjacent hull neighbors using Hull Edge Alignment scoring */}
-              {inView &&
-                convexHullPoints.length > 0 &&
-                hullCentroid &&
-                lines.length > 0 &&
-                refinedSegments && (
-                  <AnimatedHullEdgeAlignment
-                    key={`hull-edge-alignment-${resetKey}`}
-                    hull={convexHullPoints}
-                    refinedSegments={refinedSegments}
-                    svgWidth={svgWidth}
-                    svgHeight={svgHeight}
-                    delay={extentsDelay + 2000}
-                  />
-                )}
-
-              {/* Step 9 – Compute Final Receipt Quadrilateral */}
-              {/* Intersect refined left/right boundaries with top/bottom edges */}
-              {inView &&
-                boundaries.top &&
-                boundaries.bottom &&
-                boundaries.left &&
-                boundaries.right && (
-                  <AnimatedFinalReceiptBox
-                    key={`final-receipt-box-${resetKey}`}
-                    boundaries={boundaries}
-                    fallbackCentroid={hullCentroid}
-                    svgWidth={svgWidth}
-                    svgHeight={svgHeight}
-                    delay={receiptDelay}
-                  />
-                )}
+              {/* Step 6: Compute Final Receipt Quadrilateral */}
+              {inView && finalReceiptBox.length === 4 && (
+                <AnimatedFinalReceiptBox
+                  key={`final-receipt-box-${resetKey}`}
+                  finalReceiptBox={finalReceiptBox}
+                  topLineCorners={topLineCorners}
+                  bottomLineCorners={bottomLineCorners}
+                  leftmostHullPoint={leftmostHullPoint}
+                  rightmostHullPoint={rightmostHullPoint}
+                  avgAngleRad={avgAngleRad}
+                  svgWidth={svgWidth}
+                  svgHeight={svgHeight}
+                  delay={receiptDelay}
+                />
+              )}
             </svg>
           ) : (
-            // While loading, show a "Loading" message centered in the reserved space.
             <div
               style={{
                 display: "flex",

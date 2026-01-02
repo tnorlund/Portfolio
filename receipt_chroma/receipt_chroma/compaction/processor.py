@@ -3,6 +3,7 @@
 import os
 from typing import Any, List, Optional
 
+from receipt_chroma.compaction.deletions import apply_receipt_deletions
 from receipt_chroma.compaction.deltas import merge_compaction_deltas
 from receipt_chroma.compaction.labels import apply_label_updates
 from receipt_chroma.compaction.metadata import apply_place_updates
@@ -56,6 +57,16 @@ def process_collection_updates(
     delta_msgs = [
         m for m in stream_messages if m.entity_type == "COMPACTION_RUN"
     ]
+    # Entity deletions: when entities are deleted from DynamoDB, we need
+    # to delete corresponding embeddings from ChromaDB
+    # - RECEIPT: delete all embeddings for the receipt
+    # - RECEIPT_WORD: delete the specific word embedding
+    # - RECEIPT_LINE: delete the specific line embedding
+    deletion_entity_types = {"RECEIPT", "RECEIPT_WORD", "RECEIPT_LINE"}
+    entity_deletion_msgs = [
+        m for m in stream_messages
+        if m.entity_type in deletion_entity_types and m.event_name == "REMOVE"
+    ]
 
     logger.info(
         "Categorized stream messages",
@@ -64,6 +75,7 @@ def process_collection_updates(
         place_count=len(place_msgs),
         label_count=len(label_msgs),
         delta_count=len(delta_msgs),
+        entity_deletion_count=len(entity_deletion_msgs),
     )
 
     # Apply updates in order: deltas first, then place updates, then labels
@@ -138,6 +150,27 @@ def process_collection_updates(
             message_count=len(label_results),
         )
 
+    # 4. Apply entity deletions (receipts, words, lines)
+    deletion_results = apply_receipt_deletions(
+        chroma_client=chroma_client,
+        receipt_messages=entity_deletion_msgs,
+        collection=collection,
+        logger=logger,
+        metrics=metrics,
+        dynamo_client=dynamo_client,
+    )
+
+    if deletion_results:
+        total_deleted = sum(
+            r.deleted_count for r in deletion_results if r.error is None
+        )
+        logger.info(
+            "Applied entity deletions",
+            collection=collection.value,
+            total_deleted=total_deleted,
+            deletion_count=len(deletion_results),
+        )
+
     # Build aggregate result
     result = CollectionUpdateResult(
         collection=collection,
@@ -145,6 +178,7 @@ def process_collection_updates(
         label_updates=label_results,
         delta_merge_count=delta_count,
         delta_merge_results=delta_results,
+        receipt_deletions=deletion_results,
     )
 
     # Log summary
@@ -154,6 +188,7 @@ def process_collection_updates(
         metadata_updated=result.total_metadata_updated,
         labels_updated=result.total_labels_updated,
         deltas_merged=delta_count,
+        embeddings_deleted=result.total_deletions,
         has_errors=result.has_errors,
     )
 
@@ -176,6 +211,11 @@ def process_collection_updates(
         metrics.gauge(
             "CompactionDeltasMergedCount",
             delta_count,
+            {"collection": collection.value},
+        )
+        metrics.gauge(
+            "CompactionEmbeddingsDeletedCount",
+            result.total_deletions,
             {"collection": collection.value},
         )
 

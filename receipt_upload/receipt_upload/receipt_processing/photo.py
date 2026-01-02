@@ -1,27 +1,19 @@
 import json
+import logging
 import math
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 from PIL import Image as PIL_Image
 from PIL.Image import Resampling, Transform
 from receipt_upload.cluster import dbscan_lines
 from receipt_upload.geometry import (
-    compute_final_receipt_tilt,
-    compute_hull_centroid,
-    compute_receipt_box_from_boundaries,
-    compute_receipt_box_from_skewed_extents,
+    compute_rotated_bounding_box_corners,
     convex_hull,
-    create_boundary_line_from_points,
-    create_boundary_line_from_theil_sen,
-    create_horizontal_boundary_line_from_points,
-    find_hull_extents_relative_to_centroid,
-    find_hull_extremes_along_angle,
-    find_line_edges_at_secondary_extremes,
     find_perspective_coeffs,
-    refine_hull_extremes_with_hull_edge_alignment,
-    theil_sen,
 )
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.utils import (
@@ -155,8 +147,9 @@ def process_photo(
         try:
             # Validate cluster has sufficient data
             if len(cluster_lines) < 3:
-                print(
-                    f"Skipping cluster {cluster_id}: insufficient lines ({len(cluster_lines)})"
+                logger.debug(
+                    "Skipping cluster %d: insufficient lines (%d)",
+                    cluster_id, len(cluster_lines)
                 )
                 continue
 
@@ -164,8 +157,9 @@ def process_photo(
             cluster_words = [w for w in ocr_words if w.line_id in line_ids]
 
             if len(cluster_words) < 4:
-                print(
-                    f"Skipping cluster {cluster_id}: insufficient words ({len(cluster_words)})"
+                logger.debug(
+                    "Skipping cluster %d: insufficient words (%d)",
+                    cluster_id, len(cluster_words)
                 )
                 continue
 
@@ -180,105 +174,102 @@ def process_photo(
                 all_word_corners.extend([(int(x), int(y)) for x, y in corners])
 
             if len(all_word_corners) < 4:
-                print(
-                    f"Skipping cluster {cluster_id}: insufficient corner points ({len(all_word_corners)})"
+                logger.debug(
+                    "Skipping cluster %d: insufficient corner points (%d)",
+                    cluster_id, len(all_word_corners)
                 )
                 continue
 
             # Compute hull and transform
             hull = convex_hull(all_word_corners)
             if len(hull) < 4:
-                print(
-                    f"Skipping cluster {cluster_id}: hull has insufficient points ({len(hull)})"
+                logger.debug(
+                    "Skipping cluster %d: hull has insufficient points (%d)",
+                    cluster_id, len(hull)
                 )
                 continue
 
-            cx, cy = compute_hull_centroid(hull)
-            find_hull_extents_relative_to_centroid(hull, cx, cy)
-            # Get average angle of lines in cluster
-            avg_angle = sum(
-                line.angle_degrees for line in cluster_lines
-            ) / len(cluster_lines)
+            # Find top and bottom lines by Y position
+            # OCR normalized coords: y=0 at bottom, y=1 at top (standard math coords)
+            # Use line centroid (average of all 4 corners) for more robust sorting
+            # This handles tilted lines where one corner may be higher than another
+            def get_line_centroid_y(line):
+                return (
+                    line.top_left["y"] + line.top_right["y"] +
+                    line.bottom_left["y"] + line.bottom_right["y"]
+                ) / 4
 
-            # Compute receipt box corners using step-by-step geometry utilities
-            final_angle = compute_final_receipt_tilt(
-                cluster_lines, hull, (cx, cy), avg_angle
+            # Sort descending so highest Y (top of image) comes first
+            sorted_lines = sorted(
+                cluster_lines,
+                key=get_line_centroid_y,
+                reverse=True,
             )
-            extremes = find_hull_extremes_along_angle(
-                hull, (cx, cy), final_angle
+            top_line = sorted_lines[0]      # Highest Y = top of image
+            bottom_line = sorted_lines[-1]  # Lowest Y = bottom of image
+
+            # Check if receipt is upside down based on line angles
+            # Line angles near 0° = right-side up, near ±180° = upside down
+            angles = [line.angle_degrees for line in cluster_lines]
+            avg_angle = sum(angles) / len(angles) if angles else 0.0
+            if abs(avg_angle) > 90:
+                # Receipt is upside down - swap top and bottom
+                logger.debug(
+                    "Cluster %d appears upside down (avg_angle=%.1f°), swapping top/bottom",
+                    cluster_id, avg_angle
+                )
+                top_line, bottom_line = bottom_line, top_line
+
+            # Get corners from top and bottom lines in pixel coordinates
+            # calculate_corners returns: (top_left, top_right, bottom_left, bottom_right)
+            top_line_corners = top_line.calculate_corners(
+                width=image.width, height=image.height, flip_y=True
             )
-            refined = refine_hull_extremes_with_hull_edge_alignment(
-                hull,
-                extremes["leftPoint"],
-                extremes["rightPoint"],
-                final_angle,
-            )
-            edge_points = find_line_edges_at_secondary_extremes(
-                cluster_lines, hull, (cx, cy), final_angle
-            )
-            boundaries = {
-                "top": create_horizontal_boundary_line_from_points(
-                    edge_points["topEdge"]
-                ),
-                "bottom": create_horizontal_boundary_line_from_points(
-                    edge_points["bottomEdge"]
-                ),
-                "left": create_boundary_line_from_points(
-                    refined["leftSegment"]["extreme"],
-                    refined["leftSegment"]["optimizedNeighbor"],
-                ),
-                "right": create_boundary_line_from_points(
-                    refined["rightSegment"]["extreme"],
-                    refined["rightSegment"]["optimizedNeighbor"],
-                ),
-            }
-            receipt_box_corners = compute_receipt_box_from_boundaries(
-                boundaries["top"],
-                boundaries["bottom"],
-                boundaries["left"],
-                boundaries["right"],
-                (cx, cy),
+            bottom_line_corners = bottom_line.calculate_corners(
+                width=image.width, height=image.height, flip_y=True
             )
 
-            # DEBUG: Log the corner points to understand the geometry
-            print(f"Cluster {cluster_id} receipt_box_corners:")
+            # Compute receipt corners using true perspective transformation
+            # - Top/bottom edges: follow natural angles of top/bottom text lines
+            # - Left/right edges: fitted through hull points (not forced perpendicular)
+            # This creates a general quadrilateral matching actual perspective distortion
+            receipt_box_corners = compute_rotated_bounding_box_corners(
+                hull, top_line_corners, bottom_line_corners
+            )
+
+            # Log the corner points
+            logger.debug(
+                "Cluster %d corners: top_line='%s' (y=%.3f), bottom_line='%s' (y=%.3f)",
+                cluster_id,
+                top_line.text[:50],
+                top_line.top_left["y"],
+                bottom_line.text[:50],
+                bottom_line.top_left["y"],
+            )
             for i, corner in enumerate(receipt_box_corners):
-                print(f"  Point {i}: ({corner[0]:.2f}, {corner[1]:.2f})")
-
-            # Reorder corners to match dst_corners order (top-left, top-right, bottom-right, bottom-left)
-            # Current geometry pipeline returns: [bottom-left, bottom-right, top-right, top-left]
-            # We need: [top-left, top-right, bottom-right, bottom-left]
-            # So reorder: [3, 2, 1, 0]
-            receipt_box_corners = [
-                receipt_box_corners[3],  # top-left
-                receipt_box_corners[2],  # top-right
-                receipt_box_corners[1],  # bottom-right
-                receipt_box_corners[0],  # bottom-left
-            ]
-
-            print(f"Cluster {cluster_id} reordered corners:")
-            for i, corner in enumerate(receipt_box_corners):
-                print(f"  Point {i}: ({corner[0]:.2f}, {corner[1]:.2f})")
+                logger.debug("  Point %d: (%.2f, %.2f)", i, corner[0], corner[1])
 
             # Check distances between points and detect duplicates
-            print(f"Cluster {cluster_id} distances:")
+            logger.debug("Cluster %d distances:", cluster_id)
             has_duplicates = False
             for i in range(4):
                 for j in range(i + 1, 4):
                     dist = math.dist(
                         receipt_box_corners[i], receipt_box_corners[j]
                     )
-                    print(f"  Distance {i}-{j}: {dist:.2f}")
+                    logger.debug("  Distance %d-%d: %.2f", i, j, dist)
                     if dist < 1.0:  # Points are essentially identical
                         has_duplicates = True
-                        print(
-                            f"  ⚠️  Points {i} and {j} are too close together!"
+                        logger.warning(
+                            "Cluster %d: Points %d and %d are too close together!",
+                            cluster_id, i, j
                         )
 
             # Skip if we have duplicate corners
             if has_duplicates:
-                print(
-                    f"Skipping cluster {cluster_id}: detected duplicate/near-duplicate corners"
+                logger.warning(
+                    "Skipping cluster %d: detected duplicate/near-duplicate corners",
+                    cluster_id
                 )
                 continue
 
@@ -287,8 +278,9 @@ def process_photo(
                 isinstance(corner, (list, tuple)) and len(corner) == 2
                 for corner in receipt_box_corners
             ):
-                print(
-                    f"Skipping cluster {cluster_id}: invalid receipt box corners"
+                logger.warning(
+                    "Skipping cluster %d: invalid receipt box corners",
+                    cluster_id
                 )
                 continue
 
@@ -299,8 +291,9 @@ def process_photo(
             max_y = max(corner[1] for corner in receipt_box_corners)
 
             if (max_x - min_x) < 10 or (max_y - min_y) < 10:
-                print(
-                    f"Skipping cluster {cluster_id}: degenerate rectangle ({max_x-min_x}x{max_y-min_y})"
+                logger.warning(
+                    "Skipping cluster %d: degenerate rectangle (%.0fx%.0f)",
+                    cluster_id, max_x - min_x, max_y - min_y
                 )
                 continue
 
@@ -322,8 +315,9 @@ def process_photo(
                 or source_width > 10000
                 or source_height > 10000
             ):
-                print(
-                    f"Skipping cluster {cluster_id}: unreasonable dimensions ({source_width}x{source_height})"
+                logger.warning(
+                    "Skipping cluster %d: unreasonable dimensions (%.0fx%.0f)",
+                    cluster_id, source_width, source_height
                 )
                 continue
 
@@ -343,10 +337,11 @@ def process_photo(
                     src_points=receipt_box_corners, dst_points=dst_corners
                 )
             except ValueError as e:
-                print(
-                    f"Perspective transform failed for cluster {cluster_id}: {e}"
+                logger.warning(
+                    "Perspective transform failed for cluster %d: %s. "
+                    "Falling back to simple bounding rectangle...",
+                    cluster_id, e
                 )
-                print("Falling back to simple bounding rectangle...")
 
                 # Fallback: Use hull bounding rectangle
                 hull_xs = [p[0] for p in hull]
@@ -363,15 +358,16 @@ def process_photo(
                     (min_x - padding, max_y + padding),  # bottom-left
                 ]
 
-                print(f"Fallback corners: {receipt_box_corners}")
+                logger.debug("Fallback corners: %s", receipt_box_corners)
 
                 try:
                     transform_coeffs = find_perspective_coeffs(
                         src_points=receipt_box_corners, dst_points=dst_corners
                     )
                 except ValueError as fallback_error:
-                    print(
-                        f"Even fallback failed for cluster {cluster_id}: {fallback_error}"
+                    logger.error(
+                        "Even fallback failed for cluster %d: %s",
+                        cluster_id, fallback_error
                     )
                     continue
 
@@ -487,7 +483,7 @@ def process_photo(
             successful_clusters += 1
 
         except Exception as e:
-            print(f"Error processing cluster {cluster_id}: {e}")
+            logger.exception("Error processing cluster %d: %s", cluster_id, e)
             continue
 
     ocr_routing_decision.status = OCRStatus.COMPLETED.value

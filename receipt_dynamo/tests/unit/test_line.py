@@ -1328,3 +1328,130 @@ def test_item_to_line(example_line):
                 "confidence": {"N": "0.90"},
             }
         )
+
+
+# =============================================================================
+# Tests for calculate_corners() method (Phase 1: Simplified PHOTO transform)
+# =============================================================================
+
+
+@pytest.fixture
+def normalized_line():
+    """Create a line with normalized coordinates (0-1 range)."""
+    return Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="Test line",
+        bounding_box={"x": 0.1, "y": 0.2, "width": 0.8, "height": 0.1},
+        top_right={"x": 0.9, "y": 0.9},
+        top_left={"x": 0.1, "y": 0.9},
+        bottom_right={"x": 0.9, "y": 0.8},
+        bottom_left={"x": 0.1, "y": 0.8},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.95,
+    )
+
+
+@pytest.mark.unit
+def test_line_calculate_corners_no_scaling(normalized_line):
+    """Test calculate_corners without width/height scaling."""
+    corners = normalized_line.calculate_corners()
+
+    # Should return normalized coordinates as-is
+    assert corners[0] == (0.1, 0.9)  # top_left
+    assert corners[1] == (0.9, 0.9)  # top_right
+    assert corners[2] == (0.1, 0.8)  # bottom_left
+    assert corners[3] == (0.9, 0.8)  # bottom_right
+
+
+@pytest.mark.unit
+def test_line_calculate_corners_with_scaling(normalized_line):
+    """Test calculate_corners with width/height scaling to pixel coordinates."""
+    corners = normalized_line.calculate_corners(width=1000, height=800)
+
+    # Should scale to pixel coordinates
+    assert corners[0] == pytest.approx((100.0, 720.0))  # top_left: 0.1*1000, 0.9*800
+    assert corners[1] == pytest.approx((900.0, 720.0))  # top_right: 0.9*1000, 0.9*800
+    assert corners[2] == pytest.approx((100.0, 640.0))  # bottom_left: 0.1*1000, 0.8*800
+    assert corners[3] == pytest.approx((900.0, 640.0))  # bottom_right: 0.9*1000, 0.8*800
+
+
+@pytest.mark.unit
+def test_line_calculate_corners_with_flip_y(normalized_line):
+    """Test calculate_corners with Y-axis flip for image coordinate systems."""
+    corners = normalized_line.calculate_corners(width=1000, height=800, flip_y=True)
+
+    # With flip_y, y_pixel = height - (y_normalized * height)
+    # top_left: y = 800 - (0.9 * 800) = 800 - 720 = 80
+    # bottom_left: y = 800 - (0.8 * 800) = 800 - 640 = 160
+    assert corners[0] == pytest.approx((100.0, 80.0))  # top_left
+    assert corners[1] == pytest.approx((900.0, 80.0))  # top_right
+    assert corners[2] == pytest.approx((100.0, 160.0))  # bottom_left
+    assert corners[3] == pytest.approx((900.0, 160.0))  # bottom_right
+
+
+@pytest.mark.unit
+def test_line_calculate_corners_requires_both_dimensions():
+    """Test that calculate_corners raises error if only one dimension provided."""
+    line = create_test_line()
+
+    with pytest.raises(ValueError, match="Both width and height must be provided"):
+        line.calculate_corners(width=1000)
+
+    with pytest.raises(ValueError, match="Both width and height must be provided"):
+        line.calculate_corners(height=800)
+
+
+@pytest.mark.unit
+def test_line_calculate_corners_typical_receipt():
+    """Test calculate_corners with typical receipt line coordinates."""
+    # Simulate a line near the top of a receipt (high Y in normalized coords)
+    line = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="RECEIPT HEADER",
+        bounding_box={"x": 0.15, "y": 0.85, "width": 0.7, "height": 0.03},
+        top_right={"x": 0.85, "y": 0.88},
+        top_left={"x": 0.15, "y": 0.88},
+        bottom_right={"x": 0.85, "y": 0.85},
+        bottom_left={"x": 0.15, "y": 0.85},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.95,
+    )
+
+    # Image dimensions typical for phone photo
+    corners = line.calculate_corners(width=3024, height=4032, flip_y=True)
+
+    # Verify corners are in expected pixel ranges
+    # Top-left X should be around 15% of width = ~453
+    assert 450 < corners[0][0] < 460
+    # Top-left Y with flip should be near top of image (low Y value)
+    # y = 4032 - (0.88 * 4032) = 4032 - 3548 = 484
+    assert 480 < corners[0][1] < 490
+
+
+@pytest.mark.unit
+def test_line_calculate_corners_tilted_line():
+    """Test calculate_corners with a tilted line (non-axis-aligned corners)."""
+    # Simulate a slightly tilted line
+    line = Line(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=1,
+        text="TILTED TEXT",
+        bounding_box={"x": 0.1, "y": 0.5, "width": 0.8, "height": 0.05},
+        top_right={"x": 0.92, "y": 0.56},  # Slightly higher on right
+        top_left={"x": 0.1, "y": 0.55},
+        bottom_right={"x": 0.9, "y": 0.51},
+        bottom_left={"x": 0.08, "y": 0.5},
+        angle_degrees=2.0,
+        angle_radians=0.0349,
+        confidence=0.95,
+    )
+
+    corners = line.calculate_corners(width=1000, height=1000, flip_y=True)
+
+    # Verify the tilt is preserved in pixel coordinates
+    # Top-right Y should be lower than top-left Y (after flip)
+    assert corners[1][1] < corners[0][1]  # TR.y < TL.y (after flip, lower Y = higher in image)

@@ -36,7 +36,12 @@ from .transformations import (
     invert_warp,
     pad_corners_opposite,
 )
-from .utils import theil_sen
+from .utils import (
+    circular_mean_angle,
+    compute_rotated_bounding_box_corners,
+    line_intersection,
+    theil_sen,
+)
 
 __all__ = [
     # Edge detection
@@ -63,5 +68,8 @@ __all__ = [
     "invert_warp",
     "pad_corners_opposite",
     # Utils
+    "circular_mean_angle",
+    "compute_rotated_bounding_box_corners",
+    "line_intersection",
     "theil_sen",
 ]

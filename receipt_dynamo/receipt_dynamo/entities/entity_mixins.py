@@ -814,6 +814,69 @@ class GeometryMixin:
         ) / 4
         return x, y
 
+    def calculate_corners(
+        self,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+        flip_y: bool = False,
+    ) -> Tuple[
+        Tuple[float, float],
+        Tuple[float, float],
+        Tuple[float, float],
+        Tuple[float, float],
+    ]:
+        """Calculates the four corners in image coordinates.
+
+        Converts normalized coordinates (0-1) to pixel coordinates if width/height
+        are provided. Optionally flips Y coordinates for image coordinate systems
+        where Y=0 is at the top.
+
+        Args:
+            width: The width of the image to scale coordinates. Defaults to None.
+            height: The height of the image to scale coordinates. Defaults to None.
+            flip_y: Whether to flip the y coordinate. Defaults to False.
+
+        Returns:
+            Tuple of four corner coordinates: (top_left, top_right, bottom_left, bottom_right)
+            Each corner is a (x, y) tuple.
+
+        Raises:
+            ValueError: If only one of width or height is provided.
+        """
+        if (width is None) != (height is None):
+            raise ValueError("Both width and height must be provided together")
+
+        if width is not None and height is not None:
+            x_scale: float = float(width)
+            y_scale: float = float(height)
+        else:
+            x_scale = y_scale = 1.0
+
+        top_left_x = self.top_left["x"] * x_scale
+        top_right_x = self.top_right["x"] * x_scale
+        bottom_left_x = self.bottom_left["x"] * x_scale
+        bottom_right_x = self.bottom_right["x"] * x_scale
+
+        if flip_y:
+            if height is None:
+                raise ValueError("height is required when flip_y=True")
+            top_left_y = height - (self.top_left["y"] * y_scale)
+            top_right_y = height - (self.top_right["y"] * y_scale)
+            bottom_left_y = height - (self.bottom_left["y"] * y_scale)
+            bottom_right_y = height - (self.bottom_right["y"] * y_scale)
+        else:
+            top_left_y = self.top_left["y"] * y_scale
+            top_right_y = self.top_right["y"] * y_scale
+            bottom_left_y = self.bottom_left["y"] * y_scale
+            bottom_right_y = self.bottom_right["y"] * y_scale
+
+        return (
+            (top_left_x, top_left_y),
+            (top_right_x, top_right_y),
+            (bottom_left_x, bottom_left_y),
+            (bottom_right_x, bottom_right_y),
+        )
+
     def is_point_in_bounding_box(self, x: float, y: float) -> bool:
         """Determines if a point (x,y) is inside the bounding box.
 
