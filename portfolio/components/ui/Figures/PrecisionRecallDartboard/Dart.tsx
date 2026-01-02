@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { animated, useSpring } from "@react-spring/web";
 import type { DartProps } from "./types";
 
@@ -12,10 +12,18 @@ const Dart: React.FC<DartProps> = ({
   animationDelay = 0,
   size = 12,
 }) => {
+  const [shouldAnimate, setShouldAnimate] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShouldAnimate(true);
+    }, animationDelay);
+    return () => clearTimeout(timer);
+  }, [animationDelay]);
+
   const springProps = useSpring({
-    from: { opacity: 0, scale: 0 },
-    to: { opacity: 1, scale: 1 },
-    delay: animationDelay,
+    opacity: shouldAnimate ? 1 : 0,
+    scale: shouldAnimate ? 1 : 0,
     config: { tension: 300, friction: 20 },
   });
 
