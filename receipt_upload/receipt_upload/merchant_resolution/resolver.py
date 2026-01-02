@@ -418,9 +418,9 @@ class MerchantResolver:
                     resolution_tier="place_id_finder",
                 )
 
-        except ImportError:
-            _log("WARNING: receipt_agent not available for Place ID Finder")
-            logger.warning("receipt_agent import failed")
+        except ImportError as e:
+            _log(f"WARNING: receipt_agent import failed: {e}")
+            logger.warning("receipt_agent import failed", exc_info=True)
         except Exception as e:
             _log(f"Error running Place ID Finder: {e}")
             logger.exception("Place ID Finder failed")
