@@ -233,19 +233,35 @@ class OCRProcessor:
         all_receipt_lines = []
         all_receipt_words = []
 
-        for receipt_data in receipts:
-            receipt_id = receipt_data["cluster_id"]
-            bounds = receipt_data["bounds"]
+        for receipt_idx, receipt_data in enumerate(receipts):
+            try:
+                # Validate required fields exist
+                receipt_id = receipt_data["cluster_id"]
+                bounds = receipt_data["bounds"]
+                s3_key = receipt_data["s3_key"]
+                warped_width = receipt_data["warped_width"]
+                warped_height = receipt_data["warped_height"]
+
+                # Validate bounds structure has all required corners
+                required_corners = ["top_left", "top_right", "bottom_left", "bottom_right"]
+                if not all(corner in bounds for corner in required_corners):
+                    raise ValueError(f"Missing required bounds corners for receipt {receipt_id}")
+
+            except (KeyError, ValueError) as e:
+                logger.error(
+                    f"Skipping malformed receipt {receipt_idx} in image {image_id}: {e}"
+                )
+                continue
 
             # Create Receipt entity
             # Note: warped images already uploaded by Swift OCRWorker
-            raw_s3_key = f"receipts/{image_id}/{receipt_data['s3_key']}"
+            raw_s3_key = f"receipts/{image_id}/{s3_key}"
 
             receipt = Receipt(
                 image_id=image_id,
                 receipt_id=receipt_id,
-                width=receipt_data["warped_width"],
-                height=receipt_data["warped_height"],
+                width=warped_width,
+                height=warped_height,
                 timestamp_added=current_time,
                 raw_s3_bucket=ocr_job.s3_bucket,
                 raw_s3_key=raw_s3_key,
@@ -323,6 +339,17 @@ class OCRProcessor:
         receipt_words = []
         receipt_letters = []
 
+        def _has_valid_geometry(data: dict) -> bool:
+            """Check if geometry fields have required keys."""
+            bbox = data.get("bounding_box", {})
+            if not all(k in bbox for k in ("x", "y", "width", "height")):
+                return False
+            for corner in ("top_left", "top_right", "bottom_left", "bottom_right"):
+                point = data.get(corner, {})
+                if not all(k in point for k in ("x", "y")):
+                    return False
+            return True
+
         for line_idx, line_data in enumerate(lines_data, start=1):
             line_text = line_data.get("text", "")
             if not line_text:
@@ -331,16 +358,22 @@ class OCRProcessor:
                 )
                 continue
 
+            if not _has_valid_geometry(line_data):
+                logger.warning(
+                    f"Skipping line {line_idx} with missing geometry for receipt {receipt_id}"
+                )
+                continue
+
             receipt_line = ReceiptLine(
                 image_id=image_id,
                 receipt_id=receipt_id,
                 line_id=line_idx,
                 text=line_text,
-                bounding_box=line_data.get("bounding_box", {}),
-                top_left=line_data.get("top_left", {}),
-                top_right=line_data.get("top_right", {}),
-                bottom_left=line_data.get("bottom_left", {}),
-                bottom_right=line_data.get("bottom_right", {}),
+                bounding_box=line_data["bounding_box"],
+                top_left=line_data["top_left"],
+                top_right=line_data["top_right"],
+                bottom_left=line_data["bottom_left"],
+                bottom_right=line_data["bottom_right"],
                 angle_degrees=line_data.get("angle_degrees", 0.0),
                 angle_radians=line_data.get("angle_radians", 0.0),
                 confidence=line_data.get("confidence", 1.0),
@@ -360,17 +393,24 @@ class OCRProcessor:
                     )
                     continue
 
+                if not _has_valid_geometry(word_data):
+                    logger.warning(
+                        f"Skipping word {word_idx} in line {line_idx} "
+                        f"with missing geometry for receipt {receipt_id}"
+                    )
+                    continue
+
                 receipt_word = ReceiptWord(
                     image_id=image_id,
                     receipt_id=receipt_id,
                     line_id=line_idx,
                     word_id=word_idx,
                     text=word_text,
-                    bounding_box=word_data.get("bounding_box", {}),
-                    top_left=word_data.get("top_left", {}),
-                    top_right=word_data.get("top_right", {}),
-                    bottom_left=word_data.get("bottom_left", {}),
-                    bottom_right=word_data.get("bottom_right", {}),
+                    bounding_box=word_data["bounding_box"],
+                    top_left=word_data["top_left"],
+                    top_right=word_data["top_right"],
+                    bottom_left=word_data["bottom_left"],
+                    bottom_right=word_data["bottom_right"],
                     angle_degrees=word_data.get("angle_degrees", 0.0),
                     angle_radians=word_data.get("angle_radians", 0.0),
                     confidence=word_confidence,
@@ -388,6 +428,10 @@ class OCRProcessor:
                     if len(letter_text) != 1 or letter_confidence <= 0.0:
                         continue
 
+                    # Skip letters with missing geometry
+                    if not _has_valid_geometry(letter_data):
+                        continue
+
                     receipt_letter = ReceiptLetter(
                         image_id=image_id,
                         receipt_id=receipt_id,
@@ -395,11 +439,11 @@ class OCRProcessor:
                         word_id=word_idx,
                         letter_id=letter_idx,
                         text=letter_text,
-                        bounding_box=letter_data.get("bounding_box", {}),
-                        top_left=letter_data.get("top_left", {}),
-                        top_right=letter_data.get("top_right", {}),
-                        bottom_left=letter_data.get("bottom_left", {}),
-                        bottom_right=letter_data.get("bottom_right", {}),
+                        bounding_box=letter_data["bounding_box"],
+                        top_left=letter_data["top_left"],
+                        top_right=letter_data["top_right"],
+                        bottom_left=letter_data["bottom_left"],
+                        bottom_right=letter_data["bottom_right"],
                         angle_degrees=letter_data.get("angle_degrees", 0.0),
                         angle_radians=letter_data.get("angle_radians", 0.0),
                         confidence=letter_confidence,

@@ -57,11 +57,19 @@ private func parseReceiptsFromJSON(_ jsonData: Data) -> [ParsedReceiptInfo] {
             return nil
         }
 
+        // Validate all coordinate values exist - skip malformed receipts
+        guard let topLeftX = topLeft["x"], let topLeftY = topLeft["y"],
+              let topRightX = topRight["x"], let topRightY = topRight["y"],
+              let bottomRightX = bottomRight["x"], let bottomRightY = bottomRight["y"],
+              let bottomLeftX = bottomLeft["x"], let bottomLeftY = bottomLeft["y"] else {
+            return nil
+        }
+
         let bounds = ReceiptBoundsInfo(
-            topLeft: (x: topLeft["x"] ?? 0, y: topLeft["y"] ?? 0),
-            topRight: (x: topRight["x"] ?? 0, y: topRight["y"] ?? 0),
-            bottomRight: (x: bottomRight["x"] ?? 0, y: bottomRight["y"] ?? 0),
-            bottomLeft: (x: bottomLeft["x"] ?? 0, y: bottomLeft["y"] ?? 0)
+            topLeft: (x: topLeftX, y: topLeftY),
+            topRight: (x: topRightX, y: topRightY),
+            bottomRight: (x: bottomRightX, y: bottomRightY),
+            bottomLeft: (x: bottomLeftX, y: bottomLeftY)
         )
 
         return ParsedReceiptInfo(

@@ -29,6 +29,7 @@ from pulumi_aws.s3 import Bucket
 from pulumi_aws.sqs import Queue
 
 config = Config("portfolio")
+current_region = aws.get_region()
 openai_api_key = config.require_secret("OPENAI_API_KEY")
 pinecone_api_key = config.require_secret("PINECONE_API_KEY")
 pinecone_index_name = config.require("PINECONE_INDEX_NAME")
@@ -472,7 +473,7 @@ class UploadImages(ComponentResource):
                 "OPENAI_API_KEY": openai_api_key,
                 # receipt_places config for PlacesClient cache
                 "RECEIPT_PLACES_TABLE_NAME": dynamodb_table.name,
-                "RECEIPT_PLACES_AWS_REGION": "us-east-1",
+                "RECEIPT_PLACES_AWS_REGION": current_region.name,
                 # LangGraph validation with Ollama
                 "OLLAMA_API_KEY": ollama_api_key,
                 "LANGCHAIN_API_KEY": langchain_api_key,
