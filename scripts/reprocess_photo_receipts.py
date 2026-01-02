@@ -545,7 +545,7 @@ def main():
 
     table_name = env.get("dynamodb_table_name")
     raw_bucket = env.get("raw_bucket_name")
-    site_bucket = env.get("site_bucket_name")
+    site_bucket = env.get("cdn_bucket_name")  # CDN bucket for warped receipt images
     ocr_job_queue_url = env.get("ocr_job_queue_url")
 
     if not all([table_name, raw_bucket, site_bucket, ocr_job_queue_url]):
