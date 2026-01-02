@@ -6,7 +6,7 @@
 
 # Interface: RandomReceiptDetailsResponse
 
-Defined in: [types/api.ts:171](https://github.com/tnorlund/Portfolio/blob/7d2a12a2362a645970c6d04c7d2374aa96af3b57/portfolio/types/api.ts#L171)
+Defined in: [types/api.ts:171](https://github.com/tnorlund/Portfolio/blob/94dd345e066bb69353485d37353c77474571da41/portfolio/types/api.ts#L171)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:171](https://github.com/tnorlund/Portfolio/blob/7d2a12
 
 > **labels**: [`ReceiptWordLabel`](ReceiptWordLabel.md)[]
 
-Defined in: [types/api.ts:174](https://github.com/tnorlund/Portfolio/blob/7d2a12a2362a645970c6d04c7d2374aa96af3b57/portfolio/types/api.ts#L174)
+Defined in: [types/api.ts:174](https://github.com/tnorlund/Portfolio/blob/94dd345e066bb69353485d37353c77474571da41/portfolio/types/api.ts#L174)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:174](https://github.com/tnorlund/Portfolio/blob/7d2a12
 
 > **receipt**: [`Receipt`](Receipt.md)
 
-Defined in: [types/api.ts:172](https://github.com/tnorlund/Portfolio/blob/7d2a12a2362a645970c6d04c7d2374aa96af3b57/portfolio/types/api.ts#L172)
+Defined in: [types/api.ts:172](https://github.com/tnorlund/Portfolio/blob/94dd345e066bb69353485d37353c77474571da41/portfolio/types/api.ts#L172)
 
 ***
 
@@ -30,4 +30,4 @@ Defined in: [types/api.ts:172](https://github.com/tnorlund/Portfolio/blob/7d2a12
 
 > **words**: [`ReceiptWord`](ReceiptWord.md)[]
 
-Defined in: [types/api.ts:173](https://github.com/tnorlund/Portfolio/blob/7d2a12a2362a645970c6d04c7d2374aa96af3b57/portfolio/types/api.ts#L173)
+Defined in: [types/api.ts:173](https://github.com/tnorlund/Portfolio/blob/94dd345e066bb69353485d37353c77474571da41/portfolio/types/api.ts#L173)
