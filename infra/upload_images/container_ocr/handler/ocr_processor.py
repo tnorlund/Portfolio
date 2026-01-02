@@ -306,17 +306,29 @@ class OCRProcessor:
 
         The Swift JSON structure matches the standard OCR format with nested
         lines -> words -> letters.
+
+        Entries with invalid data are skipped with a warning:
+        - Lines with empty text are skipped
+        - Words with empty text or confidence <= 0 are skipped
+        - Letters with text != 1 char or confidence <= 0 are skipped
         """
         receipt_lines = []
         receipt_words = []
         receipt_letters = []
 
         for line_idx, line_data in enumerate(lines_data, start=1):
+            line_text = line_data.get("text", "")
+            if not line_text:
+                logger.warning(
+                    f"Skipping line {line_idx} with empty text for receipt {receipt_id}"
+                )
+                continue
+
             receipt_line = ReceiptLine(
                 image_id=image_id,
                 receipt_id=receipt_id,
                 line_id=line_idx,
-                text=line_data.get("text", ""),
+                text=line_text,
                 bounding_box=line_data.get("bounding_box", {}),
                 top_left=line_data.get("top_left", {}),
                 top_right=line_data.get("top_right", {}),
@@ -324,19 +336,29 @@ class OCRProcessor:
                 bottom_right=line_data.get("bottom_right", {}),
                 angle_degrees=line_data.get("angle_degrees", 0.0),
                 angle_radians=line_data.get("angle_radians", 0.0),
-                confidence=line_data.get("confidence", 0.0),
+                confidence=line_data.get("confidence", 1.0),
             )
             receipt_lines.append(receipt_line)
 
             for word_idx, word_data in enumerate(
                 line_data.get("words", []), start=1
             ):
+                word_text = word_data.get("text", "")
+                word_confidence = word_data.get("confidence", 0.0)
+
+                if not word_text or word_confidence <= 0.0:
+                    logger.warning(
+                        f"Skipping word {word_idx} in line {line_idx} "
+                        f"(empty text or confidence <= 0) for receipt {receipt_id}"
+                    )
+                    continue
+
                 receipt_word = ReceiptWord(
                     image_id=image_id,
                     receipt_id=receipt_id,
                     line_id=line_idx,
                     word_id=word_idx,
-                    text=word_data.get("text", ""),
+                    text=word_text,
                     bounding_box=word_data.get("bounding_box", {}),
                     top_left=word_data.get("top_left", {}),
                     top_right=word_data.get("top_right", {}),
@@ -344,7 +366,7 @@ class OCRProcessor:
                     bottom_right=word_data.get("bottom_right", {}),
                     angle_degrees=word_data.get("angle_degrees", 0.0),
                     angle_radians=word_data.get("angle_radians", 0.0),
-                    confidence=word_data.get("confidence", 0.0),
+                    confidence=word_confidence,
                     extracted_data=word_data.get("extracted_data"),
                 )
                 receipt_words.append(receipt_word)
@@ -352,13 +374,20 @@ class OCRProcessor:
                 for letter_idx, letter_data in enumerate(
                     word_data.get("letters", []), start=1
                 ):
+                    letter_text = letter_data.get("text", "")
+                    letter_confidence = letter_data.get("confidence", 0.0)
+
+                    # ReceiptLetter requires exactly 1 character and confidence > 0
+                    if len(letter_text) != 1 or letter_confidence <= 0.0:
+                        continue
+
                     receipt_letter = ReceiptLetter(
                         image_id=image_id,
                         receipt_id=receipt_id,
                         line_id=line_idx,
                         word_id=word_idx,
                         letter_id=letter_idx,
-                        text=letter_data.get("text", ""),
+                        text=letter_text,
                         bounding_box=letter_data.get("bounding_box", {}),
                         top_left=letter_data.get("top_left", {}),
                         top_right=letter_data.get("top_right", {}),
@@ -366,7 +395,7 @@ class OCRProcessor:
                         bottom_right=letter_data.get("bottom_right", {}),
                         angle_degrees=letter_data.get("angle_degrees", 0.0),
                         angle_radians=letter_data.get("angle_radians", 0.0),
-                        confidence=letter_data.get("confidence", 0.0),
+                        confidence=letter_confidence,
                     )
                     receipt_letters.append(receipt_letter)
 
