@@ -147,43 +147,56 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
       )}
 
       <div style={{ display: "flex", justifyContent: "center" }}>
-        {/* Precision labels (left) */}
+        {/* Precision labels (left) - using grid to match dartboard rows */}
         {showLabels && (
           <div
             style={{
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-around",
+              display: "grid",
+              gridTemplateRows: "1fr 1fr",
               marginRight: 4,
-              height: dartboardSize * 2 + gap,
               width: 24,
+              gap: `${gap}px`,
             }}
           >
             <div
               style={{
-                writingMode: "vertical-rl",
-                textOrientation: "mixed",
-                transform: "rotate(180deg)",
-                fontWeight: "bold",
-                fontSize: "0.75rem",
-                color: "var(--text-color)",
-                textAlign: "center",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              Low Precision
+              <div
+                style={{
+                  writingMode: "vertical-rl",
+                  textOrientation: "mixed",
+                  transform: "rotate(180deg)",
+                  fontWeight: "bold",
+                  fontSize: "0.75rem",
+                  color: "var(--text-color)",
+                }}
+              >
+                Low Precision
+              </div>
             </div>
             <div
               style={{
-                writingMode: "vertical-rl",
-                textOrientation: "mixed",
-                transform: "rotate(180deg)",
-                fontWeight: "bold",
-                fontSize: "0.75rem",
-                color: "var(--text-color)",
-                textAlign: "center",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              High Precision
+              <div
+                style={{
+                  writingMode: "vertical-rl",
+                  textOrientation: "mixed",
+                  transform: "rotate(180deg)",
+                  fontWeight: "bold",
+                  fontSize: "0.75rem",
+                  color: "var(--text-color)",
+                }}
+              >
+                High Precision
+              </div>
             </div>
           </div>
         )}
@@ -193,7 +206,7 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
           style={{
             display: "grid",
             gridTemplateColumns: `repeat(2, ${dartboardSize}px)`,
-            gridTemplateRows: `repeat(2, auto)`,
+            gridTemplateRows: `repeat(2, 1fr)`,
             gap: `${gap}px`,
           }}
         >
