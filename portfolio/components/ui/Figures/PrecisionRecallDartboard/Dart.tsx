@@ -31,6 +31,15 @@ const Dart: React.FC<DartProps> = ({
       }}
     >
       <g transform={`translate(${x}, ${y}) rotate(${angle})`}>
+        {/* Red circle around the X */}
+        <circle
+          cx={0}
+          cy={0}
+          r={size * 0.75}
+          fill="none"
+          stroke="var(--color-red)"
+          strokeWidth={strokeWidth}
+        />
         {/* Red X mark */}
         <line
           x1={-halfSize}
