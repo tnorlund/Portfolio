@@ -182,8 +182,8 @@ def delete_receipt_and_children(
         client.delete_receipt(receipt)
         logger.info(f"  ✓ Deleted receipt {receipt_id}")
         return True
-    except Exception as e:
-        logger.error(f"  ✗ Error deleting receipt: {e}")
+    except Exception:
+        logger.exception("  ✗ Error deleting receipt")
         return False
 
 
@@ -208,7 +208,7 @@ def reprocess_photo_receipts(
     try:
         image = client.get_image(image_id)
     except Exception as e:
-        logger.error(f"Image not found: {e}")
+        logger.exception("Image not found")
         return {"success": False, "error": str(e)}
 
     img_type = image.image_type.value if hasattr(image.image_type, 'value') else image.image_type
@@ -483,8 +483,8 @@ def reprocess_photo_receipts(
 
             successful_receipts += 1
 
-        except Exception as e:
-            logger.exception(f"Error processing cluster {cluster_id}: {e}")
+        except Exception:
+            logger.exception(f"Error processing cluster {cluster_id}")
             continue
 
     # Cleanup

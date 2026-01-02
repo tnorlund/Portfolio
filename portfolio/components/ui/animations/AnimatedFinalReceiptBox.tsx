@@ -163,6 +163,7 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
     leftmostHullPoint,
     rightmostHullPoint,
     avgAngleRad,
+    toSvg,
     svgWidth,
     svgHeight,
   ]);
