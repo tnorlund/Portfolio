@@ -25,13 +25,13 @@ type Pt = { x: number; y: number };
 // Default CI/CD segments (in order around the figure-8)
 // Plan -> Code -> Build -> Test -> Review -> Deploy -> Monitor
 const DEFAULT_SEGMENTS: SegmentSpec[] = [
-  { label: "Plan", color: "#FFC107" },
-  { label: "Code", color: "#4CAF50" },
-  { label: "Build", color: "#4CAF50" },
-  { label: "Test", color: "#2196F3" },
-  { label: "Review", color: "#2196F3" },
-  { label: "Deploy", color: "#F44336" },
-  { label: "Monitor", color: "#F44336" },
+  { label: "Plan", color: "var(--color-yellow)" },
+  { label: "Code", color: "var(--color-green)" },
+  { label: "Build", color: "var(--color-green)" },
+  { label: "Test", color: "var(--color-blue)" },
+  { label: "Review", color: "var(--color-blue)" },
+  { label: "Deploy", color: "var(--color-red)" },
+  { label: "Monitor", color: "var(--color-yellow)" },
 ];
 
 /**
@@ -244,10 +244,16 @@ function sampleCurve({
   const scale = Math.min(scaleX, scaleY) * 0.95; // 95% to leave some margin
 
   // Transform points to the target coordinate system
-  const pts: Pt[] = rawPts.map(pt => ({
+  let pts: Pt[] = rawPts.map(pt => ({
     x: cx + (pt.x - rawCx) * scale,
     y: cy + (pt.y - rawCy) * scale,
   }));
+
+  // Rotate the path starting point to align Test/Review gap under Plan
+  const rotateBy = Math.floor(pts.length * 0.01); // 1% backward
+  if (rotateBy > 0) {
+    pts = [...pts.slice(-rotateBy), ...pts.slice(0, -rotateBy)];
+  }
 
   // Compute cumulative arc length
   const cum: number[] = [0];
@@ -934,8 +940,8 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
                     fontSize: `${fontSize}px`,
                     fontWeight: "bold",
                     fontStyle: "italic",
+                    fill: "var(--background-color)",
                   }}
-                  fill="var(--background-color)"
                   dy={textDy}
                 >
                   <textPath
