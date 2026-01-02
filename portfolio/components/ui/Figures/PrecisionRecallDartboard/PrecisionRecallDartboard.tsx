@@ -18,7 +18,7 @@ import DartboardSVG from "./DartboardSVG";
 const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
   staggerDelay = 300,
   animationDuration = 600,
-  showTitles = true,
+  showTitles = false,
   showLabels = true,
   dartSpreadDuration = 400,
   dartPauseDuration = 300,
