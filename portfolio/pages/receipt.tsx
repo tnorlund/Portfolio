@@ -9,7 +9,6 @@ import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
   CICDLoop,
-  CICDLoopDynamic,
   ClientImageCounts,
   ClientReceiptCounts,
   CodeBuildDiagram,
@@ -594,12 +593,6 @@ export default function ReceiptPage({
 
       <ClientOnly>
         <CICDLoop />
-      </ClientOnly>
-
-      <p>New dynamic version:</p>
-
-      <ClientOnly>
-        <CICDLoopDynamic />
       </ClientOnly>
 
       <p>
