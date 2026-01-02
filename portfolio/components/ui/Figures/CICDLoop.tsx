@@ -659,7 +659,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     }
 
     return () => clearAllTimeouts();
-  }, [inView, hasEntered, mounted, staggerDelay, api, N]);
+  }, [inView, hasEntered, mounted, staggerDelay, api, N, segments]);
 
   // Continuous pulsing animation after all segments have animated in
   useEffect(() => {
@@ -725,18 +725,17 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
       clearTimeout(continuousAnimationTimeout);
       clearPulseAnimation();
     };
-  }, [inView, hasEntered, mounted, staggerDelay, flowDuration, api, N]);
-
-  const cx = width / 2;
-  const cy = height / 2;
-  const a = width * 0.38; // Horizontal scale (reduced to add margin for arrows)
-  const b = height * 0.38; // Vertical scale
-  const ribbonWidth = height * 0.18;
-  const arrowLen = ribbonWidth * 0.6;
-  const notchLen = ribbonWidth * 0.5;
+  }, [inView, hasEntered, mounted, staggerDelay, flowDuration, api, N, segments]);
 
   // Generate segment geometries
   const segmentGeoms = useMemo(() => {
+    const cx = width / 2;
+    const cy = height / 2;
+    const a = width * 0.38; // Horizontal scale (reduced to add margin for arrows)
+    const b = height * 0.38; // Vertical scale
+    const ribbonWidth = height * 0.18;
+    const arrowLen = ribbonWidth * 0.6;
+    const notchLen = ribbonWidth * 0.5;
     const { pts, cum, total } = sampleCurve({ cx, cy, a, b, samples: 1400 });
 
     // Define the gap width as a straight-line distance (not arc-length)
@@ -816,7 +815,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
 
       return { textPathD, ribbonD, textStartOffset, segmentCenter };
     });
-  }, [N, cx, cy, a, b, ribbonWidth, arrowLen, notchLen]);
+  }, [N, width, height]);
 
   const fontSize = height * 0.11;
 
@@ -857,7 +856,8 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     if (!svgRef.current || !mounted || !inView) return;
 
     // Wait for all segment animations to complete
-    const animationCompleteDelay = segments.length * staggerDelay + 500;
+    const animationCompleteDelay =
+      segments.length * staggerDelay + INITIAL_STAGGER_SETTLE_MS;
 
     const timeoutId = setTimeout(() => {
       const planRibbon = ribbonRefs.current[planIndex];
