@@ -731,7 +731,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
 
   const cx = width / 2;
   const cy = height / 2;
-  const a = width * 0.42; // Horizontal scale
+  const a = width * 0.38; // Horizontal scale (reduced to add margin for arrows)
   const b = height * 0.38; // Vertical scale
   const ribbonWidth = height * 0.18;
   const arrowLen = ribbonWidth * 0.6;
