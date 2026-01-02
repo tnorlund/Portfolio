@@ -40,10 +40,8 @@ const DEFAULT_SEGMENTS: SegmentSpec[] = [
  */
 const ILLUSTRATOR_PATH = "M331.65,460.21l-68.3-79.42c-22.88-26.61-63.46-29.88-89.47-6.32-11.73,10.63-19.58,25.8-20.1,43.92-.02.7-.03,1.4-.03,2.11h0c0,.71.01,1.41.03,2.11.52,18.12,8.37,33.29,20.1,43.92,26.01,23.56,66.59,20.29,89.47-6.32l68.3-79.42c22.88-26.61,63.46-29.88,89.47-6.32,11.73,10.63,19.58,25.8,20.1,43.92.02.7.03,1.4.03,2.11h0c0,.71-.01,1.41-.03,2.11-.52,18.12-8.37,33.29-20.1,43.92-26.01,23.56-66.59,20.29-89.47-6.32Z";
 
-// Original path bounds (from Illustrator viewBox analysis)
-const PATH_CENTER = { x: 331.65, y: 420.5 };
-const PATH_WIDTH = 288; // approximate width
-const PATH_HEIGHT = 172; // approximate height
+const INITIAL_STAGGER_SETTLE_MS = 600;
+const PULSE_START_BUFFER_MS = 1000;
 
 /**
  * Evaluate a cubic Bezier curve at parameter t
@@ -664,7 +662,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     }
 
     return () => clearAllTimeouts();
-  }, [inView, mounted, staggerDelay, api, segments]);
+  }, [inView, mounted, staggerDelay, api, N]);
 
   // Continuous pulsing animation after all segments have animated in
   useEffect(() => {
@@ -674,7 +672,10 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     }
 
     // Wait for all sections to finish initial animation
-    const totalAnimationTime = segments.length * staggerDelay + 600 + 1000;
+    const totalAnimationTime =
+      segments.length * staggerDelay +
+      INITIAL_STAGGER_SETTLE_MS +
+      PULSE_START_BUFFER_MS;
 
     const continuousAnimationTimeout = setTimeout(() => {
       // Start continuous pulsing animation loop
@@ -727,7 +728,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
       clearTimeout(continuousAnimationTimeout);
       clearPulseAnimation();
     };
-  }, [inView, mounted, staggerDelay, flowDuration, api, segments]);
+  }, [inView, mounted, staggerDelay, flowDuration, api, N]);
 
   const cx = width / 2;
   const cy = height / 2;
