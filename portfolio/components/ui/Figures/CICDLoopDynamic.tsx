@@ -334,6 +334,28 @@ function tangentAndNormal(
 }
 
 /**
+ * Find the arc-length position closest to a target point
+ */
+function findArcLengthForPoint(
+  pts: Pt[],
+  cum: number[],
+  target: Pt
+): number {
+  let bestDist = Infinity;
+  let bestS = 0;
+
+  for (let i = 0; i < pts.length; i++) {
+    const dist = Math.hypot(pts[i].x - target.x, pts[i].y - target.y);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestS = cum[i];
+    }
+  }
+
+  return bestS;
+}
+
+/**
  * Get point and tangent at a specific arc-length position
  */
 function getPointAndTangentAtArcLength(
@@ -668,7 +690,7 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
               if (i === index) {
                 return {
                   opacity: 1,
-                  transform: "scale(1.08)",
+                  transform: "scale(1.04)",
                   config: { tension: 300, friction: 25 },
                 };
               }
@@ -715,9 +737,6 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
   const arrowLen = ribbonWidth * 0.6;
   const notchLen = ribbonWidth * 0.5;
 
-  // Gap size between segments (as arc length)
-  const gapArcLength = ribbonWidth * 0.4;
-
   // Generate segment geometries
   const segmentGeoms = useMemo(() => {
     const { pts, cum, total } = sampleCurve({ cx, cy, a, b, samples: 1400 });
@@ -738,10 +757,24 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
     }
 
     return Array.from({ length: N }, (_, i) => {
-      // Segment centerline still uses arc-length for sampling
-      // but the actual gap geometry uses fixed-width positioning
-      const s0 = (i / N) * total + gapArcLength / 2;
-      const s1 = ((i + 1) / N) * total - gapArcLength / 2;
+      // Get the gap geometry for this segment's start and end
+      const startGapGeom = gapGeoms[i];
+      const endGapGeom = gapGeoms[(i + 1) % N];
+
+      // Calculate the actual notch base and arrow base positions
+      // These define where the segment body should start and end
+      const notchBase = {
+        x: startGapGeom.pt.x + startGapGeom.t.x * startGapGeom.halfGap,
+        y: startGapGeom.pt.y + startGapGeom.t.y * startGapGeom.halfGap,
+      };
+      const arrowBase = {
+        x: endGapGeom.pt.x - endGapGeom.t.x * endGapGeom.halfGap,
+        y: endGapGeom.pt.y - endGapGeom.t.y * endGapGeom.halfGap,
+      };
+
+      // Find arc-length positions for these points
+      const s0 = findArcLengthForPoint(pts, cum, notchBase);
+      const s1 = findArcLengthForPoint(pts, cum, arrowBase);
       const segmentLength = s1 - s0;
 
       const centerPts = sliceByArcLength(pts, cum, s0, s1);
@@ -752,19 +785,13 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
         ? polylinePathDReversed(centerPts)
         : polylinePathD(centerPts);
 
-      // Get the gap geometry for uniform spacing:
-      // - startGap: gap at the start of this segment (gap i)
-      // - endGap: gap at the end of this segment (gap i+1, wrapping around)
-      const startGap = gapGeoms[i];
-      const endGap = gapGeoms[(i + 1) % N];
-
       const ribbonD = buildRibbonSegmentPath(
         centerPts,
         ribbonWidth,
         arrowLen,
         notchLen,
-        startGap,
-        endGap
+        startGapGeom,
+        endGapGeom
       );
 
       // Calculate text X offset to center on visible ribbon body
@@ -786,7 +813,7 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
 
       return { textPathD, ribbonD, textStartOffset, segmentCenter };
     });
-  }, [N, cx, cy, a, b, ribbonWidth, arrowLen, notchLen, gapArcLength]);
+  }, [N, cx, cy, a, b, ribbonWidth, arrowLen, notchLen]);
 
   const fontSize = height * 0.11;
 
