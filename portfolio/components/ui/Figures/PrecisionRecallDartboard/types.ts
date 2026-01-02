@@ -21,7 +21,7 @@ export interface PrecisionRecallDartboardProps {
   staggerDelay?: number;
   /** Animation duration for fade-in in ms (default: 600) */
   animationDuration?: number;
-  /** Whether to show titles below each dartboard (default: true) */
+  /** Whether to show titles below each dartboard (default: false) */
   showTitles?: boolean;
   /** Whether to show precision/recall axis labels (default: true) */
   showLabels?: boolean;
