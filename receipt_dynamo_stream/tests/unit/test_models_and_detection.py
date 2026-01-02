@@ -95,16 +95,29 @@ def test_stream_message_supports_multiple_collections() -> None:
 
 
 def test_detect_entity_type_patterns() -> None:
+    # RECEIPT_PLACE
     assert detect_entity_type("RECEIPT#00001#PLACE") == "RECEIPT_PLACE"
+    # RECEIPT_WORD_LABEL
     assert (
         detect_entity_type("RECEIPT#00001#LINE#00001#WORD#00001#LABEL#TOTAL")
         == "RECEIPT_WORD_LABEL"
     )
+    # COMPACTION_RUN
     assert (
         detect_entity_type("RECEIPT#00001#COMPACTION_RUN#abc")
         == "COMPACTION_RUN"
     )
-    assert detect_entity_type("RECEIPT#00001#LINE#00001") is None
+    # RECEIPT_LINE
+    assert detect_entity_type("RECEIPT#00001#LINE#00001") == "RECEIPT_LINE"
+    # RECEIPT_WORD
+    assert (
+        detect_entity_type("RECEIPT#00001#LINE#00001#WORD#00001")
+        == "RECEIPT_WORD"
+    )
+    # RECEIPT (no suffix)
+    assert detect_entity_type("RECEIPT#00001") == "RECEIPT"
+    # Unknown patterns
+    assert detect_entity_type("RANDOM#PATTERN") is None
 
 
 def test_get_chromadb_relevant_changes_for_place() -> None:

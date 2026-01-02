@@ -14,7 +14,10 @@ from receipt_dynamo_stream.message_builder import (
 )
 from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
 
+from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 from .conftest import MockMetrics
@@ -44,6 +47,57 @@ def _make_word_label(label: str = "TOTAL") -> ReceiptWordLabel:
         reasoning="initial",
         timestamp_added=datetime.fromisoformat("2024-01-01T00:00:00"),
         validation_status="NONE",
+    )
+
+
+def _make_receipt() -> Receipt:
+    return Receipt(
+        image_id="550e8400-e29b-41d4-a716-446655440000",
+        receipt_id=1,
+        width=100,
+        height=200,
+        timestamp_added="2024-01-01T00:00:00",
+        raw_s3_bucket="test-bucket",
+        raw_s3_key="test-key",
+        top_left={"x": 0.0, "y": 0.0},
+        top_right={"x": 1.0, "y": 0.0},
+        bottom_left={"x": 0.0, "y": 1.0},
+        bottom_right={"x": 1.0, "y": 1.0},
+    )
+
+
+def _make_receipt_word() -> ReceiptWord:
+    return ReceiptWord(
+        image_id="550e8400-e29b-41d4-a716-446655440000",
+        receipt_id=1,
+        line_id=2,
+        word_id=3,
+        text="TOTAL",
+        bounding_box={"x": 0.1, "y": 0.1, "width": 0.2, "height": 0.05},
+        top_left={"x": 0.1, "y": 0.1},
+        top_right={"x": 0.3, "y": 0.1},
+        bottom_left={"x": 0.1, "y": 0.15},
+        bottom_right={"x": 0.3, "y": 0.15},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.95,
+    )
+
+
+def _make_receipt_line() -> ReceiptLine:
+    return ReceiptLine(
+        image_id="550e8400-e29b-41d4-a716-446655440000",
+        receipt_id=1,
+        line_id=2,
+        text="TOTAL $10.00",
+        bounding_box={"x": 0.1, "y": 0.1, "width": 0.5, "height": 0.05},
+        top_left={"x": 0.1, "y": 0.1},
+        top_right={"x": 0.6, "y": 0.1},
+        bottom_left={"x": 0.1, "y": 0.15},
+        bottom_right={"x": 0.6, "y": 0.15},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.95,
     )
 
 
@@ -458,3 +512,42 @@ def test_extract_entity_data_unknown_type() -> None:
     data, collections = _extract_entity_data("UNKNOWN_TYPE", entity)
     assert data == {}
     assert collections == []
+
+
+def test_extract_entity_data_receipt() -> None:
+    """Test extracting data from Receipt for deletion."""
+    entity = _make_receipt()
+    data, collections = _extract_entity_data("RECEIPT", entity)
+
+    assert data["entity_type"] == "RECEIPT"
+    assert data["image_id"] == "550e8400-e29b-41d4-a716-446655440000"
+    assert data["receipt_id"] == 1
+    # RECEIPT deletion affects both collections
+    assert collections == [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
+
+
+def test_extract_entity_data_receipt_word() -> None:
+    """Test extracting data from ReceiptWord for deletion."""
+    entity = _make_receipt_word()
+    data, collections = _extract_entity_data("RECEIPT_WORD", entity)
+
+    assert data["entity_type"] == "RECEIPT_WORD"
+    assert data["image_id"] == "550e8400-e29b-41d4-a716-446655440000"
+    assert data["receipt_id"] == 1
+    assert data["line_id"] == 2
+    assert data["word_id"] == 3
+    # RECEIPT_WORD only affects WORDS collection
+    assert collections == [ChromaDBCollection.WORDS]
+
+
+def test_extract_entity_data_receipt_line() -> None:
+    """Test extracting data from ReceiptLine for deletion."""
+    entity = _make_receipt_line()
+    data, collections = _extract_entity_data("RECEIPT_LINE", entity)
+
+    assert data["entity_type"] == "RECEIPT_LINE"
+    assert data["image_id"] == "550e8400-e29b-41d4-a716-446655440000"
+    assert data["receipt_id"] == 1
+    assert data["line_id"] == 2
+    # RECEIPT_LINE only affects LINES collection
+    assert collections == [ChromaDBCollection.LINES]

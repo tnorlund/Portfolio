@@ -55,14 +55,38 @@ def test_detect_entity_type_compaction_run_variations() -> None:
 def test_detect_entity_type_unknown_patterns() -> None:
     """Test SK patterns that don't match any entity type."""
     test_cases = [
-        "RECEIPT#00001#LINE#00001",
-        "RECEIPT#00001#WORD#00001",
         "RANDOM#PATTERN",
         "",
-        "RECEIPT",
+        "RECEIPT",  # Missing receipt_id portion
+        "USER#12345",
+        "IMAGE#abc123",
     ]
     for sk in test_cases:
         assert detect_entity_type(sk) is None
+
+
+def test_detect_entity_type_receipt_word() -> None:
+    """Test RECEIPT_WORD SK pattern detection."""
+    assert (
+        detect_entity_type("RECEIPT#00001#LINE#00001#WORD#00001")
+        == "RECEIPT_WORD"
+    )
+    assert (
+        detect_entity_type("RECEIPT#00042#LINE#00003#WORD#00007")
+        == "RECEIPT_WORD"
+    )
+
+
+def test_detect_entity_type_receipt_line() -> None:
+    """Test RECEIPT_LINE SK pattern detection."""
+    assert detect_entity_type("RECEIPT#00001#LINE#00001") == "RECEIPT_LINE"
+    assert detect_entity_type("RECEIPT#00099#LINE#00050") == "RECEIPT_LINE"
+
+
+def test_detect_entity_type_receipt() -> None:
+    """Test RECEIPT SK pattern detection."""
+    assert detect_entity_type("RECEIPT#00001") == "RECEIPT"
+    assert detect_entity_type("RECEIPT#00999") == "RECEIPT"
 
 
 def test_detect_entity_type_empty_string() -> None:
