@@ -74,7 +74,7 @@ class MockChromaClient:
 class MockDynamoClient:
     """Mock DynamoDB client for testing."""
 
-    def __init__(self, words: list = None, lines: list = None):
+    def __init__(self, words: list | None = None, lines: list | None = None):
         self._words = words or []
         self._lines = lines or []
 

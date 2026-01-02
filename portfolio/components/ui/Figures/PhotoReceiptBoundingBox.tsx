@@ -55,9 +55,10 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   });
 
   // Use only the lines from the largest cluster (main receipt)
+  // Spread to avoid mutating the original clusters array from the hook
   const lines =
     clusters.length > 0
-      ? clusters.sort((a, b) => b.lines.length - a.lines.length)[0].lines
+      ? [...clusters].sort((a, b) => b.lines.length - a.lines.length)[0].lines
       : [];
 
   const computedReceipt = estimateReceiptPolygonFromLines(lines);

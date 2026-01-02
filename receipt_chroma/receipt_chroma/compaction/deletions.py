@@ -141,6 +141,7 @@ def apply_receipt_deletions(
                 receipt_id=receipt_id,
                 collection=collection.value,
                 error=error_msg,
+                exc_info=True,
             )
             if metrics:
                 metrics.count(

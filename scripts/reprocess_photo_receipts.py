@@ -31,7 +31,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image as PIL_Image
 from PIL.Image import Resampling, Transform
@@ -95,13 +95,15 @@ def delete_receipt_and_children(
         labels, _ = client.list_receipt_word_labels_for_receipt(
             image_id, receipt_id
         )
-    except Exception:
+    except Exception as e:
+        logger.debug(f"No labels found for receipt: {e}")
         labels = []
     try:
         letters = client.list_receipt_letters_from_image_and_receipt(
             image_id, receipt_id
         )
-    except Exception:
+    except Exception as e:
+        logger.debug(f"No letters found for receipt: {e}")
         letters = []
 
     logger.info(
@@ -157,8 +159,8 @@ def delete_receipt_and_children(
             client.delete_compaction_run(r)
         if runs:
             logger.info(f"  ✓ Deleted {len(runs)} compaction runs")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Failed to delete compaction runs: {e}")
 
     # Delete REFINEMENT OCR jobs for this receipt
     try:
@@ -192,7 +194,7 @@ def reprocess_photo_receipts(
     site_bucket: str,
     ocr_job_queue_url: str,
     dry_run: bool = False,
-) -> Dict[str, any]:
+) -> Dict[str, Any]:
     """Reprocess a PHOTO image with improved corner detection.
 
     Returns:

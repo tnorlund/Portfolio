@@ -75,6 +75,8 @@ export const useReceiptGeometry = (lines: Line[]): ReceiptGeometryResult => {
   }, [lines]);
 
   // Step 4 – Get corners from top and bottom lines
+  // Corner array ordering: [top-left, top-right, bottom-left, bottom-right]
+  // This matches the Line entity structure and is used for edge angle calculations
   const topLineCorners = useMemo(() => {
     if (!topLine) return [];
     return [

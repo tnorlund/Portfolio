@@ -3,12 +3,8 @@ import React from "react";
 import PhotoReceiptBoundingBox from "./PhotoReceiptBoundingBox";
 import fixtureData from "../../../tests/fixtures/target_receipt.json";
 import useImageDetails from "../../../hooks/useImageDetails";
-import { getAnimationConfig } from "./animationConfig";
 
 import * as animations from "../animations";
-import { convexHull, computeHullCentroid } from "../../../utils/geometry";
-import useReceiptGeometry from "../../../hooks/useReceiptGeometry";
-import useReceiptClustering from "../../../hooks/useReceiptClustering";
 
 jest.mock("../../../hooks/useImageDetails");
 

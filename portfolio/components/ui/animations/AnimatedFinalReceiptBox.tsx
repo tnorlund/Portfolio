@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useCallback } from "react";
 import { useTransition, animated } from "@react-spring/web";
 import type { Point } from "../../../types/api";
 
@@ -34,10 +34,13 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
   delay,
 }) => {
   // Helper to convert normalized coords to SVG coords
-  const toSvg = (p: Point) => ({
-    x: p.x * svgWidth,
-    y: (1 - p.y) * svgHeight,
-  });
+  const toSvg = useCallback(
+    (p: Point) => ({
+      x: p.x * svgWidth,
+      y: (1 - p.y) * svgHeight,
+    }),
+    [svgWidth, svgHeight]
+  );
 
   // Memoize corner calculations
   const corners = useMemo(() => {
@@ -86,18 +89,22 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
     const topDx = topRight.x - topLeft.x;
     const topDy = topRight.y - topLeft.y;
     const topLen = Math.sqrt(topDx * topDx + topDy * topDy);
-    const topUnitX = topDx / topLen;
-    const topUnitY = topDy / topLen;
 
-    // Top boundary line (extended)
-    lines.push({
-      x1: topLeft.x - topUnitX * margin,
-      y1: topLeft.y - topUnitY * margin,
-      x2: topRight.x + topUnitX * margin,
-      y2: topRight.y + topUnitY * margin,
-      color: "var(--color-yellow)",
-      key: "top",
-    });
+    // Guard against zero-length edges to prevent NaN propagation
+    if (topLen > 0) {
+      const topUnitX = topDx / topLen;
+      const topUnitY = topDy / topLen;
+
+      // Top boundary line (extended)
+      lines.push({
+        x1: topLeft.x - topUnitX * margin,
+        y1: topLeft.y - topUnitY * margin,
+        x2: topRight.x + topUnitX * margin,
+        y2: topRight.y + topUnitY * margin,
+        color: "var(--color-yellow)",
+        key: "top",
+      });
+    }
 
     // Bottom edge direction
     const bottomLeft = toSvg(bottomLineCorners[2]);
@@ -105,18 +112,22 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
     const bottomDx = bottomRight.x - bottomLeft.x;
     const bottomDy = bottomRight.y - bottomLeft.y;
     const bottomLen = Math.sqrt(bottomDx * bottomDx + bottomDy * bottomDy);
-    const bottomUnitX = bottomDx / bottomLen;
-    const bottomUnitY = bottomDy / bottomLen;
 
-    // Bottom boundary line (extended)
-    lines.push({
-      x1: bottomLeft.x - bottomUnitX * margin,
-      y1: bottomLeft.y - bottomUnitY * margin,
-      x2: bottomRight.x + bottomUnitX * margin,
-      y2: bottomRight.y + bottomUnitY * margin,
-      color: "var(--color-yellow)",
-      key: "bottom",
-    });
+    // Guard against zero-length edges to prevent NaN propagation
+    if (bottomLen > 0) {
+      const bottomUnitX = bottomDx / bottomLen;
+      const bottomUnitY = bottomDy / bottomLen;
+
+      // Bottom boundary line (extended)
+      lines.push({
+        x1: bottomLeft.x - bottomUnitX * margin,
+        y1: bottomLeft.y - bottomUnitY * margin,
+        x2: bottomRight.x + bottomUnitX * margin,
+        y2: bottomRight.y + bottomUnitY * margin,
+        color: "var(--color-yellow)",
+        key: "bottom",
+      });
+    }
 
     // Left/right edge direction (perpendicular to average angle)
     const leftEdgeAngle = avgAngleRad + Math.PI / 2;
