@@ -577,9 +577,10 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   // Animation hooks
   const [containerRef, inView] = useOptimizedInView({
     threshold: 0.3,
-    triggerOnce: false,
+    triggerOnce: true,
   });
   const [mounted, setMounted] = useState(false);
+  const [hasEntered, setHasEntered] = useState(false);
   const timeoutIds = useRef<NodeJS.Timeout[]>([]);
   const pulseIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pulseTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
@@ -601,6 +602,12 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (inView && !hasEntered) {
+      setHasEntered(true);
+    }
+  }, [inView, hasEntered]);
+
   // Clear all pending timeouts
   const clearAllTimeouts = () => {
     timeoutIds.current.forEach((id) => clearTimeout(id));
@@ -621,7 +628,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   useEffect(() => {
     if (!mounted) return;
 
-    if (inView) {
+    if (inView && !hasEntered) {
       clearAllTimeouts();
 
       // Staggered fade-in for each segment
@@ -640,7 +647,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
         }, index * staggerDelay);
         timeoutIds.current.push(id);
       });
-    } else {
+    } else if (!hasEntered) {
       clearAllTimeouts();
       clearPulseAnimation();
       // Reset when out of view
@@ -652,11 +659,11 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     }
 
     return () => clearAllTimeouts();
-  }, [inView, mounted, staggerDelay, api, N]);
+  }, [inView, hasEntered, mounted, staggerDelay, api, N]);
 
   // Continuous pulsing animation after all segments have animated in
   useEffect(() => {
-    if (!inView || !mounted) {
+    if ((!inView && !hasEntered) || !mounted) {
       clearPulseAnimation();
       return;
     }
@@ -718,7 +725,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
       clearTimeout(continuousAnimationTimeout);
       clearPulseAnimation();
     };
-  }, [inView, mounted, staggerDelay, flowDuration, api, N]);
+  }, [inView, hasEntered, mounted, staggerDelay, flowDuration, api, N]);
 
   const cx = width / 2;
   const cy = height / 2;
