@@ -8,6 +8,12 @@
 
 ## References
 
+### circularMeanAngle
+
+Re-exports [circularMeanAngle](basic/functions/circularMeanAngle.md)
+
+***
+
 ### computeEdge
 
 Re-exports [computeEdge](receipt/functions/computeEdge.md)
@@ -35,6 +41,12 @@ Re-exports [computeReceiptBoxFromLineEdges](receipt/functions/computeReceiptBoxF
 ### computeReceiptBoxFromSkewedExtents
 
 Re-exports [computeReceiptBoxFromSkewedExtents](receipt/functions/computeReceiptBoxFromSkewedExtents.md)
+
+***
+
+### computeRotatedBoundingBoxCorners
+
+Re-exports [computeRotatedBoundingBoxCorners](basic/functions/computeRotatedBoundingBoxCorners.md)
 
 ***
 
@@ -77,6 +89,12 @@ Re-exports [euclideanDistance](dbscan/functions/euclideanDistance.md)
 ### findLineEdgesAtSecondaryExtremes
 
 Re-exports [findLineEdgesAtSecondaryExtremes](receipt/functions/findLineEdgesAtSecondaryExtremes.md)
+
+***
+
+### lineIntersection
+
+Re-exports [lineIntersection](basic/functions/lineIntersection.md)
 
 ***
 

@@ -12,6 +12,9 @@
 
 ## Functions
 
+- [circularMeanAngle](functions/circularMeanAngle.md)
 - [computeHullCentroid](functions/computeHullCentroid.md)
+- [computeRotatedBoundingBoxCorners](functions/computeRotatedBoundingBoxCorners.md)
 - [convexHull](functions/convexHull.md)
+- [lineIntersection](functions/lineIntersection.md)
 - [theilSen](functions/theilSen.md)
