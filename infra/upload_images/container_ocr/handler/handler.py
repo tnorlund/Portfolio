@@ -1,24 +1,24 @@
 """
-Container-based Lambda handler for OCR processing with integrated merchant validation.
+Container-based Lambda handler for OCR processing with integrated merchant
+validation.
 
 Combines:
 1. OCR parsing and storage (from process_ocr_results.py)
 2. Merchant validation and embedding (from embed_from_ndjson)
 """
 
-import asyncio
 import json
 import logging
 import os
 import sys
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, cast
 
 from receipt_upload.merchant_resolution import (
     MerchantResolvingEmbeddingProcessor,
 )
 
-from .metrics import emf_metrics, metrics
+from .metrics import emf_metrics
 from .ocr_processor import OCRProcessor
 
 # Set up logging - use print for guaranteed output
@@ -26,13 +26,14 @@ logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 
-def _log(msg: str):
+def _log(msg: str, *args: object) -> None:
     """Log message with immediate flush for CloudWatch visibility."""
-    print(f"[HANDLER] {msg}", flush=True)
-    logger.info(msg)
+    formatted = msg % args if args else msg
+    print(f"[HANDLER] {formatted}", flush=True)
+    logger.info(msg, *args)
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     Process OCR results with integrated merchant validation and embedding.
 
@@ -69,9 +70,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     for record in event.get("Records", []):
         try:
-            result = _process_single_record(
-                record, collected_metrics, image_type_counts
-            )
+            result = _process_single_record(record, image_type_counts)
             results.append(result)
 
             if result.get("success"):
@@ -99,10 +98,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if result.get("embedding_duration"):
                 total_embedding_duration += result["embedding_duration"]
 
-        except Exception as e:
-            _log(f"ERROR: Failed to process record: {e}")
-            logger.error(f"Failed to process record: {e}", exc_info=True)
-            results.append({"success": False, "error": str(e)})
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            _log(f"ERROR: Failed to process record: {exc}")
+            logger.error(
+                "Failed to process record: %s",
+                exc,
+                exc_info=True,
+            )
+            results.append({"success": False, "error": str(exc)})
             error_count += 1
 
     # Record aggregated metrics
@@ -141,7 +144,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     )
 
     _log(
-        f"Completed processing {len(results)} records (success: {success_count}, errors: {error_count}, embeddings: {embedding_count})"
+        "Completed processing %s records (success: %s, errors: %s, "
+        "embeddings: %s)",
+        len(results),
+        success_count,
+        error_count,
+        embedding_count,
     )
     return {
         "statusCode": 200,
@@ -157,7 +165,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 def _process_single_record(
     record: Dict[str, Any],
-    collected_metrics: Dict[str, float],
     image_type_counts: Dict[str, int],
 ) -> Dict[str, Any]:
     """Process a single SQS record."""
@@ -193,7 +200,8 @@ def _process_single_record(
     ocr_result["ocr_duration"] = ocr_duration
 
     _log(
-        f"OCR processing completed: image_type={image_type}, receipt_id={ocr_result.get('receipt_id')}"
+        f"OCR processing completed: image_type={image_type}, "
+        f"receipt_id={ocr_result.get('receipt_id')}"
     )
 
     # Step 2: Validate merchant and create embeddings
@@ -202,7 +210,8 @@ def _process_single_record(
     # - REFINEMENT jobs (second pass for PHOTO/SCAN, has receipt_id)
     # - Swift single-pass results (has receipt_id and swift_single_pass=True)
     # Do NOT process embeddings for:
-    # - Legacy PHOTO/SCAN first pass (no receipt-level data yet, receipt_id=None)
+    # - Legacy PHOTO/SCAN first pass (no receipt-level data yet,
+    #   receipt_id=None)
     image_type = ocr_result.get("image_type")
     receipt_id = ocr_result.get("receipt_id")
     is_swift_single_pass = ocr_result.get("swift_single_pass", False)
@@ -212,14 +221,16 @@ def _process_single_record(
     # REFINEMENT: receipt_id from the job
     # Swift single-pass: receipt_id from first receipt, any image_type
     # Legacy PHOTO/SCAN first pass: receipt_id=None (skip embeddings)
-    should_create_embeddings = (
-        receipt_id is not None
-        and (image_type in ["NATIVE", "REFINEMENT"] or is_swift_single_pass)
+    should_create_embeddings = receipt_id is not None and (
+        image_type in ["NATIVE", "REFINEMENT"] or is_swift_single_pass
     )
     if should_create_embeddings:
         try:
             _log(
-                f"Initializing merchant-resolving embedding processor for {image_type} receipt (receipt_id={receipt_id})"
+                "Initializing merchant-resolving embedding processor for %s "
+                "receipt (receipt_id=%s)",
+                image_type,
+                receipt_id,
             )
 
             embedding_start = time.time()
@@ -240,11 +251,15 @@ def _process_single_record(
             # Create embeddings with merchant resolution
             # Pass receipt lines/words if available from OCR processor
             _log(
-                f"Creating embeddings with merchant resolution: lines={ocr_result.get('receipt_lines') is not None}, words={ocr_result.get('receipt_words') is not None}"
+                "Creating embeddings with merchant resolution: lines=%s, "
+                "words=%s",
+                ocr_result.get("receipt_lines") is not None,
+                ocr_result.get("receipt_words") is not None,
             )
+            receipt_id_value = cast(int, receipt_id)
             embedding_result = embedding_processor.process_embeddings(
                 image_id=image_id,
-                receipt_id=receipt_id,
+                receipt_id=receipt_id_value,
                 lines=ocr_result.get("receipt_lines"),
                 words=ocr_result.get("receipt_words"),
             )
@@ -256,11 +271,16 @@ def _process_single_record(
             merchant_tier = embedding_result.get("merchant_resolution_tier")
 
             _log(
-                f"SUCCESS: Embeddings created for {image_type} receipt: "
-                f"image_id={image_id}, receipt_id={receipt_id}, "
-                f"run_id={embedding_result.get('run_id')}, "
-                f"merchant_found={merchant_found}, merchant_name={merchant_name}, "
-                f"resolution_tier={merchant_tier}"
+                "SUCCESS: Embeddings created for %s receipt: image_id=%s, "
+                "receipt_id=%s, run_id=%s, merchant_found=%s, "
+                "merchant_name=%s, resolution_tier=%s",
+                image_type,
+                image_id,
+                receipt_id,
+                embedding_result.get("run_id"),
+                merchant_found,
+                merchant_name,
+                merchant_tier,
             )
 
             # Track metrics (aggregated, not per-call) - add to return dict
@@ -282,12 +302,16 @@ def _process_single_record(
                 ),
             }
 
-        except Exception as e:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             _log(
-                f"ERROR: Merchant validation/embedding failed for {image_type}: {e}"
+                "ERROR: Merchant validation/embedding failed for %s: %s",
+                image_type,
+                exc,
             )
             logger.error(
-                f"Merchant validation/embedding failed for {image_type}: {e}",
+                "Merchant validation/embedding failed for %s: %s",
+                image_type,
+                exc,
                 exc_info=True,
             )
 
@@ -299,7 +323,7 @@ def _process_single_record(
                 "receipt_id": receipt_id,
                 "image_type": image_type,
                 "embeddings_created": False,
-                "embedding_error": str(e),
+                "embedding_error": str(exc),
                 "embedding_failed": True,
             }
 

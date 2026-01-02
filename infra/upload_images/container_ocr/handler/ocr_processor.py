@@ -17,6 +17,17 @@ from pathlib import Path
 from typing import Any, Dict
 
 from PIL import Image as PIL_Image
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
+from receipt_dynamo.entities import (
+    Letter,
+    Line,
+    Receipt,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+    Word,
+)
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.receipt_processing.native import process_native
 from receipt_upload.receipt_processing.photo import process_photo
@@ -28,18 +39,6 @@ from receipt_upload.utils import (
     get_ocr_job,
     get_ocr_routing_decision,
     image_ocr_to_receipt_ocr,
-)
-
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
-from receipt_dynamo.entities import (
-    Letter,
-    Line,
-    Receipt,
-    ReceiptLetter,
-    ReceiptLine,
-    ReceiptWord,
-    Word,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,7 +56,7 @@ class OCRData:
 class OCRProcessor:
     """Handles OCR parsing and storage."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-positional-arguments
         self,
         table_name: str,
         raw_bucket: str,
@@ -102,11 +101,13 @@ class OCRProcessor:
             with open(ocr_json_path, "r", encoding="utf-8") as f:
                 ocr_json = json.load(f)
 
-            # Check if this is a Swift single-pass result (has receipts with OCR)
-            # Swift uploads JSON with 'receipts' array and 'classification' dict
+            # Check if this is a Swift single-pass result (has receipts with
+            # OCR). Swift uploads JSON with 'receipts' array and
+            # 'classification' dict.
             if ocr_json.get("receipts") and ocr_json.get("classification"):
                 logger.info(
-                    f"Detected Swift single-pass OCR for image {image_id}"
+                    "Detected Swift single-pass OCR for image %s",
+                    image_id,
                 )
                 return self._process_swift_single_pass(
                     ocr_json, ocr_job, ocr_routing_decision
@@ -132,22 +133,23 @@ class OCRProcessor:
                 image, ocr_data, ocr_job, ocr_routing_decision
             )
 
-        except Exception as e:
-            logger.error(f"OCR processing failed: {e}", exc_info=True)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.error("OCR processing failed: %s", exc, exc_info=True)
             return {
                 "success": False,
-                "error": str(e),
+                "error": str(exc),
             }
 
     def _process_refinement_job(
-        self, ocr_job, ocr_routing_decision
+        self, ocr_job: Any, ocr_routing_decision: Any
     ) -> Dict[str, Any]:
         """Process a refinement OCR job."""
-        logger.info(f"Refining receipt {ocr_job.image_id}")
+        logger.info("Refining receipt %s", ocr_job.image_id)
 
         if ocr_job.receipt_id is None:
             logger.error(
-                f"Receipt ID is None for refinement job {ocr_job.job_id}"
+                "Receipt ID is None for refinement job %s",
+                ocr_job.job_id,
             )
             return {"success": False, "error": "Receipt ID is None"}
 
@@ -174,7 +176,9 @@ class OCRProcessor:
             )
         )
 
-        from receipt_upload.receipt_processing.receipt import refine_receipt
+        from receipt_upload.receipt_processing.receipt import (  # pylint: disable=import-outside-toplevel
+            refine_receipt,
+        )
 
         refine_receipt(
             dynamo_table_name=self.table_name,
@@ -194,7 +198,10 @@ class OCRProcessor:
         }
 
     def _process_swift_single_pass(
-        self, ocr_json: Dict[str, Any], ocr_job, ocr_routing_decision
+        self,
+        ocr_json: Dict[str, Any],
+        ocr_job: Any,
+        ocr_routing_decision: Any,
     ) -> Dict[str, Any]:
         """
         Process Swift single-pass OCR results.
@@ -226,8 +233,11 @@ class OCRProcessor:
         receipt_count = len(receipts)
 
         logger.info(
-            f"Processing Swift single-pass: image_id={image_id}, "
-            f"image_type={image_type_str}, receipt_count={receipt_count}"
+            "Processing Swift single-pass: image_id=%s, image_type=%s, "
+            "receipt_count=%s",
+            image_id,
+            image_type_str,
+            receipt_count,
         )
 
         all_receipt_lines = []
@@ -243,13 +253,24 @@ class OCRProcessor:
                 warped_height = receipt_data["warped_height"]
 
                 # Validate bounds structure has all required corners
-                required_corners = ["top_left", "top_right", "bottom_left", "bottom_right"]
+                required_corners = [
+                    "top_left",
+                    "top_right",
+                    "bottom_left",
+                    "bottom_right",
+                ]
                 if not all(corner in bounds for corner in required_corners):
-                    raise ValueError(f"Missing required bounds corners for receipt {receipt_id}")
+                    raise ValueError(
+                        "Missing required bounds corners for receipt "
+                        f"{receipt_id}"
+                    )
 
-            except (KeyError, ValueError) as e:
+            except (KeyError, ValueError) as exc:
                 logger.error(
-                    f"Skipping malformed receipt {receipt_idx} in image {image_id}: {e}"
+                    "Skipping malformed receipt %s in image %s: %s",
+                    receipt_idx,
+                    image_id,
+                    exc,
                 )
                 continue
 
@@ -291,8 +312,11 @@ class OCRProcessor:
                 self.dynamo.add_receipt_letters(receipt_letters)
 
             logger.info(
-                f"Created receipt {receipt_id}: {len(receipt_lines)} lines, "
-                f"{len(receipt_words)} words, {len(receipt_letters)} letters"
+                "Created receipt %s: %s lines, %s words, %s letters",
+                receipt_id,
+                len(receipt_lines),
+                len(receipt_words),
+                len(receipt_letters),
             )
 
         # Update routing decision
@@ -301,8 +325,9 @@ class OCRProcessor:
         ocr_routing_decision.updated_at = current_time
         self.dynamo.update_ocr_routing_decision(ocr_routing_decision)
 
-        # For Swift single-pass, return first receipt_id for embedding processing
-        # (most uploads are single-receipt; multi-receipt will process first only)
+        # For Swift single-pass, return first receipt_id for embedding
+        # processing (most uploads are single-receipt; multi-receipt will
+        # process first only).
         first_receipt_id = receipts[0]["cluster_id"] if receipts else None
 
         return {
@@ -322,10 +347,11 @@ class OCRProcessor:
         self,
         image_id: str,
         receipt_id: int,
-        lines_data: list,
-    ) -> tuple:
+        lines_data: list[Dict[str, Any]],
+    ) -> tuple[list[ReceiptLine], list[ReceiptWord], list[ReceiptLetter]]:
         """
-        Parse Swift OCR output into ReceiptLine/ReceiptWord/ReceiptLetter entities.
+        Parse Swift OCR output into ReceiptLine/ReceiptWord/ReceiptLetter
+        entities.
 
         The Swift JSON structure matches the standard OCR format with nested
         lines -> words -> letters.
@@ -344,7 +370,12 @@ class OCRProcessor:
             bbox = data.get("bounding_box", {})
             if not all(k in bbox for k in ("x", "y", "width", "height")):
                 return False
-            for corner in ("top_left", "top_right", "bottom_left", "bottom_right"):
+            for corner in (
+                "top_left",
+                "top_right",
+                "bottom_left",
+                "bottom_right",
+            ):
                 point = data.get(corner, {})
                 if not all(k in point for k in ("x", "y")):
                     return False
@@ -354,13 +385,17 @@ class OCRProcessor:
             line_text = line_data.get("text", "")
             if not line_text:
                 logger.warning(
-                    f"Skipping line {line_idx} with empty text for receipt {receipt_id}"
+                    "Skipping line %s with empty text for receipt %s",
+                    line_idx,
+                    receipt_id,
                 )
                 continue
 
             if not _has_valid_geometry(line_data):
                 logger.warning(
-                    f"Skipping line {line_idx} with missing geometry for receipt {receipt_id}"
+                    "Skipping line %s with missing geometry for receipt %s",
+                    line_idx,
+                    receipt_id,
                 )
                 continue
 
@@ -388,15 +423,21 @@ class OCRProcessor:
 
                 if not word_text or word_confidence <= 0.0:
                     logger.warning(
-                        f"Skipping word {word_idx} in line {line_idx} "
-                        f"(empty text or confidence <= 0) for receipt {receipt_id}"
+                        "Skipping word %s in line %s (empty text or "
+                        "confidence <= 0) for receipt %s",
+                        word_idx,
+                        line_idx,
+                        receipt_id,
                     )
                     continue
 
                 if not _has_valid_geometry(word_data):
                     logger.warning(
-                        f"Skipping word {word_idx} in line {line_idx} "
-                        f"with missing geometry for receipt {receipt_id}"
+                        "Skipping word %s in line %s with missing geometry "
+                        "for receipt %s",
+                        word_idx,
+                        line_idx,
+                        receipt_id,
                     )
                     continue
 
@@ -424,7 +465,8 @@ class OCRProcessor:
                     letter_text = letter_data.get("text", "")
                     letter_confidence = letter_data.get("confidence", 0.0)
 
-                    # ReceiptLetter requires exactly 1 character and confidence > 0
+                    # ReceiptLetter requires exactly 1 character and
+                    # confidence > 0.
                     if len(letter_text) != 1 or letter_confidence <= 0.0:
                         continue
 
@@ -453,7 +495,11 @@ class OCRProcessor:
         return receipt_lines, receipt_words, receipt_letters
 
     def _process_first_pass_job(
-        self, image, ocr_data, ocr_job, ocr_routing_decision
+        self,
+        image: Any,
+        ocr_data: OCRData,
+        ocr_job: Any,
+        ocr_routing_decision: Any,
     ) -> Dict[str, Any]:
         """Process a first-pass OCR job."""
         # Classify image type
@@ -464,17 +510,18 @@ class OCRProcessor:
         )
 
         logger.info(
-            f"Image {ocr_job.image_id} classified as {image_type} "
-            f"(dimensions: {image.width}x{image.height})"
+            "Image %s classified as %s (dimensions: %sx%s)",
+            ocr_job.image_id,
+            image_type,
+            image.width,
+            image.height,
         )
 
         try:
             if image_type == ImageType.NATIVE:
-                logger.info(f"Processing native receipt {ocr_job.image_id}")
+                logger.info("Processing native receipt %s", ocr_job.image_id)
 
                 # Convert image OCR to receipt OCR
-                from receipt_upload.utils import image_ocr_to_receipt_ocr
-
                 receipt_lines, receipt_words, _ = image_ocr_to_receipt_ocr(
                     lines=ocr_data.lines,
                     words=ocr_data.words,
@@ -503,8 +550,8 @@ class OCRProcessor:
                     "word_count": len(receipt_words),
                 }
 
-            elif image_type == ImageType.PHOTO:
-                logger.info(f"Processing photo {ocr_job.image_id}")
+            if image_type == ImageType.PHOTO:
+                logger.info("Processing photo %s", ocr_job.image_id)
                 process_photo(
                     raw_bucket=self.raw_bucket,
                     site_bucket=self.site_bucket,
@@ -521,8 +568,8 @@ class OCRProcessor:
                     "receipt_id": None,  # Multiple receipts
                 }
 
-            elif image_type == ImageType.SCAN:
-                logger.info(f"Processing scan {ocr_job.image_id}")
+            if image_type == ImageType.SCAN:
+                logger.info("Processing scan %s", ocr_job.image_id)
                 process_scan(
                     raw_bucket=self.raw_bucket,
                     site_bucket=self.site_bucket,
@@ -539,26 +586,29 @@ class OCRProcessor:
                     "receipt_id": None,  # Multiple receipts
                 }
 
-            else:
-                logger.error(f"Unknown image type: {image_type}")
-                self._update_routing_decision_with_error(ocr_routing_decision)
-                return {
-                    "success": False,
-                    "error": f"Unknown image type: {image_type}",
-                }
+            logger.error("Unknown image type: %s", image_type)  # type: ignore[unreachable]
+            self._update_routing_decision_with_error(ocr_routing_decision)
+            return {
+                "success": False,
+                "error": f"Unknown image type: {image_type}",
+            }
 
-        except ValueError as e:
+        except ValueError as exc:
             logger.error(
-                f"Geometry error in processing for image {ocr_job.image_id}: {e}",
+                "Geometry error in processing for image %s: %s",
+                ocr_job.image_id,
+                exc,
                 exc_info=True,
             )
             self._update_routing_decision_with_error(ocr_routing_decision)
             return {
                 "success": False,
-                "error": f"Geometry error: {e}",
+                "error": f"Geometry error: {exc}",
             }
 
-    def _update_routing_decision_with_error(self, ocr_routing_decision):
+    def _update_routing_decision_with_error(
+        self, ocr_routing_decision: Any
+    ) -> None:
         """Updates the OCR routing decision with an error status."""
         ocr_routing_decision.status = OCRStatus.FAILED.value
         ocr_routing_decision.receipt_count = 0

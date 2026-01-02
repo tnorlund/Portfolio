@@ -11,6 +11,8 @@ Similar to EcsLambda but for Docker images:
 - Supports multi-stage builds with layer caching
 """
 
+# mypy: ignore-errors
+
 # pylint: disable=import-error
 
 import json
@@ -20,14 +22,6 @@ from typing import Any, Dict, Optional
 
 import pulumi
 import pulumi_command as command
-from infra.shared.build_utils import (
-    compute_hash,
-    make_artifact_bucket,
-    make_log_group,
-    resolve_build_config,
-)
-from infra.shared.buildspecs import docker_image_buildspec
-from infra.utils import _find_project_root
 from pulumi import ComponentResource, Output, ResourceOptions
 from pulumi_aws import config, get_caller_identity
 from pulumi_aws.codebuild import (
@@ -46,7 +40,11 @@ from pulumi_aws.codepipeline import (
     PipelineStageActionArgs,
     PipelineStageArgs,
 )
-from pulumi_aws.ecr import Repository, RepositoryImageScanningConfigurationArgs, RepositoryPolicy
+from pulumi_aws.ecr import (
+    Repository,
+    RepositoryImageScanningConfigurationArgs,
+    RepositoryPolicy,
+)
 from pulumi_aws.iam import Role as ROLE
 from pulumi_aws.iam import RolePolicy
 from pulumi_aws.lambda_ import (
@@ -57,6 +55,15 @@ from pulumi_aws.lambda_ import (
     FunctionImageConfigArgs,
     FunctionVpcConfigArgs,
 )
+
+from infra.shared.build_utils import (
+    compute_hash,
+    make_artifact_bucket,
+    make_log_group,
+    resolve_build_config,
+)
+from infra.shared.buildspecs import docker_image_buildspec
+from infra.utils import _find_project_root
 
 PROJECT_DIR = _find_project_root()
 
@@ -162,13 +169,17 @@ class CodeBuildDockerImage(ComponentResource):
                             {
                                 "Sid": "LambdaECRImageRetrievalPolicy",
                                 "Effect": "Allow",
-                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Principal": {
+                                    "Service": "lambda.amazonaws.com"
+                                },
                                 "Action": [
                                     "ecr:BatchGetImage",
                                     "ecr:GetDownloadUrlForLayer",
                                 ],
                                 "Condition": {
-                                    "StringEquals": {"aws:SourceAccount": account_id}
+                                    "StringEquals": {
+                                        "aws:SourceAccount": account_id
+                                    }
                                 },
                             }
                         ],

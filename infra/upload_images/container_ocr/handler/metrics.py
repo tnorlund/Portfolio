@@ -12,7 +12,7 @@ from botocore.exceptions import ClientError
 class MetricsCollector:
     """Collects and publishes custom metrics to CloudWatch."""
 
-    def __init__(self, namespace: str = "EmbeddingWorkflow"):
+    def __init__(self, namespace: str = "EmbeddingWorkflow") -> None:
         """Initialize metrics collector.
 
         Args:
@@ -26,7 +26,7 @@ class MetricsCollector:
         if self.enabled:
             try:
                 self.cloudwatch = boto3.client("cloudwatch")
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 print(
                     f"[METRICS] Failed to initialize CloudWatch client: {e}",
                     flush=True,
@@ -40,7 +40,7 @@ class MetricsCollector:
         unit: str = "Count",
         dimensions: Optional[Dict[str, str]] = None,
         timestamp: Optional[float] = None,
-    ):
+    ) -> None:
         """Put a single metric to CloudWatch.
 
         Args:
@@ -81,7 +81,7 @@ class MetricsCollector:
         metric_name: str,
         value: int = 1,
         dimensions: Optional[Dict[str, str]] = None,
-    ):
+    ) -> None:
         """Publish a count metric.
 
         Args:
@@ -97,7 +97,7 @@ class MetricsCollector:
         value: float,
         unit: str = "None",
         dimensions: Optional[Dict[str, str]] = None,
-    ):
+    ) -> None:
         """Publish a gauge metric.
 
         Args:
@@ -114,7 +114,7 @@ class MetricsCollector:
         duration: float,
         unit: str = "Seconds",
         dimensions: Optional[Dict[str, str]] = None,
-    ):
+    ) -> None:
         """Publish a duration metric.
 
         Args:
@@ -131,7 +131,7 @@ class MetricsCollector:
 class EmbeddedMetricsFormatter:
     """Formats metrics using AWS Embedded Metric Format (EMF) for efficient CloudWatch integration."""
 
-    def __init__(self, namespace: str = "EmbeddingWorkflow"):
+    def __init__(self, namespace: str = "EmbeddingWorkflow") -> None:
         """Initialize EMF formatter.
 
         Args:
@@ -144,7 +144,7 @@ class EmbeddedMetricsFormatter:
 
     def create_metric_log(
         self,
-        metrics_dict: Dict[str, float],
+        metrics_dict: Dict[str, Any],
         dimensions: Optional[Dict[str, str]] = None,
         properties: Optional[Dict[str, Any]] = None,
     ) -> str:
@@ -199,10 +199,10 @@ class EmbeddedMetricsFormatter:
 
     def log_metrics(
         self,
-        metrics_dict: Dict[str, float],
+        metrics_dict: Dict[str, Any],
         dimensions: Optional[Dict[str, str]] = None,
         properties: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> None:
         """Log metrics using EMF format to stdout (CloudWatch will parse automatically).
 
         Args:

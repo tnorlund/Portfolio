@@ -1,14 +1,13 @@
+"""Pulumi resources for the upload images pipeline."""
+
+# pylint: disable=line-too-long
+
 import json
 import os
-from pathlib import Path
+from typing import cast
 
 import pulumi
 import pulumi_aws as aws
-from dynamo_db import dynamodb_table
-
-# Import the CodeBuildDockerImage component
-from infra.components.codebuild_docker_image import CodeBuildDockerImage
-from infra.components.lambda_layer import dynamo_layer, upload_layer
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -17,16 +16,16 @@ from pulumi import (
     Output,
     ResourceOptions,
 )
-
-# StateMachine import removed - no longer using Step Functions
-from pulumi_aws.ecr import Repository as EcrRepository
-from pulumi_aws.ecr import (
-    RepositoryImageScanningConfigurationArgs as EcrRepoScanArgs,
-)
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.s3 import Bucket
 from pulumi_aws.sqs import Queue
+
+from dynamo_db import dynamodb_table
+
+# Import the CodeBuildDockerImage component
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
+from infra.components.lambda_layer import upload_layer
 
 config = Config("portfolio")
 current_region = aws.get_region()
@@ -53,9 +52,9 @@ BASE_DOMAIN = "tylernorlund.com"
 # For "prod" => upload.tylernorlund.com
 # otherwise   => dev-upload.tylernorlund.com
 if stack == "prod":
-    api_domain_name = f"upload.{BASE_DOMAIN}"
+    API_DOMAIN_NAME = f"upload.{BASE_DOMAIN}"
 else:
-    api_domain_name = f"{stack}-upload.{BASE_DOMAIN}"
+    API_DOMAIN_NAME = f"{stack}-upload.{BASE_DOMAIN}"
 
 
 class UploadImages(ComponentResource):
@@ -69,12 +68,12 @@ class UploadImages(ComponentResource):
         vpc_subnet_ids: pulumi.Input[list[str]] | None = None,
         security_group_id: pulumi.Input[str] | None = None,
         chroma_http_endpoint: pulumi.Input[str] | None = None,
-        ecs_cluster_arn: pulumi.Input[str] | None = None,
-        ecs_service_arn: pulumi.Input[str] | None = None,
-        nat_instance_id: pulumi.Input[str] | None = None,
+        _ecs_cluster_arn: pulumi.Input[str] | None = None,
+        _ecs_service_arn: pulumi.Input[str] | None = None,
+        _nat_instance_id: pulumi.Input[str] | None = None,
         efs_access_point_arn: pulumi.Input[str] | None = None,
-        opts: ResourceOptions = None,
-    ):
+        opts: ResourceOptions | None = None,
+    ):  # pylint: disable=too-many-positional-arguments
         super().__init__(
             f"{__name__}-{name}",
             "aws:lambda:UploadImages",
@@ -99,7 +98,7 @@ class UploadImages(ComponentResource):
         )
 
         # Configure CORS as a separate resource
-        image_bucket_cors = aws.s3.BucketCorsConfiguration(
+        _image_bucket_cors = aws.s3.BucketCorsConfiguration(
             f"{name}-image-bucket-cors",
             bucket=image_bucket.id,
             cors_rules=[
@@ -419,7 +418,7 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        upload_route = aws.apigatewayv2.Route(
+        _upload_route = aws.apigatewayv2.Route(
             f"{name}-upload-route",
             api_id=api.id,
             route_key="POST /upload-receipt",
@@ -427,7 +426,7 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        upload_permission = aws.lambda_.Permission(
+        _upload_permission = aws.lambda_.Permission(
             f"{name}-upload-permission",
             action="lambda:InvokeFunction",
             function=upload_receipt_lambda.name,
@@ -522,7 +521,9 @@ class UploadImages(ComponentResource):
         )
 
         # Use the Lambda function created by CodeBuildDockerImage
-        process_ocr_lambda = process_ocr_docker_image.lambda_function
+        process_ocr_lambda = cast(
+            Function, process_ocr_docker_image.lambda_function
+        )
 
         # Adopt existing mapping if already present to avoid ResourceConflict
         existing_mapping_uuid = pulumi.Config("portfolio").get(
@@ -663,7 +664,7 @@ class UploadImages(ComponentResource):
         )
 
         # Create embed_from_ndjson container Lambda config
-        embed_ndjson_lambda_config = {
+        _embed_ndjson_lambda_config = {
             "role_arn": embed_ndjson_role.arn,
             "timeout": 600,  # 10 minutes
             "memory_size": 2048,  # More memory for ChromaDB operations
@@ -775,7 +776,7 @@ class UploadImages(ComponentResource):
         hosted_zone = aws.route53.get_zone(name=BASE_DOMAIN)
         cert = aws.acm.Certificate(
             f"{name}-upload-cert",
-            domain_name=api_domain_name,
+            domain_name=API_DOMAIN_NAME,
             validation_method="DNS",
             opts=ResourceOptions(parent=self),
         )
@@ -799,7 +800,7 @@ class UploadImages(ComponentResource):
         # API Gateway v2 custom domain
         custom_domain = aws.apigatewayv2.DomainName(
             f"{name}-upload-domain",
-            domain_name=api_domain_name,
+            domain_name=API_DOMAIN_NAME,
             domain_name_configuration=aws.apigatewayv2.DomainNameDomainNameConfigurationArgs(
                 certificate_arn=cert_validation.certificate_arn,
                 endpoint_type="REGIONAL",
@@ -808,7 +809,7 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self, depends_on=[cert_validation]),
         )
 
-        api_mapping = aws.apigatewayv2.ApiMapping(
+        _api_mapping = aws.apigatewayv2.ApiMapping(
             f"{name}-upload-api-mapping",
             api_id=api.id,
             domain_name=custom_domain.id,
@@ -817,10 +818,10 @@ class UploadImages(ComponentResource):
         )
 
         # Route53 alias record for the custom domain
-        alias_record = aws.route53.Record(
+        _alias_record = aws.route53.Record(
             f"{name}-upload-alias-record",
             zone_id=hosted_zone.zone_id,
-            name=api_domain_name,
+            name=API_DOMAIN_NAME,
             type="A",
             aliases=[
                 {
@@ -832,4 +833,4 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        self.endpoint_url = pulumi.Output.concat("https://", api_domain_name)
+        self.endpoint_url = pulumi.Output.concat("https://", API_DOMAIN_NAME)

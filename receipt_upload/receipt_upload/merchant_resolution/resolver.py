@@ -20,7 +20,6 @@ from receipt_chroma.embedding.utils.normalize import (
     normalize_address,
     normalize_phone,
 )
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
@@ -30,10 +29,11 @@ logger = logging.getLogger(__name__)
 INVALID_PLACE_IDS = frozenset(("", "null", "NO_RESULTS", "INVALID"))
 
 
-def _log(msg: str) -> None:
+def _log(msg: str, *args: object) -> None:
     """Log message with immediate flush for CloudWatch visibility."""
-    print(f"[MERCHANT_RESOLVER] {msg}", flush=True)
-    logger.info(msg)
+    formatted = msg % args if args else msg
+    print(f"[MERCHANT_RESOLVER] {formatted}", flush=True)
+    logger.info(msg, *args)
 
 
 @dataclass
@@ -75,6 +75,7 @@ class MerchantResolver:
         self.dynamo = dynamo_client
         self.places_client = places_client
 
+    # pylint: disable=too-many-positional-arguments
     def resolve(
         self,
         lines_client: ChromaClient,
@@ -82,7 +83,7 @@ class MerchantResolver:
         words: List[ReceiptWord],
         image_id: str,
         receipt_id: int,
-    ) -> MerchantResult:
+    ) -> MerchantResult:  # pylint: disable=too-many-positional-arguments
         """
         Resolve merchant information for a receipt.
 
@@ -99,28 +100,32 @@ class MerchantResolver:
         # Tier 1: Try phone match first (most reliable)
         phone = self._extract_phone(words)
         if phone:
-            _log(f"Tier 1: Trying phone match for {phone}")
+            _log("Tier 1: Trying phone match for %s", phone)
             result = self._query_by_phone(
                 lines_client, phone, image_id, receipt_id
             )
             if result.place_id:
                 _log(
-                    f"Tier 1 SUCCESS: Found merchant via phone: "
-                    f"{result.merchant_name} (place_id={result.place_id})"
+                    "Tier 1 SUCCESS: Found merchant via phone: %s "
+                    "(place_id=%s)",
+                    result.merchant_name,
+                    result.place_id,
                 )
                 return result
 
         # Tier 1: Try address match
         address = self._extract_address(words)
         if address:
-            _log(f"Tier 1: Trying address match for {address[:50]}...")
+            _log("Tier 1: Trying address match for %s...", address[:50])
             result = self._query_by_address(
                 lines_client, address, image_id, receipt_id
             )
             if result.place_id:
                 _log(
-                    f"Tier 1 SUCCESS: Found merchant via address: "
-                    f"{result.merchant_name} (place_id={result.place_id})"
+                    "Tier 1 SUCCESS: Found merchant via address: %s "
+                    "(place_id=%s)",
+                    result.merchant_name,
+                    result.place_id,
                 )
                 return result
 
@@ -130,8 +135,10 @@ class MerchantResolver:
 
         if result.place_id:
             _log(
-                f"Tier 2 SUCCESS: Found merchant via Place ID Finder: "
-                f"{result.merchant_name} (place_id={result.place_id})"
+                "Tier 2 SUCCESS: Found merchant via Place ID Finder: %s "
+                "(place_id=%s)",
+                result.merchant_name,
+                result.place_id,
             )
         else:
             _log("Tier 2: No merchant found")
@@ -258,8 +265,8 @@ class MerchantResolver:
                                 source_receipt_id=source_receipt_id,
                             )
 
-        except Exception as e:
-            _log(f"Error querying by phone: {e}")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            _log("Error querying by phone: %s", exc)
             logger.exception("Phone query failed")
 
         return MerchantResult()
@@ -324,8 +331,8 @@ class MerchantResolver:
                                 source_receipt_id=source_receipt_id,
                             )
 
-        except Exception as e:
-            _log(f"Error querying by address: {e}")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            _log("Error querying by address: %s", exc)
             logger.exception("Address query failed")
 
         return MerchantResult()
@@ -350,8 +357,8 @@ class MerchantResolver:
             if place and place.place_id:
                 if place.place_id not in INVALID_PLACE_IDS:
                     return place.place_id
-        except Exception as e:
-            _log(f"Error getting place_id from receipt_place: {e}")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            _log("Error getting place_id from receipt_place: %s", exc)
             logger.exception("DynamoDB lookup failed")
 
         return None
@@ -379,9 +386,9 @@ class MerchantResolver:
         """
         try:
             # Import Place ID Finder
-            from receipt_agent.agents.place_id_finder.tools.place_id_finder import (
-                PlaceIdFinder,
-                ReceiptRecord,
+            # pylint: disable=import-outside-toplevel
+            from receipt_agent.agents.place_id_finder.tools import (
+                place_id_finder as place_id_finder_module,
             )
 
             # Extract merchant info from lines/words for the finder
@@ -390,7 +397,7 @@ class MerchantResolver:
             address = self._extract_address(words)
 
             # Create a ReceiptRecord for the finder
-            receipt_record = ReceiptRecord(
+            receipt_record = place_id_finder_module.ReceiptRecord(
                 image_id=image_id,
                 receipt_id=receipt_id,
                 merchant_name=merchant_name,
@@ -399,13 +406,15 @@ class MerchantResolver:
             )
 
             # Create finder instance
-            finder = PlaceIdFinder(
+            finder = place_id_finder_module.PlaceIdFinder(
                 dynamo_client=self.dynamo,
                 places_client=self.places_client,
             )
 
             # Search for place_id
-            match = finder._search_places_for_receipt(receipt_record)
+            match = finder._search_places_for_receipt(  # pylint: disable=protected-access
+                receipt_record
+            )
 
             if match.found and match.place_id:
                 return MerchantResult(
@@ -418,11 +427,11 @@ class MerchantResolver:
                     resolution_tier="place_id_finder",
                 )
 
-        except ImportError as e:
-            _log(f"WARNING: receipt_agent import failed: {e}")
+        except ImportError as exc:
+            _log("WARNING: receipt_agent import failed: %s", exc)
             logger.warning("receipt_agent import failed", exc_info=True)
-        except Exception as e:
-            _log(f"Error running Place ID Finder: {e}")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            _log("Error running Place ID Finder: %s", exc)
             logger.exception("Place ID Finder failed")
 
         return MerchantResult()
