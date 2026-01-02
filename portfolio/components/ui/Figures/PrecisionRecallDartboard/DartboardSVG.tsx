@@ -3,6 +3,7 @@ import type { DartboardSVGProps } from "./types";
 import {
   DARTBOARD_GEOMETRY,
   DARTBOARD_NUMBERS,
+  DARTBOARD_COLORS,
   SEGMENT_ANGLE,
   START_ANGLE_OFFSET,
   calculateSegmentPath,
@@ -47,7 +48,7 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
             scale
           )}
           fill={getSegmentColor(index, "double")}
-          stroke="var(--text-color)"
+          stroke={DARTBOARD_COLORS.dark}
           strokeWidth="0.5"
         />
       );
@@ -66,7 +67,7 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
             scale
           )}
           fill={getSegmentColor(index, "single_outer")}
-          stroke="var(--text-color)"
+          stroke={DARTBOARD_COLORS.dark}
           strokeWidth="0.5"
           opacity="0.9"
         />
@@ -86,7 +87,7 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
             scale
           )}
           fill={getSegmentColor(index, "triple")}
-          stroke="var(--text-color)"
+          stroke={DARTBOARD_COLORS.dark}
           strokeWidth="0.5"
         />
       );
@@ -105,7 +106,7 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
             scale
           )}
           fill={getSegmentColor(index, "single_inner")}
-          stroke="var(--text-color)"
+          stroke={DARTBOARD_COLORS.dark}
           strokeWidth="0.5"
           opacity="0.9"
         />
@@ -139,7 +140,7 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
           style={{
             fontSize: size * 0.055,
             fontWeight: "bold",
-            fill: "var(--background-color)",
+            fill: DARTBOARD_COLORS.light,
             userSelect: "none",
           }}
         >
@@ -163,7 +164,7 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
         cx={centerX}
         cy={centerY}
         r={scale * 1.27}
-        fill="var(--text-color)"
+        fill={DARTBOARD_COLORS.dark}
       />
 
       {/* Background circle (covers center of outer ring) */}
@@ -171,7 +172,7 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
         cx={centerX}
         cy={centerY}
         r={scale * 1.0}
-        fill="var(--background-color)"
+        fill={DARTBOARD_COLORS.light}
       />
 
       {/* Dartboard segments */}
@@ -182,8 +183,8 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
         cx={centerX}
         cy={centerY}
         r={DARTBOARD_GEOMETRY.OUTER_BULL_RADIUS * scale}
-        fill="var(--background-color)"
-        stroke="var(--text-color)"
+        fill={DARTBOARD_COLORS.light}
+        stroke={DARTBOARD_COLORS.dark}
         strokeWidth="0.5"
       />
 
@@ -192,8 +193,8 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
         cx={centerX}
         cy={centerY}
         r={DARTBOARD_GEOMETRY.INNER_BULL_RADIUS * scale}
-        fill="var(--text-color)"
-        stroke="var(--text-color)"
+        fill={DARTBOARD_COLORS.dark}
+        stroke={DARTBOARD_COLORS.dark}
         strokeWidth="0.5"
       />
 

@@ -79,9 +79,15 @@ export function calculateSegmentPath(
   ].join(" ");
 }
 
+// Fixed colors for dartboard (no dark mode inversion)
+export const DARTBOARD_COLORS = {
+  dark: "#1a1a1a",
+  light: "#f5f5f5",
+};
+
 /**
  * Get the fill color for a segment based on its index and ring type.
- * Monochromatic: singles alternate text/background, doubles/triples are inverse.
+ * Monochromatic: singles alternate dark/light, doubles/triples are inverse.
  */
 export function getSegmentColor(
   segmentIndex: number,
@@ -90,12 +96,12 @@ export function getSegmentColor(
   const isEven = segmentIndex % 2 === 0;
 
   if (ringType === "double" || ringType === "triple") {
-    // Inverse of singles: even = background, odd = text
-    return isEven ? "var(--background-color)" : "var(--text-color)";
+    // Inverse of singles: even = light, odd = dark
+    return isEven ? DARTBOARD_COLORS.light : DARTBOARD_COLORS.dark;
   }
 
-  // Singles: even = text, odd = background
-  return isEven ? "var(--text-color)" : "var(--background-color)";
+  // Singles: even = dark, odd = light
+  return isEven ? DARTBOARD_COLORS.dark : DARTBOARD_COLORS.light;
 }
 
 /**
