@@ -213,13 +213,15 @@ class OCRProcessor:
         image_id = ocr_job.image_id
         current_time = datetime.now(timezone.utc)
 
-        # Get image type from classification
+        # Get and validate image type from classification
         classification = ocr_json.get("classification", {})
         image_type_str = classification.get("image_type", "NATIVE").upper()
         try:
             image_type = ImageType[image_type_str]
         except KeyError:
             image_type = ImageType.NATIVE
+        # Use normalized enum name for consistency
+        image_type_str = image_type.name
 
         receipts = ocr_json.get("receipts", [])
         receipt_count = len(receipts)
