@@ -1,4 +1,4 @@
-import React, { useMemo, useLayoutEffect, useRef, useState, useEffect } from "react";
+import React, { useMemo, useLayoutEffect, useRef, useState, useEffect, useId } from "react";
 import { animated, useSprings } from "@react-spring/web";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 
@@ -35,22 +35,178 @@ const DEFAULT_SEGMENTS: SegmentSpec[] = [
 ];
 
 /**
- * Lemniscate of Bernoulli - parametric figure-8 curve
- * t ranges from 0 to 2π
+ * The original figure-8 path from Adobe Illustrator, normalized to center (0,0).
+ * This is the exact path exported from the reference design.
  */
-function fig8Point(t: number, cx: number, cy: number, a: number, b: number): Pt {
-  const s = Math.sin(t);
-  const c = Math.cos(t);
-  const denom = 1 + s * s;
+const ILLUSTRATOR_PATH = "M331.65,460.21l-68.3-79.42c-22.88-26.61-63.46-29.88-89.47-6.32-11.73,10.63-19.58,25.8-20.1,43.92-.02.7-.03,1.4-.03,2.11h0c0,.71.01,1.41.03,2.11.52,18.12,8.37,33.29,20.1,43.92,26.01,23.56,66.59,20.29,89.47-6.32l68.3-79.42c22.88-26.61,63.46-29.88,89.47-6.32,11.73,10.63,19.58,25.8,20.1,43.92.02.7.03,1.4.03,2.11h0c0,.71-.01,1.41-.03,2.11-.52,18.12-8.37,33.29-20.1,43.92-26.01,23.56-66.59,20.29-89.47-6.32Z";
+
+// Original path bounds (from Illustrator viewBox analysis)
+const PATH_CENTER = { x: 331.65, y: 420.5 };
+const PATH_WIDTH = 288; // approximate width
+const PATH_HEIGHT = 172; // approximate height
+
+/**
+ * Evaluate a cubic Bezier curve at parameter t
+ */
+function cubicBezier(p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt {
+  const mt = 1 - t;
+  const mt2 = mt * mt;
+  const mt3 = mt2 * mt;
+  const t2 = t * t;
+  const t3 = t2 * t;
 
   return {
-    x: cx + (a * c) / denom,
-    y: cy + (b * s * c) / denom,
+    x: mt3 * p0.x + 3 * mt2 * t * p1.x + 3 * mt * t2 * p2.x + t3 * p3.x,
+    y: mt3 * p0.y + 3 * mt2 * t * p1.y + 3 * mt * t2 * p2.y + t3 * p3.y,
   };
 }
 
 /**
- * Sample the figure-8 curve and compute cumulative arc lengths
+ * Parse the Illustrator SVG path and return sampled points
+ */
+function parseAndSamplePath(samples: number): Pt[] {
+  // Manually parsed path segments from the Illustrator export
+  // The path structure: M -> l -> c -> c -> c -> h -> c -> c -> c -> l -> c -> c -> c -> h -> c -> c -> c -> Z
+
+  const segments: { type: string; points: Pt[] }[] = [];
+  let current: Pt = { x: 331.65, y: 460.21 }; // M331.65,460.21
+
+  // l-68.3-79.42 (line to upper-left diagonal)
+  const p1 = { x: current.x - 68.3, y: current.y - 79.42 };
+  segments.push({ type: "L", points: [current, p1] });
+  current = p1;
+
+  // c-22.88-26.61-63.46-29.88-89.47-6.32 (left loop top curve)
+  let cp1 = { x: current.x - 22.88, y: current.y - 26.61 };
+  let cp2 = { x: current.x - 63.46, y: current.y - 29.88 };
+  let end = { x: current.x - 89.47, y: current.y - 6.32 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // -11.73,10.63-19.58,25.8-20.1,43.92 (left loop left-top curve)
+  cp1 = { x: current.x - 11.73, y: current.y + 10.63 };
+  cp2 = { x: current.x - 19.58, y: current.y + 25.8 };
+  end = { x: current.x - 20.1, y: current.y + 43.92 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // -.02.7-.03,1.4-.03,2.11 (tiny curve at left apex)
+  cp1 = { x: current.x - 0.02, y: current.y + 0.7 };
+  cp2 = { x: current.x - 0.03, y: current.y + 1.4 };
+  end = { x: current.x - 0.03, y: current.y + 2.11 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // h0 (horizontal line of 0 length - skip)
+
+  // c0,.71.01,1.41.03,2.11 (tiny curve continuing from apex)
+  cp1 = { x: current.x, y: current.y + 0.71 };
+  cp2 = { x: current.x + 0.01, y: current.y + 1.41 };
+  end = { x: current.x + 0.03, y: current.y + 2.11 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // .52,18.12,8.37,33.29,20.1,43.92 (left loop left-bottom curve)
+  cp1 = { x: current.x + 0.52, y: current.y + 18.12 };
+  cp2 = { x: current.x + 8.37, y: current.y + 33.29 };
+  end = { x: current.x + 20.1, y: current.y + 43.92 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // 26.01,23.56,66.59,20.29,89.47-6.32 (left loop bottom curve)
+  cp1 = { x: current.x + 26.01, y: current.y + 23.56 };
+  cp2 = { x: current.x + 66.59, y: current.y + 20.29 };
+  end = { x: current.x + 89.47, y: current.y - 6.32 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // l68.3-79.42 (line to upper-right diagonal)
+  const p2 = { x: current.x + 68.3, y: current.y - 79.42 };
+  segments.push({ type: "L", points: [current, p2] });
+  current = p2;
+
+  // c22.88-26.61,63.46-29.88,89.47-6.32 (right loop top curve)
+  cp1 = { x: current.x + 22.88, y: current.y - 26.61 };
+  cp2 = { x: current.x + 63.46, y: current.y - 29.88 };
+  end = { x: current.x + 89.47, y: current.y - 6.32 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // 11.73,10.63,19.58,25.8,20.1,43.92 (right loop right-top curve)
+  cp1 = { x: current.x + 11.73, y: current.y + 10.63 };
+  cp2 = { x: current.x + 19.58, y: current.y + 25.8 };
+  end = { x: current.x + 20.1, y: current.y + 43.92 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // .02.7.03,1.4.03,2.11 (tiny curve at right apex)
+  cp1 = { x: current.x + 0.02, y: current.y + 0.7 };
+  cp2 = { x: current.x + 0.03, y: current.y + 1.4 };
+  end = { x: current.x + 0.03, y: current.y + 2.11 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // h0 (horizontal line of 0 length - skip)
+
+  // c0,.71-.01,1.41-.03,2.11 (tiny curve continuing from apex)
+  cp1 = { x: current.x, y: current.y + 0.71 };
+  cp2 = { x: current.x - 0.01, y: current.y + 1.41 };
+  end = { x: current.x - 0.03, y: current.y + 2.11 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // -.52,18.12-8.37,33.29-20.1,43.92 (right loop right-bottom curve)
+  cp1 = { x: current.x - 0.52, y: current.y + 18.12 };
+  cp2 = { x: current.x - 8.37, y: current.y + 33.29 };
+  end = { x: current.x - 20.1, y: current.y + 43.92 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // -26.01,23.56-66.59,20.29-89.47-6.32 (right loop bottom curve back to start)
+  cp1 = { x: current.x - 26.01, y: current.y + 23.56 };
+  cp2 = { x: current.x - 66.59, y: current.y + 20.29 };
+  end = { x: current.x - 89.47, y: current.y - 6.32 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+
+  // Sample points along all segments
+  const pts: Pt[] = [];
+  const samplesPerSegment = Math.ceil(samples / segments.length);
+
+  for (const seg of segments) {
+    if (seg.type === "L") {
+      // Line segment
+      for (let i = 0; i < samplesPerSegment; i++) {
+        const t = i / samplesPerSegment;
+        pts.push({
+          x: seg.points[0].x + t * (seg.points[1].x - seg.points[0].x),
+          y: seg.points[0].y + t * (seg.points[1].y - seg.points[0].y),
+        });
+      }
+    } else if (seg.type === "C") {
+      // Cubic Bezier
+      for (let i = 0; i < samplesPerSegment; i++) {
+        const t = i / samplesPerSegment;
+        pts.push(cubicBezier(seg.points[0], seg.points[1], seg.points[2], seg.points[3], t));
+      }
+    }
+  }
+
+  return pts;
+}
+
+/**
+ * Get a point on the figure-8 path, scaled and centered for the component.
+ * This uses the exact path from the Illustrator export.
+ */
+function fig8Point(t: number, cx: number, cy: number, a: number, b: number): Pt {
+  // We'll compute this in sampleCurve instead using the parsed path
+  // This function is kept for API compatibility but won't be used directly
+  return { x: cx, y: cy };
+}
+
+/**
+ * Sample the figure-8 curve and compute cumulative arc lengths.
+ * Uses the exact path from the Illustrator export, scaled to fit the component.
  */
 function sampleCurve({
   cx,
@@ -65,11 +221,33 @@ function sampleCurve({
   b: number;
   samples?: number;
 }) {
-  const pts: Pt[] = [];
-  for (let i = 0; i <= samples; i++) {
-    const t = (i / samples) * Math.PI * 2;
-    pts.push(fig8Point(t, cx, cy, a, b));
+  // Get raw points from the Illustrator path
+  const rawPts = parseAndSamplePath(samples);
+
+  // Calculate the bounds of the raw path
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const pt of rawPts) {
+    minX = Math.min(minX, pt.x);
+    maxX = Math.max(maxX, pt.x);
+    minY = Math.min(minY, pt.y);
+    maxY = Math.max(maxY, pt.y);
   }
+
+  const rawWidth = maxX - minX;
+  const rawHeight = maxY - minY;
+  const rawCx = (minX + maxX) / 2;
+  const rawCy = (minY + maxY) / 2;
+
+  // Scale to fit within the target dimensions (a = half-width, b = half-height)
+  const scaleX = (a * 2) / rawWidth;
+  const scaleY = (b * 2) / rawHeight;
+  const scale = Math.min(scaleX, scaleY) * 0.95; // 95% to leave some margin
+
+  // Transform points to the target coordinate system
+  const pts: Pt[] = rawPts.map(pt => ({
+    x: cx + (pt.x - rawCx) * scale,
+    y: cy + (pt.y - rawCy) * scale,
+  }));
 
   // Compute cumulative arc length
   const cum: number[] = [0];
@@ -269,6 +447,9 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
   staggerDelay = 150,
   flowDuration = 4000,
 }) => {
+  // Unique ID for this component instance (for SVG path IDs)
+  const instanceId = useId();
+
   // Animation hooks
   const [containerRef, inView] = useOptimizedInView({
     threshold: 0.3,
@@ -416,7 +597,7 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
   const cy = height / 2;
   const a = width * 0.42; // Horizontal scale
   const b = height * 0.38; // Vertical scale
-  const ribbonWidth = height * 0.12;
+  const ribbonWidth = height * 0.18;
   const arrowLen = ribbonWidth * 0.6;
   const notchLen = ribbonWidth * 0.5;
 
@@ -431,6 +612,7 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
       // Create gaps between segments by shortening each segment
       const s0 = (i / N) * total + gapArcLength / 2;
       const s1 = ((i + 1) / N) * total - gapArcLength / 2;
+      const segmentLength = s1 - s0;
 
       const centerPts = sliceByArcLength(pts, cum, s0, s1);
 
@@ -446,15 +628,43 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
         arrowLen,
         notchLen
       );
-      return { textPathD, ribbonD };
+
+      // Calculate text X offset to center on visible ribbon body
+      // The notch apex is at `notchLen` from the path start
+      // The arrow base is at the path end (arrow tip extends beyond)
+      // Center the text between notch apex and arrow base:
+      //   Visual body: from notchLen to pathLength
+      //   Center: (notchLen + pathLength) / 2 = pathLength/2 + notchLen/2
+      //   As percentage: 50% + (notchLen / (2 * pathLength)) * 100%
+      // For reversed paths, flip the direction
+      const offsetAdjustment = (notchLen / (2 * segmentLength)) * 100;
+      const textStartOffset = needsReverse
+        ? 50 - offsetAdjustment
+        : 50 + offsetAdjustment;
+
+      return { textPathD, ribbonD, textStartOffset };
     });
   }, [N, cx, cy, a, b, ribbonWidth, arrowLen, notchLen, gapArcLength]);
 
-  const fontSize = height * 0.07;
+  const fontSize = height * 0.11;
 
   // Ref to measure text height
   const measureTextRef = useRef<SVGTextElement>(null);
   const [textDy, setTextDy] = useState(0);
+
+  // Refs for overlap detection
+  const svgRef = useRef<SVGSVGElement>(null);
+  const ribbonRefs = useRef<(SVGPathElement | null)[]>([]);
+  const textRefs = useRef<(SVGTextElement | null)[]>([]);
+
+  // State for text offset adjustments due to overlap
+  const [textOffsetAdjustments, setTextOffsetAdjustments] = useState<number[]>([]);
+
+  // Find the "Plan" segment index
+  const planIndex = useMemo(() => {
+    const idx = segments.findIndex(s => s.label === "Plan");
+    return idx >= 0 ? idx : 0;
+  }, [segments]);
 
   // Measure actual text height and calculate centering offset
   useLayoutEffect(() => {
@@ -469,9 +679,69 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
     }
   }, [fontSize]);
 
+  // Detect overlap between Plan ribbon and other segments' text
+  // Wait for all segments to animate in before checking
+  useEffect(() => {
+    if (!svgRef.current || !mounted || !inView) return;
+
+    // Wait for all segment animations to complete
+    const animationCompleteDelay = segments.length * staggerDelay + 500;
+
+    const timeoutId = setTimeout(() => {
+      const planRibbon = ribbonRefs.current[planIndex];
+      if (!planRibbon) return;
+
+      const planBBox = planRibbon.getBBox();
+
+      // Shrink the Plan bounding box to a tighter region (center 50%)
+      // This avoids false positives from the diagonal ribbon's rectangular bbox
+      const shrinkFactor = 0.5;
+      const tightPlanBBox = {
+        x: planBBox.x + planBBox.width * (1 - shrinkFactor) / 2,
+        y: planBBox.y + planBBox.height * (1 - shrinkFactor) / 2,
+        width: planBBox.width * shrinkFactor,
+        height: planBBox.height * shrinkFactor,
+      };
+
+      // Check each text element for overlap with Plan ribbon
+      const adjustments: number[] = new Array(segments.length).fill(0);
+
+      textRefs.current.forEach((textEl, i) => {
+        if (i === planIndex || !textEl) return;
+
+        const textBBox = textEl.getBBox();
+
+        // Calculate text center point
+        const textCenterX = textBBox.x + textBBox.width / 2;
+        const textCenterY = textBBox.y + textBBox.height / 2;
+
+        // Check if text center is inside the tightened Plan region
+        const textCenterInsidePlan =
+          textCenterX > tightPlanBBox.x &&
+          textCenterX < tightPlanBBox.x + tightPlanBBox.width &&
+          textCenterY > tightPlanBBox.y &&
+          textCenterY < tightPlanBBox.y + tightPlanBBox.height;
+
+        if (textCenterInsidePlan) {
+          // Calculate how much to shift the text
+          const planCenterX = planBBox.x + planBBox.width / 2;
+
+          // Shift text in the direction away from Plan's center
+          const shiftAmount = textCenterX < planCenterX ? -15 : 15;
+          adjustments[i] = shiftAmount;
+        }
+      });
+
+      setTextOffsetAdjustments(adjustments);
+    }, animationCompleteDelay);
+
+    return () => clearTimeout(timeoutId);
+  }, [mounted, inView, planIndex, segments, staggerDelay, segmentGeoms, textDy]);
+
   return (
     <div ref={containerRef}>
       <svg
+        ref={svgRef}
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
@@ -480,16 +750,18 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
         <defs>
           {/* Define centerline paths for text to follow */}
           {segmentGeoms.map((g, i) => (
-            <path key={i} id={`segc-${i}`} d={g.textPathD} fill="none" />
+            <path key={i} id={`segc-${instanceId}-${i}`} d={g.textPathD} fill="none" />
           ))}
         </defs>
 
         {/* Hidden text element to measure actual text height */}
         <text
           ref={measureTextRef}
-          fontSize={fontSize}
-          fontWeight="bold"
-          fontStyle="italic"
+          style={{
+            fontSize: `${fontSize}px`,
+            fontWeight: "bold",
+            fontStyle: "italic",
+          }}
           opacity={0}
           x={0}
           y={0}
@@ -497,34 +769,55 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
           Mg
         </text>
 
-        {/* Render each segment with animation */}
-        {segmentGeoms.map((g, i) => {
-          const { label, color } = segments[i];
+        {/* Render segments in two passes: background first, then "Plan" on top */}
+        {(() => {
+          // Render order: all segments except Plan, then Plan last
+          const renderOrder = [
+            ...segments.map((_, i) => i).filter(i => i !== planIndex),
+            planIndex,
+          ];
 
-          return (
-            <animated.g key={i} style={springs[i]}>
-              {/* Ribbon with notch + arrow tip */}
-              <path d={g.ribbonD} fill={color} fillRule="evenodd" />
+          return renderOrder.map((i) => {
+            const g = segmentGeoms[i];
+            const { label, color } = segments[i];
 
-              {/* Label along segment centerline */}
-              <text
-                fontSize={fontSize}
-                fontWeight="bold"
-                fontStyle="italic"
-                fill="var(--background-color)"
-                dy={textDy}
-              >
-                <textPath
-                  href={`#segc-${i}`}
-                  startOffset="50%"
-                  textAnchor="middle"
+            // Apply overlap adjustment to text offset
+            const adjustment = textOffsetAdjustments[i] || 0;
+            const finalOffset = g.textStartOffset + adjustment;
+
+            return (
+              <animated.g key={i} style={springs[i]}>
+                {/* Ribbon with notch + arrow tip */}
+                <path
+                  ref={(el) => { ribbonRefs.current[i] = el; }}
+                  d={g.ribbonD}
+                  fill={color}
+                  fillRule="evenodd"
+                />
+
+                {/* Label along segment centerline */}
+                <text
+                  ref={(el) => { textRefs.current[i] = el; }}
+                  style={{
+                    fontSize: `${fontSize}px`,
+                    fontWeight: "bold",
+                    fontStyle: "italic",
+                  }}
+                  fill="var(--background-color)"
+                  dy={textDy}
                 >
-                  {label}
-                </textPath>
-              </text>
-            </animated.g>
-          );
-        })}
+                  <textPath
+                    href={`#segc-${instanceId}-${i}`}
+                    startOffset={`${finalOffset}%`}
+                    textAnchor="middle"
+                  >
+                    {label}
+                  </textPath>
+                </text>
+              </animated.g>
+            );
+          });
+        })()}
 
       </svg>
     </div>
