@@ -190,8 +190,8 @@ class OCRProcessor:
             "image_id": ocr_job.image_id,
             "receipt_id": ocr_job.receipt_id,
             "image_type": "REFINEMENT",
-            "receipt_lines": receipt_lines,
-            "receipt_words": receipt_words,
+            "line_count": len(receipt_lines),
+            "word_count": len(receipt_words),
         }
 
     def _process_swift_single_pass(
@@ -448,8 +448,8 @@ class OCRProcessor:
                     "image_id": ocr_job.image_id,
                     "image_type": "NATIVE",
                     "receipt_id": 1,  # NATIVE always produces receipt_id=1
-                    "receipt_lines": receipt_lines,
-                    "receipt_words": receipt_words,
+                    "line_count": len(receipt_lines),
+                    "word_count": len(receipt_words),
                 }
 
             elif image_type == ImageType.PHOTO:
