@@ -71,23 +71,33 @@ function generateScatteredDarts(
 /**
  * Pre-defined scenarios for the 2x2 grid.
  * Grid layout:
- *   [0] High P, High R    [1] High P, Low R
- *   [2] Low P, High R     [3] Low P, Low R
+ *   [0] Low P, Low R      [1] Low P, High R
+ *   [2] High P, Low R     [3] High P, High R
  */
 export const DARTBOARD_SCENARIOS: DartboardScenario[] = [
   {
-    id: "high-precision-high-recall",
-    title: "High Precision, High Recall",
-    precision: "high",
+    id: "low-precision-low-recall",
+    title: "Low Precision, Low Recall",
+    precision: "low",
+    recall: "low",
+    description: "Few darts, spread out (limited and inconsistent)",
+    darts: generateScatteredDarts(
+      4, // Few darts (low recall)
+      0.4, // Wide spread
+      789 // Seed
+    ),
+  },
+  {
+    id: "low-precision-high-recall",
+    title: "Low Precision, High Recall",
+    precision: "low",
     recall: "high",
     description:
-      "Many darts, all clustered in the bullseye (accurate and comprehensive)",
-    darts: generateClusteredDarts(
-      12, // Many darts (high recall)
-      0.5, // Center X (bullseye)
-      0.5, // Center Y (bullseye)
-      0.06, // Tight cluster (high precision)
-      42 // Seed
+      "Many darts, spread across the target (comprehensive but inconsistent)",
+    darts: generateScatteredDarts(
+      14, // Many darts (high recall)
+      0.38, // Spread across board
+      456 // Seed
     ),
   },
   {
@@ -105,28 +115,18 @@ export const DARTBOARD_SCENARIOS: DartboardScenario[] = [
     ),
   },
   {
-    id: "low-precision-high-recall",
-    title: "Low Precision, High Recall",
-    precision: "low",
+    id: "high-precision-high-recall",
+    title: "High Precision, High Recall",
+    precision: "high",
     recall: "high",
     description:
-      "Many darts, spread across the target (comprehensive but inconsistent)",
-    darts: generateScatteredDarts(
-      14, // Many darts (high recall)
-      0.38, // Spread across board
-      456 // Seed
-    ),
-  },
-  {
-    id: "low-precision-low-recall",
-    title: "Low Precision, Low Recall",
-    precision: "low",
-    recall: "low",
-    description: "Few darts, spread out (limited and inconsistent)",
-    darts: generateScatteredDarts(
-      4, // Few darts (low recall)
-      0.4, // Wide spread
-      789 // Seed
+      "Many darts, all clustered in the bullseye (accurate and comprehensive)",
+    darts: generateClusteredDarts(
+      12, // Many darts (high recall)
+      0.5, // Center X (bullseye)
+      0.5, // Center Y (bullseye)
+      0.06, // Tight cluster (high precision)
+      42 // Seed
     ),
   },
 ];

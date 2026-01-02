@@ -130,7 +130,7 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
                 color: "var(--text-color)",
               }}
             >
-              High Recall
+              Low Recall
             </div>
             <div
               style={{
@@ -140,7 +140,7 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
                 color: "var(--text-color)",
               }}
             >
-              Low Recall
+              High Recall
             </div>
           </div>
         </div>
@@ -170,7 +170,7 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
                 textAlign: "center",
               }}
             >
-              High Precision
+              Low Precision
             </div>
             <div
               style={{
@@ -183,7 +183,7 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
                 textAlign: "center",
               }}
             >
-              Low Precision
+              High Precision
             </div>
           </div>
         )}
