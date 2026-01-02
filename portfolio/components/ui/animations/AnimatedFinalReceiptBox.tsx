@@ -164,8 +164,6 @@ const AnimatedFinalReceiptBox: React.FC<AnimatedFinalReceiptBoxProps> = ({
     rightmostHullPoint,
     avgAngleRad,
     toSvg,
-    svgWidth,
-    svgHeight,
   ]);
 
   // Memoize polygon points string for the final quadrilateral

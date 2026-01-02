@@ -298,6 +298,8 @@ def reprocess_photo_receipts(
                 continue
 
             # Find top and bottom lines using centroid Y
+            # In normalized coordinates, Y increases upward (0=bottom, 1=top)
+            # so higher Y = top of receipt
             def get_line_centroid_y(line):
                 return (
                     line.top_left["y"] + line.top_right["y"] +
@@ -307,8 +309,8 @@ def reprocess_photo_receipts(
             sorted_lines = sorted(
                 cluster_lines, key=get_line_centroid_y, reverse=True
             )
-            top_line = sorted_lines[0]
-            bottom_line = sorted_lines[-1]
+            top_line = sorted_lines[0]      # Highest Y = top-most in normalized coords
+            bottom_line = sorted_lines[-1]  # Lowest Y = bottom-most
 
             # Check for upside-down receipt
             angles = [line.angle_degrees for line in cluster_lines]
