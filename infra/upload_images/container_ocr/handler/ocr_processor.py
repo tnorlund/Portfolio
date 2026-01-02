@@ -80,23 +80,10 @@ class OCRProcessor:
             Dict with success status, image_type, and receipt_id
         """
         try:
-            # Debug: Log which table we're using
-            print(
-                f"[DEBUG] Processing job: image_id={image_id}, job_id={job_id}, "
-                f"table={self.table_name}",
-                flush=True
-            )
-
             # Get job and routing decision
             ocr_job = get_ocr_job(self.table_name, image_id, job_id)
             ocr_routing_decision = get_ocr_routing_decision(
                 self.table_name, image_id, job_id
-            )
-
-            print(
-                f"[DEBUG] Got OCR job type: {ocr_job.job_type}, "
-                f"routing s3_key={ocr_routing_decision.s3_key}",
-                flush=True
             )
 
             # Handle refinement jobs differently
@@ -106,11 +93,6 @@ class OCRProcessor:
                 )
 
             # Download and parse OCR JSON
-            print(
-                f"[DEBUG] Downloading OCR JSON: bucket={ocr_routing_decision.s3_bucket}, "
-                f"key={ocr_routing_decision.s3_key}",
-                flush=True
-            )
             ocr_json_path = download_file_from_s3(
                 ocr_routing_decision.s3_bucket,
                 ocr_routing_decision.s3_key,
@@ -120,19 +102,8 @@ class OCRProcessor:
             with open(ocr_json_path, "r", encoding="utf-8") as f:
                 ocr_json = json.load(f)
 
-            # Debug logging for Swift single-pass detection
-            json_keys = list(ocr_json.keys())
-            has_receipts = bool(ocr_json.get("receipts"))
-            has_classification = bool(ocr_json.get("classification"))
-            receipts_count = len(ocr_json.get("receipts", []))
-            print(
-                f"[DEBUG] OCR JSON keys: {json_keys}, "
-                f"has_receipts={has_receipts} (count={receipts_count}), "
-                f"has_classification={has_classification}",
-                flush=True
-            )
-
             # Check if this is a Swift single-pass result (has receipts with OCR)
+            # Swift uploads JSON with 'receipts' array and 'classification' dict
             if ocr_json.get("receipts") and ocr_json.get("classification"):
                 logger.info(
                     f"Detected Swift single-pass OCR for image {image_id}"
@@ -314,13 +285,21 @@ class OCRProcessor:
         ocr_routing_decision.updated_at = current_time
         self.dynamo.update_ocr_routing_decision(ocr_routing_decision)
 
+        # For Swift single-pass, return first receipt_id for embedding processing
+        # (most uploads are single-receipt; multi-receipt will process first only)
+        first_receipt_id = receipts[0]["cluster_id"] if receipts else None
+
         return {
             "success": True,
             "image_id": image_id,
             "image_type": image_type_str,
+            "receipt_id": first_receipt_id,
             "receipt_count": receipt_count,
+            "receipt_lines": all_receipt_lines,
+            "receipt_words": all_receipt_words,
             "line_count": len(all_receipt_lines),
             "word_count": len(all_receipt_words),
+            "swift_single_pass": True,  # Flag for handler to enable embeddings
         }
 
     def _parse_receipt_ocr_from_swift(

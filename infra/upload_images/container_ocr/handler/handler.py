@@ -200,16 +200,23 @@ def _process_single_record(
     # Only process embeddings for:
     # - NATIVE receipts (first pass, receipt_id=1)
     # - REFINEMENT jobs (second pass for PHOTO/SCAN, has receipt_id)
+    # - Swift single-pass results (has receipt_id and swift_single_pass=True)
     # Do NOT process embeddings for:
-    # - PHOTO/SCAN first pass (no receipt-level data yet, receipt_id=None)
+    # - Legacy PHOTO/SCAN first pass (no receipt-level data yet, receipt_id=None)
     image_type = ocr_result.get("image_type")
     receipt_id = ocr_result.get("receipt_id")
+    is_swift_single_pass = ocr_result.get("swift_single_pass", False)
 
     # Only create embeddings if we have a valid receipt_id
     # NATIVE: receipt_id=1
     # REFINEMENT: receipt_id from the job
-    # PHOTO/SCAN first pass: receipt_id=None (skip embeddings)
-    if receipt_id is not None and image_type in ["NATIVE", "REFINEMENT"]:
+    # Swift single-pass: receipt_id from first receipt, any image_type
+    # Legacy PHOTO/SCAN first pass: receipt_id=None (skip embeddings)
+    should_create_embeddings = (
+        receipt_id is not None
+        and (image_type in ["NATIVE", "REFINEMENT"] or is_swift_single_pass)
+    )
+    if should_create_embeddings:
         try:
             _log(
                 f"Initializing merchant-resolving embedding processor for {image_type} receipt (receipt_id={receipt_id})"
