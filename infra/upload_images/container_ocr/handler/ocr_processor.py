@@ -291,8 +291,8 @@ class OCRProcessor:
             "image_id": image_id,
             "image_type": image_type_str,
             "receipt_count": receipt_count,
-            "receipt_lines": all_receipt_lines,
-            "receipt_words": all_receipt_words,
+            "line_count": len(all_receipt_lines),
+            "word_count": len(all_receipt_words),
         }
 
     def _parse_receipt_ocr_from_swift(
