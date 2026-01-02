@@ -112,10 +112,9 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
         padding: "1rem",
       }}
     >
-      {/* Recall labels (top) - matches bottom flex structure */}
+      {/* Recall labels (top) */}
       {showLabels && (
         <div style={{ display: "flex", justifyContent: "center", marginBottom: "0.5rem" }}>
-          <div style={{ width: 24, marginRight: 4 }} /> {/* Spacer for precision labels */}
           <div
             style={{
               display: "grid",
@@ -231,6 +230,9 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
             </animated.div>
           ))}
         </div>
+
+        {/* Right spacer to balance precision labels */}
+        {showLabels && <div style={{ width: 24, marginLeft: 4 }} />}
       </div>
     </div>
   );
