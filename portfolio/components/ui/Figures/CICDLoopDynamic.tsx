@@ -378,16 +378,16 @@ function getPointAndTangentAtArcLength(
  * - Arrow tip at the end (triangle added)
  * - Notch at the start (triangle cut out using evenodd)
  *
- * @param startCut - Optional tangent/normal override for the notch cut (for consistent gap angles)
- * @param endCut - Optional tangent/normal override for the arrow cut (for consistent gap angles)
+ * @param startGap - Gap geometry for the start (notch): position, tangent, normal, and half-width of gap
+ * @param endGap - Gap geometry for the end (arrow): position, tangent, normal, and half-width of gap
  */
 function buildRibbonSegmentPath(
   center: Pt[],
   width: number,
   arrowLen: number,
   notchLen: number,
-  startCut?: { t: Pt; n: Pt },
-  endCut?: { t: Pt; n: Pt }
+  startGap?: { pt: Pt; t: Pt; n: Pt; halfGap: number },
+  endGap?: { pt: Pt; t: Pt; n: Pt; halfGap: number }
 ): string {
   if (center.length < 2) return "";
 
@@ -404,43 +404,92 @@ function buildRibbonSegmentPath(
     right.push({ x: p.x - n.x * halfW, y: p.y - n.y * halfW });
   }
 
-  // Arrow tip at end
-  // Use gap tangent for TIP direction (consistent cut angle), but LOCAL normal for base corners
+  // Arrow geometry at end
   const endI = center.length - 1;
   const end = center[endI];
   const localEnd = tangentAndNormal(center, endI);
-  const gapEnd = endCut || localEnd;
-  // Tip direction uses gap tangent for alignment
-  const tip = { x: end.x + gapEnd.t.x * arrowLen, y: end.y + gapEnd.t.y * arrowLen };
-  // Base corners use LOCAL normal to match ribbon edges
-  const endL = { x: end.x + localEnd.n.x * halfW, y: end.y + localEnd.n.y * halfW };
-  const endR = { x: end.x - localEnd.n.x * halfW, y: end.y - localEnd.n.y * halfW };
 
-  // Notch triangle hole at start
-  // Use gap tangent for APEX direction (consistent cut angle), but LOCAL normal for base corners
+  let tip: Pt, endL: Pt, endR: Pt;
+
+  if (endGap) {
+    // Use gap geometry for uniform spacing
+    // Arrow base is at: gapCenter - tangent * halfGap (back edge of gap)
+    const arrowBase = {
+      x: endGap.pt.x - endGap.t.x * endGap.halfGap,
+      y: endGap.pt.y - endGap.t.y * endGap.halfGap,
+    };
+    // Arrow tip extends from base
+    tip = {
+      x: arrowBase.x + endGap.t.x * arrowLen,
+      y: arrowBase.y + endGap.t.y * arrowLen,
+    };
+    // Base corners use gap normal for uniform width
+    endL = { x: arrowBase.x + endGap.n.x * halfW, y: arrowBase.y + endGap.n.y * halfW };
+    endR = { x: arrowBase.x - endGap.n.x * halfW, y: arrowBase.y - endGap.n.y * halfW };
+  } else {
+    // Fallback to local geometry
+    tip = { x: end.x + localEnd.t.x * arrowLen, y: end.y + localEnd.t.y * arrowLen };
+    endL = { x: end.x + localEnd.n.x * halfW, y: end.y + localEnd.n.y * halfW };
+    endR = { x: end.x - localEnd.n.x * halfW, y: end.y - localEnd.n.y * halfW };
+  }
+
+  // Notch geometry at start
   const start = center[0];
   const localStart = tangentAndNormal(center, 0);
-  const gapStart = startCut || localStart;
-  // Apex direction uses gap tangent for alignment
-  const notchApex = {
-    x: start.x + gapStart.t.x * notchLen,
-    y: start.y + gapStart.t.y * notchLen,
-  };
-  // Base corners use LOCAL normal to match ribbon edges
-  const notchL = { x: start.x + localStart.n.x * halfW, y: start.y + localStart.n.y * halfW };
-  const notchR = { x: start.x - localStart.n.x * halfW, y: start.y - localStart.n.y * halfW };
+
+  let notchApex: Pt, notchL: Pt, notchR: Pt;
+
+  if (startGap) {
+    // Use gap geometry for uniform spacing
+    // Notch base is at: gapCenter + tangent * halfGap (front edge of gap)
+    const notchBase = {
+      x: startGap.pt.x + startGap.t.x * startGap.halfGap,
+      y: startGap.pt.y + startGap.t.y * startGap.halfGap,
+    };
+    // Notch apex cuts into segment from base
+    notchApex = {
+      x: notchBase.x + startGap.t.x * notchLen,
+      y: notchBase.y + startGap.t.y * notchLen,
+    };
+    // Base corners use gap normal for uniform width
+    notchL = { x: notchBase.x + startGap.n.x * halfW, y: notchBase.y + startGap.n.y * halfW };
+    notchR = { x: notchBase.x - startGap.n.x * halfW, y: notchBase.y - startGap.n.y * halfW };
+  } else {
+    // Fallback to local geometry
+    notchApex = {
+      x: start.x + localStart.t.x * notchLen,
+      y: start.y + localStart.t.y * notchLen,
+    };
+    notchL = { x: start.x + localStart.n.x * halfW, y: start.y + localStart.n.y * halfW };
+    notchR = { x: start.x - localStart.n.x * halfW, y: start.y - localStart.n.y * halfW };
+  }
+
+  // Replace edge endpoints with arrow/notch corners to avoid discontinuities on curves
+  // This ensures the ribbon body connects smoothly to the arrow/notch geometry
+  const leftEdge = [...left];
+  const rightEdge = [...right];
+
+  // Replace start points with notch corners (if using gap geometry)
+  if (startGap) {
+    leftEdge[0] = notchL;
+    rightEdge[0] = notchR;
+  }
+
+  // Replace end points with arrow corners (if using gap geometry)
+  if (endGap) {
+    leftEdge[leftEdge.length - 1] = endL;
+    rightEdge[rightEdge.length - 1] = endR;
+  }
 
   // Build outer polygon path (left edge -> arrow tip -> right edge back)
   const outer =
-    `M ${left[0].x} ${left[0].y} ` +
-    left
+    `M ${leftEdge[0].x} ${leftEdge[0].y} ` +
+    leftEdge
       .slice(1)
       .map((p) => `L ${p.x} ${p.y}`)
       .join(" ") +
-    ` L ${endL.x} ${endL.y}` +
-    ` L ${tip.x} ${tip.y}` +
-    ` L ${endR.x} ${endR.y} ` +
-    right
+    ` L ${tip.x} ${tip.y} ` +
+    rightEdge
       .slice(0, -1)
       .reverse()
       .map((p) => `L ${p.x} ${p.y}`)
@@ -667,18 +716,24 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
   const segmentGeoms = useMemo(() => {
     const { pts, cum, total } = sampleCurve({ cx, cy, a, b, samples: 1400 });
 
-    // First, calculate the gap positions and their tangent/normals
+    // Define the gap width as a straight-line distance (not arc-length)
+    // This ensures uniform gap width on both inner and outer edges of curves
+    const gapWidth = ribbonWidth * 0.4;
+    const halfGap = gapWidth / 2;
+
+    // Calculate gap geometry at each segment boundary
     // Gap i is between segment i-1 and segment i (gap 0 is between segment N-1 and segment 0)
-    const gapCuts: { t: Pt; n: Pt }[] = [];
+    const gapGeoms: { pt: Pt; t: Pt; n: Pt; halfGap: number }[] = [];
     for (let i = 0; i < N; i++) {
       // Gap position is at the boundary between segments
       const gapCenter = (i / N) * total;
-      const { t, n } = getPointAndTangentAtArcLength(pts, cum, gapCenter);
-      gapCuts.push({ t, n });
+      const { pt, t, n } = getPointAndTangentAtArcLength(pts, cum, gapCenter);
+      gapGeoms.push({ pt, t, n, halfGap });
     }
 
     return Array.from({ length: N }, (_, i) => {
-      // Create gaps between segments by shortening each segment
+      // Segment centerline still uses arc-length for sampling
+      // but the actual gap geometry uses fixed-width positioning
       const s0 = (i / N) * total + gapArcLength / 2;
       const s1 = ((i + 1) / N) * total - gapArcLength / 2;
       const segmentLength = s1 - s0;
@@ -691,19 +746,19 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
         ? polylinePathDReversed(centerPts)
         : polylinePathD(centerPts);
 
-      // Get the gap tangent/normal for consistent cut angles:
-      // - startCut: gap at the start of this segment (gap i)
-      // - endCut: gap at the end of this segment (gap i+1, wrapping around)
-      const startCut = gapCuts[i];
-      const endCut = gapCuts[(i + 1) % N];
+      // Get the gap geometry for uniform spacing:
+      // - startGap: gap at the start of this segment (gap i)
+      // - endGap: gap at the end of this segment (gap i+1, wrapping around)
+      const startGap = gapGeoms[i];
+      const endGap = gapGeoms[(i + 1) % N];
 
       const ribbonD = buildRibbonSegmentPath(
         centerPts,
         ribbonWidth,
         arrowLen,
         notchLen,
-        startCut,
-        endCut
+        startGap,
+        endGap
       );
 
       // Calculate text X offset to center on visible ribbon body
