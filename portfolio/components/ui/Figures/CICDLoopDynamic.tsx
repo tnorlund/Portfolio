@@ -328,15 +328,66 @@ function tangentAndNormal(
 }
 
 /**
+ * Get point and tangent at a specific arc-length position
+ */
+function getPointAndTangentAtArcLength(
+  pts: Pt[],
+  cum: number[],
+  s: number
+): { pt: Pt; t: Pt; n: Pt } {
+  // Handle edge cases
+  if (s <= 0) {
+    const t = unit(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+    return { pt: pts[0], t, n: { x: -t.y, y: t.x } };
+  }
+  if (s >= cum[cum.length - 1]) {
+    const last = pts.length - 1;
+    const t = unit(pts[last].x - pts[last - 1].x, pts[last].y - pts[last - 1].y);
+    return { pt: pts[last], t, n: { x: -t.y, y: t.x } };
+  }
+
+  // Find the segment containing arc-length s
+  for (let i = 1; i < pts.length; i++) {
+    if (cum[i] >= s) {
+      const a = cum[i - 1];
+      const b = cum[i];
+      const frac = (s - a) / (b - a || 1);
+
+      // Interpolate point
+      const pt = {
+        x: pts[i - 1].x + frac * (pts[i].x - pts[i - 1].x),
+        y: pts[i - 1].y + frac * (pts[i].y - pts[i - 1].y),
+      };
+
+      // Tangent from the segment direction
+      const t = unit(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      const n = { x: -t.y, y: t.x };
+
+      return { pt, t, n };
+    }
+  }
+
+  // Fallback (shouldn't reach here)
+  const last = pts.length - 1;
+  const t = unit(pts[last].x - pts[last - 1].x, pts[last].y - pts[last - 1].y);
+  return { pt: pts[last], t, n: { x: -t.y, y: t.x } };
+}
+
+/**
  * Build a filled ribbon segment path with:
  * - Arrow tip at the end (triangle added)
  * - Notch at the start (triangle cut out using evenodd)
+ *
+ * @param startCut - Optional tangent/normal override for the notch cut (for consistent gap angles)
+ * @param endCut - Optional tangent/normal override for the arrow cut (for consistent gap angles)
  */
 function buildRibbonSegmentPath(
   center: Pt[],
   width: number,
   arrowLen: number,
-  notchLen: number
+  notchLen: number,
+  startCut?: { t: Pt; n: Pt },
+  endCut?: { t: Pt; n: Pt }
 ): string {
   if (center.length < 2) return "";
 
@@ -354,22 +405,30 @@ function buildRibbonSegmentPath(
   }
 
   // Arrow tip at end
+  // Use gap tangent for TIP direction (consistent cut angle), but LOCAL normal for base corners
   const endI = center.length - 1;
   const end = center[endI];
-  const { t: tend, n: nend } = tangentAndNormal(center, endI);
-  const tip = { x: end.x + tend.x * arrowLen, y: end.y + tend.y * arrowLen };
-  const endL = { x: end.x + nend.x * halfW, y: end.y + nend.y * halfW };
-  const endR = { x: end.x - nend.x * halfW, y: end.y - nend.y * halfW };
+  const localEnd = tangentAndNormal(center, endI);
+  const gapEnd = endCut || localEnd;
+  // Tip direction uses gap tangent for alignment
+  const tip = { x: end.x + gapEnd.t.x * arrowLen, y: end.y + gapEnd.t.y * arrowLen };
+  // Base corners use LOCAL normal to match ribbon edges
+  const endL = { x: end.x + localEnd.n.x * halfW, y: end.y + localEnd.n.y * halfW };
+  const endR = { x: end.x - localEnd.n.x * halfW, y: end.y - localEnd.n.y * halfW };
 
   // Notch triangle hole at start
+  // Use gap tangent for APEX direction (consistent cut angle), but LOCAL normal for base corners
   const start = center[0];
-  const { t: t0, n: n0 } = tangentAndNormal(center, 0);
+  const localStart = tangentAndNormal(center, 0);
+  const gapStart = startCut || localStart;
+  // Apex direction uses gap tangent for alignment
   const notchApex = {
-    x: start.x + t0.x * notchLen,
-    y: start.y + t0.y * notchLen,
+    x: start.x + gapStart.t.x * notchLen,
+    y: start.y + gapStart.t.y * notchLen,
   };
-  const notchL = { x: start.x + n0.x * halfW, y: start.y + n0.y * halfW };
-  const notchR = { x: start.x - n0.x * halfW, y: start.y - n0.y * halfW };
+  // Base corners use LOCAL normal to match ribbon edges
+  const notchL = { x: start.x + localStart.n.x * halfW, y: start.y + localStart.n.y * halfW };
+  const notchR = { x: start.x - localStart.n.x * halfW, y: start.y - localStart.n.y * halfW };
 
   // Build outer polygon path (left edge -> arrow tip -> right edge back)
   const outer =
@@ -608,6 +667,16 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
   const segmentGeoms = useMemo(() => {
     const { pts, cum, total } = sampleCurve({ cx, cy, a, b, samples: 1400 });
 
+    // First, calculate the gap positions and their tangent/normals
+    // Gap i is between segment i-1 and segment i (gap 0 is between segment N-1 and segment 0)
+    const gapCuts: { t: Pt; n: Pt }[] = [];
+    for (let i = 0; i < N; i++) {
+      // Gap position is at the boundary between segments
+      const gapCenter = (i / N) * total;
+      const { t, n } = getPointAndTangentAtArcLength(pts, cum, gapCenter);
+      gapCuts.push({ t, n });
+    }
+
     return Array.from({ length: N }, (_, i) => {
       // Create gaps between segments by shortening each segment
       const s0 = (i / N) * total + gapArcLength / 2;
@@ -622,11 +691,19 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
         ? polylinePathDReversed(centerPts)
         : polylinePathD(centerPts);
 
+      // Get the gap tangent/normal for consistent cut angles:
+      // - startCut: gap at the start of this segment (gap i)
+      // - endCut: gap at the end of this segment (gap i+1, wrapping around)
+      const startCut = gapCuts[i];
+      const endCut = gapCuts[(i + 1) % N];
+
       const ribbonD = buildRibbonSegmentPath(
         centerPts,
         ribbonWidth,
         arrowLen,
-        notchLen
+        notchLen,
+        startCut,
+        endCut
       );
 
       // Calculate text X offset to center on visible ribbon body
