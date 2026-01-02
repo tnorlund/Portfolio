@@ -108,40 +108,41 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
+        width: "100%",
         padding: "1rem",
       }}
     >
-      {/* Recall labels (top) */}
+      {/* Recall labels (top) - matches bottom flex structure */}
       {showLabels && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `60px ${dartboardSize}px ${dartboardSize}px`,
-            gap: `0 ${gap}px`,
-            width: gridWidth + 60,
-            marginBottom: "0.5rem",
-          }}
-        >
-          <div /> {/* Empty cell for alignment */}
+        <div style={{ display: "flex", marginBottom: "0.5rem" }}>
+          <div style={{ width: 40, marginRight: 8 }} /> {/* Spacer for precision labels */}
           <div
             style={{
-              textAlign: "center",
-              fontWeight: "bold",
-              fontSize: "0.875rem",
-              color: "var(--text-color)",
+              display: "grid",
+              gridTemplateColumns: `repeat(2, ${dartboardSize}px)`,
+              gap: `0 ${gap}px`,
             }}
           >
-            High Recall
-          </div>
-          <div
-            style={{
-              textAlign: "center",
-              fontWeight: "bold",
-              fontSize: "0.875rem",
-              color: "var(--text-color)",
-            }}
-          >
-            Low Recall
+            <div
+              style={{
+                textAlign: "center",
+                fontWeight: "bold",
+                fontSize: "0.875rem",
+                color: "var(--text-color)",
+              }}
+            >
+              High Recall
+            </div>
+            <div
+              style={{
+                textAlign: "center",
+                fontWeight: "bold",
+                fontSize: "0.875rem",
+                color: "var(--text-color)",
+              }}
+            >
+              Low Recall
+            </div>
           </div>
         </div>
       )}
@@ -154,9 +155,9 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
               display: "flex",
               flexDirection: "column",
               justifyContent: "space-around",
-              marginRight: gap,
+              marginRight: 8,
               height: dartboardSize * 2 + gap,
-              width: 60,
+              width: 40,
             }}
           >
             <div
