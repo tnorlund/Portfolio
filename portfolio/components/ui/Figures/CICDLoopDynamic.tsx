@@ -780,7 +780,11 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
         ? 50 - offsetAdjustment
         : 50 + offsetAdjustment;
 
-      return { textPathD, ribbonD, textStartOffset };
+      // Calculate segment center for transform-origin (use midpoint of centerPts)
+      const midIndex = Math.floor(centerPts.length / 2);
+      const segmentCenter = centerPts[midIndex] || centerPts[0];
+
+      return { textPathD, ribbonD, textStartOffset, segmentCenter };
     });
   }, [N, cx, cy, a, b, ribbonWidth, arrowLen, notchLen, gapArcLength]);
 
@@ -883,7 +887,7 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
-        style={{ maxWidth: "100%", height: "auto" }}
+        style={{ maxWidth: "100%", height: "auto", overflow: "visible" }}
       >
         <defs>
           {/* Define centerline paths for text to follow */}
@@ -924,7 +928,13 @@ const CICDLoopDynamic: React.FC<CICDLoopDynamicProps> = ({
             const finalOffset = g.textStartOffset + adjustment;
 
             return (
-              <animated.g key={i} style={springs[i]}>
+              <animated.g
+                key={i}
+                style={{
+                  ...springs[i],
+                  transformOrigin: `${g.segmentCenter.x}px ${g.segmentCenter.y}px`,
+                }}
+              >
                 {/* Ribbon with notch + arrow tip */}
                 <path
                   ref={(el) => { ribbonRefs.current[i] = el; }}
