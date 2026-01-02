@@ -173,7 +173,7 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
                   textOrientation: "mixed",
                   transform: "rotate(180deg)",
                   fontWeight: "bold",
-                  fontSize: "0.75rem",
+                  fontSize: "0.875rem",
                   color: "var(--text-color)",
                 }}
               >
@@ -193,7 +193,7 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
                   textOrientation: "mixed",
                   transform: "rotate(180deg)",
                   fontWeight: "bold",
-                  fontSize: "0.75rem",
+                  fontSize: "0.875rem",
                   color: "var(--text-color)",
                 }}
               >
