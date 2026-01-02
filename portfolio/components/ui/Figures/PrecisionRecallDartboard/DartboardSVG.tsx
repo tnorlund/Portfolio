@@ -200,8 +200,8 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
       {/* Number labels (on top of outer ring) */}
       {numberLabels}
 
-      {/* Darts */}
-      {darts.map((dart, index) => {
+      {/* Darts - only render when animateDarts is true */}
+      {animateDarts && darts.map((dart, index) => {
         // Spread dart animations evenly across dartSpreadDuration
         const perDartDelay = darts.length > 1
           ? dartSpreadDuration / (darts.length - 1)
@@ -212,9 +212,7 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
             x={dart.x * size}
             y={dart.y * size}
             angle={dart.angle}
-            animationDelay={
-              animateDarts ? dartAnimationDelay + index * perDartDelay : 0
-            }
+            animationDelay={dartAnimationDelay + index * perDartDelay}
             size={size * 0.055}
           />
         );
