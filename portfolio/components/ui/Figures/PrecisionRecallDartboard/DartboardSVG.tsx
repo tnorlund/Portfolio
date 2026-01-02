@@ -69,7 +69,6 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
           fill={getSegmentColor(index, "single_outer")}
           stroke={DARTBOARD_COLORS.dark}
           strokeWidth="0.5"
-          opacity="0.9"
         />
       );
 
@@ -108,7 +107,6 @@ const DartboardSVG: React.FC<DartboardSVGProps> = ({
           fill={getSegmentColor(index, "single_inner")}
           stroke={DARTBOARD_COLORS.dark}
           strokeWidth="0.5"
-          opacity="0.9"
         />
       );
     });
