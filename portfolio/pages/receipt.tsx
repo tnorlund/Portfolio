@@ -592,9 +592,7 @@ export default function ReceiptPage({
       <h2>Pulumi</h2>
 
       <ClientOnly>
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <CICDLoop />
-        </div>
+        <CICDLoop />
       </ClientOnly>
 
       <p>

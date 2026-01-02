@@ -908,7 +908,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   }, [mounted, inView, planIndex, segments, staggerDelay, segmentGeoms, textDy]);
 
   return (
-    <div ref={containerRef}>
+    <div ref={containerRef} style={{ display: "flex", justifyContent: "center" }}>
       <svg
         ref={svgRef}
         width={width}
