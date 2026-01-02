@@ -57,6 +57,7 @@ final class LineClustererTests: XCTestCase {
         XCTAssertEqual(result.clusterCount, 1)
         // Noise points should be in cluster -1
         XCTAssertNotNil(result.clusters[-1])
+        XCTAssertEqual(result.clusters[-1]?.count, 1, "Expected exactly 1 noise point")
     }
 
     // MARK: - DBSCAN X-Axis Tests

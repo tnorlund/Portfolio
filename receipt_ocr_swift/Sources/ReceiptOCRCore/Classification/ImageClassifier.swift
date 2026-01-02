@@ -168,6 +168,7 @@ public struct ImageClassifier {
         } else if scanDistance < photoDistance {
             imageType = .scan
         } else {
+            // When scanDistance == photoDistance, defaults to .photo
             imageType = .photo
         }
 

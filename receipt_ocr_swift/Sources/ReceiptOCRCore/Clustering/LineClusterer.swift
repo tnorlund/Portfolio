@@ -70,9 +70,11 @@ public struct LineClusterer {
         func expandCluster(_ pointIdx: Int, _ neighbors: [Int], _ clusterId: Int) {
             clusterLabels[pointIdx] = clusterId
             var seeds = neighbors
+            var seedsSet = Set(neighbors)  // O(1) lookup for contains check
 
             while !seeds.isEmpty {
                 let currentPoint = seeds.removeFirst()
+                seedsSet.remove(currentPoint)
 
                 // Skip if already visited
                 if visited[currentPoint] {
@@ -89,10 +91,9 @@ public struct LineClusterer {
 
                 // If it's a core point, add unvisited neighbors to seeds
                 if newNeighbors.count >= minSamples {
-                    for neighbor in newNeighbors {
-                        if !seeds.contains(neighbor) {
-                            seeds.append(neighbor)
-                        }
+                    for neighbor in newNeighbors where !seedsSet.contains(neighbor) {
+                        seeds.append(neighbor)
+                        seedsSet.insert(neighbor)
                     }
                 }
 

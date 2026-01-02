@@ -399,9 +399,9 @@ public struct VisionOCREngine: OCREngineProtocol {
             performNLExtraction(on: aggregatedText, mutableLines: &mutableLines, wordMappings: wordMappings)
 
             // Perform classification and clustering if enabled
-            var classification: ClassificationResult? = nil
-            var clustering: ClusteringResult? = nil
-            var receiptOutputs: [ReceiptOutput]? = nil
+            var classification: ClassificationResult?
+            var clustering: ClusteringResult?
+            var receiptOutputs: [ReceiptOutput]?
 
             if includeClassification, let imageDimensions = getImageDimensions(from: imageURL) {
                 // Classify the image
