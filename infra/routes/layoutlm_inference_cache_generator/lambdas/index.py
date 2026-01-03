@@ -1,11 +1,17 @@
-"""Lambda handler for generating LayoutLM inference cache."""
+"""Lambda handler for generating LayoutLM inference cache.
+
+Supports two modes:
+1. EventBridge scheduled mode (legacy): Picks random receipt, stores to latest.json
+2. Step Function batch mode: Processes batch of receipts, stores each to unique key
+"""
 
 import json
 import logging
 import os
 import random
+import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import boto3
 from receipt_layoutlm import LayoutLMInference
@@ -22,10 +28,30 @@ S3_CACHE_BUCKET = os.environ["S3_CACHE_BUCKET"]
 LAYOUTLM_TRAINING_BUCKET = os.environ.get("LAYOUTLM_TRAINING_BUCKET")
 MODEL_S3_URI = os.environ.get("MODEL_S3_URI")  # Optional override
 CACHE_KEY = "layoutlm-inference-cache/latest.json"
+CACHE_PREFIX = "layoutlm-inference-cache/receipts/"  # For batch mode
 MODEL_DIR = "/tmp/layoutlm-model"  # Persists across warm invocations
 
 # Initialize clients
 s3_client = boto3.client("s3")
+
+# Global model instance for warm starts
+_model_instance: Optional[LayoutLMInference] = None
+
+
+def _get_model() -> LayoutLMInference:
+    """Get or create LayoutLM model instance (cached for warm starts)."""
+    global _model_instance
+    if _model_instance is None:
+        logger.info("Loading LayoutLM model from S3")
+        _model_instance = LayoutLMInference(
+            model_dir=MODEL_DIR,
+            model_s3_uri=MODEL_S3_URI,
+            auto_from_bucket_env=(
+                "LAYOUTLM_TRAINING_BUCKET" if LAYOUTLM_TRAINING_BUCKET else None
+            ),
+        )
+        logger.info("Model loaded successfully. Device: %s", _model_instance._device)
+    return _model_instance
 
 
 def _get_base_label(bio_label: str) -> str:
@@ -601,4 +627,365 @@ def handler(_event, _context):
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e)}),
+        }
+
+
+def _extract_entities_summary(
+    predictions: List[Dict[str, Any]],
+) -> Dict[str, Optional[str]]:
+    """Extract consolidated entity values from predictions.
+
+    Groups consecutive tokens by label and joins their text.
+
+    Args:
+        predictions: List of prediction dicts with predicted_label_base and text
+
+    Returns:
+        Dict with merchant_name, date, address, amount (each may be None)
+    """
+    # Group consecutive tokens by label
+    entities: Dict[str, List[str]] = {
+        "MERCHANT_NAME": [],
+        "DATE": [],
+        "ADDRESS": [],
+        "AMOUNT": [],
+    }
+
+    current_label = None
+    current_tokens: List[str] = []
+
+    for pred in predictions:
+        label = pred.get("predicted_label_base", "O")
+
+        if label == "O":
+            # Flush current tokens if any
+            if current_label and current_tokens:
+                entities[current_label].append(" ".join(current_tokens))
+            current_label = None
+            current_tokens = []
+        elif label == current_label:
+            # Continue building current entity
+            current_tokens.append(pred.get("text", ""))
+        else:
+            # New label - flush previous and start new
+            if current_label and current_tokens:
+                entities[current_label].append(" ".join(current_tokens))
+            current_label = label
+            current_tokens = [pred.get("text", "")]
+
+    # Flush final tokens
+    if current_label and current_tokens:
+        entities[current_label].append(" ".join(current_tokens))
+
+    # Take the longest/best entity for each type
+    def best_entity(values: List[str]) -> Optional[str]:
+        if not values:
+            return None
+        # Return the longest entity (usually most complete)
+        return max(values, key=len)
+
+    return {
+        "merchant_name": best_entity(entities["MERCHANT_NAME"]),
+        "date": best_entity(entities["DATE"]),
+        "address": best_entity(entities["ADDRESS"]),
+        "amount": best_entity(entities["AMOUNT"]),
+    }
+
+
+def _process_single_receipt(
+    dynamo_client: DynamoClient,
+    infer: LayoutLMInference,
+    image_id: str,
+    receipt_id: int,
+) -> Dict[str, Any]:
+    """Process a single receipt and return inference results.
+
+    Args:
+        dynamo_client: DynamoDB client instance
+        infer: LayoutLM inference model
+        image_id: Image ID
+        receipt_id: Receipt ID
+
+    Returns:
+        Dict containing receipt inference data ready for S3 storage
+    """
+    logger.info("Processing receipt: image_id=%s, receipt_id=%s", image_id, receipt_id)
+
+    # Get receipt details
+    receipt_details = dynamo_client.get_receipt_details(image_id, receipt_id)
+
+    # Time the inference
+    start_time = time.perf_counter()
+    inference_result = infer.predict_receipt_from_dynamo(
+        dynamo_client, image_id, receipt_id
+    )
+    inference_time_ms = (time.perf_counter() - start_time) * 1000
+
+    # Build ground truth mapping
+    ground_truth_base: Dict[tuple[int, int], str] = {}
+    ground_truth_original: Dict[tuple[int, int], str] = {}
+    for label in receipt_details.labels:
+        if label.validation_status == ValidationStatus.VALID:
+            ground_truth_original[(label.line_id, label.word_id)] = label.label
+            normalized = _normalize_label_for_4label_setup(label.label)
+            ground_truth_base[(label.line_id, label.word_id)] = normalized
+
+    # Build word lookups
+    word_lookup: Dict[tuple[int, str], int] = {}
+    words_by_line: Dict[int, List[Any]] = {}
+    for word in receipt_details.words:
+        word_lookup[(word.line_id, word.text)] = word.word_id
+        word_lookup[(word.line_id, word.text.strip())] = word.word_id
+        words_by_line.setdefault(word.line_id, []).append(word)
+
+    for line_id in words_by_line:
+        words_by_line[line_id].sort(key=lambda w: w.word_id)
+
+    # Build predictions
+    predictions: List[Dict[str, Any]] = []
+
+    for line_pred in inference_result.lines:
+        line_id = line_pred.line_id
+        line_words = words_by_line.get(line_id, [])
+
+        line_word_ids: List[int] = []
+        line_base_labels: List[str] = []
+
+        for token_idx, token in enumerate(line_pred.tokens):
+            word_id = None
+            if token_idx < len(line_words):
+                word = line_words[token_idx]
+                if token == word.text or token.strip() == word.text.strip():
+                    word_id = word.word_id
+
+            if word_id is None:
+                word_id = word_lookup.get(
+                    (line_id, token)
+                ) or word_lookup.get((line_id, token.strip()))
+
+            if word_id is None:
+                for word in line_words:
+                    if token == word.text or token.strip() == word.text.strip():
+                        word_id = word.word_id
+                        break
+
+            line_word_ids.append(word_id)
+            base_label = (
+                ground_truth_base.get((line_id, word_id), "O")
+                if word_id is not None
+                else "O"
+            )
+            line_base_labels.append(base_label)
+
+        # Convert to BIO format
+        line_bio_labels: List[str] = []
+        prev_base = "O"
+        for base_label in line_base_labels:
+            if base_label == "O":
+                line_bio_labels.append("O")
+                prev_base = "O"
+            else:
+                bio_label = (
+                    "B-" + base_label if prev_base != base_label else "I-" + base_label
+                )
+                line_bio_labels.append(bio_label)
+                prev_base = base_label
+
+        # Build prediction entries
+        for token_idx, token in enumerate(line_pred.tokens):
+            word_id = line_word_ids[token_idx]
+            ground_truth_bio = line_bio_labels[token_idx]
+
+            pred_label = (
+                line_pred.labels[token_idx]
+                if token_idx < len(line_pred.labels)
+                else "O"
+            )
+            confidence = (
+                line_pred.confidences[token_idx]
+                if token_idx < len(line_pred.confidences)
+                else 0.0
+            )
+
+            all_probs = {}
+            if line_pred.all_probabilities and token_idx < len(
+                line_pred.all_probabilities
+            ):
+                all_probs = line_pred.all_probabilities[token_idx]
+
+            base_probs = _combine_bio_probabilities(all_probs)
+            predicted_label_base = _get_base_label(pred_label)
+            ground_truth_label_base = (
+                _get_base_label(ground_truth_bio)
+                if ground_truth_bio != "O"
+                else None
+            )
+            ground_truth_label_original = (
+                ground_truth_original.get((line_id, word_id))
+                if word_id is not None
+                else None
+            )
+            is_correct = pred_label == ground_truth_bio
+
+            predictions.append(
+                {
+                    "word_id": word_id,
+                    "line_id": line_id,
+                    "text": token,
+                    "predicted_label": pred_label,
+                    "ground_truth_label": (
+                        ground_truth_bio if ground_truth_bio != "O" else None
+                    ),
+                    "predicted_label_base": predicted_label_base,
+                    "ground_truth_label_base": ground_truth_label_base,
+                    "ground_truth_label_original": ground_truth_label_original,
+                    "predicted_confidence": float(confidence),
+                    "is_correct": is_correct,
+                    "all_class_probabilities": all_probs,
+                    "all_class_probabilities_base": base_probs,
+                }
+            )
+
+    # Calculate metrics
+    ground_truth_bio_dict: Dict[tuple[int, int], str] = {}
+    for pred in predictions:
+        word_id = pred.get("word_id")
+        line_id = pred.get("line_id")
+        if word_id is not None and line_id is not None:
+            gt_label = pred.get("ground_truth_label")
+            ground_truth_bio_dict[(line_id, word_id)] = gt_label if gt_label else "O"
+
+    metrics = calculate_metrics(predictions, ground_truth_bio_dict)
+
+    # Extract entity summary
+    entities_summary = _extract_entities_summary(predictions)
+
+    # Build response
+    return {
+        "receipt_id": f"{image_id}_{receipt_id}",
+        "original": {
+            "receipt": dict(receipt_details.receipt),
+            "words": [dict(word) for word in receipt_details.words],
+            "predictions": predictions,
+        },
+        "metrics": metrics,
+        "model_info": {
+            "model_name": "microsoft/layoutlm-base-uncased",
+            "device": infer._device,
+            "s3_uri": infer._s3_uri_used,
+        },
+        "entities_summary": entities_summary,
+        "inference_time_ms": round(inference_time_ms, 2),
+        "cached_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def batch_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
+    """Handle Step Function batch inference request.
+
+    Processes a batch of receipts from the Step Function Map state.
+
+    Args:
+        event: Step Function input containing:
+            - receipts: List of {image_id, receipt_id} dicts
+        _context: Lambda context (unused)
+
+    Returns:
+        dict: Results of batch processing
+    """
+    logger.info("Starting batch inference")
+    logger.info("Event: %s", json.dumps(event))
+
+    receipts = event.get("receipts", [])
+    if not receipts:
+        logger.warning("No receipts provided in batch")
+        return {
+            "processed": 0,
+            "failed": 0,
+            "results": [],
+        }
+
+    try:
+        # Initialize clients
+        dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME)
+        infer = _get_model()
+
+        results = []
+        processed = 0
+        failed = 0
+
+        for receipt_info in receipts:
+            image_id = receipt_info.get("image_id")
+            receipt_id = receipt_info.get("receipt_id")
+
+            if not image_id or receipt_id is None:
+                logger.warning("Invalid receipt info: %s", receipt_info)
+                failed += 1
+                continue
+
+            try:
+                # Process the receipt
+                result = _process_single_receipt(
+                    dynamo_client, infer, image_id, receipt_id
+                )
+
+                # Store to S3 with unique key
+                cache_key = f"{CACHE_PREFIX}receipt-{image_id}-{receipt_id}.json"
+                s3_client.put_object(
+                    Bucket=S3_CACHE_BUCKET,
+                    Key=cache_key,
+                    Body=json.dumps(result, default=str),
+                    ContentType="application/json",
+                )
+
+                logger.info(
+                    "Cached receipt %s_%s: accuracy=%.2f%%, time=%.0fms",
+                    image_id,
+                    receipt_id,
+                    result["metrics"]["overall_accuracy"] * 100,
+                    result["inference_time_ms"],
+                )
+
+                results.append(
+                    {
+                        "receipt_id": f"{image_id}_{receipt_id}",
+                        "cache_key": cache_key,
+                        "accuracy": result["metrics"]["overall_accuracy"],
+                        "inference_time_ms": result["inference_time_ms"],
+                        "status": "success",
+                    }
+                )
+                processed += 1
+
+            except Exception as e:
+                logger.error(
+                    "Error processing receipt %s_%s: %s",
+                    image_id,
+                    receipt_id,
+                    e,
+                    exc_info=True,
+                )
+                results.append(
+                    {
+                        "receipt_id": f"{image_id}_{receipt_id}",
+                        "status": "failed",
+                        "error": str(e),
+                    }
+                )
+                failed += 1
+
+        logger.info("Batch complete: processed=%d, failed=%d", processed, failed)
+
+        return {
+            "processed": processed,
+            "failed": failed,
+            "results": results,
+        }
+
+    except Exception as e:
+        logger.error("Error in batch handler: %s", e, exc_info=True)
+        return {
+            "processed": 0,
+            "failed": len(receipts),
+            "error": str(e),
         }

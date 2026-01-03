@@ -44,3 +44,7 @@ export const TrainingMetricsAnimation = dynamic(
   () => import("./TrainingMetricsAnimation"),
   { ssr: false }
 );
+export const LayoutLMBatchVisualization = dynamic(
+  () => import("./LayoutLMBatchVisualization"),
+  { ssr: false }
+);
