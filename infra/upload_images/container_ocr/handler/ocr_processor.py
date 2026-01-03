@@ -241,6 +241,25 @@ class OCRProcessor:
             receipt_count,
         )
 
+        # Create Line/Word/Letter entities from first-pass OCR (original image)
+        original_lines = ocr_json.get("lines", [])
+        if original_lines:
+            lines, words, letters = self._parse_original_ocr_from_swift(
+                image_id, original_lines
+            )
+            if lines:
+                self.dynamo.add_lines(lines)
+            if words:
+                self.dynamo.add_words(words)
+            if letters:
+                self.dynamo.add_letters(letters)
+            logger.info(
+                "Created first-pass entities: %s lines, %s words, %s letters",
+                len(lines),
+                len(words),
+                len(letters),
+            )
+
         all_receipt_lines = []
         all_receipt_words = []
 
@@ -521,6 +540,105 @@ class OCRProcessor:
                     receipt_letters.append(receipt_letter)
 
         return receipt_lines, receipt_words, receipt_letters
+
+    def _parse_original_ocr_from_swift(
+        self,
+        image_id: str,
+        lines_data: list[Dict[str, Any]],
+    ) -> tuple[list[Line], list[Word], list[Letter]]:
+        """
+        Parse Swift first-pass OCR output into Line/Word/Letter entities.
+
+        These are the original image OCR results used for classification and
+        clustering, before perspective/affine transforms are applied.
+        """
+        lines = []
+        words = []
+        letters = []
+
+        def _has_valid_geometry(data: dict) -> bool:
+            """Check if geometry fields have required keys."""
+            bbox = data.get("bounding_box", {})
+            if not all(k in bbox for k in ("x", "y", "width", "height")):
+                return False
+            for corner in ("top_left", "top_right", "bottom_left", "bottom_right"):
+                point = data.get(corner, {})
+                if not all(k in point for k in ("x", "y")):
+                    return False
+            return True
+
+        for line_idx, line_data in enumerate(lines_data, start=1):
+            line_text = line_data.get("text", "")
+            if not line_text or not _has_valid_geometry(line_data):
+                continue
+
+            line = Line(
+                image_id=image_id,
+                line_id=line_idx,
+                text=line_text,
+                bounding_box=line_data["bounding_box"],
+                top_left=line_data["top_left"],
+                top_right=line_data["top_right"],
+                bottom_left=line_data["bottom_left"],
+                bottom_right=line_data["bottom_right"],
+                angle_degrees=line_data.get("angle_degrees", 0.0),
+                angle_radians=line_data.get("angle_radians", 0.0),
+                confidence=line_data.get("confidence", 1.0),
+            )
+            lines.append(line)
+
+            for word_idx, word_data in enumerate(
+                line_data.get("words", []), start=1
+            ):
+                word_text = word_data.get("text", "")
+                word_confidence = word_data.get("confidence", 0.0)
+                if not word_text or word_confidence <= 0 or not _has_valid_geometry(word_data):
+                    continue
+
+                word = Word(
+                    image_id=image_id,
+                    line_id=line_idx,
+                    word_id=word_idx,
+                    text=word_text,
+                    bounding_box=word_data["bounding_box"],
+                    top_left=word_data["top_left"],
+                    top_right=word_data["top_right"],
+                    bottom_left=word_data["bottom_left"],
+                    bottom_right=word_data["bottom_right"],
+                    angle_degrees=word_data.get("angle_degrees", 0.0),
+                    angle_radians=word_data.get("angle_radians", 0.0),
+                    confidence=word_confidence,
+                )
+                words.append(word)
+
+                for letter_idx, letter_data in enumerate(
+                    word_data.get("letters", []), start=1
+                ):
+                    letter_text = letter_data.get("text", "")
+                    letter_confidence = letter_data.get("confidence", 0.0)
+                    if len(letter_text) != 1 or letter_confidence <= 0:
+                        continue
+                    if not _has_valid_geometry(letter_data):
+                        continue
+
+                    letter = Letter(
+                        image_id=image_id,
+                        line_id=line_idx,
+                        word_id=word_idx,
+                        letter_id=letter_idx,
+                        text=letter_text,
+                        bounding_box=letter_data["bounding_box"],
+                        top_left=letter_data["top_left"],
+                        top_right=letter_data["top_right"],
+                        bottom_left=letter_data["bottom_left"],
+                        bottom_right=letter_data["bottom_right"],
+                        angle_degrees=letter_data.get("angle_degrees", 0.0),
+                        angle_radians=letter_data.get("angle_radians", 0.0),
+                        confidence=letter_confidence,
+                    )
+                    letters.append(letter)
+
+        return lines, words, letters
 
     def _process_first_pass_job(
         self,
