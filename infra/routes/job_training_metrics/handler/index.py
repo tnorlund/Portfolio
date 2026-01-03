@@ -18,6 +18,13 @@ logger.setLevel(logging.INFO)
 
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
 
+# Featured job ID - hardcoded for the portfolio demo
+# This can be updated to point to the best trained model
+FEATURED_JOB_ID = os.environ.get(
+    "FEATURED_JOB_ID",
+    "b8af06b6-27eb-41bc-846a-8b0ff93b8845"  # confusion-matrix-test-2
+)
+
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
@@ -40,6 +47,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         if not job_id:
             return _error_response(400, "Missing required path parameter: job_id")
+
+        # Support "featured" as a special job_id alias
+        if job_id == "featured":
+            job_id = FEATURED_JOB_ID
 
         # Parse query parameters
         query_params = event.get("queryStringParameters") or {}
@@ -81,6 +92,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if f1 > best_f1:
                 best_f1 = f1
                 best_epoch = epoch_data.get("epoch")
+
+        # Mark best epoch with is_best flag
+        for epoch_data in epochs:
+            epoch_data["is_best"] = epoch_data.get("epoch") == best_epoch
 
         response_body = {
             "job_id": job_id,

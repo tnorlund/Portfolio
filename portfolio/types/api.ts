@@ -195,3 +195,40 @@ export interface AddressSimilarityResponse {
   }>;
   cached_at: string;
 }
+
+export interface TrainingMetricsEpoch {
+  epoch: number;
+  is_best: boolean;
+  metrics: {
+    val_f1: number;
+    val_precision?: number;
+    val_recall?: number;
+    eval_loss?: number;
+    train_loss?: number;
+    learning_rate?: number;
+  };
+  confusion_matrix?: {
+    labels: string[];
+    matrix: number[][];
+  };
+  per_label: Record<
+    string,
+    {
+      f1: number;
+      precision: number;
+      recall: number;
+      support: number;
+    }
+  >;
+}
+
+export interface TrainingMetricsResponse {
+  job_id: string;
+  job_name: string;
+  status: string;
+  created_at: string;
+  epochs: TrainingMetricsEpoch[];
+  best_epoch: number;
+  best_f1: number;
+  total_epochs: number;
+}
