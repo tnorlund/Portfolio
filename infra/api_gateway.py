@@ -6,6 +6,7 @@ import routes.address_similarity_cache_generator.infra  # noqa: F401
 import routes.layoutlm_inference_cache_generator.infra  # noqa: F401
 from routes.address_similarity.infra import address_similarity_lambda
 from routes.ai_usage.infra import ai_usage_lambda
+from routes.job_training_metrics.infra import job_training_metrics_lambda
 
 # Import your Lambda/route definitions
 from routes.health_check.infra import health_check_lambda
@@ -396,6 +397,36 @@ lambda_permission_ai_usage = aws.lambda_.Permission(
     "ai_usage_lambda_permission",
     action="lambda:InvokeFunction",
     function=ai_usage_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
+
+# /jobs/{job_id}/training-metrics
+integration_job_training_metrics = aws.apigatewayv2.Integration(
+    "job_training_metrics_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=job_training_metrics_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_job_training_metrics = aws.apigatewayv2.Route(
+    "job_training_metrics_route",
+    api_id=api.id,
+    route_key="GET /jobs/{job_id}/training-metrics",
+    target=integration_job_training_metrics.id.apply(
+        lambda id: f"integrations/{id}"
+    ),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_job_training_metrics = aws.lambda_.Permission(
+    "job_training_metrics_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=job_training_metrics_lambda.name,
     principal="apigateway.amazonaws.com",
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )
