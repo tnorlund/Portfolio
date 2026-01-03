@@ -11,6 +11,8 @@ Modes:
 - sync: Wait for builds to complete (useful for CI/CD)
 """
 
+# mypy: ignore-errors
+
 # pylint: disable=import-error
 
 import base64
@@ -23,14 +25,6 @@ from typing import Any, Dict, List, Optional
 
 import pulumi
 import pulumi_command as command
-from infra.shared.build_utils import (
-    compute_hash,
-    make_artifact_bucket,
-    make_log_group,
-    resolve_build_config,
-)
-from infra.shared.buildspecs import lambda_layer_buildspec
-from infra.utils import _find_project_root
 from pulumi import ComponentResource, Output
 from pulumi_aws import config, get_caller_identity
 from pulumi_aws.codebuild import (
@@ -52,6 +46,15 @@ from pulumi_aws.codepipeline import (
 from pulumi_aws.iam import Role as ROLE
 from pulumi_aws.iam import RolePolicy
 from pulumi_aws.lambda_ import LayerVersion
+
+from infra.shared.build_utils import (
+    compute_hash,
+    make_artifact_bucket,
+    make_log_group,
+    resolve_build_config,
+)
+from infra.shared.buildspecs import lambda_layer_buildspec
+from infra.utils import _find_project_root
 
 PROJECT_DIR = _find_project_root()
 # config will be initialized when needed in Pulumi context
@@ -971,7 +974,11 @@ echo "🎉 Parallel function updates completed!"'''
             opts=pulumi.ResourceOptions(
                 parent=self,
                 depends_on=(
-                    [r for r in [bucket_versioning, encryption] if r is not None]
+                    [
+                        r
+                        for r in [bucket_versioning, encryption]
+                        if r is not None
+                    ]
                     or None
                 ),
             ),

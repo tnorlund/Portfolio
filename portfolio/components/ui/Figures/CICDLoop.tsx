@@ -1,325 +1,1005 @@
+import React, { useMemo, useLayoutEffect, useRef, useState, useEffect, useId } from "react";
 import { animated, useSprings } from "@react-spring/web";
-import React, { useEffect, useMemo, useRef, useState } from "react";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 
 interface CICDLoopProps {
-    /** Delay between each section animation (ms) */
-    staggerDelay?: number;
-    /** Animation duration for each section (ms) */
-    animationDuration?: number;
+  /** Width of the component */
+  width?: number;
+  /** Height of the component */
+  height?: number;
+  /** Segment definitions */
+  segments?: SegmentSpec[];
+  /** Delay between segment animations in ms (default: 150) */
+  staggerDelay?: number;
+  /** Duration of one full loop animation in ms (default: 4000) */
+  flowDuration?: number;
 }
 
-// Original SVG viewBox dimensions
-const ORIGINAL_VIEWBOX = { width: 200, height: 100 };
+interface SegmentSpec {
+  label: string;
+  color: string;
+}
 
-// SVG path data extracted from the re-rendered Illustrator file
-const SVG_PATHS = {
-    Plan: [
-        { type: "polygon", points: "75.61 25.41 70.45 26.06 71.1 31.21 72.71 29.04 75.61 25.41" },
-        { type: "path", d: "M84.52,35.25c.27-.33.33-.65.18-.96-.08-.17-.24-.35-.47-.54l-1.19-.97-1.25,1.54,1.19.97c.27.22.53.34.8.36.26.02.51-.11.75-.41Z" },
-        { type: "path", d: "M88,40.61c-.1-.01-.22-.05-.34-.1-.13-.06-.25-.12-.36-.19l-.36-.23c-.22-.13-.4-.21-.55-.24-.25-.04-.45.04-.62.25-.13.16-.17.33-.13.51.04.18.14.34.3.47.19.16.41.26.67.32.42.1.77-.02,1.04-.35l.36-.44Z" },
-        { type: "path", d: "M71.1,31.21l.52,4.12,32.94,26.75-.81-9.38,8.93-.77-33.25-27-8.98,1.14M81.37,34.84l-1.53,1.88-.6-.49,3.62-4.45,1.99,1.62c.39.32.62.69.68,1.11.06.42-.07.83-.4,1.24-.28.35-.64.56-1.06.65s-.86-.06-1.31-.42l-1.39-1.13ZM83.28,39.52l3.62-4.46.55.44-3.62,4.46-.55-.44ZM87.55,43.01c-.1-.04-.18-.08-.23-.11-.05-.03-.11-.08-.19-.14-.19-.15-.27-.33-.25-.53.01-.11.06-.23.15-.38-.23.06-.49.05-.79-.01s-.57-.19-.82-.4c-.3-.24-.47-.54-.52-.87-.04-.34.05-.64.27-.92.24-.3.53-.46.85-.47.32-.01.65.09.99.29l.96.6c.14.09.27.1.38.05.06-.03.13-.09.21-.18.15-.19.2-.38.13-.57-.06-.19-.22-.39-.46-.59-.28-.23-.55-.32-.79-.26-.14.03-.28.12-.44.27l-.51-.41c.34-.39.69-.57,1.07-.52.38.04.73.2,1.06.47.38.31.63.63.75.97.12.34.05.66-.2.97l-1.52,1.87c-.05.06-.07.11-.08.16,0,.05.03.11.1.17.02.02.05.04.09.06s.07.04.11.07l-.33.4ZM92.91,42.63c-.05.25-.21.54-.48.86l-1.69,2.08-.56-.45,1.66-2.05c.16-.2.26-.38.3-.55.07-.28-.03-.52-.28-.73-.13-.1-.25-.18-.35-.22-.19-.08-.39-.09-.61-.05-.18.03-.33.1-.45.19-.12.09-.27.24-.44.46l-1.38,1.7-.55-.44,2.64-3.25.52.42-.37.46c.31-.06.58-.07.82-.01.24.06.46.17.67.34.46.37.64.79.54,1.24Z" },
-    ],
-    Code: [
-        { type: "path", d: "M54.43,22.27c-.25-.23-.52-.32-.84-.28-.35.04-.62.21-.8.51s-.24.71-.18,1.23c.06.44.2.81.42,1.08.23.28.54.39.96.34.32-.04.57-.21.74-.52.17-.3.23-.72.16-1.23-.07-.52-.22-.9-.47-1.12Z" },
-        { type: "path", d: "M50.4,23.12c-.29-.31-.67-.41-1.13-.27-.41.12-.66.36-.75.73-.09.37-.08.78.05,1.22.12.43.32.76.59.99.27.23.6.29,1.01.17.44-.13.7-.39.76-.77.07-.39.04-.79-.08-1.2-.11-.37-.26-.66-.44-.86Z" },
-        { type: "path", d: "M58.08,21.76c-.32,0-.59.1-.82.32-.22.23-.35.52-.37.88l2.3.07c-.02-.31-.08-.55-.17-.74-.18-.34-.49-.52-.94-.54Z" },
-        { type: "path", d: "M36.27,39.39l3.89-.73c3.78-5.7,10.11-9.15,17.06-9.15,3.96,0,7.75,1.12,11.05,3.24l-1.17-9.29,8.95-1.13c-5.57-3.8-12.04-5.82-18.82-5.82-11.58,0-22.11,5.87-28.23,15.5l1.58,8.45M47.61,26.65c-.18.64-.62,1.13-1.3,1.48-.59.29-1.17.36-1.76.2-.77-.21-1.4-.82-1.9-1.82-.38-.76-.49-1.48-.34-2.16.16-.74.62-1.3,1.38-1.68.64-.32,1.23-.4,1.75-.23.53.17.92.46,1.17.87l-.68.34c-.24-.29-.52-.48-.84-.56-.32-.08-.69-.02-1.09.18-.5.25-.81.63-.94,1.13s0,1.13.36,1.86c.3.6.68,1.02,1.15,1.26s.97.22,1.51-.06c.5-.25.79-.64.85-1.17.04-.28,0-.6-.1-.97l.68-.34c.21.57.24,1.12.09,1.66ZM51.54,25.5c-.19.51-.61.87-1.27,1.06-.55.16-1.04.1-1.47-.18-.43-.28-.74-.73-.92-1.36-.2-.67-.18-1.26.04-1.76s.62-.83,1.2-1c.51-.15,1-.1,1.45.14.46.24.78.7.97,1.37.19.65.19,1.23,0,1.74ZM55.17,25.47l-.07-.58c-.13.28-.3.49-.51.63-.21.14-.45.23-.74.27-.46.06-.88-.09-1.27-.43-.39-.35-.62-.84-.7-1.49-.08-.6.01-1.15.26-1.63s.66-.76,1.23-.83c.32-.04.59,0,.82.1.13.06.29.18.47.35l-.26-2.1.67-.08.72,5.71-.63.08ZM59.9,23.61l-3.04-.09c0,.43.09.77.27,1.03s.46.4.85.41c.36.01.66-.1.88-.34.13-.14.22-.3.27-.48l.69.02c-.02.15-.09.32-.2.51-.11.19-.23.34-.36.45-.22.2-.48.33-.8.4-.17.04-.36.05-.57.04-.52-.02-.95-.22-1.3-.61-.35-.39-.51-.93-.49-1.61.02-.67.22-1.21.59-1.62.38-.41.85-.6,1.44-.58.29,0,.58.09.85.24.27.15.48.33.62.56.13.22.22.46.26.75.04.19.05.5.03.92Z" },
-    ],
-    Build: [
-        { type: "path", d: "M30.75,54.5c.05-.21.06-.48.02-.8l-.2-1.54-2,.26.22,1.68c.06.48.24.8.54.97.19.11.41.14.65.11.41-.05.67-.28.77-.67Z" },
-        { type: "path", d: "M31.61,54.24c.18.27.45.38.82.33.37-.05.6-.23.69-.55.05-.18.05-.44,0-.78l-.18-1.39-1.76.23.18,1.42c.04.33.12.58.23.75Z" },
-        { type: "path", d: "M48.94,68.95c-7.85-2.67-12.21-9.93-12.21-18.95,0-2.98.48-5.48,1.57-7.94l-10.13,1.9-1.45-7.75c-1.91,4.21-2.99,8.87-2.99,13.79,0,13.95,8.58,25.93,20.74,30.96l3.66-1.46,2.19-7.11-1.38-3.44ZM35.98,60.42l.33.64-.71.36-.33-.64.71-.36ZM28.12,54.17l-.31-2.42,5.69-.74.32,2.46c.09.67-.05,1.17-.41,1.51-.21.2-.47.32-.78.35-.36.05-.67-.02-.92-.19-.13-.09-.27-.23-.39-.41-.07.31-.17.54-.29.7-.21.29-.54.46-.98.52-.37.05-.71-.03-1.04-.22-.49-.29-.78-.81-.88-1.56ZM29.8,60.65l.58-.2c-.18-.03-.34-.09-.49-.18-.29-.18-.5-.44-.63-.79-.19-.55-.14-.99.17-1.33.16-.18.41-.33.75-.45l2.68-.95.24.68-2.62.92c-.2.07-.35.16-.46.27-.2.2-.24.45-.13.77.16.45.47.68.94.7.25.01.57-.05.96-.19l1.94-.68.23.66-3.95,1.39-.22-.63ZM30.87,63.04l3.71-1.9.33.64-3.71,1.9-.33-.64ZM31.95,65.02l4.89-3,.37.6-4.89,3-.37-.6ZM35.44,69.81l-.4-.49.45-.37c-.3.04-.57,0-.8-.1-.23-.1-.44-.26-.62-.49-.29-.36-.39-.8-.3-1.31.09-.51.39-.97.89-1.38.47-.38.98-.6,1.52-.64.54-.04.99.16,1.36.61.2.25.32.5.35.75.02.15,0,.34-.05.59l1.64-1.33.43.53-4.47,3.63Z" },
-        { type: "path", d: "M36.31,65.73c-.35,0-.73.17-1.14.5-.35.28-.58.59-.7.93-.12.34-.04.67.22.99.2.25.48.37.83.36.35-.01.73-.19,1.13-.52.41-.33.65-.66.71-.99.06-.33,0-.61-.21-.86-.22-.27-.51-.41-.85-.41Z" },
-        { type: "path", d: "M51.07,69.56c-.05-.01-.08-.02-.1-.02.03,0,.07.01.1.02Z" },
-        { type: "polygon", points: "50.32 72.39 48.13 79.5 52.47 77.76 50.32 72.39" },
-    ],
-    Test: [
-        { type: "path", d: "M72.42,71.41c-.35-.18-.71-.14-1.08.1-.27.18-.43.42-.48.74s.01.62.2.93l1.92-1.27c-.19-.24-.38-.41-.57-.5Z" },
-        { type: "path", d: "M92.85,55.33l-8.99-.6-14.57,11.83c-3.52,2.57-7.69,3.93-12.06,3.93-1.57,0-3.13-.18-4.64-.53l3.79,9.47-7.48,2.99c2.72.7,5.51,1.07,8.34,1.07,7.22,0,14.11-2.27,19.9-6.56l15.11-12.26M68.86,77l-2.07-4.61-1.76.79-.28-.62,4.25-1.9.28.62-1.76.79,2.07,4.61-.72.32ZM74.25,73.58c-.06.29-.2.55-.43.79-.12.13-.26.25-.44.37-.43.29-.9.37-1.41.25-.51-.12-.95-.46-1.33-1.03-.37-.56-.52-1.12-.45-1.67s.35-.99.84-1.31c.25-.16.52-.26.83-.3s.58,0,.83.1c.23.1.45.25.64.46.14.14.33.38.56.74l-2.54,1.67c.25.35.52.58.81.69s.61.06.93-.15c.3-.2.48-.46.53-.79.02-.18,0-.37-.05-.55l.58-.38c.07.14.11.31.13.53.02.21,0,.41-.03.58ZM77.29,71.74c-.49.4-.92.57-1.31.51s-.71-.24-.99-.55l.52-.43c.16.17.32.27.48.31.28.06.6-.05.94-.33.21-.17.35-.36.44-.57.09-.22.05-.42-.1-.6-.11-.14-.26-.19-.45-.17-.12.02-.32.1-.6.23l-.53.25c-.34.16-.61.25-.81.28-.36.05-.64-.06-.85-.32-.25-.31-.34-.65-.27-1.02.07-.37.29-.71.67-1.02.5-.4.97-.55,1.42-.44.29.07.51.21.68.43l-.52.42c-.11-.11-.25-.19-.41-.23-.24-.04-.52.07-.84.33-.21.17-.34.34-.38.51-.04.17-.02.32.09.44.11.14.28.2.49.16.12-.02.28-.07.47-.16l.44-.21c.48-.23.82-.36,1.03-.38.33-.03.61.1.85.4.23.29.33.63.27,1.02s-.3.77-.76,1.14ZM79.93,69.47c-.25.21-.48.28-.68.22-.2-.06-.38-.19-.55-.4l-1.75-2.15-.44.36-.36-.45.44-.36-.74-.91.55-.45.74.91.52-.42.36.45-.52.42,1.72,2.12c.09.11.19.16.3.13.06-.01.14-.06.24-.14.03-.02.05-.05.08-.07.03-.03.06-.06.1-.1l.35.43c-.05.07-.1.14-.16.2-.06.06-.13.13-.21.19Z" },
-    ],
-    Release: [
-        { type: "path", d: "M103.43,46.24c-.36-.14-.72-.07-1.06.21-.25.2-.38.46-.41.78-.02.32.08.62.29.91l1.79-1.45c-.21-.22-.42-.37-.61-.44Z" },
-        { type: "path", d: "M108.28,42.3c-.36-.14-.72-.07-1.06.21-.25.2-.38.46-.41.78-.02.32.08.62.29.91l1.79-1.45c-.21-.22-.42-.37-.61-.44Z" },
-        { type: "path", d: "M112.36,40.32c-.03.1-.09.2-.17.31-.08.11-.17.22-.26.31l-.3.31c-.18.19-.29.35-.34.49-.09.23-.05.45.12.66.13.16.29.23.47.23.19,0,.36-.07.52-.2.19-.16.34-.35.45-.59.18-.39.14-.76-.13-1.09l-.36-.44Z" },
-        { type: "path", d: "M98.44,47.97c-.17.04-.35.14-.55.3l-1.43,1.16,1.24,1.52,1.36-1.1c.28-.22.45-.46.52-.7.07-.24-.02-.51-.26-.81-.26-.32-.55-.44-.86-.38Z" },
-        { type: "path", d: "M118.3,34.17c-.36-.14-.72-.07-1.06.21-.25.2-.38.46-.41.78-.02.32.08.62.29.91l1.79-1.45c-.21-.22-.42-.37-.61-.44Z" },
-        { type: "path", d: "M129.2,25.7l-8.86-.59-33.06,26.84,8.76.58-.63,9.56,33.17-26.93M101.95,51.51c-.05-.02-.11-.06-.17-.11-.06-.05-.17-.16-.31-.33l-.64-.71c-.25-.28-.51-.39-.79-.33-.16.04-.35.15-.59.35l-1.33,1.08,1.55,1.91-.6.49-3.62-4.45,2.03-1.64c.33-.27.65-.44.95-.52.57-.14,1.06.04,1.47.55.22.27.34.53.37.79s-.02.52-.13.78c.23-.07.44-.08.62-.04.18.04.38.19.6.44l.51.58c.14.17.26.28.35.34.15.11.29.15.42.12l.08.1-.74.6ZM105.12,49.04c-.1.14-.24.27-.4.41-.4.33-.86.46-1.38.39-.52-.07-.99-.37-1.42-.9-.42-.52-.63-1.06-.61-1.61.02-.55.25-1.02.71-1.38.23-.19.5-.31.8-.38s.58-.06.83.02c.24.08.47.21.68.4.15.12.36.35.63.68l-2.36,1.92c.28.32.57.52.88.61.31.08.61,0,.91-.25.28-.23.43-.51.45-.83,0-.19-.03-.37-.11-.54l.54-.44c.08.13.14.3.18.51s.05.4.02.58c-.03.3-.15.57-.34.82ZM106.85,47.52l-3.62-4.45.55-.44,3.62,4.46-.55.44ZM109.98,45.1c-.1.14-.24.27-.4.41-.4.33-.86.46-1.38.39-.52-.07-.99-.37-1.42-.9-.42-.52-.63-1.06-.61-1.61.02-.55.25-1.02.71-1.38.23-.19.5-.31.8-.38s.58-.06.83.02c.24.08.47.21.68.4.15.12.36.35.63.68l-2.36,1.92c.28.32.57.52.88.61.31.08.61,0,.91-.25.28-.23.43-.51.45-.83,0-.19-.03-.37-.11-.54l.54-.44c.08.13.14.3.18.51s.05.4.02.58c-.03.3-.15.57-.34.82ZM114.46,41.45s-.1.09-.17.16c-.19.15-.38.2-.57.13-.1-.03-.21-.11-.34-.22,0,.24-.05.49-.17.77-.12.28-.31.52-.56.72-.3.24-.62.35-.96.33-.34-.03-.62-.18-.84-.45-.24-.3-.34-.61-.29-.93s.22-.62.49-.91l.78-.82c.11-.12.15-.24.12-.36-.02-.07-.06-.15-.13-.24-.15-.19-.33-.27-.53-.25-.2.02-.42.13-.67.33-.29.23-.42.47-.42.72,0,.14.06.3.18.49l-.51.41c-.32-.41-.41-.79-.29-1.15.12-.36.35-.67.68-.94.38-.31.75-.49,1.11-.54.35-.05.66.08.91.39l1.52,1.87c.05.06.09.09.15.11.05.02.11,0,.19-.07.02-.02.05-.04.08-.07.03-.03.06-.06.09-.09l.33.4c-.07.09-.12.16-.16.2ZM116.41,39.97c-.49.4-.92.57-1.31.51-.38-.05-.71-.24-.99-.55l.52-.43c.16.17.32.27.48.31.28.06.6-.05.94-.33.21-.17.35-.36.44-.57.09-.22.05-.41-.1-.6-.11-.14-.26-.19-.45-.17-.12.02-.32.1-.6.23l-.53.25c-.34.16-.61.25-.81.27-.36.05-.64-.06-.86-.32-.25-.31-.34-.65-.27-1.02.07-.37.29-.71.67-1.02.5-.4.97-.55,1.42-.44.29.07.51.21.68.43l-.52.42c-.11-.11-.25-.19-.41-.23-.24-.04-.52.07-.84.33-.21.17-.34.34-.38.51-.04.17-.01.31.09.44.11.14.28.2.49.16.12-.02.28-.07.47-.16l.44-.21c.48-.23.82-.35,1.03-.38.33-.03.61.1.85.4.23.29.33.63.27,1.02-.05.39-.3.77-.76,1.14ZM119.99,36.97c-.1.14-.24.27-.4.41-.4.33-.86.46-1.38.39-.52-.07-.99-.37-1.42-.9-.42-.52-.63-1.06-.61-1.61.02-.55.25-1.02.71-1.38.23-.19.5-.31.8-.38s.58-.06.83.02c.24.08.47.21.68.4.15.12.36.35.63.68l-2.36,1.92c.28.32.57.52.88.61.31.08.61,0,.91-.25.28-.23.43-.51.45-.83,0-.19-.03-.37-.11-.54l.54-.44c.08.13.14.3.18.51s.05.4.02.58c-.03.3-.15.57-.34.82Z" },
-    ],
-    Deploy: [
-        { type: "path", d: "M168.72,41.12l2.62-8.61c-6.07-9.94-16.77-16.01-28.56-16.01-6.79,0-13.28,2.03-18.85,5.84l8.47.56-.65,9.83c3.29-2.11,7.08-3.23,11.03-3.23,6.84,0,13.08,3.33,16.87,8.85M142.03,24.03c-.3.91-.94,1.41-1.9,1.52l-2.27.25-.62-5.7,2.28-.25c.77-.08,1.41.13,1.89.64.43.46.7,1.08.78,1.87.07.61.01,1.17-.16,1.68ZM145.79,25.22c-.23.19-.5.32-.81.37-.17.03-.36.04-.57.02-.52-.04-.94-.26-1.27-.66-.33-.4-.47-.94-.43-1.63.05-.67.27-1.2.66-1.6.39-.39.88-.57,1.46-.53.29.02.57.11.84.27s.46.35.59.58c.12.22.2.47.23.76.03.2.03.5,0,.92l-3.04-.21c-.02.43.06.77.23,1.04s.45.42.84.44c.36.02.66-.08.89-.3.13-.13.23-.29.29-.47l.69.05c-.03.15-.1.32-.22.5-.12.18-.24.33-.38.44ZM149.57,26.09c-.35.17-.72.21-1.12.12-.31-.07-.55-.2-.73-.38-.1-.1-.21-.27-.32-.49l-.48,2.08-.69-.16,1.31-5.68.67.15-.12.54c.18-.15.36-.26.55-.33.27-.1.56-.11.87-.04.46.11.81.37,1.06.8s.29.97.13,1.63c-.21.89-.58,1.47-1.14,1.74ZM150.58,26.67l1.9-5.42.66.23-1.9,5.42-.66-.23ZM153.23,27.89c-.51-.25-.84-.62-.97-1.12s-.06-1.04.22-1.63c.3-.63.71-1.06,1.21-1.28.5-.22,1.02-.2,1.56.05.48.23.81.59.99,1.07.18.48.12,1.04-.19,1.67-.29.61-.68,1.04-1.16,1.29-.48.26-1.04.23-1.65-.06ZM157.4,29.49c-.94.65-1.54,1.03-1.81,1.13-.27.1-.57.04-.91-.19-.08-.06-.14-.1-.18-.14-.04-.04-.09-.08-.14-.15l.36-.53c.08.1.14.16.18.2.04.04.08.07.11.09.11.07.2.11.27.11.07,0,.15-.02.22-.04.02,0,.12-.07.3-.19.17-.11.3-.2.39-.26l1.14-4.43.66.45-.99,3.45,2.85-2.19.64.44c-.23.17-.76.55-1.58,1.15-.62.45-1.12.82-1.52,1.1Z" },
-        { type: "path", d: "M145.65,22.38c-.17-.35-.47-.54-.92-.57-.32-.02-.6.08-.83.29s-.37.5-.41.86l2.3.16c0-.31-.06-.55-.15-.74Z" },
-        { type: "path", d: "M140.82,20.97c-.32-.36-.78-.51-1.39-.44l-1.34.15.48,4.38,1.35-.15c.26-.03.46-.08.62-.15.28-.13.5-.35.66-.66.12-.25.2-.55.23-.92.01-.22.01-.42,0-.6-.08-.71-.27-1.24-.59-1.6Z" },
-        { type: "path", d: "M149.22,22.48c-.48-.11-.86.05-1.14.49-.15.23-.28.54-.37.93-.07.31-.09.59-.04.84.08.46.36.75.83.86.32.07.62,0,.89-.22.27-.22.47-.59.6-1.13.08-.32.09-.61.05-.87-.07-.49-.35-.79-.82-.9Z" },
-        { type: "path", d: "M155.62,25.42c0-.43-.23-.75-.66-.96-.38-.18-.73-.17-1.05.04-.32.21-.57.53-.77.94-.19.4-.27.78-.22,1.13.05.35.26.62.64.8.42.2.78.18,1.08-.07.31-.24.55-.56.74-.95.17-.35.25-.66.24-.94Z" },
-    ],
-    Operate: [
-        { type: "path", d: "M167.63,55.72c.23.27.61.45,1.15.55.33.06.62.07.87.02.49-.09.78-.38.87-.85.09-.48-.08-.85-.53-1.12-.24-.14-.55-.25-.95-.33-.32-.06-.6-.07-.84-.01-.46.1-.73.39-.83.86-.06.32.02.62.25.88Z" },
-        { type: "path", d: "M160.1,70.76c.23.21.44.34.64.41.37.12.72.03,1.05-.27.24-.21.36-.48.36-.8s-.11-.61-.34-.89l-1.71,1.55Z" },
-        { type: "path", d: "M168.58,58.13l-.79,2.17c.3.08.55.1.75.06.38-.06.65-.31.8-.73.11-.3.09-.59-.05-.88-.14-.28-.38-.49-.72-.63Z" },
-        { type: "path", d: "M164.68,63.52c-.17-.11-.34-.14-.52-.09-.18.06-.33.17-.44.34-.14.2-.23.43-.26.69-.06.43.08.77.44,1.01l.47.32c0-.1.03-.22.07-.35.05-.13.1-.26.16-.37l.19-.38c.12-.23.18-.42.19-.56.02-.25-.08-.45-.3-.6Z" },
-        { type: "path", d: "M168.61,51.61c.49.31,1.05.47,1.69.48.67,0,1.22-.16,1.64-.51.42-.35.63-.83.64-1.44,0-.59-.19-1.08-.59-1.46-.4-.38-1-.58-1.8-.59-.64,0-1.17.15-1.62.46-.44.32-.67.83-.68,1.56,0,.68.23,1.18.72,1.5Z" },
-        { type: "path", d: "M173.33,36.28l-2.62,8.59-9.01-2.75c1.04,2.49,1.57,5.13,1.57,7.88,0,8.01-4.55,15.09-11.58,18.46l-2.15,3.61-2.65,4.47,7.93,4.71c12.92-4.95,21.45-17.22,21.45-31.25,0-4.79-1-9.4-2.94-13.72ZM162.17,71.39c-.22.2-.48.34-.78.42-.3.08-.58.09-.83.03-.25-.06-.48-.18-.7-.36-.16-.11-.38-.33-.67-.64l2.25-2.05c-.3-.31-.6-.49-.91-.56-.31-.06-.61.03-.9.3-.27.25-.4.53-.4.86,0,.19.05.37.14.54l-.51.46c-.09-.13-.16-.29-.21-.5s-.07-.4-.06-.57c.02-.3.12-.58.3-.84.1-.14.22-.29.38-.43.38-.35.83-.5,1.36-.46.52.04,1.01.31,1.47.82.45.5.68,1.02.7,1.58.01.55-.2,1.03-.63,1.42ZM165.2,69.85l-.88-.77-.44.5-.43-.38.44-.5-2.06-1.79c-.11-.1-.22-.12-.32-.08-.06.02-.13.08-.21.18-.02.03-.05.05-.07.08-.02.03-.05.07-.08.11l-.42-.37c.04-.08.08-.15.13-.22.05-.07.11-.15.17-.22.22-.25.42-.36.63-.34.2.02.41.12.61.3l2.09,1.82.37-.43.43.38-.37.43.88.77-.47.54ZM166.67,66.22c-.28.41-.58.68-.91.83-.33.15-.65.11-.98-.12l-1.99-1.36c-.06-.04-.12-.06-.17-.06s-.11.04-.16.12c-.02.03-.04.06-.05.09-.02.04-.04.07-.06.11l-.43-.29c.04-.11.07-.19.09-.24.03-.05.07-.12.12-.2.14-.2.31-.3.51-.29.11,0,.24.04.39.12-.07-.22-.09-.49-.05-.79.04-.3.15-.58.33-.85.22-.32.5-.52.83-.59s.65,0,.94.19c.32.22.5.49.54.81.04.32-.03.66-.21,1.01l-.52,1c-.07.15-.08.27-.02.38.03.06.1.12.2.19.2.14.39.16.58.08s.37-.25.55-.51c.21-.3.27-.57.19-.81-.04-.13-.15-.27-.31-.42l.37-.54c.42.3.62.64.61,1.02-.01.38-.14.74-.38,1.09ZM168.45,63.02l-.64-.33c.1.11.19.31.27.59.08.28.06.55-.07.79,0,.01-.02.03-.03.06-.02.03-.04.07-.09.14l-.66-.34s.05-.07.07-.1.04-.06.06-.1c.16-.32.18-.61.07-.88-.12-.27-.31-.48-.57-.61l-2.14-1.1.32-.63,3.72,1.91-.31.59ZM169.91,59.89c-.1.28-.26.52-.49.73-.23.21-.47.35-.72.41-.25.06-.51.06-.79,0-.2-.03-.49-.11-.89-.26l1.04-2.86c-.41-.13-.76-.16-1.07-.07-.3.09-.52.31-.66.68-.12.34-.11.66.04.94.09.16.22.3.37.41l-.24.65c-.14-.07-.28-.19-.42-.35s-.25-.32-.32-.48c-.12-.27-.17-.57-.13-.88.02-.17.06-.36.14-.56.18-.49.5-.83.98-1.04.48-.21,1.04-.2,1.68.04.63.23,1.08.59,1.35,1.07.27.48.31,1,.11,1.55ZM171.22,54.41l-.54-.1c.16.17.28.35.35.54.11.26.13.55.07.87-.09.47-.34.83-.76,1.08s-.96.32-1.62.19c-.89-.17-1.49-.53-1.78-1.07-.19-.34-.24-.71-.16-1.11.06-.31.18-.56.35-.74.1-.11.26-.22.47-.34l-2.1-.4.13-.69,5.73,1.1-.13.67ZM172.26,52.35c-.51.37-1.17.55-1.96.54-.86-.01-1.57-.24-2.13-.68-.66-.52-.98-1.25-.97-2.2.01-.88.31-1.57.9-2.07.57-.44,1.28-.66,2.14-.65.78.01,1.44.21,1.98.6.7.5,1.05,1.24,1.03,2.21-.01,1.01-.35,1.76-1.01,2.24Z" },
-    ],
-    Monitor: [
-        { type: "path", d: "M135.88,74.77c-.41-.11-.75-.04-1.02.23-.27.26-.47.62-.59,1.07-.12.43-.12.81-.02,1.15s.36.56.77.67c.44.12.8.04,1.05-.26.26-.29.45-.65.56-1.07.1-.38.13-.7.07-.97-.09-.42-.36-.7-.82-.83Z" },
-        { type: "path", d: "M107.8,64.71l14.84,12.05.23.18c5.8,4.29,12.68,6.56,19.9,6.56,2.78,0,5.53-.36,8.2-1.04l-8.2-4.87,4.51-7.59c-1.47.33-2.98.5-4.51.5-4.37,0-8.54-1.36-12.06-3.93l-14.68-11.92-9.04.78M131.17,70.62l.63.34-.38.7-.63-.34.38-.7ZM119.02,68.54l2.13-2.63c.07-.09.2-.24.37-.45s.36-.43.56-.67l-4.32,2.72-.6-.49,1.77-4.8-.11.14c-.09.11-.22.28-.4.51-.17.23-.31.4-.39.5l-2.13,2.63-.58-.47,3.62-4.46.86.7-1.78,4.81,4.33-2.73.86.7-3.62,4.46-.58-.47ZM121.56,70.79c-.44-.36-.67-.8-.69-1.31-.02-.51.18-1.03.6-1.53.44-.54.93-.87,1.47-.97s1.04.04,1.5.42c.42.34.65.76.71,1.27.06.51-.13,1.04-.57,1.58-.42.52-.9.85-1.43.99-.53.14-1.06-.01-1.59-.44ZM126.71,74.71l-.57-.43,1.6-2.1c.15-.2.25-.39.28-.56.06-.28-.04-.52-.3-.72-.13-.1-.25-.17-.36-.21-.19-.07-.39-.08-.61-.04-.18.04-.32.11-.44.2s-.26.25-.42.47l-1.33,1.74-.56-.43,2.54-3.32.53.41-.36.47c.31-.07.58-.09.82-.04.24.05.47.16.68.32.47.36.67.77.58,1.22-.05.25-.2.54-.45.88l-1.63,2.13ZM128.42,75.66l1.99-3.66.63.34-1.99,3.66-.63-.34ZM132.69,73.74l-1.09,2.5c-.06.13-.05.24.02.33.04.05.12.1.23.15.03.01.07.03.1.04.04.01.08.03.13.04l-.22.51c-.08-.01-.17-.03-.25-.05-.08-.03-.17-.06-.27-.1-.3-.13-.47-.3-.51-.5-.04-.2,0-.42.1-.67l1.11-2.54-.52-.23.23-.53.52.23.47-1.07.65.29-.47,1.07.61.27-.23.53-.61-.27ZM137.35,76.74c-.18.65-.48,1.14-.92,1.48-.43.34-.98.41-1.64.23-.55-.15-.94-.46-1.16-.92-.22-.46-.24-1.01-.07-1.64.19-.68.51-1.17.96-1.48.45-.31.97-.38,1.54-.22.52.14.9.44,1.17.88.26.44.3,1,.11,1.68ZM140.98,75.84s-.08-.02-.11-.03c-.04,0-.07-.01-.11-.02-.35-.04-.64.04-.85.25-.21.2-.34.45-.37.75l-.28,2.39-.7-.08.48-4.16.66.08-.08.72c.07-.13.22-.29.46-.46s.49-.25.77-.22c.01,0,.04,0,.07.01.03,0,.08.02.16.03l-.09.74Z" },
-        { type: "path", d: "M124.04,67.86c-.33-.27-.67-.33-1.03-.2-.36.13-.68.38-.97.74-.28.35-.44.69-.48,1.05-.04.35.11.66.43.92.36.29.71.35,1.07.19.35-.17.67-.42.94-.75.25-.3.4-.59.46-.86.09-.42-.05-.78-.42-1.09Z" },
-    ],
-};
+type Pt = { x: number; y: number };
 
-// Order of sections in the loop
-const SECTION_ORDER = ["Plan", "Code", "Build", "Test", "Release", "Deploy", "Operate", "Monitor"];
+// Default CI/CD segments (in order around the figure-8)
+// Plan -> Code -> Build -> Test -> Review -> Deploy -> Monitor
+const DEFAULT_SEGMENTS: SegmentSpec[] = [
+  { label: "Plan", color: "var(--color-yellow)" },
+  { label: "Code", color: "var(--color-green)" },
+  { label: "Build", color: "var(--color-green)" },
+  { label: "Test", color: "var(--color-blue)" },
+  { label: "Review", color: "var(--color-blue)" },
+  { label: "Deploy", color: "var(--color-red)" },
+  { label: "Monitor", color: "var(--color-yellow)" },
+];
 
-// Color mapping for each section (using CSS variables for theme support)
-const SECTION_COLORS: Record<string, string> = {
-    Plan: "var(--color-yellow)",
-    Code: "var(--color-green)",
-    Build: "var(--color-green)",
-    Test: "var(--color-blue)",
-    Release: "var(--color-blue)",
-    Deploy: "var(--color-red)",
-    Operate: "var(--color-red)",
-    Monitor: "var(--color-yellow)",
-};
+/**
+ * The original figure-8 path from Adobe Illustrator, normalized to center (0,0).
+ * This is the exact path exported from the reference design.
+ */
+const ILLUSTRATOR_PATH = "M331.65,460.21l-68.3-79.42c-22.88-26.61-63.46-29.88-89.47-6.32-11.73,10.63-19.58,25.8-20.1,43.92-.02.7-.03,1.4-.03,2.11h0c0,.71.01,1.41.03,2.11.52,18.12,8.37,33.29,20.1,43.92,26.01,23.56,66.59,20.29,89.47-6.32l68.3-79.42c22.88-26.61,63.46-29.88,89.47-6.32,11.73,10.63,19.58,25.8,20.1,43.92.02.7.03,1.4.03,2.11h0c0,.71-.01,1.41-.03,2.11-.52,18.12-8.37,33.29-20.1,43.92-26.01,23.56-66.59,20.29-89.47-6.32Z";
 
-const CICDLoop: React.FC<CICDLoopProps> = ({
-    staggerDelay = 200,
-    animationDuration = 600,
-}) => {
-    const [ref, inView] = useOptimizedInView({ threshold: 0.3 });
-    const [windowWidth, setWindowWidth] = useState(
-        typeof window !== "undefined" ? window.innerWidth : 1024
-    );
-    const [mounted, setMounted] = useState(false);
+const INITIAL_STAGGER_SETTLE_MS = 600;
+const PULSE_START_BUFFER_MS = 1000;
 
-    // Track window resize
-    useEffect(() => {
-        setMounted(true);
-        const handleResize = () => {
-            setWindowWidth(window.innerWidth);
-        };
+/**
+ * Evaluate a cubic Bezier curve at parameter t
+ */
+function cubicBezier(p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt {
+  const mt = 1 - t;
+  const mt2 = mt * mt;
+  const mt3 = mt2 * mt;
+  const t2 = t * t;
+  const t3 = t2 * t;
 
-        window.addEventListener("resize", handleResize);
-        return () => window.removeEventListener("resize", handleResize);
-    }, []);
+  return {
+    x: mt3 * p0.x + 3 * mt2 * t * p1.x + 3 * mt * t2 * p2.x + t3 * p3.x,
+    y: mt3 * p0.y + 3 * mt2 * t * p1.y + 3 * mt * t2 * p2.y + t3 * p3.y,
+  };
+}
 
-    // Calculate responsive dimensions - maintain 2:1 aspect ratio from original SVG
-    const isMobile = useMemo(() => windowWidth <= 768, [windowWidth]);
-    const containerWidth = useMemo(() => {
-        if (isMobile) {
-            const padding = 32;
-            return Math.min(windowWidth - padding, 600);
-        }
-        return 800; // Desktop: wider to match 2:1 aspect
-    }, [windowWidth, isMobile]);
+/**
+ * Parse the Illustrator SVG path and return sampled points
+ */
+function parseAndSamplePath(samples: number): Pt[] {
+  // Manually parsed path segments from the Illustrator export
+  // The path structure: M -> l -> c -> c -> c -> h -> c -> c -> c -> l -> c -> c -> c -> h -> c -> c -> c -> Z
 
-    const containerHeight = containerWidth * 0.5; // Maintain 2:1 aspect ratio
+  const segments: { type: string; points: Pt[] }[] = [];
+  let current: Pt = { x: 331.65, y: 460.21 }; // M331.65,460.21
 
-    // Animation springs for each section
-    const [springs, api] = useSprings(
-        SECTION_ORDER.length,
-        (index) => ({
-            opacity: 0,
-            scale: 0.8,
-            config: { tension: 120, friction: 14 },
-        }),
-        []
-    );
+  // l-68.3-79.42 (line to upper-left diagonal)
+  const p1 = { x: current.x - 68.3, y: current.y - 79.42 };
+  segments.push({ type: "L", points: [current, p1] });
+  current = p1;
 
-    const pulseIntervalRef = useRef<NodeJS.Timeout | null>(null);
-    const pulseTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // c-22.88-26.61-63.46-29.88-89.47-6.32 (left loop top curve)
+  let cp1 = { x: current.x - 22.88, y: current.y - 26.61 };
+  let cp2 = { x: current.x - 63.46, y: current.y - 29.88 };
+  let end = { x: current.x - 89.47, y: current.y - 6.32 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
 
-    // Trigger sequential animations when mounted
-    // Animate once when component mounts (inView should be true due to fallbackInView)
-    useEffect(() => {
-        if (!mounted) return;
+  // -11.73,10.63-19.58,25.8-20.1,43.92 (left loop left-top curve)
+  cp1 = { x: current.x - 11.73, y: current.y + 10.63 };
+  cp2 = { x: current.x - 19.58, y: current.y + 25.8 };
+  end = { x: current.x - 20.1, y: current.y + 43.92 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
 
-        const timeouts: NodeJS.Timeout[] = [];
+  // -.02.7-.03,1.4-.03,2.11 (tiny curve at left apex)
+  cp1 = { x: current.x - 0.02, y: current.y + 0.7 };
+  cp2 = { x: current.x - 0.03, y: current.y + 1.4 };
+  end = { x: current.x - 0.03, y: current.y + 2.11 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
 
-        SECTION_ORDER.forEach((_, index) => {
-            timeouts.push(
-                setTimeout(() => {
-                    api.start((i) => {
-                        if (i === index) {
-                            return {
-                                opacity: 1,
-                                scale: 1,
-                            };
-                        }
-                        return false;
-                    });
-                }, index * staggerDelay)
-            );
+  // h0 (horizontal line of 0 length - skip)
+
+  // c0,.71.01,1.41.03,2.11 (tiny curve continuing from apex)
+  cp1 = { x: current.x, y: current.y + 0.71 };
+  cp2 = { x: current.x + 0.01, y: current.y + 1.41 };
+  end = { x: current.x + 0.03, y: current.y + 2.11 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // .52,18.12,8.37,33.29,20.1,43.92 (left loop left-bottom curve)
+  cp1 = { x: current.x + 0.52, y: current.y + 18.12 };
+  cp2 = { x: current.x + 8.37, y: current.y + 33.29 };
+  end = { x: current.x + 20.1, y: current.y + 43.92 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // 26.01,23.56,66.59,20.29,89.47-6.32 (left loop bottom curve)
+  cp1 = { x: current.x + 26.01, y: current.y + 23.56 };
+  cp2 = { x: current.x + 66.59, y: current.y + 20.29 };
+  end = { x: current.x + 89.47, y: current.y - 6.32 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // l68.3-79.42 (line to upper-right diagonal)
+  const p2 = { x: current.x + 68.3, y: current.y - 79.42 };
+  segments.push({ type: "L", points: [current, p2] });
+  current = p2;
+
+  // c22.88-26.61,63.46-29.88,89.47-6.32 (right loop top curve)
+  cp1 = { x: current.x + 22.88, y: current.y - 26.61 };
+  cp2 = { x: current.x + 63.46, y: current.y - 29.88 };
+  end = { x: current.x + 89.47, y: current.y - 6.32 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // 11.73,10.63,19.58,25.8,20.1,43.92 (right loop right-top curve)
+  cp1 = { x: current.x + 11.73, y: current.y + 10.63 };
+  cp2 = { x: current.x + 19.58, y: current.y + 25.8 };
+  end = { x: current.x + 20.1, y: current.y + 43.92 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // .02.7.03,1.4.03,2.11 (tiny curve at right apex)
+  cp1 = { x: current.x + 0.02, y: current.y + 0.7 };
+  cp2 = { x: current.x + 0.03, y: current.y + 1.4 };
+  end = { x: current.x + 0.03, y: current.y + 2.11 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // h0 (horizontal line of 0 length - skip)
+
+  // c0,.71-.01,1.41-.03,2.11 (tiny curve continuing from apex)
+  cp1 = { x: current.x, y: current.y + 0.71 };
+  cp2 = { x: current.x - 0.01, y: current.y + 1.41 };
+  end = { x: current.x - 0.03, y: current.y + 2.11 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // -.52,18.12-8.37,33.29-20.1,43.92 (right loop right-bottom curve)
+  cp1 = { x: current.x - 0.52, y: current.y + 18.12 };
+  cp2 = { x: current.x - 8.37, y: current.y + 33.29 };
+  end = { x: current.x - 20.1, y: current.y + 43.92 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+  current = end;
+
+  // -26.01,23.56-66.59,20.29-89.47-6.32 (right loop bottom curve back to start)
+  cp1 = { x: current.x - 26.01, y: current.y + 23.56 };
+  cp2 = { x: current.x - 66.59, y: current.y + 20.29 };
+  end = { x: current.x - 89.47, y: current.y - 6.32 };
+  segments.push({ type: "C", points: [current, cp1, cp2, end] });
+
+  // Sample points along all segments
+  const pts: Pt[] = [];
+  const samplesPerSegment = Math.ceil(samples / segments.length);
+
+  for (const seg of segments) {
+    if (seg.type === "L") {
+      // Line segment
+      for (let i = 0; i < samplesPerSegment; i++) {
+        const t = i / samplesPerSegment;
+        pts.push({
+          x: seg.points[0].x + t * (seg.points[1].x - seg.points[0].x),
+          y: seg.points[0].y + t * (seg.points[1].y - seg.points[0].y),
         });
+      }
+    } else if (seg.type === "C") {
+      // Cubic Bezier
+      for (let i = 0; i < samplesPerSegment; i++) {
+        const t = i / samplesPerSegment;
+        pts.push(cubicBezier(seg.points[0], seg.points[1], seg.points[2], seg.points[3], t));
+      }
+    }
+  }
 
-        return () => {
-            timeouts.forEach(clearTimeout);
-        };
-    }, [mounted, staggerDelay, api]);
+  return pts;
+}
 
-    // Continuous pulsing animation after all sections have animated in
-    useEffect(() => {
-        if (!inView || !mounted) {
-            // Clear interval when out of view
-            if (pulseIntervalRef.current) {
-                clearInterval(pulseIntervalRef.current);
-                pulseIntervalRef.current = null;
-            }
-            // Clear all pulse timeouts
-            pulseTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
-            pulseTimeoutsRef.current = [];
-            return;
-        }
+/**
+ * Sample the figure-8 curve and compute cumulative arc lengths.
+ * Uses the exact path from the Illustrator export, scaled to fit the component.
+ */
+function sampleCurve({
+  cx,
+  cy,
+  a,
+  b,
+  samples = 1200,
+}: {
+  cx: number;
+  cy: number;
+  a: number;
+  b: number;
+  samples?: number;
+}) {
+  // Get raw points from the Illustrator path
+  const rawPts = parseAndSamplePath(samples);
 
-        // Wait for all sections to finish initial animation
-        // 8 sections * 200ms stagger + 600ms duration + 1000ms buffer = ~3200ms
-        const totalAnimationTime = SECTION_ORDER.length * staggerDelay + animationDuration + 1000;
+  // Calculate the bounds of the raw path
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const pt of rawPts) {
+    minX = Math.min(minX, pt.x);
+    maxX = Math.max(maxX, pt.x);
+    minY = Math.min(minY, pt.y);
+    maxY = Math.max(maxY, pt.y);
+  }
 
-        const continuousAnimationTimeout = setTimeout(() => {
-            // Start continuous pulsing animation loop
-            const startPulse = () => {
-                // Clear previous pulse timeouts before starting new ones
-                pulseTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
-                pulseTimeoutsRef.current = [];
+  const rawWidth = maxX - minX;
+  const rawHeight = maxY - minY;
+  const rawCx = (minX + maxX) / 2;
+  const rawCy = (minY + maxY) / 2;
 
-                SECTION_ORDER.forEach((_, index) => {
-                    // Stagger the pulse for each section
-                    const pulseTimeout = setTimeout(() => {
-                        api.start((i) => {
-                            if (i === index) {
-                                return {
-                                    scale: 1.08,
-                                    opacity: 1, // Ensure opacity stays at 1
-                                    config: { tension: 300, friction: 25 },
-                                };
-                            }
-                            return false;
-                        });
+  // Scale to fit within the target dimensions (a = half-width, b = half-height)
+  const scaleX = (a * 2) / rawWidth;
+  const scaleY = (b * 2) / rawHeight;
+  const scale = Math.min(scaleX, scaleY) * 0.95; // 95% to leave some margin
 
-                        // Return to normal after pulse
-                        const returnTimeout = setTimeout(() => {
-                            api.start((i) => {
-                                if (i === index) {
-                                    return {
-                                        scale: 1,
-                                        opacity: 1, // Ensure opacity stays at 1
-                                        config: { tension: 300, friction: 25 },
-                                    };
-                                }
-                                return false;
-                            });
-                        }, 400);
-                        pulseTimeoutsRef.current.push(returnTimeout);
-                    }, index * 100); // Stagger pulses
-                    pulseTimeoutsRef.current.push(pulseTimeout);
-                });
-            };
+  // Transform points to the target coordinate system
+  let pts: Pt[] = rawPts.map(pt => ({
+    x: cx + (pt.x - rawCx) * scale,
+    y: cy + (pt.y - rawCy) * scale,
+  }));
 
-            // Start first pulse immediately, then repeat
-            startPulse();
-            pulseIntervalRef.current = setInterval(startPulse, 3000); // Repeat every 3 seconds
-        }, totalAnimationTime);
+  // Rotate the path starting point to align Test/Review gap under Plan
+  const rotateBy = Math.floor(pts.length * 0.01); // 1% backward
+  if (rotateBy > 0) {
+    pts = [...pts.slice(-rotateBy), ...pts.slice(0, -rotateBy)];
+  }
 
-        return () => {
-            clearTimeout(continuousAnimationTimeout);
-            if (pulseIntervalRef.current) {
-                clearInterval(pulseIntervalRef.current);
-                pulseIntervalRef.current = null;
-            }
-            // Clear all pulse timeouts
-            pulseTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
-            pulseTimeoutsRef.current = [];
-        };
-    }, [inView, mounted, staggerDelay, animationDuration, api]);
+  // Compute cumulative arc length
+  const cum: number[] = [0];
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i - 1].x;
+    const dy = pts[i].y - pts[i - 1].y;
+    cum.push(cum[i - 1] + Math.hypot(dx, dy));
+  }
 
-    // Reset animations when out of view
-    useEffect(() => {
-        if (!inView && mounted) {
-            api.start((i) => ({
-                opacity: 0,
-                scale: 0.8,
-                immediate: true,
-            }));
-        }
-    }, [inView, mounted, api]);
+  return { pts, cum, total: cum[cum.length - 1] };
+}
 
-    if (!mounted) {
-        return (
-            <div
-                style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    minHeight: containerHeight,
-                    alignItems: "center",
-                }}
-            >
-                <div>Loading...</div>
-            </div>
-        );
+/**
+ * Slice points between arc-length s0 and s1
+ */
+function sliceByArcLength(
+  pts: Pt[],
+  cum: number[],
+  s0: number,
+  s1: number
+): Pt[] {
+  const out: Pt[] = [];
+
+  const lerpPt = (i0: number, i1: number, t: number): Pt => ({
+    x: pts[i0].x + (pts[i1].x - pts[i0].x) * t,
+    y: pts[i0].y + (pts[i1].y - pts[i0].y) * t,
+  });
+
+  for (let i = 1; i < pts.length; i++) {
+    const a = cum[i - 1];
+    const b = cum[i];
+
+    if (b < s0) continue;
+    if (a > s1) break;
+
+    // Add interpolated start point
+    if (a <= s0 && b >= s0) {
+      const t = (s0 - a) / (b - a || 1);
+      out.push(lerpPt(i - 1, i, t));
     }
 
-    return (
-        <div
-            ref={ref}
-            style={{
-                display: "flex",
-                justifyContent: "center",
-                marginTop: "1em",
-                marginBottom: "1em",
-            }}
-        >
-            <svg
-                width={containerWidth}
-                height={containerHeight}
-                viewBox={`0 0 ${ORIGINAL_VIEWBOX.width} ${ORIGINAL_VIEWBOX.height}`}
-                style={{ maxWidth: "100%", height: "auto" }}
-                preserveAspectRatio="xMidYMid meet"
-                role="img"
-                aria-label="Animated CI/CD pipeline loop visualization showing Plan, Code, Build, Test, Release, Deploy, Operate, and Monitor stages"
-            >
-                {/* Render each section with its paths */}
-                {SECTION_ORDER.map((sectionName, index) => {
-                    const paths = SVG_PATHS[sectionName as keyof typeof SVG_PATHS] || [];
-                    const sectionColor = SECTION_COLORS[sectionName] || "var(--text-color)";
+    // Add point if within range
+    if (a >= s0 && b <= s1) {
+      out.push(pts[i]);
+    }
 
-                    return (
-                        <animated.g
-                            key={sectionName}
-                            style={{
-                                opacity: springs[index].opacity,
-                                transform: springs[index].scale.to((s) => `scale(${s})`),
-                                transformOrigin: 'center center',
-                            }}
-                        >
-                            {paths.map((pathData, pathIndex) => {
-                                if (pathData.type === "polygon" && "points" in pathData) {
-                                    return (
-                                        <polygon
-                                            key={`${sectionName}-${pathIndex}`}
-                                            points={pathData.points}
-                                            fill={sectionColor}
-                                            fillRule="evenodd"
-                                        />
-                                    );
-                                } else if (pathData.type === "path" && "d" in pathData) {
-                                    return (
-                                        <path
-                                            key={`${sectionName}-${pathIndex}`}
-                                            d={pathData.d}
-                                            fill={sectionColor}
-                                            fillRule="evenodd"
-                                        />
-                                    );
-                                }
-                                return null;
-                            })}
-                        </animated.g>
-                    );
-                })}
-            </svg>
-        </div>
-    );
+    // Add interpolated end point
+    if (a <= s1 && b >= s1) {
+      const t = (s1 - a) / (b - a || 1);
+      out.push(lerpPt(i - 1, i, t));
+      break;
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Normalize a vector
+ */
+function unit(vx: number, vy: number): Pt {
+  const m = Math.hypot(vx, vy) || 1;
+  return { x: vx / m, y: vy / m };
+}
+
+/**
+ * Get tangent and normal at a point in the samples array
+ */
+function tangentAndNormal(
+  samples: Pt[],
+  i: number
+): { t: Pt; n: Pt } {
+  const p0 = samples[Math.max(0, i - 1)];
+  const p1 = samples[Math.min(samples.length - 1, i + 1)];
+  const t = unit(p1.x - p0.x, p1.y - p0.y);
+  const n = { x: -t.y, y: t.x };
+  return { t, n };
+}
+
+/**
+ * Find the arc-length position closest to a target point
+ */
+function findArcLengthForPoint(
+  pts: Pt[],
+  cum: number[],
+  target: Pt
+): number {
+  let bestDist = Infinity;
+  let bestS = 0;
+
+  for (let i = 0; i < pts.length; i++) {
+    const dist = Math.hypot(pts[i].x - target.x, pts[i].y - target.y);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestS = cum[i];
+    }
+  }
+
+  return bestS;
+}
+
+/**
+ * Get point and tangent at a specific arc-length position
+ */
+function getPointAndTangentAtArcLength(
+  pts: Pt[],
+  cum: number[],
+  s: number
+): { pt: Pt; t: Pt; n: Pt } {
+  // Handle edge cases
+  if (s <= 0) {
+    const t = unit(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+    return { pt: pts[0], t, n: { x: -t.y, y: t.x } };
+  }
+  if (s >= cum[cum.length - 1]) {
+    const last = pts.length - 1;
+    const t = unit(pts[last].x - pts[last - 1].x, pts[last].y - pts[last - 1].y);
+    return { pt: pts[last], t, n: { x: -t.y, y: t.x } };
+  }
+
+  // Find the segment containing arc-length s
+  for (let i = 1; i < pts.length; i++) {
+    if (cum[i] >= s) {
+      const a = cum[i - 1];
+      const b = cum[i];
+      const frac = (s - a) / (b - a || 1);
+
+      // Interpolate point
+      const pt = {
+        x: pts[i - 1].x + frac * (pts[i].x - pts[i - 1].x),
+        y: pts[i - 1].y + frac * (pts[i].y - pts[i - 1].y),
+      };
+
+      // Tangent from the segment direction
+      const t = unit(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      const n = { x: -t.y, y: t.x };
+
+      return { pt, t, n };
+    }
+  }
+
+  // Fallback (shouldn't reach here)
+  const last = pts.length - 1;
+  const t = unit(pts[last].x - pts[last - 1].x, pts[last].y - pts[last - 1].y);
+  return { pt: pts[last], t, n: { x: -t.y, y: t.x } };
+}
+
+/**
+ * Build a filled ribbon segment path with:
+ * - Arrow tip at the end (triangle added)
+ * - Notch at the start (triangle cut out using evenodd)
+ *
+ * @param startGap - Gap geometry for the start (notch): position, tangent, normal, and half-width of gap
+ * @param endGap - Gap geometry for the end (arrow): position, tangent, normal, and half-width of gap
+ */
+function buildRibbonSegmentPath(
+  center: Pt[],
+  width: number,
+  arrowLen: number,
+  notchLen: number,
+  startGap?: { pt: Pt; t: Pt; n: Pt; halfGap: number },
+  endGap?: { pt: Pt; t: Pt; n: Pt; halfGap: number }
+): string {
+  if (center.length < 2) return "";
+
+  const halfW = width / 2;
+
+  const left: Pt[] = [];
+  const right: Pt[] = [];
+
+  // Offset points by normal to create ribbon edges
+  for (let i = 0; i < center.length; i++) {
+    const { n } = tangentAndNormal(center, i);
+    const p = center[i];
+    left.push({ x: p.x + n.x * halfW, y: p.y + n.y * halfW });
+    right.push({ x: p.x - n.x * halfW, y: p.y - n.y * halfW });
+  }
+
+  // Arrow geometry at end
+  const endI = center.length - 1;
+  const end = center[endI];
+  const localEnd = tangentAndNormal(center, endI);
+
+  let tip: Pt, endL: Pt, endR: Pt;
+
+  if (endGap) {
+    // Use gap geometry for uniform spacing
+    // Arrow base is at: gapCenter - tangent * halfGap (back edge of gap)
+    const arrowBase = {
+      x: endGap.pt.x - endGap.t.x * endGap.halfGap,
+      y: endGap.pt.y - endGap.t.y * endGap.halfGap,
+    };
+    // Arrow tip extends from base
+    tip = {
+      x: arrowBase.x + endGap.t.x * arrowLen,
+      y: arrowBase.y + endGap.t.y * arrowLen,
+    };
+    // Base corners use gap normal for uniform width
+    endL = { x: arrowBase.x + endGap.n.x * halfW, y: arrowBase.y + endGap.n.y * halfW };
+    endR = { x: arrowBase.x - endGap.n.x * halfW, y: arrowBase.y - endGap.n.y * halfW };
+  } else {
+    // Fallback to local geometry
+    tip = { x: end.x + localEnd.t.x * arrowLen, y: end.y + localEnd.t.y * arrowLen };
+    endL = { x: end.x + localEnd.n.x * halfW, y: end.y + localEnd.n.y * halfW };
+    endR = { x: end.x - localEnd.n.x * halfW, y: end.y - localEnd.n.y * halfW };
+  }
+
+  // Notch geometry at start
+  const start = center[0];
+  const localStart = tangentAndNormal(center, 0);
+
+  let notchApex: Pt, notchL: Pt, notchR: Pt;
+
+  if (startGap) {
+    // Use gap geometry for uniform spacing
+    // Notch base is at: gapCenter + tangent * halfGap (front edge of gap)
+    const notchBase = {
+      x: startGap.pt.x + startGap.t.x * startGap.halfGap,
+      y: startGap.pt.y + startGap.t.y * startGap.halfGap,
+    };
+    // Notch apex cuts into segment from base
+    notchApex = {
+      x: notchBase.x + startGap.t.x * notchLen,
+      y: notchBase.y + startGap.t.y * notchLen,
+    };
+    // Base corners use gap normal for uniform width
+    notchL = { x: notchBase.x + startGap.n.x * halfW, y: notchBase.y + startGap.n.y * halfW };
+    notchR = { x: notchBase.x - startGap.n.x * halfW, y: notchBase.y - startGap.n.y * halfW };
+  } else {
+    // Fallback to local geometry
+    notchApex = {
+      x: start.x + localStart.t.x * notchLen,
+      y: start.y + localStart.t.y * notchLen,
+    };
+    notchL = { x: start.x + localStart.n.x * halfW, y: start.y + localStart.n.y * halfW };
+    notchR = { x: start.x - localStart.n.x * halfW, y: start.y - localStart.n.y * halfW };
+  }
+
+  // Replace edge endpoints with arrow/notch corners to avoid discontinuities on curves
+  // This ensures the ribbon body connects smoothly to the arrow/notch geometry
+  const leftEdge = [...left];
+  const rightEdge = [...right];
+
+  // Replace start points with notch corners (if using gap geometry)
+  if (startGap) {
+    leftEdge[0] = notchL;
+    rightEdge[0] = notchR;
+  }
+
+  // Replace end points with arrow corners (if using gap geometry)
+  if (endGap) {
+    leftEdge[leftEdge.length - 1] = endL;
+    rightEdge[rightEdge.length - 1] = endR;
+  }
+
+  // Build outer polygon path (left edge -> arrow tip -> right edge back)
+  const outer =
+    `M ${leftEdge[0].x} ${leftEdge[0].y} ` +
+    leftEdge
+      .slice(1)
+      .map((p) => `L ${p.x} ${p.y}`)
+      .join(" ") +
+    ` L ${tip.x} ${tip.y} ` +
+    rightEdge
+      .slice(0, -1)
+      .reverse()
+      .map((p) => `L ${p.x} ${p.y}`)
+      .join(" ") +
+    ` Z`;
+
+  // Build notch hole as a triangle subpath (evenodd will subtract it)
+  const hole =
+    `M ${notchL.x} ${notchL.y}` +
+    ` L ${notchApex.x} ${notchApex.y}` +
+    ` L ${notchR.x} ${notchR.y}` +
+    ` Z`;
+
+  return `${outer} ${hole}`;
+}
+
+/**
+ * Create a simple polyline path for text to follow
+ */
+function polylinePathD(points: Pt[]): string {
+  if (!points.length) return "";
+  return (
+    `M ${points[0].x} ${points[0].y} ` +
+    points
+      .slice(1)
+      .map((p) => `L ${p.x} ${p.y}`)
+      .join(" ")
+  );
+}
+
+/**
+ * Check if text on this path would render upside-down
+ * (i.e., the path goes predominantly right-to-left)
+ */
+function shouldReverseTextPath(points: Pt[]): boolean {
+  if (points.length < 2) return false;
+  // Compare start and end x coordinates
+  const startX = points[0].x;
+  const endX = points[points.length - 1].x;
+  // If path goes right-to-left, text will be upside down
+  return endX < startX;
+}
+
+/**
+ * Create a reversed polyline path for text (to keep text right-side up)
+ */
+function polylinePathDReversed(points: Pt[]): string {
+  if (!points.length) return "";
+  const reversed = [...points].reverse();
+  return (
+    `M ${reversed[0].x} ${reversed[0].y} ` +
+    reversed
+      .slice(1)
+      .map((p) => `L ${p.x} ${p.y}`)
+      .join(" ")
+  );
+}
+
+const CICDLoop: React.FC<CICDLoopProps> = ({
+  width = 600,
+  height = 300,
+  segments = DEFAULT_SEGMENTS,
+  staggerDelay = 150,
+  flowDuration = 4000,
+}) => {
+  // Unique ID for this component instance (for SVG path IDs)
+  const instanceId = useId();
+
+  // Animation hooks
+  const [containerRef, inView] = useOptimizedInView({
+    threshold: 0.3,
+    triggerOnce: true,
+  });
+  const [mounted, setMounted] = useState(false);
+  const [hasEntered, setHasEntered] = useState(false);
+  const timeoutIds = useRef<NodeJS.Timeout[]>([]);
+  const pulseIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pulseTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
+
+  const N = segments.length;
+
+  // Animation springs for each segment
+  const [springs, api] = useSprings(
+    N,
+    () => ({
+      opacity: 0,
+      transform: "scale(0.9)",
+      config: { tension: 120, friction: 14 },
+    }),
+    [N]
+  );
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (inView && !hasEntered) {
+      setHasEntered(true);
+    }
+  }, [inView, hasEntered]);
+
+  // Clear all pending timeouts
+  const clearAllTimeouts = () => {
+    timeoutIds.current.forEach((id) => clearTimeout(id));
+    timeoutIds.current = [];
+  };
+
+  // Clear pulse animation refs
+  const clearPulseAnimation = () => {
+    if (pulseIntervalRef.current) {
+      clearInterval(pulseIntervalRef.current);
+      pulseIntervalRef.current = null;
+    }
+    pulseTimeoutsRef.current.forEach((id) => clearTimeout(id));
+    pulseTimeoutsRef.current = [];
+  };
+
+  // Trigger animations when in view
+  useEffect(() => {
+    if (!mounted) return;
+
+    if (inView && !hasEntered) {
+      clearAllTimeouts();
+
+      // Staggered fade-in for each segment
+      segments.forEach((_, index) => {
+        const id = setTimeout(() => {
+          api.start((i) => {
+            if (i === index) {
+              return {
+                opacity: 1,
+                transform: "scale(1)",
+                config: { tension: 120, friction: 14 },
+              };
+            }
+            return false;
+          });
+        }, index * staggerDelay);
+        timeoutIds.current.push(id);
+      });
+    } else if (!hasEntered) {
+      clearAllTimeouts();
+      clearPulseAnimation();
+      // Reset when out of view
+      api.start(() => ({
+        opacity: 0,
+        transform: "scale(0.9)",
+        immediate: true,
+      }));
+    }
+
+    return () => clearAllTimeouts();
+  }, [inView, hasEntered, mounted, staggerDelay, api, N, segments]);
+
+  // Continuous pulsing animation after all segments have animated in
+  useEffect(() => {
+    if ((!inView && !hasEntered) || !mounted) {
+      clearPulseAnimation();
+      return;
+    }
+
+    // Wait for all sections to finish initial animation
+    const totalAnimationTime =
+      segments.length * staggerDelay +
+      INITIAL_STAGGER_SETTLE_MS +
+      PULSE_START_BUFFER_MS;
+
+    const continuousAnimationTimeout = setTimeout(() => {
+      // Start continuous pulsing animation loop
+      const startPulse = () => {
+        // Clear previous pulse timeouts before starting new ones
+        pulseTimeoutsRef.current.forEach((id) => clearTimeout(id));
+        pulseTimeoutsRef.current = [];
+
+        segments.forEach((_, index) => {
+          // Stagger the pulse for each section
+          const pulseTimeout = setTimeout(() => {
+            api.start((i) => {
+              if (i === index) {
+                return {
+                  opacity: 1,
+                  transform: "scale(1.04)",
+                  config: { tension: 300, friction: 25 },
+                };
+              }
+              return false;
+            });
+
+            // Return to normal after pulse
+            const returnTimeout = setTimeout(() => {
+              api.start((i) => {
+                if (i === index) {
+                  return {
+                    opacity: 1,
+                    transform: "scale(1)",
+                    config: { tension: 300, friction: 25 },
+                  };
+                }
+                return false;
+              });
+            }, 400);
+            pulseTimeoutsRef.current.push(returnTimeout);
+          }, index * 100); // Stagger pulses
+          pulseTimeoutsRef.current.push(pulseTimeout);
+        });
+      };
+
+      // Start first pulse immediately, then repeat
+      startPulse();
+      pulseIntervalRef.current = setInterval(startPulse, flowDuration);
+    }, totalAnimationTime);
+
+    timeoutIds.current.push(continuousAnimationTimeout);
+
+    return () => {
+      clearTimeout(continuousAnimationTimeout);
+      clearPulseAnimation();
+    };
+  }, [inView, hasEntered, mounted, staggerDelay, flowDuration, api, N, segments]);
+
+  // Generate segment geometries
+  const segmentGeoms = useMemo(() => {
+    const cx = width / 2;
+    const cy = height / 2;
+    const a = width * 0.38; // Horizontal scale (reduced to add margin for arrows)
+    const b = height * 0.38; // Vertical scale
+    const ribbonWidth = height * 0.18;
+    const arrowLen = ribbonWidth * 0.6;
+    const notchLen = ribbonWidth * 0.5;
+    const { pts, cum, total } = sampleCurve({ cx, cy, a, b, samples: 1400 });
+
+    // Define the gap width as a straight-line distance (not arc-length)
+    // This ensures uniform gap width on both inner and outer edges of curves
+    const gapWidth = ribbonWidth * 0.4;
+    const halfGap = gapWidth / 2;
+
+    // Calculate gap geometry at each segment boundary
+    // Gap i is between segment i-1 and segment i (gap 0 is between segment N-1 and segment 0)
+    const gapGeoms: { pt: Pt; t: Pt; n: Pt; halfGap: number }[] = [];
+    for (let i = 0; i < N; i++) {
+      // Gap position is at the boundary between segments
+      const gapCenter = (i / N) * total;
+      const { pt, t, n } = getPointAndTangentAtArcLength(pts, cum, gapCenter);
+      gapGeoms.push({ pt, t, n, halfGap });
+    }
+
+    return Array.from({ length: N }, (_, i) => {
+      // Get the gap geometry for this segment's start and end
+      const startGapGeom = gapGeoms[i];
+      const endGapGeom = gapGeoms[(i + 1) % N];
+
+      // Calculate the actual notch base and arrow base positions
+      // These define where the segment body should start and end
+      const notchBase = {
+        x: startGapGeom.pt.x + startGapGeom.t.x * startGapGeom.halfGap,
+        y: startGapGeom.pt.y + startGapGeom.t.y * startGapGeom.halfGap,
+      };
+      const arrowBase = {
+        x: endGapGeom.pt.x - endGapGeom.t.x * endGapGeom.halfGap,
+        y: endGapGeom.pt.y - endGapGeom.t.y * endGapGeom.halfGap,
+      };
+
+      // Find arc-length positions for these points
+      const s0 = findArcLengthForPoint(pts, cum, notchBase);
+      const s1 = findArcLengthForPoint(pts, cum, arrowBase);
+      const wrapsAround = s1 < s0;
+      const segmentLength = wrapsAround ? total - s0 + s1 : s1 - s0;
+      const centerPts = wrapsAround
+        ? [
+            ...sliceByArcLength(pts, cum, s0, total),
+            ...sliceByArcLength(pts, cum, 0, s1),
+          ]
+        : sliceByArcLength(pts, cum, s0, s1);
+
+      // Use reversed path for text if the segment goes right-to-left
+      const needsReverse = shouldReverseTextPath(centerPts);
+      const textPathD = needsReverse
+        ? polylinePathDReversed(centerPts)
+        : polylinePathD(centerPts);
+
+      const ribbonD = buildRibbonSegmentPath(
+        centerPts,
+        ribbonWidth,
+        arrowLen,
+        notchLen,
+        startGapGeom,
+        endGapGeom
+      );
+
+      // Calculate text X offset to center on visible ribbon body
+      // The notch apex is at `notchLen` from the path start
+      // The arrow base is at the path end (arrow tip extends beyond)
+      // Center the text between notch apex and arrow base:
+      //   Visual body: from notchLen to pathLength
+      //   Center: (notchLen + pathLength) / 2 = pathLength/2 + notchLen/2
+      //   As percentage: 50% + (notchLen / (2 * pathLength)) * 100%
+      // For reversed paths, flip the direction
+      const offsetAdjustment = (notchLen / (2 * segmentLength)) * 100;
+      const textStartOffset = needsReverse
+        ? 50 - offsetAdjustment
+        : 50 + offsetAdjustment;
+
+      // Calculate segment center for transform-origin (use midpoint of centerPts)
+      const midIndex = Math.floor(centerPts.length / 2);
+      const segmentCenter = centerPts[midIndex] || centerPts[0];
+
+      return { textPathD, ribbonD, textStartOffset, segmentCenter };
+    });
+  }, [N, width, height]);
+
+  const fontSize = height * 0.11;
+
+  // Ref to measure text height
+  const measureTextRef = useRef<SVGTextElement>(null);
+  const [textDy, setTextDy] = useState(0);
+
+  // Refs for overlap detection
+  const svgRef = useRef<SVGSVGElement>(null);
+  const ribbonRefs = useRef<(SVGPathElement | null)[]>([]);
+  const textRefs = useRef<(SVGTextElement | null)[]>([]);
+
+  // State for text offset adjustments due to overlap
+  const [textOffsetAdjustments, setTextOffsetAdjustments] = useState<number[]>([]);
+
+  // Find the "Plan" segment index
+  const planIndex = useMemo(() => {
+    const idx = segments.findIndex(s => s.label === "Plan");
+    return idx >= 0 ? idx : 0;
+  }, [segments]);
+
+  // Measure actual text height and calculate centering offset
+  useLayoutEffect(() => {
+    if (measureTextRef.current) {
+      const bbox = measureTextRef.current.getBBox();
+      // bbox.y = distance from baseline to top of text (negative, since above baseline)
+      // bbox.height = total height of text
+      // Center of text relative to baseline = bbox.y + bbox.height / 2
+      // To center text ON the path, we offset by the negative of that
+      const centerOffset = -(bbox.y + bbox.height / 2);
+      setTextDy(centerOffset);
+    }
+  }, [fontSize]);
+
+  // Detect overlap between Plan ribbon and other segments' text
+  // Wait for all segments to animate in before checking
+  useEffect(() => {
+    if (!svgRef.current || !mounted || !inView) return;
+
+    // Wait for all segment animations to complete
+    const animationCompleteDelay =
+      segments.length * staggerDelay + INITIAL_STAGGER_SETTLE_MS;
+
+    const timeoutId = setTimeout(() => {
+      const planRibbon = ribbonRefs.current[planIndex];
+      if (!planRibbon) return;
+
+      const planBBox = planRibbon.getBBox();
+
+      // Shrink the Plan bounding box to a tighter region (center 50%)
+      // This avoids false positives from the diagonal ribbon's rectangular bbox
+      const shrinkFactor = 0.5;
+      const tightPlanBBox = {
+        x: planBBox.x + planBBox.width * (1 - shrinkFactor) / 2,
+        y: planBBox.y + planBBox.height * (1 - shrinkFactor) / 2,
+        width: planBBox.width * shrinkFactor,
+        height: planBBox.height * shrinkFactor,
+      };
+
+      // Check each text element for overlap with Plan ribbon
+      const adjustments: number[] = new Array(segments.length).fill(0);
+
+      textRefs.current.forEach((textEl, i) => {
+        if (i === planIndex || !textEl) return;
+
+        const textBBox = textEl.getBBox();
+
+        // Calculate text center point
+        const textCenterX = textBBox.x + textBBox.width / 2;
+        const textCenterY = textBBox.y + textBBox.height / 2;
+
+        // Check if text center is inside the tightened Plan region
+        const textCenterInsidePlan =
+          textCenterX > tightPlanBBox.x &&
+          textCenterX < tightPlanBBox.x + tightPlanBBox.width &&
+          textCenterY > tightPlanBBox.y &&
+          textCenterY < tightPlanBBox.y + tightPlanBBox.height;
+
+        if (textCenterInsidePlan) {
+          // Calculate how much to shift the text
+          const planCenterX = planBBox.x + planBBox.width / 2;
+
+          // Shift text in the direction away from Plan's center
+          const shiftAmount = textCenterX < planCenterX ? -15 : 15;
+          adjustments[i] = shiftAmount;
+        }
+      });
+
+      setTextOffsetAdjustments(adjustments);
+    }, animationCompleteDelay);
+
+    return () => clearTimeout(timeoutId);
+  }, [mounted, inView, planIndex, segments, staggerDelay, segmentGeoms, textDy]);
+
+  return (
+    <div ref={containerRef} style={{ display: "flex", justifyContent: "center" }}>
+      <svg
+        ref={svgRef}
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        style={{ maxWidth: "100%", height: "auto", overflow: "visible" }}
+      >
+        <defs>
+          {/* Define centerline paths for text to follow */}
+          {segmentGeoms.map((g, i) => (
+            <path key={i} id={`segc-${instanceId}-${i}`} d={g.textPathD} fill="none" />
+          ))}
+        </defs>
+
+        {/* Hidden text element to measure actual text height */}
+        <text
+          ref={measureTextRef}
+          style={{
+            fontSize: `${fontSize}px`,
+            fontWeight: "bold",
+            fontStyle: "italic",
+          }}
+          opacity={0}
+          x={0}
+          y={0}
+        >
+          Mg
+        </text>
+
+        {/* Render segments in two passes: background first, then "Plan" on top */}
+        {(() => {
+          // Render order: all segments except Plan, then Plan last
+          const renderOrder = [
+            ...segments.map((_, i) => i).filter(i => i !== planIndex),
+            planIndex,
+          ];
+
+          return renderOrder.map((i) => {
+            const g = segmentGeoms[i];
+            const { label, color } = segments[i];
+
+            // Apply overlap adjustment to text offset
+            const adjustment = textOffsetAdjustments[i] || 0;
+            const finalOffset = g.textStartOffset + adjustment;
+
+            return (
+              <animated.g
+                key={i}
+                style={{
+                  ...springs[i],
+                  transformOrigin: `${g.segmentCenter.x}px ${g.segmentCenter.y}px`,
+                }}
+              >
+                {/* Ribbon with notch + arrow tip */}
+                <path
+                  ref={(el) => { ribbonRefs.current[i] = el; }}
+                  d={g.ribbonD}
+                  fill={color}
+                  fillRule="evenodd"
+                />
+
+                {/* Label along segment centerline */}
+                <text
+                  ref={(el) => { textRefs.current[i] = el; }}
+                  style={{
+                    fontSize: `${fontSize}px`,
+                    fontWeight: "bold",
+                    fontStyle: "italic",
+                    fill: "var(--background-color)",
+                  }}
+                  dy={textDy}
+                >
+                  <textPath
+                    href={`#segc-${instanceId}-${i}`}
+                    startOffset={`${finalOffset}%`}
+                    textAnchor="middle"
+                  >
+                    {label}
+                  </textPath>
+                </text>
+              </animated.g>
+            );
+          });
+        })()}
+
+      </svg>
+    </div>
+  );
 };
 
 export default CICDLoop;

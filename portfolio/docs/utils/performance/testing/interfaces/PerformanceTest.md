@@ -6,7 +6,7 @@
 
 # Interface: PerformanceTest
 
-Defined in: [utils/performance/testing.ts:5](https://github.com/tnorlund/Portfolio/blob/7d2a12a2362a645970c6d04c7d2374aa96af3b57/portfolio/utils/performance/testing.ts#L5)
+Defined in: [utils/performance/testing.ts:5](https://github.com/tnorlund/Portfolio/blob/23e5d4a3e7c8161064ff2fcda6cd0ccbb0315a80/portfolio/utils/performance/testing.ts#L5)
 
 Performance testing utilities for development
 
@@ -16,7 +16,7 @@ Performance testing utilities for development
 
 > **fn**: () => `void` \| `Promise`\<`void`\>
 
-Defined in: [utils/performance/testing.ts:7](https://github.com/tnorlund/Portfolio/blob/7d2a12a2362a645970c6d04c7d2374aa96af3b57/portfolio/utils/performance/testing.ts#L7)
+Defined in: [utils/performance/testing.ts:7](https://github.com/tnorlund/Portfolio/blob/23e5d4a3e7c8161064ff2fcda6cd0ccbb0315a80/portfolio/utils/performance/testing.ts#L7)
 
 #### Returns
 
@@ -28,7 +28,7 @@ Defined in: [utils/performance/testing.ts:7](https://github.com/tnorlund/Portfol
 
 > **name**: `string`
 
-Defined in: [utils/performance/testing.ts:6](https://github.com/tnorlund/Portfolio/blob/7d2a12a2362a645970c6d04c7d2374aa96af3b57/portfolio/utils/performance/testing.ts#L6)
+Defined in: [utils/performance/testing.ts:6](https://github.com/tnorlund/Portfolio/blob/23e5d4a3e7c8161064ff2fcda6cd0ccbb0315a80/portfolio/utils/performance/testing.ts#L6)
 
 ***
 
@@ -36,7 +36,7 @@ Defined in: [utils/performance/testing.ts:6](https://github.com/tnorlund/Portfol
 
 > `optional` **iterations**: `number`
 
-Defined in: [utils/performance/testing.ts:8](https://github.com/tnorlund/Portfolio/blob/7d2a12a2362a645970c6d04c7d2374aa96af3b57/portfolio/utils/performance/testing.ts#L8)
+Defined in: [utils/performance/testing.ts:8](https://github.com/tnorlund/Portfolio/blob/23e5d4a3e7c8161064ff2fcda6cd0ccbb0315a80/portfolio/utils/performance/testing.ts#L8)
 
 ***
 
@@ -44,4 +44,4 @@ Defined in: [utils/performance/testing.ts:8](https://github.com/tnorlund/Portfol
 
 > `optional` **warmup**: `number`
 
-Defined in: [utils/performance/testing.ts:9](https://github.com/tnorlund/Portfolio/blob/7d2a12a2362a645970c6d04c7d2374aa96af3b57/portfolio/utils/performance/testing.ts#L9)
+Defined in: [utils/performance/testing.ts:9](https://github.com/tnorlund/Portfolio/blob/23e5d4a3e7c8161064ff2fcda6cd0ccbb0315a80/portfolio/utils/performance/testing.ts#L9)

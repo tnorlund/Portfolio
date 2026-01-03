@@ -40,3 +40,7 @@ export { default as LayoutLMInferenceVisualization } from "./LayoutLMInferenceCa
 export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
 export { default as CICDLoop } from "./CICDLoop";
 export { default as PrecisionRecallDartboard } from "./PrecisionRecallDartboard";
+export const TrainingMetricsAnimation = dynamic(
+  () => import("./TrainingMetricsAnimation"),
+  { ssr: false }
+);

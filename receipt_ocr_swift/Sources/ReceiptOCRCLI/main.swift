@@ -8,7 +8,7 @@ struct ReceiptOCR: AsyncParsableCommand {
     @Option(name: .long) var ocrJobQueueURL: String?
     @Option(name: .long) var ocrResultsQueueURL: String?
     @Option(name: .long) var dynamoTableName: String?
-    @Option(name: .long, help: "AWS region, default us-west-2") var region: String = "us-west-2"
+    @Option(name: .long, help: "AWS region, default us-east-1") var region: String = "us-east-1"
     @Flag(name: .long, help: "Use a stub OCR engine instead of Vision") var stubOCR: Bool = false
     @Option(name: .long, help: "LocalStack endpoint, e.g. http://localhost:4566") var localstackEndpoint: String?
     @Option(name: .long, help: "Log level: trace|debug|info|warn|error") var logLevel: String?

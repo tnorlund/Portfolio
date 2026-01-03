@@ -24,6 +24,8 @@
 - [ReceiptsApiResponse](interfaces/ReceiptsApiResponse.md)
 - [ReceiptWord](interfaces/ReceiptWord.md)
 - [ReceiptWordLabel](interfaces/ReceiptWordLabel.md)
+- [TrainingMetricsEpoch](interfaces/TrainingMetricsEpoch.md)
+- [TrainingMetricsResponse](interfaces/TrainingMetricsResponse.md)
 - [Word](interfaces/Word.md)
 
 ## Type Aliases
