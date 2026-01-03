@@ -452,7 +452,23 @@ public struct VisionOCREngine: OCREngineProtocol {
                                 try saveImageToPNG(receipt.warpedImage, to: receiptURL)
 
                                 // Run OCR on warped image (REFINEMENT)
-                                let receiptLines = try performOCRSync(from: receipt.warpedImage)
+                                var receiptLines = try performOCRSync(from: receipt.warpedImage)
+
+                                // Perform NL extraction on receipt lines (phone, address, date, etc.)
+                                var receiptAggregatedText = ""
+                                var receiptWordMappings: [WordMapping] = []
+                                var receiptCurrentLocation = 0
+                                for (lineIndex, line) in receiptLines.enumerated() {
+                                    for (wordIndex, word) in line.words.enumerated() {
+                                        let nsWord = word.text as NSString
+                                        let range = NSRange(location: receiptCurrentLocation, length: nsWord.length)
+                                        receiptWordMappings.append(WordMapping(lineIndex: lineIndex, wordIndex: wordIndex, range: range))
+                                        receiptAggregatedText.append(word.text)
+                                        receiptAggregatedText.append(" ")
+                                        receiptCurrentLocation += nsWord.length + 1
+                                    }
+                                }
+                                performNLExtraction(on: receiptAggregatedText, mutableLines: &receiptLines, wordMappings: receiptWordMappings)
 
                                 let output = ReceiptOutput(
                                     from: receipt,

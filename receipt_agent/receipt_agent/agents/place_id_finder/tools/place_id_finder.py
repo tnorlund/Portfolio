@@ -341,15 +341,16 @@ class PlaceIdFinder:
                 try:
                     logger.debug("Searching by phone: %s", receipt.phone)
                     place_data = self.places.search_by_phone(receipt.phone)
-                    if place_data and place_data.get("place_id"):
-                        match.place_id = place_data.get("place_id")
-                        match.place_name = place_data.get("name")
-                        match.place_address = place_data.get(
-                            "formatted_address"
+                    # Place is a Pydantic model - use attribute access
+                    if place_data and getattr(place_data, "place_id", None):
+                        match.place_id = place_data.place_id
+                        match.place_name = place_data.name
+                        match.place_address = getattr(
+                            place_data, "formatted_address", None
                         )
-                        match.place_phone = place_data.get(
-                            "formatted_phone_number"
-                        ) or place_data.get("international_phone_number")
+                        match.place_phone = getattr(
+                            place_data, "formatted_phone_number", None
+                        ) or getattr(place_data, "international_phone_number", None)
                         match.search_method = "phone"
                         match.found = True
                         match.confidence = self._calculate_confidence(
@@ -383,15 +384,16 @@ class PlaceIdFinder:
                         receipt.address[:50],
                     )
                     place_data = self.places.search_by_address(receipt.address)
-                    if place_data and place_data.get("place_id"):
-                        match.place_id = place_data.get("place_id")
-                        match.place_name = place_data.get("name")
-                        match.place_address = place_data.get(
-                            "formatted_address"
+                    # Place is a Pydantic model - use attribute access
+                    if place_data and getattr(place_data, "place_id", None):
+                        match.place_id = place_data.place_id
+                        match.place_name = place_data.name
+                        match.place_address = getattr(
+                            place_data, "formatted_address", None
                         )
-                        match.place_phone = place_data.get(
-                            "formatted_phone_number"
-                        ) or place_data.get("international_phone_number")
+                        match.place_phone = getattr(
+                            place_data, "formatted_phone_number", None
+                        ) or getattr(place_data, "international_phone_number", None)
                         match.search_method = "address"
                         match.found = True
                         match.confidence = self._calculate_confidence(
@@ -424,15 +426,16 @@ class PlaceIdFinder:
                     place_data = self.places.search_by_text(
                         receipt.merchant_name
                     )
-                    if place_data and place_data.get("place_id"):
-                        match.place_id = place_data.get("place_id")
-                        match.place_name = place_data.get("name")
-                        match.place_address = place_data.get(
-                            "formatted_address"
+                    # Place is a Pydantic model - use attribute access
+                    if place_data and getattr(place_data, "place_id", None):
+                        match.place_id = place_data.place_id
+                        match.place_name = place_data.name
+                        match.place_address = getattr(
+                            place_data, "formatted_address", None
                         )
-                        match.place_phone = place_data.get(
-                            "formatted_phone_number"
-                        ) or place_data.get("international_phone_number")
+                        match.place_phone = getattr(
+                            place_data, "formatted_phone_number", None
+                        ) or getattr(place_data, "international_phone_number", None)
                         match.search_method = "text"
                         match.found = True
                         match.confidence = self._calculate_confidence(
@@ -463,7 +466,7 @@ class PlaceIdFinder:
     def _calculate_confidence(
         self,
         receipt: ReceiptRecord,
-        place_data: dict[str, Any],
+        place_data: Any,
         search_method: str,
     ) -> float:
         """
@@ -477,7 +480,7 @@ class PlaceIdFinder:
 
         Args:
             receipt: The receipt being matched
-            place_data: Google Places result
+            place_data: Google Places result (Place object)
             search_method: How the place was found
 
         Returns:
@@ -493,28 +496,27 @@ class PlaceIdFinder:
         matches = 0
         total_fields = 0
 
+        # Place is a Pydantic model - use getattr for attribute access
+        place_name = getattr(place_data, "name", None)
+        place_address = getattr(place_data, "formatted_address", None)
+        place_phone = getattr(place_data, "formatted_phone_number", None)
+
         # Check name match
-        if receipt.merchant_name and place_data.get("name"):
+        if receipt.merchant_name and place_name:
             total_fields += 1
-            if self._names_match(
-                receipt.merchant_name, place_data.get("name")
-            ):
+            if self._names_match(receipt.merchant_name, place_name):
                 matches += 1
 
         # Check address match
-        if receipt.address and place_data.get("formatted_address"):
+        if receipt.address and place_address:
             total_fields += 1
-            if self._addresses_match(
-                receipt.address, place_data.get("formatted_address")
-            ):
+            if self._addresses_match(receipt.address, place_address):
                 matches += 1
 
         # Check phone match
-        if receipt.phone and place_data.get("formatted_phone_number"):
+        if receipt.phone and place_phone:
             total_fields += 1
-            if self._phones_match(
-                receipt.phone, place_data.get("formatted_phone_number")
-            ):
+            if self._phones_match(receipt.phone, place_phone):
                 matches += 1
 
         # Boost confidence based on field matches

@@ -101,20 +101,34 @@ public func applyAffineTransform(
     let ciImage = CIImage(cgImage: image)
     let context = CIContext(options: [.useSoftwareRenderer: false])
 
-    // For affine transform, we compute the transform from source corners to destination rectangle
-    let srcTL = srcCorners[0]
-    let srcTR = srcCorners[1]
-    let srcBL = srcCorners[3]
+    // CoreImage uses bottom-left origin (Y=0 at bottom), but srcCorners are in
+    // image coordinates (Y=0 at top). Convert corners to CoreImage coordinates
+    // BEFORE computing the affine coefficients.
+    let imageHeight = CGFloat(image.height)
+    let srcTL = (srcCorners[0].0, imageHeight - srcCorners[0].1)
+    let srcTR = (srcCorners[1].0, imageHeight - srcCorners[1].1)
+    let srcBL = (srcCorners[3].0, imageHeight - srcCorners[3].1)
 
     let dstW = outputSize.width
     let dstH = outputSize.height
 
-    // Compute affine coefficients (dst -> src mapping for PIL-style transform)
-    // We need the inverse (src -> dst) for CoreImage
+    // In CoreImage coordinates (Y=0 at bottom):
+    // - Destination (0, 0) is bottom-left of output
+    // - Destination (0, dstH) is top-left of output
+    // We want to map:
+    // - Dest top-left (0, dstH) -> Src TL (which is now at HIGH Y after flip)
+    // - Dest top-right (dstW, dstH) -> Src TR
+    // - Dest bottom-left (0, 0) -> Src BL (which is now at LOW Y after flip)
+
+    // Compute affine coefficients (dst -> src mapping)
+    // For CoreImage, destination Y increases upward, so:
+    // - Along X axis (Y=dstH, top row): goes from TL to TR
+    // - Along Y axis (X=0, left edge): goes from BL (Y=0) to TL (Y=dstH)
     let a_i: CGFloat, b_i: CGFloat, c_i: CGFloat
     let d_i: CGFloat, e_i: CGFloat, f_i: CGFloat
 
     if dstW > 1 {
+        // X direction: from TL to TR along top edge
         a_i = (srcTR.0 - srcTL.0) / (dstW - 1)
         d_i = (srcTR.1 - srcTL.1) / (dstW - 1)
     } else {
@@ -123,40 +137,30 @@ public func applyAffineTransform(
     }
 
     if dstH > 1 {
-        b_i = (srcBL.0 - srcTL.0) / (dstH - 1)
-        e_i = (srcBL.1 - srcTL.1) / (dstH - 1)
+        // Y direction: from BL (Y=0) to TL (Y=dstH)
+        b_i = (srcTL.0 - srcBL.0) / (dstH - 1)
+        e_i = (srcTL.1 - srcBL.1) / (dstH - 1)
     } else {
         b_i = 0
         e_i = 0
     }
 
-    c_i = srcTL.0
-    f_i = srcTL.1
+    // Origin is at destination (0, 0) which maps to source BL
+    c_i = srcBL.0
+    f_i = srcBL.1
 
-    // Invert the affine transform to get src -> dst mapping
+    // Invert the affine transform to get src -> dst mapping for CoreImage
     guard let (a_f, b_f, c_f, d_f, e_f, f_f) = try? invertAffine(a: a_i, b: b_i, c: c_i, d: d_i, e: e_i, f: f_i) else {
         return nil
     }
 
-    // CoreImage uses bottom-left origin, need to adjust
-    let imageHeight = CGFloat(image.height)
-
-    // Create the affine transform
-    // The transform maps source coordinates to destination coordinates
-    var transform = CGAffineTransform.identity
-
-    // First, flip Y to convert from top-left to bottom-left origin
-    transform = transform.translatedBy(x: 0, y: imageHeight)
-    transform = transform.scaledBy(x: 1, y: -1)
-
-    // Apply the computed affine transform
+    // Create the affine transform (no Y-flip needed since corners are already in CoreImage coords)
     let affine = CGAffineTransform(a: a_f, b: d_f, c: b_f, d: e_f, tx: c_f, ty: f_f)
-    transform = transform.concatenating(affine)
 
     // Apply transform to image
-    let transformedImage = ciImage.transformed(by: transform)
+    let transformedImage = ciImage.transformed(by: affine)
 
-    // Crop to output size
+    // Crop to output size (origin at bottom-left in CoreImage)
     let outputRect = CGRect(x: 0, y: 0, width: outputSize.width, height: outputSize.height)
 
     // Render to CGImage

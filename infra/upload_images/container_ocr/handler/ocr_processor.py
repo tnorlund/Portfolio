@@ -40,6 +40,7 @@ from receipt_upload.utils import (
     get_ocr_job,
     get_ocr_routing_decision,
     image_ocr_to_receipt_ocr,
+    upload_all_cdn_formats,
 )
 
 logger = logging.getLogger(__name__)
@@ -311,6 +312,69 @@ class OCRProcessor:
                 bottom_left=bounds["bottom_left"],
                 bottom_right=bounds["bottom_right"],
             )
+
+            # Process warped receipt image for CDN (multiple sizes and formats)
+            try:
+                warped_image_path = download_image_from_s3(
+                    ocr_job.s3_bucket,
+                    raw_s3_key,
+                    image_id,
+                    unique_suffix=f"receipt_{receipt_id}",
+                )
+                warped_image = PIL_Image.open(warped_image_path)
+
+                # Upload to CDN with all sizes and formats
+                # Receipt CDN key: assets/{image_id}/{receipt_id}.jpg etc.
+                receipt_cdn_base_key = f"assets/{image_id}/{receipt_id}"
+                receipt_cdn_keys = upload_all_cdn_formats(
+                    warped_image,
+                    self.site_bucket,
+                    receipt_cdn_base_key,
+                    generate_thumbnails=True,
+                )
+
+                # Update Receipt entity with CDN keys
+                receipt.cdn_s3_key = receipt_cdn_keys.get("jpeg_full")
+                receipt.cdn_webp_s3_key = receipt_cdn_keys.get("webp_full")
+                receipt.cdn_avif_s3_key = receipt_cdn_keys.get("avif_full")
+                receipt.cdn_thumbnail_s3_key = receipt_cdn_keys.get(
+                    "jpeg_thumbnail"
+                )
+                receipt.cdn_thumbnail_webp_s3_key = receipt_cdn_keys.get(
+                    "webp_thumbnail"
+                )
+                receipt.cdn_thumbnail_avif_s3_key = receipt_cdn_keys.get(
+                    "avif_thumbnail"
+                )
+                receipt.cdn_small_s3_key = receipt_cdn_keys.get("jpeg_small")
+                receipt.cdn_small_webp_s3_key = receipt_cdn_keys.get(
+                    "webp_small"
+                )
+                receipt.cdn_small_avif_s3_key = receipt_cdn_keys.get(
+                    "avif_small"
+                )
+                receipt.cdn_medium_s3_key = receipt_cdn_keys.get("jpeg_medium")
+                receipt.cdn_medium_webp_s3_key = receipt_cdn_keys.get(
+                    "webp_medium"
+                )
+                receipt.cdn_medium_avif_s3_key = receipt_cdn_keys.get(
+                    "avif_medium"
+                )
+
+                logger.info(
+                    "Processed receipt %s for CDN: %s -> %s",
+                    receipt_id,
+                    raw_s3_key,
+                    receipt_cdn_base_key,
+                )
+            except Exception as cdn_exc:  # pylint: disable=broad-exception-caught
+                logger.warning(
+                    "Failed to process receipt %s for CDN: %s - %s",
+                    receipt_id,
+                    raw_s3_key,
+                    cdn_exc,
+                )
+
             self.dynamo.add_receipt(receipt)
 
             # Process OCR lines from warped image (already refined by Swift)
@@ -358,6 +422,57 @@ class OCRProcessor:
                 raw_s3_key=ocr_job.s3_key,
                 image_type=image_type,
             )
+
+            # Process original image for CDN (multiple sizes and formats)
+            try:
+                original_image_path = download_image_from_s3(
+                    ocr_job.s3_bucket,
+                    ocr_job.s3_key,
+                    image_id,
+                    unique_suffix="original",
+                )
+                original_image = PIL_Image.open(original_image_path)
+
+                # Upload to CDN with all sizes and formats
+                # Use 'original' to avoid collision with receipt CDN keys
+                cdn_base_key = f"assets/{image_id}/original"
+                cdn_keys = upload_all_cdn_formats(
+                    original_image,
+                    self.site_bucket,
+                    cdn_base_key,
+                    generate_thumbnails=True,
+                )
+
+                # Update Image entity with CDN keys
+                image_entity.cdn_s3_key = cdn_keys.get("jpeg_full")
+                image_entity.cdn_webp_s3_key = cdn_keys.get("webp_full")
+                image_entity.cdn_avif_s3_key = cdn_keys.get("avif_full")
+                image_entity.cdn_thumbnail_s3_key = cdn_keys.get("jpeg_thumbnail")
+                image_entity.cdn_thumbnail_webp_s3_key = cdn_keys.get(
+                    "webp_thumbnail"
+                )
+                image_entity.cdn_thumbnail_avif_s3_key = cdn_keys.get(
+                    "avif_thumbnail"
+                )
+                image_entity.cdn_small_s3_key = cdn_keys.get("jpeg_small")
+                image_entity.cdn_small_webp_s3_key = cdn_keys.get("webp_small")
+                image_entity.cdn_small_avif_s3_key = cdn_keys.get("avif_small")
+                image_entity.cdn_medium_s3_key = cdn_keys.get("jpeg_medium")
+                image_entity.cdn_medium_webp_s3_key = cdn_keys.get("webp_medium")
+                image_entity.cdn_medium_avif_s3_key = cdn_keys.get("avif_medium")
+
+                logger.info(
+                    "Processed original image for CDN: %s -> %s",
+                    image_id,
+                    cdn_base_key,
+                )
+            except Exception as cdn_exc:  # pylint: disable=broad-exception-caught
+                logger.warning(
+                    "Failed to process original image for CDN: %s - %s",
+                    image_id,
+                    cdn_exc,
+                )
+
             self.dynamo.add_image(image_entity)
             logger.info(
                 "Created Image entity: %s (%dx%d, type=%s)",
