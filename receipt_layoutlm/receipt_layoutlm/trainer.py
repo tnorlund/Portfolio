@@ -504,6 +504,21 @@ class ReceiptLayoutLMTrainer:
                         if eval_loss is not None:
                             _add_metric("eval_loss", eval_loss, "loss")
 
+                        # Confusion matrix (stored as dict, not scalar)
+                        cm_data = metrics.get("eval_confusion_matrix") or metrics.get("confusion_matrix")
+                        if cm_data and isinstance(cm_data, dict):
+                            metrics_to_write.append(
+                                JobMetric(
+                                    job_id=self.job_id,
+                                    metric_name="confusion_matrix",
+                                    value=cm_data,
+                                    timestamp=datetime.now().isoformat(),
+                                    unit="matrix",
+                                    epoch=epoch_val,
+                                    step=step_val,
+                                )
+                            )
+
                     # Add training loss from log_history if available
                     if state and hasattr(state, "log_history") and state.log_history:
                         # Get the most recent training step log entry
@@ -810,6 +825,25 @@ class ReceiptLayoutLMTrainer:
                     except Exception as e:
                         # If classification_report fails, continue without per-label metrics
                         print(f"Warning: Failed to compute per-label metrics: {e}")
+
+                # Compute confusion matrix at token level
+                try:
+                    from sklearn.metrics import confusion_matrix as sklearn_cm
+
+                    # Flatten sequences for sklearn
+                    y_true_flat = [tag for seq in y_true for tag in seq]
+                    y_pred_flat = [tag for seq in y_pred for tag in seq]
+
+                    # Get unique labels (sorted for consistent ordering)
+                    unique_labels = sorted(set(y_true_flat) | set(y_pred_flat))
+
+                    cm = sklearn_cm(y_true_flat, y_pred_flat, labels=unique_labels)
+                    metrics["confusion_matrix"] = {
+                        "labels": unique_labels,
+                        "matrix": cm.tolist(),
+                    }
+                except Exception as e:
+                    print(f"Warning: Failed to compute confusion matrix: {e}")
 
                 # Note: F1 metric is now stored in _MetricLoggerCallback.on_evaluate()
                 # with epoch information, so we don't need to store it here
