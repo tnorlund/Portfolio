@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { animated, useSpring, config } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
@@ -213,10 +213,9 @@ const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => 
 
         {/* Matrix rows */}
         {matrix.map((row, i) => (
-          <>
+          <React.Fragment key={`row-${i}-${labels[i]}`}>
             {/* Y-axis label */}
             <div
-              key={`y-${labels[i]}`}
               className={`${styles.matrixAxisLabel} ${styles.matrixAxisLabelY}`}
             >
               {formatLabel(labels[i])}
@@ -231,7 +230,7 @@ const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => 
                 isDiagonal={i === j}
               />
             ))}
-          </>
+          </React.Fragment>
         ))}
       </div>
     </div>
