@@ -13,6 +13,7 @@ import {
   CodeBuildDiagram,
   ImageStack,
   LabelValidationCount,
+  LayoutLMBatchVisualization,
   LayoutLMInferenceVisualization,
   LockingSwimlane,
   MerchantCount,
@@ -576,6 +577,28 @@ export default function ReceiptPage({
         30-60 seconds with the AI Agent. The tradeoff is coverage: the model
         focuses on 4 core labels, while the AI Agent provides comprehensive
         labeling including product names, quantities, and unit prices.
+      </p>
+
+      <h2>Real-Time Inference at Scale</h2>
+
+      <p>
+        With a trained model, I can now process receipts in real-time. The
+        visualization below shows how the model scans through a receipt,
+        identifying entities as it processes each word. A scan line sweeps
+        down the image, revealing bounding boxes for detected entities:
+        merchant names, dates, addresses, and amounts.
+      </p>
+
+      <ClientOnly>
+        <LayoutLMBatchVisualization />
+      </ClientOnly>
+
+      <p>
+        This batch processing approach handles multiple receipts efficiently.
+        The system maintains a pool of pre-cached inferences, refreshed weekly,
+        allowing the API to serve results instantly without running the model
+        on every request. The stats bar shows aggregate performance: accuracy
+        rates, inference times, and estimated throughput.
       </p>
 
       <h1>What I Learned</h1>

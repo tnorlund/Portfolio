@@ -88,10 +88,19 @@
 .receiptImageWrapper {
   position: relative;
   width: 100%;
-  aspect-ratio: 3 / 4;
-  background: var(--code-background);
+  height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 8px;
   overflow: hidden;
+}
+
+.receiptImageInner {
+  position: relative;
+  width: 100%;
+  max-width: 300px;
+  height: 100%;
 }
 
 .receiptLoading {
@@ -110,24 +119,6 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
-}
-
-.scanLine {
-  position: absolute;
-  left: 0;
-  width: 100%;
-  height: 3px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--color-blue) 20%,
-    var(--color-blue) 80%,
-    transparent 100%
-  );
-  box-shadow: 0 0 15px var(--color-blue), 0 0 30px rgba(var(--color-blue-rgb), 0.3);
-  pointer-events: none;
-  z-index: 10;
-  transition: top 0.05s linear;
 }
 
 /* Entity Sidebar */
@@ -167,24 +158,17 @@
   text-overflow: ellipsis;
 }
 
-/* Stats Bar */
-.statsBar {
-  display: flex;
-  justify-content: space-around;
-  padding: 1rem;
-  background: var(--code-background);
-  border-radius: 8px;
-}
-
-.statItem {
-  text-align: center;
+/* Inference Time */
+.inferenceTime {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 0.25rem;
+  padding: 1rem;
 }
 
-.statLabel {
-  font-size: 0.65rem;
+.inferenceLabel {
+  font-size: 0.7rem;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -192,8 +176,8 @@
   opacity: 0.5;
 }
 
-.statValue {
-  font-size: 1.1rem;
+.inferenceValue {
+  font-size: 1.5rem;
   font-weight: 700;
   color: var(--text-color);
   font-family: "Monaco", "Menlo", "Consolas", monospace;
@@ -245,8 +229,7 @@
   }
 
   .receiptImageWrapper {
-    aspect-ratio: 3 / 4;
-    max-height: 400px;
+    height: 400px;
   }
 
   .entitySidebar {
@@ -266,18 +249,8 @@
     font-size: 0.85rem;
   }
 
-  .statsBar {
-    flex-wrap: wrap;
-    gap: 0.75rem;
-  }
-
-  .statItem {
-    flex: 1 1 45%;
-    min-width: 80px;
-  }
-
-  .statValue {
-    font-size: 0.95rem;
+  .inferenceValue {
+    font-size: 1.2rem;
   }
 }
 

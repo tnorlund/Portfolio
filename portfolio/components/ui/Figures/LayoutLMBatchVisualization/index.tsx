@@ -9,7 +9,7 @@ import {
   LayoutLMPrediction,
   LayoutLMReceiptWord,
 } from "../../../../types/api";
-import { detectImageFormatSupport, getBestImageUrl } from "../../../../utils/image";
+import { detectImageFormatSupport, getBestImageUrl } from "../../../../utils/imageFormat";
 import styles from "./LayoutLMBatchVisualization.module.css";
 
 // Label colors matching the existing carousel
@@ -22,10 +22,8 @@ const LABEL_COLORS: Record<string, string> = {
 };
 
 // Animation timing (in ms)
-const SCAN_DURATION = 5000;
 const ENTITY_REVEAL_DELAY = 150;
 const TRANSITION_DURATION = 1000;
-const TOTAL_RECEIPT_DURATION = SCAN_DURATION + 4 * ENTITY_REVEAL_DELAY + TRANSITION_DURATION;
 
 interface EntityCardProps {
   label: string;
@@ -92,39 +90,23 @@ const ProgressDots: React.FC<ProgressDotsProps> = ({ total, current, receipts })
   );
 };
 
-interface StatsBarProps {
-  aggregateStats: LayoutLMBatchInferenceResponse["aggregate_stats"];
-  currentReceipt: LayoutLMReceiptInference;
+interface InferenceTimeProps {
+  inferenceTimeMs: number;
+  show: boolean;
 }
 
-const StatsBar: React.FC<StatsBarProps> = ({ aggregateStats, currentReceipt }) => {
+const InferenceTime: React.FC<InferenceTimeProps> = ({ inferenceTimeMs, show }) => {
+  const spring = useSpring({
+    opacity: show ? 1 : 0,
+    transform: show ? "translateY(0px)" : "translateY(10px)",
+    config: { tension: 280, friction: 24 },
+  });
+
   return (
-    <div className={styles.statsBar}>
-      <div className={styles.statItem}>
-        <span className={styles.statLabel}>Accuracy</span>
-        <span className={styles.statValue}>
-          {(aggregateStats.avg_accuracy * 100).toFixed(1)}%
-        </span>
-      </div>
-      <div className={styles.statItem}>
-        <span className={styles.statLabel}>Inference</span>
-        <span className={styles.statValue}>
-          {currentReceipt.inference_time_ms.toFixed(0)}ms
-        </span>
-      </div>
-      <div className={styles.statItem}>
-        <span className={styles.statLabel}>Throughput</span>
-        <span className={styles.statValue}>
-          ~{aggregateStats.estimated_throughput_per_hour.toLocaleString()}/hr
-        </span>
-      </div>
-      <div className={styles.statItem}>
-        <span className={styles.statLabel}>Pool</span>
-        <span className={styles.statValue}>
-          {aggregateStats.total_receipts_in_pool}
-        </span>
-      </div>
-    </div>
+    <animated.div className={styles.inferenceTime} style={spring}>
+      <span className={styles.inferenceLabel}>Inference Time</span>
+      <span className={styles.inferenceValue}>{inferenceTimeMs.toFixed(0)}ms</span>
+    </animated.div>
   );
 };
 
@@ -148,14 +130,8 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   const imageUrl = useMemo(() => {
     if (!formatSupport) return null;
 
-    const bucket = receiptData.cdn_s3_bucket;
-    const formats = {
-      jpeg: receiptData.cdn_s3_key,
-      webp: receiptData.cdn_webp_s3_key,
-      avif: receiptData.cdn_avif_s3_key,
-    };
-
-    return getBestImageUrl(bucket, formats, formatSupport);
+    // Pass receiptData directly - it has cdn_s3_key, cdn_webp_s3_key, cdn_avif_s3_key
+    return getBestImageUrl(receiptData, formatSupport);
   }, [receiptData, formatSupport]);
 
   // Build word lookup for bounding boxes
@@ -183,20 +159,47 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   return (
     <div className={styles.receiptViewer}>
       <div className={styles.receiptImageWrapper}>
-        <Image
-          src={imageUrl}
-          alt="Receipt"
-          fill
-          style={{ objectFit: "contain" }}
-          priority
-        />
+        <div className={styles.receiptImageInner}>
+          <Image
+            src={imageUrl}
+            alt="Receipt"
+            fill
+            style={{ objectFit: "contain", objectPosition: "center" }}
+            priority
+          />
 
-        {/* SVG overlay for bounding boxes */}
-        <svg
-          className={styles.svgOverlay}
-          viewBox={`0 0 ${receiptData.width} ${receiptData.height}`}
-          preserveAspectRatio="xMidYMid meet"
-        >
+          {/* SVG overlay for bounding boxes and scan line */}
+          <svg
+            className={styles.svgOverlay}
+            viewBox={`0 0 ${receiptData.width} ${receiptData.height}`}
+            preserveAspectRatio="xMidYMid meet"
+          >
+          {/* Scan line - positioned in image coordinates */}
+          <defs>
+            <linearGradient id="scanLineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="transparent" />
+              <stop offset="20%" stopColor="var(--color-red)" />
+              <stop offset="80%" stopColor="var(--color-red)" />
+              <stop offset="100%" stopColor="transparent" />
+            </linearGradient>
+            <filter id="scanLineGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="4" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+          <rect
+            x="0"
+            y={(scanProgress / 100) * receiptData.height}
+            width={receiptData.width}
+            height={Math.max(receiptData.height * 0.005, 3)}
+            fill="url(#scanLineGradient)"
+            filter="url(#scanLineGlow)"
+          />
+
+          {/* Bounding boxes */}
           {visiblePredictions.map((pred, idx) => {
             const key = `${pred.line_id}_${pred.word_id}`;
             const word = wordLookup.get(key);
@@ -225,13 +228,8 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
               />
             );
           })}
-        </svg>
-
-        {/* Scan line */}
-        <div
-          className={styles.scanLine}
-          style={{ top: `${scanProgress}%` }}
-        />
+          </svg>
+        </div>
       </div>
     </div>
   );
@@ -249,6 +247,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
   const [currentReceiptIndex, setCurrentReceiptIndex] = useState(0);
   const [scanProgress, setScanProgress] = useState(0);
   const [revealedEntities, setRevealedEntities] = useState<string[]>([]);
+  const [showInferenceTime, setShowInferenceTime] = useState(false);
   const [formatSupport, setFormatSupport] = useState<{
     supportsWebP: boolean;
     supportsAVIF: boolean;
@@ -302,7 +301,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
     return revealed;
   }, [data, currentReceiptIndex, scanProgress]);
 
-  // Animation loop
+  // Animation loop - uses actual inference time per receipt
   useEffect(() => {
     if (!inView || !data || data.receipts.length === 0 || hasStartedAnimation.current) {
       return;
@@ -314,32 +313,39 @@ const LayoutLMBatchVisualization: React.FC = () => {
 
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;
+      const currentReceipt = data.receipts[receiptIndex];
+      const scanDuration = currentReceipt.inference_time_ms;
+      const totalDuration = scanDuration + 4 * ENTITY_REVEAL_DELAY + TRANSITION_DURATION;
 
-      if (elapsed < SCAN_DURATION) {
-        // Scanning phase
-        const progress = (elapsed / SCAN_DURATION) * 100;
+      if (elapsed < scanDuration) {
+        // Scanning phase - duration matches actual inference time
+        const progress = (elapsed / scanDuration) * 100;
         setScanProgress(Math.min(progress, 100));
         setRevealedEntities([]);
-      } else if (elapsed < SCAN_DURATION + 4 * ENTITY_REVEAL_DELAY) {
+        setShowInferenceTime(false);
+      } else if (elapsed < scanDuration + 4 * ENTITY_REVEAL_DELAY) {
         // Entity reveal phase
         setScanProgress(100);
-        const entityElapsed = elapsed - SCAN_DURATION;
+        const entityElapsed = elapsed - scanDuration;
         const entityCount = Math.floor(entityElapsed / ENTITY_REVEAL_DELAY) + 1;
         const entities = ["MERCHANT_NAME", "DATE", "ADDRESS", "AMOUNT"].slice(
           0,
           Math.min(entityCount, 4)
         );
         setRevealedEntities(entities);
-      } else if (elapsed < TOTAL_RECEIPT_DURATION) {
+        setShowInferenceTime(true);
+      } else if (elapsed < totalDuration) {
         // Hold phase
         setScanProgress(100);
         setRevealedEntities(["MERCHANT_NAME", "DATE", "ADDRESS", "AMOUNT"]);
+        setShowInferenceTime(true);
       } else {
         // Move to next receipt
         receiptIndex = (receiptIndex + 1) % data.receipts.length;
         setCurrentReceiptIndex(receiptIndex);
         setScanProgress(0);
         setRevealedEntities([]);
+        setShowInferenceTime(false);
         startTime = currentTime;
       }
 
@@ -422,9 +428,9 @@ const LayoutLMBatchVisualization: React.FC = () => {
         </div>
       </div>
 
-      <StatsBar
-        aggregateStats={data.aggregate_stats}
-        currentReceipt={currentReceipt}
+      <InferenceTime
+        inferenceTimeMs={currentReceipt.inference_time_ms}
+        show={showInferenceTime}
       />
     </div>
   );
