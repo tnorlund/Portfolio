@@ -16,6 +16,73 @@ public struct StubOCREngine: OCREngineProtocol {
     }
 }
 
+// MARK: - OCR Result Parsing
+
+/// Parsed receipt info from OCR JSON output
+private struct ParsedReceiptInfo {
+    let clusterId: Int
+    let localFileName: String
+    let bounds: ReceiptBoundsInfo
+    let warpedWidth: Int
+    let warpedHeight: Int
+    let lineIndices: [Int]
+}
+
+/// Receipt bounds from JSON
+private struct ReceiptBoundsInfo {
+    let topLeft: (x: Double, y: Double)
+    let topRight: (x: Double, y: Double)
+    let bottomRight: (x: Double, y: Double)
+    let bottomLeft: (x: Double, y: Double)
+}
+
+/// Parse receipts from OCR JSON output
+private func parseReceiptsFromJSON(_ jsonData: Data) -> [ParsedReceiptInfo] {
+    guard let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+          let receiptsArray = json["receipts"] as? [[String: Any]] else {
+        return []
+    }
+
+    return receiptsArray.compactMap { receiptDict -> ParsedReceiptInfo? in
+        guard let clusterId = receiptDict["cluster_id"] as? Int,
+              let s3Key = receiptDict["s3_key"] as? String,
+              let warpedWidth = receiptDict["warped_width"] as? Int,
+              let warpedHeight = receiptDict["warped_height"] as? Int,
+              let lineIndices = receiptDict["line_indices"] as? [Int],
+              let boundsDict = receiptDict["bounds"] as? [String: Any],
+              let topLeft = boundsDict["top_left"] as? [String: Double],
+              let topRight = boundsDict["top_right"] as? [String: Double],
+              let bottomRight = boundsDict["bottom_right"] as? [String: Double],
+              let bottomLeft = boundsDict["bottom_left"] as? [String: Double] else {
+            return nil
+        }
+
+        // Validate all coordinate values exist - skip malformed receipts
+        guard let topLeftX = topLeft["x"], let topLeftY = topLeft["y"],
+              let topRightX = topRight["x"], let topRightY = topRight["y"],
+              let bottomRightX = bottomRight["x"], let bottomRightY = bottomRight["y"],
+              let bottomLeftX = bottomLeft["x"], let bottomLeftY = bottomLeft["y"] else {
+            return nil
+        }
+
+        let bounds = ReceiptBoundsInfo(
+            topLeft: (x: topLeftX, y: topLeftY),
+            topRight: (x: topRightX, y: topRightY),
+            bottomRight: (x: bottomRightX, y: bottomRightY),
+            bottomLeft: (x: bottomLeftX, y: bottomLeftY)
+        )
+
+        return ParsedReceiptInfo(
+            clusterId: clusterId,
+            localFileName: s3Key,  // s3Key initially contains local filename
+            bounds: bounds,
+            warpedWidth: warpedWidth,
+            warpedHeight: warpedHeight,
+            lineIndices: lineIndices
+        )
+    }
+}
+
 public final class OCRWorker {
     private let config: Config
     private let ocr: OCREngineProtocol
@@ -118,6 +185,31 @@ public final class OCRWorker {
         // Upload results, write routing decision, send result message, update job
         let now = Date()
         for (resultURL, ctx) in zip(ocrResults, contexts) {
+            // Parse the OCR result JSON to get receipt info
+            let jsonData = try Data(contentsOf: resultURL)
+            let receipts = parseReceiptsFromJSON(jsonData)
+
+            // Upload receipt images to S3
+            var uploadedReceiptKeys: [String] = []
+            for receipt in receipts {
+                let receiptLocalURL = tempDir.appendingPathComponent(receipt.localFileName)
+                let receiptS3Key = "receipts/\(ctx.imageId)/\(receipt.localFileName)"
+
+                if FileManager.default.fileExists(atPath: receiptLocalURL.path) {
+                    logger.debug("upload_receipt bucket=\(ctx.s3Bucket) key=\(receiptS3Key)")
+                    do {
+                        try await Retry.withBackoff { try await self.s3.uploadFile(url: receiptLocalURL, bucket: ctx.s3Bucket, key: receiptS3Key) }
+                        uploadedReceiptKeys.append(receiptS3Key)
+                    } catch {
+                        logger.warning("failed_upload_receipt key=\(receiptS3Key) error=\(error)")
+                    }
+                } else {
+                    logger.warning("receipt_file_missing path=\(receiptLocalURL.path)")
+                }
+            }
+            logger.info("receipts_uploaded count=\(uploadedReceiptKeys.count) image_id=\(ctx.imageId)")
+
+            // Upload OCR result JSON
             let resultKey = "ocr_results/\(resultURL.lastPathComponent)"
             logger.debug("upload_result bucket=\(ctx.s3Bucket) key=\(resultKey)")
             try await Retry.withBackoff { try await self.s3.uploadFile(url: resultURL, bucket: ctx.s3Bucket, key: resultKey) }
@@ -129,17 +221,18 @@ public final class OCRWorker {
                 s3Key: resultKey,
                 createdAt: now,
                 updatedAt: now,
-                receiptCount: 0,
+                receiptCount: receipts.count,
                 status: .pending
             )
-            logger.debug("routing_decision_add image_id=\(ctx.imageId) job_id=\(ctx.jobId) key=\(resultKey)")
+            logger.debug("routing_decision_add image_id=\(ctx.imageId) job_id=\(ctx.jobId) key=\(resultKey) receiptCount=\(receipts.count)")
             try await Retry.withBackoff { try await self.dynamo.addOCRRoutingDecision(decision) }
 
             let body: [String: Any] = [
                 "image_id": ctx.imageId,
                 "job_id": ctx.jobId,
                 "s3_key": resultKey,
-                "s3_bucket": ctx.s3Bucket
+                "s3_bucket": ctx.s3Bucket,
+                "receipt_count": receipts.count
             ]
             let bodyData = try JSONSerialization.data(withJSONObject: body)
             let bodyString = String(data: bodyData, encoding: .utf8)!
@@ -150,7 +243,7 @@ public final class OCRWorker {
             updatedJob.updatedAt = now
             updatedJob.status = .completed
             try await Retry.withBackoff { try await self.dynamo.updateOCRJob(updatedJob) }
-            logger.info("job_complete image_id=\(ctx.imageId) job_id=\(ctx.jobId)")
+            logger.info("job_complete image_id=\(ctx.imageId) job_id=\(ctx.jobId) receipts=\(receipts.count)")
         }
 
         // Delete processed messages

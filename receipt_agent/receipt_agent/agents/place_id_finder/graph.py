@@ -1,9 +1,6 @@
 """
 Agentic workflow for finding Google Place IDs for receipts.
 
-DEPRECATED: This module is kept for backward compatibility.
-New code should import from receipt_agent.agents.place_id_finder instead.
-
 This workflow uses an LLM agent to reason about where a receipt is from by:
 1. Examining receipt content (lines, words, labels)
 2. Searching ChromaDB for similar receipts
@@ -16,19 +13,6 @@ The agent has access to:
 - Google Places API tools
 - Similar receipts for comparison
 """
-
-# Re-export from new location for backward compatibility
-from receipt_agent.agents.place_id_finder import (
-    PlaceIdFinderState,
-    create_place_id_finder_graph,
-    run_place_id_finder,
-)
-
-__all__ = [
-    "PlaceIdFinderState",
-    "create_place_id_finder_graph",
-    "run_place_id_finder",
-]
 
 import logging
 import os
