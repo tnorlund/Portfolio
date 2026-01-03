@@ -25,10 +25,9 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
 }) => {
   const [ref, inView] = useOptimizedInView({
     threshold: 0.3,
-    triggerOnce: false, // Re-animate when coming back into view
+    triggerOnce: true,
   });
   const [mounted, setMounted] = useState(false);
-  const [resetKey, setResetKey] = useState(0);
   const timeoutIds = useRef<NodeJS.Timeout[]>([]);
 
   useEffect(() => {
@@ -63,40 +62,27 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
 
   // Trigger animations when in view
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted || !inView) return;
 
-    if (inView) {
-      // Clear any pending timeouts from previous animations
-      clearAllTimeouts();
+    // Clear any pending timeouts from previous animations
+    clearAllTimeouts();
 
-      // Staggered fade-in
-      DARTBOARD_SCENARIOS.forEach((_, index) => {
-        const id = setTimeout(() => {
-          api.start((i) => {
-            if (i === index) {
-              return {
-                opacity: 1,
-                transform: "scale(1)",
-                config: { tension: 120, friction: 14 },
-              };
-            }
-            return false;
-          });
-        }, index * staggerDelay);
-        timeoutIds.current.push(id);
-      });
-    } else {
-      // Clear pending timeouts when going out of view
-      clearAllTimeouts();
-
-      // Reset when out of view
-      api.start(() => ({
-        opacity: 0,
-        transform: "scale(0.9)",
-        immediate: true,
-      }));
-      setResetKey((k) => k + 1);
-    }
+    // Staggered fade-in
+    DARTBOARD_SCENARIOS.forEach((_, index) => {
+      const id = setTimeout(() => {
+        api.start((i) => {
+          if (i === index) {
+            return {
+              opacity: 1,
+              transform: "scale(1)",
+              config: { tension: 120, friction: 14 },
+            };
+          }
+          return false;
+        });
+      }, index * staggerDelay);
+      timeoutIds.current.push(id);
+    });
 
     // Cleanup on unmount
     return () => clearAllTimeouts();
@@ -230,7 +216,7 @@ const PrecisionRecallDartboard: React.FC<PrecisionRecallDartboardProps> = ({
         >
           {DARTBOARD_SCENARIOS.map((scenario, index) => (
             <animated.div
-              key={`${scenario.id}-${resetKey}`}
+              key={scenario.id}
               style={{
                 display: "flex",
                 flexDirection: "column",
