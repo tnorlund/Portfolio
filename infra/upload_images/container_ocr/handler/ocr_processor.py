@@ -20,6 +20,7 @@ from PIL import Image as PIL_Image
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
 from receipt_dynamo.entities import (
+    Image,
     Letter,
     Line,
     Receipt,
@@ -324,6 +325,33 @@ class OCRProcessor:
         ocr_routing_decision.receipt_count = receipt_count
         ocr_routing_decision.updated_at = current_time
         self.dynamo.update_ocr_routing_decision(ocr_routing_decision)
+
+        # Create Image entity (Swift provides dimensions in classification)
+        image_width = classification.get("image_width", 0)
+        image_height = classification.get("image_height", 0)
+        if image_width > 0 and image_height > 0:
+            image_entity = Image(
+                image_id=image_id,
+                width=image_width,
+                height=image_height,
+                timestamp_added=current_time,
+                raw_s3_bucket=ocr_job.s3_bucket,
+                raw_s3_key=ocr_job.s3_key,
+                image_type=image_type,
+            )
+            self.dynamo.add_image(image_entity)
+            logger.info(
+                "Created Image entity: %s (%dx%d, type=%s)",
+                image_id,
+                image_width,
+                image_height,
+                image_type_str,
+            )
+        else:
+            logger.warning(
+                "Skipping Image entity creation - missing dimensions for %s",
+                image_id,
+            )
 
         # For Swift single-pass, return first receipt_id for embedding
         # processing (most uploads are single-receipt; multi-receipt will

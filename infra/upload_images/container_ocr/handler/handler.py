@@ -151,13 +151,24 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         error_count,
         embedding_count,
     )
+    # Serialize results for JSON response - entity objects aren't JSON serializable
+    serializable_results = []
+    for result in results:
+        serialized = {}
+        for key, value in result.items():
+            # Skip entity lists (receipt_lines, receipt_words) - they're not needed in response
+            if key in ("receipt_lines", "receipt_words"):
+                continue
+            serialized[key] = value
+        serializable_results.append(serialized)
+
     return {
         "statusCode": 200,
         "body": json.dumps(
             {
                 "message": "OCR results processed",
                 "processed": len(results),
-                "results": results,
+                "results": serializable_results,
             }
         ),
     }
