@@ -106,7 +106,7 @@ job_training_metrics_lambda = aws.lambda_.Function(
         }
     },
     memory_size=1024,
-    timeout=60 * 2,  # 2 minutes for potentially large metric queries
+    timeout=30,  # API Gateway HTTP API has 30s integration timeout
     tags={"environment": pulumi.get_stack()},
 )
 
