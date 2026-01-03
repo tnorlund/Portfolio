@@ -472,7 +472,7 @@ class UploadImages(ComponentResource):
                 "OPENAI_API_KEY": openai_api_key,
                 # receipt_places config for PlacesClient cache
                 "RECEIPT_PLACES_TABLE_NAME": dynamodb_table.name,
-                "RECEIPT_PLACES_AWS_REGION": current_region.name,
+                "RECEIPT_PLACES_AWS_REGION": current_region.region,
                 # LangGraph validation with Ollama
                 "OLLAMA_API_KEY": ollama_api_key,
                 "LANGCHAIN_API_KEY": langchain_api_key,

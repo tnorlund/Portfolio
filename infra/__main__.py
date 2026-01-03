@@ -379,9 +379,9 @@ upload_images = UploadImages(
     vpc_subnet_ids=upload_images_subnets,  # Single subnet when EFS is used
     security_group_id=security.sg_lambda_id,
     chroma_http_endpoint=chroma_service.endpoint_dns,
-    ecs_cluster_arn=chroma_service.cluster.arn,
-    ecs_service_arn=chroma_service.svc.arn,
-    nat_instance_id=nat.nat_instance_id,
+    _ecs_cluster_arn=chroma_service.cluster.arn,
+    _ecs_service_arn=chroma_service.svc.arn,
+    _nat_instance_id=nat.nat_instance_id,
     efs_access_point_arn=(
         chromadb_infrastructure.efs.access_point_arn
         if chromadb_infrastructure.efs
