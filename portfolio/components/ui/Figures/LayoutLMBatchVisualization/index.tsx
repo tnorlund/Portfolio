@@ -291,24 +291,17 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
     return <div className={styles.receiptLoading}>Loading...</div>;
   }
 
-  // Calculate display dimensions - max height 500px, maintain aspect ratio
-  const maxHeight = 500;
-  const aspectRatio = receiptData.width / receiptData.height;
-  const displayHeight = Math.min(maxHeight, receiptData.height);
-  const displayWidth = displayHeight * aspectRatio;
-
   return (
     <div className={styles.activeReceipt}>
       <div className={styles.receiptImageWrapper}>
-        <div
-          className={styles.receiptImageInner}
-          style={{ width: displayWidth, height: displayHeight }}
-        >
+        <div className={styles.receiptImageInner}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageUrl}
             alt="Receipt"
-            style={{ width: displayWidth, height: displayHeight, display: "block" }}
+            width={receiptData.width}
+            height={receiptData.height}
+            className={styles.receiptImage}
           />
 
           {/* SVG overlay for bounding boxes and scan line */}
@@ -677,24 +670,38 @@ const LayoutLMBatchVisualization: React.FC = () => {
         />
 
         <div className={styles.centerColumn}>
-          {/* Show active receipt when not transitioning */}
-          {!isTransitioning && (
+          {/* Current receipt - fades out during transition */}
+          <div className={`${styles.receiptContainer} ${isTransitioning ? styles.fadeOut : ''}`}>
             <ActiveReceiptViewer
               receipt={currentReceipt}
               scanProgress={scanProgress}
               revealedWordIds={revealedWordIds}
               formatSupport={formatSupport}
             />
-          )}
+          </div>
 
-          {/* Show flying receipt during transition */}
+          {/* Flying receipt for desktop transition */}
+          <div className={styles.flyingReceiptContainer}>
+            {isTransitioning && nextReceipt && (
+              <FlyingReceipt
+                key={`flying-${nextReceipt.receipt_id}`}
+                receipt={nextReceipt}
+                formatSupport={formatSupport}
+                isFlying={isTransitioning}
+              />
+            )}
+          </div>
+
+          {/* Next receipt for mobile crossfade - fades in during transition */}
           {isTransitioning && nextReceipt && (
-            <FlyingReceipt
-              key={`flying-${nextReceipt.receipt_id}`}
-              receipt={nextReceipt}
-              formatSupport={formatSupport}
-              isFlying={isTransitioning}
-            />
+            <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles.fadeIn}`}>
+              <ActiveReceiptViewer
+                receipt={nextReceipt}
+                scanProgress={0}
+                revealedWordIds={new Set()}
+                formatSupport={formatSupport}
+              />
+            </div>
           )}
         </div>
 
