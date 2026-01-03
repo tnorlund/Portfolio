@@ -118,7 +118,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 
 def _fetch_all_metrics(client: DynamoClient, job_id: str) -> Dict[str, List]:
-    """Fetch all relevant metrics for a job."""
+    """Fetch all relevant metrics for a job, handling pagination."""
     metric_names = [
         "val_f1",
         "val_precision",
@@ -131,11 +131,28 @@ def _fetch_all_metrics(client: DynamoClient, job_id: str) -> Dict[str, List]:
 
     result = {}
     for name in metric_names:
-        metrics, _ = client.list_job_metrics(job_id, metric_name=name)
-        result[name] = metrics
+        all_items = []
+        last_key = None
+        while True:
+            metrics, last_key = client.list_job_metrics(
+                job_id, metric_name=name, last_evaluated_key=last_key
+            )
+            all_items.extend(metrics)
+            if not last_key:
+                break
+        result[name] = all_items
 
     # Fetch per-label metrics (they have dynamic names like label_ADDRESS_f1)
-    all_metrics, _ = client.list_job_metrics(job_id)
+    # Need to paginate through all metrics to find label_* entries
+    all_metrics = []
+    last_key = None
+    while True:
+        metrics, last_key = client.list_job_metrics(
+            job_id, last_evaluated_key=last_key
+        )
+        all_metrics.extend(metrics)
+        if not last_key:
+            break
     label_metrics = [m for m in all_metrics if m.metric_name.startswith("label_")]
     result["label_metrics"] = label_metrics
 
