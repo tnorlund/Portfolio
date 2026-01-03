@@ -249,17 +249,27 @@ def calculate_metrics(
     }
 
 
-def handler(_event, _context):
-    """Handle EventBridge scheduled event to generate LayoutLM inference cache.
+def handler(event, context):
+    """Handle Lambda invocation - routes to appropriate handler.
+
+    Supports two modes:
+    1. EventBridge scheduled mode: Picks random receipt, stores to latest.json
+    2. Step Function batch mode: Processes batch of receipts from event
 
     Args:
-        _event: EventBridge event (unused)
-        _context: Lambda context (unused)
+        event: Lambda event (EventBridge or Step Function)
+        context: Lambda context
 
     Returns:
         dict: Status of cache generation
     """
-    logger.info("Starting LayoutLM inference cache generation")
+    # Check if this is a batch request from Step Function
+    if "receipts" in event:
+        logger.info("Detected batch request, routing to batch_handler")
+        return batch_handler(event, context)
+
+    # Legacy EventBridge handler
+    logger.info("Starting LayoutLM inference cache generation (legacy mode)")
 
     try:
         # Initialize clients
