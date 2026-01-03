@@ -70,6 +70,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Get job metadata
         try:
             job = client.get_job(job_id)
+        except ValueError:
+            return _error_response(400, f"Invalid job_id format: {job_id}")
         except EntityNotFoundError:
             return _error_response(404, f"Job not found: {job_id}")
 
