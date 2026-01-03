@@ -67,7 +67,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
 }) => {
   // Show remaining receipts (after current one)
   const remainingReceipts = receipts.slice(currentIndex + 1);
-  const maxVisible = 4;
+  const maxVisible = 6; // Show up to 6 receipts in the visual queue
   const visibleReceipts = remainingReceipts.slice(0, maxVisible);
 
   if (!formatSupport || visibleReceipts.length === 0) {
@@ -100,7 +100,6 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
               left: `${10 + leftOffset}px`,
               transform: `rotate(${rotation}deg)`,
               zIndex,
-              opacity: isFlying ? 0 : 1 - Math.max(0, adjustedIdx) * 0.12,
             }}
           >
             {imageUrl && (
@@ -248,41 +247,6 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
   );
 };
 
-interface ProgressDotsProps {
-  total: number;
-  current: number;
-  receipts: LayoutLMReceiptInference[];
-}
-
-const ProgressDots: React.FC<ProgressDotsProps> = ({ total, current, receipts }) => {
-  return (
-    <div className={styles.progressBar}>
-      {Array.from({ length: total }).map((_, idx) => {
-        const isActive = idx === current;
-        const isCompleted = idx < current;
-        const accuracy = receipts[idx]?.metrics?.overall_accuracy;
-
-        return (
-          <div
-            key={idx}
-            className={`${styles.progressDot} ${isActive ? styles.active : ""} ${
-              isCompleted ? styles.completed : ""
-            }`}
-            title={
-              accuracy !== undefined
-                ? `Receipt ${idx + 1}: ${(accuracy * 100).toFixed(1)}% accuracy`
-                : `Receipt ${idx + 1}`
-            }
-          >
-            <span className={styles.dotNumber}>{idx + 1}</span>
-            {isCompleted && <span className={styles.checkmark}>✓</span>}
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
 interface ActiveReceiptViewerProps {
   receipt: LayoutLMReceiptInference;
   scanProgress: number;
@@ -351,7 +315,7 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
           <svg
             className={styles.svgOverlay}
             viewBox={`0 0 ${receiptData.width} ${receiptData.height}`}
-            preserveAspectRatio="xMidYMid meet"
+            preserveAspectRatio="none"
           >
             {/* Scan line - positioned in image coordinates */}
             <defs>
@@ -414,15 +378,20 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
   );
 };
 
+// Queue management constants
+const QUEUE_TARGET_SIZE = 10;
+const QUEUE_REFETCH_THRESHOLD = 7;
+
 const LayoutLMBatchVisualization: React.FC = () => {
   const { ref, inView } = useInView({
     threshold: 0.3,
     triggerOnce: false,
   });
 
-  const [data, setData] = useState<LayoutLMBatchInferenceResponse | null>(null);
+  // Receipt queue - continuously grows as we fetch more
+  const [receipts, setReceipts] = useState<LayoutLMReceiptInference[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [currentReceiptIndex, setCurrentReceiptIndex] = useState(0);
   const [scanProgress, setScanProgress] = useState(0);
   const [revealedEntityTypes, setRevealedEntityTypes] = useState<Set<string>>(new Set());
@@ -435,44 +404,101 @@ const LayoutLMBatchVisualization: React.FC = () => {
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
+  const isFetchingRef = useRef(false);
+  const seenReceiptIds = useRef<Set<string>>(new Set());
 
   // Detect image format support
   useEffect(() => {
     detectImageFormatSupport().then(setFormatSupport);
   }, []);
 
-  // Fetch data function
-  const fetchData = useCallback(async () => {
+  // Fetch a batch of receipts and append to queue (with deduplication)
+  const fetchMoreReceipts = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     try {
-      setLoading(true);
       const response = await api.fetchLayoutLMInference();
-      setData(response);
-      setCurrentReceiptIndex(0);
-      setScanProgress(0);
-      setRevealedEntityTypes(new Set());
-      setShowInferenceTime(false);
-      setIsTransitioning(false);
-      setError(null);
+      if (response && response.receipts) {
+        // Filter out duplicates
+        const newReceipts = response.receipts.filter(
+          (r) => !seenReceiptIds.current.has(r.receipt_id)
+        );
+
+        // Track new receipt IDs
+        newReceipts.forEach((r) => seenReceiptIds.current.add(r.receipt_id));
+
+        if (newReceipts.length > 0) {
+          setReceipts((prev) => [...prev, ...newReceipts]);
+        }
+      }
     } catch (err) {
-      console.error("Failed to fetch LayoutLM inference:", err);
-      setError(err instanceof Error ? err.message : "Failed to load");
+      console.error("Failed to fetch more receipts:", err);
     } finally {
-      setLoading(false);
+      isFetchingRef.current = false;
     }
   }, []);
 
-  // Initial fetch
+  // Initial fetch - get 2 batches to start with ~10 receipts
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    const initialFetch = async () => {
+      try {
+        // Fetch 2 batches in parallel
+        const [response1, response2] = await Promise.all([
+          api.fetchLayoutLMInference(),
+          api.fetchLayoutLMInference(),
+        ]);
+
+        const allReceipts: LayoutLMReceiptInference[] = [];
+
+        // Add receipts from first batch
+        if (response1?.receipts) {
+          response1.receipts.forEach((r) => {
+            if (!seenReceiptIds.current.has(r.receipt_id)) {
+              seenReceiptIds.current.add(r.receipt_id);
+              allReceipts.push(r);
+            }
+          });
+        }
+
+        // Add receipts from second batch (deduplicated)
+        if (response2?.receipts) {
+          response2.receipts.forEach((r) => {
+            if (!seenReceiptIds.current.has(r.receipt_id)) {
+              seenReceiptIds.current.add(r.receipt_id);
+              allReceipts.push(r);
+            }
+          });
+        }
+
+        setReceipts(allReceipts);
+        setError(null);
+      } catch (err) {
+        console.error("Failed to fetch initial receipts:", err);
+        setError(err instanceof Error ? err.message : "Failed to load");
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    initialFetch();
+  }, []);
+
+  // Check if we need to fetch more receipts (when queue is getting low)
+  const remainingReceipts = receipts.length - currentReceiptIndex;
+  useEffect(() => {
+    if (remainingReceipts < QUEUE_REFETCH_THRESHOLD && !isFetchingRef.current && !initialLoading) {
+      fetchMoreReceipts();
+    }
+  }, [remainingReceipts, fetchMoreReceipts, initialLoading]);
 
   // Calculate revealed word IDs based on scan progress
   const revealedWordIds = useMemo(() => {
-    if (!data || !data.receipts[currentReceiptIndex]) {
+    const receipt = receipts[currentReceiptIndex];
+    if (!receipt) {
       return new Set<string>();
     }
 
-    const receipt = data.receipts[currentReceiptIndex];
     const { words } = receipt.original;
     const revealed = new Set<string>();
 
@@ -489,13 +515,13 @@ const LayoutLMBatchVisualization: React.FC = () => {
     }
 
     return revealed;
-  }, [data, currentReceiptIndex, scanProgress]);
+  }, [receipts, currentReceiptIndex, scanProgress]);
 
   // Update revealed entity types based on scan progress
   const updateRevealedEntityTypes = useCallback(() => {
-    if (!data || !data.receipts[currentReceiptIndex]) return;
+    const receipt = receipts[currentReceiptIndex];
+    if (!receipt) return;
 
-    const receipt = data.receipts[currentReceiptIndex];
     const { words, predictions } = receipt.original;
     const scanY = scanProgress / 100;
 
@@ -518,7 +544,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
     }
 
     setRevealedEntityTypes(newRevealed);
-  }, [data, currentReceiptIndex, scanProgress]);
+  }, [receipts, currentReceiptIndex, scanProgress]);
 
   // Update revealed entities when scan progress changes
   useEffect(() => {
@@ -526,8 +552,12 @@ const LayoutLMBatchVisualization: React.FC = () => {
   }, [scanProgress, updateRevealedEntityTypes]);
 
   // Animation loop - uses actual inference time per receipt
+  // Uses a ref to track receipts length to avoid restarting animation
+  const receiptsRef = useRef(receipts);
+  receiptsRef.current = receipts;
+
   useEffect(() => {
-    if (!inView || !data || data.receipts.length === 0) {
+    if (!inView || receipts.length === 0) {
       return;
     }
 
@@ -542,16 +572,18 @@ const LayoutLMBatchVisualization: React.FC = () => {
     let isInTransition = false;
 
     const animate = (currentTime: number) => {
-      if (!data || data.receipts.length === 0) {
+      const currentReceipts = receiptsRef.current;
+      if (currentReceipts.length === 0) {
         isAnimatingRef.current = false;
         return;
       }
 
       const elapsed = currentTime - startTime;
-      const currentReceipt = data.receipts[receiptIndex];
+      const currentReceipt = currentReceipts[receiptIndex];
 
       if (!currentReceipt) {
-        isAnimatingRef.current = false;
+        // No receipt at this index yet - wait for more to load
+        animationRef.current = requestAnimationFrame(animate);
         return;
       }
 
@@ -578,10 +610,10 @@ const LayoutLMBatchVisualization: React.FC = () => {
       } else {
         // MOVE TO NEXT RECEIPT
         const nextIndex = receiptIndex + 1;
-        if (nextIndex >= data.receipts.length) {
-          // All receipts processed - re-fetch from API
-          isAnimatingRef.current = false;
-          fetchData();
+        // Check if next receipt exists (it should, since we're continuously fetching)
+        if (nextIndex >= currentReceipts.length) {
+          // Wait for more receipts to be fetched
+          animationRef.current = requestAnimationFrame(animate);
           return;
         }
         receiptIndex = nextIndex;
@@ -605,9 +637,9 @@ const LayoutLMBatchVisualization: React.FC = () => {
       }
       isAnimatingRef.current = false;
     };
-  }, [inView, data, fetchData]);
+  }, [inView, receipts.length > 0]); // Only restart when receipts become available
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div ref={ref} className={styles.loading}>
         Loading inference data...
@@ -623,7 +655,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
     );
   }
 
-  if (!data || data.receipts.length === 0) {
+  if (receipts.length === 0) {
     return (
       <div ref={ref} className={styles.loading}>
         No inference data available
@@ -631,20 +663,14 @@ const LayoutLMBatchVisualization: React.FC = () => {
     );
   }
 
-  const currentReceipt = data.receipts[currentReceiptIndex];
-  const nextReceipt = data.receipts[currentReceiptIndex + 1];
+  const currentReceipt = receipts[currentReceiptIndex];
+  const nextReceipt = receipts[currentReceiptIndex + 1];
 
   return (
     <div ref={ref} className={styles.container}>
-      <ProgressDots
-        total={data.receipts.length}
-        current={currentReceiptIndex}
-        receipts={data.receipts}
-      />
-
       <div className={styles.mainWrapper}>
         <ReceiptQueue
-          receipts={data.receipts}
+          receipts={receipts}
           currentIndex={currentReceiptIndex}
           formatSupport={formatSupport}
           isTransitioning={isTransitioning}
