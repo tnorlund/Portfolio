@@ -4,8 +4,6 @@ Message building logic for DynamoDB stream records.
 Constructs StreamMessage objects that can be published to SQS queues.
 """
 
-# pylint: disable=broad-exception-caught
-
 from __future__ import annotations
 
 import logging
@@ -122,7 +120,7 @@ def build_compaction_run_messages(
             },
         )
 
-    except Exception as exc:  # pragma: no cover - defensive
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
         logger.exception("Failed to build compaction run message: %s", exc)
         if metrics:
             metrics.count("CompactionRunMessageBuildError", 1)
@@ -185,7 +183,7 @@ def build_compaction_run_completion_messages(
             },
         )
 
-    except Exception as exc:  # pragma: no cover - defensive
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
         logger.exception(
             "Failed to build compaction run completion message: %s", exc
         )
@@ -259,7 +257,7 @@ def build_entity_change_message(
             record_snapshot=record_snapshot,
         )
 
-    except Exception as exc:  # pragma: no cover - defensive
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
         logger.exception("Failed to build entity change message: %s", exc)
         if metrics:
             metrics.count("EntityMessageBuildError", 1)

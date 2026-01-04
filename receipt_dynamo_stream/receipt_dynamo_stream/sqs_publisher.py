@@ -2,8 +2,6 @@
 SQS publishing utilities for stream messages.
 """
 
-# pylint: disable=broad-exception-caught
-
 from __future__ import annotations
 
 import json
@@ -12,6 +10,7 @@ import os
 from typing import Any, Iterable, Optional
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
 from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
 from receipt_dynamo_stream.stream_types import MetricsRecorder
@@ -156,10 +155,11 @@ def send_batch_to_queue(  # pylint: disable=too-many-locals
                     {"collection": collection.value},
                 )
 
-        except Exception:  # pragma: no cover - defensive
+        except (ClientError, BotoCoreError) as exc:
             logger.exception(
-                "Failed to send messages to %s queue",
+                "Failed to send messages to %s queue: %s",
                 collection.value,
+                exc,
             )
             if metrics:
                 metrics.count(
