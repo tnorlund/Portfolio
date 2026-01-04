@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Iterable, Mapping, Optional, Protocol, cast
+from typing import Iterable, Mapping, Optional, Protocol
 
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_line import ReceiptLine
@@ -29,10 +29,13 @@ from receipt_dynamo_stream.parsing import (
     parse_compaction_run,
     parse_stream_record,
 )
+from receipt_dynamo_stream.types import (
+    DynamoDBItem,
+    DynamoDBStreamRecord,
+    StreamRecordDynamoDB,
+)
 
 logger = logging.getLogger(__name__)
-
-StreamRecord = Mapping[str, object]
 
 
 class MetricsRecorder(Protocol):  # pylint: disable=too-few-public-methods
@@ -49,7 +52,8 @@ class MetricsRecorder(Protocol):  # pylint: disable=too-few-public-methods
 
 
 def build_messages_from_records(
-    records: Iterable[StreamRecord], metrics: Optional[MetricsRecorder] = None
+    records: Iterable[DynamoDBStreamRecord],
+    metrics: Optional[MetricsRecorder] = None,
 ) -> list[StreamMessage]:
     """
     Build StreamMessage objects from DynamoDB stream records.
@@ -75,7 +79,7 @@ def build_messages_from_records(
 
 
 def build_compaction_run_messages(
-    record: StreamRecord, metrics: Optional[MetricsRecorder] = None
+    record: DynamoDBStreamRecord, metrics: Optional[MetricsRecorder] = None
 ) -> list[StreamMessage]:
     """
     Build messages for COMPACTION_RUN INSERT events (one per collection).
@@ -83,18 +87,19 @@ def build_compaction_run_messages(
     messages: list[StreamMessage] = []
 
     try:
-        dynamodb = cast(dict[str, object], record.get("dynamodb", {}))
-        new_image = cast(Optional[dict[str, object]], dynamodb.get("NewImage"))
-        keys = cast(dict[str, object], dynamodb.get("Keys", {}))
-        pk = cast(dict[str, str], keys.get("PK", {})).get("S", "")
-        sk = cast(dict[str, str], keys.get("SK", {})).get("S", "")
+        # Type ignores needed for defensive .get() with defaults
+        dynamodb: StreamRecordDynamoDB = record.get(  # type: ignore
+            "dynamodb", {}
+        )
+        new_image: Optional[DynamoDBItem] = dynamodb.get("NewImage")
+        keys = dynamodb.get("Keys", {})  # type: ignore[assignment]
+        pk = keys.get("PK", {}).get("S", "")  # type: ignore
+        sk = keys.get("SK", {}).get("S", "")  # type: ignore
 
         if not (new_image and is_compaction_run(pk, sk)):
             return messages
 
-        compaction_run = parse_compaction_run(
-            cast(dict[str, object], new_image), pk, sk
-        )
+        compaction_run = parse_compaction_run(new_image, pk, sk)
         cr_entity = {
             "run_id": compaction_run.get("run_id"),
             "image_id": compaction_run.get("image_id"),
@@ -121,7 +126,7 @@ def build_compaction_run_messages(
                     timestamp=datetime.now(timezone.utc).isoformat(),
                     stream_record_id=str(record.get("eventID", "unknown")),
                     aws_region=str(record.get("awsRegion", "unknown")),
-                    record_snapshot=cast(Mapping[str, object], new_image),
+                    record_snapshot=new_image,  # type: ignore[arg-type]
                 )
             )
 
@@ -142,7 +147,7 @@ def build_compaction_run_messages(
 
 
 def build_compaction_run_completion_messages(
-    record: StreamRecord, metrics: Optional[MetricsRecorder] = None
+    record: DynamoDBStreamRecord, metrics: Optional[MetricsRecorder] = None
 ) -> list[StreamMessage]:
     """
     Build messages for COMPACTION_RUN MODIFY events when embeddings complete.
@@ -150,22 +155,23 @@ def build_compaction_run_completion_messages(
     messages: list[StreamMessage] = []
 
     try:
-        dynamodb = cast(dict[str, object], record.get("dynamodb", {}))
-        new_image = cast(Optional[dict[str, object]], dynamodb.get("NewImage"))
-        keys = cast(dict[str, object], dynamodb.get("Keys", {}))
-        pk = cast(dict[str, str], keys.get("PK", {})).get("S", "")
-        sk = cast(dict[str, str], keys.get("SK", {})).get("S", "")
+        # Type ignores needed for defensive .get() with defaults
+        dynamodb: StreamRecordDynamoDB = record.get(  # type: ignore
+            "dynamodb", {}
+        )
+        new_image: Optional[DynamoDBItem] = dynamodb.get("NewImage")
+        keys = dynamodb.get("Keys", {})  # type: ignore[assignment]
+        pk = keys.get("PK", {}).get("S", "")  # type: ignore
+        sk = keys.get("SK", {}).get("S", "")  # type: ignore
 
         if not new_image or not keys:
             return messages
         if not is_compaction_run(pk, sk):
             return messages
-        if not is_embeddings_completed(cast(dict[str, object], new_image)):
+        if not is_embeddings_completed(new_image):
             return messages
 
-        compaction_run = parse_compaction_run(
-            cast(dict[str, object], new_image), pk, sk
-        )
+        compaction_run = parse_compaction_run(new_image, pk, sk)
         for collection in (ChromaDBCollection.LINES, ChromaDBCollection.WORDS):
             messages.append(
                 StreamMessage(
@@ -182,7 +188,7 @@ def build_compaction_run_completion_messages(
                     timestamp=datetime.now(timezone.utc).isoformat(),
                     stream_record_id=str(record.get("eventID", "unknown")),
                     aws_region=str(record.get("awsRegion", "unknown")),
-                    record_snapshot=cast(Mapping[str, object], new_image),
+                    record_snapshot=new_image,  # type: ignore[arg-type]
                 )
             )
 
@@ -209,7 +215,7 @@ def build_compaction_run_completion_messages(
 
 
 def build_entity_change_message(
-    record: StreamRecord, metrics: Optional[MetricsRecorder] = None
+    record: DynamoDBStreamRecord, metrics: Optional[MetricsRecorder] = None
 ) -> StreamMessage | None:
     """
     Build a StreamMessage from an entity change (MODIFY/REMOVE) record.

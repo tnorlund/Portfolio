@@ -33,6 +33,18 @@ from receipt_dynamo_stream.sqs_publisher import (
     publish_messages,
     send_batch_to_queue,
 )
+from receipt_dynamo_stream.types import (
+    APIGatewayResponse,
+    AttributeValue,
+    AttributeValueS,
+    DynamoDBItem,
+    DynamoDBKeys,
+    DynamoDBStreamEvent,
+    DynamoDBStreamRecord,
+    LambdaContext,
+    StreamProcessorResponseData,
+    StreamRecordDynamoDB,
+)
 
 __all__ = [
     "__version__",
@@ -52,4 +64,15 @@ __all__ = [
     "parse_stream_record",
     "publish_messages",
     "send_batch_to_queue",
+    # Type definitions
+    "APIGatewayResponse",
+    "AttributeValue",
+    "AttributeValueS",
+    "DynamoDBItem",
+    "DynamoDBKeys",
+    "DynamoDBStreamEvent",
+    "DynamoDBStreamRecord",
+    "LambdaContext",
+    "StreamProcessorResponseData",
+    "StreamRecordDynamoDB",
 ]

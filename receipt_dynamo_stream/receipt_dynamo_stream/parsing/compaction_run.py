@@ -5,7 +5,19 @@ CompactionRun-specific parsing and handling logic.
 Handles fast-path processing of COMPACTION_RUN INSERT/MODIFY events.
 """
 
-from typing import Any, Dict
+from typing import TypedDict, cast
+
+from receipt_dynamo_stream.types import DynamoDBItem
+
+
+class CompactionRunData(TypedDict, total=False):
+    """Parsed compaction run data."""
+
+    run_id: str
+    image_id: str
+    receipt_id: int
+    lines_delta_prefix: str | None
+    words_delta_prefix: str | None
 
 
 def is_compaction_run(pk: str, sk: str) -> bool:
@@ -14,8 +26,8 @@ def is_compaction_run(pk: str, sk: str) -> bool:
 
 
 def parse_compaction_run(
-    new_image: Dict[str, Any], pk: str, sk: str
-) -> Dict[str, Any]:
+    new_image: DynamoDBItem, pk: str, sk: str
+) -> CompactionRunData:
     """
     Parse NewImage into a CompactionRun using shared parser.
 
@@ -25,7 +37,8 @@ def parse_compaction_run(
     if not pk or not sk:
         raise ValueError("PK and SK are required to parse compaction run")
 
-    run_id = new_image.get("run_id", {}).get("S") or sk.split("#")[-1]
+    run_id_val = new_image.get("run_id", {}).get("S")
+    run_id = cast(str, run_id_val) if run_id_val else sk.split("#")[-1]
     image_id = pk.split("#", 1)[-1]
 
     receipt_token = sk.split("#")[1] if "#" in sk else ""
@@ -34,25 +47,30 @@ def parse_compaction_run(
             receipt_token.replace("RECEIPT", "").replace("#", "") or 0
         )
     except (TypeError, ValueError) as exc:
-        receipt_id = int(new_image.get("receipt_id", {}).get("N", 0))
+        receipt_id_val = new_image.get("receipt_id", {}).get("N", "0")
+        receipt_id = int(cast(str, receipt_id_val))
         if receipt_id == 0:
             raise ValueError(
                 f"Could not parse receipt_id from SK: {sk} or new_image"
             ) from exc
 
-    lines_delta_prefix = new_image.get("lines_delta_prefix", {}).get("S")
-    words_delta_prefix = new_image.get("words_delta_prefix", {}).get("S")
+    lines_delta_prefix = cast(
+        str | None, new_image.get("lines_delta_prefix", {}).get("S")
+    )
+    words_delta_prefix = cast(
+        str | None, new_image.get("words_delta_prefix", {}).get("S")
+    )
 
-    return {
-        "run_id": run_id,
-        "image_id": image_id,
-        "receipt_id": receipt_id,
-        "lines_delta_prefix": lines_delta_prefix,
-        "words_delta_prefix": words_delta_prefix,
-    }
+    return CompactionRunData(
+        run_id=run_id,
+        image_id=image_id,
+        receipt_id=receipt_id,
+        lines_delta_prefix=lines_delta_prefix,
+        words_delta_prefix=words_delta_prefix,
+    )
 
 
-def is_embeddings_completed(new_image: Dict[str, Any]) -> bool:
+def is_embeddings_completed(new_image: DynamoDBItem) -> bool:
     """
     Check if both lines and words embeddings are completed.
 

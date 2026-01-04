@@ -6,7 +6,7 @@ parsers so stream handlers can remain lightweight.
 """
 
 import logging
-from typing import Mapping, Optional, Protocol, cast
+from typing import Mapping, Optional, Protocol
 
 from receipt_dynamo.entities.receipt import item_to_receipt
 from receipt_dynamo.entities.receipt_line import item_to_receipt_line
@@ -17,6 +17,11 @@ from receipt_dynamo.entities.receipt_word_label import (
 )
 
 from receipt_dynamo_stream.models import ParsedStreamRecord, StreamEntity
+from receipt_dynamo_stream.types import (
+    DynamoDBItem,
+    DynamoDBStreamRecord,
+    StreamRecordDynamoDB,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +37,6 @@ class MetricsRecorder(Protocol):  # pylint: disable=too-few-public-methods
     ) -> object:
         """Record a count metric."""
         ...
-
-
-DynamoImage = Mapping[str, Mapping[str, object]]
-StreamRecord = Mapping[str, object]
 
 
 def detect_entity_type(  # pylint: disable=too-many-return-statements
@@ -72,7 +73,7 @@ def detect_entity_type(  # pylint: disable=too-many-return-statements
 
 
 def parse_entity(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-return-statements
-    image: Optional[DynamoImage],
+    image: Optional[DynamoDBItem],
     entity_type: str,
     image_type: str,
     pk: str,
@@ -152,14 +153,14 @@ def parse_entity(  # pylint: disable=too-many-arguments,too-many-positional-argu
 
 
 def parse_stream_record(
-    record: StreamRecord, metrics: Optional[MetricsRecorder] = None
+    record: DynamoDBStreamRecord, metrics: Optional[MetricsRecorder] = None
 ) -> Optional[ParsedStreamRecord]:
     """Parse DynamoDB stream record to identify relevant entity changes."""
     try:
-        dynamodb = cast(dict[str, object], record["dynamodb"])
-        keys = cast(dict[str, object], dynamodb["Keys"])
-        pk = cast(dict[str, str], keys["PK"])["S"]
-        sk = cast(dict[str, str], keys["SK"])["S"]
+        dynamodb: StreamRecordDynamoDB = record["dynamodb"]
+        keys = dynamodb["Keys"]
+        pk = keys["PK"]["S"]
+        sk = keys["SK"]["S"]
 
         if not pk.startswith("IMAGE#"):
             return None
@@ -168,8 +169,8 @@ def parse_stream_record(
         if not entity_type:
             return None
 
-        old_image = cast(Optional[DynamoImage], dynamodb.get("OldImage"))
-        new_image = cast(Optional[DynamoImage], dynamodb.get("NewImage"))
+        old_image: Optional[DynamoDBItem] = dynamodb.get("OldImage")
+        new_image: Optional[DynamoDBItem] = dynamodb.get("NewImage")
 
         old_entity = parse_entity(
             old_image, entity_type, "old", pk, sk, metrics

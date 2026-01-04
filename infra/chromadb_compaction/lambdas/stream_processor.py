@@ -19,13 +19,6 @@ Focuses on:
 
 import os
 import time
-from typing import Any, Dict
-
-from receipt_dynamo_stream import (
-    LambdaResponse,
-    build_messages_from_records,
-    publish_messages,
-)
 
 from utils import (
     emf_metrics,
@@ -36,6 +29,15 @@ from utils import (
     stop_compaction_lambda_monitoring,
     trace_function,
     with_compaction_timeout_protection,
+)
+
+from receipt_dynamo_stream import (
+    DynamoDBStreamEvent,
+    LambdaContext,
+    LambdaResponse,
+    StreamProcessorResponseData,
+    build_messages_from_records,
+    publish_messages,
 )
 
 # Configure logging with observability
@@ -62,8 +64,8 @@ MAX_CONSECUTIVE_FAILURES = int(os.getenv("MAX_CONSECUTIVE_FAILURES", "10"))
     max_duration=LAMBDA_TIMEOUT_THRESHOLD_SECONDS
 )
 def lambda_handler(  # pylint: disable=too-many-locals
-    event: Dict[str, Any], context: Any
-) -> Dict[str, Any]:
+    event: DynamoDBStreamEvent, context: LambdaContext
+) -> StreamProcessorResponseData:
     """
     Process DynamoDB stream events for ChromaDB metadata synchronization.
 
@@ -99,7 +101,7 @@ def lambda_handler(  # pylint: disable=too-many-locals
 
     # Collect metrics during processing to batch them via EMF (cost-effective)
     # This avoids expensive per-metric CloudWatch API calls
-    collected_metrics: Dict[str, float] = {}
+    collected_metrics: dict[str, float] = {}
 
     try:
         # Validate event structure
@@ -112,14 +114,15 @@ def lambda_handler(  # pylint: disable=too-many-locals
                 {"StreamProcessorInvalidEvent": 1},
                 properties={"event_keys": list(event.keys())},
             )
+            error_data: StreamProcessorResponseData = {
+                "statusCode": 400,
+                "processed_records": 0,
+                "queued_messages": 0,
+                "error": "Invalid event structure: missing Records",
+            }
             return format_response(
-                {
-                    "statusCode": 400,
-                    "processed_records": 0,
-                    "queued_messages": 0,
-                    "error": "Invalid event structure: missing Records",
-                },
-                event,
+                error_data,
+                event,  # type: ignore[arg-type]
                 correlation_id=correlation_id,
             )
 
@@ -155,7 +158,7 @@ def lambda_handler(  # pylint: disable=too-many-locals
         )
 
         # Track event types for observability
-        event_name_counts: Dict[str, int] = {}
+        event_name_counts: dict[str, int] = {}
         for record in records_to_process:
             event_name = record.get("eventName", "unknown")
             event_name_counts[event_name] = (
@@ -237,7 +240,9 @@ def lambda_handler(  # pylint: disable=too-many-locals
         )
 
         return format_response(
-            response.to_dict(), event, correlation_id=correlation_id
+            response.to_dict(),
+            event,  # type: ignore[arg-type]
+            correlation_id=correlation_id,
         )
 
     except ValueError as e:
@@ -264,7 +269,7 @@ def lambda_handler(  # pylint: disable=too-many-locals
             },
         )
 
-        error_response = {
+        error_response: StreamProcessorResponseData = {
             "statusCode": 500,
             "processed_records": 0,
             "queued_messages": 0,
@@ -273,7 +278,7 @@ def lambda_handler(  # pylint: disable=too-many-locals
 
         return format_response(
             error_response,
-            event,
+            event,  # type: ignore[arg-type]
             is_error=True,
             correlation_id=correlation_id,
         )
