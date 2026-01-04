@@ -4,13 +4,13 @@ from typing import Any, Iterator, cast
 import boto3
 import pytest
 from moto import mock_aws
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+
 from receipt_dynamo_stream import (
     get_chromadb_relevant_changes,
     parse_stream_record,
 )
-
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 
 @pytest.fixture

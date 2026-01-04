@@ -1,6 +1,9 @@
 from datetime import datetime
 
 import pytest
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+
 from receipt_dynamo_stream import (
     CHROMADB_RELEVANT_FIELDS,
     ChromaDBCollection,
@@ -11,9 +14,6 @@ from receipt_dynamo_stream import (
     detect_entity_type,
     get_chromadb_relevant_changes,
 )
-
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 
 def _make_place(merchant_name: str = "Test Merchant") -> ReceiptPlace:

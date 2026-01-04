@@ -36,12 +36,12 @@ def is_step_function_invocation(event: Dict[str, Any]) -> bool:
 
 
 def format_response(
-    data: Any,
+    data: Dict[str, Any],
     event: Dict[str, Any],
     is_error: bool = False,
     status_code: int | None = None,
     correlation_id: str | None = None,
-) -> Any:
+) -> Dict[str, Any]:
     """Format response based on invocation source.
 
     Args:

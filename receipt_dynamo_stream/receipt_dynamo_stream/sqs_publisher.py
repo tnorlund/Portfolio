@@ -9,9 +9,10 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Iterable, Mapping, Optional, Protocol, cast
+from typing import Any, Iterable, Mapping, Optional, Protocol
 
 import boto3
+
 from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
 
 logger = logging.getLogger(__name__)

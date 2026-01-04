@@ -12,37 +12,21 @@ Focuses on:
 - Both MODIFY and REMOVE operations
 """
 
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,no-name-in-module,wrong-import-order
 # Some duplication with enhanced_compaction_handler is expected
+# no-name-in-module: receipt_dynamo_stream is installed at Lambda runtime
+# wrong-import-order: utils is local to Lambda, not third-party
 
-import logging
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-# Configuration from environment variables with sensible defaults
-# These values are set by Pulumi infrastructure and should match Lambda configuration
-
-# Max records to process in a single invocation (should match DynamoDB Stream batch_size)
-MAX_RECORDS_PER_INVOCATION = int(os.getenv("MAX_RECORDS_PER_INVOCATION", "10"))
-
-# Lambda timeout in seconds (set by Pulumi infrastructure)
-LAMBDA_TIMEOUT_SECONDS = int(os.getenv("LAMBDA_TIMEOUT_SECONDS", "120"))
-
-# Timeout threshold for graceful shutdown (80% of timeout to leave buffer for cleanup)
-LAMBDA_TIMEOUT_THRESHOLD_SECONDS = int(LAMBDA_TIMEOUT_SECONDS * 0.8)
-
-# Circuit breaker: stop processing after this many consecutive failures
-MAX_CONSECUTIVE_FAILURES = int(os.getenv("MAX_CONSECUTIVE_FAILURES", "10"))
-
-# Import modular components (same pattern as utils)
 from receipt_dynamo_stream import (
     LambdaResponse,
     build_messages_from_records,
     publish_messages,
 )
 
-# Enhanced observability imports
 from utils import (
     emf_metrics,
     format_response,
@@ -57,12 +41,29 @@ from utils import (
 # Configure logging with observability
 logger = get_operation_logger(__name__)
 
+# Configuration from environment variables with sensible defaults.
+# These values are set by Pulumi infrastructure.
+
+# Max records per invocation (should match DynamoDB Stream batch_size)
+MAX_RECORDS_PER_INVOCATION = int(os.getenv("MAX_RECORDS_PER_INVOCATION", "10"))
+
+# Lambda timeout in seconds (set by Pulumi infrastructure)
+LAMBDA_TIMEOUT_SECONDS = int(os.getenv("LAMBDA_TIMEOUT_SECONDS", "120"))
+
+# Timeout threshold for graceful shutdown (80% of timeout for cleanup)
+LAMBDA_TIMEOUT_THRESHOLD_SECONDS = int(LAMBDA_TIMEOUT_SECONDS * 0.8)
+
+# Circuit breaker: stop after this many consecutive failures
+MAX_CONSECUTIVE_FAILURES = int(os.getenv("MAX_CONSECUTIVE_FAILURES", "10"))
+
 
 @trace_function(operation_name="stream_processor")
 @with_compaction_timeout_protection(
     max_duration=LAMBDA_TIMEOUT_THRESHOLD_SECONDS
 )
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(  # pylint: disable=too-many-locals
+    event: Dict[str, Any], context: Any
+) -> Dict[str, Any]:
     """
     Process DynamoDB stream events for ChromaDB metadata synchronization.
 
@@ -130,12 +131,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Collect batch-level metrics
         collected_metrics["StreamRecordsReceived"] = total_records
 
-        # Validate batch size - fail fast if batch is too large to prevent data loss
-        # DynamoDB Streams will retry with a smaller batch on failure
+        # Validate batch size - fail fast if too large (prevents data loss).
+        # DynamoDB Streams will retry with a smaller batch on failure.
         if total_records > MAX_RECORDS_PER_INVOCATION:
             error_msg = (
                 f"Batch size ({total_records}) exceeds maximum "
-                f"({MAX_RECORDS_PER_INVOCATION}). Rejecting to trigger retry with smaller batch."
+                f"({MAX_RECORDS_PER_INVOCATION}). "
+                f"Rejecting to trigger retry with smaller batch."
             )
             logger.error(error_msg, total_records=total_records)
             emf_metrics.log_metrics(
@@ -248,7 +250,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Return error to trigger DynamoDB Stream retry
         raise
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.exception("Stream processor encountered unexpected error")
 
         # Log error via EMF (no API call cost)

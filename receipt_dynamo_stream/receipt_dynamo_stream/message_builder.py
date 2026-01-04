@@ -13,6 +13,12 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Iterable, Mapping, Optional, Protocol, cast
 
+from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_line import ReceiptLine
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_word import ReceiptWord
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+
 from receipt_dynamo_stream.change_detection import (
     get_chromadb_relevant_changes,
 )
@@ -23,12 +29,6 @@ from receipt_dynamo_stream.parsing import (
     parse_compaction_run,
     parse_stream_record,
 )
-
-from receipt_dynamo.entities.receipt import Receipt
-from receipt_dynamo.entities.receipt_line import ReceiptLine
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
-from receipt_dynamo.entities.receipt_word import ReceiptWord
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
@@ -254,8 +254,9 @@ def build_entity_change_message(
                     },
                 )
 
-        # Convert new_entity to dict for snapshot (current state after change)
-        # For MODIFY events, this is the updated entity; for REMOVE, it's the entity being removed
+        # Convert new_entity to dict for snapshot (current state after
+        # change). For MODIFY events, this is the updated entity; for
+        # REMOVE, it's the entity being removed
         record_snapshot = asdict(new_entity) if new_entity else None
 
         return StreamMessage(
@@ -278,9 +279,16 @@ def build_entity_change_message(
         return None
 
 
-def _extract_entity_data(
+def _extract_entity_data(  # pylint: disable=too-many-return-statements
     entity_type: str,
-    entity: Receipt | ReceiptLine | ReceiptPlace | ReceiptWord | ReceiptWordLabel | None,
+    entity: (
+        Receipt
+        | ReceiptLine
+        | ReceiptPlace
+        | ReceiptWord
+        | ReceiptWordLabel
+        | None
+    ),
 ) -> tuple[dict[str, object], list[ChromaDBCollection]]:
     """
     Extract entity data and determine target collections.
@@ -288,9 +296,7 @@ def _extract_entity_data(
     if not entity:
         return {}, []
 
-    if entity_type == "RECEIPT_PLACE" and isinstance(
-        entity, ReceiptPlace
-    ):
+    if entity_type == "RECEIPT_PLACE" and isinstance(entity, ReceiptPlace):
         entity_data = {
             "entity_type": entity_type,
             "image_id": entity.image_id,

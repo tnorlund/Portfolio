@@ -3,6 +3,7 @@
 from typing import Any, Dict, Optional
 
 import pytest
+
 from receipt_dynamo_stream.parsing.compaction_run import (
     is_compaction_run,
     is_embeddings_completed,

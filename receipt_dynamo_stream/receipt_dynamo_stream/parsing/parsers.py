@@ -8,8 +8,6 @@ parsers so stream handlers can remain lightweight.
 import logging
 from typing import Mapping, Optional, Protocol, cast
 
-from receipt_dynamo_stream.models import ParsedStreamRecord, StreamEntity
-
 from receipt_dynamo.entities.receipt import item_to_receipt
 from receipt_dynamo.entities.receipt_line import item_to_receipt_line
 from receipt_dynamo.entities.receipt_place import item_to_receipt_place
@@ -17,6 +15,8 @@ from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
 )
+
+from receipt_dynamo_stream.models import ParsedStreamRecord, StreamEntity
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,9 @@ DynamoImage = Mapping[str, Mapping[str, object]]
 StreamRecord = Mapping[str, object]
 
 
-def detect_entity_type(sk: str) -> Optional[str]:
+def detect_entity_type(  # pylint: disable=too-many-return-statements
+    sk: str,
+) -> Optional[str]:
     """Detect entity type from SK pattern.
 
     SK patterns (most specific first):
@@ -69,7 +71,7 @@ def detect_entity_type(sk: str) -> Optional[str]:
     return None
 
 
-def parse_entity(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def parse_entity(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-return-statements
     image: Optional[DynamoImage],
     entity_type: str,
     image_type: str,
@@ -112,7 +114,7 @@ def parse_entity(  # pylint: disable=too-many-arguments,too-many-positional-argu
         if entity_type == "RECEIPT_LINE":
             return item_to_receipt_line(complete_item)
 
-    except ValueError as exc:
+    except ValueError:
         logger.exception(
             "Failed to parse entity",
             extra={

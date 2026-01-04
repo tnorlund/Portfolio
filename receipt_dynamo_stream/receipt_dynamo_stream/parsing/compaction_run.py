@@ -33,12 +33,12 @@ def parse_compaction_run(
         receipt_id = int(
             receipt_token.replace("RECEIPT", "").replace("#", "") or 0
         )
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as exc:
         receipt_id = int(new_image.get("receipt_id", {}).get("N", 0))
         if receipt_id == 0:
             raise ValueError(
                 f"Could not parse receipt_id from SK: {sk} or new_image"
-            )
+            ) from exc
 
     lines_delta_prefix = new_image.get("lines_delta_prefix", {}).get("S")
     words_delta_prefix = new_image.get("words_delta_prefix", {}).get("S")
