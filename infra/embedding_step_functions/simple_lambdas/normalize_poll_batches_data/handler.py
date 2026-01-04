@@ -24,6 +24,7 @@ import tempfile
 from typing import Literal, TypedDict
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
 # =============================================================================
 # Type Definitions
@@ -284,9 +285,21 @@ def _download_and_combine_poll_results(
 
                 os.unlink(tmp_file_path)
 
-            except Exception as e:
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "Unknown")
                 logger.error(
-                    "Failed to download poll result from S3: bucket=%s, key=%s, error=%s",
+                    "S3 client error downloading poll result: "
+                    "bucket=%s, key=%s, code=%s, error=%s",
+                    result_bucket,
+                    result_key,
+                    error_code,
+                    str(e),
+                )
+                # Continue with other results
+            except BotoCoreError as e:
+                logger.error(
+                    "Botocore error downloading poll result: "
+                    "bucket=%s, key=%s, error=%s",
                     result_bucket,
                     result_key,
                     str(e),
@@ -392,7 +405,12 @@ def _create_chunks(
 def _upload_json_to_s3(
     data: list[DeltaResult] | list[Chunk], bucket: str, key: str
 ) -> None:
-    """Upload JSON data to S3."""
+    """Upload JSON data to S3.
+
+    Raises:
+        ClientError: If S3 upload fails (access denied, bucket not found, etc.)
+        BotoCoreError: If there's a connection or configuration error.
+    """
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", delete=False
     ) as tmp_file:
@@ -404,5 +422,5 @@ def _upload_json_to_s3(
     finally:
         try:
             os.unlink(tmp_file_path)
-        except Exception:
-            pass
+        except OSError:
+            pass  # Temp file cleanup failure is non-critical
