@@ -1372,14 +1372,12 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
     # Check if a pre-compacted intermediate was provided (from final_merge_all)
     precompacted = event.get("_precompacted_intermediate")
-    owns_precompacted_dir = False  # Track if we need to clean up the precompacted dir
 
     if precompacted:
         # Use the pre-compacted intermediate directly - skip S3 download entirely
         synthetic_key = precompacted["key"]
         temp_dir = precompacted["temp_dir"]
         predownloaded_intermediates.append((synthetic_key, temp_dir))
-        owns_precompacted_dir = True  # We're responsible for cleanup
 
         logger.info(
             "Using pre-compacted intermediate (skipping S3 download)",
