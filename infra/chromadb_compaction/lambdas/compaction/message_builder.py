@@ -112,7 +112,7 @@ def process_sqs_messages(
 
             processed_count += 1
 
-        except Exception:  # pylint: disable=broad-exception-caught
+        except (KeyError, json.JSONDecodeError, TypeError) as e:
             logger.exception("Error parsing SQS message")
 
             if observability_available and metrics:
