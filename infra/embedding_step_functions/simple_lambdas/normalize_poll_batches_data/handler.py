@@ -21,9 +21,68 @@ import json
 import logging
 import os
 import tempfile
-from typing import Any
+from typing import Literal, TypedDict
 
 import boto3
+
+# =============================================================================
+# Type Definitions
+# =============================================================================
+
+
+class PollResultRef(TypedDict):
+    """S3 reference from PollBatches Map state."""
+
+    batch_id: str
+    result_s3_key: str
+    result_s3_bucket: str
+
+
+class DeltaResult(TypedDict, total=False):
+    """A delta result with required delta_key and optional collection."""
+
+    delta_key: str
+    collection: str
+
+
+class ChunkItem(TypedDict):
+    """Item passed to ProcessChunksInParallel Map state."""
+
+    chunk_index: int
+    batch_id: str
+    chunks_s3_key: str
+    chunks_s3_bucket: str
+    database: str
+
+
+class Chunk(TypedDict):
+    """Internal chunk containing delta results."""
+
+    chunk_index: int
+    batch_id: str
+    delta_results: list[DeltaResult]
+
+
+class LambdaEvent(TypedDict, total=False):
+    """Input event for the Lambda handler."""
+
+    poll_results: list[PollResultRef | DeltaResult]
+    batch_id: str
+    database: Literal["words", "lines"]
+
+
+class LambdaResponse(TypedDict):
+    """Output response from the Lambda handler."""
+
+    batch_id: str
+    chunks: list[ChunkItem]
+    total_chunks: int
+    chunks_s3_key: str | None
+    chunks_s3_bucket: str | None
+    poll_results_s3_key: str | None
+    poll_results_s3_bucket: str | None
+    has_chunks: bool
+
 
 # Set up logging
 logger = logging.getLogger()
@@ -40,7 +99,7 @@ MIN_DELTAS_PER_CHUNK = int(os.environ.get("MIN_DELTAS_PER_CHUNK", "5"))
 s3_client = boto3.client("s3")
 
 
-def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
+def lambda_handler(event: LambdaEvent, _context: object) -> LambdaResponse:
     """Prepare chunks for parallel processing.
 
     Takes poll results (S3 references from PollBatches Map), combines them,
@@ -154,16 +213,16 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     # Step 5: Create chunk items for Map state
     # SIMPLIFIED ARCHITECTURE: Each chunk is processed by exactly one Lambda
     # No batching needed since we already created big chunks
-    chunk_items = []
+    chunk_items: list[ChunkItem] = []
     for chunk in chunks:
         chunk_items.append(
-            {
-                "chunk_index": chunk["chunk_index"],
-                "batch_id": batch_id,
-                "chunks_s3_key": chunks_s3_key,
-                "chunks_s3_bucket": bucket,
-                "database": database,
-            }
+            ChunkItem(
+                chunk_index=chunk["chunk_index"],
+                batch_id=batch_id,
+                chunks_s3_key=chunks_s3_key,
+                chunks_s3_bucket=bucket,
+                database=database,
+            )
         )
 
     logger.info(
@@ -185,8 +244,8 @@ def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
 
 def _download_and_combine_poll_results(
-    poll_results_refs: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+    poll_results_refs: list[PollResultRef | DeltaResult],
+) -> list[DeltaResult]:
     """Download individual poll results from S3 and combine them."""
     if not poll_results_refs:
         return []
@@ -241,8 +300,8 @@ def _download_and_combine_poll_results(
 
 
 def _filter_valid_deltas(
-    poll_results: list[dict[str, Any]], database: str
-) -> list[dict[str, Any]]:
+    poll_results: list[DeltaResult], database: str
+) -> list[DeltaResult]:
     """Filter poll results to only include valid deltas."""
     valid = []
 
@@ -265,9 +324,9 @@ def _filter_valid_deltas(
 
 
 def _create_chunks(
-    deltas: list[dict[str, Any]],
+    deltas: list[DeltaResult],
     batch_id: str,
-) -> list[dict[str, Any]]:
+) -> list[Chunk]:
     """Split deltas into BIG chunks targeting TARGET_PARALLEL_LAMBDAS.
 
     SIMPLIFIED ARCHITECTURE:
@@ -308,7 +367,7 @@ def _create_chunks(
         remainder,
     )
 
-    chunks = []
+    chunks: list[Chunk] = []
     start_idx = 0
 
     for i in range(num_chunks):
@@ -318,11 +377,11 @@ def _create_chunks(
 
         chunk_deltas = deltas[start_idx:end_idx]
         chunks.append(
-            {
-                "chunk_index": i,
-                "batch_id": batch_id,
-                "delta_results": chunk_deltas,
-            }
+            Chunk(
+                chunk_index=i,
+                batch_id=batch_id,
+                delta_results=chunk_deltas,
+            )
         )
 
         start_idx = end_idx
@@ -330,7 +389,9 @@ def _create_chunks(
     return chunks
 
 
-def _upload_json_to_s3(data: Any, bucket: str, key: str) -> None:
+def _upload_json_to_s3(
+    data: list[DeltaResult] | list[Chunk], bucket: str, key: str
+) -> None:
     """Upload JSON data to S3."""
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", delete=False
