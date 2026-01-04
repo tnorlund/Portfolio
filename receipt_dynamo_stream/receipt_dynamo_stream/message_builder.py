@@ -4,6 +4,9 @@ Message building logic for DynamoDB stream records.
 Constructs StreamMessage objects that can be published to SQS queues.
 """
 
+# pylint: disable=import-error
+# import-error: receipt_dynamo is a monorepo sibling installed at runtime
+
 from __future__ import annotations
 
 import logging

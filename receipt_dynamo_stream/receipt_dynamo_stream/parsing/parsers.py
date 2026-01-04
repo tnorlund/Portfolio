@@ -5,6 +5,9 @@ Handles parsing of stream records into typed entities using receipt_dynamo
 parsers so stream handlers can remain lightweight.
 """
 
+# pylint: disable=import-error
+# import-error: receipt_dynamo is a monorepo sibling installed at runtime
+
 import logging
 from typing import Callable, Optional
 

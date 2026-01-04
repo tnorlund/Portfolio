@@ -2,6 +2,9 @@
 Data models for DynamoDB stream processing.
 """
 
+# pylint: disable=import-error
+# import-error: receipt_dynamo is a monorepo sibling installed at runtime
+
 from dataclasses import dataclass
 from enum import Enum
 from typing import Mapping, Optional, TypeAlias
