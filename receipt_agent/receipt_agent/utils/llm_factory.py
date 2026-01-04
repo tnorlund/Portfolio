@@ -416,7 +416,11 @@ def _is_empty_response(response: Any) -> bool:
     Check if an LLM response is empty or invalid.
 
     Empty responses can occur when providers are under load and return
-    HTTP 200 but with no actual content.
+    HTTP 200 but with no actual content. This can manifest as:
+    - None response
+    - Empty string content ("")
+    - Empty list content ([])
+    - Whitespace-only content
 
     Args:
         response: The LLM response object
@@ -436,9 +440,29 @@ def _is_empty_response(response: Any) -> bool:
     elif isinstance(response, dict):
         content = response.get("content", "")
 
-    # Check if content is empty or whitespace-only
-    if content is None or (isinstance(content, str) and not content.strip()):
+    # Check various empty content types
+    if content is None:
         return True
+
+    # Empty string or whitespace-only
+    if isinstance(content, str) and not content.strip():
+        return True
+
+    # Empty list (multimodal content blocks)
+    if isinstance(content, list) and len(content) == 0:
+        return True
+
+    # List with only empty/whitespace strings
+    if isinstance(content, list):
+        all_empty = all(
+            isinstance(item, str) and not item.strip()
+            for item in content
+            if isinstance(item, str)
+        )
+        # If all string items are empty and there are no non-string items
+        has_non_string = any(not isinstance(item, str) for item in content)
+        if all_empty and not has_non_string:
+            return True
 
     return False
 
