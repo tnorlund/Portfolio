@@ -5,10 +5,13 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
+
 from receipt_dynamo_stream.models import (
     ChromaDBCollection,
     FieldChange,
     StreamMessage,
+    StreamRecordContext,
 )
 from receipt_dynamo_stream.sqs_publisher import (
     _message_to_dict,
@@ -59,9 +62,11 @@ def _create_test_message(
         "changes": {"field": FieldChange(old="old", new="new")},
         "event_name": "MODIFY",
         "collections": collections,
-        "timestamp": datetime.now().isoformat(),
-        "stream_record_id": "event-1",
-        "aws_region": "us-east-1",
+        "context": StreamRecordContext(
+            timestamp=datetime.now().isoformat(),
+            record_id="event-1",
+            aws_region="us-east-1",
+        ),
     }
     defaults.update(kwargs)
     return StreamMessage(**defaults)  # type: ignore[arg-type]
@@ -113,16 +118,18 @@ def test_message_to_dict_multiple_changes() -> None:
 
 
 def test_message_to_dict_none_optional_fields() -> None:
-    """Test message with None optional fields."""
+    """Test message with None optional fields in context."""
     msg = StreamMessage(
         entity_type="TEST",
         entity_data={},
         changes={},
         event_name="TEST",
         collections=(ChromaDBCollection.LINES,),
-        timestamp=None,
-        stream_record_id=None,
-        aws_region=None,
+        context=StreamRecordContext(
+            timestamp=None,
+            record_id=None,
+            aws_region=None,
+        ),
     )
     result = _message_to_dict(msg)
 
@@ -369,7 +376,10 @@ def test_send_batch_to_queue_failure_with_metrics(
     metrics = MockMetrics()
 
     mock_sqs = Mock()
-    mock_sqs.send_message_batch.side_effect = Exception("SQS Error")
+    mock_sqs.send_message_batch.side_effect = ClientError(
+        {"Error": {"Code": "ServiceUnavailable", "Message": "SQS Error"}},
+        "SendMessageBatch",
+    )
 
     msg = _create_test_message()
     msg_dict = _message_to_dict(msg)

@@ -5,10 +5,10 @@ Handles formatting responses appropriately for different invocation sources
 """
 
 import json
-from typing import Any, Dict
+from typing import Any, Dict, Mapping
 
 
-def is_step_function_invocation(event: Dict[str, Any]) -> bool:
+def is_step_function_invocation(event: Mapping[str, Any]) -> bool:
     """Check if this Lambda is being invoked from Step Functions.
 
     Step Functions invocations can be detected by:
@@ -36,19 +36,19 @@ def is_step_function_invocation(event: Dict[str, Any]) -> bool:
 
 
 def format_response(
-    data: Any,
-    event: Dict[str, Any],
+    data: Dict[str, Any],
+    event: Mapping[str, Any],
     is_error: bool = False,
     status_code: int | None = None,
     correlation_id: str | None = None,
-) -> Any:
+) -> Dict[str, Any]:
     """Format response based on invocation source.
 
     Args:
         data: Response data
         event: Lambda event (used to detect invocation source)
         is_error: Whether this is an error response
-        status_code: HTTP status code (defaults to 500 for errors, 200 for success)
+        status_code: HTTP status (default: 500 errors, 200 success)
 
     Returns:
         Raw data for Step Functions, HTTP response for API Gateway
@@ -56,7 +56,7 @@ def format_response(
     # For Step Functions, return raw data or raise exception
     if is_step_function_invocation(event):
         if is_error:
-            # Step Functions handle exceptions through state machine error handling
+            # Step Functions handle exceptions via state machine
             if isinstance(data, dict) and "error" in data:
                 raise RuntimeError(data["error"])
             raise RuntimeError(str(data))

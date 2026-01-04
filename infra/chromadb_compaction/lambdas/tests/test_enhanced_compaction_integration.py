@@ -144,9 +144,8 @@ class TestEnhancedCompactionIntegration:
     ):
         """Test full workflow with S3 backend."""
         from enhanced_compaction_handler import process_collection
-        from receipt_dynamo_stream.models import StreamMessage
-
         from receipt_dynamo.constants import ChromaDBCollection
+        from receipt_dynamo_stream.models import StreamMessage
 
         # Create test message
         test_image_id = setup_s3_snapshot
@@ -212,9 +211,8 @@ class TestEnhancedCompactionIntegration:
     ):
         """Test SQS message processing with mocked AWS services."""
         from enhanced_compaction_handler import process_sqs_messages
-        from receipt_dynamo_stream.models import StreamMessage
-
         from receipt_dynamo.constants import ChromaDBCollection
+        from receipt_dynamo_stream.models import StreamMessage
 
         # Create test SQS records
         test_image_id = str(uuid4())

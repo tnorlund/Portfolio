@@ -1,6 +1,9 @@
 from datetime import datetime
 
 import pytest
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+
 from receipt_dynamo_stream import (
     CHROMADB_RELEVANT_FIELDS,
     ChromaDBCollection,
@@ -8,12 +11,10 @@ from receipt_dynamo_stream import (
     LambdaResponse,
     ParsedStreamRecord,
     StreamMessage,
+    StreamRecordContext,
     detect_entity_type,
     get_chromadb_relevant_changes,
 )
-
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 
 def _make_place(merchant_name: str = "Test Merchant") -> ReceiptPlace:
@@ -86,8 +87,10 @@ def test_stream_message_supports_multiple_collections() -> None:
         changes={"merchant_name": FieldChange(old="old", new="new")},
         event_name="MODIFY",
         collections=(ChromaDBCollection.LINES, ChromaDBCollection.WORDS),
-        stream_record_id="abc",
-        aws_region="us-east-1",
+        context=StreamRecordContext(
+            record_id="abc",
+            aws_region="us-east-1",
+        ),
     )
 
     assert {col.value for col in message.collections} == {"lines", "words"}

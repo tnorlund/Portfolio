@@ -1,11 +1,11 @@
-"""Circuit breaker pattern implementation for protecting against external API failures."""
+"""Circuit breaker pattern for protecting against external API failures."""
 
 import threading
 import time
 from contextlib import contextmanager
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict
 
 from .logging import get_operation_logger
 from .metrics import metrics
@@ -37,7 +37,7 @@ class CircuitBreaker:
             failure_threshold: Number of failures before opening circuit
             recovery_timeout: Time to wait before attempting recovery (seconds)
             expected_exception: Exception type that triggers circuit opening
-            success_threshold: Consecutive successes needed to close circuit in half-open state
+            success_threshold: Successes needed to close circuit (half-open)
         """
         self.name = name
         self.failure_threshold = failure_threshold
@@ -183,9 +183,11 @@ class CircuitBreaker:
                 dimensions={"circuit_name": self.name},
             )
 
+            elapsed = time.time() - self.last_failure_time
+            retry_in = self.recovery_timeout - elapsed
             raise CircuitBreakerOpenError(
                 f"Circuit breaker {self.name} is open. "
-                f"Service will be retried in {self.recovery_timeout - (time.time() - self.last_failure_time):.1f}s"
+                f"Retry in {retry_in:.1f}s"
             )
 
         # Attempt the call
@@ -273,8 +275,6 @@ class CircuitBreaker:
 
 class CircuitBreakerOpenError(Exception):
     """Raised when circuit breaker is open and blocking calls."""
-
-    pass
 
 
 class CircuitBreakerManager:

@@ -2,9 +2,12 @@
 Data models for DynamoDB stream processing.
 """
 
+# pylint: disable=import-error
+# import-error: receipt_dynamo is a monorepo sibling installed at runtime
+
 from dataclasses import dataclass
 from enum import Enum
-from typing import Mapping, Optional
+from typing import Mapping, Optional, TypeAlias
 
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_line import ReceiptLine
@@ -12,7 +15,11 @@ from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
-StreamEntity = Receipt | ReceiptLine | ReceiptPlace | ReceiptWord | ReceiptWordLabel
+from receipt_dynamo_stream.stream_types import DynamoDBItem
+
+StreamEntity: TypeAlias = (
+    Receipt | ReceiptLine | ReceiptPlace | ReceiptWord | ReceiptWordLabel
+)
 
 
 class ChromaDBCollection(str, Enum):
@@ -59,7 +66,17 @@ class FieldChange:
 
 
 @dataclass(frozen=True)
-class StreamMessage:  # pylint: disable=too-many-instance-attributes
+class StreamRecordContext:
+    """Metadata about the source DynamoDB stream record."""
+
+    source: str = "dynamodb_stream"
+    timestamp: Optional[str] = None
+    record_id: Optional[str] = None
+    aws_region: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class StreamMessage:
     """Enhanced stream message with collection targeting."""
 
     entity_type: str
@@ -67,17 +84,15 @@ class StreamMessage:  # pylint: disable=too-many-instance-attributes
     changes: Mapping[str, FieldChange]
     event_name: str
     collections: tuple[ChromaDBCollection, ...]
-    source: str = "dynamodb_stream"
-    timestamp: Optional[str] = None
-    stream_record_id: Optional[str] = None
-    aws_region: Optional[str] = None
-    record_snapshot: Optional[Mapping[str, object]] = None
+    context: StreamRecordContext
+    record_snapshot: Optional[DynamoDBItem] = None
 
 
 __all__ = [
     "ChromaDBCollection",
+    "FieldChange",
     "LambdaResponse",
     "ParsedStreamRecord",
     "StreamMessage",
-    "FieldChange",
+    "StreamRecordContext",
 ]
