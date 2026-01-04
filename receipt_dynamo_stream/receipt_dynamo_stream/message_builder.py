@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Iterable, Mapping, Optional, Protocol
+from typing import Iterable, Optional
 
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_line import ReceiptLine
@@ -29,22 +29,13 @@ from receipt_dynamo_stream.parsing import (
     parse_compaction_run,
     parse_stream_record,
 )
-from receipt_dynamo_stream.types import DynamoDBItem, DynamoDBStreamRecord
+from receipt_dynamo_stream.types import (
+    DynamoDBItem,
+    DynamoDBStreamRecord,
+    MetricsRecorder,
+)
 
 logger = logging.getLogger(__name__)
-
-
-class MetricsRecorder(Protocol):  # pylint: disable=too-few-public-methods
-    """Minimal protocol for metrics clients."""
-
-    def count(
-        self,
-        name: str,
-        value: int,
-        dimensions: Optional[Mapping[str, str]] = None,
-    ) -> object:
-        """Record a count metric."""
-        return None
 
 
 def build_messages_from_records(

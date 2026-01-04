@@ -9,26 +9,14 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Iterable, Mapping, Optional, Protocol
+from typing import Any, Iterable, Optional
 
 import boto3
 
 from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
+from receipt_dynamo_stream.types import MetricsRecorder
 
 logger = logging.getLogger(__name__)
-
-
-class MetricsRecorder(Protocol):  # pylint: disable=too-few-public-methods
-    """Minimal protocol for metrics clients."""
-
-    def count(
-        self,
-        name: str,
-        value: int,
-        dimensions: Optional[Mapping[str, str]] = None,
-    ) -> object:
-        """Record a count metric."""
-        return None
 
 
 def publish_messages(

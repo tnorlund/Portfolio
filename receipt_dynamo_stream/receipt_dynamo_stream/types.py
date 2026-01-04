@@ -5,7 +5,7 @@ Provides type-safe structures for DynamoDB stream events, records,
 and Lambda responses to reduce usage of `Any` throughout the codebase.
 """
 
-from typing import Literal, Protocol, TypedDict
+from typing import Literal, Mapping, Protocol, TypedDict
 
 # =============================================================================
 # DynamoDB Attribute Value Types
@@ -193,6 +193,24 @@ class LambdaContext(Protocol):  # pylint: disable=too-few-public-methods
 
 
 # =============================================================================
+# Metrics Protocol
+# =============================================================================
+
+
+class MetricsRecorder(Protocol):  # pylint: disable=too-few-public-methods
+    """Minimal protocol for metrics clients."""
+
+    def count(
+        self,
+        name: str,
+        value: int,
+        dimensions: Mapping[str, str] | None = None,
+    ) -> object:
+        """Record a count metric."""
+        return None
+
+
+# =============================================================================
 # Exports
 # =============================================================================
 
@@ -220,4 +238,6 @@ __all__ = [
     "APIGatewayResponse",
     # Context
     "LambdaContext",
+    # Metrics
+    "MetricsRecorder",
 ]

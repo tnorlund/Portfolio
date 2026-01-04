@@ -42,6 +42,7 @@ from receipt_dynamo_stream.types import (
     DynamoDBStreamEvent,
     DynamoDBStreamRecord,
     LambdaContext,
+    MetricsRecorder,
     StreamProcessorResponseData,
     StreamRecordDynamoDB,
 )
@@ -73,6 +74,7 @@ __all__ = [
     "DynamoDBStreamEvent",
     "DynamoDBStreamRecord",
     "LambdaContext",
+    "MetricsRecorder",
     "StreamProcessorResponseData",
     "StreamRecordDynamoDB",
 ]

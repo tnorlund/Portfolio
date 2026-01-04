@@ -6,7 +6,7 @@ parsers so stream handlers can remain lightweight.
 """
 
 import logging
-from typing import Mapping, Optional, Protocol
+from typing import Optional
 
 from receipt_dynamo.entities.receipt import item_to_receipt
 from receipt_dynamo.entities.receipt_line import item_to_receipt_line
@@ -20,23 +20,11 @@ from receipt_dynamo_stream.models import ParsedStreamRecord, StreamEntity
 from receipt_dynamo_stream.types import (
     DynamoDBItem,
     DynamoDBStreamRecord,
+    MetricsRecorder,
     StreamRecordDynamoDB,
 )
 
 logger = logging.getLogger(__name__)
-
-
-class MetricsRecorder(Protocol):  # pylint: disable=too-few-public-methods
-    """Minimal protocol for metrics clients used in parsing."""
-
-    def count(  # pylint: disable=unnecessary-ellipsis
-        self,
-        name: str,
-        value: int,
-        dimensions: Optional[Mapping[str, str]] = None,
-    ) -> object:
-        """Record a count metric."""
-        ...
 
 
 def detect_entity_type(  # pylint: disable=too-many-return-statements
