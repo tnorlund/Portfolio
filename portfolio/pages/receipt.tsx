@@ -11,9 +11,12 @@ import {
   ClientImageCounts,
   ClientReceiptCounts,
   CodeBuildDiagram,
+  GeometricAnomalyVisualization,
   ImageStack,
   LabelValidationCount,
   LayoutLMBatchVisualization,
+  LayoutLMInferenceVisualization,
+  LLMEvaluatorVisualization,
   LockingSwimlane,
   MerchantCount,
   PhotoReceiptBoundingBox,
@@ -582,6 +585,55 @@ export default function ReceiptPage({
         30-60 seconds with the AI Agent. The tradeoff is coverage: the model
         focuses on 4 core labels, while the AI Agent provides comprehensive
         labeling including product names, quantities, and unit prices.
+      </p>
+
+      <h2>Evaluating Label Quality</h2>
+
+      <p>
+        Even after labels are assigned, errors can creep in. OCR mistakes,
+        unusual receipt formats, and edge cases all contribute to mislabeled
+        words. I use a two-tier evaluation system to catch these issues.
+      </p>
+
+      <h3>Geometric Pattern Detection</h3>
+
+      <p>
+        The first tier is fast and deterministic. By analyzing thousands of
+        receipts, the system learns spatial patterns: where labels typically
+        appear, how they relate to each other geometrically, and what
+        combinations are normal. When a label appears in an unexpected position,
+        it gets flagged for review.
+      </p>
+
+      <ClientOnly>
+        <GeometricAnomalyVisualization />
+      </ClientOnly>
+
+      <p>
+        The scatter plot shows learned patterns between label pairs. Each dot
+        represents a training observation, and the ellipses show confidence
+        thresholds (1.5σ, 2.0σ, 2.5σ). When a word falls outside these bounds,
+        it&apos;s flagged as a potential anomaly.
+      </p>
+
+      <h3>LLM-Based Validation</h3>
+
+      <p>
+        Flagged issues go through specialized LLM evaluators that understand
+        context. Three subagents work in parallel: one validates currency
+        formats and line item structure, another verifies metadata against
+        Google Places data, and a third checks that the math adds up.
+      </p>
+
+      <ClientOnly>
+        <LLMEvaluatorVisualization />
+      </ClientOnly>
+
+      <p>
+        Each evaluator makes an independent decision (VALID, INVALID, or
+        NEEDS_REVIEW) with reasoning. The financial math validator is
+        particularly useful—it catches OCR errors by verifying that SUBTOTAL +
+        TAX = GRAND_TOTAL.
       </p>
 
       <h1>What I Learned</h1>

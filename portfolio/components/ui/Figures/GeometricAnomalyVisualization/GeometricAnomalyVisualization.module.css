@@ -1,0 +1,346 @@
+/* GeometricAnomalyVisualization.module.css */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 1.5rem;
+  background: var(--background-color);
+  border-radius: 12px;
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.2));
+  margin: 2rem 0;
+}
+
+.panelsContainer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  min-height: 400px;
+}
+
+@media (max-width: 900px) {
+  .panelsContainer {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Receipt View Panel */
+.receiptPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.panelTitle {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-color);
+  opacity: 0.8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.receiptContainer {
+  position: relative;
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 1rem;
+  min-height: 350px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+/* Dark mode receipt background */
+:global(.dark) .receiptContainer {
+  background: #1a1a1a;
+}
+
+.receiptWord {
+  position: absolute;
+  padding: 2px 4px;
+  font-size: 0.7rem;
+  font-family: monospace;
+  border-radius: 3px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.receiptWord:hover {
+  transform: scale(1.1);
+  z-index: 10;
+}
+
+.receiptWordFlagged {
+  border: 2px solid var(--color-red) !important;
+  box-shadow: 0 0 8px rgba(255, 0, 0, 0.4);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(255, 0, 0, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(255, 0, 0, 0.8);
+  }
+}
+
+.wordTooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--background-color);
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.3));
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  min-width: 200px;
+  max-width: 300px;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.tooltipLabel {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.tooltipReasoning {
+  color: var(--text-color);
+  opacity: 0.8;
+  line-height: 1.4;
+}
+
+/* Pattern Scatter Plot Panel */
+.patternPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.patternContainer {
+  position: relative;
+  background: var(--background-color);
+  border-radius: 8px;
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.2));
+  min-height: 350px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.patternSvg {
+  width: 100%;
+  height: 350px;
+}
+
+.patternLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+  font-size: 0.75rem;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.legendLine {
+  width: 20px;
+  height: 2px;
+}
+
+/* Pattern selector */
+.patternSelector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.patternButton {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.3));
+  background: var(--background-color);
+  color: var(--text-color);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.patternButton:hover {
+  border-color: var(--color-blue);
+}
+
+.patternButtonActive {
+  background: var(--color-blue);
+  color: white;
+  border-color: var(--color-blue);
+}
+
+/* Deviation vector */
+.deviationVector {
+  stroke: var(--color-red);
+  stroke-width: 2;
+  marker-end: url(#arrowhead);
+}
+
+/* Ellipse styles */
+.confidenceEllipse {
+  fill: none;
+  stroke-width: 1.5;
+}
+
+.ellipse1 {
+  stroke: var(--color-green);
+  opacity: 0.8;
+}
+
+.ellipse2 {
+  stroke: var(--color-yellow);
+  opacity: 0.6;
+}
+
+.ellipse3 {
+  stroke: var(--color-red);
+  opacity: 0.4;
+}
+
+/* Observation dots */
+.observationDot {
+  fill: var(--color-blue);
+  opacity: 0.5;
+}
+
+.meanPoint {
+  fill: var(--color-green);
+  stroke: white;
+  stroke-width: 2;
+}
+
+.actualPoint {
+  fill: var(--color-red);
+  stroke: white;
+  stroke-width: 2;
+}
+
+/* Axis labels */
+.axisLabel {
+  font-size: 0.7rem;
+  fill: var(--text-color);
+  opacity: 0.6;
+}
+
+/* Stage indicator */
+.stageIndicator {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.stageStep {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-color);
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+}
+
+.stageStepActive {
+  opacity: 1;
+  font-weight: 600;
+}
+
+.stageStepComplete {
+  opacity: 0.8;
+  color: var(--color-green);
+}
+
+.stageDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-color);
+  opacity: 0.3;
+}
+
+.stageDotActive {
+  background: var(--color-blue);
+  opacity: 1;
+}
+
+.stageDotComplete {
+  background: var(--color-green);
+  opacity: 1;
+}
+
+.stageConnector {
+  width: 20px;
+  height: 2px;
+  background: var(--text-color);
+  opacity: 0.2;
+}
+
+.stageConnectorActive {
+  background: var(--color-blue);
+  opacity: 0.6;
+}
+
+/* Info panel */
+.infoPanel {
+  background: var(--background-color);
+  border: 1px solid var(--border-color, rgba(128, 128, 128, 0.2));
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.infoPanelTitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--text-color);
+}
+
+.infoPanelContent {
+  font-size: 0.8rem;
+  color: var(--text-color);
+  opacity: 0.8;
+  line-height: 1.5;
+}
+
+.metric {
+  display: inline-block;
+  font-family: monospace;
+  background: rgba(128, 128, 128, 0.1);
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  margin: 0 0.2rem;
+}
+
+.metricBad {
+  color: var(--color-red);
+  background: rgba(255, 0, 0, 0.1);
+}
+
+.metricGood {
+  color: var(--color-green);
+  background: rgba(0, 255, 0, 0.1);
+}
