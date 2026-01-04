@@ -223,13 +223,16 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             merchant_name=merchant_name,
             name="ReceiptEvaluation",
             inputs={
-                "data_s3_key": data_s3_key,
-                "patterns_s3_key": patterns_s3_key,
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "merchant_name": merchant_name,
                 "word_count": len(words),
                 "label_count": len(labels),
             },
             metadata={
                 "execution_id": execution_id,
+                "data_s3_key": data_s3_key,
+                "patterns_s3_key": patterns_s3_key,
             },
             enable_tracing=enable_tracing,
         )
@@ -277,6 +280,11 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 # Create historical DiscoverPatterns span using stored timing
                 discovery_metadata = line_item_patterns_data.get("_trace_metadata", {})
                 if discovery_metadata.get("discovery_start_time"):
+                    # Extract discovered patterns for rich output
+                    discovered_patterns = line_item_patterns_data.get("patterns", {})
+                    pattern_categories = list(discovered_patterns.keys()) if discovered_patterns else []
+                    line_item_labels = line_item_patterns_data.get("line_item_labels", [])
+
                     create_historical_span(
                         parent_ctx=trace_ctx,
                         name="DiscoverPatterns",
@@ -287,19 +295,25 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                         inputs={
                             "merchant_name": merchant_name,
                             "sample_receipt_count": discovery_metadata.get("sample_receipt_count", 0),
+                            "llm_model": discovery_metadata.get("llm_model", "unknown"),
                         },
                         outputs={
                             "status": discovery_metadata.get("discovery_status", "unknown"),
-                            "llm_model": discovery_metadata.get("llm_model", "unknown"),
+                            "pattern_categories": pattern_categories,
+                            "line_item_labels": line_item_labels,
+                            "patterns_discovered": len(pattern_categories),
                         },
                         metadata={
                             "llm_call_duration_seconds": discovery_metadata.get("llm_call_duration_seconds", 0),
+                            "load_receipts_duration_seconds": discovery_metadata.get("load_receipts_duration_seconds", 0),
+                            "build_prompt_duration_seconds": discovery_metadata.get("build_prompt_duration_seconds", 0),
                             "batch_computed": True,
                         },
                     )
                     logger.info(
-                        "Added DiscoverPatterns historical span (%.2fs)",
+                        "Added DiscoverPatterns historical span (%.2fs, %d categories)",
                         discovery_metadata.get("discovery_duration_seconds", 0),
+                        len(pattern_categories),
                     )
 
         # 4. Load geometric patterns (from Phase 1 ComputePatterns) and create historical span
@@ -321,6 +335,12 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 # Create historical ComputePatterns span using stored timing
                 computation_metadata = patterns_data.get("_trace_metadata", {})
                 if computation_metadata.get("computation_start_time"):
+                    # Extract constellation/geometry pattern info for rich output
+                    label_pair_geometry = patterns_data.get("label_pair_geometry", {})
+                    label_geometry = patterns_data.get("label_geometry", {})
+                    constellation_names = list(label_pair_geometry.keys()) if label_pair_geometry else []
+                    individual_labels = list(label_geometry.keys()) if label_geometry else []
+
                     create_historical_span(
                         parent_ctx=trace_ctx,
                         name="ComputePatterns",
@@ -334,6 +354,10 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                         },
                         outputs={
                             "status": computation_metadata.get("computation_status", "unknown"),
+                            "constellation_patterns": constellation_names,
+                            "constellation_count": len(constellation_names),
+                            "individual_label_patterns": individual_labels,
+                            "individual_label_count": len(individual_labels),
                         },
                         metadata={
                             "load_data_duration_seconds": computation_metadata.get("load_data_duration_seconds", 0),
@@ -342,8 +366,10 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                         },
                     )
                     logger.info(
-                        "Added ComputePatterns historical span (%.2fs)",
+                        "Added ComputePatterns historical span (%.2fs, %d constellations, %d labels)",
                         computation_metadata.get("computation_duration_seconds", 0),
+                        len(constellation_names),
+                        len(individual_labels),
                     )
 
                 # Deserialize patterns for evaluation
@@ -378,16 +404,23 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         )
 
         # 6. Run compute-only graph with child trace
+        pattern_count = merchant_patterns.receipt_count if merchant_patterns else 0
         with child_trace(
             "EvaluateLabels",
             trace_ctx,
-            metadata={
+            inputs={
                 "image_id": image_id,
                 "receipt_id": receipt_id,
+                "merchant_name": merchant_name,
                 "word_count": len(words),
                 "label_count": len(labels),
+                "pattern_receipt_count": pattern_count,
             },
-        ):
+            metadata={
+                "data_s3_key": data_s3_key,
+                "patterns_s3_key": patterns_s3_key,
+            },
+        ) as eval_ctx:
             logger.info("Running compute-only graph...")
             compute_start = time.time()
 
@@ -405,6 +438,14 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 compute_time,
                 result.get("issues_found", 0),
             )
+
+            # Set rich outputs
+            eval_ctx.set_outputs({
+                "issues_found": result.get("issues_found", 0),
+                "compute_time_seconds": round(compute_time, 3),
+                "flagged_words": result.get("flagged_words", []),
+                "issues": result.get("issues", []),
+            })
 
         # 7. Upload results to S3
         results_s3_key = f"results/{execution_id}/{image_id}_{receipt_id}.json"
