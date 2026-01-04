@@ -36,11 +36,12 @@ import shutil
 import tempfile
 import time
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Optional
 
 # Use receipt_chroma package for compaction logic
 from receipt_chroma import ChromaClient, LockManager
 from receipt_chroma.compaction import process_collection_updates
+from receipt_chroma.compaction.models import CollectionUpdateResult
 from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
@@ -48,15 +49,27 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 # Import StreamMessage from receipt_dynamo_stream
 try:
     from receipt_dynamo_stream.models import StreamMessage
+    from receipt_dynamo_stream.stream_types import LambdaContext
 except ImportError:
     # Fallback for testing
     # pylint: disable-next=too-few-public-methods
     class StreamMessage:  # type: ignore[no-redef]
         """Fallback StreamMessage for testing."""
 
-        def __init__(self, **kwargs: Any) -> None:
+        def __init__(self, **kwargs: object) -> None:
             for key, value in kwargs.items():
                 setattr(self, key, value)
+
+    # pylint: disable-next=too-few-public-methods
+    class LambdaContext:  # type: ignore[no-redef]
+        """Fallback LambdaContext for testing."""
+
+        function_name: str = ""
+        aws_request_id: str = ""
+
+        def get_remaining_time_in_millis(self) -> int:
+            """Get remaining execution time."""
+            return 0
 
 # Enhanced observability imports
 from utils import (
@@ -72,6 +85,13 @@ from utils import (
     trace_function,
     with_compaction_timeout_protection,
 )
+from utils.lambda_types import (
+    ProcessCollectionResult,
+    SQSBatchResponse,
+    SQSEvent,
+    SQSRecord,
+)
+from utils.logging import OperationLogger
 
 
 # Get logger instance
@@ -88,9 +108,12 @@ class LambdaResponse:
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         """Convert response to dictionary for Lambda return value."""
-        result = {"statusCode": self.status_code, "message": self.message}
+        result: dict[str, object] = {
+            "statusCode": self.status_code,
+            "message": self.message,
+        }
         for key, value in self.__dict__.items():
             if key not in ["status_code", "message"] and value is not None:
                 result[key] = value
@@ -137,7 +160,7 @@ def configure_receipt_chroma_loggers():
     )
 
 
-def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
+def parse_sqs_messages(records: list[SQSRecord]) -> list[StreamMessage]:
     """Parse SQS records into StreamMessage objects.
 
     Args:
@@ -146,7 +169,7 @@ def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
     Returns:
         List of StreamMessage objects
     """
-    messages = []
+    messages: list[StreamMessage] = []
     for record in records:
         try:
             # Parse message body
@@ -188,9 +211,9 @@ def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
 
 
 def _process_collections(
-    messages_by_collection: Dict[Any, List[StreamMessage]],
-    op_logger: Any,
-    metrics: Any = None,
+    messages_by_collection: dict[ChromaDBCollection, list[StreamMessage]],
+    op_logger: OperationLogger,
+    metrics: Optional[MetricsAccumulator] = None,
 ) -> CollectionProcessingResult:
     """Process each collection and collect failures.
 
@@ -202,7 +225,7 @@ def _process_collections(
     Returns:
         CollectionProcessingResult with failures and success status
     """
-    failed_message_ids: List[str] = []
+    failed_message_ids: list[str] = []
     processing_successful = True
 
     for collection, msgs in messages_by_collection.items():
@@ -234,18 +257,18 @@ def _process_collections(
 
 
 def _collect_failed_message_ids(
-    result: Any, messages: List[StreamMessage]
-) -> List[str]:
+    result: CollectionUpdateResult, messages: list[StreamMessage]
+) -> list[str]:
     """Collect message IDs for failed processing operations.
 
     Args:
-        result: CompactionResult with metadata_updates and label_updates
+        result: CollectionUpdateResult with metadata_updates and label_updates
         messages: Original stream messages to match against
 
     Returns:
         List of stream record IDs for messages that failed processing
     """
-    failed_ids: List[str] = []
+    failed_ids: list[str] = []
 
     # Check metadata update failures
     for meta_result in result.metadata_updates:
@@ -279,10 +302,10 @@ def _collect_failed_message_ids(
 # update, upload) - splitting would break transactional semantics
 def process_collection(  # pylint: disable=too-many-locals
     collection: ChromaDBCollection,
-    messages: List[StreamMessage],
-    op_logger: Any,
-    metrics: Any = None,
-) -> Dict[str, Any]:
+    messages: list[StreamMessage],
+    op_logger: OperationLogger,
+    metrics: Optional[MetricsAccumulator] = None,
+) -> ProcessCollectionResult:
     """Process stream messages for a single collection using receipt_chroma.
 
     This function orchestrates:
@@ -297,7 +320,7 @@ def process_collection(  # pylint: disable=too-many-locals
         metrics: MetricsAccumulator for EMF logging
 
     Returns:
-        Dict with processing results and failed message IDs
+        ProcessCollectionResult with processing results and failed message IDs
     """
     # Environment configuration
     bucket = os.environ["CHROMADB_BUCKET"]
@@ -459,8 +482,10 @@ def process_collection(  # pylint: disable=too-many-locals
 
 
 def process_sqs_messages(
-    records: List[Dict[str, Any]], op_logger: Any, metrics: Any = None
-) -> Dict[str, Any]:
+    records: list[SQSRecord],
+    op_logger: OperationLogger,
+    metrics: Optional[MetricsAccumulator] = None,
+) -> SQSBatchResponse:
     """Parse SQS messages and route to collection processors.
 
     Phase 2 optimization: After receiving initial batch from Lambda trigger,
@@ -473,7 +498,7 @@ def process_sqs_messages(
         metrics: Optional metrics accumulator
 
     Returns:
-        Dict with batchItemFailures for partial batch retry
+        SQSBatchResponse with batchItemFailures for partial batch retry
     """
     # Phase 2: Fetch additional messages to batch with initial records
     phase2 = fetch_phase2_messages(records, op_logger, metrics)
@@ -531,7 +556,9 @@ def process_sqs_messages(
 
 @trace_function(operation_name="enhanced_compaction_handler")
 @with_compaction_timeout_protection(max_duration=840)  # 14 minutes
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(
+    event: SQSEvent, context: LambdaContext
+) -> SQSBatchResponse:
     """Simplified Lambda handler using receipt_chroma package.
 
     Routes SQS messages to appropriate collection processors.
@@ -552,8 +579,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     start_time = time.time()
 
     # Collect metrics for batch EMF logging (cost-effective)
-    collected_metrics: Dict[str, Any] = {}
-    error_types: Dict[str, int] = {}
+    collected_metrics: dict[str, object] = {}
+    error_types: dict[str, int] = {}
 
     # Create metrics accumulator
     metrics_accumulator = MetricsAccumulator(collected_metrics)

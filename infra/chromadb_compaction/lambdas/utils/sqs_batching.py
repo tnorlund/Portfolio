@@ -9,11 +9,18 @@ import functools
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Optional
 
 from botocore.exceptions import ClientError
 
 from .aws_clients import get_sqs_client
+from .lambda_types import (
+    MessageAttributes,
+    MetricsAccumulatorProtocol,
+    OperationLoggerProtocol,
+    RawSQSMessage,
+    SQSRecord,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -48,29 +55,29 @@ def _get_sqs_client():
 class Phase2FetchResult:
     """Result of Phase 2 additional message fetching."""
 
-    all_records: List[Dict[str, Any]]
+    all_records: list[SQSRecord]
     queue_url: Optional[str]
-    manually_fetched_handles: List[str]
+    manually_fetched_handles: list[str]
 
 
 @dataclass
 class CollectionProcessingResult:
     """Result of processing all collections."""
 
-    failed_message_ids: List[str]
+    failed_message_ids: list[str]
     processing_successful: bool
 
 
-def _convert_sqs_message_to_record(msg: Dict[str, Any]) -> Dict[str, Any]:
+def _convert_sqs_message_to_record(msg: RawSQSMessage) -> SQSRecord:
     """Convert SQS message to Lambda event record format.
 
     Args:
         msg: Raw SQS message from receive_message response
 
     Returns:
-        Dict in Lambda event record format
+        SQSRecord in Lambda event record format
     """
-    message_attributes: Dict[str, Dict[str, Any]] = {}
+    message_attributes: MessageAttributes = {}
     for key, attr in msg.get("MessageAttributes", {}).items():
         if "StringValue" in attr:
             val = attr.get("StringValue", "")
@@ -94,7 +101,7 @@ def fetch_additional_messages(
     queue_url: str,
     current_count: int,
     max_messages: int = MAX_MESSAGES_PER_COMPACTION,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+) -> tuple[list[SQSRecord], list[str]]:
     """Greedily fetch additional messages from SQS queue.
 
     Phase 2 optimization: Since FIFO queues limit batch size to 10,
@@ -113,8 +120,8 @@ def fetch_additional_messages(
         return [], []
 
     sqs = _get_sqs_client()
-    additional_records: List[Dict[str, Any]] = []
-    receipt_handles: List[str] = []
+    additional_records: list[SQSRecord] = []
+    receipt_handles: list[str] = []
     remaining = max_messages - current_count
 
     while remaining > 0:
@@ -163,8 +170,8 @@ def fetch_additional_messages(
 
 
 def delete_messages_batch(
-    queue_url: str, receipt_handles: List[str]
-) -> List[str]:
+    queue_url: str, receipt_handles: list[str]
+) -> list[str]:
     """Delete messages from SQS in batches.
 
     Args:
@@ -178,7 +185,7 @@ def delete_messages_batch(
         return []
 
     sqs = _get_sqs_client()
-    failed_handles: List[str] = []
+    failed_handles: list[str] = []
 
     # SQS delete_message_batch allows max 10 entries
     for i in range(0, len(receipt_handles), 10):
@@ -216,9 +223,9 @@ def delete_messages_batch(
 
 
 def fetch_phase2_messages(
-    records: List[Dict[str, Any]],
-    op_logger: Any,
-    metrics: Any = None,
+    records: list[SQSRecord],
+    op_logger: OperationLoggerProtocol,
+    metrics: Optional[MetricsAccumulatorProtocol] = None,
 ) -> Phase2FetchResult:
     """Determine queue URL and fetch additional messages for Phase 2 batching.
 
@@ -289,8 +296,8 @@ def fetch_phase2_messages(
 def cleanup_manual_messages(
     phase2: Phase2FetchResult,
     result: CollectionProcessingResult,
-    op_logger: Any,
-    metrics: Any = None,
+    op_logger: OperationLoggerProtocol,
+    metrics: Optional[MetricsAccumulatorProtocol] = None,
 ) -> None:
     """Delete manually-fetched messages after successful processing.
 
