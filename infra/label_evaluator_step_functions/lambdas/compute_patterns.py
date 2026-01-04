@@ -367,5 +367,8 @@ def _serialize_patterns(patterns, merchant_name: str) -> dict[str, Any]:
             "labels_with_same_line_multiplicity": list(
                 patterns.labels_with_same_line_multiplicity
             ),
+            "labels_with_receipt_multiplicity": list(
+                patterns.labels_with_receipt_multiplicity
+            ),
         },
     }

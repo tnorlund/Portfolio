@@ -227,8 +227,13 @@ def deserialize_patterns(
     )
 
     # Reconstruct labels_with_same_line_multiplicity
-    labels_with_multiplicity = set(
+    labels_with_same_line_multiplicity = set(
         p.get("labels_with_same_line_multiplicity", [])
+    )
+
+    # Reconstruct labels_with_receipt_multiplicity
+    labels_with_receipt_multiplicity = set(
+        p.get("labels_with_receipt_multiplicity", [])
     )
 
     patterns = MerchantPatterns(
@@ -239,7 +244,8 @@ def deserialize_patterns(
         all_observed_pairs=all_observed_pairs,
         constellation_geometry=constellation_geometry,
         batch_classification=batch_classification,
-        labels_with_same_line_multiplicity=labels_with_multiplicity,
+        labels_with_same_line_multiplicity=labels_with_same_line_multiplicity,
+        labels_with_receipt_multiplicity=labels_with_receipt_multiplicity,
     )
 
     return patterns

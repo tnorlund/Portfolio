@@ -252,6 +252,11 @@ class MerchantPatterns:
     # This helps distinguish between normal multiplicity and errors
     labels_with_same_line_multiplicity: set[str] = field(default_factory=set)
 
+    # Label types that appear multiple times on a receipt (any line)
+    # Example: {"LINE_TOTAL", "PRODUCT_NAME"} for multi-item receipts
+    # Used to check if receipt-wide multiplicity is expected
+    labels_with_receipt_multiplicity: set[str] = field(default_factory=set)
+
     # Batch-specific pattern learning (added 2025-12-18)
     # Separates receipts by data quality and learns specialized patterns
     batch_classification: dict[str, int] = field(

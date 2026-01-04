@@ -134,8 +134,8 @@ def check_unexpected_label_pair(
         # times)
         if label == other_label:
             # If this label type never appears multiple times in training data,
-            # flag it
-            if label not in patterns.labels_with_same_line_multiplicity:
+            # flag it. Use receipt-wide multiplicity (not same-line).
+            if label not in patterns.labels_with_receipt_multiplicity:
                 # Only flag if we have good training data
                 if patterns.receipt_count >= 5:
                     return EvaluationIssue(
