@@ -104,9 +104,6 @@ include = '\\.pyi?$'
 [tool.pylint.format]
 max-line-length = 79
 
-[tool.pylint.messages_control]
-disable = ["duplicate-code"]
-
 [tool.pylint.main]
 persistent = false
 

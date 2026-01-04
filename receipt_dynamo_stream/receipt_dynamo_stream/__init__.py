@@ -5,6 +5,10 @@ This package owns stream parsing, change detection, and stream message models
 so Lambdas can stay minimal while sharing business logic with other services.
 """
 
+# pylint: disable=duplicate-code
+# Re-exports from submodules for clean top-level API (e.g., `from
+# receipt_dynamo_stream import X` instead of deeper imports).
+
 __version__ = "0.1.0"
 
 from receipt_dynamo_stream.change_detection.detector import (
