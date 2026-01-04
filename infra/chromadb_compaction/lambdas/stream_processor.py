@@ -211,7 +211,7 @@ def lambda_handler(
         try:
             _validate_batch_size(total_records)
         except ValueError:
-            logger.error("Batch too large", total_records=total_records)
+            logger.exception("Batch too large", total_records=total_records)
             emf_metrics.log_metrics(
                 {"StreamBatchTooLarge": 1},
                 properties={"total_records": total_records},

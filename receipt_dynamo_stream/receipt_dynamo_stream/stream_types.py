@@ -151,14 +151,6 @@ class StreamProcessorResponseData(TypedDict, total=False):
     error: str
 
 
-class APIGatewayHeaders(TypedDict, total=False):
-    """HTTP headers for API Gateway responses."""
-
-    # Using NotRequired for optional headers
-    # Standard headers
-    Content__Type: str  # Note: Actual key is "Content-Type"
-
-
 class APIGatewayResponse(TypedDict):
     """API Gateway-compatible Lambda response."""
 

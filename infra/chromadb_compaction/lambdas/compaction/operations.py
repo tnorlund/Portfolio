@@ -74,14 +74,14 @@ def update_receipt_metadata(
                 )
                 for word in words
             ]
-        except Exception as e:
-            logger.error("Failed to query words from DynamoDB", error=str(e))
+        except Exception:
+            logger.exception("Failed to query words from DynamoDB")
 
             if observability_available and metrics:
                 metrics.count(
                     "CompactionDynamoDBQueryError",
                     1,
-                    {"entity_type": "words", "error_type": type(e).__name__},
+                    {"entity_type": "words"},
                 )
             return 0
 
@@ -104,14 +104,14 @@ def update_receipt_metadata(
                 )
                 for line in lines
             ]
-        except Exception as e:
-            logger.error("Failed to query lines from DynamoDB", error=str(e))
+        except Exception:
+            logger.exception("Failed to query lines from DynamoDB")
 
             if observability_available and metrics:
                 metrics.count(
                     "CompactionDynamoDBQueryError",
                     1,
-                    {"entity_type": "lines", "error_type": type(e).__name__},
+                    {"entity_type": "lines"},
                 )
             return 0
     else:
@@ -927,14 +927,14 @@ def delete_receipt_embeddings(
                 )
                 for word in words
             ]
-        except Exception as e:
-            logger.error("Failed to query words from DynamoDB", error=str(e))
+        except Exception:
+            logger.exception("Failed to query words from DynamoDB")
 
             if observability_available and metrics:
                 metrics.count(
                     "CompactionDynamoDBQueryError",
                     1,
-                    {"entity_type": "words", "error_type": type(e).__name__},
+                    {"entity_type": "words"},
                 )
             return 0
 
@@ -957,14 +957,14 @@ def delete_receipt_embeddings(
                 )
                 for line in lines
             ]
-        except Exception as e:
-            logger.error("Failed to query lines from DynamoDB", error=str(e))
+        except Exception:
+            logger.exception("Failed to query lines from DynamoDB")
 
             if observability_available and metrics:
                 metrics.count(
                     "CompactionDynamoDBQueryError",
                     1,
-                    {"entity_type": "lines", "error_type": type(e).__name__},
+                    {"entity_type": "lines"},
                 )
             return 0
     else:

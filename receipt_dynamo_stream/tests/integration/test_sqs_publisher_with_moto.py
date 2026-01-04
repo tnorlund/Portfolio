@@ -13,6 +13,7 @@ from receipt_dynamo_stream import (
     ChromaDBCollection,
     FieldChange,
     StreamMessage,
+    StreamRecordContext,
     publish_messages,
 )
 
@@ -54,9 +55,11 @@ def _sample_place_message() -> StreamMessage:
         },
         event_name="MODIFY",
         collections=(ChromaDBCollection.LINES, ChromaDBCollection.WORDS),
-        timestamp=datetime.now().isoformat(),
-        stream_record_id="event-1",
-        aws_region="us-east-1",
+        context=StreamRecordContext(
+            timestamp=datetime.now().isoformat(),
+            record_id="event-1",
+            aws_region="us-east-1",
+        ),
     )
 
 
@@ -73,9 +76,11 @@ def _sample_word_label_remove() -> StreamMessage:
         changes={},
         event_name="REMOVE",
         collections=(ChromaDBCollection.WORDS,),
-        timestamp=datetime.now().isoformat(),
-        stream_record_id="event-2",
-        aws_region="us-east-1",
+        context=StreamRecordContext(
+            timestamp=datetime.now().isoformat(),
+            record_id="event-2",
+            aws_region="us-east-1",
+        ),
     )
 
 
@@ -91,9 +96,11 @@ def _sample_compaction_run() -> StreamMessage:
         changes={},
         event_name="INSERT",
         collections=(ChromaDBCollection.LINES, ChromaDBCollection.WORDS),
-        timestamp=datetime.now().isoformat(),
-        stream_record_id="event-3",
-        aws_region="us-east-1",
+        context=StreamRecordContext(
+            timestamp=datetime.now().isoformat(),
+            record_id="event-3",
+            aws_region="us-east-1",
+        ),
     )
 
 
@@ -172,9 +179,11 @@ def test_batches_above_ten_messages(
             changes={"merchant_name": FieldChange(old="A", new="B")},
             event_name="MODIFY",
             collections=(ChromaDBCollection.LINES, ChromaDBCollection.WORDS),
-            timestamp=datetime.now().isoformat(),
-            stream_record_id=f"event-{i}",
-            aws_region="us-east-1",
+            context=StreamRecordContext(
+                timestamp=datetime.now().isoformat(),
+                record_id=f"event-{i}",
+                aws_region="us-east-1",
+            ),
         )
         for i in range(15)
     ]

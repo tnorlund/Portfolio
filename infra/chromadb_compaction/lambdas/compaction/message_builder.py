@@ -112,8 +112,8 @@ def process_sqs_messages(
 
             processed_count += 1
 
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("Error parsing SQS message", error=str(e))
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Error parsing SQS message")
 
             if observability_available and metrics:
                 metrics.count(

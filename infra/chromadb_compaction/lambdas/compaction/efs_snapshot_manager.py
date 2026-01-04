@@ -80,11 +80,10 @@ class EFSSnapshotManager:
     def get_latest_s3_version(self) -> Optional[str]:
         """Get the latest snapshot version from S3."""
         try:
-            s3_client = boto3.client("s3")
             pointer_key = f"{self.collection}/snapshot/latest-pointer.txt"
 
             try:
-                response = s3_client.get_object(
+                response = self.s3_client.get_object(
                     Bucket=self.bucket, Key=pointer_key
                 )
                 version_id = response["Body"].read().decode("utf-8").strip()

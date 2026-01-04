@@ -46,30 +46,8 @@ from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
-# Import StreamMessage from receipt_dynamo_stream
-try:
-    from receipt_dynamo_stream.models import StreamMessage
-    from receipt_dynamo_stream.stream_types import LambdaContext
-except ImportError:
-    # Fallback for testing
-    # pylint: disable-next=too-few-public-methods
-    class StreamMessage:  # type: ignore[no-redef]
-        """Fallback StreamMessage for testing."""
-
-        def __init__(self, **kwargs: object) -> None:
-            for key, value in kwargs.items():
-                setattr(self, key, value)
-
-    # pylint: disable-next=too-few-public-methods
-    class LambdaContext:  # type: ignore[no-redef]
-        """Fallback LambdaContext for testing."""
-
-        function_name: str = ""
-        aws_request_id: str = ""
-
-        def get_remaining_time_in_millis(self) -> int:
-            """Get remaining execution time."""
-            return 0
+from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
+from receipt_dynamo_stream.stream_types import LambdaContext
 
 # Enhanced observability imports
 from utils import (
@@ -189,10 +167,12 @@ def parse_sqs_messages(records: list[SQSRecord]) -> list[StreamMessage]:
                 changes=message_body.get("changes", {}),
                 event_name=message_body.get("event_name", ""),
                 collections=(collection,),
-                timestamp=message_body.get("timestamp", ""),
-                stream_record_id=record.get("messageId", ""),
-                aws_region=attributes.get("region", {}).get(
-                    "stringValue", "us-east-1"
+                context=StreamRecordContext(
+                    timestamp=message_body.get("timestamp", ""),
+                    record_id=record.get("messageId", ""),
+                    aws_region=attributes.get("region", {}).get(
+                        "stringValue", "us-east-1"
+                    ),
                 ),
                 record_snapshot=message_body.get("record_snapshot"),
             )
@@ -248,7 +228,7 @@ def _process_collections(
             )
             if metrics:
                 metrics.count("CompactionCollectionProcessingError", 1)
-            failed_message_ids.extend([m.stream_record_id for m in msgs])
+            failed_message_ids.extend([m.context.record_id for m in msgs])
             processing_successful = False
 
     return CollectionProcessingResult(
@@ -279,7 +259,7 @@ def _collect_failed_message_ids(
                     entity_data.get("image_id") == meta_result.image_id
                     and entity_data.get("receipt_id") == meta_result.receipt_id
                 ):
-                    failed_ids.append(msg.stream_record_id)
+                    failed_ids.append(msg.context.record_id)
 
     # Check label update failures
     for label_result in result.label_updates:
@@ -293,7 +273,7 @@ def _collect_failed_message_ids(
                     and entity_data.get("word_id") is not None
                     and label_result.chromadb_id.startswith(chromadb_prefix)
                 ):
-                    failed_ids.append(msg.stream_record_id)
+                    failed_ids.append(msg.context.record_id)
 
     return failed_ids
 
@@ -347,7 +327,7 @@ def process_collection(  # pylint: disable=too-many-locals
         op_logger.error("Failed to acquire lock for snapshot upload")
         if metrics:
             metrics.count("CompactionLockAcquisitionFailed", 1)
-        return {"failed_message_ids": [m.stream_record_id for m in messages]}
+        return {"failed_message_ids": [m.context.record_id for m in messages]}
 
     # Create temp directory for snapshot
     temp_dir = tempfile.mkdtemp(prefix=f"chroma-{collection.value}-")
@@ -370,7 +350,7 @@ def process_collection(  # pylint: disable=too-many-locals
             if metrics:
                 metrics.count("CompactionSnapshotDownloadError", 1)
             return {
-                "failed_message_ids": [m.stream_record_id for m in messages]
+                "failed_message_ids": [m.context.record_id for m in messages]
             }
 
         op_logger.info(
@@ -446,7 +426,7 @@ def process_collection(  # pylint: disable=too-many-locals
             if metrics:
                 metrics.count("CompactionSnapshotUploadError", 1)
             return {
-                "failed_message_ids": [m.stream_record_id for m in messages]
+                "failed_message_ids": [m.context.record_id for m in messages]
             }
 
         op_logger.info(

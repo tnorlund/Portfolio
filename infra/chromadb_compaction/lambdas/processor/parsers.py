@@ -7,6 +7,8 @@ Parses stream records into typed entities via receipt_dynamo.
 import logging
 from typing import Any, Dict, Optional, Union
 
+from receipt_dynamo_stream.stream_types import MetricsRecorder
+
 from receipt_dynamo.entities.receipt_place import (
     ReceiptPlace,
     item_to_receipt_place,
@@ -47,7 +49,7 @@ def parse_entity(
     image_type: str,
     pk: str,
     sk: str,
-    metrics=None,
+    metrics: Optional[MetricsRecorder] = None,
 ) -> Optional[Union[ReceiptPlace, ReceiptWordLabel]]:
     """
     Parse DynamoDB image into typed entity.
@@ -137,7 +139,7 @@ def parse_entity(
 
 
 def parse_stream_record(
-    record: Dict[str, Any], metrics=None
+    record: Dict[str, Any], metrics: Optional[MetricsRecorder] = None
 ) -> Optional[ParsedStreamRecord]:
     """
     Parse DynamoDB stream record to identify relevant entity changes.

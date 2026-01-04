@@ -130,8 +130,8 @@ def build_compaction_run_messages(
             },
         )
 
-    except Exception as e:
-        logger.error("Failed to build compaction run message: %s", e)
+    except Exception:
+        logger.exception("Failed to build compaction run message")
         if metrics:
             metrics.count("CompactionRunMessageBuildError", 1)
 
@@ -188,7 +188,7 @@ def build_compaction_run_completion_messages(
         compaction_run = parse_compaction_run(new_image, pk, sk)
 
         # Create messages for both collections
-        for collection in ["lines", "words"]:
+        for collection in [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]:
             message = StreamMessage(
                 entity_type="COMPACTION_RUN",
                 entity_data={
@@ -196,8 +196,10 @@ def build_compaction_run_completion_messages(
                     "image_id": compaction_run.get("image_id"),
                     "receipt_id": compaction_run.get("receipt_id"),
                 },
-                collection=collection,
+                changes={},
                 event_name=record.get("eventName", "MODIFY"),
+                collections=[collection],
+                source="dynamodb_stream",
             )
             messages.append(message)
 
@@ -213,8 +215,8 @@ def build_compaction_run_completion_messages(
             },
         )
 
-    except Exception as e:
-        logger.error("Failed to build compaction run message: %s", e)
+    except Exception:
+        logger.exception("Failed to build compaction run completion message")
         if metrics:
             metrics.count("CompactionRunCompletionMessageBuildError", 1)
 
@@ -307,8 +309,8 @@ def build_entity_change_message(
 
         return stream_msg
 
-    except Exception as e:
-        logger.error("Failed to build entity change message: %s", e)
+    except Exception:
+        logger.exception("Failed to build entity change message")
         if metrics:
             metrics.count("EntityMessageBuildError", 1)
         return None

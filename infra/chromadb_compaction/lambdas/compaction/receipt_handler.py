@@ -176,7 +176,7 @@ def delete_receipt_child_records(
                     else:
                         logger.info(
                             f"Deleted {len(receipt_letters)} letters "
-                        f"for receipt {receipt_id}"
+                            f"for receipt {receipt_id}"
                         )
                     if metrics:
                         metrics.count(

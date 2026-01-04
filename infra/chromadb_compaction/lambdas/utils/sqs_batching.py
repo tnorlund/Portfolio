@@ -5,7 +5,6 @@ to amortize S3 transfer costs across larger batches.
 """
 # pylint: disable=import-error
 # import-error: aws_clients is bundled into Lambda package
-import functools
 import logging
 import os
 from dataclasses import dataclass
@@ -45,10 +44,8 @@ ADDITIONAL_FETCH_VISIBILITY_TIMEOUT = _parse_int_env(
 )  # Should match Lambda timeout
 
 
-@functools.lru_cache(maxsize=1)
-def _get_sqs_client():
-    """Get or create SQS client (reused across warm starts)."""
-    return get_sqs_client()
+# Use get_sqs_client directly from aws_clients (already returns singleton)
+_get_sqs_client = get_sqs_client
 
 
 @dataclass
@@ -90,9 +87,9 @@ def _convert_sqs_message_to_record(msg: RawSQSMessage) -> SQSRecord:
             message_attributes[key] = {"binaryValue": val}
 
     return {
-        "messageId": msg["MessageId"],
-        "receiptHandle": msg["ReceiptHandle"],
-        "body": msg["Body"],
+        "messageId": msg.get("MessageId", ""),
+        "receiptHandle": msg.get("ReceiptHandle", ""),
+        "body": msg.get("Body", ""),
         "messageAttributes": message_attributes,
     }
 

@@ -11,6 +11,7 @@ from receipt_dynamo_stream import (
     LambdaResponse,
     ParsedStreamRecord,
     StreamMessage,
+    StreamRecordContext,
     detect_entity_type,
     get_chromadb_relevant_changes,
 )
@@ -86,8 +87,10 @@ def test_stream_message_supports_multiple_collections() -> None:
         changes={"merchant_name": FieldChange(old="old", new="new")},
         event_name="MODIFY",
         collections=(ChromaDBCollection.LINES, ChromaDBCollection.WORDS),
-        stream_record_id="abc",
-        aws_region="us-east-1",
+        context=StreamRecordContext(
+            record_id="abc",
+            aws_region="us-east-1",
+        ),
     )
 
     assert {col.value for col in message.collections} == {"lines", "words"}

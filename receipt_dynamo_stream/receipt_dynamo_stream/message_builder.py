@@ -266,8 +266,8 @@ def build_entity_change_message(
             record_snapshot=record_snapshot,
         )
 
-    except (KeyError, TypeError, ValueError, AttributeError) as exc:
-        logger.exception("Failed to build entity change message: %s", exc)
+    except (KeyError, TypeError, ValueError, AttributeError):
+        logger.exception("Failed to build entity change message")
         if metrics:
             metrics.count("EntityMessageBuildError", 1)
         return None

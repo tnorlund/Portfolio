@@ -199,7 +199,7 @@ class MetricsAccumulatorProtocol(Protocol):
         self,
         metric_name: str,
         value: Union[int, float],
-        _unit: str = "None",
+        unit: str = "None",
         dimensions: Optional[dict[str, str]] = None,
     ) -> None:
         """Accumulate gauge metric."""
