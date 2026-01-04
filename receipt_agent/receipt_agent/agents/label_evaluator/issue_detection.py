@@ -1208,30 +1208,14 @@ def evaluate_word_contexts(
     for ctx in word_contexts:
         if ctx.current_label:
             # Check labeled words
-            issue = check_position_anomaly(ctx, patterns)
-            if issue:
-                issues.append(issue)
-                continue  # One issue per word
+            # NOTE: Removed noisy checks with high false positive rates:
+            # - check_position_anomaly (position_anomaly)
+            # - check_unexpected_label_pair (unexpected_label_pair: 100% FP)
+            # - check_geometric_anomaly (geometric_anomaly: 89% FP)
+            # - check_constellation_anomaly (constellation_anomaly: 89% FP)
+            # - check_unexpected_label_multiplicity (89% FP, inside check_unexpected_label_pair)
 
-            # Check for unexpected label pair combinations first
-            issue = check_unexpected_label_pair(ctx, word_contexts, patterns)
-            if issue:
-                issues.append(issue)
-                continue
-
-            # Use geometric anomaly detection instead of simple same-line
-            # conflict
-            issue = check_geometric_anomaly(ctx, word_contexts, patterns)
-            if issue:
-                issues.append(issue)
-                continue
-
-            # Check constellation anomaly (holistic n-tuple relationships)
-            issue = check_constellation_anomaly(ctx, word_contexts, patterns)
-            if issue:
-                issues.append(issue)
-                continue
-
+            # Keep text-label conflict check (catches same text with different labels)
             issue = check_text_label_conflict(ctx, word_contexts, patterns)
             if issue:
                 issues.append(issue)
@@ -1239,6 +1223,7 @@ def evaluate_word_contexts(
         else:
             # Check unlabeled words
             # First check same-line cluster heuristic (requires visual_lines)
+            # This has the best signal: 46% true positive rate
             if visual_lines:
                 issue = check_missing_label_in_cluster(ctx, visual_lines)
                 if issue:
@@ -1246,6 +1231,7 @@ def evaluate_word_contexts(
                     continue
 
             # Then check constellation-based missing label detection
+            # This has 22% true positive rate - decent signal
             issue = check_missing_constellation_member(
                 ctx, word_contexts, patterns
             )
