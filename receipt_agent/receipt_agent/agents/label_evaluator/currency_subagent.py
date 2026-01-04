@@ -476,78 +476,158 @@ def evaluate_currency_labels(
         merchant_name=merchant_name,
     )
 
-    try:
-        response = llm.invoke(prompt)
-        response_text = (
-            response.content if hasattr(response, "content") else str(response)
-        )
+    # Try structured output first, fall back to text parsing
+    max_retries = 3
+    last_decisions = None
+    num_words = len(currency_words)
 
-        # Step 4: Parse response
-        decisions = parse_currency_evaluation_response(
-            response_text, len(currency_words)
-        )
+    # Check if LLM supports structured output
+    use_structured = hasattr(llm, "with_structured_output")
 
-        # Step 5: Format output for apply_llm_decisions
-        results = []
-        for cw, decision in zip(currency_words, decisions, strict=True):
-            wc = cw.word_context
-            results.append(
-                {
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": {
-                        "line_id": wc.word.line_id,
-                        "word_id": wc.word.word_id,
-                        "current_label": cw.current_label,
-                        "word_text": wc.word.text,
-                    },
-                    "llm_review": decision,
-                }
+    for attempt in range(max_retries):
+        try:
+            if use_structured:
+                try:
+                    structured_llm = llm.with_structured_output(
+                        CurrencyEvaluationResponse
+                    )
+                    response: CurrencyEvaluationResponse = structured_llm.invoke(prompt)
+                    decisions = response.to_ordered_list(num_words)
+                    logger.debug(
+                        "Structured output succeeded with %d evaluations", len(decisions)
+                    )
+                except Exception as struct_err:
+                    # Structured output failed, fall back to text parsing
+                    logger.warning(
+                        "Structured output failed (attempt %d), falling back to text: %s",
+                        attempt + 1,
+                        struct_err,
+                    )
+                    response = llm.invoke(prompt)
+                    response_text = (
+                        response.content
+                        if hasattr(response, "content")
+                        else str(response)
+                    )
+                    decisions = parse_currency_evaluation_response(
+                        response_text, num_words
+                    )
+            else:
+                response = llm.invoke(prompt)
+                response_text = (
+                    response.content if hasattr(response, "content") else str(response)
+                )
+                decisions = parse_currency_evaluation_response(response_text, num_words)
+
+            last_decisions = decisions
+
+            # Check if all decisions failed to parse (indicates malformed response)
+            parse_failures = sum(
+                1
+                for d in decisions
+                if "Failed to parse" in d.get("reasoning", "")
             )
 
-        # Log summary
-        decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
-        for r in results:
-            decision_counts[r["llm_review"]["decision"]] += 1
-        logger.info("Currency evaluation results: %s", decision_counts)
+            if parse_failures == 0:
+                # Success - no parse failures
+                break
+            elif parse_failures < len(decisions):
+                # Partial success - some parsed, use what we have
+                logger.info(
+                    "Partial parse success: %d/%d parsed on attempt %d",
+                    len(decisions) - parse_failures,
+                    len(decisions),
+                    attempt + 1,
+                )
+                break
+            else:
+                # All failed to parse - retry if we have attempts left
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        "All %d decisions failed to parse on attempt %d, retrying...",
+                        len(decisions),
+                        attempt + 1,
+                    )
+                else:
+                    logger.warning(
+                        "All %d decisions failed to parse after %d attempts",
+                        len(decisions),
+                        max_retries,
+                    )
 
-        return results
+        except Exception as e:
+            # Check if this is a rate limit error that should trigger Step Function retry
+            from receipt_agent.utils import (
+                BothProvidersFailedError,
+                OllamaRateLimitError,
+            )
 
-    except Exception as e:
-        # Check if this is a rate limit error that should trigger Step Function retry
-        from receipt_agent.utils import (
-            BothProvidersFailedError,
-            OllamaRateLimitError,
+            if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+                logger.error("Currency LLM rate limited, propagating for retry: %s", e)
+                raise  # Let Step Function retry handle this
+
+            logger.error("Currency LLM call failed on attempt %d: %s", attempt + 1, e)
+            if attempt == max_retries - 1:
+                # Final attempt failed - return NEEDS_REVIEW for all
+                results = []
+                for cw in currency_words:
+                    wc = cw.word_context
+                    results.append(
+                        {
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                            "issue": {
+                                "line_id": wc.word.line_id,
+                                "word_id": wc.word.word_id,
+                                "current_label": cw.current_label,
+                                "word_text": wc.word.text,
+                            },
+                            "llm_review": {
+                                "decision": "NEEDS_REVIEW",
+                                "reasoning": f"LLM call failed after {max_retries} attempts: {e}",
+                                "suggested_label": None,
+                                "confidence": "low",
+                            },
+                        }
+                    )
+                return results
+
+    # Use the last decisions we got (best effort)
+    decisions = last_decisions or [
+        {
+            "decision": "NEEDS_REVIEW",
+            "reasoning": "No response received",
+            "suggested_label": None,
+            "confidence": "low",
+        }
+        for _ in currency_words
+    ]
+
+    # Step 5: Format output for apply_llm_decisions
+    results = []
+    for cw, decision in zip(currency_words, decisions, strict=True):
+        wc = cw.word_context
+        results.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "issue": {
+                    "line_id": wc.word.line_id,
+                    "word_id": wc.word.word_id,
+                    "current_label": cw.current_label,
+                    "word_text": wc.word.text,
+                },
+                "llm_review": decision,
+            }
         )
 
-        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
-            logger.error("Currency LLM rate limited, propagating for retry: %s", e)
-            raise  # Let Step Function retry handle this
+    # Log summary
+    decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+    for r in results:
+        decision_counts[r["llm_review"]["decision"]] += 1
+    logger.info("Currency evaluation results: %s", decision_counts)
 
-        logger.error("Currency LLM call failed: %s", e)
-        # Return NEEDS_REVIEW for all words (non-rate-limit errors only)
-        results = []
-        for cw in currency_words:
-            wc = cw.word_context
-            results.append(
-                {
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": {
-                        "line_id": wc.word.line_id,
-                        "word_id": wc.word.word_id,
-                        "current_label": cw.current_label,
-                        "word_text": wc.word.text,
-                    },
-                    "llm_review": {
-                        "decision": "NEEDS_REVIEW",
-                        "reasoning": f"LLM call failed: {e}",
-                        "suggested_label": None,
-                        "confidence": "low",
-                    },
-                }
-            )
-        return results
+    return results
 
 
 # =============================================================================
