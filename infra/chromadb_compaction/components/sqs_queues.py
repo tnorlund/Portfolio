@@ -3,6 +3,11 @@ SQS Queues for ChromaDB Compaction Pipeline
 
 This module defines the SQS queue infrastructure for notifying the compactor
 about new delta files.
+
+Architecture:
+- Standard queues for high throughput (batch up to 1000)
+- Lambda sorts messages: REMOVE first, then INSERT/MODIFY
+- Within-batch deduplication prevents orphaned embeddings
 """
 
 # pylint: disable=too-many-instance-attributes  # Pulumi components need many attributes
@@ -15,15 +20,50 @@ import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions
 
 
+def _create_queue_policy_document(
+    queue_arn: Output[str], account_id: str
+) -> Output[str]:
+    """Create a queue policy document for Lambda access."""
+    return Output.all(queue_arn, account_id).apply(
+        lambda args: json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "AllowLambdaAccess",
+                        "Effect": "Allow",
+                        "Principal": {"Service": "lambda.amazonaws.com"},
+                        "Action": [
+                            "sqs:ReceiveMessage",
+                            "sqs:DeleteMessage",
+                            "sqs:GetQueueAttributes",
+                        ],
+                        "Resource": args[0],
+                    },
+                    {
+                        "Sid": "AllowAccountAccess",
+                        "Effect": "Allow",
+                        "Principal": {"AWS": f"arn:aws:iam::{args[1]}:root"},
+                        "Action": "sqs:*",
+                        "Resource": args[0],
+                    },
+                ],
+            }
+        )
+    )
+
+
 class ChromaDBQueues(ComponentResource):
     """
     ComponentResource that creates SQS queues for ChromaDB delta notifications.
 
-    Creates separate queues for lines and words collections:
+    Creates Standard queues for high throughput:
     - Lines queue for line embedding updates
     - Words queue for word embedding updates
     - Dead letter queues for failed messages
-    - Proper visibility timeout for Lambda processing
+
+    The compactor Lambda handles ordering by sorting messages within each batch
+    (REMOVE first) and using within-batch deduplication to prevent orphans.
     """
 
     def __init__(
@@ -42,15 +82,14 @@ class ChromaDBQueues(ComponentResource):
         """
         super().__init__("chromadb:queues:SQSQueues", name, None, opts)
 
-        # Get stack
         if stack is None:
             stack = pulumi.get_stack()
 
-        # Create dead letter queues for each collection (FIFO)
+        account_id = aws.get_caller_identity().account_id
+
+        # Create dead letter queues (Standard)
         self.lines_dlq = aws.sqs.Queue(
             f"{name}-lines-dlq",
-            fifo_queue=True,
-            content_based_deduplication=True,
             message_retention_seconds=1209600,  # 14 days
             visibility_timeout_seconds=300,  # 5 minutes
             receive_wait_time_seconds=0,  # Short polling
@@ -65,8 +104,6 @@ class ChromaDBQueues(ComponentResource):
 
         self.words_dlq = aws.sqs.Queue(
             f"{name}-words-dlq",
-            fifo_queue=True,
-            content_based_deduplication=True,
             message_retention_seconds=1209600,  # 14 days
             visibility_timeout_seconds=300,  # 5 minutes
             receive_wait_time_seconds=0,  # Short polling
@@ -79,22 +116,16 @@ class ChromaDBQueues(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create lines queue with redrive policy (FIFO)
+        # Create lines queue (Standard for high throughput)
         self.lines_queue = aws.sqs.Queue(
             f"{name}-lines-queue",
-            fifo_queue=True,
-            content_based_deduplication=True,
-            message_retention_seconds=345600,
+            message_retention_seconds=345600,  # 4 days
             # Visibility timeout must be >= Lambda timeout per AWS requirements.
-            # Lambda typically completes in ~25s, timeout set to 120s for headroom.
             visibility_timeout_seconds=120,
-            receive_wait_time_seconds=20,
+            receive_wait_time_seconds=20,  # Long polling
             redrive_policy=Output.all(self.lines_dlq.arn).apply(
                 lambda args: json.dumps(
-                    {
-                        "deadLetterTargetArn": args[0],
-                        "maxReceiveCount": 3,  # Retry 3 times before DLQ
-                    }
+                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 3}
                 )
             ),
             tags={
@@ -106,22 +137,15 @@ class ChromaDBQueues(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create words queue with redrive policy (FIFO)
+        # Create words queue (Standard for high throughput)
         self.words_queue = aws.sqs.Queue(
             f"{name}-words-queue",
-            fifo_queue=True,
-            content_based_deduplication=True,
-            message_retention_seconds=345600,
-            # Visibility timeout must be >= Lambda timeout per AWS requirements.
-            # Lambda typically completes in ~25s, timeout set to 120s for headroom.
+            message_retention_seconds=345600,  # 4 days
             visibility_timeout_seconds=120,
-            receive_wait_time_seconds=20,
+            receive_wait_time_seconds=20,  # Long polling
             redrive_policy=Output.all(self.words_dlq.arn).apply(
                 lambda args: json.dumps(
-                    {
-                        "deadLetterTargetArn": args[0],
-                        "maxReceiveCount": 3,  # Retry 3 times before DLQ
-                    }
+                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 3}
                 )
             ),
             tags={
@@ -133,82 +157,18 @@ class ChromaDBQueues(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create queue policies for Lambda access
-        self.lines_queue_policy_document = Output.all(
-            self.lines_queue.arn, aws.get_caller_identity().account_id
-        ).apply(
-            lambda args: json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Sid": "AllowLambdaAccess",
-                            "Effect": "Allow",
-                            "Principal": {"Service": "lambda.amazonaws.com"},
-                            "Action": [
-                                "sqs:ReceiveMessage",
-                                "sqs:DeleteMessage",
-                                "sqs:GetQueueAttributes",
-                            ],
-                            "Resource": args[0],
-                        },
-                        {
-                            "Sid": "AllowAccountAccess",
-                            "Effect": "Allow",
-                            "Principal": {
-                                "AWS": f"arn:aws:iam::{args[1]}:root"
-                            },
-                            "Action": "sqs:*",
-                            "Resource": args[0],
-                        },
-                    ],
-                }
-            )
-        )
-
-        self.words_queue_policy_document = Output.all(
-            self.words_queue.arn, aws.get_caller_identity().account_id
-        ).apply(
-            lambda args: json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Sid": "AllowLambdaAccess",
-                            "Effect": "Allow",
-                            "Principal": {"Service": "lambda.amazonaws.com"},
-                            "Action": [
-                                "sqs:ReceiveMessage",
-                                "sqs:DeleteMessage",
-                                "sqs:GetQueueAttributes",
-                            ],
-                            "Resource": args[0],
-                        },
-                        {
-                            "Sid": "AllowAccountAccess",
-                            "Effect": "Allow",
-                            "Principal": {
-                                "AWS": f"arn:aws:iam::{args[1]}:root"
-                            },
-                            "Action": "sqs:*",
-                            "Resource": args[0],
-                        },
-                    ],
-                }
-            )
-        )
-
+        # Create queue policies
         self.lines_queue_policy = aws.sqs.QueuePolicy(
             f"{name}-lines-queue-policy",
             queue_url=self.lines_queue.url,
-            policy=self.lines_queue_policy_document,
+            policy=_create_queue_policy_document(self.lines_queue.arn, account_id),
             opts=ResourceOptions(parent=self),
         )
 
         self.words_queue_policy = aws.sqs.QueuePolicy(
             f"{name}-words-queue-policy",
             queue_url=self.words_queue.url,
-            policy=self.words_queue_policy_document,
+            policy=_create_queue_policy_document(self.words_queue.arn, account_id),
             opts=ResourceOptions(parent=self),
         )
 

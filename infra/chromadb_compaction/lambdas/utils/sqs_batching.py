@@ -1,7 +1,7 @@
 """SQS batching utilities for Lambda compaction handlers.
 
-Provides Phase 2 optimization for fetching and deleting SQS messages
-to amortize S3 transfer costs across larger batches.
+With Standard queues, Lambda event source mapping provides batch size up to 1000.
+This module provides utilities for manual message fetching and cleanup if needed.
 """
 # pylint: disable=import-error
 # import-error: aws_clients is bundled into Lambda package
@@ -101,9 +101,8 @@ def fetch_additional_messages(
 ) -> tuple[list[SQSRecord], list[str]]:
     """Greedily fetch additional messages from SQS queue.
 
-    Phase 2 optimization: Since FIFO queues limit batch size to 10,
-    we fetch more messages within the handler to process them in
-    a single compaction cycle, amortizing the S3 transfer cost.
+    With Standard queues, Lambda's event source mapping provides batch size
+    up to 1000. This function can fetch more if needed, up to max_messages.
 
     Args:
         queue_url: The SQS queue URL to fetch from
@@ -122,7 +121,7 @@ def fetch_additional_messages(
     remaining = max_messages - current_count
 
     while remaining > 0:
-        # FIFO queues allow max 10 messages per receive
+        # SQS allows max 10 messages per receive_message call
         batch_size = min(10, remaining)
 
         try:

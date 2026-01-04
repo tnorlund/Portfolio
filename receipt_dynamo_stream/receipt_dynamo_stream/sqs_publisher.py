@@ -1,5 +1,9 @@
 """
 SQS publishing utilities for stream messages.
+
+Publishes to Standard SQS queues for high throughput (batch size 1000).
+The compactor Lambda handles ordering by sorting REMOVE first and using
+within-batch deduplication to prevent orphaned embeddings.
 """
 
 from __future__ import annotations
@@ -86,11 +90,12 @@ def _build_sqs_entry(
     message_dict: dict[str, object],
     collection: ChromaDBCollection,
 ) -> dict[str, object]:
-    """Build a single SQS batch entry."""
+    """Build a single SQS batch entry for Standard queues."""
     return {
         "Id": entry_id,
         "MessageBody": json.dumps(message_dict),
-        "MessageGroupId": f"compaction:{collection.value}",
+        # No MessageGroupId - Standard queues don't support it
+        # Lambda handles ordering by sorting REMOVE first within each batch
         "MessageAttributes": {
             "source": {
                 "StringValue": "dynamodb_stream",

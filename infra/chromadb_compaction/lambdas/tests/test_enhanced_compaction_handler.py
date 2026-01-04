@@ -541,6 +541,221 @@ class TestProcessSQSMessages:
         assert result["batchItemFailures"][0]["itemIdentifier"] == "msg-2"
 
 
+class TestSortAndDeduplicateMessages:
+    """Test the sort_and_deduplicate_messages function."""
+
+    def test_sort_remove_before_insert(self, mock_logger):
+        """Test that REMOVE messages are sorted before INSERT/MODIFY."""
+        from receipt_dynamo.constants import ChromaDBCollection
+        from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
+
+        # Create messages in wrong order (INSERT first, then REMOVE)
+        insert_msg = StreamMessage(
+            entity_type="RECEIPT_PLACE",
+            entity_data={"image_id": "img-1", "receipt_id": 1},
+            changes={},
+            event_name="INSERT",
+            collections=(ChromaDBCollection.LINES,),
+            context=StreamRecordContext(
+                timestamp="2025-01-01T00:00:01Z",
+                record_id="msg-insert",
+                aws_region="us-east-1",
+            ),
+        )
+        remove_msg = StreamMessage(
+            entity_type="RECEIPT_PLACE",
+            entity_data={"image_id": "img-1", "receipt_id": 1},
+            changes={},
+            event_name="REMOVE",
+            collections=(ChromaDBCollection.LINES,),
+            context=StreamRecordContext(
+                timestamp="2025-01-01T00:00:02Z",
+                record_id="msg-remove",
+                aws_region="us-east-1",
+            ),
+        )
+
+        # Import and test
+        from enhanced_compaction_handler import sort_and_deduplicate_messages
+
+        result = sort_and_deduplicate_messages([insert_msg, remove_msg])
+
+        # REMOVE should come first, INSERT should be dropped (same entity)
+        assert len(result) == 1
+        assert result[0].event_name == "REMOVE"
+
+    def test_dedup_drops_insert_after_remove_same_entity(self, mock_logger):
+        """Test that INSERT is dropped when REMOVE exists for same entity."""
+        from receipt_dynamo.constants import ChromaDBCollection
+        from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
+
+        remove_msg = StreamMessage(
+            entity_type="RECEIPT_WORD",
+            entity_data={
+                "image_id": "img-1",
+                "receipt_id": 1,
+                "line_id": 1,
+                "word_id": 1,
+            },
+            changes={},
+            event_name="REMOVE",
+            collections=(ChromaDBCollection.WORDS,),
+            context=StreamRecordContext(
+                timestamp="2025-01-01T00:00:00Z",
+                record_id="msg-remove",
+                aws_region="us-east-1",
+            ),
+        )
+        insert_msg = StreamMessage(
+            entity_type="RECEIPT_WORD",
+            entity_data={
+                "image_id": "img-1",
+                "receipt_id": 1,
+                "line_id": 1,
+                "word_id": 1,
+            },
+            changes={},
+            event_name="INSERT",
+            collections=(ChromaDBCollection.WORDS,),
+            context=StreamRecordContext(
+                timestamp="2025-01-01T00:00:01Z",
+                record_id="msg-insert",
+                aws_region="us-east-1",
+            ),
+        )
+
+        from enhanced_compaction_handler import sort_and_deduplicate_messages
+
+        result = sort_and_deduplicate_messages([insert_msg, remove_msg])
+
+        # Only REMOVE should remain, INSERT dropped
+        assert len(result) == 1
+        assert result[0].context.record_id == "msg-remove"
+
+    def test_dedup_keeps_insert_for_different_entity(self, mock_logger):
+        """Test that INSERT is kept when it's for a different entity."""
+        from receipt_dynamo.constants import ChromaDBCollection
+        from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
+
+        remove_msg = StreamMessage(
+            entity_type="RECEIPT_WORD",
+            entity_data={
+                "image_id": "img-1",
+                "receipt_id": 1,
+                "line_id": 1,
+                "word_id": 1,
+            },
+            changes={},
+            event_name="REMOVE",
+            collections=(ChromaDBCollection.WORDS,),
+            context=StreamRecordContext(
+                timestamp="2025-01-01T00:00:00Z",
+                record_id="msg-remove",
+                aws_region="us-east-1",
+            ),
+        )
+        insert_msg = StreamMessage(
+            entity_type="RECEIPT_WORD",
+            entity_data={
+                "image_id": "img-1",
+                "receipt_id": 1,
+                "line_id": 1,
+                "word_id": 2,  # Different word_id
+            },
+            changes={},
+            event_name="INSERT",
+            collections=(ChromaDBCollection.WORDS,),
+            context=StreamRecordContext(
+                timestamp="2025-01-01T00:00:01Z",
+                record_id="msg-insert",
+                aws_region="us-east-1",
+            ),
+        )
+
+        from enhanced_compaction_handler import sort_and_deduplicate_messages
+
+        result = sort_and_deduplicate_messages([insert_msg, remove_msg])
+
+        # Both should remain (different entities)
+        assert len(result) == 2
+        # REMOVE first
+        assert result[0].event_name == "REMOVE"
+        assert result[1].event_name == "INSERT"
+
+    def test_multiple_removes_and_inserts(self, mock_logger):
+        """Test with mixed batch of REMOVEs and INSERTs."""
+        from receipt_dynamo.constants import ChromaDBCollection
+        from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
+
+        messages = [
+            # Entity 1: INSERT then REMOVE
+            StreamMessage(
+                entity_type="RECEIPT_PLACE",
+                entity_data={"image_id": "img-1", "receipt_id": 1},
+                changes={},
+                event_name="INSERT",
+                collections=(ChromaDBCollection.LINES,),
+                context=StreamRecordContext(
+                    timestamp="2025-01-01T00:00:00Z",
+                    record_id="e1-insert",
+                    aws_region="us-east-1",
+                ),
+            ),
+            StreamMessage(
+                entity_type="RECEIPT_PLACE",
+                entity_data={"image_id": "img-1", "receipt_id": 1},
+                changes={},
+                event_name="REMOVE",
+                collections=(ChromaDBCollection.LINES,),
+                context=StreamRecordContext(
+                    timestamp="2025-01-01T00:00:01Z",
+                    record_id="e1-remove",
+                    aws_region="us-east-1",
+                ),
+            ),
+            # Entity 2: Only INSERT
+            StreamMessage(
+                entity_type="RECEIPT_PLACE",
+                entity_data={"image_id": "img-2", "receipt_id": 2},
+                changes={},
+                event_name="INSERT",
+                collections=(ChromaDBCollection.LINES,),
+                context=StreamRecordContext(
+                    timestamp="2025-01-01T00:00:02Z",
+                    record_id="e2-insert",
+                    aws_region="us-east-1",
+                ),
+            ),
+            # Entity 3: Only REMOVE
+            StreamMessage(
+                entity_type="RECEIPT_PLACE",
+                entity_data={"image_id": "img-3", "receipt_id": 3},
+                changes={},
+                event_name="REMOVE",
+                collections=(ChromaDBCollection.LINES,),
+                context=StreamRecordContext(
+                    timestamp="2025-01-01T00:00:03Z",
+                    record_id="e3-remove",
+                    aws_region="us-east-1",
+                ),
+            ),
+        ]
+
+        from enhanced_compaction_handler import sort_and_deduplicate_messages
+
+        result = sort_and_deduplicate_messages(messages)
+
+        # Should have: e1-remove, e3-remove, e2-insert
+        # (e1-insert dropped because e1 was deleted)
+        assert len(result) == 3
+        record_ids = [m.context.record_id for m in result]
+        # REMOVEs first
+        assert record_ids[0] in ("e1-remove", "e3-remove")
+        assert record_ids[1] in ("e1-remove", "e3-remove")
+        # INSERT last
+        assert record_ids[2] == "e2-insert"
+
+
 class TestLambdaHandler:
     """Test the lambda_handler function."""
 
