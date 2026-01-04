@@ -264,6 +264,7 @@ def _download_and_combine_poll_results(
 
         if result_bucket and result_key:
             # Download from S3
+            tmp_file_path = None
             try:
                 with tempfile.NamedTemporaryFile(
                     mode="r", suffix=".json", delete=False
@@ -283,8 +284,6 @@ def _download_and_combine_poll_results(
                 elif isinstance(result, dict):
                     combined.append(result)
 
-                os.unlink(tmp_file_path)
-
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "Unknown")
                 logger.exception(
@@ -295,7 +294,7 @@ def _download_and_combine_poll_results(
                     error_code,
                 )
                 # Continue with other results
-            except BotoCoreError as e:
+            except BotoCoreError:
                 logger.exception(
                     "Botocore error downloading poll result: "
                     "bucket=%s, key=%s",
@@ -303,6 +302,13 @@ def _download_and_combine_poll_results(
                     result_key,
                 )
                 # Continue with other results
+            finally:
+                # Clean up temp file regardless of success or failure
+                if tmp_file_path:
+                    try:
+                        os.unlink(tmp_file_path)
+                    except OSError:
+                        pass  # Temp file cleanup failure is non-critical
         else:
             # Legacy format: direct result object (has delta_key or other data)
             combined.append(ref)
