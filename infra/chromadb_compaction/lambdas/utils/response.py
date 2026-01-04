@@ -5,10 +5,10 @@ Handles formatting responses appropriately for different invocation sources
 """
 
 import json
-from typing import Any, Dict
+from typing import Any, Dict, Mapping
 
 
-def is_step_function_invocation(event: Dict[str, Any]) -> bool:
+def is_step_function_invocation(event: Mapping[str, Any]) -> bool:
     """Check if this Lambda is being invoked from Step Functions.
 
     Step Functions invocations can be detected by:
@@ -37,7 +37,7 @@ def is_step_function_invocation(event: Dict[str, Any]) -> bool:
 
 def format_response(
     data: Dict[str, Any],
-    event: Dict[str, Any],
+    event: Mapping[str, Any],
     is_error: bool = False,
     status_code: int | None = None,
     correlation_id: str | None = None,

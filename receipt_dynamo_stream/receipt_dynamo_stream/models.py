@@ -12,6 +12,8 @@ from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
+from receipt_dynamo_stream.types import DynamoDBItem
+
 StreamEntity: TypeAlias = (
     Receipt | ReceiptLine | ReceiptPlace | ReceiptWord | ReceiptWordLabel
 )
@@ -73,7 +75,7 @@ class StreamMessage:  # pylint: disable=too-many-instance-attributes
     timestamp: Optional[str] = None
     stream_record_id: Optional[str] = None
     aws_region: Optional[str] = None
-    record_snapshot: Optional[Mapping[str, object]] = None
+    record_snapshot: Optional[DynamoDBItem] = None
 
 
 __all__ = [

@@ -29,11 +29,7 @@ from receipt_dynamo_stream.parsing import (
     parse_compaction_run,
     parse_stream_record,
 )
-from receipt_dynamo_stream.types import (
-    DynamoDBItem,
-    DynamoDBStreamRecord,
-    StreamRecordDynamoDB,
-)
+from receipt_dynamo_stream.types import DynamoDBItem, DynamoDBStreamRecord
 
 logger = logging.getLogger(__name__)
 
@@ -87,14 +83,11 @@ def build_compaction_run_messages(
     messages: list[StreamMessage] = []
 
     try:
-        # Type ignores needed for defensive .get() with defaults
-        dynamodb: StreamRecordDynamoDB = record.get(  # type: ignore
-            "dynamodb", {}
-        )
-        new_image: Optional[DynamoDBItem] = dynamodb.get("NewImage")
-        keys = dynamodb.get("Keys", {})  # type: ignore[assignment]
-        pk = keys.get("PK", {}).get("S", "")  # type: ignore
-        sk = keys.get("SK", {}).get("S", "")  # type: ignore
+        dynamodb = record["dynamodb"]
+        new_image = dynamodb.get("NewImage")
+        keys = dynamodb["Keys"]
+        pk = keys["PK"]["S"]
+        sk = keys["SK"]["S"]
 
         if not (new_image and is_compaction_run(pk, sk)):
             return messages
@@ -126,7 +119,7 @@ def build_compaction_run_messages(
                     timestamp=datetime.now(timezone.utc).isoformat(),
                     stream_record_id=str(record.get("eventID", "unknown")),
                     aws_region=str(record.get("awsRegion", "unknown")),
-                    record_snapshot=new_image,  # type: ignore[arg-type]
+                    record_snapshot=new_image,
                 )
             )
 
@@ -155,16 +148,13 @@ def build_compaction_run_completion_messages(
     messages: list[StreamMessage] = []
 
     try:
-        # Type ignores needed for defensive .get() with defaults
-        dynamodb: StreamRecordDynamoDB = record.get(  # type: ignore
-            "dynamodb", {}
-        )
-        new_image: Optional[DynamoDBItem] = dynamodb.get("NewImage")
-        keys = dynamodb.get("Keys", {})  # type: ignore[assignment]
-        pk = keys.get("PK", {}).get("S", "")  # type: ignore
-        sk = keys.get("SK", {}).get("S", "")  # type: ignore
+        dynamodb = record["dynamodb"]
+        new_image = dynamodb.get("NewImage")
+        keys = dynamodb["Keys"]
+        pk = keys["PK"]["S"]
+        sk = keys["SK"]["S"]
 
-        if not new_image or not keys:
+        if not new_image:
             return messages
         if not is_compaction_run(pk, sk):
             return messages
@@ -188,7 +178,7 @@ def build_compaction_run_completion_messages(
                     timestamp=datetime.now(timezone.utc).isoformat(),
                     stream_record_id=str(record.get("eventID", "unknown")),
                     aws_region=str(record.get("awsRegion", "unknown")),
-                    record_snapshot=new_image,  # type: ignore[arg-type]
+                    record_snapshot=new_image,
                 )
             )
 

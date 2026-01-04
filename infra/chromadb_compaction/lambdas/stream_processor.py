@@ -122,7 +122,7 @@ def lambda_handler(  # pylint: disable=too-many-locals
             }
             return format_response(
                 error_data,
-                event,  # type: ignore[arg-type]
+                event,
                 correlation_id=correlation_id,
             )
 
@@ -241,7 +241,7 @@ def lambda_handler(  # pylint: disable=too-many-locals
 
         return format_response(
             response.to_dict(),
-            event,  # type: ignore[arg-type]
+            event,
             correlation_id=correlation_id,
         )
 
@@ -278,7 +278,7 @@ def lambda_handler(  # pylint: disable=too-many-locals
 
         return format_response(
             error_response,
-            event,  # type: ignore[arg-type]
+            event,
             is_error=True,
             correlation_id=correlation_id,
         )
