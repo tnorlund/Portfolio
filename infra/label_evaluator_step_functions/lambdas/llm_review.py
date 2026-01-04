@@ -96,6 +96,7 @@ from receipt_agent.prompts.label_evaluator import (
     build_receipt_context_prompt,
     parse_batched_llm_response,
 )
+from receipt_agent.prompts.structured_outputs import BatchedReviewResponse
 from receipt_agent.utils.chroma_helpers import (
     compute_label_distribution,
     compute_merchant_breakdown,
@@ -534,11 +535,51 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                             line_item_patterns=line_item_patterns,
                         )
 
-                        # LLM call with retry on JSON parse failure
+                        # LLM call with structured output (preferred) or text parsing fallback
                         max_retries = 3
                         chunk_reviews = None
+                        use_structured = hasattr(llm_invoker, "with_structured_output")
 
                         for attempt in range(max_retries):
+                            llm_call_count += 1
+
+                            if use_structured:
+                                # Try structured output first (API-level schema enforcement)
+                                try:
+                                    structured_invoker = llm_invoker.with_structured_output(
+                                        BatchedReviewResponse
+                                    )
+                                    response: BatchedReviewResponse = structured_invoker.invoke(
+                                        [HumanMessage(content=prompt)],
+                                        config={
+                                            "run_name": f"llm_review_structured:{len(issues_with_context)}_issues",
+                                            "metadata": {
+                                                "issue_count": len(issues_with_context),
+                                                "prompt_length": len(prompt),
+                                                "attempt": attempt + 1,
+                                                "structured": True,
+                                            },
+                                        },
+                                    )
+                                    chunk_reviews = response.to_ordered_list(
+                                        len(issues_with_context)
+                                    )
+                                    logger.debug(
+                                        "Structured output succeeded with %d reviews",
+                                        len(chunk_reviews),
+                                    )
+                                    break  # Success - exit retry loop
+                                except Exception as struct_err:
+                                    logger.warning(
+                                        "Structured output failed (attempt %d/%d), "
+                                        "falling back to text parsing: %s",
+                                        attempt + 1,
+                                        max_retries,
+                                        struct_err,
+                                    )
+                                    # Fall through to text parsing
+
+                            # Text parsing fallback
                             response = llm_invoker.invoke(
                                 [HumanMessage(content=prompt)],
                                 config={
@@ -547,10 +588,10 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                                         "issue_count": len(issues_with_context),
                                         "prompt_length": len(prompt),
                                         "attempt": attempt + 1,
+                                        "structured": False,
                                     },
                                 },
                             )
-                            llm_call_count += 1
 
                             try:
                                 chunk_reviews = parse_batched_llm_response(

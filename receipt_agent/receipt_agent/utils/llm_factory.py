@@ -848,6 +848,58 @@ class ResilientLLM:
             "overall_success_rate": total_successes / total if total > 0 else 1.0,
         }
 
+    def with_structured_output(self, schema: type) -> "ResilientLLM":
+        """
+        Create a new ResilientLLM with structured output for all providers.
+
+        Uses LangChain's with_structured_output() to enforce JSON schema at
+        the API level (via function calling or JSON mode).
+
+        Args:
+            schema: A Pydantic model class defining the expected output structure
+
+        Returns:
+            New ResilientLLM instance with structured output enabled on all providers
+
+        Example:
+            from pydantic import BaseModel
+
+            class ReviewResponse(BaseModel):
+                decision: str
+                reasoning: str
+
+            structured_llm = resilient_llm.with_structured_output(ReviewResponse)
+            response = structured_llm.invoke(messages)  # Returns ReviewResponse object
+        """
+
+        def wrap_with_structured(llm: Any, name: str) -> Any:
+            """Wrap an LLM with structured output if supported."""
+            if llm is None:
+                return None
+            if hasattr(llm, "with_structured_output"):
+                try:
+                    return llm.with_structured_output(schema)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to enable structured output for %s: %s", name, e
+                    )
+                    return llm
+            else:
+                logger.debug(
+                    "%s does not support with_structured_output", name
+                )
+                return llm
+
+        return ResilientLLM(
+            primary_llm=wrap_with_structured(self.primary_llm, "primary"),
+            fallback_free_llm=wrap_with_structured(
+                self.fallback_free_llm, "fallback_free"
+            ),
+            fallback_paid_llm=wrap_with_structured(
+                self.fallback_paid_llm, "fallback_paid"
+            ),
+        )
+
 
 def create_resilient_llm(
     temperature: float = 0.0,
