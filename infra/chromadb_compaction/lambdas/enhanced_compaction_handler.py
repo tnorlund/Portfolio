@@ -7,9 +7,24 @@ This handler processes DynamoDB stream messages for ChromaDB compaction by:
 4. Maintaining EMF metrics and structured logging
 
 Business logic lives in receipt_chroma package for reusability.
+
+Lambda Bundling:
+    This Lambda is bundled by Pulumi with a specific directory structure:
+    - `utils/` is copied directly into the Lambda package (local module)
+    - `receipt_chroma`, `receipt_dynamo`, `receipt_dynamo_stream` are installed
+      from the monorepo as pip packages
+    - Third-party deps are installed via requirements.txt
+
+    When running pylint locally, these imports may fail because:
+    - `utils` is not on PYTHONPATH (it's relative to Lambda root)
+    - Monorepo packages may not be installed in the local venv
+
+    The Lambda runtime has all dependencies available via the bundled package.
 """
 
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,import-error
+# duplicate-code: Some patterns shared with stream_processor
+# import-error: utils is bundled into Lambda package, not available locally
 import functools
 import gc
 import json

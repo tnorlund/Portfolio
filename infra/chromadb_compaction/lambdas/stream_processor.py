@@ -10,12 +10,25 @@ Focuses on:
 - RECEIPT_WORD_LABEL entities (word label changes)
 - COMPACTION_RUN entities (delta compaction jobs)
 - Both MODIFY and REMOVE operations
+
+Lambda Bundling:
+    This Lambda is bundled by Pulumi with a specific directory structure:
+    - `utils/` is copied directly into the Lambda package (local module)
+    - `receipt_dynamo_stream` is installed from the monorepo as a pip package
+    - Third-party deps are installed via requirements.txt
+
+    When running pylint locally, these imports fail because:
+    - `utils` is not on PYTHONPATH (it's relative to Lambda root)
+    - `receipt_dynamo_stream` may not be installed in the local venv
+
+    The Lambda runtime has all dependencies available via the bundled package.
 """
 
-# pylint: disable=duplicate-code,no-name-in-module,wrong-import-order
-# Some duplication with enhanced_compaction_handler is expected
+# pylint: disable=duplicate-code,no-name-in-module,wrong-import-order,import-error
+# duplicate-code: Some patterns shared with enhanced_compaction_handler
 # no-name-in-module: receipt_dynamo_stream is installed at Lambda runtime
 # wrong-import-order: utils is local to Lambda, not third-party
+# import-error: utils is bundled into Lambda package, not available locally
 
 import os
 import time
