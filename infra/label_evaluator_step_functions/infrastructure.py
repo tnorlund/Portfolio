@@ -1101,7 +1101,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
 
         # Phase 2 uses higher concurrency since patterns are cached
         # LLM review has rate limiting and circuit breakers to handle load
-        phase2_concurrency = 32
+        phase2_concurrency = 16
 
         definition = {
             "Comment": f"Label Evaluator Two-Phase (Phase1={phase1_concurrency}, Phase2={phase2_concurrency})",
@@ -1588,6 +1588,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                 "execution_id.$": "$.execution_id",
                                                 "batch_bucket.$": "$.batch_bucket",
                                                 "merchant_name.$": "$.receipt.merchant_name",
+                                                "merchant_receipt_count.$": "$.receipt.merchant_receipt_count",
                                                 "results_s3_key.$": "$.parallel_results[0].results_s3_key",
                                                 "image_id.$": "$.parallel_results[0].image_id",
                                                 "receipt_id.$": "$.parallel_results[0].receipt_id",

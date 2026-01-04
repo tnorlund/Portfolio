@@ -160,8 +160,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             receipts_by_merchant.pop(merchant_name, None)
 
     # Flatten receipts into a single list, sorted by merchant for S3 cache locality
+    # Add merchant_receipt_count to each receipt now that we have final counts
     all_receipts = []
     for merchant_name in sorted(receipts_by_merchant.keys()):
+        receipt_count = merchant_counts[merchant_name]
+        for receipt in receipts_by_merchant[merchant_name]:
+            receipt["merchant_receipt_count"] = receipt_count
         all_receipts.extend(receipts_by_merchant[merchant_name])
 
     logger.info(
