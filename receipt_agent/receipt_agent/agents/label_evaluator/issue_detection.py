@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Tuple
 
 from receipt_agent.agents.label_evaluator.state import (
     ConstellationGeometry,
+    DrillDownWord,
     EvaluationIssue,
     LabelPairGeometry,
     MerchantPatterns,
@@ -659,6 +660,48 @@ def check_constellation_anomaly(
         z_score = deviation / expected.std_deviation
         if z_score > threshold_std:
             constellation_str = " + ".join(constellation)
+
+            # Compute drill-down for all words with the flagged label
+            # This identifies which specific word(s) are likely culprits
+            drill_down_words: List[DrillDownWord] = []
+            culprit_threshold = threshold_std * expected.std_deviation
+
+            for other_ctx in all_contexts:
+                if (
+                    other_ctx.current_label is None
+                    or other_ctx.current_label.label != label
+                ):
+                    continue
+
+                # Get this word's actual offset from constellation centroid
+                word_centroid = other_ctx.word.calculate_centroid()
+                word_offset = (
+                    word_centroid[0] - actual_centroid[0],
+                    word_centroid[1] - actual_centroid[1],
+                )
+
+                # Calculate deviation from expected position
+                word_deviation = math.sqrt(
+                    (word_offset[0] - expected.mean_dx) ** 2
+                    + (word_offset[1] - expected.mean_dy) ** 2
+                )
+
+                drill_down_words.append(
+                    DrillDownWord(
+                        word_id=other_ctx.word.word_id,
+                        line_id=other_ctx.word.line_id,
+                        text=other_ctx.word.text,
+                        position=(other_ctx.normalized_x, other_ctx.normalized_y),
+                        expected_offset=(expected.mean_dx, expected.mean_dy),
+                        actual_offset=word_offset,
+                        deviation=word_deviation,
+                        is_culprit=word_deviation > culprit_threshold,
+                    )
+                )
+
+            # Sort by deviation descending (highest deviation first)
+            drill_down_words.sort(key=lambda w: w.deviation, reverse=True)
+
             return EvaluationIssue(
                 issue_type="constellation_anomaly",
                 word=ctx.word,
@@ -676,6 +719,7 @@ def check_constellation_anomaly(
                     "group."
                 ),
                 word_context=ctx,
+                drill_down=drill_down_words,
             )
 
     return None

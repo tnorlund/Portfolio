@@ -585,20 +585,32 @@ def create_label_evaluator_graph(
         # Convert EvaluationIssue objects to dicts for the new module
         issues_as_dicts = []
         for issue in state.issues_found:
-            issues_as_dicts.append(
-                {
-                    "word_text": issue.word.text,
-                    "line_id": issue.word.line_id,
-                    "word_id": issue.word.word_id,
-                    "image_id": issue.word.image_id,
-                    "receipt_id": issue.word.receipt_id,
-                    "current_label": issue.current_label,
-                    "type": issue.issue_type,
-                    "reasoning": issue.reasoning,
-                    "suggested_label": issue.suggested_label,
-                    "suggested_status": issue.suggested_status,
-                }
-            )
+            issue_dict = {
+                "word_text": issue.word.text,
+                "line_id": issue.word.line_id,
+                "word_id": issue.word.word_id,
+                "image_id": issue.word.image_id,
+                "receipt_id": issue.word.receipt_id,
+                "current_label": issue.current_label,
+                "type": issue.issue_type,
+                "reasoning": issue.reasoning,
+                "suggested_label": issue.suggested_label,
+                "suggested_status": issue.suggested_status,
+            }
+            # Add drill-down for constellation anomalies
+            if issue.drill_down:
+                issue_dict["drill_down"] = [
+                    {
+                        "word_id": w.word_id,
+                        "line_id": w.line_id,
+                        "text": w.text,
+                        "position": w.position,
+                        "deviation": w.deviation,
+                        "is_culprit": w.is_culprit,
+                    }
+                    for w in issue.drill_down
+                ]
+            issues_as_dicts.append(issue_dict)
 
         # Convert words and labels to dicts for the new module
         words_as_dicts = []
@@ -1239,23 +1251,41 @@ async def run_compute_only(
         merchant_patterns = final_state.get("merchant_patterns")
         error = final_state.get("error")
 
+        # Build issue list with drill_down for constellation anomalies
+        issues_list = []
+        for issue in issues_found:
+            issue_dict = {
+                "type": issue.issue_type,
+                "word_text": issue.word.text,
+                "word_id": issue.word.word_id,
+                "line_id": issue.word.line_id,
+                "current_label": issue.current_label,
+                "suggested_status": issue.suggested_status,
+                "suggested_label": issue.suggested_label,
+                "reasoning": issue.reasoning,
+            }
+            # Include drill_down for constellation anomalies
+            if issue.drill_down:
+                issue_dict["drill_down"] = [
+                    {
+                        "word_id": w.word_id,
+                        "line_id": w.line_id,
+                        "text": w.text,
+                        "position": w.position,
+                        "expected_offset": w.expected_offset,
+                        "actual_offset": w.actual_offset,
+                        "deviation": w.deviation,
+                        "is_culprit": w.is_culprit,
+                    }
+                    for w in issue.drill_down
+                ]
+            issues_list.append(issue_dict)
+
         result = {
             "image_id": state.image_id,
             "receipt_id": state.receipt_id,
             "issues_found": len(issues_found),
-            "issues": [
-                {
-                    "type": issue.issue_type,
-                    "word_text": issue.word.text,
-                    "word_id": issue.word.word_id,
-                    "line_id": issue.word.line_id,
-                    "current_label": issue.current_label,
-                    "suggested_status": issue.suggested_status,
-                    "suggested_label": issue.suggested_label,
-                    "reasoning": issue.reasoning,
-                }
-                for issue in issues_found
-            ],
+            "issues": issues_list,
             "error": error,
         }
 

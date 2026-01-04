@@ -733,11 +733,43 @@ def build_receipt_context_prompt(
             "\n".join(similar_lines) if similar_lines else "No similar words found"
         )
 
+        # Build drill-down section for constellation anomalies
+        drill_down_text = ""
+        drill_down = issue.get("drill_down")
+        if drill_down and issue_type == "constellation_anomaly":
+            culprits = [w for w in drill_down if w.get("is_culprit")]
+            non_culprits = [w for w in drill_down if not w.get("is_culprit")]
+
+            drill_down_lines = [
+                f"\n**Drill-Down Analysis** ({len(drill_down)} words with this label):"
+            ]
+
+            if culprits:
+                drill_down_lines.append("Likely culprits (deviation > 2σ):")
+                for w in culprits[:3]:  # Top 3 culprits
+                    pos = w.get("position", (0, 0))
+                    drill_down_lines.append(
+                        f'  - "{w.get("text")}" (dev={w.get("deviation", 0):.2f}) '
+                        f"at y={pos[1]:.3f}"
+                    )
+
+            if non_culprits:
+                drill_down_lines.append("Correctly positioned (for comparison):")
+                for w in non_culprits[:3]:  # Top 3 non-culprits
+                    pos = w.get("position", (0, 0))
+                    drill_down_lines.append(
+                        f'  - "{w.get("text")}" (dev={w.get("deviation", 0):.2f}) '
+                        f"at y={pos[1]:.3f}"
+                    )
+
+            drill_down_text = "\n".join(drill_down_lines)
+
         issue_block = f"""
 ### Issue {idx}: "{word_text}" - {current_label}
 
 **Issue Type**: {issue_type}
 **Evaluator's Concern**: {evaluator_reasoning}
+{drill_down_text}
 
 **Similar Words with Reasoning**:
 {similar_text}

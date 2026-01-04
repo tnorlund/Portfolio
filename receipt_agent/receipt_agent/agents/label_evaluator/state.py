@@ -124,6 +124,26 @@ class LabelRelativePosition:
 
 
 @dataclass
+class DrillDownWord:
+    """
+    Per-word deviation analysis within a constellation anomaly.
+
+    When a constellation flags a label type (e.g., "PAYMENT_METHOD is displaced"),
+    drill-down calculates the deviation for each word with that label to identify
+    which specific word(s) are likely culprits.
+    """
+
+    word_id: int
+    line_id: int
+    text: str
+    position: tuple[float, float]  # (x, y) normalized coordinates
+    expected_offset: tuple[float, float]  # (dx, dy) expected offset from centroid
+    actual_offset: tuple[float, float]  # (dx, dy) actual offset from centroid
+    deviation: float  # Euclidean distance from expected position
+    is_culprit: bool  # True if deviation > 2σ threshold
+
+
+@dataclass
 class ConstellationGeometry:
     """
     Statistics about geometric relationships within a label constellation
@@ -289,6 +309,10 @@ class EvaluationIssue:
 
     # Reference to WordContext for building review context
     word_context: Optional["WordContext"] = None
+
+    # Drill-down analysis for constellation anomalies
+    # Contains per-word deviation data to identify specific culprits
+    drill_down: Optional[list["DrillDownWord"]] = None
 
 
 @dataclass
