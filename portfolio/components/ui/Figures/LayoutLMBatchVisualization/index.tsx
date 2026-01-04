@@ -4,7 +4,6 @@ import { useInView } from "react-intersection-observer";
 import Image from "next/image";
 import { api } from "../../../../services/api";
 import {
-  LayoutLMBatchInferenceResponse,
   LayoutLMReceiptInference,
   LayoutLMReceiptWord,
 } from "../../../../types/api";
@@ -160,13 +159,14 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   formatSupport,
   isFlying,
 }) => {
-  if (!receipt) return null;
-
-  const { width, height } = receipt.original.receipt;
-  const { rotation, leftOffset } = getQueuePosition(receipt.receipt_id);
+  // Extract values with fallbacks to satisfy hooks rules (hooks must be called unconditionally)
+  const width = receipt?.original.receipt.width ?? 100;
+  const height = receipt?.original.receipt.height ?? 150;
+  const receiptId = receipt?.receipt_id ?? '';
+  const { rotation, leftOffset } = getQueuePosition(receiptId);
 
   const imageUrl = useMemo(() => {
-    if (!formatSupport) return null;
+    if (!formatSupport || !receipt) return null;
     return getBestImageUrl(receipt.original.receipt, formatSupport);
   }, [receipt, formatSupport]);
 
@@ -231,7 +231,8 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     config: { tension: 120, friction: 18 },
   });
 
-  if (!imageUrl || !isFlying) return null;
+  // Early return after all hooks
+  if (!receipt || !imageUrl || !isFlying) return null;
 
   // Account for the 1px border on each side when centering
   const borderWidth = 1;
