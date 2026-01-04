@@ -66,15 +66,6 @@ def test_basic_construction_and_attributes(example_receipt_place):
 
 
 @pytest.mark.unit
-def test_auto_geohash_calculation(example_receipt_place):
-    """Test that geohash is auto-calculated from coordinates."""
-    rp = example_receipt_place
-    assert rp.geohash != ""
-    assert len(rp.geohash) == 6  # Default precision
-    assert rp.geohash.startswith("c")  # Seattle area starts with 'c'
-
-
-@pytest.mark.unit
 def test_list_field_uniqueness():
     """Test that list fields are deduplicated."""
     rp = ReceiptPlace(
@@ -280,57 +271,6 @@ def test_confidence_precision():
     assert "CONFIDENCE#0.8568" in gsi3["GSI3SK"]["S"]
 
 
-# ===== Geohash Validation Tests =====
-
-
-@pytest.mark.unit
-def test_geohash_not_set_without_coordinates():
-    """Test that geohash is empty when coordinates are not provided."""
-    rp = ReceiptPlace(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        receipt_id=1,
-        place_id="place",
-        merchant_name="Name",
-        validation_status=MerchantValidationStatus.MATCHED.value,
-        timestamp=datetime.now(timezone.utc),
-    )
-    assert rp.geohash == ""
-
-
-@pytest.mark.unit
-def test_geohash_set_with_coordinates():
-    """Test that geohash is auto-calculated with coordinates."""
-    rp = ReceiptPlace(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        receipt_id=1,
-        place_id="place",
-        merchant_name="Name",
-        latitude=40.7128,  # NYC
-        longitude=-74.0060,
-        validation_status=MerchantValidationStatus.MATCHED.value,
-        timestamp=datetime.now(timezone.utc),
-    )
-    assert len(rp.geohash) == 6
-    assert rp.geohash.startswith("d")  # NYC area starts with 'd'
-
-
-@pytest.mark.unit
-def test_manual_geohash_not_overwritten():
-    """Test that manually provided geohash is not overwritten."""
-    rp = ReceiptPlace(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        receipt_id=1,
-        place_id="place",
-        merchant_name="Name",
-        latitude=40.7128,
-        longitude=-74.0060,
-        geohash="custom",  # Manual geohash
-        validation_status=MerchantValidationStatus.MATCHED.value,
-        timestamp=datetime.now(timezone.utc),
-    )
-    assert rp.geohash == "custom"
-
-
 # ===== Key Generation Tests =====
 
 
@@ -478,30 +418,6 @@ def test_gsi3_key_confidence_formatting():
         )
         gsi3 = rp.gsi3_key
         assert gsi3["GSI3SK"]["S"].startswith(expected_prefix)
-
-
-@pytest.mark.unit
-def test_gsi4_key_geohash(example_receipt_place):
-    """Test GSI4 key generation with geohash."""
-    rp = example_receipt_place
-    gsi4 = rp.gsi4_key
-    assert gsi4["GSI4PK"]["S"] == f"GEOHASH#{rp.geohash}"
-    assert gsi4["GSI4SK"]["S"] == f"PLACE#{rp.place_id}"
-
-
-@pytest.mark.unit
-def test_gsi4_key_empty_when_no_geohash():
-    """Test GSI4 key is empty when geohash is not available."""
-    rp = ReceiptPlace(
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        receipt_id=1,
-        place_id="place",
-        merchant_name="Name",
-        validation_status=MerchantValidationStatus.MATCHED.value,
-        timestamp=datetime.now(timezone.utc),
-    )
-    gsi4 = rp.gsi4_key
-    assert gsi4 == {}
 
 
 # ===== Dataclass Conversion Tests =====

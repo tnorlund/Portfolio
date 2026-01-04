@@ -15,7 +15,6 @@ Differences from ReceiptMetadata:
 - Includes geographic coordinates for spatial clustering
 - Includes business status and operating hours
 - Includes ratings and review counts as quality signals
-- Stores geohash for efficient spatial queries via GSI4
 """
 
 from __future__ import annotations
@@ -33,7 +32,6 @@ from receipt_dynamo.entities.util import (
     normalize_enum,
     validate_positive_int,
 )
-from receipt_dynamo.utils.geospatial import calculate_geohash
 
 logger = __import__("logging").getLogger(__name__)
 
@@ -53,8 +51,6 @@ COMPUTED_FIELDS = {
     "GSI2SK",
     "GSI3PK",
     "GSI3SK",
-    "GSI4PK",
-    "GSI4SK",
     "TYPE",
 }
 
@@ -68,7 +64,7 @@ class ReceiptPlace(SerializationMixin):
     Replaces ReceiptMetadata with richer merchant and location data.
 
     Each ReceiptPlace record is stored in DynamoDB using the image_id and
-    receipt_id, and indexed by merchant name, place_id, and geohash via GSIs.
+    receipt_id, and indexed by merchant name, place_id, and validation status via GSIs.
 
     Attributes:
         image_id (str): UUID of the image the receipt belongs to.
@@ -85,7 +81,6 @@ class ReceiptPlace(SerializationMixin):
 
         latitude (float): Decimal degrees latitude for the place.
         longitude (float): Decimal degrees longitude for the place.
-        geohash (str): Geohash for spatial indexing (GSI4).
         viewport_ne_lat (float): Viewport northeast corner latitude.
         viewport_ne_lng (float): Viewport northeast corner longitude.
         viewport_sw_lat (float): Viewport southwest corner latitude.
@@ -132,8 +127,6 @@ class ReceiptPlace(SerializationMixin):
     # === Location & Geometry ===
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    # Geohash calculated for spatial indexing (precision 6-7 ~1km)
-    geohash: str = ""  # Precision 6-7 (~1km)
     viewport_ne_lat: Optional[float] = None
     viewport_ne_lng: Optional[float] = None
     viewport_sw_lat: Optional[float] = None
@@ -227,19 +220,6 @@ class ReceiptPlace(SerializationMixin):
             if val is not None and not (-180.0 <= val <= 180.0):
                 raise ValueError(f"{attr} out of range: {val}")
 
-        # Auto-calculate geohash from coordinates if not provided
-        if self.latitude is not None and self.longitude is not None:
-            if not self.geohash:
-                try:
-                    self.geohash = calculate_geohash(
-                        self.latitude, self.longitude, precision=6
-                    )
-                except ValueError as e:
-                    # Only warn, don't fail - geohash is optional
-                    logger.warning(
-                        f"Failed to calculate geohash for {self.place_id}: {e}"
-                    )
-
     @property
     def key(self) -> dict[str, dict[str, str]]:
         """Get DynamoDB key for this entity."""
@@ -284,20 +264,6 @@ class ReceiptPlace(SerializationMixin):
             },
         }
 
-    @property
-    def gsi4_key(self) -> dict[str, dict[str, str]]:
-        """
-        Get GSI4 key (spatial queries via geohash).
-
-        Note: GSI4 key structure for spatial queries via geohash.
-        """
-        if not self.geohash:
-            return {}
-        return {
-            "GSI4PK": {"S": f"GEOHASH#{self.geohash}"},
-            "GSI4SK": {"S": f"PLACE#{self.place_id}"},
-        }
-
     def to_item(self) -> Dict[str, Any]:
         """
         Serialize the ReceiptPlace object into DynamoDB item format.
@@ -324,10 +290,6 @@ class ReceiptPlace(SerializationMixin):
             "confidence": {"N": str(self.confidence)},
         }
 
-        # Add GSI4 keys if geohash exists
-        if self.geohash:
-            item.update(self.gsi4_key)
-
         # Optional string fields - include if non-empty, else NULL
         for attr in (
             "merchant_category",
@@ -342,7 +304,6 @@ class ReceiptPlace(SerializationMixin):
             "validated_by",
             "reasoning",
             "places_api_version",
-            "geohash",
         ):
             value = getattr(self, attr, "")
             if isinstance(value, str):
@@ -496,7 +457,6 @@ def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
 
     # Handle None values for string fields that should be empty strings
     for attr_name in [
-        "geohash",
         "merchant_category",
         "formatted_address",
         "short_address",

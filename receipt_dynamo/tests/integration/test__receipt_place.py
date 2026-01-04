@@ -408,21 +408,6 @@ def test_get_receipt_places_by_confidence_with_pagination(
         assert len(place_ids_1 & place_ids_2) == 0  # No overlap
 
 
-@pytest.mark.integration
-def test_get_receipt_places_by_geohash(
-    batch_receipt_places, dynamodb_table: str
-) -> None:
-    """Tests spatial queries by geohash (GSI4)."""
-    client = DynamoClient(dynamodb_table)
-    client.add_receipt_places(batch_receipt_places)
-
-    # Get geohash from first place
-    geohash = batch_receipt_places[0].geohash
-    if geohash:
-        places, _ = client.get_receipt_places_by_geohash(geohash)
-        assert len(places) > 0
-
-
 # =============================================================================
 # PARAMETER VALIDATION TESTS
 # =============================================================================
@@ -609,7 +594,6 @@ def test_receipt_place_with_no_coordinates(dynamodb_table: str) -> None:
     retrieved = client.get_receipt_place(place.image_id, place.receipt_id)
     assert retrieved.latitude is None
     assert retrieved.longitude is None
-    assert retrieved.geohash == ""
 
 
 @pytest.mark.integration

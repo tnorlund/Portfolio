@@ -151,7 +151,6 @@ class DeploymentVerifier:
         checks = [
             ("ReceiptPlace entity", "receipt_dynamo.entities", "ReceiptPlace"),
             ("Receipt place data ops", "receipt_dynamo.data._receipt_place", "_ReceiptPlace"),
-            ("Geospatial utils", "receipt_dynamo.utils.geospatial", "calculate_geohash"),
         ]
 
         for name, module, item in checks:
@@ -167,7 +166,6 @@ class DeploymentVerifier:
         dependencies = [
             ("pydantic", "Pydantic for data validation"),
             ("boto3", "AWS SDK for DynamoDB"),
-            ("geohash2", "Geohash library for spatial indexing"),
         ]
 
         for package, description in dependencies:
