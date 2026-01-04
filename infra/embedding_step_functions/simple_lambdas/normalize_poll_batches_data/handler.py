@@ -287,22 +287,20 @@ def _download_and_combine_poll_results(
 
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "Unknown")
-                logger.error(
+                logger.exception(
                     "S3 client error downloading poll result: "
-                    "bucket=%s, key=%s, code=%s, error=%s",
+                    "bucket=%s, key=%s, code=%s",
                     result_bucket,
                     result_key,
                     error_code,
-                    str(e),
                 )
                 # Continue with other results
             except BotoCoreError as e:
-                logger.error(
+                logger.exception(
                     "Botocore error downloading poll result: "
-                    "bucket=%s, key=%s, error=%s",
+                    "bucket=%s, key=%s",
                     result_bucket,
                     result_key,
-                    str(e),
                 )
                 # Continue with other results
         else:
