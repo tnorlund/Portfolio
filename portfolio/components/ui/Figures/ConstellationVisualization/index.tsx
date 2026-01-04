@@ -22,6 +22,19 @@ const LABEL_COLORS: Record<string, string> = {
   GRAND_TOTAL: "var(--color-green)",
 };
 
+// Threshold for identifying likely culprit (distance from expected)
+const CULPRIT_THRESHOLD = 0.4;
+
+// Word deviation data for drill-down
+interface WordDeviation {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  deviation: number;
+  isCulprit: boolean;
+}
+
 /**
  * Transform API response to the component's internal data format
  */
@@ -118,6 +131,7 @@ const ConstellationVisualization: React.FC = () => {
   });
 
   const [data, setData] = useState<ConstellationData | null>(null);
+  const [rawResponse, setRawResponse] = useState<GeometricAnomalyCacheResponse | null>(null);
   const [imageData, setImageData] = useState<ReceiptImageData | null>(null);
   const [formatSupport, setFormatSupport] = useState<FormatSupport | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -140,6 +154,7 @@ const ConstellationVisualization: React.FC = () => {
         const transformed = transformApiResponse(response);
         if (transformed) {
           setData(transformed);
+          setRawResponse(response);
           setImageData(response.receipt.image || null);
         } else {
           setError("No constellation data in response");
@@ -159,6 +174,58 @@ const ConstellationVisualization: React.FC = () => {
     if (!formatSupport || !imageData?.cdn_s3_key) return null;
     return getBestImageUrl(imageData as Parameters<typeof getBestImageUrl>[0], formatSupport, "medium");
   }, [formatSupport, imageData]);
+
+  // Calculate word deviations for the flagged label
+  const wordDeviations = useMemo<WordDeviation[]>(() => {
+    if (!rawResponse?.constellation_anomaly || !rawResponse?.constellation || !data) {
+      return [];
+    }
+
+    const flaggedLabel = rawResponse.constellation_anomaly.flagged_label;
+    const expectedOffset = rawResponse.constellation_anomaly.expected;
+    const centroid = data.constellation.centroid;
+
+    // Get all words with the flagged label
+    const flaggedWords = rawResponse.receipt.words.filter(w => w.label === flaggedLabel);
+    if (flaggedWords.length === 0) return [];
+
+    // Calculate expected position in absolute coords
+    const expectedPos = {
+      x: centroid.x + expectedOffset.dx,
+      y: centroid.y + expectedOffset.dy,
+    };
+
+    // Calculate deviation for each word
+    const deviations: WordDeviation[] = flaggedWords.map(word => {
+      const wordCenter = {
+        x: word.x + word.width / 2,
+        y: word.y + word.height / 2,
+      };
+
+      // Euclidean distance from expected position
+      const deviation = Math.sqrt(
+        Math.pow(wordCenter.x - expectedPos.x, 2) +
+        Math.pow(wordCenter.y - expectedPos.y, 2)
+      );
+
+      return {
+        id: `${word.line_id}-${word.word_id}`,
+        text: word.text,
+        x: wordCenter.x,
+        y: wordCenter.y,
+        deviation,
+        isCulprit: deviation > CULPRIT_THRESHOLD,
+      };
+    });
+
+    // Sort by deviation descending
+    return deviations.sort((a, b) => b.deviation - a.deviation);
+  }, [rawResponse, data]);
+
+  // Set of culprit word IDs for highlighting
+  const culpritWordIds = useMemo(() => {
+    return new Set(wordDeviations.filter(w => w.isCulprit).map(w => w.id));
+  }, [wordDeviations]);
 
   // Animation sequence when component comes into view and data is loaded
   useEffect(() => {
@@ -249,7 +316,9 @@ const ConstellationVisualization: React.FC = () => {
                     .filter(w => w.isInConstellation)
                     .map((word) => {
                       const labelColor = word.label ? LABEL_COLORS[word.label] || "var(--text-color)" : "var(--text-color)";
-                      const displayColor = word.isFlagged ? "var(--color-red)" : labelColor;
+                      // Only highlight as culprit if pairwise analysis identifies it
+                      const isCulprit = culpritWordIds.has(word.id);
+                      const displayColor = isCulprit ? "var(--color-red)" : labelColor;
                       // Convert normalized coords to pixel coords
                       // Note: y is from bottom in normalized coords, so we need to invert
                       const x = word.x * imageData.width;
@@ -267,7 +336,7 @@ const ConstellationVisualization: React.FC = () => {
                             fill={displayColor}
                             fillOpacity={0.3}
                             stroke={displayColor}
-                            strokeWidth={word.isFlagged ? 3 : 2}
+                            strokeWidth={isCulprit ? 3 : 2}
                           />
                           {/* Label text */}
                           <text
@@ -510,6 +579,43 @@ const ConstellationVisualization: React.FC = () => {
         <animated.div className={styles.reasoning} style={{ opacity: deviationSpring.opacity }}>
           <div className={styles.reasoningTitle}>Detection Result</div>
           <div className={styles.reasoningText}>{data.constellation.reasoning}</div>
+        </animated.div>
+      )}
+
+      {/* Pairwise Drill-Down Panel */}
+      {showDeviation && wordDeviations.length > 0 && (
+        <animated.div className={styles.drillDown} style={{ opacity: deviationSpring.opacity }}>
+          <div className={styles.drillDownHeader}>
+            <span className={styles.drillDownTitle}>Pairwise Drill-Down</span>
+            <span className={styles.drillDownSubtitle}>
+              {data.constellation.flaggedLabel} words ({wordDeviations.length})
+            </span>
+          </div>
+          <div className={styles.drillDownList}>
+            {wordDeviations.map((word) => (
+              <div
+                key={word.id}
+                className={`${styles.drillDownItem} ${word.isCulprit ? styles.drillDownItemCulprit : ""}`}
+              >
+                <span className={styles.drillDownIcon}>
+                  {word.isCulprit ? "🔴" : "✓"}
+                </span>
+                <span className={styles.drillDownText}>"{word.text}"</span>
+                <span className={styles.drillDownPosition}>
+                  y={word.y.toFixed(3)}
+                </span>
+                <span className={styles.drillDownDeviation}>
+                  dev={word.deviation.toFixed(2)}
+                </span>
+                {word.isCulprit && (
+                  <span className={styles.drillDownCulpritTag}>LIKELY CULPRIT</span>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className={styles.drillDownFooter}>
+            Words with deviation &gt; {CULPRIT_THRESHOLD.toFixed(1)} are flagged as likely culprits
+          </div>
         </animated.div>
       )}
     </div>

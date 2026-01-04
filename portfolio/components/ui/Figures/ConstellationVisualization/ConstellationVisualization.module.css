@@ -247,6 +247,124 @@
   font-family: monospace;
 }
 
+/* Drill-Down Panel */
+.drillDown {
+  padding: 1rem;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 8px;
+}
+
+.drillDownHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.drillDownTitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #a78bfa;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.drillDownSubtitle {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-family: monospace;
+}
+
+.drillDownList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.drillDownItem {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(30, 41, 59, 0.5);
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.drillDownItemCulprit {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.drillDownIcon {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  width: 1.2rem;
+  text-align: center;
+}
+
+.drillDownItem:not(.drillDownItemCulprit) .drillDownIcon {
+  color: var(--color-green);
+}
+
+.drillDownText {
+  flex: 1;
+  font-size: 0.8rem;
+  font-family: monospace;
+  color: #e2e8f0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drillDownPosition {
+  font-size: 0.7rem;
+  font-family: monospace;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.drillDownDeviation {
+  font-size: 0.7rem;
+  font-family: monospace;
+  color: #94a3b8;
+  flex-shrink: 0;
+  padding: 0.15rem 0.4rem;
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 4px;
+}
+
+.drillDownItemCulprit .drillDownDeviation {
+  color: var(--color-red);
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.drillDownCulpritTag {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--color-red);
+  background: rgba(239, 68, 68, 0.15);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+
+.drillDownFooter {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  font-size: 0.7rem;
+  color: #64748b;
+  font-style: italic;
+}
+
 /* Loading and Error states */
 .loadingState,
 .errorState {
