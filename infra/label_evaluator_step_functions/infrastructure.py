@@ -1304,6 +1304,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                 "Next": "BuildMerchantPatterns",
                             },
                             # Build geometric patterns from training receipts
+                            # Note: No trace propagation needed - tracing happens per-receipt in Phase 2
                             "BuildMerchantPatterns": {
                                 "Type": "Task",
                                 "Resource": compute_patterns_arn,
@@ -1313,12 +1314,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     "batch_bucket.$": "$.batch_bucket",
                                     "merchant.$": "$.merchant",
                                     "max_training_receipts.$": "$.max_training_receipts",
-                                    "enable_tracing.$": "$.enable_tracing",
                                     "langchain_project.$": "$.langchain_project",
                                     "execution_arn.$": "$$.Execution.Id",
-                                    "trace_id.$": "$.line_item_patterns.trace_id",
-                                    "root_run_id.$": "$.line_item_patterns.root_run_id",
-                                    "root_dotted_order.$": "$.line_item_patterns.root_dotted_order",
                                 },
                                 "ResultPath": "$.patterns_result",
                                 "Retry": [
@@ -1448,7 +1445,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                         "ReviewCurrencyLabels": {
                                                             "Type": "Task",
                                                             "Resource": evaluate_currency_arn,
-                                                            "TimeoutSeconds": 300,
+                                                            "TimeoutSeconds": 600,  # 10 min for LLM calls
                                                             "Parameters": {
                                                                 "data_s3_key.$": "$.receipt_data.data_s3_key",
                                                                 "merchant_name.$": "$.receipt.merchant_name",
@@ -1461,6 +1458,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                 "execution_arn.$": "$$.Execution.Id",
                                                             },
                                                             "Retry": [
+                                                                {
+                                                                    "ErrorEquals": ["States.Timeout"],
+                                                                    "IntervalSeconds": 5,
+                                                                    "MaxAttempts": 2,
+                                                                    "BackoffRate": 1.0,
+                                                                },
                                                                 {
                                                                     "ErrorEquals": ["OllamaRateLimitError"],
                                                                     "IntervalSeconds": 30,
@@ -1484,7 +1487,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                         "ReviewMetadataLabels": {
                                                             "Type": "Task",
                                                             "Resource": evaluate_metadata_arn,
-                                                            "TimeoutSeconds": 300,
+                                                            "TimeoutSeconds": 600,  # 10 min for LLM calls
                                                             "Parameters": {
                                                                 "data_s3_key.$": "$.receipt_data.data_s3_key",
                                                                 "merchant_name.$": "$.receipt.merchant_name",
@@ -1497,6 +1500,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                                 "execution_arn.$": "$$.Execution.Id",
                                                             },
                                                             "Retry": [
+                                                                {
+                                                                    "ErrorEquals": ["States.Timeout"],
+                                                                    "IntervalSeconds": 5,
+                                                                    "MaxAttempts": 2,
+                                                                    "BackoffRate": 1.0,
+                                                                },
                                                                 {
                                                                     "ErrorEquals": ["OllamaRateLimitError"],
                                                                     "IntervalSeconds": 30,
@@ -1522,7 +1531,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                         "ValidateFinancialMath": {
                                             "Type": "Task",
                                             "Resource": evaluate_financial_arn,
-                                            "TimeoutSeconds": 300,
+                                            "TimeoutSeconds": 600,  # 10 min for LLM calls
                                             "Parameters": {
                                                 "data_s3_key.$": "$.receipt_data.data_s3_key",
                                                 "execution_id.$": "$.execution_id",
@@ -1536,6 +1545,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                             },
                                             "ResultPath": "$.financial_result",
                                             "Retry": [
+                                                {
+                                                    "ErrorEquals": ["States.Timeout"],
+                                                    "IntervalSeconds": 5,
+                                                    "MaxAttempts": 2,
+                                                    "BackoffRate": 1.0,
+                                                },
                                                 {
                                                     "ErrorEquals": ["OllamaRateLimitError"],
                                                     "IntervalSeconds": 30,
@@ -1567,7 +1582,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                         "ReviewFlaggedLabels": {
                                             "Type": "Task",
                                             "Resource": llm_review_arn,
-                                            "TimeoutSeconds": 900,
+                                            "TimeoutSeconds": 900,  # 15 min for complex LLM review
                                             "Parameters": {
                                                 "execution_id.$": "$.execution_id",
                                                 "batch_bucket.$": "$.batch_bucket",
@@ -1585,6 +1600,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                             },
                                             "ResultPath": "$.llm_review_result",
                                             "Retry": [
+                                                {
+                                                    "ErrorEquals": ["States.Timeout"],
+                                                    "IntervalSeconds": 5,
+                                                    "MaxAttempts": 2,
+                                                    "BackoffRate": 1.0,
+                                                },
                                                 {
                                                     "ErrorEquals": ["OllamaRateLimitError"],
                                                     "IntervalSeconds": 30,
@@ -1631,7 +1652,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                             ],
                                             "Next": "ReturnResult",
                                         },
-                                        # Return combined result
+                                        # Return minimal result to stay under 256KB state limit
+                                        # Full details are in S3 and LangSmith traces
                                         "ReturnResult": {
                                             "Type": "Pass",
                                             "Parameters": {
@@ -1640,14 +1662,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                 "receipt_id.$": "$.parallel_results[0].receipt_id",
                                                 "merchant_name.$": "$.receipt.merchant_name",
                                                 "issues_found.$": "$.parallel_results[0].issues_found",
-                                                "results_s3_key.$": "$.parallel_results[0].results_s3_key",
-                                                "currency_words_evaluated.$": "$.parallel_results[1].currency_words_evaluated",
-                                                "currency_decisions.$": "$.parallel_results[1].decisions",
-                                                "metadata_words_evaluated.$": "$.parallel_results[2].metadata_words_evaluated",
-                                                "metadata_decisions.$": "$.parallel_results[2].decisions",
-                                                "financial_values_evaluated.$": "$.financial_result.values_evaluated",
-                                                "financial_decisions.$": "$.financial_result.decisions",
-                                                "trace_id.$": "$.parallel_results[0].trace_id",
                                             },
                                             "End": True,
                                         },

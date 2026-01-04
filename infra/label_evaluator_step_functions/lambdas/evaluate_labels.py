@@ -1,14 +1,18 @@
 """Evaluate labels with per-receipt tracing.
 
-This handler creates a ROOT trace for each receipt, not a child of an
-execution-level trace. Each receipt gets its own complete trace in LangSmith
-with metadata including image_id, receipt_id, and merchant_name.
+This handler creates a ROOT trace for each receipt. Each receipt gets its own
+complete trace in LangSmith that shows the full pipeline:
 
-The trace includes reference spans for:
-- DiscoverPatterns: Line item structure patterns discovered for this merchant
-- ComputePatterns: Merchant-level spatial patterns computed from training data
+ReceiptEvaluation
+├── DiscoverPatterns (historical span from Phase 1 batch computation)
+├── ComputePatterns (historical span from Phase 1 batch computation)
+├── EvaluateLabels (actual geometric anomaly detection)
+└── LLMReview (via separate Lambda, if issues found)
 
-The LLMReview Lambda will join this receipt's trace as a child.
+The pattern computation happens once per merchant in Phase 1 (batch optimization),
+but appears in each receipt's trace with the actual timing from that computation.
+This makes traces look like production (full pipeline per receipt) while still
+benefiting from shared pattern computation in the Step Function.
 """
 
 # pylint: disable=import-outside-toplevel,wrong-import-position
@@ -28,7 +32,9 @@ try:
     # Container environment: tracing.py is in same directory
     from tracing import (
         TRACING_VERSION,
+        TraceContext,
         child_trace,
+        create_historical_span,
         create_receipt_trace,
         flush_langsmith_traces,
     )
@@ -48,7 +54,9 @@ except ImportError:
     )
     from tracing import (
         TRACING_VERSION,
+        TraceContext,
         child_trace,
+        create_historical_span,
         create_receipt_trace,
         flush_langsmith_traces,
     )
@@ -241,8 +249,6 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             )
 
         # Create a TraceContext for child_trace compatibility
-        from tracing import TraceContext
-
         trace_ctx = TraceContext(
             run_tree=receipt_trace.run_tree,
             headers=(
@@ -254,63 +260,108 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             root_run_id=receipt_trace.root_run_id,
         )
 
-        # 3. Add reference span for DiscoverPatterns (line item structure)
-        if line_item_patterns_s3_key and trace_ctx.run_tree:
-            with child_trace(
-                "DiscoverPatterns",
-                trace_ctx,
-                metadata={
-                    "patterns_s3_key": line_item_patterns_s3_key,
-                    "merchant_name": merchant_name,
-                    "note": "Line item structure patterns discovered for merchant",
-                },
-            ):
-                logger.info(
-                    "Added DiscoverPatterns reference: %s",
-                    line_item_patterns_s3_key,
-                )
+        # 3. Load line item patterns (from Phase 1 DiscoverPatterns) and create historical span
+        # The _trace_metadata contains timing from when patterns were discovered
+        line_item_patterns_data = None
+        if line_item_patterns_s3_key:
+            logger.info(
+                "Loading line item patterns from s3://%s/%s",
+                batch_bucket,
+                line_item_patterns_s3_key,
+            )
+            line_item_patterns_data = load_json_from_s3(
+                s3, batch_bucket, line_item_patterns_s3_key, logger=logger, allow_missing=True
+            )
 
-        # 4. Load pre-computed merchant patterns from S3 (with graceful fallback)
-        # Patterns may not exist if:
-        # - Merchant had too few receipts for pattern learning
-        # - Pattern computation failed or hasn't completed yet
-        # - Edge case in two-phase architecture timing
+            if line_item_patterns_data:
+                # Create historical DiscoverPatterns span using stored timing
+                discovery_metadata = line_item_patterns_data.get("_trace_metadata", {})
+                if discovery_metadata.get("discovery_start_time"):
+                    create_historical_span(
+                        parent_ctx=trace_ctx,
+                        name="DiscoverPatterns",
+                        start_time_iso=discovery_metadata["discovery_start_time"],
+                        end_time_iso=discovery_metadata["discovery_end_time"],
+                        duration_seconds=discovery_metadata.get("discovery_duration_seconds", 0),
+                        run_type="llm",
+                        inputs={
+                            "merchant_name": merchant_name,
+                            "sample_receipt_count": discovery_metadata.get("sample_receipt_count", 0),
+                        },
+                        outputs={
+                            "status": discovery_metadata.get("discovery_status", "unknown"),
+                            "llm_model": discovery_metadata.get("llm_model", "unknown"),
+                        },
+                        metadata={
+                            "llm_call_duration_seconds": discovery_metadata.get("llm_call_duration_seconds", 0),
+                            "batch_computed": True,
+                        },
+                    )
+                    logger.info(
+                        "Added DiscoverPatterns historical span (%.2fs)",
+                        discovery_metadata.get("discovery_duration_seconds", 0),
+                    )
+
+        # 4. Load geometric patterns (from Phase 1 ComputePatterns) and create historical span
+        # Patterns were computed in Phase 1 (ComputeAllPatterns) - we just load them here.
         merchant_patterns = None
+        patterns_data = None
         if patterns_s3_key:
-            with child_trace(
-                "ComputePatterns",
-                trace_ctx,
-                metadata={
-                    "patterns_s3_key": patterns_s3_key,
-                    "merchant_name": merchant_name,
-                },
-            ):
-                logger.info(
-                    "Loading patterns from s3://%s/%s",
+            logger.info(
+                "Loading patterns from s3://%s/%s",
+                batch_bucket,
+                patterns_s3_key,
+            )
+            # Use allow_missing=True for graceful fallback when patterns don't exist
+            patterns_data = load_json_from_s3(
+                s3, batch_bucket, patterns_s3_key, logger=logger, allow_missing=True
+            )
+
+            if patterns_data:
+                # Create historical ComputePatterns span using stored timing
+                computation_metadata = patterns_data.get("_trace_metadata", {})
+                if computation_metadata.get("computation_start_time"):
+                    create_historical_span(
+                        parent_ctx=trace_ctx,
+                        name="ComputePatterns",
+                        start_time_iso=computation_metadata["computation_start_time"],
+                        end_time_iso=computation_metadata["computation_end_time"],
+                        duration_seconds=computation_metadata.get("computation_duration_seconds", 0),
+                        run_type="chain",
+                        inputs={
+                            "merchant_name": merchant_name,
+                            "training_receipt_count": computation_metadata.get("training_receipt_count", 0),
+                        },
+                        outputs={
+                            "status": computation_metadata.get("computation_status", "unknown"),
+                        },
+                        metadata={
+                            "load_data_duration_seconds": computation_metadata.get("load_data_duration_seconds", 0),
+                            "compute_patterns_duration_seconds": computation_metadata.get("compute_patterns_duration_seconds", 0),
+                            "batch_computed": True,
+                        },
+                    )
+                    logger.info(
+                        "Added ComputePatterns historical span (%.2fs)",
+                        computation_metadata.get("computation_duration_seconds", 0),
+                    )
+
+                # Deserialize patterns for evaluation
+                merchant_patterns = deserialize_patterns(patterns_data)
+                if merchant_patterns:
+                    logger.info(
+                        "Loaded patterns for %s (%s receipts)",
+                        merchant_patterns.merchant_name,
+                        merchant_patterns.receipt_count,
+                    )
+                else:
+                    logger.info("Patterns file exists but no patterns available")
+            else:
+                logger.warning(
+                    "No patterns found at s3://%s/%s - proceeding without patterns",
                     batch_bucket,
                     patterns_s3_key,
                 )
-                # Use allow_missing=True for graceful fallback when patterns don't exist
-                patterns_data = load_json_from_s3(
-                    s3, batch_bucket, patterns_s3_key, logger=logger, allow_missing=True
-                )
-
-                if patterns_data:
-                    merchant_patterns = deserialize_patterns(patterns_data)
-                    if merchant_patterns:
-                        logger.info(
-                            "Loaded patterns for %s (%s receipts)",
-                            merchant_patterns.merchant_name,
-                            merchant_patterns.receipt_count,
-                        )
-                    else:
-                        logger.info("Patterns file exists but no patterns available")
-                else:
-                    logger.warning(
-                        "No patterns found at s3://%s/%s - proceeding without patterns",
-                        batch_bucket,
-                        patterns_s3_key,
-                    )
 
         # 5. Create pre-loaded EvaluatorState with patterns
         from receipt_agent.agents.label_evaluator.state import EvaluatorState

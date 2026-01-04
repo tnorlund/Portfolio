@@ -1,16 +1,22 @@
-"""Discover line item patterns with trace propagation.
+"""Discover line item patterns with timing metadata for per-receipt tracing.
 
-This handler CREATES the root trace since it's the first container-based Lambda
-in the traced Step Function. Uses deterministic UUIDs based on execution ARN
-to ensure proper trace hierarchy across all Lambda invocations.
+This handler discovers line item patterns using LLM and stores timing metadata
+alongside the patterns in S3. The timing is used by evaluate_labels.py to create
+child spans in each receipt's trace, making the traces look like production
+(full pipeline per receipt) while still benefiting from shared pattern computation.
 
-The trace_id and root_run_id are returned in the output and propagated
-through the Step Function to all downstream Lambdas.
+Timing metadata stored:
+- discovery_start_time: ISO timestamp when discovery started
+- discovery_end_time: ISO timestamp when discovery completed
+- discovery_duration_seconds: Total duration in seconds
+- discovery_llm_model: Model used for pattern discovery
 """
 
 import logging
 import os
 import sys
+import time
+from datetime import datetime, timezone
 from typing import Any
 
 import boto3
@@ -18,14 +24,6 @@ import boto3
 # Import tracing utilities - works in both container and local environments
 try:
     # Container environment: tracing.py is in same directory
-    from tracing import (
-        TraceContext,
-        child_trace,
-        create_execution_trace,
-        end_execution_trace,
-        flush_langsmith_traces,
-    )
-
     from utils.s3_helpers import get_merchant_hash, upload_json_to_s3
 except ImportError:
     # Local/development environment: use path relative to this file
@@ -38,13 +36,6 @@ except ImportError:
         ),
     )
     from s3_helpers import get_merchant_hash, upload_json_to_s3
-    from tracing import (
-        TraceContext,
-        child_trace,
-        create_execution_trace,
-        end_execution_trace,
-        flush_langsmith_traces,
-    )
 
 # Import pattern discovery from receipt_agent
 from receipt_agent.agents.label_evaluator.pattern_discovery import (
@@ -63,10 +54,10 @@ s3 = boto3.client("s3")
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
-    Discover line item patterns for a merchant with trace propagation.
+    Discover line item patterns for a merchant.
 
-    This is the FIRST container-based Lambda, so it CREATES the root trace
-    using deterministic UUIDs based on execution ARN.
+    Tracks timing metadata that will be used by evaluate_labels.py to create
+    DiscoverPatterns child spans in each receipt's trace.
 
     Input:
     {
@@ -80,11 +71,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     {
         "execution_id": "abc123",
         "merchant_name": "Home Depot",
-        "patterns_s3_key": "patterns/home_depot.json",
-        "patterns": { ... discovered patterns ... },
-        "error": null or "error message",
-        "trace_id": "...",       # For downstream Lambdas
-        "root_run_id": "..."     # For downstream Lambdas
+        "patterns_s3_key": "line_item_patterns/home_depot.json",
+        "patterns": { ... discovered patterns with timing metadata ... },
+        "error": null or "error message"
     }
     """
     from receipt_dynamo import DynamoClient
@@ -96,10 +85,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         logger.info("LangSmith project set to: %s", langchain_project)
 
     execution_id = event.get("execution_id", "unknown")
-    execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     merchant_name = event.get("merchant_name", "Unknown")
-    enable_tracing = event.get("enable_tracing", False)
 
     if not batch_bucket:
         return {
@@ -113,36 +100,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     merchant_hash = get_merchant_hash(merchant_name)
     patterns_s3_key = f"line_item_patterns/{merchant_hash}.json"
 
-    # CREATE the root trace using deterministic UUIDs
-    # This ensures all Lambdas in this execution share the same trace
-    trace_info = create_execution_trace(
-        execution_arn=execution_arn,
-        name=f"label_evaluator:{merchant_name[:20]}",
-        inputs={
-            "execution_id": execution_id,
-            "merchant_name": merchant_name,
-        },
-        metadata={
-            "execution_id": execution_id,
-            "execution_arn": execution_arn,
-            "merchant_name": merchant_name,
-        },
-        tags=["label-evaluator", "discover-patterns", "llm"],
-        enable_tracing=enable_tracing,
-    )
-
-    # Create a TraceContext for child_trace compatibility
-    trace_ctx = TraceContext(
-        run_tree=trace_info.run_tree,
-        headers=(
-            trace_info.run_tree.to_headers() if trace_info.run_tree else None
-        ),
-        trace_id=trace_info.trace_id,
-        root_run_id=trace_info.root_run_id,
-    )
-
     # Get pattern discovery config from environment
     config = PatternDiscoveryConfig.from_env()
+
+    # Track timing for the entire discovery process
+    discovery_start = time.time()
+    discovery_start_time = datetime.now(timezone.utc).isoformat()
 
     # Initialize result with default structure for error cases
     result = {
@@ -159,16 +122,28 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         table_name = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable")
         dynamo_client = DynamoClient(table_name=table_name)
 
-        with child_trace("load_sample_receipts", trace_ctx):
-            receipts_data = build_receipt_structure(
-                dynamo_client, merchant_name, limit=3
-            )
+        # Load sample receipts
+        load_start = time.time()
+        receipts_data = build_receipt_structure(
+            dynamo_client, merchant_name, limit=3
+        )
+        load_duration = time.time() - load_start
 
         if not receipts_data:
             logger.warning("No receipt data found for %s", merchant_name)
             default_patterns = get_default_patterns(
                 merchant_name, reason="no_receipt_data"
             )
+            # Add timing metadata
+            discovery_end_time = datetime.now(timezone.utc).isoformat()
+            discovery_duration = time.time() - discovery_start
+            default_patterns["_trace_metadata"] = {
+                "discovery_start_time": discovery_start_time,
+                "discovery_end_time": discovery_end_time,
+                "discovery_duration_seconds": round(discovery_duration, 3),
+                "discovery_status": "no_receipt_data",
+                "load_receipts_duration_seconds": round(load_duration, 3),
+            }
             upload_json_to_s3(
                 s3, batch_bucket, patterns_s3_key, default_patterns
             )
@@ -180,11 +155,15 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "error": None,
             }
         else:
-            # Build prompt and call LLM
-            with child_trace("build_prompt", trace_ctx):
-                prompt = build_discovery_prompt(merchant_name, receipts_data)
+            # Build prompt
+            prompt_start = time.time()
+            prompt = build_discovery_prompt(merchant_name, receipts_data)
+            prompt_duration = time.time() - prompt_start
 
-            patterns = discover_patterns_with_llm(prompt, config, trace_ctx)
+            # Call LLM for pattern discovery
+            llm_start = time.time()
+            patterns = discover_patterns_with_llm(prompt, config, trace_ctx=None)
+            llm_duration = time.time() - llm_start
 
             if not patterns:
                 logger.warning(
@@ -193,6 +172,19 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 default_patterns = get_default_patterns(
                     merchant_name, reason="llm_discovery_failed"
                 )
+                # Add timing metadata
+                discovery_end_time = datetime.now(timezone.utc).isoformat()
+                discovery_duration = time.time() - discovery_start
+                default_patterns["_trace_metadata"] = {
+                    "discovery_start_time": discovery_start_time,
+                    "discovery_end_time": discovery_end_time,
+                    "discovery_duration_seconds": round(discovery_duration, 3),
+                    "discovery_status": "llm_failed",
+                    "load_receipts_duration_seconds": round(load_duration, 3),
+                    "build_prompt_duration_seconds": round(prompt_duration, 3),
+                    "llm_call_duration_seconds": round(llm_duration, 3),
+                    "llm_model": config.ollama_model,
+                }
                 upload_json_to_s3(
                     s3, batch_bucket, patterns_s3_key, default_patterns
                 )
@@ -204,18 +196,35 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "error": "LLM discovery failed, using defaults",
                 }
             else:
-                # Add metadata
+                # Add standard metadata
                 patterns["discovered_from_receipts"] = len(receipts_data)
                 patterns["auto_generated"] = False
 
-                # Store patterns
-                with child_trace("upload_patterns", trace_ctx):
-                    upload_json_to_s3(
-                        s3, batch_bucket, patterns_s3_key, patterns
-                    )
-                    logger.info(
-                        f"Stored patterns for {merchant_name} at {patterns_s3_key}"
-                    )
+                # Add timing metadata for per-receipt tracing
+                discovery_end_time = datetime.now(timezone.utc).isoformat()
+                discovery_duration = time.time() - discovery_start
+                patterns["_trace_metadata"] = {
+                    "discovery_start_time": discovery_start_time,
+                    "discovery_end_time": discovery_end_time,
+                    "discovery_duration_seconds": round(discovery_duration, 3),
+                    "discovery_status": "success",
+                    "load_receipts_duration_seconds": round(load_duration, 3),
+                    "build_prompt_duration_seconds": round(prompt_duration, 3),
+                    "llm_call_duration_seconds": round(llm_duration, 3),
+                    "llm_model": config.ollama_model,
+                    "sample_receipt_count": len(receipts_data),
+                }
+
+                # Store patterns with timing metadata
+                upload_json_to_s3(
+                    s3, batch_bucket, patterns_s3_key, patterns
+                )
+                logger.info(
+                    "Stored patterns for %s at %s (discovery took %.2fs)",
+                    merchant_name,
+                    patterns_s3_key,
+                    discovery_duration,
+                )
 
                 result = {
                     "execution_id": execution_id,
@@ -225,15 +234,24 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "error": None,
                 }
 
-    finally:
-        # End the root trace and flush
-        end_execution_trace(trace_info, outputs=result)
-        flush_langsmith_traces()
-
-    # Add trace IDs to output for downstream Lambdas
-    # Always include all three fields (even if null) for Step Function JSONPath
-    result["trace_id"] = trace_info.trace_id
-    result["root_run_id"] = trace_info.root_run_id
-    result["root_dotted_order"] = trace_info.root_dotted_order  # Can be None
+    except Exception as e:
+        logger.error("Error discovering patterns: %s", e, exc_info=True)
+        # Add timing metadata even on error
+        discovery_end_time = datetime.now(timezone.utc).isoformat()
+        discovery_duration = time.time() - discovery_start
+        result = {
+            "execution_id": execution_id,
+            "merchant_name": merchant_name,
+            "patterns_s3_key": None,
+            "patterns": None,
+            "error": str(e),
+            "_trace_metadata": {
+                "discovery_start_time": discovery_start_time,
+                "discovery_end_time": discovery_end_time,
+                "discovery_duration_seconds": round(discovery_duration, 3),
+                "discovery_status": "error",
+                "error": str(e),
+            },
+        }
 
     return result

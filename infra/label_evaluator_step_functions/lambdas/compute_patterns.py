@@ -1,8 +1,15 @@
-"""Compute merchant patterns with trace propagation.
+"""Compute merchant patterns with timing metadata for per-receipt tracing.
 
-This handler creates a child trace using deterministic UUIDs based on
-execution ARN. The trace_id and root_run_id are passed from the upstream
-DiscoverLineItemPatterns Lambda.
+This handler computes geometric patterns from training receipts and stores
+timing metadata alongside the patterns in S3. The timing is used by
+evaluate_labels.py to create child spans in each receipt's trace.
+
+Timing metadata stored:
+- computation_start_time: ISO timestamp when computation started
+- computation_end_time: ISO timestamp when computation completed
+- computation_duration_seconds: Total duration in seconds
+- load_data_duration_seconds: Time to load training data
+- compute_patterns_duration_seconds: Time to compute patterns
 """
 
 # pylint: disable=import-outside-toplevel
@@ -13,18 +20,17 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 import boto3
 
-# Import tracing utilities - works in both container and local environments
+# Import utilities - works in both container and local environments
 try:
-    # Container environment: tracing.py is in same directory
-    from tracing import child_trace, flush_langsmith_traces, state_trace
-
+    # Container environment
     from utils.s3_helpers import get_merchant_hash
 except ImportError:
-    # Local/development environment: use path relative to this file
+    # Local/development environment
     sys.path.insert(
         0,
         os.path.join(
@@ -34,7 +40,6 @@ except ImportError:
         ),
     )
     from s3_helpers import get_merchant_hash
-    from tracing import child_trace, flush_langsmith_traces, state_trace
 
 if TYPE_CHECKING:
     from handlers.evaluator_types import ComputePatternsOutput
@@ -47,7 +52,10 @@ s3 = boto3.client("s3")
 
 def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
     """
-    Compute merchant patterns from training receipts with trace propagation.
+    Compute merchant patterns from training receipts.
+
+    Tracks timing metadata that will be used by evaluate_labels.py to create
+    ComputePatterns child spans in each receipt's trace.
 
     Input:
     {
@@ -55,9 +63,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
         "execution_arn": "arn:aws:states:...",  # From $$.Execution.Id
         "batch_bucket": "bucket-name",
         "merchant_name": "Sprouts Farmers Market",
-        "max_training_receipts": 50,
-        "trace_id": "...",       # From upstream Lambda
-        "root_run_id": "..."     # From upstream Lambda
+        "max_training_receipts": 50
     }
 
     Output:
@@ -74,7 +80,6 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
         logger.info("LangSmith project set to: %s", langchain_project)
 
     execution_id = event.get("execution_id", "unknown")
-    execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     merchant_name = event.get("merchant_name")
     # Handle merchant_name from merchant object (Map state)
@@ -82,178 +87,104 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
         merchant_name = event["merchant"].get("merchant_name")
     max_training_receipts = event.get("max_training_receipts", 50)
 
-    # Get trace IDs from upstream Lambda
-    trace_id = event.get("trace_id", "")
-    root_run_id = event.get("root_run_id", "")
-    root_dotted_order = event.get("root_dotted_order")
-    enable_tracing = event.get("enable_tracing", False)
-
     if not merchant_name:
         raise ValueError("merchant_name is required")
     if not batch_bucket:
         raise ValueError("batch_bucket is required")
 
-    start_time = time.time()
+    # Track timing for the entire computation process
+    computation_start = time.time()
+    computation_start_time = datetime.now(timezone.utc).isoformat()
 
-    # Initialize result for error cases
-    result = {
-        "patterns_s3_key": "",
-        "merchant_name": merchant_name,
-        "receipt_count": 0,
-        "pattern_stats": None,
-    }
+    logger.info(
+        "Computing patterns for merchant '%s' (max_receipts=%s)",
+        merchant_name,
+        max_training_receipts,
+    )
 
-    # Create a child trace using deterministic UUID
-    with state_trace(
-        execution_arn=execution_arn,
-        state_name="ComputePatterns",
-        trace_id=trace_id,
-        root_run_id=root_run_id,
-        root_dotted_order=root_dotted_order,
-        inputs={
-            "merchant_name": merchant_name,
-            "max_training_receipts": max_training_receipts,
-        },
-        metadata={
-            "merchant_name": merchant_name,
-            "execution_id": execution_id,
-        },
-        tags=["compute-patterns"],
-        enable_tracing=enable_tracing,
-    ) as trace_ctx:
+    # Import DynamoDB client
+    from receipt_dynamo import DynamoClient
 
-        logger.info(
-            "Computing patterns for merchant '%s' (max_receipts=%s)",
+    table_name = os.environ.get("DYNAMODB_TABLE_NAME")
+    if not table_name:
+        raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
+
+    dynamo = DynamoClient(table_name=table_name)
+
+    # Load training receipts
+    load_start = time.time()
+    from receipt_agent.agents.label_evaluator.state import OtherReceiptData
+
+    other_receipt_data: list[OtherReceiptData] = []
+    last_key = None
+
+    while len(other_receipt_data) < max_training_receipts:
+        places, last_key = dynamo.get_receipt_places_by_merchant(
             merchant_name,
-            max_training_receipts,
+            limit=min(100, max_training_receipts - len(other_receipt_data)),
+            last_evaluated_key=last_key,
         )
 
-        # Import DynamoDB client
-        from receipt_dynamo import DynamoClient
+        if not places:
+            break
 
-        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
-        if not table_name:
-            raise ValueError(
-                "DYNAMODB_TABLE_NAME environment variable not set"
-            )
+        for place in places:
+            if len(other_receipt_data) >= max_training_receipts:
+                break
 
-        dynamo = DynamoClient(table_name=table_name)
-
-        # Create child trace for data loading
-        with child_trace(
-            "load_training_data",
-            trace_ctx,
-            metadata={
-                "merchant_name": merchant_name,
-            },
-        ):
-            # Load training receipts
-            from receipt_agent.agents.label_evaluator.state import (
-                OtherReceiptData,
-            )
-
-            other_receipt_data: list[OtherReceiptData] = []
-            last_key = None
-
-            while len(other_receipt_data) < max_training_receipts:
-                places, last_key = dynamo.get_receipt_places_by_merchant(
-                    merchant_name,
-                    limit=min(
-                        100, max_training_receipts - len(other_receipt_data)
-                    ),
-                    last_evaluated_key=last_key,
+            try:
+                words = dynamo.list_receipt_words_from_receipt(
+                    place.image_id, place.receipt_id
+                )
+                labels, _ = dynamo.list_receipt_word_labels_for_receipt(
+                    place.image_id, place.receipt_id
                 )
 
-                if not places:
-                    break
+                other_receipt_data.append(
+                    OtherReceiptData(
+                        place=place,
+                        words=words,
+                        labels=labels,
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "Error loading receipt %s#%s",
+                    place.image_id,
+                    place.receipt_id,
+                )
+                continue
 
-                for place in places:
-                    if len(other_receipt_data) >= max_training_receipts:
-                        break
+        if not last_key:
+            break
 
-                    try:
-                        words = dynamo.list_receipt_words_from_receipt(
-                            place.image_id, place.receipt_id
-                        )
-                        labels, _ = (
-                            dynamo.list_receipt_word_labels_for_receipt(
-                                place.image_id, place.receipt_id
-                            )
-                        )
+    load_duration = time.time() - load_start
+    logger.info(
+        "Loaded %s training receipts in %.2fs",
+        len(other_receipt_data),
+        load_duration,
+    )
 
-                        other_receipt_data.append(
-                            OtherReceiptData(
-                                place=place,
-                                words=words,
-                                labels=labels,
-                            )
-                        )
-                    except Exception:
-                        logger.exception(
-                            "Error loading receipt %s#%s",
-                            place.image_id,
-                            place.receipt_id,
-                        )
-                        continue
+    if not other_receipt_data:
+        # No training data - save empty patterns with timing metadata
+        computation_end_time = datetime.now(timezone.utc).isoformat()
+        computation_duration = time.time() - computation_start
 
-                if not last_key:
-                    break
-
-            logger.info("Loaded %s training receipts", len(other_receipt_data))
-
-        if not other_receipt_data:
-            # No training data - save empty patterns
-            patterns_s3_key = f"patterns/{execution_id}/{get_merchant_hash(merchant_name)}.json"
-            s3.put_object(
-                Bucket=batch_bucket,
-                Key=patterns_s3_key,
-                Body=json.dumps(
-                    {"patterns": None, "merchant_name": merchant_name}
-                ),
-                ContentType="application/json",
-            )
-
-            result = {
-                "patterns_s3_key": patterns_s3_key,
-                "merchant_name": merchant_name,
-                "receipt_count": 0,
-                "pattern_stats": None,
-            }
-            trace_ctx.set_outputs(result)
-            flush_langsmith_traces()
-            return result
-
-        # Create child trace for pattern computation
-        with child_trace(
-            "compute_merchant_patterns",
-            trace_ctx,
-            metadata={
-                "receipt_count": len(other_receipt_data),
-            },
-        ):
-            logger.info("Computing merchant patterns...")
-            compute_start = time.time()
-
-            from receipt_agent.agents.label_evaluator.patterns import (
-                compute_merchant_patterns,
-            )
-
-            patterns = compute_merchant_patterns(
-                other_receipt_data,
-                merchant_name,
-                max_pair_patterns=4,
-                max_relationship_dimension=3,  # Enable constellation (n-tuple) patterns
-            )
-
-            compute_time = time.time() - compute_start
-            logger.info("Pattern computation completed in %.2fs", compute_time)
-
-        # Serialize patterns to S3
         patterns_s3_key = (
             f"patterns/{execution_id}/{get_merchant_hash(merchant_name)}.json"
         )
-        patterns_data = _serialize_patterns(patterns, merchant_name)
-
+        patterns_data = {
+            "patterns": None,
+            "merchant_name": merchant_name,
+            "_trace_metadata": {
+                "computation_start_time": computation_start_time,
+                "computation_end_time": computation_end_time,
+                "computation_duration_seconds": round(computation_duration, 3),
+                "computation_status": "no_training_data",
+                "load_data_duration_seconds": round(load_duration, 3),
+                "training_receipt_count": 0,
+            },
+        }
         s3.put_object(
             Bucket=batch_bucket,
             Key=patterns_s3_key,
@@ -261,37 +192,81 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
             ContentType="application/json",
         )
 
-        total_time = time.time() - start_time
-        logger.info(
-            "Saved patterns to s3://%s/%s (total time: %.2fs)",
-            batch_bucket,
-            patterns_s3_key,
-            total_time,
-        )
-
-        pattern_stats = None
-        if patterns:
-            pattern_stats = {
-                "label_positions": len(patterns.label_positions),
-                "label_pairs": len(patterns.label_pair_geometry),
-                "observed_pairs": len(patterns.all_observed_pairs),
-                "receipt_count": patterns.receipt_count,
-            }
-
-        result = {
+        return {
             "patterns_s3_key": patterns_s3_key,
             "merchant_name": merchant_name,
-            "receipt_count": len(other_receipt_data),
-            "pattern_stats": pattern_stats,
-            "compute_time_seconds": round(compute_time, 2),
+            "receipt_count": 0,
+            "pattern_stats": None,
         }
 
-        trace_ctx.set_outputs(result)
+    # Compute patterns
+    compute_start = time.time()
+    logger.info("Computing merchant patterns...")
 
-    # Flush traces before Lambda exits
-    flush_langsmith_traces()
+    from receipt_agent.agents.label_evaluator.patterns import (
+        compute_merchant_patterns,
+    )
 
-    return result
+    patterns = compute_merchant_patterns(
+        other_receipt_data,
+        merchant_name,
+        max_pair_patterns=4,
+        max_relationship_dimension=3,  # Enable constellation (n-tuple) patterns
+    )
+
+    compute_duration = time.time() - compute_start
+    logger.info("Pattern computation completed in %.2fs", compute_duration)
+
+    # Serialize patterns to S3 with timing metadata
+    computation_end_time = datetime.now(timezone.utc).isoformat()
+    computation_duration = time.time() - computation_start
+
+    patterns_s3_key = (
+        f"patterns/{execution_id}/{get_merchant_hash(merchant_name)}.json"
+    )
+    patterns_data = _serialize_patterns(patterns, merchant_name)
+
+    # Add timing metadata for per-receipt tracing
+    patterns_data["_trace_metadata"] = {
+        "computation_start_time": computation_start_time,
+        "computation_end_time": computation_end_time,
+        "computation_duration_seconds": round(computation_duration, 3),
+        "computation_status": "success",
+        "load_data_duration_seconds": round(load_duration, 3),
+        "compute_patterns_duration_seconds": round(compute_duration, 3),
+        "training_receipt_count": len(other_receipt_data),
+    }
+
+    s3.put_object(
+        Bucket=batch_bucket,
+        Key=patterns_s3_key,
+        Body=json.dumps(patterns_data, indent=2).encode("utf-8"),
+        ContentType="application/json",
+    )
+
+    logger.info(
+        "Saved patterns to s3://%s/%s (total time: %.2fs)",
+        batch_bucket,
+        patterns_s3_key,
+        computation_duration,
+    )
+
+    pattern_stats = None
+    if patterns:
+        pattern_stats = {
+            "label_positions": len(patterns.label_positions),
+            "label_pairs": len(patterns.label_pair_geometry),
+            "observed_pairs": len(patterns.all_observed_pairs),
+            "receipt_count": patterns.receipt_count,
+        }
+
+    return {
+        "patterns_s3_key": patterns_s3_key,
+        "merchant_name": merchant_name,
+        "receipt_count": len(other_receipt_data),
+        "pattern_stats": pattern_stats,
+        "compute_time_seconds": round(compute_duration, 2),
+    }
 
 
 def _serialize_patterns(patterns, merchant_name: str) -> dict[str, Any]:
