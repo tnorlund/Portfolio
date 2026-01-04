@@ -189,7 +189,7 @@ class MetricsAccumulatorProtocol(Protocol):
 
     def count(
         self,
-        metric_name: str,
+        name: str,
         value: int = 1,
         dimensions: Optional[dict[str, str]] = None,
     ) -> None:
@@ -197,7 +197,7 @@ class MetricsAccumulatorProtocol(Protocol):
 
     def gauge(
         self,
-        metric_name: str,
+        name: str,
         value: Union[int, float],
         unit: str = "None",
         dimensions: Optional[dict[str, str]] = None,
@@ -210,25 +210,19 @@ class MetricsAccumulatorProtocol(Protocol):
 # =============================================================================
 
 __all__ = [
-    # Message attribute types
+    "BatchItemFailure",
+    "CompactionResponseData",
+    "CompactionResult",
+    "LabelUpdateResult",
     "MessageAttributeValue",
     "MessageAttributes",
-    # SQS record types (Lambda format)
-    "SQSRecord",
-    "SQSEvent",
-    # Raw SQS types (boto3 format)
+    "MetadataUpdateResult",
+    "MetricsAccumulatorProtocol",
+    "OperationLoggerProtocol",
+    "ProcessCollectionResult",
     "RawMessageAttribute",
     "RawSQSMessage",
-    # Response types
-    "BatchItemFailure",
     "SQSBatchResponse",
-    "CompactionResponseData",
-    # Compaction result types
-    "MetadataUpdateResult",
-    "LabelUpdateResult",
-    "CompactionResult",
-    "ProcessCollectionResult",
-    # Protocols
-    "OperationLoggerProtocol",
-    "MetricsAccumulatorProtocol",
+    "SQSEvent",
+    "SQSRecord",
 ]

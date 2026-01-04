@@ -34,6 +34,11 @@ import os
 import time
 from dataclasses import dataclass
 
+
+class BatchSizeExceededError(ValueError):
+    """Raised when a batch exceeds the maximum allowed size."""
+
+
 from receipt_dynamo_stream import (
     DynamoDBStreamEvent,
     LambdaContext,
@@ -122,9 +127,9 @@ def _count_event_types(records: list[dict]) -> dict[str, int]:
 
 
 def _validate_batch_size(total_records: int) -> None:
-    """Validate batch size, raising ValueError if too large."""
+    """Validate batch size, raising BatchSizeExceededError if too large."""
     if total_records > MAX_RECORDS_PER_INVOCATION:
-        raise ValueError(
+        raise BatchSizeExceededError(
             f"Batch size ({total_records}) exceeds maximum "
             f"({MAX_RECORDS_PER_INVOCATION}). "
             f"Rejecting to trigger retry with smaller batch."
@@ -210,7 +215,7 @@ def lambda_handler(
         # DynamoDB Streams will retry with a smaller batch on failure.
         try:
             _validate_batch_size(total_records)
-        except ValueError:
+        except BatchSizeExceededError:
             logger.exception("Batch too large", total_records=total_records)
             emf_metrics.log_metrics(
                 {"StreamBatchTooLarge": 1},
@@ -287,8 +292,8 @@ def lambda_handler(
             correlation_id=correlation_id,
         )
 
-    except ValueError as e:
-        # ValueError includes batch size validation errors
+    except BatchSizeExceededError as e:
+        # Batch size validation error
         logger.exception("Stream processor validation failed")
         emf_metrics.log_metrics(
             {"StreamProcessorValidationError": 1},

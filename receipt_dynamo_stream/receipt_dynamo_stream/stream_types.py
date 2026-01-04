@@ -207,29 +207,24 @@ class MetricsRecorder(Protocol):
 # =============================================================================
 
 __all__ = [
-    # Attribute value types
+    "APIGatewayResponse",
     "AttributeValue",
-    "AttributeValueS",
-    "AttributeValueN",
     "AttributeValueB",
-    "AttributeValueSS",
-    "AttributeValueNS",
-    "AttributeValueBS",
     "AttributeValueBOOL",
-    "AttributeValueNULL",
+    "AttributeValueBS",
     "AttributeValueL",
     "AttributeValueM",
+    "AttributeValueN",
+    "AttributeValueNS",
+    "AttributeValueNULL",
+    "AttributeValueS",
+    "AttributeValueSS",
     "DynamoDBItem",
-    # Stream record types
     "DynamoDBKeys",
-    "StreamRecordDynamoDB",
-    "DynamoDBStreamRecord",
     "DynamoDBStreamEvent",
-    # Response types
-    "StreamProcessorResponseData",
-    "APIGatewayResponse",
-    # Context
+    "DynamoDBStreamRecord",
     "LambdaContext",
-    # Metrics
     "MetricsRecorder",
+    "StreamProcessorResponseData",
+    "StreamRecordDynamoDB",
 ]

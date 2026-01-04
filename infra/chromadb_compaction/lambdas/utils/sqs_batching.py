@@ -151,7 +151,7 @@ def fetch_additional_messages(
         for msg in messages:
             record = _convert_sqs_message_to_record(msg)
             additional_records.append(record)
-            receipt_handles.append(msg["ReceiptHandle"])
+            receipt_handles.append(msg.get("ReceiptHandle", ""))
 
         remaining -= len(messages)
 
