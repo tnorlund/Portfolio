@@ -388,12 +388,24 @@ export interface ConstellationAnomaly {
   reasoning: string;
 }
 
+export interface ReceiptImageData {
+  width: number;
+  height: number;
+  cdn_s3_key: string | null;
+  cdn_webp_s3_key?: string | null;
+  cdn_avif_s3_key?: string | null;
+  cdn_medium_s3_key?: string | null;
+  cdn_medium_webp_s3_key?: string | null;
+  cdn_medium_avif_s3_key?: string | null;
+}
+
 export interface GeometricAnomalyCacheResponse {
   receipt: {
     image_id: string;
     receipt_id: number;
     merchant_name: string;
     words: GeometricAnomalyWord[];
+    image?: ReceiptImageData | null;
   };
   patterns: {
     label_pairs: GeometricLabelPair[];

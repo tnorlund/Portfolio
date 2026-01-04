@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useInView } from "react-intersection-observer";
 import { animated, useSpring } from "@react-spring/web";
 import { ConstellationData, ConstellationWord } from "./types";
 import { api } from "../../../../services/api";
-import { GeometricAnomalyCacheResponse } from "../../../../types/api";
+import { GeometricAnomalyCacheResponse, ReceiptImageData } from "../../../../types/api";
+import { detectImageFormatSupport, getBestImageUrl, FormatSupport } from "../../../../utils/imageFormat";
 import styles from "./ConstellationVisualization.module.css";
 
 // Label colors
@@ -117,12 +118,19 @@ const ConstellationVisualization: React.FC = () => {
   });
 
   const [data, setData] = useState<ConstellationData | null>(null);
+  const [imageData, setImageData] = useState<ReceiptImageData | null>(null);
+  const [formatSupport, setFormatSupport] = useState<FormatSupport | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showConstellation, setShowConstellation] = useState(false);
   const [showExpected, setShowExpected] = useState(false);
   const [showDeviation, setShowDeviation] = useState(false);
   const hasStartedAnimation = useRef(false);
+
+  // Detect image format support
+  useEffect(() => {
+    detectImageFormatSupport().then(setFormatSupport);
+  }, []);
 
   // Fetch real data on mount
   useEffect(() => {
@@ -132,6 +140,7 @@ const ConstellationVisualization: React.FC = () => {
         const transformed = transformApiResponse(response);
         if (transformed) {
           setData(transformed);
+          setImageData(response.receipt.image || null);
         } else {
           setError("No constellation data in response");
         }
@@ -144,6 +153,12 @@ const ConstellationVisualization: React.FC = () => {
         setIsLoading(false);
       });
   }, []);
+
+  // Get the best image URL
+  const imageUrl = useMemo(() => {
+    if (!formatSupport || !imageData?.cdn_s3_key) return null;
+    return getBestImageUrl(imageData as Parameters<typeof getBestImageUrl>[0], formatSupport, "medium");
+  }, [formatSupport, imageData]);
 
   // Animation sequence when component comes into view and data is loaded
   useEffect(() => {
@@ -196,6 +211,7 @@ const ConstellationVisualization: React.FC = () => {
   }
 
   const { centroid, members, labels } = data.constellation;
+  const hasImage = imageUrl && imageData;
 
   return (
     <div ref={ref} className={styles.container}>
@@ -213,113 +229,212 @@ const ConstellationVisualization: React.FC = () => {
         <div className={styles.receiptPanel}>
           <div className={styles.panelTitle}>Receipt View</div>
           <div className={styles.receiptContainer}>
-            {/* Words */}
-            {data.receipt.words.map((word) => (
-              <WordBox
-                key={word.id}
-                word={word}
-                showHighlight={showConstellation && word.isInConstellation}
-              />
-            ))}
+            {hasImage ? (
+              // Actual receipt image with SVG overlay
+              <div className={styles.receiptImageWrapper}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={imageUrl}
+                  alt="Receipt"
+                  className={styles.receiptImage}
+                />
+                {/* SVG overlay for bounding boxes and constellation */}
+                <svg
+                  className={styles.svgOverlay}
+                  viewBox={`0 0 ${imageData.width} ${imageData.height}`}
+                  preserveAspectRatio="xMidYMid meet"
+                >
+                  {/* Bounding boxes for constellation words */}
+                  {showConstellation && data.receipt.words
+                    .filter(w => w.isInConstellation)
+                    .map((word) => {
+                      const labelColor = word.label ? LABEL_COLORS[word.label] || "#666" : "#666";
+                      // Convert normalized coords to pixel coords
+                      // Note: y is from bottom in normalized coords, so we need to invert
+                      const x = word.x * imageData.width;
+                      const y = (1 - word.y - word.height) * imageData.height;
+                      const width = word.width * imageData.width;
+                      const height = word.height * imageData.height;
 
-            {/* Constellation overlay */}
-            {showConstellation && (
-              <svg className={styles.constellationOverlay}>
-                {/* Lines connecting constellation members to centroid */}
-                {members.map((member) => {
-                  const actualX = (centroid.x + member.actual.dx) * 100;
-                  const actualY = (centroid.y + member.actual.dy) * 100;
-                  return (
-                    <animated.line
-                      key={member.label}
-                      x1={`${centroid.x * 100}%`}
-                      y1={`${centroid.y * 100}%`}
-                      x2={`${actualX}%`}
-                      y2={`${actualY}%`}
-                      stroke="#8b5cf6"
-                      strokeWidth={1}
-                      strokeDasharray="4,4"
+                      return (
+                        <g key={word.id}>
+                          <rect
+                            x={x}
+                            y={y}
+                            width={width}
+                            height={height}
+                            fill={word.isFlagged ? "#ef444440" : `${labelColor}30`}
+                            stroke={word.isFlagged ? "#ef4444" : labelColor}
+                            strokeWidth={word.isFlagged ? 3 : 2}
+                          />
+                          {/* Label text */}
+                          <text
+                            x={x + width / 2}
+                            y={y - 5}
+                            textAnchor="middle"
+                            fontSize={Math.min(14, height * 0.8)}
+                            fill={word.isFlagged ? "#ef4444" : labelColor}
+                            fontWeight="bold"
+                          >
+                            {word.label}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                  {/* Constellation lines from centroid to members */}
+                  {showConstellation && members.map((member) => {
+                    // Convert normalized centroid + offset to pixel coords
+                    const centroidPx = {
+                      x: centroid.x * imageData.width,
+                      y: (1 - centroid.y) * imageData.height,
+                    };
+                    const actualPx = {
+                      x: (centroid.x + member.actual.dx) * imageData.width,
+                      y: (1 - centroid.y - member.actual.dy) * imageData.height,
+                    };
+
+                    return (
+                      <animated.line
+                        key={`line-${member.label}`}
+                        x1={centroidPx.x}
+                        y1={centroidPx.y}
+                        x2={actualPx.x}
+                        y2={actualPx.y}
+                        stroke="#8b5cf6"
+                        strokeWidth={2}
+                        strokeDasharray="8,4"
+                        style={{ opacity: centroidSpring.opacity }}
+                      />
+                    );
+                  })}
+
+                  {/* Expected position for flagged member */}
+                  {showExpected && members.filter(m => m.isFlagged).map((member) => {
+                    const expectedPx = {
+                      x: (centroid.x + member.expected.dx) * imageData.width,
+                      y: (1 - centroid.y - member.expected.dy) * imageData.height,
+                    };
+
+                    return (
+                      <animated.g key={`expected-${member.label}`} style={{ opacity: expectedSpring.opacity }}>
+                        <circle
+                          cx={expectedPx.x}
+                          cy={expectedPx.y}
+                          r={20}
+                          fill="none"
+                          stroke="#10b981"
+                          strokeWidth={3}
+                          strokeDasharray="8,4"
+                        />
+                        <text
+                          x={expectedPx.x}
+                          y={expectedPx.y - 28}
+                          textAnchor="middle"
+                          fontSize="14"
+                          fill="#10b981"
+                          fontWeight="bold"
+                        >
+                          expected
+                        </text>
+                      </animated.g>
+                    );
+                  })}
+
+                  {/* Deviation arrow */}
+                  {showDeviation && members.filter(m => m.isFlagged).map((member) => {
+                    const expectedPx = {
+                      x: (centroid.x + member.expected.dx) * imageData.width,
+                      y: (1 - centroid.y - member.expected.dy) * imageData.height,
+                    };
+                    const actualPx = {
+                      x: (centroid.x + member.actual.dx) * imageData.width,
+                      y: (1 - centroid.y - member.actual.dy) * imageData.height,
+                    };
+
+                    return (
+                      <animated.g key={`deviation-${member.label}`} style={{ opacity: deviationSpring.opacity }}>
+                        <defs>
+                          <marker
+                            id="arrowhead-img"
+                            markerWidth="10"
+                            markerHeight="7"
+                            refX="9"
+                            refY="3.5"
+                            orient="auto"
+                          >
+                            <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" />
+                          </marker>
+                        </defs>
+                        <line
+                          x1={expectedPx.x}
+                          y1={expectedPx.y}
+                          x2={actualPx.x}
+                          y2={actualPx.y}
+                          stroke="#ef4444"
+                          strokeWidth={3}
+                          markerEnd="url(#arrowhead-img)"
+                        />
+                      </animated.g>
+                    );
+                  })}
+
+                  {/* Centroid marker */}
+                  {showConstellation && (
+                    <animated.circle
+                      cx={centroid.x * imageData.width}
+                      cy={(1 - centroid.y) * imageData.height}
+                      r={15}
+                      fill="#8b5cf6"
+                      stroke="white"
+                      strokeWidth={3}
                       style={{ opacity: centroidSpring.opacity }}
                     />
-                  );
-                })}
-
-                {/* Expected position circle - only for flagged member */}
-                {showExpected && members.filter(m => m.isFlagged).map((member) => {
-                  const expectedX = (centroid.x + member.expected.dx) * 100;
-                  const expectedY = (centroid.y + member.expected.dy) * 100;
-                  return (
-                    <animated.g key={`expected-${member.label}`} style={{ opacity: expectedSpring.opacity }}>
-                      {/* Expected position marker */}
-                      <circle
-                        cx={`${expectedX}%`}
-                        cy={`${expectedY}%`}
-                        r={12}
-                        fill="none"
-                        stroke="#10b981"
-                        strokeWidth={2}
-                        strokeDasharray="6,3"
-                      />
-                      {/* Small label */}
-                      <text
-                        x={`${expectedX}%`}
-                        y={`${expectedY - 2.5}%`}
-                        textAnchor="middle"
-                        fontSize="10"
-                        fill="#10b981"
-                      >
-                        expected
-                      </text>
-                    </animated.g>
-                  );
-                })}
-
-                {/* Deviation arrow from expected to actual */}
-                {showDeviation && members.filter(m => m.isFlagged).map((member) => {
-                  const expectedX = (centroid.x + member.expected.dx) * 100;
-                  const expectedY = (centroid.y + member.expected.dy) * 100;
-                  const actualX = (centroid.x + member.actual.dx) * 100;
-                  const actualY = (centroid.y + member.actual.dy) * 100;
-                  return (
-                    <animated.g key={`deviation-${member.label}`} style={{ opacity: deviationSpring.opacity }}>
-                      <defs>
-                        <marker
-                          id="arrowhead"
-                          markerWidth="10"
-                          markerHeight="7"
-                          refX="9"
-                          refY="3.5"
-                          orient="auto"
-                        >
-                          <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" />
-                        </marker>
-                      </defs>
-                      <line
-                        x1={`${expectedX}%`}
-                        y1={`${expectedY}%`}
-                        x2={`${actualX}%`}
-                        y2={`${actualY}%`}
-                        stroke="#ef4444"
-                        strokeWidth={2}
-                        markerEnd="url(#arrowhead)"
-                      />
-                    </animated.g>
-                  );
-                })}
-
-                {/* Centroid */}
-                <animated.circle
-                  cx={`${centroid.x * 100}%`}
-                  cy={`${centroid.y * 100}%`}
-                  r={10}
-                  fill="#8b5cf6"
-                  stroke="white"
-                  strokeWidth={2}
-                  style={{
-                    opacity: centroidSpring.opacity,
-                  }}
-                />
-              </svg>
+                  )}
+                </svg>
+              </div>
+            ) : (
+              // Fallback: text-based word boxes (no image available)
+              <>
+                {data.receipt.words.map((word) => (
+                  <WordBox
+                    key={word.id}
+                    word={word}
+                    showHighlight={showConstellation && word.isInConstellation}
+                  />
+                ))}
+                {/* Constellation overlay for fallback */}
+                {showConstellation && (
+                  <svg className={styles.constellationOverlay}>
+                    {members.map((member) => {
+                      const actualX = (centroid.x + member.actual.dx) * 100;
+                      const actualY = (centroid.y + member.actual.dy) * 100;
+                      return (
+                        <animated.line
+                          key={member.label}
+                          x1={`${centroid.x * 100}%`}
+                          y1={`${centroid.y * 100}%`}
+                          x2={`${actualX}%`}
+                          y2={`${actualY}%`}
+                          stroke="#8b5cf6"
+                          strokeWidth={1}
+                          strokeDasharray="4,4"
+                          style={{ opacity: centroidSpring.opacity }}
+                        />
+                      );
+                    })}
+                    <animated.circle
+                      cx={`${centroid.x * 100}%`}
+                      cy={`${centroid.y * 100}%`}
+                      r={10}
+                      fill="#8b5cf6"
+                      stroke="white"
+                      strokeWidth={2}
+                      style={{ opacity: centroidSpring.opacity }}
+                    />
+                  </svg>
+                )}
+              </>
             )}
           </div>
         </div>

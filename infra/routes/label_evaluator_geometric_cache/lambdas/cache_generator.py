@@ -16,6 +16,8 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -23,6 +25,7 @@ logger.setLevel(logging.INFO)
 # Environment variables
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET")
 LABEL_EVALUATOR_BATCH_BUCKET = os.environ.get("LABEL_EVALUATOR_BATCH_BUCKET")
+DYNAMODB_TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME")
 CACHE_PREFIX = "geometric-anomaly-cache/receipts/"
 MAX_CACHED_RECEIPTS = 50  # Max number of receipts to keep in cache
 
@@ -30,9 +33,53 @@ if not S3_CACHE_BUCKET:
     logger.error("S3_CACHE_BUCKET environment variable not set")
 if not LABEL_EVALUATOR_BATCH_BUCKET:
     logger.error("LABEL_EVALUATOR_BATCH_BUCKET environment variable not set")
+if not DYNAMODB_TABLE_NAME:
+    logger.error("DYNAMODB_TABLE_NAME environment variable not set")
 
-# Initialize S3 client
+# Initialize clients
 s3_client = boto3.client("s3")
+dynamo_client: DynamoClient | None = None
+
+
+def _get_dynamo_client() -> DynamoClient:
+    """Get or create the DynamoDB client singleton."""
+    global dynamo_client
+    if dynamo_client is None:
+        if not DYNAMODB_TABLE_NAME:
+            raise ValueError("DYNAMODB_TABLE_NAME not set")
+        dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME)
+    return dynamo_client
+
+
+def _get_receipt_image_data(image_id: str, receipt_id: int) -> dict[str, Any] | None:
+    """Fetch receipt image data from DynamoDB.
+
+    Args:
+        image_id: Image ID
+        receipt_id: Receipt ID
+
+    Returns:
+        Dict with image dimensions and CDN keys, or None if not found
+    """
+    try:
+        client = _get_dynamo_client()
+        receipt = client.get_receipt(image_id, receipt_id)
+        return {
+            "width": receipt.width,
+            "height": receipt.height,
+            "cdn_s3_key": receipt.cdn_s3_key,
+            "cdn_webp_s3_key": receipt.cdn_webp_s3_key,
+            "cdn_avif_s3_key": receipt.cdn_avif_s3_key,
+            "cdn_medium_s3_key": receipt.cdn_medium_s3_key,
+            "cdn_medium_webp_s3_key": receipt.cdn_medium_webp_s3_key,
+            "cdn_medium_avif_s3_key": receipt.cdn_medium_avif_s3_key,
+        }
+    except EntityNotFoundError:
+        logger.warning("Receipt not found: %s#%d", image_id, receipt_id)
+        return None
+    except Exception:
+        logger.exception("Error fetching receipt: %s#%d", image_id, receipt_id)
+        return None
 
 
 def _list_recent_executions() -> list[str]:
@@ -584,12 +631,16 @@ def _build_visualization_data(
                             "std_deviation": 0.1,
                         })
 
+    # Fetch receipt image data from DynamoDB
+    image_data = _get_receipt_image_data(image_id, receipt_id)
+
     return {
         "receipt": {
             "image_id": image_id,
             "receipt_id": receipt_id,
             "merchant_name": merchant_name,
             "words": words_viz,
+            "image": image_data,
         },
         "patterns": patterns_viz,
         "flagged_word": flagged_word_detail,
