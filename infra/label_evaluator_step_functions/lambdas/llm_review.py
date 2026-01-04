@@ -92,6 +92,7 @@ from receipt_agent.agents.label_evaluator.llm_review import (
     assemble_receipt_text,
 )
 from receipt_agent.prompts.label_evaluator import (
+    LLMResponseParseError,
     build_receipt_context_prompt,
     parse_batched_llm_response,
 )
@@ -162,7 +163,18 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     batch_index = event.get("batch_index", 0)
     llm_batch_index = event.get("llm_batch_index", 0)
     dry_run = event.get("dry_run", False)
+
+    # Compute line_item_patterns_s3_key from merchant_name if not provided
+    # This enables the two-phase architecture where receipts are processed
+    # independently after all patterns have been computed
     line_item_patterns_s3_key = event.get("line_item_patterns_s3_key")
+    if not line_item_patterns_s3_key and merchant_name and merchant_name != "Unknown":
+        merchant_hash = get_merchant_hash(merchant_name)
+        line_item_patterns_s3_key = f"line_item_patterns/{merchant_hash}.json"
+        logger.info(
+            "Computed line_item_patterns_s3_key from merchant_name: %s",
+            line_item_patterns_s3_key,
+        )
 
     # Receipt identification (one batch per receipt)
     image_id = event.get("image_id")
@@ -522,23 +534,50 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                             line_item_patterns=line_item_patterns,
                         )
 
-                        # LLM call with native LangChain tracing
-                        response = llm_invoker.invoke(
-                            [HumanMessage(content=prompt)],
-                            config={
-                                "run_name": f"llm_review:{len(issues_with_context)}_issues",
-                                "metadata": {
-                                    "issue_count": len(issues_with_context),
-                                    "prompt_length": len(prompt),
-                                },
-                            },
-                        )
-                        llm_call_count += 1
+                        # LLM call with retry on JSON parse failure
+                        max_retries = 3
+                        chunk_reviews = None
 
-                        chunk_reviews = parse_batched_llm_response(
-                            response.content.strip(),
-                            expected_count=len(issues_with_context),
-                        )
+                        for attempt in range(max_retries):
+                            response = llm_invoker.invoke(
+                                [HumanMessage(content=prompt)],
+                                config={
+                                    "run_name": f"llm_review:{len(issues_with_context)}_issues",
+                                    "metadata": {
+                                        "issue_count": len(issues_with_context),
+                                        "prompt_length": len(prompt),
+                                        "attempt": attempt + 1,
+                                    },
+                                },
+                            )
+                            llm_call_count += 1
+
+                            try:
+                                chunk_reviews = parse_batched_llm_response(
+                                    response.content.strip(),
+                                    expected_count=len(issues_with_context),
+                                    raise_on_parse_error=True,
+                                )
+                                break  # Success - exit retry loop
+                            except LLMResponseParseError as parse_err:
+                                if attempt < max_retries - 1:
+                                    logger.warning(
+                                        "JSON parse failed (attempt %d/%d), retrying: %s",
+                                        attempt + 1,
+                                        max_retries,
+                                        parse_err,
+                                    )
+                                else:
+                                    logger.warning(
+                                        "JSON parse failed after %d attempts, using fallback",
+                                        max_retries,
+                                    )
+                                    # Final attempt failed - use fallback
+                                    chunk_reviews = parse_batched_llm_response(
+                                        response.content.strip(),
+                                        expected_count=len(issues_with_context),
+                                        raise_on_parse_error=False,
+                                    )
 
                         # Store results
                         for i, review_result in enumerate(chunk_reviews):

@@ -1252,4 +1252,31 @@ def evaluate_word_contexts(
             if issue:
                 issues.append(issue)
 
+    # Cap issues per type to prevent runaway processing on abnormal receipts
+    # (e.g., 200 geometric_anomaly issues all for the same systematic reason)
+    MAX_ISSUES_PER_TYPE = 20
+
+    from collections import Counter
+
+    type_counts = Counter(issue.issue_type for issue in issues)
+    if any(count > MAX_ISSUES_PER_TYPE for count in type_counts.values()):
+        capped_issues: List[EvaluationIssue] = []
+        type_seen: dict[str, int] = {}
+
+        for issue in issues:
+            issue_type = issue.issue_type
+            type_seen[issue_type] = type_seen.get(issue_type, 0) + 1
+
+            if type_seen[issue_type] <= MAX_ISSUES_PER_TYPE:
+                capped_issues.append(issue)
+
+        logger.info(
+            "Capped issues from %d to %d (max %d per type). Original counts: %s",
+            len(issues),
+            len(capped_issues),
+            MAX_ISSUES_PER_TYPE,
+            dict(type_counts),
+        )
+        return capped_issues
+
     return issues

@@ -1177,7 +1177,7 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
     dynamodb_table_arn=dynamodb_table.arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-    max_concurrency=3,  # Limited to 3 to avoid Ollama rate limits
+    max_concurrency=8,  # Increased from 3 - OpenRouter fallback handles rate limits
     batch_size=25,  # 25 receipts per batch
 )
 

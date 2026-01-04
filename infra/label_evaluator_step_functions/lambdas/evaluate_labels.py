@@ -33,7 +33,7 @@ try:
         flush_langsmith_traces,
     )
 
-    from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+    from utils.s3_helpers import get_merchant_hash, load_json_from_s3, upload_json_to_s3
 
     _tracing_import_source = "container"
 except ImportError:
@@ -60,7 +60,7 @@ except ImportError:
             "lambdas",
         ),
     )
-    from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+    from utils.s3_helpers import get_merchant_hash, load_json_from_s3, upload_json_to_s3
 
     _tracing_import_source = "local"
 
@@ -126,12 +126,28 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         logger.info("LangSmith project set to: %s", langchain_project)
 
     data_s3_key = event.get("data_s3_key")
-    patterns_s3_key = event.get("patterns_s3_key")
-    line_item_patterns_s3_key = event.get("line_item_patterns_s3_key")
     execution_id = event.get("execution_id", "unknown")
     execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     merchant_name = event.get("merchant_name", "unknown")
+
+    # Compute S3 keys from merchant_name if not provided
+    # This enables the two-phase architecture where receipts are processed
+    # independently after all patterns have been computed
+    patterns_s3_key = event.get("patterns_s3_key")
+    line_item_patterns_s3_key = event.get("line_item_patterns_s3_key")
+
+    if merchant_name and merchant_name != "unknown":
+        merchant_hash = get_merchant_hash(merchant_name)
+        if not patterns_s3_key:
+            patterns_s3_key = f"patterns/{execution_id}/{merchant_hash}.json"
+            logger.info("Computed patterns_s3_key from merchant_name: %s", patterns_s3_key)
+        if not line_item_patterns_s3_key:
+            line_item_patterns_s3_key = f"line_item_patterns/{merchant_hash}.json"
+            logger.info(
+                "Computed line_item_patterns_s3_key from merchant_name: %s",
+                line_item_patterns_s3_key,
+            )
 
     # Check if tracing is enabled
     enable_tracing = event.get("enable_tracing", True)
@@ -254,7 +270,11 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                     line_item_patterns_s3_key,
                 )
 
-        # 4. Load pre-computed merchant patterns from S3
+        # 4. Load pre-computed merchant patterns from S3 (with graceful fallback)
+        # Patterns may not exist if:
+        # - Merchant had too few receipts for pattern learning
+        # - Pattern computation failed or hasn't completed yet
+        # - Edge case in two-phase architecture timing
         merchant_patterns = None
         if patterns_s3_key:
             with child_trace(
@@ -270,19 +290,27 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                     batch_bucket,
                     patterns_s3_key,
                 )
+                # Use allow_missing=True for graceful fallback when patterns don't exist
                 patterns_data = load_json_from_s3(
-                    s3, batch_bucket, patterns_s3_key, logger=logger
+                    s3, batch_bucket, patterns_s3_key, logger=logger, allow_missing=True
                 )
-                merchant_patterns = deserialize_patterns(patterns_data)
 
-                if merchant_patterns:
-                    logger.info(
-                        "Loaded patterns for %s (%s receipts)",
-                        merchant_patterns.merchant_name,
-                        merchant_patterns.receipt_count,
-                    )
+                if patterns_data:
+                    merchant_patterns = deserialize_patterns(patterns_data)
+                    if merchant_patterns:
+                        logger.info(
+                            "Loaded patterns for %s (%s receipts)",
+                            merchant_patterns.merchant_name,
+                            merchant_patterns.receipt_count,
+                        )
+                    else:
+                        logger.info("Patterns file exists but no patterns available")
                 else:
-                    logger.info("No patterns available for merchant")
+                    logger.warning(
+                        "No patterns found at s3://%s/%s - proceeding without patterns",
+                        batch_bucket,
+                        patterns_s3_key,
+                    )
 
         # 5. Create pre-loaded EvaluatorState with patterns
         from receipt_agent.agents.label_evaluator.state import EvaluatorState

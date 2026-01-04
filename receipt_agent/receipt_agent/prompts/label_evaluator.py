@@ -30,6 +30,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class LLMResponseParseError(Exception):
+    """Raised when LLM response cannot be parsed as valid JSON."""
+
+    pass
+
+
 # =============================================================================
 # Core Label Definitions (generated from constants.CORE_LABELS)
 # =============================================================================
@@ -903,7 +909,9 @@ def parse_llm_response(response_text: str) -> dict[str, Any]:
 
 
 def parse_batched_llm_response(
-    response_text: str, expected_count: int
+    response_text: str,
+    expected_count: int,
+    raise_on_parse_error: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Parse batched LLM JSON response.
@@ -915,10 +923,16 @@ def parse_batched_llm_response(
     Args:
         response_text: Raw LLM response
         expected_count: Expected number of reviews
+        raise_on_parse_error: If True, raise LLMResponseParseError on JSON
+            parse failure instead of returning fallback NEEDS_REVIEW values.
+            Use this to enable retry logic in the caller.
 
     Returns:
         List of dicts, one per issue, each with:
             decision, reasoning, suggested_label, confidence
+
+    Raises:
+        LLMResponseParseError: If raise_on_parse_error=True and JSON parsing fails
     """
     response_text = extract_json_from_response(response_text)
 
@@ -935,6 +949,8 @@ def parse_batched_llm_response(
         result = json.loads(response_text)
     except json.JSONDecodeError as e:
         logger.warning("Failed to parse batched LLM response as JSON: %s", e)
+        if raise_on_parse_error:
+            raise LLMResponseParseError(f"JSON parse failed: {e}") from e
         return [fallback.copy() for _ in range(expected_count)]
 
     # Try structured validation (validates schema and label values)
