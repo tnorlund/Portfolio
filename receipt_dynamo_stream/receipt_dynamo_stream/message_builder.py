@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional
 
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_line import ReceiptLine
@@ -264,7 +264,79 @@ def build_entity_change_message(
         return None
 
 
-def _extract_entity_data(  # pylint: disable=too-many-return-statements
+def _extract_receipt_place(
+    entity: ReceiptPlace,
+) -> tuple[dict[str, object], list[ChromaDBCollection]]:
+    return {
+        "entity_type": "RECEIPT_PLACE",
+        "image_id": entity.image_id,
+        "receipt_id": entity.receipt_id,
+    }, [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
+
+
+def _extract_receipt_word_label(
+    entity: ReceiptWordLabel,
+) -> tuple[dict[str, object], list[ChromaDBCollection]]:
+    return {
+        "entity_type": "RECEIPT_WORD_LABEL",
+        "image_id": entity.image_id,
+        "receipt_id": entity.receipt_id,
+        "line_id": entity.line_id,
+        "word_id": entity.word_id,
+        "label": entity.label,
+    }, [ChromaDBCollection.WORDS]
+
+
+def _extract_receipt(
+    entity: Receipt,
+) -> tuple[dict[str, object], list[ChromaDBCollection]]:
+    return {
+        "entity_type": "RECEIPT",
+        "image_id": entity.image_id,
+        "receipt_id": entity.receipt_id,
+    }, [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
+
+
+def _extract_receipt_word(
+    entity: ReceiptWord,
+) -> tuple[dict[str, object], list[ChromaDBCollection]]:
+    return {
+        "entity_type": "RECEIPT_WORD",
+        "image_id": entity.image_id,
+        "receipt_id": entity.receipt_id,
+        "line_id": entity.line_id,
+        "word_id": entity.word_id,
+    }, [ChromaDBCollection.WORDS]
+
+
+def _extract_receipt_line(
+    entity: ReceiptLine,
+) -> tuple[dict[str, object], list[ChromaDBCollection]]:
+    return {
+        "entity_type": "RECEIPT_LINE",
+        "image_id": entity.image_id,
+        "receipt_id": entity.receipt_id,
+        "line_id": entity.line_id,
+    }, [ChromaDBCollection.LINES]
+
+
+# Entity type to (expected class, extractor function) mapping
+_ENTITY_EXTRACTORS: dict[
+    str,
+    tuple[
+        type,
+        Callable[..., tuple[dict[str, object], list[ChromaDBCollection]]],
+    ],
+] = {
+    "RECEIPT_PLACE": (ReceiptPlace, _extract_receipt_place),
+    "RECEIPT_WORD_LABEL": (ReceiptWordLabel, _extract_receipt_word_label),
+    "RECEIPT": (Receipt, _extract_receipt),
+    "RECEIPT_WORD": (ReceiptWord, _extract_receipt_word),
+    "RECEIPT_LINE": (ReceiptLine, _extract_receipt_line),
+}
+
+
+def _extract_entity_data(
     entity_type: str,
     entity: (
         Receipt
@@ -275,69 +347,15 @@ def _extract_entity_data(  # pylint: disable=too-many-return-statements
         | None
     ),
 ) -> tuple[dict[str, object], list[ChromaDBCollection]]:
-    """
-    Extract entity data and determine target collections.
-    """
+    """Extract entity data and determine target collections."""
     if not entity:
         return {}, []
 
-    if entity_type == "RECEIPT_PLACE" and isinstance(entity, ReceiptPlace):
-        entity_data = {
-            "entity_type": entity_type,
-            "image_id": entity.image_id,
-            "receipt_id": entity.receipt_id,
-        }
-        return entity_data, [
-            ChromaDBCollection.LINES,
-            ChromaDBCollection.WORDS,
-        ]
-
-    if entity_type == "RECEIPT_WORD_LABEL" and isinstance(
-        entity, ReceiptWordLabel
-    ):
-        entity_data = {
-            "entity_type": entity_type,
-            "image_id": entity.image_id,
-            "receipt_id": entity.receipt_id,
-            "line_id": entity.line_id,
-            "word_id": entity.word_id,
-            "label": entity.label,
-        }
-        return entity_data, [ChromaDBCollection.WORDS]
-
-    # RECEIPT deletion: affects both LINES and WORDS collections
-    # All embeddings for this receipt need to be deleted
-    if entity_type == "RECEIPT" and isinstance(entity, Receipt):
-        entity_data = {
-            "entity_type": entity_type,
-            "image_id": entity.image_id,
-            "receipt_id": entity.receipt_id,
-        }
-        return entity_data, [
-            ChromaDBCollection.LINES,
-            ChromaDBCollection.WORDS,
-        ]
-
-    # RECEIPT_WORD deletion: delete from WORDS collection only
-    if entity_type == "RECEIPT_WORD" and isinstance(entity, ReceiptWord):
-        entity_data = {
-            "entity_type": entity_type,
-            "image_id": entity.image_id,
-            "receipt_id": entity.receipt_id,
-            "line_id": entity.line_id,
-            "word_id": entity.word_id,
-        }
-        return entity_data, [ChromaDBCollection.WORDS]
-
-    # RECEIPT_LINE deletion: delete from LINES collection only
-    if entity_type == "RECEIPT_LINE" and isinstance(entity, ReceiptLine):
-        entity_data = {
-            "entity_type": entity_type,
-            "image_id": entity.image_id,
-            "receipt_id": entity.receipt_id,
-            "line_id": entity.line_id,
-        }
-        return entity_data, [ChromaDBCollection.LINES]
+    extractor_info = _ENTITY_EXTRACTORS.get(entity_type)
+    if extractor_info:
+        expected_class, extractor = extractor_info
+        if isinstance(entity, expected_class):
+            return extractor(entity)
 
     return {}, []
 

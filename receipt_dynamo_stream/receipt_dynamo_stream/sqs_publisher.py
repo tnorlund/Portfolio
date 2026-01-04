@@ -81,16 +81,45 @@ def _message_to_dict(msg: StreamMessage) -> dict[str, object]:
     }
 
 
-def send_batch_to_queue(  # pylint: disable=too-many-locals
+def _build_sqs_entry(
+    entry_id: str,
+    message_dict: dict[str, object],
+    collection: ChromaDBCollection,
+) -> dict[str, object]:
+    """Build a single SQS batch entry."""
+    return {
+        "Id": entry_id,
+        "MessageBody": json.dumps(message_dict),
+        "MessageGroupId": f"compaction:{collection.value}",
+        "MessageAttributes": {
+            "source": {
+                "StringValue": "dynamodb_stream",
+                "DataType": "String",
+            },
+            "entity_type": {
+                "StringValue": str(message_dict.get("entity_type")),
+                "DataType": "String",
+            },
+            "event_name": {
+                "StringValue": str(message_dict.get("event_name")),
+                "DataType": "String",
+            },
+            "collection": {
+                "StringValue": collection.value,
+                "DataType": "String",
+            },
+        },
+    }
+
+
+def send_batch_to_queue(
     sqs: Any,
     messages: list[tuple[dict[str, object], ChromaDBCollection]],
     queue_env_var: str,
     collection: ChromaDBCollection,
     metrics: Optional[MetricsRecorder] = None,
 ) -> int:
-    """
-    Send a batch of messages to a specific queue.
-    """
+    """Send a batch of messages to a specific queue."""
     sent_count = 0
     queue_url = os.environ.get(queue_env_var)
 
@@ -100,42 +129,10 @@ def send_batch_to_queue(  # pylint: disable=too-many-locals
 
     for i in range(0, len(messages), 10):
         batch = messages[i : i + 10]
-        entries = []
-
-        for j, (message_dict, _) in enumerate(batch):
-            # Single message group per collection for optimal batching.
-            # This allows Phase 2 batching in the compaction Lambda to fetch
-            # up to 500 messages per invocation instead of being limited
-            # by per-image message group locks in FIFO queues.
-            message_group_id = f"compaction:{collection.value}"
-
-            entries.append(
-                {
-                    "Id": str(i + j),
-                    "MessageBody": json.dumps(message_dict),
-                    "MessageGroupId": message_group_id,
-                    "MessageAttributes": {
-                        "source": {
-                            "StringValue": "dynamodb_stream",
-                            "DataType": "String",
-                        },
-                        "entity_type": {
-                            "StringValue": str(
-                                message_dict.get("entity_type")
-                            ),
-                            "DataType": "String",
-                        },
-                        "event_name": {
-                            "StringValue": str(message_dict.get("event_name")),
-                            "DataType": "String",
-                        },
-                        "collection": {
-                            "StringValue": collection.value,
-                            "DataType": "String",
-                        },
-                    },
-                }
-            )
+        entries = [
+            _build_sqs_entry(str(i + j), msg_dict, collection)
+            for j, (msg_dict, _) in enumerate(batch)
+        ]
 
         try:
             response = sqs.send_message_batch(
