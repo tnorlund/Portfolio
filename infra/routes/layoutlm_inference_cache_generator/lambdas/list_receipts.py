@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import random
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
@@ -20,8 +20,7 @@ logger.setLevel(logging.INFO)
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
 
 # Configuration
-DEFAULT_TARGET_COUNT = 100  # Target number of receipts to cache
-MAX_LABELS_TO_QUERY = 500  # Max labels to query from DynamoDB
+DEFAULT_TARGET_COUNT = 50  # Target number of receipts to cache
 BATCH_SIZE = 10  # Number of receipts per inference batch
 
 
@@ -30,7 +29,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
     Args:
         event: Step Function input, may contain:
-            - target_count: Number of receipts to select (default: 100)
+            - target_count: Number of receipts to select (default: 50)
             - batch_size: Number of receipts per batch (default: 10)
         _context: Lambda context (unused)
 
@@ -52,9 +51,10 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         # Initialize DynamoDB client
         dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME)
 
-        # Query for receipts with VALID labels
-        logger.info("Querying for receipts with VALID labels")
-        receipt_ids = _get_unique_receipt_ids(dynamo_client, MAX_LABELS_TO_QUERY)
+        # Get unique receipts that have VALID labels (2x target for random selection)
+        min_needed = target_count * 2
+        logger.info("Finding at least %d receipts with VALID labels", min_needed)
+        receipt_ids = _get_receipts_with_valid_labels(dynamo_client, min_needed)
 
         if not receipt_ids:
             logger.warning("No receipts with VALID labels found")
@@ -66,12 +66,11 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 "error": "No receipts with VALID labels found",
             }
 
+        logger.info("Found %d unique receipts with VALID labels", len(receipt_ids))
+
         # Randomly select target_count receipts
         selected_count = min(target_count, len(receipt_ids))
         selected_receipts = random.sample(receipt_ids, selected_count)
-
-        # Shuffle to ensure variety
-        random.shuffle(selected_receipts)
 
         logger.info(
             "Selected %d receipts from %d available",
@@ -112,29 +111,44 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         }
 
 
-def _get_unique_receipt_ids(
+def _get_receipts_with_valid_labels(
     dynamo_client: DynamoClient,
-    max_labels: int,
+    min_receipts: int,
 ) -> List[Tuple[str, int]]:
-    """Get unique receipt IDs that have VALID labels.
+    """Get unique receipt IDs that have at least one VALID label.
+
+    Paginates through VALID labels using GSI3, stopping early once we have
+    enough unique receipts.
 
     Args:
         dynamo_client: DynamoDB client instance
-        max_labels: Maximum number of labels to query
+        min_receipts: Minimum number of unique receipts needed
 
     Returns:
         List of (image_id, receipt_id) tuples
     """
-    # Query for VALID labels
-    all_valid_labels, _ = dynamo_client.list_receipt_word_labels_with_status(
-        ValidationStatus.VALID,
-        limit=max_labels,
-    )
+    unique_receipts: Set[Tuple[str, int]] = set()
+    last_key = None
 
-    # Extract unique receipt IDs
-    unique_receipts = set()
-    for label in all_valid_labels:
-        unique_receipts.add((label.image_id, label.receipt_id))
+    while len(unique_receipts) < min_receipts:
+        # Query VALID labels using GSI3 (indexed by validation status)
+        labels, last_key = dynamo_client.list_receipt_word_labels_with_status(
+            ValidationStatus.VALID,
+            last_evaluated_key=last_key,
+        )
+
+        # Extract unique receipt IDs from this page
+        for label in labels:
+            unique_receipts.add((label.image_id, label.receipt_id))
+
+        logger.info(
+            "Processed page of labels, unique receipts so far: %d",
+            len(unique_receipts),
+        )
+
+        # Stop if no more pages
+        if not last_key:
+            break
 
     return list(unique_receipts)
 

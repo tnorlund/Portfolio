@@ -611,15 +611,19 @@ const LayoutLMBatchVisualization: React.FC = () => {
     const { words, predictions } = receipt.original;
     const scanY = scanProgress / 100;
 
+    // Build word lookup for efficient access
+    const wordMap = new Map<string, (typeof words)[0]>();
+    for (const w of words) {
+      wordMap.set(`${w.line_id}_${w.word_id}`, w);
+    }
+
     const newRevealed = new Set<string>();
 
     for (const pred of predictions) {
       if (pred.predicted_label_base === "O") continue;
 
-      // Find the corresponding word
-      const word = words.find(
-        (w) => w.line_id === pred.line_id && w.word_id === pred.word_id
-      );
+      // Find the corresponding word using Map lookup
+      const word = wordMap.get(`${pred.line_id}_${pred.word_id}`);
       if (!word) continue;
 
       // Check if word is revealed by scan

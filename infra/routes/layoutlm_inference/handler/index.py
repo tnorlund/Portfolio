@@ -46,8 +46,8 @@ def _list_cached_receipts() -> List[str]:
                 key = obj.get("Key", "")
                 if key.endswith(".json"):
                     keys.append(key)
-    except ClientError as e:
-        logger.error("Error listing cached receipts: %s", e)
+    except ClientError:
+        logger.exception("Error listing cached receipts")
     return keys
 
 
@@ -256,8 +256,8 @@ def handler(event, _context):
             try:
                 receipt = _fetch_receipt(key)
                 receipts.append(receipt)
-            except ClientError as e:
-                logger.error("Error fetching receipt %s: %s", key, e)
+            except ClientError:
+                logger.exception("Error fetching receipt %s", key)
                 # Continue with remaining receipts
 
         if not receipts:

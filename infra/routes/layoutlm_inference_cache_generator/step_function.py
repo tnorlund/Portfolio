@@ -36,8 +36,6 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
         name: str,
         *,
         inference_lambda_arn: Input[str],
-        cache_bucket_name: Input[str],
-        layoutlm_training_bucket: Input[str],
         opts: Optional[ResourceOptions] = None,
     ):
         """Create the batch cache generator Step Function.
@@ -45,8 +43,6 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
         Args:
             name: Resource name prefix
             inference_lambda_arn: ARN of the inference Lambda (batch_handler)
-            cache_bucket_name: Name of the S3 cache bucket
-            layoutlm_training_bucket: Name of the LayoutLM training bucket
             opts: Pulumi resource options
         """
         super().__init__(
@@ -345,15 +341,11 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
 
 def create_batch_cache_generator(
     inference_lambda_arn: Input[str],
-    cache_bucket_name: Input[str],
-    layoutlm_training_bucket: Input[str],
     opts: Optional[ResourceOptions] = None,
 ) -> LayoutLMBatchCacheGenerator:
     """Factory function to create the batch cache generator."""
     return LayoutLMBatchCacheGenerator(
         f"layoutlm-batch-cache-{stack}",
         inference_lambda_arn=inference_lambda_arn,
-        cache_bucket_name=cache_bucket_name,
-        layoutlm_training_bucket=layoutlm_training_bucket,
         opts=opts,
     )

@@ -275,18 +275,8 @@ def handler(event, context):
         # Initialize clients
         dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME)
 
-        # Load model (cached in /tmp after first load)
-        logger.info("Loading LayoutLM model from S3")
-        infer = LayoutLMInference(
-            model_dir=MODEL_DIR,
-            model_s3_uri=MODEL_S3_URI,
-            auto_from_bucket_env=(
-                "LAYOUTLM_TRAINING_BUCKET"
-                if LAYOUTLM_TRAINING_BUCKET
-                else None
-            ),
-        )
-        logger.info("Model loaded successfully. Device: %s", infer._device)
+        # Load model (cached for warm starts)
+        infer = _get_model()
 
         # Step 1: Select random receipt with VALID labels
         # Get all VALID labels (any label type)

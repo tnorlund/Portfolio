@@ -443,8 +443,6 @@ if layoutlm_training_bucket_name is not None:
     # Create Step Function for batch cache generation (weekly)
     layoutlm_batch_cache_generator = create_batch_cache_generator(
         inference_lambda_arn=layoutlm_cache_generator.lambda_function.arn,
-        cache_bucket_name=layoutlm_cache_generator.cache_bucket.id,
-        layoutlm_training_bucket=layoutlm_training_bucket_name,
     )
 
     # Create the API Lambda only after the cache bucket exists
