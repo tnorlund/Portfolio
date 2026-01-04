@@ -13,7 +13,7 @@ import {
   CodeBuildDiagram,
   ImageStack,
   LabelValidationCount,
-  LayoutLMInferenceVisualization,
+  LayoutLMBatchVisualization,
   LockingSwimlane,
   MerchantCount,
   PhotoReceiptBoundingBox,
@@ -559,8 +559,14 @@ export default function ReceiptPage({
         </li>
       </ul>
 
+      <p>
+        The visualization below shows how the model scans through receipts,
+        identifying entities as it processes each word. A scan line sweeps
+        down the image, revealing bounding boxes for detected entities.
+      </p>
+
       <ClientOnly>
-        <LayoutLMInferenceVisualization />
+        <LayoutLMBatchVisualization />
       </ClientOnly>
 
       <p>
@@ -572,7 +578,7 @@ export default function ReceiptPage({
       </p>
 
       <p>
-        The custom model processes receipts in about 5 seconds, compared to
+        The custom model processes receipts in about 100ms, compared to
         30-60 seconds with the AI Agent. The tradeoff is coverage: the model
         focuses on 4 core labels, while the AI Agent provides comprehensive
         labeling including product names, quantities, and unit prices.

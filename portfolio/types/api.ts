@@ -232,3 +232,94 @@ export interface TrainingMetricsResponse {
   best_f1: number;
   total_epochs: number;
 }
+
+// LayoutLM Batch Inference Types
+
+export interface LayoutLMPrediction {
+  word_id: number | null;
+  line_id: number;
+  text: string;
+  predicted_label: string;
+  predicted_label_base: string;
+  ground_truth_label: string | null;
+  ground_truth_label_base: string | null;
+  ground_truth_label_original?: string | null;
+  predicted_confidence: number;
+  is_correct: boolean;
+  all_class_probabilities?: Record<string, number>;
+  all_class_probabilities_base?: Record<string, number>;
+}
+
+export interface LayoutLMReceiptWord {
+  receipt_id: number;
+  line_id: number;
+  word_id: number;
+  text: string;
+  bounding_box: BoundingBox;
+  top_left?: Point;
+  top_right?: Point;
+  bottom_left?: Point;
+  bottom_right?: Point;
+}
+
+export interface LayoutLMEntitiesSummary {
+  merchant_name: string | null;
+  date: string | null;
+  address: string | null;
+  amount: string | null;
+}
+
+export interface LayoutLMReceiptInference {
+  receipt_id: string;
+  original: {
+    receipt: {
+      image_id: string;
+      receipt_id: number;
+      width: number;
+      height: number;
+      cdn_s3_bucket: string;
+      cdn_s3_key: string;
+      cdn_webp_s3_key?: string;
+      cdn_avif_s3_key?: string;
+      cdn_medium_s3_key?: string;
+      cdn_medium_webp_s3_key?: string;
+      cdn_medium_avif_s3_key?: string;
+    };
+    words: LayoutLMReceiptWord[];
+    predictions: LayoutLMPrediction[];
+  };
+  metrics: {
+    overall_accuracy: number;
+    total_words: number;
+    correct_predictions: number;
+    per_label_f1?: Record<string, number>;
+    per_label_precision?: Record<string, number>;
+    per_label_recall?: Record<string, number>;
+  };
+  model_info: {
+    model_name: string;
+    device: string;
+    s3_uri: string;
+  };
+  entities_summary: LayoutLMEntitiesSummary;
+  inference_time_ms: number;
+  cached_at: string;
+}
+
+export interface LayoutLMAggregateStats {
+  avg_accuracy: number;
+  min_accuracy: number;
+  max_accuracy: number;
+  avg_inference_time_ms: number;
+  total_receipts_in_pool: number;
+  batch_size: number;
+  total_words_processed: number;
+  estimated_throughput_per_hour: number;
+}
+
+export interface LayoutLMBatchInferenceResponse {
+  receipts: LayoutLMReceiptInference[];
+  aggregate_stats: LayoutLMAggregateStats;
+  fetched_at: string;
+  legacy_mode?: boolean;
+}

@@ -8,6 +8,7 @@ import {
   RandomReceiptDetailsResponse,
   AddressSimilarityResponse,
   TrainingMetricsResponse,
+  LayoutLMBatchInferenceResponse,
 } from "../../types/api";
 import { withPerformanceTrackingForAPI } from "../../utils/performance/api-wrapper";
 
@@ -191,7 +192,7 @@ const baseApi = {
     return response.json();
   },
 
-  async fetchLayoutLMInference(): Promise<any> {
+  async fetchLayoutLMInference(): Promise<LayoutLMBatchInferenceResponse> {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/layoutlm_inference`,

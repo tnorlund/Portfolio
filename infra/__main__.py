@@ -431,10 +431,18 @@ if layoutlm_training_bucket_name is not None:
     from routes.layoutlm_inference_cache_generator.infra import (
         create_layoutlm_inference_cache_generator,
     )
+    from routes.layoutlm_inference_cache_generator.step_function import (
+        create_batch_cache_generator,
+    )
 
     # Create cache generator (which creates the cache bucket)
     layoutlm_cache_generator = create_layoutlm_inference_cache_generator(
         layoutlm_training_bucket=layoutlm_training_bucket_name,
+    )
+
+    # Create Step Function for batch cache generation (weekly)
+    layoutlm_batch_cache_generator = create_batch_cache_generator(
+        inference_lambda_arn=layoutlm_cache_generator.lambda_function.arn,
     )
 
     # Create the API Lambda only after the cache bucket exists
@@ -501,6 +509,10 @@ if layoutlm_training_bucket_name is not None:
     pulumi.export(
         "layoutlm_inference_cache_bucket",
         layoutlm_cache_generator.cache_bucket.id,
+    )
+    pulumi.export(
+        "layoutlm_batch_cache_state_machine_arn",
+        layoutlm_batch_cache_generator.state_machine.arn,
     )
 
 

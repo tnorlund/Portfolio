@@ -22,7 +22,8 @@ RUN pip install --no-cache-dir \
     boto3>=1.34.0 \
     pillow tqdm filelock 'pydantic>=2.10.6' \
     'accelerate>=0.21.0' \
-    seqeval && \
+    seqeval \
+    'protobuf>=3.20.0,<6.0.0' && \
     pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_layoutlm && \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_layoutlm
