@@ -1,5 +1,9 @@
 """
 SQS publishing utilities for stream messages.
+
+Routes messages to appropriate queues based on event type:
+- INSERT/MODIFY events -> Standard queues (high throughput)
+- REMOVE events -> FIFO queues (ordered deletes)
 """
 
 from __future__ import annotations
@@ -23,34 +27,71 @@ def publish_messages(
     metrics: Optional[MetricsRecorder] = None,
 ) -> int:
     """
-    Send StreamMessage objects to collection-specific SQS queues.
+    Send StreamMessage objects to appropriate SQS queues based on event type.
+
+    Routing strategy:
+    - INSERT/MODIFY events -> Standard queues (high throughput)
+    - REMOVE events -> FIFO queues (ordered deletes)
     """
     sqs: Any = boto3.client("sqs")
     sent_count = 0
-    lines_messages: list[tuple[dict[str, object], ChromaDBCollection]] = []
-    words_messages: list[tuple[dict[str, object], ChromaDBCollection]] = []
+
+    # Separate messages by collection AND event type
+    lines_standard: list[tuple[dict[str, object], ChromaDBCollection]] = []
+    lines_delete: list[tuple[dict[str, object], ChromaDBCollection]] = []
+    words_standard: list[tuple[dict[str, object], ChromaDBCollection]] = []
+    words_delete: list[tuple[dict[str, object], ChromaDBCollection]] = []
 
     for msg in messages:
         msg_dict = _message_to_dict(msg)
-        if ChromaDBCollection.LINES in msg.collections:
-            lines_messages.append((msg_dict, ChromaDBCollection.LINES))
-        if ChromaDBCollection.WORDS in msg.collections:
-            words_messages.append((msg_dict, ChromaDBCollection.WORDS))
+        is_remove = msg.event_name == "REMOVE"
 
-    if lines_messages:
-        sent_count += send_batch_to_queue(
+        if ChromaDBCollection.LINES in msg.collections:
+            if is_remove:
+                lines_delete.append((msg_dict, ChromaDBCollection.LINES))
+            else:
+                lines_standard.append((msg_dict, ChromaDBCollection.LINES))
+
+        if ChromaDBCollection.WORDS in msg.collections:
+            if is_remove:
+                words_delete.append((msg_dict, ChromaDBCollection.WORDS))
+            else:
+                words_standard.append((msg_dict, ChromaDBCollection.WORDS))
+
+    # Send to Standard queues (INSERT/MODIFY)
+    if lines_standard:
+        sent_count += send_batch_to_standard_queue(
             sqs,
-            lines_messages,
-            "LINES_QUEUE_URL",
+            lines_standard,
+            "LINES_STANDARD_QUEUE_URL",
             ChromaDBCollection.LINES,
             metrics,
         )
 
-    if words_messages:
-        sent_count += send_batch_to_queue(
+    if words_standard:
+        sent_count += send_batch_to_standard_queue(
             sqs,
-            words_messages,
-            "WORDS_QUEUE_URL",
+            words_standard,
+            "WORDS_STANDARD_QUEUE_URL",
+            ChromaDBCollection.WORDS,
+            metrics,
+        )
+
+    # Send to FIFO queues (REMOVE only)
+    if lines_delete:
+        sent_count += send_batch_to_fifo_queue(
+            sqs,
+            lines_delete,
+            "LINES_DELETE_QUEUE_URL",
+            ChromaDBCollection.LINES,
+            metrics,
+        )
+
+    if words_delete:
+        sent_count += send_batch_to_fifo_queue(
+            sqs,
+            words_delete,
+            "WORDS_DELETE_QUEUE_URL",
             ChromaDBCollection.WORDS,
             metrics,
         )
@@ -81,12 +122,43 @@ def _message_to_dict(msg: StreamMessage) -> dict[str, object]:
     }
 
 
-def _build_sqs_entry(
+def _build_standard_sqs_entry(
     entry_id: str,
     message_dict: dict[str, object],
     collection: ChromaDBCollection,
 ) -> dict[str, object]:
-    """Build a single SQS batch entry."""
+    """Build a single SQS batch entry for Standard queues (no MessageGroupId)."""
+    return {
+        "Id": entry_id,
+        "MessageBody": json.dumps(message_dict),
+        # No MessageGroupId for Standard queues
+        "MessageAttributes": {
+            "source": {
+                "StringValue": "dynamodb_stream",
+                "DataType": "String",
+            },
+            "entity_type": {
+                "StringValue": str(message_dict.get("entity_type")),
+                "DataType": "String",
+            },
+            "event_name": {
+                "StringValue": str(message_dict.get("event_name")),
+                "DataType": "String",
+            },
+            "collection": {
+                "StringValue": collection.value,
+                "DataType": "String",
+            },
+        },
+    }
+
+
+def _build_fifo_sqs_entry(
+    entry_id: str,
+    message_dict: dict[str, object],
+    collection: ChromaDBCollection,
+) -> dict[str, object]:
+    """Build a single SQS batch entry for FIFO queues (with MessageGroupId)."""
     return {
         "Id": entry_id,
         "MessageBody": json.dumps(message_dict),
@@ -112,14 +184,14 @@ def _build_sqs_entry(
     }
 
 
-def send_batch_to_queue(
+def send_batch_to_standard_queue(
     sqs: Any,
     messages: list[tuple[dict[str, object], ChromaDBCollection]],
     queue_env_var: str,
     collection: ChromaDBCollection,
     metrics: Optional[MetricsRecorder] = None,
 ) -> int:
-    """Send a batch of messages to a specific queue."""
+    """Send a batch of messages to a Standard SQS queue."""
     sent_count = 0
     queue_url = os.environ.get(queue_env_var)
 
@@ -130,7 +202,7 @@ def send_batch_to_queue(
     for i in range(0, len(messages), 10):
         batch = messages[i : i + 10]
         entries = [
-            _build_sqs_entry(str(i + j), msg_dict, collection)
+            _build_standard_sqs_entry(str(i + j), msg_dict, collection)
             for j, (msg_dict, _) in enumerate(batch)
         ]
 
@@ -142,19 +214,21 @@ def send_batch_to_queue(
             sent_count += successful
 
             logger.info(
-                "Sent %s messages to %s queue", successful, collection.value
+                "Sent %s messages to %s standard queue",
+                successful,
+                collection.value,
             )
 
             if metrics:
                 metrics.count(
                     "SQSMessagesSuccessful",
                     successful,
-                    {"collection": collection.value},
+                    {"collection": collection.value, "queue_type": "standard"},
                 )
 
         except (ClientError, BotoCoreError) as exc:
             logger.exception(
-                "Failed to send messages to %s queue: %s",
+                "Failed to send messages to %s standard queue: %s",
                 collection.value,
                 exc,
             )
@@ -162,10 +236,72 @@ def send_batch_to_queue(
                 metrics.count(
                     "SQSMessagesFailed",
                     len(batch),
-                    {"collection": collection.value},
+                    {"collection": collection.value, "queue_type": "standard"},
                 )
 
     return sent_count
 
 
-__all__ = ["publish_messages", "send_batch_to_queue"]
+def send_batch_to_fifo_queue(
+    sqs: Any,
+    messages: list[tuple[dict[str, object], ChromaDBCollection]],
+    queue_env_var: str,
+    collection: ChromaDBCollection,
+    metrics: Optional[MetricsRecorder] = None,
+) -> int:
+    """Send a batch of messages to a FIFO SQS queue."""
+    sent_count = 0
+    queue_url = os.environ.get(queue_env_var)
+
+    if not queue_url:
+        logger.error("Queue URL not found: %s", queue_env_var)
+        return 0
+
+    for i in range(0, len(messages), 10):
+        batch = messages[i : i + 10]
+        entries = [
+            _build_fifo_sqs_entry(str(i + j), msg_dict, collection)
+            for j, (msg_dict, _) in enumerate(batch)
+        ]
+
+        try:
+            response = sqs.send_message_batch(
+                QueueUrl=queue_url, Entries=entries
+            )
+            successful = len(response.get("Successful", []))
+            sent_count += successful
+
+            logger.info(
+                "Sent %s messages to %s FIFO queue",
+                successful,
+                collection.value,
+            )
+
+            if metrics:
+                metrics.count(
+                    "SQSMessagesSuccessful",
+                    successful,
+                    {"collection": collection.value, "queue_type": "fifo"},
+                )
+
+        except (ClientError, BotoCoreError) as exc:
+            logger.exception(
+                "Failed to send messages to %s FIFO queue: %s",
+                collection.value,
+                exc,
+            )
+            if metrics:
+                metrics.count(
+                    "SQSMessagesFailed",
+                    len(batch),
+                    {"collection": collection.value, "queue_type": "fifo"},
+                )
+
+    return sent_count
+
+
+__all__ = [
+    "publish_messages",
+    "send_batch_to_standard_queue",
+    "send_batch_to_fifo_queue",
+]

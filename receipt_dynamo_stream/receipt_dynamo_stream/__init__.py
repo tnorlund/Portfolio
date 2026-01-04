@@ -36,7 +36,8 @@ from receipt_dynamo_stream.parsing.parsers import (
 )
 from receipt_dynamo_stream.sqs_publisher import (
     publish_messages,
-    send_batch_to_queue,
+    send_batch_to_fifo_queue,
+    send_batch_to_standard_queue,
 )
 from receipt_dynamo_stream.stream_types import (
     APIGatewayResponse,
@@ -70,7 +71,8 @@ __all__ = [
     "parse_entity",
     "parse_stream_record",
     "publish_messages",
-    "send_batch_to_queue",
+    "send_batch_to_fifo_queue",
+    "send_batch_to_standard_queue",
     # Type definitions
     "APIGatewayResponse",
     "AttributeValue",

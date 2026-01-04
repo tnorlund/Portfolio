@@ -2,6 +2,10 @@
 
 Provides Phase 2 optimization for fetching and deleting SQS messages
 to amortize S3 transfer costs across larger batches.
+
+Supports hybrid queue architecture:
+- Standard queues for INSERT/MODIFY (high throughput)
+- FIFO queues for REMOVE only (ordered deletes)
 """
 # pylint: disable=import-error
 # import-error: aws_clients is bundled into Lambda package
@@ -219,12 +223,59 @@ def delete_messages_batch(
     return failed_handles
 
 
+def _get_queue_url_for_record(record: SQSRecord) -> tuple[str | None, str]:
+    """Determine the appropriate queue URL from message attributes.
+
+    Routes based on collection (lines/words) and event type (REMOVE vs others):
+    - REMOVE events -> FIFO delete queues
+    - INSERT/MODIFY events -> Standard queues
+
+    Args:
+        record: SQS record from Lambda trigger
+
+    Returns:
+        Tuple of (queue_url, queue_type) where queue_type is 'standard' or 'fifo'
+    """
+    message_attrs = record.get("messageAttributes", {})
+
+    # Get collection (lines or words)
+    collection_attr = message_attrs.get("collection", {})
+    collection_value = collection_attr.get("stringValue", "words")
+
+    # Get event name to determine queue type
+    event_name_attr = message_attrs.get("event_name", {})
+    event_name = event_name_attr.get("stringValue", "")
+    is_delete = event_name == "REMOVE"
+
+    # Route to appropriate queue
+    if collection_value == "lines":
+        if is_delete:
+            queue_url = os.environ.get("LINES_DELETE_QUEUE_URL")
+            queue_type = "fifo"
+        else:
+            queue_url = os.environ.get("LINES_STANDARD_QUEUE_URL")
+            queue_type = "standard"
+    else:
+        if is_delete:
+            queue_url = os.environ.get("WORDS_DELETE_QUEUE_URL")
+            queue_type = "fifo"
+        else:
+            queue_url = os.environ.get("WORDS_STANDARD_QUEUE_URL")
+            queue_type = "standard"
+
+    return queue_url, queue_type
+
+
 def fetch_phase2_messages(
     records: list[SQSRecord],
     op_logger: OperationLoggerProtocol,
     metrics: Optional[MetricsAccumulatorProtocol] = None,
 ) -> Phase2FetchResult:
     """Determine queue URL and fetch additional messages for Phase 2 batching.
+
+    Supports hybrid queue architecture:
+    - Standard queues for INSERT/MODIFY (high throughput, fetch up to MAX_MESSAGES)
+    - FIFO queues for REMOVE only (limited to 10 per fetch due to AWS constraints)
 
     Args:
         records: Initial SQS records from Lambda trigger
@@ -237,25 +288,24 @@ def fetch_phase2_messages(
     if not records:
         return Phase2FetchResult(records, None, [])
 
-    # Determine queue from first record's collection attribute
+    # Determine queue URL and type from first record
     first_record = records[0]
-    collection_attr = first_record.get("messageAttributes", {}).get(
-        "collection", {}
-    )
-    collection_value = collection_attr.get("stringValue", "words")
-
-    if collection_value == "lines":
-        queue_url = os.environ.get("LINES_QUEUE_URL")
-    else:
-        queue_url = os.environ.get("WORDS_QUEUE_URL")
+    queue_url, queue_type = _get_queue_url_for_record(first_record)
 
     if not queue_url:
+        op_logger.warning(
+            "Queue URL not configured, skipping Phase 2 batching",
+            collection=first_record.get("messageAttributes", {})
+            .get("collection", {})
+            .get("stringValue", "unknown"),
+        )
         return Phase2FetchResult(records, None, [])
 
     # Fetch additional messages
     op_logger.info(
         "Phase 2: attempting to fetch additional messages",
         queue_url=queue_url[-50:],
+        queue_type=queue_type,
         current_count=len(records),
         max_messages=MAX_MESSAGES_PER_COMPACTION,
     )
@@ -272,6 +322,7 @@ def fetch_phase2_messages(
             initial_count=len(records),
             additional_count=len(additional_records),
             total_count=len(records) + len(additional_records),
+            queue_type=queue_type,
         )
         all_records = records + additional_records
 
@@ -279,11 +330,13 @@ def fetch_phase2_messages(
             metrics.count(
                 "CompactionAdditionalMessagesFetched",
                 len(additional_records),
+                {"queue_type": queue_type},
             )
     else:
         op_logger.info(
             "Phase 2: no additional messages available",
             initial_count=len(records),
+            queue_type=queue_type,
         )
         all_records = records
 

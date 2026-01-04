@@ -185,8 +185,12 @@ class HybridLambdaDeployment(ComponentResource):
                         dynamodb_table_arn
                     ).apply(lambda args: args[0].split("/")[-1]),
                     "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
-                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
-                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
+                    # Standard queues for INSERT/MODIFY (high throughput)
+                    "LINES_STANDARD_QUEUE_URL": chromadb_queues.lines_standard_queue_url,
+                    "WORDS_STANDARD_QUEUE_URL": chromadb_queues.words_standard_queue_url,
+                    # FIFO queues for REMOVE only (ordered deletes)
+                    "LINES_DELETE_QUEUE_URL": chromadb_queues.lines_delete_queue_url,
+                    "WORDS_DELETE_QUEUE_URL": chromadb_queues.words_delete_queue_url,
                     "HEARTBEAT_INTERVAL_SECONDS": "30",
                     "LOCK_DURATION_MINUTES": "3",
                     "MAX_HEARTBEAT_FAILURES": "3",
@@ -207,10 +211,8 @@ class HybridLambdaDeployment(ComponentResource):
                     "ENABLE_METRICS": "true",
                     # Phase 2 batching: max messages to process per compaction cycle
                     # Higher = better throughput (amortizes snapshot overhead)
-                    # NOTE: With FIFO queues, actual batch size is limited to ~10 msgs
-                    # due to AWS message group locking. See QUEUE_STRATEGY.md for details
-                    # on FIFO limitations and alternative approaches.
-                    "MAX_MESSAGES_PER_COMPACTION": "500",
+                    # With Standard queues, batch size is now 1000 messages.
+                    "MAX_MESSAGES_PER_COMPACTION": "1000",
                 },
                 "vpc_config": {
                     "subnet_ids": vpc_subnet_ids,
@@ -347,8 +349,12 @@ class HybridLambdaDeployment(ComponentResource):
             # No VPC config - stream processor only needs AWS service access (DynamoDB, SQS, CloudWatch)
             environment={
                 "variables": {
-                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
-                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
+                    # Standard queues for INSERT/MODIFY (high throughput)
+                    "LINES_STANDARD_QUEUE_URL": chromadb_queues.lines_standard_queue_url,
+                    "WORDS_STANDARD_QUEUE_URL": chromadb_queues.words_standard_queue_url,
+                    # FIFO queues for REMOVE only (ordered deletes)
+                    "LINES_DELETE_QUEUE_URL": chromadb_queues.lines_delete_queue_url,
+                    "WORDS_DELETE_QUEUE_URL": chromadb_queues.words_delete_queue_url,
                     "LOG_LEVEL": "INFO",
                     # Stream processing configuration (aligned with code and infrastructure)
                     "MAX_RECORDS_PER_INVOCATION": "10",  # Matches DynamoDB Stream batch_size
@@ -541,15 +547,21 @@ class HybridLambdaDeployment(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # SQS access policy
+        # SQS access policy for hybrid queue architecture
         self.sqs_policy = aws.iam.RolePolicy(
             f"{name}-sqs-policy",
             role=self.lambda_role.id,
             policy=Output.all(
-                chromadb_queues.lines_queue_arn,
-                chromadb_queues.words_queue_arn,
-                chromadb_queues.lines_dlq_arn,
-                chromadb_queues.words_dlq_arn,
+                # Standard queues (INSERT/MODIFY)
+                chromadb_queues.lines_standard_queue_arn,
+                chromadb_queues.words_standard_queue_arn,
+                chromadb_queues.lines_standard_dlq_arn,
+                chromadb_queues.words_standard_dlq_arn,
+                # FIFO queues (REMOVE only)
+                chromadb_queues.lines_delete_queue_arn,
+                chromadb_queues.words_delete_queue_arn,
+                chromadb_queues.lines_delete_dlq_arn,
+                chromadb_queues.words_delete_dlq_arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -565,10 +577,16 @@ class HybridLambdaDeployment(ComponentResource):
                                     "sqs:GetQueueAttributes",
                                 ],
                                 "Resource": [
-                                    args[0],  # Lines queue ARN
-                                    args[1],  # Words queue ARN
-                                    args[2],  # Lines DLQ ARN
-                                    args[3],  # Words DLQ ARN
+                                    # Standard queues
+                                    args[0],  # Lines standard queue ARN
+                                    args[1],  # Words standard queue ARN
+                                    args[2],  # Lines standard DLQ ARN
+                                    args[3],  # Words standard DLQ ARN
+                                    # FIFO delete queues
+                                    args[4],  # Lines delete queue ARN
+                                    args[5],  # Words delete queue ARN
+                                    args[6],  # Lines delete DLQ ARN
+                                    args[7],  # Words delete DLQ ARN
                                 ],
                             }
                         ],
@@ -649,23 +667,47 @@ class HybridLambdaDeployment(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # SQS queues to enhanced compaction handler
-        # Note: FIFO queues do NOT support maximum_batching_window_in_seconds
-        # (that parameter only works with standard queues).
-        # Phase 2 in-Lambda batching compensates by fetching additional messages
-        # within the handler after receiving the initial batch of 10.
-        self.lines_event_source_mapping = aws.lambda_.EventSourceMapping(
-            f"{name}-lines-event-source-mapping",
-            event_source_arn=chromadb_queues.lines_queue_arn,
+        # =========================================================================
+        # Standard SQS queues for INSERT/MODIFY (high throughput)
+        # =========================================================================
+        # Standard queues support batch sizes up to 10,000 and batching windows
+        self.lines_standard_event_source_mapping = aws.lambda_.EventSourceMapping(
+            f"{name}-lines-standard-event-source-mapping",
+            event_source_arn=chromadb_queues.lines_standard_queue_arn,
+            function_name=self.enhanced_compaction_function.arn,
+            batch_size=1000,  # High throughput for INSERT/MODIFY
+            maximum_batching_window_in_seconds=5,  # Batch more messages
+            function_response_types=["ReportBatchItemFailures"],
+            opts=ResourceOptions(parent=self),
+        )
+
+        self.words_standard_event_source_mapping = aws.lambda_.EventSourceMapping(
+            f"{name}-words-standard-event-source-mapping",
+            event_source_arn=chromadb_queues.words_standard_queue_arn,
+            function_name=self.enhanced_compaction_function.arn,
+            batch_size=1000,  # High throughput for INSERT/MODIFY
+            maximum_batching_window_in_seconds=5,  # Batch more messages
+            function_response_types=["ReportBatchItemFailures"],
+            opts=ResourceOptions(parent=self),
+        )
+
+        # =========================================================================
+        # FIFO SQS queues for REMOVE only (ordered deletes)
+        # =========================================================================
+        # FIFO queues do NOT support maximum_batching_window_in_seconds
+        # and have a max batch size of 10
+        self.lines_delete_event_source_mapping = aws.lambda_.EventSourceMapping(
+            f"{name}-lines-delete-event-source-mapping",
+            event_source_arn=chromadb_queues.lines_delete_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
             batch_size=10,  # FIFO queues max batch size is 10
             function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(parent=self),
         )
 
-        self.words_event_source_mapping = aws.lambda_.EventSourceMapping(
-            f"{name}-words-event-source-mapping",
-            event_source_arn=chromadb_queues.words_queue_arn,
+        self.words_delete_event_source_mapping = aws.lambda_.EventSourceMapping(
+            f"{name}-words-delete-event-source-mapping",
+            event_source_arn=chromadb_queues.words_delete_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
             batch_size=10,  # FIFO queues max batch size is 10
             function_response_types=["ReportBatchItemFailures"],
