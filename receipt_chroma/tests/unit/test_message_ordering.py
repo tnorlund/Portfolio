@@ -395,3 +395,37 @@ class TestSortAndDeduplicateMessages:
         assert len(result) == 2
         assert result[0].context.record_id == "remove-1"
         assert result[1].context.record_id == "remove-2"
+
+    def test_handles_none_timestamp(self):
+        """Test that None timestamps don't crash sorting."""
+        msg_none = StreamMessage(
+            entity_type="RECEIPT_PLACE",
+            entity_data={"image_id": "img-1", "receipt_id": 1},
+            changes={},
+            event_name="INSERT",
+            collections=(ChromaDBCollection.LINES,),
+            context=StreamRecordContext(
+                timestamp=None,  # type: ignore[arg-type]
+                record_id="msg-none",
+                aws_region="us-east-1",
+            ),
+        )
+        msg_normal = StreamMessage(
+            entity_type="RECEIPT_PLACE",
+            entity_data={"image_id": "img-2", "receipt_id": 2},
+            changes={},
+            event_name="INSERT",
+            collections=(ChromaDBCollection.LINES,),
+            context=StreamRecordContext(
+                timestamp="2025-01-01T00:00:01Z",
+                record_id="msg-normal",
+                aws_region="us-east-1",
+            ),
+        )
+
+        # Should not crash and return both messages
+        result = sort_and_deduplicate_messages([msg_none, msg_normal])
+
+        assert len(result) == 2
+        record_ids = {m.context.record_id for m in result}
+        assert record_ids == {"msg-none", "msg-normal"}

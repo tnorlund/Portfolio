@@ -89,9 +89,13 @@ def sort_and_deduplicate_messages(
         return []
 
     # Sort: REMOVE first, then INSERT/MODIFY (secondary sort by timestamp)
+    # Use empty string as fallback for None timestamps to avoid comparison crash
     sorted_messages = sorted(
         messages,
-        key=lambda m: (0 if m.event_name == "REMOVE" else 1, m.context.timestamp),
+        key=lambda m: (
+            0 if m.event_name == "REMOVE" else 1,
+            m.context.timestamp or "",
+        ),
     )
 
     # Track entities being deleted for within-batch deduplication
