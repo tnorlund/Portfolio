@@ -32,7 +32,6 @@ from receipt_dynamo_stream.parsing import (
     parse_stream_record,
 )
 from receipt_dynamo_stream.stream_types import (
-    DynamoDBItem,
     DynamoDBStreamRecord,
     MetricsRecorder,
 )
