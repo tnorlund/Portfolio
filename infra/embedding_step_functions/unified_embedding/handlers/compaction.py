@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import boto3
+from chromadb.errors import NotFoundError
 from receipt_chroma import LockManager  # type: ignore[attr-defined]
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.s3 import (
@@ -1141,7 +1142,9 @@ def final_merge_all_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                     compacted_collection = compacted_client.get_collection(
                         collection_name
                     )
-                except Exception:
+                except (ValueError, NotFoundError):
+                    # ValueError: raised by ChromaClient when collection not found
+                    # NotFoundError: underlying ChromaDB exception
                     compacted_collection = compacted_client.get_collection(
                         collection_name,
                         create_if_missing=True,
@@ -2298,7 +2301,7 @@ def perform_intermediate_merge(
                         main_collection = chroma_client.get_collection(
                             collection_name
                         )
-                    except Exception:
+                    except (ValueError, NotFoundError):
                         main_collection = chroma_client.get_collection(
                             collection_name,
                             create_if_missing=True,
@@ -2621,7 +2624,7 @@ def perform_final_merge(
                             collection=collection_name,
                             count=collection.count(),
                         )
-                    except Exception:
+                    except (ValueError, NotFoundError):
                         # Collection doesn't exist, create it
                         collection = chroma_client.get_collection(
                             collection_name,
@@ -2683,7 +2686,7 @@ def perform_final_merge(
                             "Collection already exists in new snapshot",
                             collection=collection_name,
                         )
-                    except Exception:
+                    except (ValueError, NotFoundError):
                         # Collection doesn't exist, create it
                         collection = chroma_client.get_collection(
                             collection_name,
@@ -2796,7 +2799,7 @@ def perform_final_merge(
                         main_collection = chroma_client.get_collection(
                             collection_name
                         )
-                    except Exception:
+                    except (ValueError, NotFoundError):
                         main_collection = chroma_client.get_collection(
                             collection_name,
                             create_if_missing=True,
