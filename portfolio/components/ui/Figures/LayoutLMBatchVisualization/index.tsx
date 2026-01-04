@@ -40,6 +40,7 @@ interface ReceiptQueueProps {
   currentIndex: number;
   formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
   isTransitioning: boolean;
+  isPoolExhausted: boolean;
 }
 
 // Generate stable random positions for queue items based on receipt ID only
@@ -64,11 +65,32 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   currentIndex,
   formatSupport,
   isTransitioning,
+  isPoolExhausted,
 }) => {
-  // Show remaining receipts (after current one)
-  const remainingReceipts = receipts.slice(currentIndex + 1);
   const maxVisible = 6; // Show up to 6 receipts in the visual queue
-  const visibleReceipts = remainingReceipts.slice(0, maxVisible);
+
+  // Build visible receipts array - handles looping when pool is exhausted
+  const visibleReceipts = useMemo(() => {
+    if (receipts.length === 0) return [];
+
+    const result: LayoutLMReceiptInference[] = [];
+    const totalReceipts = receipts.length;
+
+    for (let i = 1; i <= maxVisible; i++) {
+      const idx = currentIndex + i;
+
+      if (isPoolExhausted) {
+        // When pool is exhausted, wrap around using modulo
+        result.push(receipts[idx % totalReceipts]);
+      } else if (idx < totalReceipts) {
+        // Normal behavior - show next receipts if available
+        result.push(receipts[idx]);
+      }
+      // Otherwise, no receipt to show at this position (still loading)
+    }
+
+    return result;
+  }, [receipts, currentIndex, isPoolExhausted]);
 
   if (!formatSupport || visibleReceipts.length === 0) {
     return <div className={styles.receiptQueue} />;
@@ -91,9 +113,12 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
         // First item fades out during transition
         const isFlying = isTransitioning && idx === 0;
 
+        // Use position-based key to handle duplicate receipts when looping
+        const queueKey = `${receipt.receipt_id}-queue-${idx}`;
+
         return (
           <div
-            key={receipt.receipt_id}
+            key={queueKey}
             className={`${styles.queuedReceipt} ${isFlying ? styles.flyingOut : ""}`}
             style={{
               top: `${stackOffset}px`,
@@ -138,23 +163,68 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   if (!receipt) return null;
 
   const { width, height } = receipt.original.receipt;
-  const { rotation } = getQueuePosition(receipt.receipt_id);
+  const { rotation, leftOffset } = getQueuePosition(receipt.receipt_id);
 
   const imageUrl = useMemo(() => {
     if (!formatSupport) return null;
     return getBestImageUrl(receipt.original.receipt, formatSupport);
   }, [receipt, formatSupport]);
 
-  // Queue item is 100px wide, center is ~300px, so scale is 100/300 = 0.33
-  // Queue is positioned about 200px to the left of center
-  const { x, scale, rotate } = useSpring({
+  // Calculate the display dimensions - max height 500px, maintain aspect ratio
+  const aspectRatio = width / height;
+  const displayHeight = Math.min(500, height);
+  const displayWidth = displayHeight * aspectRatio;
+
+  // Calculate starting position to match queue item position
+  // The flying receipt center needs to move from center of centerColumn to center of queue item
+
+  // Layout dimensions
+  const queueItemWidth = 100;
+  const queueWidth = 120;
+  const gap = 24; // 1.5rem
+  const centerColumnWidth = 350;
+  const queueHeight = 400;
+  const centerColumnHeight = 500;
+
+  // X calculation:
+  // From center of centerColumn, go left to reach queue item center
+  // - Half of center column width to reach left edge: 175px
+  // - Gap between columns: 24px
+  // - Queue item center is at (10 + leftOffset + 50) = (60 + leftOffset) from left of queue
+  // - So from right edge of queue to queue item center: 120 - (60 + leftOffset) = (60 - leftOffset)
+  const distanceToQueueItemCenter = (centerColumnWidth / 2) + gap + (queueWidth - (10 + leftOffset + queueItemWidth / 2));
+  const startX = -distanceToQueueItemCenter;
+
+  // Y calculation:
+  // Both containers are vertically centered (align-items: center)
+  // Queue top is at (centerColumnHeight - queueHeight) / 2 = 50px from top of centerColumn
+  // Queue item at idx 0 is at top: 0, so its top is 50px from top of centerColumn
+  // Queue item height based on aspect ratio
+  const queueItemHeight = (height / width) * queueItemWidth;
+  // Queue item center Y from top of centerColumn
+  const queueItemCenterFromTop = ((centerColumnHeight - queueHeight) / 2) + (queueItemHeight / 2);
+  // Center of centerColumn is at centerColumnHeight / 2 = 250px
+  const startY = queueItemCenterFromTop - (centerColumnHeight / 2);
+
+  // Scale: queue item is 100px wide, so scale = 100 / displayWidth
+  const startScale = queueItemWidth / displayWidth;
+
+  // End position fine-tuning to match exactly where active receipt appears
+  // The active receipt is centered in receiptImageWrapper using flexbox
+  // Adjust these if the landing position doesn't match perfectly
+  const endX = 0;
+  const endY = 0;
+
+  const { x, y, scale, rotate } = useSpring({
     from: {
-      x: -200,
-      scale: 0.33,
+      x: startX,
+      y: startY,
+      scale: startScale,
       rotate: rotation,
     },
     to: {
-      x: 0,
+      x: endX,
+      y: endY,
       scale: 1,
       rotate: 0,
     },
@@ -163,22 +233,22 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
 
   if (!imageUrl || !isFlying) return null;
 
-  // Calculate the display dimensions - max height 500px, maintain aspect ratio
-  const aspectRatio = width / height;
-  const displayHeight = Math.min(500, height);
-  const displayWidth = displayHeight * aspectRatio;
+  // Account for the 1px border on each side when centering
+  const borderWidth = 1;
+  const totalWidth = displayWidth + borderWidth * 2;
+  const totalHeight = displayHeight + borderWidth * 2;
 
   return (
     <animated.div
       className={styles.flyingReceipt}
       style={{
         transform: to(
-          [x, scale, rotate],
-          (xVal, scaleVal, rotateVal) =>
-            `translateX(${xVal}px) scale(${scaleVal}) rotate(${rotateVal}deg)`
+          [x, y, scale, rotate],
+          (xVal, yVal, scaleVal, rotateVal) =>
+            `translate(${xVal}px, ${yVal}px) scale(${scaleVal}) rotate(${rotateVal}deg)`
         ),
-        marginLeft: -displayWidth / 2,
-        marginTop: -displayHeight / 2,
+        marginLeft: -totalWidth / 2,
+        marginTop: -totalHeight / 2,
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -305,6 +375,7 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
           />
 
           {/* SVG overlay for bounding boxes and scan line */}
+          {/* Use unique IDs per receipt to avoid conflicts during crossfade */}
           <svg
             className={styles.svgOverlay}
             viewBox={`0 0 ${receiptData.width} ${receiptData.height}`}
@@ -312,13 +383,13 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
           >
             {/* Scan line - positioned in image coordinates */}
             <defs>
-              <linearGradient id="scanLineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <linearGradient id={`scanLineGradient-${receipt.receipt_id}`} x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%" stopColor="transparent" />
                 <stop offset="20%" stopColor="var(--color-red)" />
                 <stop offset="80%" stopColor="var(--color-red)" />
                 <stop offset="100%" stopColor="transparent" />
               </linearGradient>
-              <filter id="scanLineGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <filter id={`scanLineGlow-${receipt.receipt_id}`} x="-50%" y="-50%" width="200%" height="200%">
                 <feGaussianBlur stdDeviation="4" result="blur" />
                 <feMerge>
                   <feMergeNode in="blur" />
@@ -326,14 +397,17 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
                 </feMerge>
               </filter>
             </defs>
-            <rect
-              x="0"
-              y={(scanProgress / 100) * receiptData.height}
-              width={receiptData.width}
-              height={Math.max(receiptData.height * 0.005, 3)}
-              fill="url(#scanLineGradient)"
-              filter="url(#scanLineGlow)"
-            />
+            {/* Only show scan line when scanProgress > 0 to avoid flash at top during transitions */}
+            {scanProgress > 0 && (
+              <rect
+                x="0"
+                y={(scanProgress / 100) * receiptData.height}
+                width={receiptData.width}
+                height={Math.max(receiptData.height * 0.005, 3)}
+                fill={`url(#scanLineGradient-${receipt.receipt_id})`}
+                filter={`url(#scanLineGlow-${receipt.receipt_id})`}
+              />
+            )}
 
             {/* Bounding boxes */}
             {visiblePredictions.map((pred, idx) => {
@@ -372,8 +446,8 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
 };
 
 // Queue management constants
-const QUEUE_TARGET_SIZE = 10;
 const QUEUE_REFETCH_THRESHOLD = 7;
+const MAX_EMPTY_FETCHES = 3; // After this many fetches with no new receipts, stop trying
 
 const LayoutLMBatchVisualization: React.FC = () => {
   const { ref, inView } = useInView({
@@ -394,11 +468,19 @@ const LayoutLMBatchVisualization: React.FC = () => {
     supportsWebP: boolean;
     supportsAVIF: boolean;
   } | null>(null);
+  const [isPoolExhausted, setIsPoolExhausted] = useState(false);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
   const isFetchingRef = useRef(false);
   const seenReceiptIds = useRef<Set<string>>(new Set());
+  const emptyFetchCountRef = useRef(0);
+  const isPoolExhaustedRef = useRef(isPoolExhausted);
+
+  // Keep ref in sync with state for animation loop access
+  useEffect(() => {
+    isPoolExhaustedRef.current = isPoolExhausted;
+  }, [isPoolExhausted]);
 
   // Detect image format support
   useEffect(() => {
@@ -407,7 +489,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
 
   // Fetch a batch of receipts and append to queue (with deduplication)
   const fetchMoreReceipts = useCallback(async () => {
-    if (isFetchingRef.current) return;
+    if (isFetchingRef.current || isPoolExhausted) return;
     isFetchingRef.current = true;
 
     try {
@@ -423,6 +505,15 @@ const LayoutLMBatchVisualization: React.FC = () => {
 
         if (newReceipts.length > 0) {
           setReceipts((prev) => [...prev, ...newReceipts]);
+          // Reset empty fetch counter when we get new receipts
+          emptyFetchCountRef.current = 0;
+        } else {
+          // No new receipts - increment empty fetch counter
+          emptyFetchCountRef.current += 1;
+          if (emptyFetchCountRef.current >= MAX_EMPTY_FETCHES) {
+            // Pool is exhausted - stop fetching and enable looping
+            setIsPoolExhausted(true);
+          }
         }
       }
     } catch (err) {
@@ -430,7 +521,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
     } finally {
       isFetchingRef.current = false;
     }
-  }, []);
+  }, [isPoolExhausted]);
 
   // Initial fetch - get 2 batches to start with ~10 receipts
   useEffect(() => {
@@ -478,12 +569,13 @@ const LayoutLMBatchVisualization: React.FC = () => {
   }, []);
 
   // Check if we need to fetch more receipts (when queue is getting low)
+  // Skip fetching if pool is exhausted (we'll loop instead)
   const remainingReceipts = receipts.length - currentReceiptIndex;
   useEffect(() => {
-    if (remainingReceipts < QUEUE_REFETCH_THRESHOLD && !isFetchingRef.current && !initialLoading) {
+    if (remainingReceipts < QUEUE_REFETCH_THRESHOLD && !isFetchingRef.current && !initialLoading && !isPoolExhausted) {
       fetchMoreReceipts();
     }
-  }, [remainingReceipts, fetchMoreReceipts, initialLoading]);
+  }, [remainingReceipts, fetchMoreReceipts, initialLoading, isPoolExhausted]);
 
   // Calculate revealed word IDs based on scan progress
   const revealedWordIds = useMemo(() => {
@@ -602,13 +694,20 @@ const LayoutLMBatchVisualization: React.FC = () => {
         }
       } else {
         // MOVE TO NEXT RECEIPT
-        const nextIndex = receiptIndex + 1;
-        // Check if next receipt exists (it should, since we're continuously fetching)
+        let nextIndex = receiptIndex + 1;
+
+        // Check if next receipt exists
         if (nextIndex >= currentReceipts.length) {
-          // Wait for more receipts to be fetched
-          animationRef.current = requestAnimationFrame(animate);
-          return;
+          // If pool is exhausted, loop back to the beginning
+          if (isPoolExhaustedRef.current) {
+            nextIndex = 0;
+          } else {
+            // Wait for more receipts to be fetched
+            animationRef.current = requestAnimationFrame(animate);
+            return;
+          }
         }
+
         receiptIndex = nextIndex;
         isInTransition = false;
         setCurrentReceiptIndex(receiptIndex);
@@ -657,7 +756,11 @@ const LayoutLMBatchVisualization: React.FC = () => {
   }
 
   const currentReceipt = receipts[currentReceiptIndex];
-  const nextReceipt = receipts[currentReceiptIndex + 1];
+  // Get next receipt - use modulo when pool is exhausted for looping
+  const nextIndex = currentReceiptIndex + 1;
+  const nextReceipt = isPoolExhausted
+    ? receipts[nextIndex % receipts.length]
+    : receipts[nextIndex];
 
   return (
     <div ref={ref} className={styles.container}>
@@ -667,6 +770,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
           currentIndex={currentReceiptIndex}
           formatSupport={formatSupport}
           isTransitioning={isTransitioning}
+          isPoolExhausted={isPoolExhausted}
         />
 
         <div className={styles.centerColumn}>
