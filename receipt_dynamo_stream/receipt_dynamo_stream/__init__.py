@@ -18,6 +18,7 @@ from receipt_dynamo_stream.models import (
     LambdaResponse,
     ParsedStreamRecord,
     StreamMessage,
+    StreamRecordContext,
 )
 from receipt_dynamo_stream.parsing.compaction_run import (
     is_compaction_run,
@@ -55,6 +56,7 @@ __all__ = [
     "LambdaResponse",
     "ParsedStreamRecord",
     "StreamMessage",
+    "StreamRecordContext",
     "build_messages_from_records",
     "detect_entity_type",
     "get_chromadb_relevant_changes",

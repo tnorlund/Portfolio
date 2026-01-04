@@ -20,7 +20,11 @@ from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo_stream.change_detection import (
     get_chromadb_relevant_changes,
 )
-from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
+from receipt_dynamo_stream.models import (
+    ChromaDBCollection,
+    StreamMessage,
+    StreamRecordContext,
+)
 from receipt_dynamo_stream.parsing import (
     is_compaction_run,
     is_embeddings_completed,
@@ -104,10 +108,11 @@ def build_compaction_run_messages(
                     changes={},
                     event_name="INSERT",
                     collections=(collection,),
-                    source="dynamodb_stream",
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    stream_record_id=str(record.get("eventID", "unknown")),
-                    aws_region=str(record.get("awsRegion", "unknown")),
+                    context=StreamRecordContext(
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        record_id=str(record.get("eventID", "unknown")),
+                        aws_region=str(record.get("awsRegion", "unknown")),
+                    ),
                     record_snapshot=new_image,
                 )
             )
@@ -163,10 +168,11 @@ def build_compaction_run_completion_messages(
                     changes={},
                     event_name=str(record.get("eventName", "MODIFY")),
                     collections=(collection,),
-                    source="dynamodb_stream",
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    stream_record_id=str(record.get("eventID", "unknown")),
-                    aws_region=str(record.get("awsRegion", "unknown")),
+                    context=StreamRecordContext(
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        record_id=str(record.get("eventID", "unknown")),
+                        aws_region=str(record.get("awsRegion", "unknown")),
+                    ),
                     record_snapshot=new_image,
                 )
             )
@@ -250,10 +256,11 @@ def build_entity_change_message(
             changes=changes,
             event_name=str(record.get("eventName", "UNKNOWN")),
             collections=tuple(target_collections),
-            source="dynamodb_stream",
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            stream_record_id=str(record.get("eventID", "unknown")),
-            aws_region=str(record.get("awsRegion", "unknown")),
+            context=StreamRecordContext(
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                record_id=str(record.get("eventID", "unknown")),
+                aws_region=str(record.get("awsRegion", "unknown")),
+            ),
             record_snapshot=record_snapshot,
         )
 

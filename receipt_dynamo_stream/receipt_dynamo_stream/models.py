@@ -63,7 +63,17 @@ class FieldChange:
 
 
 @dataclass(frozen=True)
-class StreamMessage:  # pylint: disable=too-many-instance-attributes
+class StreamRecordContext:
+    """Metadata about the source DynamoDB stream record."""
+
+    source: str = "dynamodb_stream"
+    timestamp: Optional[str] = None
+    record_id: Optional[str] = None
+    aws_region: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class StreamMessage:
     """Enhanced stream message with collection targeting."""
 
     entity_type: str
@@ -71,17 +81,15 @@ class StreamMessage:  # pylint: disable=too-many-instance-attributes
     changes: Mapping[str, FieldChange]
     event_name: str
     collections: tuple[ChromaDBCollection, ...]
-    source: str = "dynamodb_stream"
-    timestamp: Optional[str] = None
-    stream_record_id: Optional[str] = None
-    aws_region: Optional[str] = None
+    context: StreamRecordContext
     record_snapshot: Optional[DynamoDBItem] = None
 
 
 __all__ = [
     "ChromaDBCollection",
+    "FieldChange",
     "LambdaResponse",
     "ParsedStreamRecord",
     "StreamMessage",
-    "FieldChange",
+    "StreamRecordContext",
 ]

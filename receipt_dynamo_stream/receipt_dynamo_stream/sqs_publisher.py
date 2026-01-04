@@ -70,14 +70,14 @@ def _message_to_dict(msg: StreamMessage) -> dict[str, object]:
         }
 
     return {
-        "source": msg.source,
+        "source": msg.context.source,
         "entity_type": msg.entity_type,
         "entity_data": dict(msg.entity_data),
         "changes": changes_dict,
         "event_name": msg.event_name,
-        "timestamp": msg.timestamp,
-        "stream_record_id": msg.stream_record_id,
-        "aws_region": msg.aws_region,
+        "timestamp": msg.context.timestamp,
+        "stream_record_id": msg.context.record_id,
+        "aws_region": msg.context.aws_region,
     }
 
 
