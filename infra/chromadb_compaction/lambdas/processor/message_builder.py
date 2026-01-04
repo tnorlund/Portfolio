@@ -14,7 +14,7 @@ from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from .change_detector import get_chromadb_relevant_changes
 from .models import ChromaDBCollection, ParsedStreamRecord, StreamMessage
 
-# Avoid importing CompactionRun from receipt_dynamo to keep Lambda layer optional
+# Avoid CompactionRun import to keep Lambda layer optional
 
 
 # Module-level logger
@@ -122,7 +122,7 @@ def build_compaction_run_messages(
             messages.append(stream_msg)
 
         logger.info(
-            f"Created compaction run messages",
+            "Created compaction run messages",
             extra={
                 "run_id": compaction_run.get("run_id"),
                 "image_id": compaction_run.get("image_id"),
@@ -130,7 +130,7 @@ def build_compaction_run_messages(
         )
 
     except Exception as e:
-        logger.error(f"Failed to build compaction run message: {e}")
+        logger.error("Failed to build compaction run message: %s", e)
         if metrics:
             metrics.count("CompactionRunMessageBuildError", 1)
 
@@ -141,7 +141,7 @@ def build_compaction_run_completion_messages(
     record: Dict[str, Any], metrics=None
 ) -> List[StreamMessage]:
     """
-    Build messages for COMPACTION_RUN MODIFY events when embeddings are complete.
+    Build messages for COMPACTION_RUN MODIFY on embedding completion.
 
     Detects when both lines_state and words_state are COMPLETED and creates
     messages to trigger compaction for both collections.
@@ -151,7 +151,7 @@ def build_compaction_run_completion_messages(
         metrics: Optional metrics client
 
     Returns:
-        List of StreamMessage objects (one for lines, one for words) or empty list
+        List of StreamMessage objects (lines, words) or empty
     """
     from .compaction_run import is_compaction_run, is_embeddings_completed
 
@@ -199,7 +199,7 @@ def build_compaction_run_completion_messages(
             metrics.count("CompactionRunCompletionDetected", 1)
 
         logger.info(
-            f"Detected COMPACTION_RUN completion, queuing compaction",
+            "Detected COMPACTION_RUN completion, queuing compaction",
             extra={
                 "run_id": compaction_run.get("run_id"),
                 "image_id": compaction_run.get("image_id"),
@@ -208,7 +208,7 @@ def build_compaction_run_completion_messages(
         )
 
     except Exception as e:
-        logger.error(f"Failed to build compaction run completion message: {e}")
+        logger.error("Failed to build compaction run completion message: %s", e)
         if metrics:
             metrics.count("CompactionRunCompletionMessageBuildError", 1)
 
@@ -279,7 +279,8 @@ def build_entity_change_message(
         )
 
         logger.info(
-            f"Created {entity_type} message",
+            "Created %s message",
+            entity_type,
             extra={
                 "target_collections": [c.value for c in target_collections],
                 "change_count": len(changes),
@@ -300,7 +301,7 @@ def build_entity_change_message(
         return stream_msg
 
     except Exception as e:
-        logger.error(f"Failed to build entity change message: {e}")
+        logger.error("Failed to build entity change message: %s", e)
         if metrics:
             metrics.count("EntityMessageBuildError", 1)
         return None

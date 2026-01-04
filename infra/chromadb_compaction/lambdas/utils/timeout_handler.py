@@ -65,7 +65,7 @@ class TimeoutProtection:
     def get_remaining_time(self) -> float:
         """Get remaining execution time in seconds."""
         elapsed = time.time() - self.start_time
-        # If no real context, return a generous default (prevents false timeouts)
+        # No real context: return generous default
         if not self._has_context:
             return float(os.environ.get("DEFAULT_REMAINING_SECONDS", "300"))
         remaining = self.lambda_timeout - elapsed
@@ -194,7 +194,7 @@ class TimeoutProtection:
         """
         start_time = time.time()
 
-        # Determine effective budget: prefer explicit max_duration; otherwise use remaining
+        # Prefer explicit max_duration; otherwise use remaining time
         remaining_time = self.get_remaining_time()
         effective_max = max_duration if max_duration else None
         if effective_max is None:
@@ -230,7 +230,7 @@ class TimeoutProtection:
             # Only warn (do not fail) if close to Lambda timeout at the end
             if check_lambda_timeout and self.should_abort():
                 self.logger.warning(
-                    f"Operation near Lambda timeout threshold at completion: {operation_name}",
+                    f"Operation near timeout at completion: {operation_name}",
                     duration=duration,
                     remaining_lambda_time=self.get_remaining_time(),
                 )

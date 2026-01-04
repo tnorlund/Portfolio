@@ -21,8 +21,8 @@ def update_receipt_metadata(
 ) -> int:
     """Update metadata for all embeddings of a specific receipt.
 
-    Uses DynamoDB to construct exact ChromaDB IDs instead of scanning entire collection.
-    This is much more efficient for large collections.
+    Uses DynamoDB to construct exact ChromaDB IDs vs scanning.
+    Much more efficient for large collections.
     """
     start_time = time.time()
 
@@ -68,7 +68,10 @@ def update_receipt_metadata(
 
             # Construct exact ChromaDB IDs for words
             chromadb_ids = [
-                f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                (
+                    f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}"
+                    f"#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                )
                 for word in words
             ]
         except Exception as e:
@@ -95,7 +98,10 @@ def update_receipt_metadata(
 
             # Construct exact ChromaDB IDs for lines
             chromadb_ids = [
-                f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
+                (
+                    f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}"
+                    f"#LINE#{line.line_id:05d}"
+                )
                 for line in lines
             ]
         except Exception as e:
@@ -146,7 +152,7 @@ def update_receipt_metadata(
 
         if found_count == 0:
             logger.error(
-                "No matching embeddings found in ChromaDB for metadata update",
+                "No matching embeddings found for metadata update",
                 receipt_id=receipt_id,
                 image_id=image_id,
                 expected=len(chromadb_ids),
@@ -237,11 +243,11 @@ def update_receipt_metadata(
             dynamodb_ids=len(chromadb_ids),
         )
 
-        # If no records found in ChromaDB but DynamoDB has entities, this might indicate
-        # that embeddings haven't been created yet
+        # No ChromaDB records but DynamoDB has entities:
+        # embeddings may not be created yet
         if chromadb_ids:
             logger.info(
-                "DynamoDB entities exist but no ChromaDB embeddings found - embeddings may not be created yet"
+                "DynamoDB entities exist but no embeddings found"
             )
 
     elapsed_time = time.time() - start_time
@@ -269,9 +275,9 @@ def remove_receipt_metadata(
     OBSERVABILITY_AVAILABLE: bool = False,
     get_dynamo_client_func: Any = None,
 ) -> int:
-    """Remove merchant metadata fields from all embeddings of a specific receipt.
+    """Remove merchant metadata fields from embeddings of a receipt.
 
-    Uses DynamoDB to construct exact ChromaDB IDs instead of scanning entire collection.
+    Uses DynamoDB to construct exact ChromaDB IDs vs scanning.
     """
     start_time = time.time()
 
@@ -307,7 +313,10 @@ def remove_receipt_metadata(
                 image_id, receipt_id
             )
             chromadb_ids = [
-                f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                (
+                    f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}"
+                    f"#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                )
                 for word in words
             ]
         except Exception as e:
@@ -321,7 +330,10 @@ def remove_receipt_metadata(
                 image_id, receipt_id
             )
             chromadb_ids = [
-                f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
+                (
+                    f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}"
+                    f"#LINE#{line.line_id:05d}"
+                )
                 for line in lines
             ]
         except Exception as e:
@@ -342,7 +354,7 @@ def remove_receipt_metadata(
         return 0
 
     # Fields to remove when place info is deleted
-    # Include both old (ReceiptMetadata) and new (ReceiptPlace) field names for cleanup
+    # Include old and new field names for cleanup
     fields_to_remove = [
         "merchant_name",
         "merchant_category",
@@ -445,13 +457,13 @@ def update_word_labels(
     OBSERVABILITY_AVAILABLE: bool = False,
     get_dynamo_client_func: Any = None,
 ) -> int:
-    """Update label metadata for a specific word embedding using message snapshot when available.
+    """Update label metadata using snapshot or DynamoDB fallback.
 
-    Falls back to reconstructing from DynamoDB only if snapshot is missing.
+    Prefers message snapshot to avoid DynamoDB race conditions.
     """
     try:
-        # Parse ChromaDB ID to extract word identifiers
-        # Format: IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}
+        # Parse ID to extract word identifiers
+        # Format: IMAGE#id#RECEIPT#id#LINE#id#WORD#id
         parts = chromadb_id.split("#")
         if len(parts) < 8 or "WORD" not in parts:
             if logger:
@@ -493,14 +505,14 @@ def update_word_labels(
                 )
             return 0
 
-        # Prefer snapshot data if available to avoid DynamoDB race conditions
+        # Prefer snapshot to avoid DynamoDB race conditions
         if record_snapshot:
-            # Build the minimal fields needed for label metadata derivation from snapshot
+            # Minimal fields for label metadata from snapshot
             reconstructed_metadata = {
                 "label_status": None,  # will be derived below if needed
             }
         else:
-            # Reconstruct complete label metadata using the same logic as step function
+            # Reconstruct complete label metadata via step function logic
             if get_dynamo_client_func:
                 dynamo_client = get_dynamo_client_func()
             else:
@@ -520,7 +532,7 @@ def update_word_labels(
 
         # Update with reconstructed/snapshot-derived label fields
         if record_snapshot:
-            # Apply targeted changes directly based on the incoming change set for this word
+            # Apply targeted changes from incoming change set
             if changes:
                 # validation_status
                 if "validation_status" in changes:
@@ -545,7 +557,7 @@ def update_word_labels(
                     if val is not None:
                         updated_metadata["label_proposed_by"] = val
 
-            # Always add/update the current label in validated/invalid sets based on status when provided
+            # Add/update current label in validated/invalid sets
             status = (
                 changes.get("validation_status", {}).get("new")
                 if changes
@@ -727,7 +739,7 @@ def reconstruct_label_metadata(
     dynamo_client: Any,
 ) -> Dict[str, Any]:
     """
-    Reconstruct all label-related metadata fields exactly as the step function does.
+    Reconstruct label metadata fields as step function does.
 
     Args:
         image_id: Image ID
@@ -852,8 +864,8 @@ def delete_receipt_embeddings(
 ) -> int:
     """Delete all embeddings for a specific receipt from ChromaDB.
 
-    Uses DynamoDB to construct exact ChromaDB IDs instead of scanning entire collection.
-    This is much more efficient for large collections.
+    Uses DynamoDB to construct exact ChromaDB IDs vs scanning.
+    Much more efficient for large collections.
 
     Args:
         collection: ChromaDB collection object
@@ -909,7 +921,10 @@ def delete_receipt_embeddings(
 
             # Construct exact ChromaDB IDs for words
             chromadb_ids = [
-                f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                (
+                    f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}"
+                    f"#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                )
                 for word in words
             ]
         except Exception as e:
@@ -936,7 +951,10 @@ def delete_receipt_embeddings(
 
             # Construct exact ChromaDB IDs for lines
             chromadb_ids = [
-                f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
+                (
+                    f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}"
+                    f"#LINE#{line.line_id:05d}"
+                )
                 for line in lines
             ]
         except Exception as e:
@@ -1022,11 +1040,11 @@ def delete_receipt_embeddings(
                 dynamodb_ids=len(chromadb_ids),
             )
 
-            # If no records found in ChromaDB but DynamoDB has entities, this might indicate
-            # that embeddings haven't been created yet or were already deleted
+            # No ChromaDB records but DynamoDB has entities:
+            # embeddings may not exist or were already deleted
             if chromadb_ids:
                 logger.info(
-                    "DynamoDB entities exist but no ChromaDB embeddings found - embeddings may not exist or were already deleted"
+                    "DynamoDB entities exist but no embeddings found"
                 )
 
         elapsed_time = time.time() - start_time

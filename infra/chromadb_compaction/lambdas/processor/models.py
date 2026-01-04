@@ -1,7 +1,7 @@
 """
 Data models for stream processor.
 
-Contains all dataclasses and enums used throughout the stream processing pipeline.
+Dataclasses and enums for stream processing pipeline.
 """
 
 from dataclasses import dataclass

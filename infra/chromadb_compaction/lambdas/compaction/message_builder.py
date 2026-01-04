@@ -1,4 +1,4 @@
-"""SQS message processing and categorization for the enhanced compaction handler."""
+"""SQS message processing for enhanced compaction handler."""
 
 import json
 import os
@@ -102,7 +102,7 @@ def process_sqs_messages(
                     )
             else:
                 # Traditional delta message or unknown - treat as delta
-                # Store the full record to get messageId for partial batch failure
+                # Store full record for partial batch failure
                 delta_message_records.append(
                     {"record": record, "body": message_body}
                 )
@@ -137,8 +137,8 @@ def process_sqs_messages(
         delta_bodies = [msg["body"] for msg in delta_message_records]
         process_delta_messages_func(delta_bodies, metrics=metrics)
 
-        # Since delta processing is not implemented, mark all delta messages as failed
-        # to prevent data loss by forcing SQS to retry them
+        # Delta processing not implemented: mark as failed for retry
+        # to prevent data loss
         for msg_record in delta_message_records:
             message_id = msg_record["record"].get("receiptHandle")
             if message_id:
@@ -146,7 +146,7 @@ def process_sqs_messages(
 
         if OBSERVABILITY_AVAILABLE and metrics:
             logger.warning(
-                "Delta messages not processed - added to failed list for retry",
+                "Delta messages added to failed list for retry",
                 count=len(delta_message_records),
             )
             metrics.count(

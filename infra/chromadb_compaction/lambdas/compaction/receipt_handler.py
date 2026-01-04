@@ -73,7 +73,8 @@ def delete_receipt_child_records(
                     )
                 else:
                     logger.info(
-                        f"Deleted {len(receipt_labels)} receipt word labels for receipt {receipt_id}"
+                        f"Deleted {len(receipt_labels)} labels "
+                        f"for receipt {receipt_id}"
                     )
                 if metrics:
                     metrics.count(
@@ -104,7 +105,8 @@ def delete_receipt_child_records(
                     )
                 else:
                     logger.info(
-                        f"Deleted {len(receipt_words)} receipt words for receipt {receipt_id}"
+                        f"Deleted {len(receipt_words)} words "
+                        f"for receipt {receipt_id}"
                     )
                 if metrics:
                     metrics.count(
@@ -135,7 +137,8 @@ def delete_receipt_child_records(
                     )
                 else:
                     logger.info(
-                        f"Deleted {len(receipt_lines)} receipt lines for receipt {receipt_id}"
+                        f"Deleted {len(receipt_lines)} lines "
+                        f"for receipt {receipt_id}"
                     )
                 if metrics:
                     metrics.count(
@@ -149,7 +152,7 @@ def delete_receipt_child_records(
                 error=str(e),
             )
 
-        # 4. Delete ReceiptLetter (best effort - may not have direct list method)
+        # 4. Delete ReceiptLetter (best effort)
         try:
             # Try to list letters if method exists
             if hasattr(
@@ -172,7 +175,8 @@ def delete_receipt_child_records(
                         )
                     else:
                         logger.info(
-                            f"Deleted {len(receipt_letters)} receipt letters for receipt {receipt_id}"
+                            f"Deleted {len(receipt_letters)} letters "
+                        f"for receipt {receipt_id}"
                         )
                     if metrics:
                         metrics.count(
@@ -180,9 +184,9 @@ def delete_receipt_child_records(
                             len(receipt_letters),
                         )
         except Exception as e:  # noqa: BLE001
-            # Letters deletion is best effort - log but don't fail
+            # Letters deletion is best effort
             logger.debug(
-                "Skipping receipt letters deletion (method may not exist or letters already deleted)",
+                "Skipping receipt letters deletion",
                 image_id=image_id,
                 receipt_id=receipt_id,
                 error=str(e),
@@ -233,7 +237,8 @@ def delete_receipt_child_records(
                     )
                 else:
                     logger.info(
-                        f"Deleted {len(runs)} compaction runs for receipt {receipt_id}"
+                        f"Deleted {len(runs)} compaction runs "
+                        f"for receipt {receipt_id}"
                     )
                 if metrics:
                     metrics.count(
@@ -259,8 +264,8 @@ def delete_receipt_child_records(
             )
         else:
             logger.info(
-                f"Completed receipt child record deletion for receipt {receipt_id}: "
-                f"{total_deleted} total records deleted"
+                f"Completed child record deletion for {receipt_id}: "
+                f"{total_deleted} total deleted"
             )
 
     except Exception as e:  # noqa: BLE001
@@ -290,13 +295,12 @@ def process_receipt_deletions(
     lock_manager: Optional[Any] = None,
     get_dynamo_client_func: Any = None,
 ) -> List[MetadataUpdateResult]:
-    """Process RECEIPT deletion events for a specific collection.
+    """Process RECEIPT deletion events for a collection.
 
-    Deletes all embeddings for the receipt from ChromaDB and all child records
-    from DynamoDB (ReceiptWordLabel, ReceiptWord, ReceiptLine, ReceiptLetter,
-    ReceiptPlace, CompactionRun).
+    Deletes embeddings from ChromaDB and child records from DynamoDB
+    (ReceiptWordLabel, Word, Line, Letter, Place, CompactionRun).
 
-    The compactor is responsible for complete cleanup when a Receipt is deleted.
+    Compactor performs complete cleanup when Receipt is deleted.
     """
     logger.info("Processing receipt deletions", count=len(receipt_deletions))
     results: List[MetadataUpdateResult] = []
@@ -376,7 +380,8 @@ def process_receipt_deletions(
                         )
                     else:
                         logger.info(
-                            f"Processing receipt deletion: {event_name} for receipt {receipt_id} in {database}"
+                            f"Processing deletion: {event_name} "
+                            f"for {receipt_id} in {database}"
                         )
 
                     # Delete embeddings for this receipt
@@ -390,8 +395,8 @@ def process_receipt_deletions(
                         get_dynamo_client_func,
                     )
 
-                    # After successfully deleting ChromaDB embeddings, delete child records from DynamoDB
-                    # This ensures child records exist when we query for them to construct ChromaDB IDs
+                    # After deleting ChromaDB embeddings, delete DynamoDB
+                    # child records (ensures they exist for ID construction)
                     if get_dynamo_client_func:
                         dynamo_client = get_dynamo_client_func()
                         if dynamo_client:
@@ -405,7 +410,7 @@ def process_receipt_deletions(
                             )
                             if OBSERVABILITY_AVAILABLE:
                                 logger.info(
-                                    "Deleted receipt child records from DynamoDB",
+                                    "Deleted child records from DynamoDB",
                                     image_id=image_id,
                                     receipt_id=receipt_id,
                                     **deletion_counts,
@@ -456,11 +461,11 @@ def process_receipt_deletions(
 
                 if upload_result.get("status") != "uploaded":
                     logger.error(
-                        "Failed to upload snapshot after receipt deletion",
+                        "Failed to upload snapshot after deletion",
                         result=upload_result,
                         collection=database,
                     )
-                    # Mark all results as having upload errors by recreating them
+                    # Mark all results as having upload errors
                     for i, result in enumerate(results):
                         if result.error is None:
                             results[i] = MetadataUpdateResult(
@@ -508,12 +513,12 @@ def apply_receipt_deletions_in_memory(
     OBSERVABILITY_AVAILABLE: bool = False,
     get_dynamo_client_func: Any = None,
 ) -> List[MetadataUpdateResult]:
-    """Apply receipt deletions directly to an in-memory ChromaDB collection.
+    """Apply receipt deletions to in-memory ChromaDB collection.
 
-    This is used when the collection is already loaded in memory (e.g., during compaction).
+    Used when collection is already loaded (e.g., during compaction).
 
-    Also deletes all child records from DynamoDB (ReceiptWordLabel, ReceiptWord,
-    ReceiptLine, ReceiptLetter, ReceiptPlace, CompactionRun).
+    Also deletes child records from DynamoDB (WordLabel, Word,
+    Line, Letter, Place, CompactionRun).
     """
     logger.info(
         "Applying receipt deletions in memory", count=len(receipt_deletions)
@@ -551,8 +556,8 @@ def apply_receipt_deletions_in_memory(
                 get_dynamo_client_func,
             )
 
-            # After successfully deleting ChromaDB embeddings, delete child records from DynamoDB
-            # This ensures child records exist when we query for them to construct ChromaDB IDs
+            # After deleting ChromaDB embeddings, delete DynamoDB
+            # child records (ensures they exist for ID construction)
             if get_dynamo_client_func:
                 dynamo_client = get_dynamo_client_func()
                 if dynamo_client:
@@ -566,7 +571,7 @@ def apply_receipt_deletions_in_memory(
                     )
                     if OBSERVABILITY_AVAILABLE:
                         logger.info(
-                            "Deleted receipt child records from DynamoDB",
+                            "Deleted child records from DynamoDB",
                             image_id=image_id,
                             receipt_id=receipt_id,
                             **deletion_counts,

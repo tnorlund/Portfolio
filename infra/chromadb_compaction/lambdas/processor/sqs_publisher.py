@@ -125,7 +125,7 @@ def send_batch_to_queue(
     queue_url = os.environ.get(queue_env_var)
 
     if not queue_url:
-        logger.error(f"Queue URL not found: {queue_env_var}")
+        logger.error("Queue URL not found: %s", queue_env_var)
         return 0
 
     # Send in batches of 10 (SQS batch limit)
@@ -137,7 +137,7 @@ def send_batch_to_queue(
             entity_type = message_dict.get("entity_type", "UNKNOWN")
             entity_data = message_dict.get("entity_data", {})
 
-            # For COMPACTION_RUN: use per-image grouping to allow parallel processing
+            # COMPACTION_RUN: per-image grouping for parallel processing
             # Different images can process in parallel, improving throughput.
             # The per-collection lock still ensures safe snapshot publishing.
             if entity_type == "COMPACTION_RUN":
@@ -147,7 +147,7 @@ def send_batch_to_queue(
                 )
             elif entity_type in {"RECEIPT_PLACE", "RECEIPT_WORD_LABEL"}:
                 # Use same MessageGroupId as COMPACTION_RUN for the same image
-                # This ensures metadata updates are processed AFTER delta merge completes,
+                # Ensures metadata updates after delta merge completes,
                 # maintaining proper ordering in the FIFO queue.
                 image_id = entity_data.get("image_id") or "unknown"
                 message_group_id = (
@@ -193,7 +193,8 @@ def send_batch_to_queue(
 
         try:
             logger.info(
-                f"Sending message batch to {collection.value} queue",
+                "Sending message batch to %s queue",
+                collection.value,
                 extra={"batch_size": len(entries)},
             )
 
@@ -206,7 +207,7 @@ def send_batch_to_queue(
             sent_count += successful
 
             logger.info(
-                f"Sent {successful} messages to {collection.value} queue"
+                "Sent %d messages to %s queue", successful, collection.value
             )
 
             if metrics:
@@ -229,7 +230,8 @@ def send_batch_to_queue(
 
                 for failed in response["Failed"]:
                     logger.error(
-                        f"Failed to send message to {collection.value} queue",
+                        "Failed to send message to %s queue",
+                        collection.value,
                         extra={
                             "message_id": failed["Id"],
                             "error_code": failed.get("Code", "UnknownError"),
@@ -241,7 +243,9 @@ def send_batch_to_queue(
 
         except (ValueError, KeyError, TypeError) as e:
             logger.error(
-                f"Error sending SQS batch to {collection.value} queue: {e}",
+                "Error sending SQS batch to %s queue: %s",
+                collection.value,
+                e,
                 extra={"error_type": type(e).__name__},
             )
 
