@@ -36,6 +36,7 @@ import gc
 import json
 import logging
 import os
+from dataclasses import dataclass
 import shutil
 import tempfile
 import time
@@ -272,10 +273,10 @@ def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
             )
             messages.append(stream_msg)
 
-        # pylint: disable-next=broad-exception-caught
-        except Exception:
-            logger.exception(
-                "Failed to parse SQS message",
+        except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
+            logger.warning(
+                "Failed to parse SQS message: %s",
+                type(e).__name__,
                 extra={"message_id": record.get("messageId")},
             )
             # Skip invalid messages
@@ -401,6 +402,186 @@ def fetch_additional_messages(
     return additional_records, receipt_handles
 
 
+@dataclass
+class Phase2FetchResult:
+    """Result of Phase 2 additional message fetching."""
+
+    all_records: List[Dict[str, Any]]
+    queue_url: Optional[str]
+    manually_fetched_handles: List[str]
+
+
+def _fetch_phase2_messages(
+    records: List[Dict[str, Any]],
+    op_logger: Any,
+    metrics: Any = None,
+) -> Phase2FetchResult:
+    """Determine queue URL and fetch additional messages for Phase 2 batching.
+
+    Args:
+        records: Initial SQS records from Lambda trigger
+        op_logger: Logger instance
+        metrics: Optional metrics accumulator
+
+    Returns:
+        Phase2FetchResult with all records and fetch metadata
+    """
+    if not records:
+        return Phase2FetchResult(records, None, [])
+
+    # Determine queue from first record's collection attribute
+    first_record = records[0]
+    collection_attr = first_record.get("messageAttributes", {}).get(
+        "collection", {}
+    )
+    collection_value = collection_attr.get("stringValue", "words")
+
+    if collection_value == "lines":
+        queue_url = os.environ.get("LINES_QUEUE_URL")
+    else:
+        queue_url = os.environ.get("WORDS_QUEUE_URL")
+
+    if not queue_url:
+        return Phase2FetchResult(records, None, [])
+
+    # Fetch additional messages
+    op_logger.info(
+        "Phase 2: attempting to fetch additional messages",
+        queue_url=queue_url[-50:],
+        current_count=len(records),
+        max_messages=MAX_MESSAGES_PER_COMPACTION,
+    )
+
+    additional_records, manually_fetched_handles = fetch_additional_messages(
+        queue_url=queue_url,
+        current_count=len(records),
+        max_messages=MAX_MESSAGES_PER_COMPACTION,
+    )
+
+    if additional_records:
+        op_logger.info(
+            "Phase 2 batching: fetched additional messages",
+            initial_count=len(records),
+            additional_count=len(additional_records),
+            total_count=len(records) + len(additional_records),
+        )
+        all_records = records + additional_records
+
+        if metrics:
+            metrics.count(
+                "CompactionAdditionalMessagesFetched",
+                len(additional_records),
+            )
+    else:
+        op_logger.info(
+            "Phase 2: no additional messages available",
+            initial_count=len(records),
+        )
+        all_records = records
+
+    return Phase2FetchResult(all_records, queue_url, manually_fetched_handles)
+
+
+@dataclass
+class CollectionProcessingResult:
+    """Result of processing all collections."""
+
+    failed_message_ids: List[str]
+    processing_successful: bool
+
+
+def _process_collections(
+    messages_by_collection: Dict[Any, List[StreamMessage]],
+    op_logger: Any,
+    metrics: Any = None,
+) -> CollectionProcessingResult:
+    """Process each collection and collect failures.
+
+    Args:
+        messages_by_collection: Messages grouped by collection
+        op_logger: Logger instance
+        metrics: Optional metrics accumulator
+
+    Returns:
+        CollectionProcessingResult with failures and success status
+    """
+    failed_message_ids: List[str] = []
+    processing_successful = True
+
+    for collection, msgs in messages_by_collection.items():
+        try:
+            result = process_collection(
+                collection=collection,
+                messages=msgs,
+                op_logger=op_logger,
+                metrics=metrics,
+            )
+            if result.get("failed_message_ids"):
+                failed_message_ids.extend(result["failed_message_ids"])
+                processing_successful = False
+        # Broad exception needed: process_collection can fail from S3,
+        # DynamoDB, ChromaDB, or file system errors
+        except Exception:  # pylint: disable=broad-exception-caught
+            op_logger.exception(
+                "Collection processing failed",
+                collection=collection.value,
+            )
+            if metrics:
+                metrics.count("CompactionCollectionProcessingError", 1)
+            failed_message_ids.extend([m.stream_record_id for m in msgs])
+            processing_successful = False
+
+    return CollectionProcessingResult(
+        failed_message_ids, processing_successful
+    )
+
+
+def _cleanup_manual_messages(
+    phase2: Phase2FetchResult,
+    result: CollectionProcessingResult,
+    op_logger: Any,
+    metrics: Any = None,
+) -> None:
+    """Delete manually-fetched messages after successful processing.
+
+    Lambda-triggered messages are auto-deleted by the event source mapping,
+    but manually-fetched messages must be explicitly deleted.
+    """
+    if not phase2.manually_fetched_handles or not phase2.queue_url:
+        return
+
+    if result.processing_successful and not result.failed_message_ids:
+        failed_deletes = delete_messages_batch(
+            phase2.queue_url, phase2.manually_fetched_handles
+        )
+        if failed_deletes:
+            op_logger.warning(
+                "Some manually-fetched messages failed to delete",
+                failed_count=len(failed_deletes),
+                total_fetched=len(phase2.manually_fetched_handles),
+            )
+            if metrics:
+                metrics.count(
+                    "CompactionMessageDeleteFailures", len(failed_deletes)
+                )
+        else:
+            op_logger.info(
+                "Deleted manually-fetched messages",
+                count=len(phase2.manually_fetched_handles),
+            )
+            if metrics:
+                metrics.count(
+                    "CompactionManualMessagesDeleted",
+                    len(phase2.manually_fetched_handles),
+                )
+    else:
+        op_logger.info(
+            "Skipping delete of manually-fetched messages due to failures",
+            failed_count=len(result.failed_message_ids),
+            manual_count=len(phase2.manually_fetched_handles),
+        )
+
+
 def _collect_failed_message_ids(
     result: Any, messages: List[StreamMessage]
 ) -> List[str]:
@@ -494,18 +675,15 @@ def delete_messages_batch(
     return failed_handles
 
 
-# pylint: disable-next=too-many-locals
-def process_collection(
+# Local variables are inherent to 3-phase atomic operation (lock, download,
+# update, upload) - splitting would break transactional semantics
+def process_collection(  # pylint: disable=too-many-locals
     collection: ChromaDBCollection,
     messages: List[StreamMessage],
     op_logger: Any,
     metrics: Any = None,
 ) -> Dict[str, Any]:
     """Process stream messages for a single collection using receipt_chroma.
-
-    Complexity note: This function orchestrates a 3-phase atomic operation
-    (download, update, upload) that cannot be easily split without breaking
-    the transactional semantics.
 
     This function orchestrates:
     1. Snapshot download (from S3)
@@ -680,7 +858,6 @@ def process_collection(
         gc.collect()
 
 
-# pylint: disable-next=too-many-locals,too-many-branches,too-many-statements
 def process_sqs_messages(
     records: List[Dict[str, Any]], op_logger: Any, metrics: Any = None
 ) -> Dict[str, Any]:
@@ -690,10 +867,6 @@ def process_sqs_messages(
     greedily fetch more messages from the same queue to process in one
     compaction cycle, amortizing S3 transfer costs.
 
-    Complexity note: This function handles Phase 2 batching (additional message
-    fetching), collection routing, partial batch failure handling, and manual
-    message cleanup - all of which need to coordinate closely for correctness.
-
     Args:
         records: List of SQS record dicts
         op_logger: Logger instance (named to avoid shadowing module logger)
@@ -702,65 +875,14 @@ def process_sqs_messages(
     Returns:
         Dict with batchItemFailures for partial batch retry
     """
-    # Determine which queue we're processing from the first record
-    # Each Lambda invocation only processes messages from ONE queue
-    # (separate event source mappings for lines vs words)
-    queue_url = None
-    manually_fetched_handles: List[str] = []
-
-    if records:
-        first_record = records[0]
-        collection_attr = first_record.get("messageAttributes", {}).get(
-            "collection", {}
-        )
-        collection_value = collection_attr.get("stringValue", "words")
-
-        if collection_value == "lines":
-            queue_url = os.environ.get("LINES_QUEUE_URL")
-        else:
-            queue_url = os.environ.get("WORDS_QUEUE_URL")
-
-        # Phase 2: Fetch additional messages if queue URL is available
-        if queue_url:
-            op_logger.info(
-                "Phase 2: attempting to fetch additional messages",
-                queue_url=queue_url[-50:],  # Last 50 chars for brevity
-                current_count=len(records),
-                max_messages=MAX_MESSAGES_PER_COMPACTION,
-            )
-            additional_records, manually_fetched_handles = (
-                fetch_additional_messages(
-                    queue_url=queue_url,
-                    current_count=len(records),
-                    max_messages=MAX_MESSAGES_PER_COMPACTION,
-                )
-            )
-
-            if additional_records:
-                op_logger.info(
-                    "Phase 2 batching: fetched additional messages",
-                    initial_count=len(records),
-                    additional_count=len(additional_records),
-                    total_count=len(records) + len(additional_records),
-                )
-                records = records + additional_records
-
-                if metrics:
-                    metrics.count(
-                        "CompactionAdditionalMessagesFetched",
-                        len(additional_records),
-                    )
-            else:
-                op_logger.info(
-                    "Phase 2: no additional messages available",
-                    initial_count=len(records),
-                )
+    # Phase 2: Fetch additional messages to batch with initial records
+    phase2 = _fetch_phase2_messages(records, op_logger, metrics)
+    records = phase2.all_records
 
     # Parse StreamMessage objects from SQS records
     try:
         stream_messages = parse_sqs_messages(records)
-    # pylint: disable-next=broad-exception-caught
-    except Exception:
+    except (json.JSONDecodeError, ValueError, TypeError, KeyError):
         op_logger.exception("Failed to parse SQS messages")
         if metrics:
             metrics.count("CompactionMessageParseError", 1)
@@ -794,74 +916,15 @@ def process_sqs_messages(
     )
 
     # Process each collection
-    failed_message_ids = []
-    processing_successful = True
+    result = _process_collections(messages_by_collection, op_logger, metrics)
 
-    for collection, msgs in messages_by_collection.items():
-        try:
-            result = process_collection(
-                collection=collection,
-                messages=msgs,
-                op_logger=op_logger,
-                metrics=metrics,
-            )
-            # Collect failures
-            if result.get("failed_message_ids"):
-                failed_message_ids.extend(result["failed_message_ids"])
-                processing_successful = False
-        # pylint: disable-next=broad-exception-caught
-        except Exception:
-            op_logger.exception(
-                "Collection processing failed",
-                collection=collection.value,
-            )
-            if metrics:
-                metrics.count("CompactionCollectionProcessingError", 1)
-            # Mark all messages for this collection as failed
-            failed_message_ids.extend([m.stream_record_id for m in msgs])
-            processing_successful = False
-
-    # Phase 2: Delete manually-fetched messages after successful processing
-    # Lambda-triggered messages are auto-deleted by the event source mapping
-    # but manually-fetched messages must be explicitly deleted
-    if manually_fetched_handles and queue_url:
-        if processing_successful and not failed_message_ids:
-            # All processing succeeded - delete all manually-fetched messages
-            failed_deletes = delete_messages_batch(
-                queue_url, manually_fetched_handles
-            )
-            if failed_deletes:
-                op_logger.warning(
-                    "Some manually-fetched messages failed to delete",
-                    failed_count=len(failed_deletes),
-                    total_fetched=len(manually_fetched_handles),
-                )
-                if metrics:
-                    metrics.count(
-                        "CompactionMessageDeleteFailures", len(failed_deletes)
-                    )
-            else:
-                op_logger.info(
-                    "Deleted manually-fetched messages",
-                    count=len(manually_fetched_handles),
-                )
-                if metrics:
-                    metrics.count(
-                        "CompactionManualMessagesDeleted",
-                        len(manually_fetched_handles),
-                    )
-        else:
-            # Processing had failures - let manually-fetched messages
-            # become visible again for retry (visibility timeout will expire)
-            op_logger.info(
-                "Skipping delete of manually-fetched messages due to failures",
-                failed_count=len(failed_message_ids),
-                manual_count=len(manually_fetched_handles),
-            )
+    # Clean up manually-fetched messages
+    _cleanup_manual_messages(phase2, result, op_logger, metrics)
 
     return {
         "batchItemFailures": [
-            {"itemIdentifier": msg_id} for msg_id in failed_message_ids
+            {"itemIdentifier": msg_id}
+            for msg_id in result.failed_message_ids
         ]
     }
 
