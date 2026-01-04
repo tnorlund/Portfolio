@@ -21,7 +21,7 @@ import json
 import logging
 import os
 import tempfile
-from typing import Any, Dict, List
+from typing import Any
 
 import boto3
 
@@ -40,7 +40,7 @@ MIN_DELTAS_PER_CHUNK = int(os.environ.get("MIN_DELTAS_PER_CHUNK", "5"))
 s3_client = boto3.client("s3")
 
 
-def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
+def lambda_handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """Prepare chunks for parallel processing.
 
     Takes poll results (S3 references from PollBatches Map), combines them,
@@ -185,8 +185,8 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
 
 def _download_and_combine_poll_results(
-    poll_results_refs: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    poll_results_refs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Download individual poll results from S3 and combine them."""
     if not poll_results_refs:
         return []
@@ -241,8 +241,8 @@ def _download_and_combine_poll_results(
 
 
 def _filter_valid_deltas(
-    poll_results: List[Dict[str, Any]], database: str
-) -> List[Dict[str, Any]]:
+    poll_results: list[dict[str, Any]], database: str
+) -> list[dict[str, Any]]:
     """Filter poll results to only include valid deltas."""
     valid = []
 
@@ -265,9 +265,9 @@ def _filter_valid_deltas(
 
 
 def _create_chunks(
-    deltas: List[Dict[str, Any]],
+    deltas: list[dict[str, Any]],
     batch_id: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Split deltas into BIG chunks targeting TARGET_PARALLEL_LAMBDAS.
 
     SIMPLIFIED ARCHITECTURE:
