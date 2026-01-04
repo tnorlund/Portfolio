@@ -6,7 +6,7 @@
 
 # Interface: LayoutLMPrediction
 
-Defined in: [types/api.ts:238](https://github.com/tnorlund/Portfolio/blob/85cb879f62a5ca5002090c078257fd15e33c8091/portfolio/types/api.ts#L238)
+Defined in: [types/api.ts:238](https://github.com/tnorlund/Portfolio/blob/640c08c94f822d6827c45fb56e4b96e801d76378/portfolio/types/api.ts#L238)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:238](https://github.com/tnorlund/Portfolio/blob/85cb87
 
 > **ground\_truth\_label**: `string` \| `null`
 
-Defined in: [types/api.ts:244](https://github.com/tnorlund/Portfolio/blob/85cb879f62a5ca5002090c078257fd15e33c8091/portfolio/types/api.ts#L244)
+Defined in: [types/api.ts:244](https://github.com/tnorlund/Portfolio/blob/640c08c94f822d6827c45fb56e4b96e801d76378/portfolio/types/api.ts#L244)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:244](https://github.com/tnorlund/Portfolio/blob/85cb87
 
 > **ground\_truth\_label\_base**: `string` \| `null`
 
-Defined in: [types/api.ts:245](https://github.com/tnorlund/Portfolio/blob/85cb879f62a5ca5002090c078257fd15e33c8091/portfolio/types/api.ts#L245)
+Defined in: [types/api.ts:245](https://github.com/tnorlund/Portfolio/blob/640c08c94f822d6827c45fb56e4b96e801d76378/portfolio/types/api.ts#L245)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:245](https://github.com/tnorlund/Portfolio/blob/85cb87
 
 > **is\_correct**: `boolean`
 
-Defined in: [types/api.ts:248](https://github.com/tnorlund/Portfolio/blob/85cb879f62a5ca5002090c078257fd15e33c8091/portfolio/types/api.ts#L248)
+Defined in: [types/api.ts:248](https://github.com/tnorlund/Portfolio/blob/640c08c94f822d6827c45fb56e4b96e801d76378/portfolio/types/api.ts#L248)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:248](https://github.com/tnorlund/Portfolio/blob/85cb87
 
 > **line\_id**: `number`
 
-Defined in: [types/api.ts:240](https://github.com/tnorlund/Portfolio/blob/85cb879f62a5ca5002090c078257fd15e33c8091/portfolio/types/api.ts#L240)
+Defined in: [types/api.ts:240](https://github.com/tnorlund/Portfolio/blob/640c08c94f822d6827c45fb56e4b96e801d76378/portfolio/types/api.ts#L240)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:240](https://github.com/tnorlund/Portfolio/blob/85cb87
 
 > **predicted\_confidence**: `number`
 
-Defined in: [types/api.ts:247](https://github.com/tnorlund/Portfolio/blob/85cb879f62a5ca5002090c078257fd15e33c8091/portfolio/types/api.ts#L247)
+Defined in: [types/api.ts:247](https://github.com/tnorlund/Portfolio/blob/640c08c94f822d6827c45fb56e4b96e801d76378/portfolio/types/api.ts#L247)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:247](https://github.com/tnorlund/Portfolio/blob/85cb87
 
 > **predicted\_label**: `string`
 
-Defined in: [types/api.ts:242](https://github.com/tnorlund/Portfolio/blob/85cb879f62a5ca5002090c078257fd15e33c8091/portfolio/types/api.ts#L242)
+Defined in: [types/api.ts:242](https://github.com/tnorlund/Portfolio/blob/640c08c94f822d6827c45fb56e4b96e801d76378/portfolio/types/api.ts#L242)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:242](https://github.com/tnorlund/Portfolio/blob/85cb87
 
 > **predicted\_label\_base**: `string`
 
-Defined in: [types/api.ts:243](https://github.com/tnorlund/Portfolio/blob/85cb879f62a5ca5002090c078257fd15e33c8091/portfolio/types/api.ts#L243)
+Defined in: [types/api.ts:243](https://github.com/tnorlund/Portfolio/blob/640c08c94f822d6827c45fb56e4b96e801d76378/portfolio/types/api.ts#L243)
 
 ***
 
@@ -70,7 +70,7 @@ Defined in: [types/api.ts:243](https://github.com/tnorlund/Portfolio/blob/85cb87
 
 > **text**: `string`
 
-Defined in: [types/api.ts:241](https://github.com/tnorlund/Portfolio/blob/85cb879f62a5ca5002090c078257fd15e33c8091/portfolio/types/api.ts#L241)
+Defined in: [types/api.ts:241](https://github.com/tnorlund/Portfolio/blob/640c08c94f822d6827c45fb56e4b96e801d76378/portfolio/types/api.ts#L241)
 
 ***
 
@@ -78,7 +78,7 @@ Defined in: [types/api.ts:241](https://github.com/tnorlund/Portfolio/blob/85cb87
 
 > **word\_id**: `number` \| `null`
 
-Defined in: [types/api.ts:239](https://github.com/tnorlund/Portfolio/blob/85cb879f62a5ca5002090c078257fd15e33c8091/portfolio/types/api.ts#L239)
+Defined in: [types/api.ts:239](https://github.com/tnorlund/Portfolio/blob/640c08c94f822d6827c45fb56e4b96e801d76378/portfolio/types/api.ts#L239)
 
 ***
 
@@ -86,7 +86,7 @@ Defined in: [types/api.ts:239](https://github.com/tnorlund/Portfolio/blob/85cb87
 
 > `optional` **all\_class\_probabilities**: `Record`\<`string`, `number`\>
 
-Defined in: [types/api.ts:249](https://github.com/tnorlund/Portfolio/blob/85cb879f62a5ca5002090c078257fd15e33c8091/portfolio/types/api.ts#L249)
+Defined in: [types/api.ts:249](https://github.com/tnorlund/Portfolio/blob/640c08c94f822d6827c45fb56e4b96e801d76378/portfolio/types/api.ts#L249)
 
 ***
 
@@ -94,7 +94,7 @@ Defined in: [types/api.ts:249](https://github.com/tnorlund/Portfolio/blob/85cb87
 
 > `optional` **all\_class\_probabilities\_base**: `Record`\<`string`, `number`\>
 
-Defined in: [types/api.ts:250](https://github.com/tnorlund/Portfolio/blob/85cb879f62a5ca5002090c078257fd15e33c8091/portfolio/types/api.ts#L250)
+Defined in: [types/api.ts:250](https://github.com/tnorlund/Portfolio/blob/640c08c94f822d6827c45fb56e4b96e801d76378/portfolio/types/api.ts#L250)
 
 ***
 
@@ -102,4 +102,4 @@ Defined in: [types/api.ts:250](https://github.com/tnorlund/Portfolio/blob/85cb87
 
 > `optional` **ground\_truth\_label\_original**: `string` \| `null`
 
-Defined in: [types/api.ts:246](https://github.com/tnorlund/Portfolio/blob/85cb879f62a5ca5002090c078257fd15e33c8091/portfolio/types/api.ts#L246)
+Defined in: [types/api.ts:246](https://github.com/tnorlund/Portfolio/blob/640c08c94f822d6827c45fb56e4b96e801d76378/portfolio/types/api.ts#L246)
