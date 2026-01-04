@@ -1100,7 +1100,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         phase1_concurrency = 25
 
         # Phase 2 uses higher concurrency since patterns are cached
-        phase2_concurrency = 16
+        # LLM review has rate limiting and circuit breakers to handle load
+        phase2_concurrency = 32
 
         definition = {
             "Comment": f"Label Evaluator Two-Phase (Phase1={phase1_concurrency}, Phase2={phase2_concurrency})",
