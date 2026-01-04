@@ -1,6 +1,7 @@
 /* GeometricAnomalyVisualization.module.css */
 
 .container {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2rem;
@@ -343,4 +344,31 @@
 .metricGood {
   color: var(--color-green);
   background: rgba(0, 255, 0, 0.1);
+}
+
+/* Loading state */
+.loadingState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  font-size: 0.9rem;
+  color: var(--text-color);
+  opacity: 0.6;
+}
+
+/* Data source badge */
+.dataSourceBadge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--color-green);
+  color: white;
+  border-radius: 4px;
+  z-index: 10;
 }

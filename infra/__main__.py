@@ -1185,3 +1185,81 @@ pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
 pulumi.export(
     "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
 )
+
+# Label Evaluator Visualization Cache (Geometric Anomaly + LLM Evaluator)
+from routes.label_evaluator_geometric_cache.infra import (
+    create_label_evaluator_geometric_cache,
+)
+from routes.label_evaluator_llm_cache.infra import (
+    create_label_evaluator_llm_cache,
+)
+
+# Create geometric anomaly cache
+geometric_anomaly_cache = create_label_evaluator_geometric_cache(
+    label_evaluator_batch_bucket=label_evaluator_sf.batch_bucket_name,
+)
+pulumi.export(
+    "geometric_anomaly_cache_bucket", geometric_anomaly_cache.cache_bucket.id
+)
+
+# Create LLM evaluator cache
+llm_evaluator_cache = create_label_evaluator_llm_cache(
+    label_evaluator_batch_bucket=label_evaluator_sf.batch_bucket_name,
+)
+pulumi.export("llm_evaluator_cache_bucket", llm_evaluator_cache.cache_bucket.id)
+
+# Create API Gateway routes for label evaluator caches
+if hasattr(api_gateway, "api"):
+    # Geometric anomaly endpoint
+    integration_geometric = aws.apigatewayv2.Integration(
+        "geometric_anomaly_cache_integration",
+        api_id=api_gateway.api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=geometric_anomaly_cache.api_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    route_geometric = aws.apigatewayv2.Route(
+        "geometric_anomaly_cache_route",
+        api_id=api_gateway.api.id,
+        route_key="GET /label_evaluator/geometric_anomaly",
+        target=integration_geometric.id.apply(lambda id: f"integrations/{id}"),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+    aws.lambda_.Permission(
+        "geometric_anomaly_lambda_permission",
+        action="lambda:InvokeFunction",
+        function=geometric_anomaly_cache.api_lambda.name,
+        principal="apigateway.amazonaws.com",
+        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+    )
+
+    # LLM evaluator endpoint
+    integration_llm = aws.apigatewayv2.Integration(
+        "llm_evaluator_cache_integration",
+        api_id=api_gateway.api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=llm_evaluator_cache.api_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    route_llm = aws.apigatewayv2.Route(
+        "llm_evaluator_cache_route",
+        api_id=api_gateway.api.id,
+        route_key="GET /label_evaluator/llm_evaluation",
+        target=integration_llm.id.apply(lambda id: f"integrations/{id}"),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+    aws.lambda_.Permission(
+        "llm_evaluator_lambda_permission",
+        action="lambda:InvokeFunction",
+        function=llm_evaluator_cache.api_lambda.name,
+        principal="apigateway.amazonaws.com",
+        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+    )

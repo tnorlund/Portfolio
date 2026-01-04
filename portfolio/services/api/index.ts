@@ -9,6 +9,8 @@ import {
   AddressSimilarityResponse,
   TrainingMetricsResponse,
   LayoutLMBatchInferenceResponse,
+  GeometricAnomalyCacheResponse,
+  LLMEvaluatorCacheResponse,
 } from "../../types/api";
 import { withPerformanceTrackingForAPI } from "../../utils/performance/api-wrapper";
 
@@ -210,6 +212,34 @@ const baseApi = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/jobs/featured/training-metrics?collapse_bio=true`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchGeometricAnomaly(): Promise<GeometricAnomalyCacheResponse> {
+    const apiUrl = getAPIUrl();
+    const response = await fetch(
+      `${apiUrl}/label_evaluator/geometric_anomaly`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchLLMEvaluation(): Promise<LLMEvaluatorCacheResponse> {
+    const apiUrl = getAPIUrl();
+    const response = await fetch(
+      `${apiUrl}/label_evaluator/llm_evaluation`,
       fetchConfig
     );
     if (!response.ok) {

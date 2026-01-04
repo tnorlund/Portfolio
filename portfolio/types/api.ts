@@ -323,3 +323,109 @@ export interface LayoutLMBatchInferenceResponse {
   fetched_at: string;
   legacy_mode?: boolean;
 }
+
+// Geometric Anomaly Cache Types
+
+export interface GeometricAnomalyWord {
+  word_id: number;
+  line_id: number;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string | null;
+  is_flagged: boolean;
+  anomaly_type?: string;
+  reasoning?: string;
+}
+
+export interface GeometricLabelPair {
+  from_label: string;
+  to_label: string;
+  observations: Array<{ dx: number; dy: number }>;
+  mean: { dx: number; dy: number };
+  std_deviation: number;
+}
+
+export interface GeometricFlaggedWord {
+  word_id: number;
+  line_id: number;
+  reference_label: string;
+  expected: { dx: number; dy: number };
+  actual: { dx: number; dy: number };
+  z_score: number;
+  threshold: number;
+  reasoning?: string;
+}
+
+export interface GeometricAnomalyCacheResponse {
+  receipt: {
+    image_id: string;
+    receipt_id: number;
+    merchant_name: string;
+    words: GeometricAnomalyWord[];
+  };
+  patterns: {
+    label_pairs: GeometricLabelPair[];
+  };
+  flagged_word?: GeometricFlaggedWord;
+  cached_at: string;
+  fetched_at?: string;
+  pool_size?: number;
+  execution_id?: string;
+}
+
+// LLM Evaluator Cache Types
+
+export type LLMDecision = "VALID" | "INVALID" | "NEEDS_REVIEW";
+export type LLMConfidence = "high" | "medium" | "low";
+
+export interface LLMEvaluation {
+  word_text: string;
+  current_label: string;
+  decision: LLMDecision;
+  reasoning: string;
+  suggested_label?: string;
+  confidence: LLMConfidence;
+}
+
+export interface LLMFinancialResult {
+  equation: string;
+  subtotal: number;
+  tax: number;
+  expected_total: number;
+  actual_total: number;
+  difference: number;
+  decision: LLMDecision;
+  reasoning: string;
+  wrong_value: "SUBTOTAL" | "TAX" | "GRAND_TOTAL" | null;
+}
+
+export interface LLMPipelineStage {
+  id: string;
+  name: string;
+  status: "pending" | "processing" | "complete";
+}
+
+export interface LLMEvaluatorCacheResponse {
+  receipt: {
+    image_id: string;
+    receipt_id: number;
+    merchant_name: string;
+    subtotal: number;
+    tax: number;
+    grand_total: number;
+    line_items: Array<{ name: string; price: number }>;
+  };
+  evaluations: {
+    currency: LLMEvaluation[];
+    metadata: LLMEvaluation[];
+    financial: LLMFinancialResult;
+  };
+  pipeline: LLMPipelineStage[];
+  cached_at: string;
+  fetched_at?: string;
+  pool_size?: number;
+  execution_id?: string;
+}

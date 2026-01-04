@@ -23,7 +23,7 @@ export interface LabelPairPattern {
   to: string;
   observations: Array<{ dx: number; dy: number }>;
   mean: { dx: number; dy: number };
-  std: number;
+  stdDeviation: number;
 }
 
 export interface FlaggedWordInfo {
@@ -37,6 +37,9 @@ export interface FlaggedWordInfo {
 
 export interface GeometricAnomalyData {
   receipt: {
+    imageId?: string;
+    receiptId?: number;
+    merchantName?: string;
     words: ReceiptWord[];
   };
   patterns: {
@@ -154,7 +157,7 @@ export const mockData: GeometricAnomalyData = {
         to: "GRAND_TOTAL",
         observations: generateObservations(0.0, 0.12, 0.015, 25),
         mean: { dx: 0.0, dy: 0.12 }, // GRAND_TOTAL typically 0.12 below SUBTOTAL
-        std: 0.015,
+        stdDeviation: 0.015,
       },
       // MERCHANT_NAME -> SUBTOTAL pattern
       {
@@ -162,7 +165,7 @@ export const mockData: GeometricAnomalyData = {
         to: "SUBTOTAL",
         observations: generateObservations(0.20, 0.55, 0.04, 20),
         mean: { dx: 0.20, dy: 0.55 },
-        std: 0.04,
+        stdDeviation: 0.04,
       },
       // TAX -> GRAND_TOTAL pattern
       {
@@ -170,7 +173,7 @@ export const mockData: GeometricAnomalyData = {
         to: "GRAND_TOTAL",
         observations: generateObservations(0.0, 0.08, 0.012, 22),
         mean: { dx: 0.0, dy: 0.08 }, // GRAND_TOTAL typically 0.08 below TAX
-        std: 0.012,
+        stdDeviation: 0.012,
       },
       // SUBTOTAL -> TAX pattern
       {
@@ -178,7 +181,7 @@ export const mockData: GeometricAnomalyData = {
         to: "TAX",
         observations: generateObservations(0.0, 0.05, 0.01, 28),
         mean: { dx: 0.0, dy: 0.05 },
-        std: 0.01,
+        stdDeviation: 0.01,
       },
     ],
   },

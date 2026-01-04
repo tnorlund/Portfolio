@@ -242,7 +242,7 @@ def handler(event: dict[str, Any], _context: Any) -> "ComputePatternsOutput":
                 other_receipt_data,
                 merchant_name,
                 max_pair_patterns=4,
-                max_relationship_dimension=2,
+                max_relationship_dimension=3,  # Enable constellation (n-tuple) patterns
             )
 
             compute_time = time.time() - compute_start

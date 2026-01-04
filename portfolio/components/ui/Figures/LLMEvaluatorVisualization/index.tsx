@@ -3,8 +3,71 @@ import { useInView } from "react-intersection-observer";
 import PipelineFlow from "./PipelineFlow";
 import SubagentCards from "./SubagentCards";
 import FinancialMathBreakdown from "./FinancialMathBreakdown";
-import mockDataWithError from "./mockData";
+import mockDataWithError, { LLMEvaluatorData, EvaluationResult, FinancialMathResult, PipelineStage } from "./mockData";
+import { api } from "../../../../services/api";
+import { LLMEvaluatorCacheResponse, LLMEvaluation, LLMFinancialResult } from "../../../../types/api";
 import styles from "./LLMEvaluatorVisualization.module.css";
+
+/**
+ * Transform API response to the component's internal data format
+ */
+function transformApiResponse(response: LLMEvaluatorCacheResponse): LLMEvaluatorData {
+  // Transform currency evaluations
+  const currencyEvals: EvaluationResult[] = response.evaluations.currency.map((e: LLMEvaluation) => ({
+    wordText: e.word_text,
+    currentLabel: e.current_label,
+    decision: e.decision,
+    reasoning: e.reasoning,
+    suggestedLabel: e.suggested_label,
+    confidence: e.confidence,
+  }));
+
+  // Transform metadata evaluations
+  const metadataEvals: EvaluationResult[] = response.evaluations.metadata.map((e: LLMEvaluation) => ({
+    wordText: e.word_text,
+    currentLabel: e.current_label,
+    decision: e.decision,
+    reasoning: e.reasoning,
+    suggestedLabel: e.suggested_label,
+    confidence: e.confidence,
+  }));
+
+  // Transform financial result
+  const financialResult: FinancialMathResult = {
+    equation: response.evaluations.financial.equation,
+    subtotal: response.evaluations.financial.subtotal,
+    tax: response.evaluations.financial.tax,
+    expectedTotal: response.evaluations.financial.expected_total,
+    actualTotal: response.evaluations.financial.actual_total,
+    difference: response.evaluations.financial.difference,
+    decision: response.evaluations.financial.decision,
+    reasoning: response.evaluations.financial.reasoning,
+    wrongValue: response.evaluations.financial.wrong_value,
+  };
+
+  // Transform pipeline stages
+  const pipeline: PipelineStage[] = response.pipeline.map((p) => ({
+    id: p.id,
+    name: p.name,
+    status: p.status,
+  }));
+
+  return {
+    receipt: {
+      merchantName: response.receipt.merchant_name,
+      lineItems: response.receipt.line_items,
+      subtotal: response.receipt.subtotal,
+      tax: response.receipt.tax,
+      grandTotal: response.receipt.grand_total,
+    },
+    evaluations: {
+      currency: currencyEvals,
+      metadata: metadataEvals,
+      financial: financialResult,
+    },
+    pipeline,
+  };
+}
 
 const LLMEvaluatorVisualization: React.FC = () => {
   const { ref, inView } = useInView({
@@ -17,9 +80,29 @@ const LLMEvaluatorVisualization: React.FC = () => {
   const [showFinancialResult, setShowFinancialResult] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const hasStartedAnimation = useRef(false);
+  const [data, setData] = useState<LLMEvaluatorData>(mockDataWithError);
+  const [isLoading, setIsLoading] = useState(true);
+  const [usingRealData, setUsingRealData] = useState(false);
 
-  // Use the error case data for a more interesting demo
-  const data = mockDataWithError;
+  // Fetch real data on mount
+  useEffect(() => {
+    api
+      .fetchLLMEvaluation()
+      .then((response) => {
+        const transformed = transformApiResponse(response);
+        // Only use API data if it has evaluations
+        if (transformed.evaluations.currency.length > 0 || transformed.evaluations.metadata.length > 0) {
+          setData(transformed);
+          setUsingRealData(true);
+        }
+      })
+      .catch((error) => {
+        console.warn("Failed to fetch LLM evaluation data, using mock data:", error);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, []);
 
   // Animation sequence when component comes into view
   useEffect(() => {
@@ -79,8 +162,21 @@ const LLMEvaluatorVisualization: React.FC = () => {
     (e) => e.decision === "NEEDS_REVIEW"
   ).length;
 
+  // Show loading state if still loading
+  if (isLoading) {
+    return (
+      <div ref={ref} className={styles.container}>
+        <div className={styles.loadingState}>Loading visualization...</div>
+      </div>
+    );
+  }
+
   return (
     <div ref={ref} className={styles.container}>
+      {/* Data source indicator */}
+      {usingRealData && (
+        <div className={styles.dataSourceBadge}>Live Data</div>
+      )}
       {/* Pipeline Flow */}
       <PipelineFlow
         stages={data.pipeline}
