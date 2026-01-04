@@ -19,7 +19,6 @@ This simplification:
 
 import json
 import logging
-import math
 import os
 import tempfile
 from typing import Any, Dict, List
@@ -38,16 +37,10 @@ TARGET_PARALLEL_LAMBDAS = int(os.environ.get("TARGET_PARALLEL_LAMBDAS", "8"))
 # Minimum deltas per chunk to avoid too many small Lambdas
 MIN_DELTAS_PER_CHUNK = int(os.environ.get("MIN_DELTAS_PER_CHUNK", "5"))
 
-# Legacy configuration (kept for backward compatibility, not used in simplified mode)
-CHUNK_SIZE_WORDS = int(os.environ.get("CHUNK_SIZE_WORDS", "15"))
-CHUNK_SIZE_LINES = int(os.environ.get("CHUNK_SIZE_LINES", "25"))
-CHUNKS_PER_LAMBDA = int(os.environ.get("CHUNKS_PER_LAMBDA", "4"))
-
 s3_client = boto3.client("s3")
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    # pylint: disable=unused-argument
+def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """Prepare chunks for parallel processing.
 
     Takes poll results (S3 references from PollBatches Map), combines them,
@@ -82,13 +75,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if not bucket:
         raise ValueError("CHROMADB_BUCKET environment variable not set")
 
-    chunk_size = CHUNK_SIZE_WORDS if database == "words" else CHUNK_SIZE_LINES
-
     logger.info(
-        "Starting prepare_chunks: batch_id=%s, database=%s, chunk_size=%d, poll_results_count=%d",
+        "Starting prepare_chunks: batch_id=%s, database=%s, poll_results_count=%d",
         batch_id,
         database,
-        chunk_size,
         len(poll_results_refs) if poll_results_refs else 0,
     )
 
@@ -141,7 +131,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "has_chunks": False,
         }
 
-    chunks = _create_chunks(valid_deltas, chunk_size, batch_id)
+    chunks = _create_chunks(valid_deltas, batch_id)
 
     logger.info(
         "Created chunks: batch_id=%s, delta_count=%d, chunk_count=%d",
@@ -166,13 +156,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # No batching needed since we already created big chunks
     chunk_items = []
     for chunk in chunks:
-        chunk_items.append({
-            "chunk_index": chunk["chunk_index"],
-            "batch_id": batch_id,
-            "chunks_s3_key": chunks_s3_key,
-            "chunks_s3_bucket": bucket,
-            "database": database,
-        })
+        chunk_items.append(
+            {
+                "chunk_index": chunk["chunk_index"],
+                "batch_id": batch_id,
+                "chunks_s3_key": chunks_s3_key,
+                "chunks_s3_bucket": bucket,
+                "database": database,
+            }
+        )
 
     logger.info(
         "SIMPLIFIED: Created %d chunk items (1 Lambda per chunk, each processing ~%d deltas)",
@@ -273,7 +265,8 @@ def _filter_valid_deltas(
 
 
 def _create_chunks(
-    deltas: List[Dict[str, Any]], chunk_size: int, batch_id: str
+    deltas: List[Dict[str, Any]],
+    batch_id: str,
 ) -> List[Dict[str, Any]]:
     """Split deltas into BIG chunks targeting TARGET_PARALLEL_LAMBDAS.
 
@@ -284,8 +277,6 @@ def _create_chunks(
     - Each Lambda processes many deltas and creates ONE intermediate
     - Final merge only needs to merge TARGET_PARALLEL_LAMBDAS intermediates
     - No reduce loop needed!
-
-    The chunk_size parameter is ignored in favor of TARGET_PARALLEL_LAMBDAS.
     """
     if not deltas:
         return []

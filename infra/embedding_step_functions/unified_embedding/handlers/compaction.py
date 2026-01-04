@@ -1034,7 +1034,8 @@ def final_merge_all_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
     # Filter valid chunk results (have intermediate_key)
     valid_chunks = [
-        c for c in chunk_results
+        c
+        for c in chunk_results
         if isinstance(c, dict) and "intermediate_key" in c
     ]
 
