@@ -7,9 +7,6 @@ from typing import Any, Dict, Optional
 
 try:
     from aws_xray_sdk.core import patch_all, xray_recorder
-    from aws_xray_sdk.core.context import Context
-    from aws_xray_sdk.core.models.segment import Segment
-    from aws_xray_sdk.core.models.subsegment import Subsegment
 
     XRAY_AVAILABLE = True
 except ImportError:
@@ -101,7 +98,7 @@ class XRayTracer:
                 try:
                     subsegment.add_exception(e)
                 except Exception:
-                    # Ignore errors when adding exceptions to avoid cascading failures
+                    # Ignore errors adding exceptions to avoid cascading
                     pass
                 self.logger.error(
                     "X-Ray subsegment failed",

@@ -20,6 +20,15 @@ Focuses on:
 import os
 import time
 
+from receipt_dynamo_stream import (
+    DynamoDBStreamEvent,
+    LambdaContext,
+    LambdaResponse,
+    StreamProcessorResponseData,
+    build_messages_from_records,
+    publish_messages,
+)
+
 from utils import (
     emf_metrics,
     format_response,
@@ -29,15 +38,6 @@ from utils import (
     stop_compaction_lambda_monitoring,
     trace_function,
     with_compaction_timeout_protection,
-)
-
-from receipt_dynamo_stream import (
-    DynamoDBStreamEvent,
-    LambdaContext,
-    LambdaResponse,
-    StreamProcessorResponseData,
-    build_messages_from_records,
-    publish_messages,
 )
 
 # Configure logging with observability

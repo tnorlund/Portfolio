@@ -123,7 +123,7 @@ class MetricsCollector:
         dimensions: Optional[Dict[str, str]] = None,
         unit: str = "Seconds",
     ):
-        """Context manager for timing operations and publishing duration metrics.
+        """Context manager for timing operations and publishing metrics.
 
         Args:
             metric_name: Name of the duration metric
@@ -203,7 +203,7 @@ class MetricsCollector:
 
 
 class EmbeddedMetricsFormatter:
-    """Formats metrics using AWS Embedded Metric Format (EMF) for efficient CloudWatch integration."""
+    """Formats metrics using AWS Embedded Metric Format (EMF)."""
 
     def __init__(self, namespace: str = "EmbeddingWorkflow"):
         """Initialize EMF formatter.
@@ -274,7 +274,7 @@ class EmbeddedMetricsFormatter:
         dimensions: Optional[Dict[str, str]] = None,
         properties: Optional[Dict[str, Any]] = None,
     ):
-        """Log metrics using EMF format to stdout (CloudWatch will parse automatically).
+        """Log metrics using EMF format to stdout (parsed by CloudWatch).
 
         Args:
             metrics: Dictionary of metric names and values

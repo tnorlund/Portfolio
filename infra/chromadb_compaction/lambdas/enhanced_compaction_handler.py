@@ -6,7 +6,7 @@ This handler processes DynamoDB stream messages for ChromaDB compaction by:
 3. Using receipt_chroma.compaction for business logic
 4. Maintaining EMF metrics and structured logging
 
-Business logic has been moved to receipt_chroma package for reusability and testability.
+Business logic lives in receipt_chroma package for reusability.
 """
 
 # pylint: disable=duplicate-code
@@ -24,15 +24,15 @@ import boto3
 from botocore.exceptions import ClientError
 
 # Module-level SQS client for reuse across Lambda warm starts
-_sqs_client = None
+_SQS_CLIENT = None
 
 
 def _get_sqs_client():
     """Get or create SQS client (reused across warm starts)."""
-    global _sqs_client  # pylint: disable=global-statement
-    if _sqs_client is None:
-        _sqs_client = boto3.client("sqs")
-    return _sqs_client
+    global _SQS_CLIENT  # pylint: disable=global-statement
+    if _SQS_CLIENT is None:
+        _SQS_CLIENT = boto3.client("sqs")
+    return _SQS_CLIENT
 
 
 # Use receipt_chroma package for compaction logic
@@ -89,7 +89,7 @@ class LambdaResponse:
 class MetricsAccumulator:
     """Wrapper that collects metrics in a dict instead of making API calls.
 
-    This enables cost-effective batch EMF logging instead of per-metric CloudWatch API calls.
+    Enables cost-effective batch EMF logging instead of per-metric API calls.
     """
 
     def __init__(self, collected_metrics: Dict[str, Any]):
@@ -194,10 +194,8 @@ def configure_receipt_chroma_loggers():
             formatter = StructuredFormatter()
         except ImportError:
             # Fallback to simple format
-            formatter = logging.Formatter(
-                "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
+            fmt = "[%(levelname)s] %(asctime)s %(name)s - %(message)s"
+            formatter = logging.Formatter(fmt, datefmt="%Y-%m-%dT%H:%M:%S")
 
         handler.setFormatter(formatter)
         receipt_chroma_logger.addHandler(handler)
@@ -624,8 +622,8 @@ def process_collection(
         # Cleanup temp directory
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-        # Aggressive memory cleanup to prevent OOM on warm container reuse.
-        # Repeated gc.collect() helps release cyclic references with finalizers.
+        # Aggressive memory cleanup to prevent OOM on warm container reuse
+        # (repeated gc.collect() releases cyclic refs with finalizers).
         gc.collect()
         gc.collect()
         gc.collect()
