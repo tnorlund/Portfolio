@@ -367,6 +367,19 @@ def create_llm_from_settings(
 # =============================================================================
 
 
+class EmptyResponseError(Exception):
+    """
+    Raised when the LLM returns an empty response.
+
+    This can happen when providers are under heavy load and return
+    successful HTTP responses but with empty content.
+    """
+
+    def __init__(self, provider: str, message: str = "LLM returned empty response"):
+        super().__init__(f"{provider}: {message}")
+        self.provider = provider
+
+
 class AllProvidersFailedError(Exception):
     """
     Raised when all LLM providers (Ollama, OpenRouter free, OpenRouter paid) fail.
@@ -396,6 +409,38 @@ class AllProvidersFailedError(Exception):
 
 # Backward compatibility alias
 BothProvidersFailedError = AllProvidersFailedError
+
+
+def _is_empty_response(response: Any) -> bool:
+    """
+    Check if an LLM response is empty or invalid.
+
+    Empty responses can occur when providers are under load and return
+    HTTP 200 but with no actual content.
+
+    Args:
+        response: The LLM response object
+
+    Returns:
+        True if the response is empty/invalid
+    """
+    if response is None:
+        return True
+
+    # Get content from response
+    content = None
+    if hasattr(response, "content"):
+        content = response.content
+    elif isinstance(response, str):
+        content = response
+    elif isinstance(response, dict):
+        content = response.get("content", "")
+
+    # Check if content is empty or whitespace-only
+    if content is None or (isinstance(content, str) and not content.strip()):
+        return True
+
+    return False
 
 
 @dataclass
@@ -471,6 +516,10 @@ class ResilientLLM:
 
         Fallback chain: Ollama → OpenRouter free → OpenRouter paid
 
+        Empty responses are treated as failures and trigger fallback to the
+        next provider. This handles cases where providers return HTTP 200
+        but with empty content under heavy load.
+
         Args:
             messages: Messages to send to the LLM (LangChain format)
             config: Optional LangChain config dict (for callbacks/tracing)
@@ -492,24 +541,35 @@ class ResilientLLM:
                 response = self.primary_llm.invoke(messages, config=config, **kwargs)
             else:
                 response = self.primary_llm.invoke(messages, **kwargs)
+
+            # Check for empty response
+            if _is_empty_response(response):
+                raise EmptyResponseError("Ollama", "Empty response received")
+
             self.primary_successes += 1
             return response
 
         except Exception as primary_error:
             errors.append(primary_error)
 
-            # Check if this is a fallback-worthy error
-            if not is_fallback_error(primary_error):
+            # Check if this is a fallback-worthy error (includes empty response)
+            is_empty = isinstance(primary_error, EmptyResponseError)
+            if not is_empty and not is_fallback_error(primary_error):
                 logger.warning(
                     "Ollama failed with non-fallback error: %s",
                     str(primary_error)[:200],
                 )
                 raise
 
-            logger.info(
-                "Ollama rate limited, trying OpenRouter free: %s",
-                str(primary_error)[:100],
-            )
+            if is_empty:
+                logger.warning(
+                    "Ollama returned empty response, trying OpenRouter free"
+                )
+            else:
+                logger.info(
+                    "Ollama rate limited, trying OpenRouter free: %s",
+                    str(primary_error)[:100],
+                )
 
         # Tier 2: Try OpenRouter free model
         self.fallback_free_calls += 1
@@ -520,6 +580,11 @@ class ResilientLLM:
                 )
             else:
                 response = self.fallback_free_llm.invoke(messages, **kwargs)
+
+            # Check for empty response
+            if _is_empty_response(response):
+                raise EmptyResponseError("OpenRouter free", "Empty response received")
+
             self.fallback_free_successes += 1
             logger.info("OpenRouter free fallback succeeded")
             return response
@@ -527,7 +592,8 @@ class ResilientLLM:
         except Exception as free_error:
             errors.append(free_error)
 
-            if not is_fallback_error(free_error):
+            is_empty = isinstance(free_error, EmptyResponseError)
+            if not is_empty and not is_fallback_error(free_error):
                 logger.error(
                     "OpenRouter free failed with non-fallback error: %s",
                     str(free_error)[:200],
@@ -538,20 +604,25 @@ class ResilientLLM:
             if self.fallback_paid_llm is None:
                 self.all_failed += 1
                 logger.error(
-                    "Both Ollama and OpenRouter free rate limited (no paid fallback). "
+                    "Both Ollama and OpenRouter free failed (no paid fallback). "
                     "Ollama: %s, OpenRouter: %s",
                     str(errors[0])[:100],
                     str(free_error)[:100],
                 )
                 raise AllProvidersFailedError(
-                    "Ollama and OpenRouter free are rate limited",
+                    "Ollama and OpenRouter free failed",
                     errors=errors,
                 ) from free_error
 
-            logger.info(
-                "OpenRouter free rate limited, trying OpenRouter paid: %s",
-                str(free_error)[:100],
-            )
+            if is_empty:
+                logger.warning(
+                    "OpenRouter free returned empty response, trying OpenRouter paid"
+                )
+            else:
+                logger.info(
+                    "OpenRouter free rate limited, trying OpenRouter paid: %s",
+                    str(free_error)[:100],
+                )
 
         # Tier 3: Try OpenRouter paid model
         self.fallback_paid_calls += 1
@@ -562,6 +633,11 @@ class ResilientLLM:
                 )
             else:
                 response = self.fallback_paid_llm.invoke(messages, **kwargs)
+
+            # Check for empty response
+            if _is_empty_response(response):
+                raise EmptyResponseError("OpenRouter paid", "Empty response received")
+
             self.fallback_paid_successes += 1
             logger.info("OpenRouter paid fallback succeeded")
             return response
@@ -591,6 +667,8 @@ class ResilientLLM:
         Async invoke with automatic fallback through three tiers.
 
         Fallback chain: Ollama → OpenRouter free → OpenRouter paid
+
+        Empty responses are treated as failures and trigger fallback.
         """
         errors: list[Exception] = []
         self.primary_calls += 1
@@ -603,23 +681,34 @@ class ResilientLLM:
                 )
             else:
                 response = await self.primary_llm.ainvoke(messages, **kwargs)
+
+            # Check for empty response
+            if _is_empty_response(response):
+                raise EmptyResponseError("Ollama", "Empty response received")
+
             self.primary_successes += 1
             return response
 
         except Exception as primary_error:
             errors.append(primary_error)
 
-            if not is_fallback_error(primary_error):
+            is_empty = isinstance(primary_error, EmptyResponseError)
+            if not is_empty and not is_fallback_error(primary_error):
                 logger.warning(
                     "Ollama failed with non-fallback error: %s",
                     str(primary_error)[:200],
                 )
                 raise
 
-            logger.info(
-                "Ollama rate limited, trying OpenRouter free: %s",
-                str(primary_error)[:100],
-            )
+            if is_empty:
+                logger.warning(
+                    "Ollama returned empty response, trying OpenRouter free"
+                )
+            else:
+                logger.info(
+                    "Ollama rate limited, trying OpenRouter free: %s",
+                    str(primary_error)[:100],
+                )
 
         # Tier 2: Try OpenRouter free model
         self.fallback_free_calls += 1
@@ -630,6 +719,11 @@ class ResilientLLM:
                 )
             else:
                 response = await self.fallback_free_llm.ainvoke(messages, **kwargs)
+
+            # Check for empty response
+            if _is_empty_response(response):
+                raise EmptyResponseError("OpenRouter free", "Empty response received")
+
             self.fallback_free_successes += 1
             logger.info("OpenRouter free fallback succeeded")
             return response
@@ -637,7 +731,8 @@ class ResilientLLM:
         except Exception as free_error:
             errors.append(free_error)
 
-            if not is_fallback_error(free_error):
+            is_empty = isinstance(free_error, EmptyResponseError)
+            if not is_empty and not is_fallback_error(free_error):
                 logger.error(
                     "OpenRouter free failed with non-fallback error: %s",
                     str(free_error)[:200],
@@ -648,20 +743,25 @@ class ResilientLLM:
             if self.fallback_paid_llm is None:
                 self.all_failed += 1
                 logger.error(
-                    "Both Ollama and OpenRouter free rate limited (no paid fallback). "
+                    "Both Ollama and OpenRouter free failed (no paid fallback). "
                     "Ollama: %s, OpenRouter: %s",
                     str(errors[0])[:100],
                     str(free_error)[:100],
                 )
                 raise AllProvidersFailedError(
-                    "Ollama and OpenRouter free are rate limited",
+                    "Ollama and OpenRouter free failed",
                     errors=errors,
                 ) from free_error
 
-            logger.info(
-                "OpenRouter free rate limited, trying OpenRouter paid: %s",
-                str(free_error)[:100],
-            )
+            if is_empty:
+                logger.warning(
+                    "OpenRouter free returned empty response, trying OpenRouter paid"
+                )
+            else:
+                logger.info(
+                    "OpenRouter free rate limited, trying OpenRouter paid: %s",
+                    str(free_error)[:100],
+                )
 
         # Tier 3: Try OpenRouter paid model
         self.fallback_paid_calls += 1
@@ -672,6 +772,11 @@ class ResilientLLM:
                 )
             else:
                 response = await self.fallback_paid_llm.ainvoke(messages, **kwargs)
+
+            # Check for empty response
+            if _is_empty_response(response):
+                raise EmptyResponseError("OpenRouter paid", "Empty response received")
+
             self.fallback_paid_successes += 1
             logger.info("OpenRouter paid fallback succeeded")
             return response
