@@ -112,15 +112,11 @@ def process_sqs_messages(
 
             processed_count += 1
 
-        except (KeyError, json.JSONDecodeError, TypeError) as e:
+        except (KeyError, json.JSONDecodeError, TypeError):
             logger.exception("Error parsing SQS message")
 
             if observability_available and metrics:
-                metrics.count(
-                    "CompactionMessageParseError",
-                    1,
-                    {"error_type": type(e).__name__},
-                )
+                metrics.count("CompactionMessageParseError", 1)
             continue
 
     # Process stream messages if any
