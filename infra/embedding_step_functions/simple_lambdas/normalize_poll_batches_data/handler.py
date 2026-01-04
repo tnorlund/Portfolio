@@ -5,15 +5,21 @@ This handler combines the functionality of:
 - SplitWordIntoChunks (splitting into chunks and uploading to S3)
 - LoadChunksFromS3 (creating chunk indices)
 
+SIMPLIFIED ARCHITECTURE (v2):
+- Creates BIG chunks (target 5-10 parallel Lambdas total)
+- Each Lambda processes many deltas and creates one intermediate
+- Final merge takes all intermediates directly (no reduce loop)
+
 This simplification:
-- Reduces Lambda invocations from 3 to 1
-- Eliminates intermediate Step Functions state
+- Reduces Lambda invocations dramatically
+- Eliminates the complex reduce loop in Step Functions
 - Makes data flow clearer
 - Ensures poll_results_s3_key is always available for MarkBatchesComplete
 """
 
 import json
 import logging
+import math
 import os
 import tempfile
 from typing import Any, Dict, List
@@ -24,13 +30,17 @@ import boto3
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Configuration
+# SIMPLIFIED ARCHITECTURE: Target number of parallel Lambdas
+# Instead of many small chunks, create exactly this many big chunks
+# Conservative: 10, Recommended: 8, Aggressive: 5
+TARGET_PARALLEL_LAMBDAS = int(os.environ.get("TARGET_PARALLEL_LAMBDAS", "8"))
+
+# Minimum deltas per chunk to avoid too many small Lambdas
+MIN_DELTAS_PER_CHUNK = int(os.environ.get("MIN_DELTAS_PER_CHUNK", "5"))
+
+# Legacy configuration (kept for backward compatibility, not used in simplified mode)
 CHUNK_SIZE_WORDS = int(os.environ.get("CHUNK_SIZE_WORDS", "15"))
 CHUNK_SIZE_LINES = int(os.environ.get("CHUNK_SIZE_LINES", "25"))
-
-# Batched chunk processing: process multiple chunks per Lambda invocation
-# This reduces Lambda invocations by grouping chunks together
-# Conservative: 3, Recommended: 4, Aggressive: 5
 CHUNKS_PER_LAMBDA = int(os.environ.get("CHUNKS_PER_LAMBDA", "4"))
 
 s3_client = boto3.client("s3")
@@ -151,33 +161,29 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         len(chunks),
     )
 
-    # Step 5: Create chunk batches for Map state (batched processing optimization)
-    # Group multiple chunks together to reduce Lambda invocations
-    chunk_batches = []
-    for i in range(0, len(chunks), CHUNKS_PER_LAMBDA):
-        # Get chunk indices for this batch (up to CHUNKS_PER_LAMBDA chunks)
-        batch_chunk_indices = list(range(i, min(i + CHUNKS_PER_LAMBDA, len(chunks))))
-
-        chunk_batches.append({
-            "chunk_indices": batch_chunk_indices,  # Array of chunk indices to process
+    # Step 5: Create chunk items for Map state
+    # SIMPLIFIED ARCHITECTURE: Each chunk is processed by exactly one Lambda
+    # No batching needed since we already created big chunks
+    chunk_items = []
+    for chunk in chunks:
+        chunk_items.append({
+            "chunk_index": chunk["chunk_index"],
             "batch_id": batch_id,
             "chunks_s3_key": chunks_s3_key,
             "chunks_s3_bucket": bucket,
+            "database": database,
         })
 
     logger.info(
-        "Created chunk batches: original_chunks=%d, batches=%d, chunks_per_lambda=%d",
-        len(chunks),
-        len(chunk_batches),
-        CHUNKS_PER_LAMBDA,
+        "SIMPLIFIED: Created %d chunk items (1 Lambda per chunk, each processing ~%d deltas)",
+        len(chunk_items),
+        len(valid_deltas) // len(chunks) if chunks else 0,
     )
 
     return {
         "batch_id": batch_id,
-        "chunks": chunk_batches,  # Now contains batches, not individual chunks
+        "chunks": chunk_items,  # Each item = 1 Lambda invocation
         "total_chunks": len(chunks),
-        "total_batches": len(chunk_batches),
-        "chunks_per_lambda": CHUNKS_PER_LAMBDA,
         "chunks_s3_key": chunks_s3_key,
         "chunks_s3_bucket": bucket,
         "poll_results_s3_key": poll_results_s3_key,
@@ -269,18 +275,66 @@ def _filter_valid_deltas(
 def _create_chunks(
     deltas: List[Dict[str, Any]], chunk_size: int, batch_id: str
 ) -> List[Dict[str, Any]]:
-    """Split deltas into chunks."""
-    chunks = []
+    """Split deltas into BIG chunks targeting TARGET_PARALLEL_LAMBDAS.
 
-    for i in range(0, len(deltas), chunk_size):
-        chunk_deltas = deltas[i : i + chunk_size]
+    SIMPLIFIED ARCHITECTURE:
+    Instead of creating many small chunks (e.g., 15 deltas each), we create
+    a small number of BIG chunks (e.g., 8 chunks total) so that:
+    - We have exactly TARGET_PARALLEL_LAMBDAS parallel Lambda invocations
+    - Each Lambda processes many deltas and creates ONE intermediate
+    - Final merge only needs to merge TARGET_PARALLEL_LAMBDAS intermediates
+    - No reduce loop needed!
+
+    The chunk_size parameter is ignored in favor of TARGET_PARALLEL_LAMBDAS.
+    """
+    if not deltas:
+        return []
+
+    total_deltas = len(deltas)
+
+    # Calculate optimal number of chunks
+    # - At least 1 chunk
+    # - At most TARGET_PARALLEL_LAMBDAS chunks
+    # - Each chunk should have at least MIN_DELTAS_PER_CHUNK deltas
+    if total_deltas <= MIN_DELTAS_PER_CHUNK:
+        # Very few deltas - just one chunk
+        num_chunks = 1
+    else:
+        # Target TARGET_PARALLEL_LAMBDAS, but ensure each chunk has enough work
+        max_chunks_by_min_size = total_deltas // MIN_DELTAS_PER_CHUNK
+        num_chunks = min(TARGET_PARALLEL_LAMBDAS, max_chunks_by_min_size)
+        num_chunks = max(1, num_chunks)  # At least 1
+
+    # Calculate deltas per chunk (distribute evenly)
+    base_size = total_deltas // num_chunks
+    remainder = total_deltas % num_chunks
+
+    logger.info(
+        "Creating BIG chunks: total_deltas=%d, num_chunks=%d, base_size=%d, remainder=%d",
+        total_deltas,
+        num_chunks,
+        base_size,
+        remainder,
+    )
+
+    chunks = []
+    start_idx = 0
+
+    for i in range(num_chunks):
+        # Distribute remainder across first 'remainder' chunks
+        this_chunk_size = base_size + (1 if i < remainder else 0)
+        end_idx = start_idx + this_chunk_size
+
+        chunk_deltas = deltas[start_idx:end_idx]
         chunks.append(
             {
-                "chunk_index": len(chunks),
+                "chunk_index": i,
                 "batch_id": batch_id,
                 "delta_results": chunk_deltas,
             }
         )
+
+        start_idx = end_idx
 
     return chunks
 
