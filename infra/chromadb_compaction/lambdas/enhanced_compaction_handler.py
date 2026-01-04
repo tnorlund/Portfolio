@@ -10,6 +10,7 @@ Business logic lives in receipt_chroma package for reusability.
 """
 
 # pylint: disable=duplicate-code
+import functools
 import gc
 import json
 import logging
@@ -26,6 +27,7 @@ from botocore.exceptions import ClientError
 # Use receipt_chroma package for compaction logic
 from receipt_chroma import ChromaClient, LockManager
 from receipt_chroma.compaction import process_collection_updates
+from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
@@ -53,16 +55,10 @@ except ImportError:
                 setattr(self, key, value)
 
 
-# Module-level SQS client for reuse across Lambda warm starts
-_SQS_CLIENT = None
-
-
+@functools.lru_cache(maxsize=1)
 def _get_sqs_client():
     """Get or create SQS client (reused across warm starts)."""
-    global _SQS_CLIENT  # pylint: disable=global-statement
-    if _SQS_CLIENT is None:
-        _SQS_CLIENT = boto3.client("sqs")
-    return _SQS_CLIENT
+    return boto3.client("sqs")
 
 
 # Get logger instance
@@ -477,9 +473,6 @@ def process_collection(
     try:
         # Phase 1: Download snapshot from S3
         with logger.operation_timer("snapshot_download"):
-            # pylint: disable-next=import-outside-toplevel
-            from receipt_chroma.s3 import download_snapshot_atomic  # lazy load
-
             download_result = download_snapshot_atomic(
                 bucket=bucket,
                 collection=collection.value,
@@ -575,9 +568,6 @@ def process_collection(
 
         # Phase 3: Upload snapshot atomically with lock
         with logger.operation_timer("snapshot_upload"):
-            # pylint: disable-next=import-outside-toplevel
-            from receipt_chroma.s3 import upload_snapshot_atomic  # lazy load
-
             upload_result = upload_snapshot_atomic(
                 local_path=temp_dir,
                 bucket=bucket,
