@@ -72,9 +72,8 @@ class _ReceiptPlace(FlattenedStandardMixin):
     This class provides methods to interact with ReceiptPlace entities,
     supporting:
     - CRUD operations (add, update, delete, get)
-    - GSI queries by merchant name, place_id, validation status, confidence, and geohash
+    - GSI queries by merchant name, place_id, validation status, and confidence
     - Confidence range queries for quality control and analytics
-    - Spatial queries for nearby place detection
     - Batch operations for efficiency
 
     Attributes
@@ -114,8 +113,6 @@ class _ReceiptPlace(FlattenedStandardMixin):
         Retrieves ReceiptPlace records by validation status (GSI3).
     get_receipt_places_by_confidence(...) -> Tuple[List[ReceiptPlace], dict | None]:
         Retrieves ReceiptPlace records by confidence score (GSI3 range queries).
-    get_receipt_places_by_geohash(...) -> Tuple[List[ReceiptPlace], dict | None]:
-        Retrieves ReceiptPlace records by geohash for spatial queries (GSI4).
     """
 
     @handle_dynamodb_errors("add_receipt_place")
@@ -673,68 +670,6 @@ class _ReceiptPlace(FlattenedStandardMixin):
                 ":status_filter": {"S": f"#STATUS#{validation_status}"},
             },
             filter_expression="contains(GSI3SK, :status_filter)",
-            converter_func=item_to_receipt_place,
-            limit=limit,
-            last_evaluated_key=last_evaluated_key,
-        )
-
-    @handle_dynamodb_errors("get_receipt_places_by_geohash")
-    def get_receipt_places_by_geohash(
-        self,
-        geohash: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptPlace], dict | None]:
-        """
-        Retrieves ReceiptPlace records by geohash for spatial queries (GSI4).
-
-        Uses GSI4 to find places within a specific geographic region defined
-        by the geohash.
-
-        Parameters
-        ----------
-        geohash : str
-            The geohash to query for (precision 6-7 for ~1km cells).
-        limit : int, optional
-            Maximum number of records to retrieve.
-        last_evaluated_key : dict, optional
-            The key to start pagination from.
-
-        Returns
-        -------
-        Tuple[List[ReceiptPlace], dict | None]
-            A tuple containing the list of ReceiptPlace records and the last
-            evaluated key.
-
-        Raises
-        ------
-        ValueError
-            If geohash is invalid.
-        """
-        if not geohash:
-            raise EntityValidationError("geohash cannot be empty")
-        if not isinstance(geohash, str):
-            raise EntityValidationError("geohash must be a string")
-        if len(geohash) < 6:
-            raise EntityValidationError(
-                "geohash must be at least 6 characters"
-            )
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("limit must be positive")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
-            raise EntityValidationError(
-                "last_evaluated_key must be a dictionary"
-            )
-
-        return self._query_entities(
-            index_name="GSI4",
-            key_condition_expression="GSI4PK = :pk",
-            expression_attribute_names=None,
-            expression_attribute_values={":pk": {"S": f"GEOHASH#{geohash}"}},
             converter_func=item_to_receipt_place,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
