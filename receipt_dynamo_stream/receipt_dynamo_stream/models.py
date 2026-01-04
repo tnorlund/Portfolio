@@ -12,7 +12,7 @@ from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
-from receipt_dynamo_stream.types import DynamoDBItem
+from receipt_dynamo_stream.stream_types import DynamoDBItem
 
 StreamEntity: TypeAlias = (
     Receipt | ReceiptLine | ReceiptPlace | ReceiptWord | ReceiptWordLabel

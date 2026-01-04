@@ -29,7 +29,7 @@ from receipt_dynamo_stream.parsing import (
     parse_compaction_run,
     parse_stream_record,
 )
-from receipt_dynamo_stream.types import (
+from receipt_dynamo_stream.stream_types import (
     DynamoDBItem,
     DynamoDBStreamRecord,
     MetricsRecorder,

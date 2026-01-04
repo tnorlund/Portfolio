@@ -7,7 +7,7 @@ Handles fast-path processing of COMPACTION_RUN INSERT/MODIFY events.
 
 from typing import TypedDict, cast
 
-from receipt_dynamo_stream.types import DynamoDBItem
+from receipt_dynamo_stream.stream_types import DynamoDBItem
 
 
 class CompactionRunData(TypedDict, total=False):

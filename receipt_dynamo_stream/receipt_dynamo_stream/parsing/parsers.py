@@ -17,7 +17,7 @@ from receipt_dynamo.entities.receipt_word_label import (
 )
 
 from receipt_dynamo_stream.models import ParsedStreamRecord, StreamEntity
-from receipt_dynamo_stream.types import (
+from receipt_dynamo_stream.stream_types import (
     DynamoDBItem,
     DynamoDBStreamRecord,
     MetricsRecorder,

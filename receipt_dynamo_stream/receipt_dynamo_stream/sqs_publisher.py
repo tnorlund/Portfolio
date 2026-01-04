@@ -14,7 +14,7 @@ from typing import Any, Iterable, Optional
 import boto3
 
 from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
-from receipt_dynamo_stream.types import MetricsRecorder
+from receipt_dynamo_stream.stream_types import MetricsRecorder
 
 logger = logging.getLogger(__name__)
 

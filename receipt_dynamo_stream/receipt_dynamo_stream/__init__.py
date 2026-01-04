@@ -33,7 +33,7 @@ from receipt_dynamo_stream.sqs_publisher import (
     publish_messages,
     send_batch_to_queue,
 )
-from receipt_dynamo_stream.types import (
+from receipt_dynamo_stream.stream_types import (
     APIGatewayResponse,
     AttributeValue,
     AttributeValueS,

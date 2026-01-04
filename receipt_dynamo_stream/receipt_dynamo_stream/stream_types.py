@@ -172,7 +172,7 @@ class APIGatewayResponse(TypedDict):
 # =============================================================================
 
 
-class LambdaContext(Protocol):  # pylint: disable=too-few-public-methods
+class LambdaContext(Protocol):
     """
     Protocol for AWS Lambda context object.
 
@@ -197,7 +197,7 @@ class LambdaContext(Protocol):  # pylint: disable=too-few-public-methods
 # =============================================================================
 
 
-class MetricsRecorder(Protocol):  # pylint: disable=too-few-public-methods
+class MetricsRecorder(Protocol):
     """Minimal protocol for metrics clients."""
 
     def count(

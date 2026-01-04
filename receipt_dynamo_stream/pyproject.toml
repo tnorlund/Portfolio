@@ -110,6 +110,10 @@ disable = ["duplicate-code"]
 [tool.pylint.main]
 persistent = false
 
+[tool.pylint.design]
+# Protocol classes often have minimal interfaces by design
+min-public-methods = 1
+
 [tool.isort]
 profile = "black"
 line_length = 79
