@@ -8,13 +8,11 @@ primary storage and S3 as backup/archive. It implements:
 - Atomic pointer management
 """
 
-import json
 import os
 import shutil
 import tempfile
 import time
-from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import boto3
 from botocore.exceptions import ClientError

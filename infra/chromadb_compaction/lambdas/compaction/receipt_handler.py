@@ -21,7 +21,7 @@ def delete_receipt_child_records(
     receipt_id: int,
     logger: Any,
     metrics: Any = None,
-    OBSERVABILITY_AVAILABLE: bool = False,
+    observability_available: bool = False,
 ) -> Dict[str, int]:
     """Delete all child records for a receipt from DynamoDB.
 
@@ -39,7 +39,7 @@ def delete_receipt_child_records(
         receipt_id: Receipt ID
         logger: Logger instance
         metrics: Optional metrics collector
-        OBSERVABILITY_AVAILABLE: Whether observability features are available
+        observability_available: Whether observability features are available
 
     Returns:
         Dictionary with deletion counts for each entity type
@@ -64,7 +64,7 @@ def delete_receipt_child_records(
             if receipt_labels:
                 dynamo_client.delete_receipt_word_labels(receipt_labels)
                 deletion_counts["labels"] = len(receipt_labels)
-                if OBSERVABILITY_AVAILABLE:
+                if observability_available:
                     logger.info(
                         "Deleted receipt word labels",
                         image_id=image_id,
@@ -96,7 +96,7 @@ def delete_receipt_child_records(
             if receipt_words:
                 dynamo_client.delete_receipt_words(receipt_words)
                 deletion_counts["words"] = len(receipt_words)
-                if OBSERVABILITY_AVAILABLE:
+                if observability_available:
                     logger.info(
                         "Deleted receipt words",
                         image_id=image_id,
@@ -128,7 +128,7 @@ def delete_receipt_child_records(
             if receipt_lines:
                 dynamo_client.delete_receipt_lines(receipt_lines)
                 deletion_counts["lines"] = len(receipt_lines)
-                if OBSERVABILITY_AVAILABLE:
+                if observability_available:
                     logger.info(
                         "Deleted receipt lines",
                         image_id=image_id,
@@ -166,7 +166,7 @@ def delete_receipt_child_records(
                 if receipt_letters:
                     dynamo_client.delete_receipt_letters(receipt_letters)
                     deletion_counts["letters"] = len(receipt_letters)
-                    if OBSERVABILITY_AVAILABLE:
+                    if observability_available:
                         logger.info(
                             "Deleted receipt letters",
                             image_id=image_id,
@@ -198,7 +198,7 @@ def delete_receipt_child_records(
             if place:
                 dynamo_client.delete_receipt_place(place)
                 deletion_counts["place"] = 1
-                if OBSERVABILITY_AVAILABLE:
+                if observability_available:
                     logger.info(
                         "Deleted receipt place",
                         image_id=image_id,
@@ -228,7 +228,7 @@ def delete_receipt_child_records(
                 for run in runs:
                     dynamo_client.delete_compaction_run(run)
                 deletion_counts["compaction_runs"] = len(runs)
-                if OBSERVABILITY_AVAILABLE:
+                if observability_available:
                     logger.info(
                         "Deleted compaction runs",
                         image_id=image_id,
@@ -254,7 +254,7 @@ def delete_receipt_child_records(
             )
 
         total_deleted = sum(deletion_counts.values())
-        if OBSERVABILITY_AVAILABLE:
+        if observability_available:
             logger.info(
                 "Completed receipt child record deletion",
                 image_id=image_id,
@@ -291,7 +291,7 @@ def process_receipt_deletions(
     collection: ChromaDBCollection,
     logger: Any,
     metrics: Any = None,
-    OBSERVABILITY_AVAILABLE: bool = False,
+    observability_available: bool = False,
     lock_manager: Optional[Any] = None,
     get_dynamo_client_func: Any = None,
 ) -> List[MetadataUpdateResult]:
@@ -370,7 +370,7 @@ def process_receipt_deletions(
                         )
                         continue
 
-                    if OBSERVABILITY_AVAILABLE:
+                    if observability_available:
                         logger.info(
                             "Processing receipt deletion",
                             event_name=event_name,
@@ -391,7 +391,7 @@ def process_receipt_deletions(
                         receipt_id,
                         logger,
                         metrics,
-                        OBSERVABILITY_AVAILABLE,
+                        observability_available,
                         get_dynamo_client_func,
                     )
 
@@ -406,9 +406,9 @@ def process_receipt_deletions(
                                 receipt_id,
                                 logger,
                                 metrics,
-                                OBSERVABILITY_AVAILABLE,
+                                observability_available,
                             )
-                            if OBSERVABILITY_AVAILABLE:
+                            if observability_available:
                                 logger.info(
                                     "Deleted child records from DynamoDB",
                                     image_id=image_id,
@@ -510,7 +510,7 @@ def apply_receipt_deletions_in_memory(
     collection: ChromaDBCollection,
     logger: Any,
     metrics: Any = None,
-    OBSERVABILITY_AVAILABLE: bool = False,
+    observability_available: bool = False,
     get_dynamo_client_func: Any = None,
 ) -> List[MetadataUpdateResult]:
     """Apply receipt deletions to in-memory ChromaDB collection.
@@ -552,7 +552,7 @@ def apply_receipt_deletions_in_memory(
                 receipt_id,
                 logger,
                 metrics,
-                OBSERVABILITY_AVAILABLE,
+                observability_available,
                 get_dynamo_client_func,
             )
 
@@ -567,9 +567,9 @@ def apply_receipt_deletions_in_memory(
                         receipt_id,
                         logger,
                         metrics,
-                        OBSERVABILITY_AVAILABLE,
+                        observability_available,
                     )
-                    if OBSERVABILITY_AVAILABLE:
+                    if observability_available:
                         logger.info(
                             "Deleted child records from DynamoDB",
                             image_id=image_id,

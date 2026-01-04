@@ -12,7 +12,7 @@ from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 from .change_detector import get_chromadb_relevant_changes
-from .models import ChromaDBCollection, ParsedStreamRecord, StreamMessage
+from .models import ChromaDBCollection, StreamMessage
 
 # Avoid CompactionRun import to keep Lambda layer optional
 
@@ -75,7 +75,8 @@ def build_compaction_run_messages(
     Returns:
         List of StreamMessage objects (empty if not a compaction run)
     """
-    from .compaction_run import is_compaction_run, parse_compaction_run
+    # pylint: disable-next=import-outside-toplevel
+    from .compaction_run import is_compaction_run, parse_compaction_run  # lazy
 
     messages: List[StreamMessage] = []
 
@@ -153,7 +154,11 @@ def build_compaction_run_completion_messages(
     Returns:
         List of StreamMessage objects (lines, words) or empty
     """
-    from .compaction_run import is_compaction_run, is_embeddings_completed
+    # pylint: disable-next=import-outside-toplevel
+    from .compaction_run import (  # lazy load
+        is_compaction_run,
+        is_embeddings_completed,
+    )
 
     messages = []
 
@@ -177,7 +182,8 @@ def build_compaction_run_completion_messages(
             return messages
 
         # Parse the compaction run entity
-        from .compaction_run import parse_compaction_run
+        # pylint: disable-next=import-outside-toplevel
+        from .compaction_run import parse_compaction_run  # lazy
 
         compaction_run = parse_compaction_run(new_image, pk, sk)
 
@@ -208,7 +214,7 @@ def build_compaction_run_completion_messages(
         )
 
     except Exception as e:
-        logger.error("Failed to build compaction run completion message: %s", e)
+        logger.error("Failed to build compaction run message: %s", e)
         if metrics:
             metrics.count("CompactionRunCompletionMessageBuildError", 1)
 
@@ -228,7 +234,8 @@ def build_entity_change_message(
     Returns:
         StreamMessage or None if no relevant changes
     """
-    from .parsers import parse_stream_record
+    # pylint: disable-next=import-outside-toplevel
+    from .parsers import parse_stream_record  # lazy
 
     try:
         # Parse the stream record

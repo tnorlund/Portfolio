@@ -1,7 +1,6 @@
 """Timeout protection and monitoring utilities for Lambda functions."""
 
 import os
-import signal
 import threading
 import time
 from contextlib import contextmanager
