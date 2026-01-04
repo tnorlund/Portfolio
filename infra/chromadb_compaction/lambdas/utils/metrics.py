@@ -371,3 +371,93 @@ def track_dynamodb_operation(operation: str):
     return timed_operation(
         "DynamoDBOperationDuration", {"operation": operation}
     )
+
+
+class MetricsAccumulator:
+    """Wrapper that collects metrics in a dict instead of making API calls.
+
+    Enables cost-effective batch EMF logging instead of per-metric API calls.
+    """
+
+    def __init__(self, collected_metrics: Dict[str, Any]):
+        self.collected_metrics = collected_metrics
+
+    def count(
+        self,
+        metric_name: str,
+        value: int = 1,
+        dimensions: Optional[Dict[str, str]] = None,
+    ):
+        """Accumulate count metric."""
+        key = metric_name
+        if dimensions:
+            # Include dimensions in key for uniqueness
+            dim_str = "_".join(
+                f"{k}={v}" for k, v in sorted(dimensions.items())
+            )
+            key = f"{metric_name}_{dim_str}"
+        self.collected_metrics[key] = (
+            self.collected_metrics.get(key, 0) + value
+        )
+
+    def gauge(
+        self,
+        metric_name: str,
+        value: Union[int, float],
+        _unit: str = "None",
+        dimensions: Optional[Dict[str, str]] = None,
+    ):
+        """Accumulate gauge metric (use latest value)."""
+        key = metric_name
+        if dimensions:
+            dim_str = "_".join(
+                f"{k}={v}" for k, v in sorted(dimensions.items())
+            )
+            key = f"{metric_name}_{dim_str}"
+        self.collected_metrics[key] = value
+
+    def put_metric(
+        self,
+        metric_name: str,
+        value: Union[int, float],
+        unit: str = "Count",
+        dimensions: Optional[Dict[str, str]] = None,
+        _timestamp: Optional[float] = None,
+    ):
+        """Accumulate metric (delegates to count or gauge)."""
+        if unit == "Count":
+            self.count(metric_name, int(value), dimensions)
+        else:
+            self.gauge(metric_name, value, unit, dimensions)
+
+    def timer(
+        self,
+        metric_name: str,
+        dimensions: Optional[Dict[str, str]] = None,
+        unit: str = "Seconds",
+    ):
+        """Context manager for timing operations."""
+
+        # Simple implementation for accumulator
+        class TimerContext:
+            """Context manager for timing operations and recording metrics."""
+
+            def __init__(self, accumulator, name, dims, unit_val):
+                self.accumulator = accumulator
+                self.name = name
+                self.dims = dims
+                self.unit = unit_val
+                self.start_time: Optional[float] = None
+
+            def __enter__(self):
+                self.start_time = time.time()
+                return self
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                if self.start_time:
+                    elapsed = time.time() - self.start_time
+                    self.accumulator.gauge(
+                        self.name, elapsed, self.unit, self.dims
+                    )
+
+        return TimerContext(self, metric_name, dimensions, unit)
