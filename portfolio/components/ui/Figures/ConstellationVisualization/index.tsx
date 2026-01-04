@@ -7,19 +7,19 @@ import { GeometricAnomalyCacheResponse, ReceiptImageData } from "../../../../typ
 import { detectImageFormatSupport, getBestImageUrl, FormatSupport } from "../../../../utils/imageFormat";
 import styles from "./ConstellationVisualization.module.css";
 
-// Label colors
+// Label colors matching LayoutLM component
 const LABEL_COLORS: Record<string, string> = {
-  MERCHANT_NAME: "#f59e0b",
-  ADDRESS_LINE: "#8b5cf6",
-  PHONE_NUMBER: "#8b5cf6",
-  DATE: "#3b82f6",
-  TIME: "#3b82f6",
-  PAYMENT_METHOD: "#10b981",
-  PRODUCT_NAME: "#6b7280",
-  LINE_TOTAL: "#10b981",
-  SUBTOTAL: "#10b981",
-  TAX: "#ef4444",
-  GRAND_TOTAL: "#10b981",
+  MERCHANT_NAME: "var(--color-yellow)",
+  ADDRESS_LINE: "var(--color-red)",
+  PHONE_NUMBER: "var(--color-red)",
+  DATE: "var(--color-blue)",
+  TIME: "var(--color-blue)",
+  PAYMENT_METHOD: "var(--color-green)",
+  PRODUCT_NAME: "var(--text-color)",
+  LINE_TOTAL: "var(--color-green)",
+  SUBTOTAL: "var(--color-green)",
+  TAX: "var(--color-yellow)",
+  GRAND_TOTAL: "var(--color-green)",
 };
 
 /**
@@ -248,7 +248,8 @@ const ConstellationVisualization: React.FC = () => {
                   {showConstellation && data.receipt.words
                     .filter(w => w.isInConstellation)
                     .map((word) => {
-                      const labelColor = word.label ? LABEL_COLORS[word.label] || "#666" : "#666";
+                      const labelColor = word.label ? LABEL_COLORS[word.label] || "var(--text-color)" : "var(--text-color)";
+                      const displayColor = word.isFlagged ? "var(--color-red)" : labelColor;
                       // Convert normalized coords to pixel coords
                       // Note: y is from bottom in normalized coords, so we need to invert
                       const x = word.x * imageData.width;
@@ -263,8 +264,9 @@ const ConstellationVisualization: React.FC = () => {
                             y={y}
                             width={width}
                             height={height}
-                            fill={word.isFlagged ? "#ef444440" : `${labelColor}30`}
-                            stroke={word.isFlagged ? "#ef4444" : labelColor}
+                            fill={displayColor}
+                            fillOpacity={0.3}
+                            stroke={displayColor}
                             strokeWidth={word.isFlagged ? 3 : 2}
                           />
                           {/* Label text */}
@@ -273,7 +275,7 @@ const ConstellationVisualization: React.FC = () => {
                             y={y - 5}
                             textAnchor="middle"
                             fontSize={Math.min(14, height * 0.8)}
-                            fill={word.isFlagged ? "#ef4444" : labelColor}
+                            fill={displayColor}
                             fontWeight="bold"
                           >
                             {word.label}
@@ -323,7 +325,7 @@ const ConstellationVisualization: React.FC = () => {
                           cy={expectedPx.y}
                           r={20}
                           fill="none"
-                          stroke="#10b981"
+                          stroke="var(--color-red)"
                           strokeWidth={3}
                           strokeDasharray="8,4"
                         />
@@ -332,7 +334,7 @@ const ConstellationVisualization: React.FC = () => {
                           y={expectedPx.y - 28}
                           textAnchor="middle"
                           fontSize="14"
-                          fill="#10b981"
+                          fill="var(--color-red)"
                           fontWeight="bold"
                         >
                           expected
@@ -363,7 +365,7 @@ const ConstellationVisualization: React.FC = () => {
                             refY="3.5"
                             orient="auto"
                           >
-                            <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" />
+                            <polygon points="0 0, 10 3.5, 0 7" fill="var(--color-red)" />
                           </marker>
                         </defs>
                         <line
@@ -371,7 +373,7 @@ const ConstellationVisualization: React.FC = () => {
                           y1={expectedPx.y}
                           x2={actualPx.x}
                           y2={actualPx.y}
-                          stroke="#ef4444"
+                          stroke="var(--color-red)"
                           strokeWidth={3}
                           markerEnd="url(#arrowhead-img)"
                         />
@@ -492,11 +494,11 @@ const ConstellationVisualization: React.FC = () => {
               <span>Centroid</span>
             </div>
             <div className={styles.legendItem}>
-              <span className={styles.legendCircle} style={{ borderColor: "#10b981" }} />
+              <span className={styles.legendCircle} />
               <span>Expected</span>
             </div>
             <div className={styles.legendItem}>
-              <span className={styles.legendArrow} style={{ color: "#ef4444" }}>→</span>
+              <span className={styles.legendArrow}>→</span>
               <span>Deviation</span>
             </div>
           </div>

@@ -112,7 +112,7 @@
 }
 
 .wordFlagged {
-  border-color: #ef4444 !important;
+  border-color: var(--color-red) !important;
   background-color: rgba(239, 68, 68, 0.2) !important;
   box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
 }
@@ -215,13 +215,13 @@
 .legendCircle {
   width: 10px;
   height: 10px;
-  border: 2px dashed #8b5cf6;
+  border: 2px dashed var(--color-red);
   border-radius: 50%;
 }
 
 .legendArrow {
   font-size: 0.9rem;
-  color: #ef4444;
+  color: var(--color-red);
   font-weight: bold;
 }
 
@@ -236,7 +236,7 @@
 .reasoningTitle {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #ef4444;
+  color: var(--color-red);
   margin-bottom: 0.5rem;
 }
 
