@@ -26,6 +26,12 @@ def _get_entity_key(msg: "StreamMessage") -> tuple[str, ...]:
     - For RECEIPT_WORD/RECEIPT_WORD_LABEL: (image_id, receipt_id, line_id, word_id)
     - For others: (entity_type, str(entity_data))
 
+    Note:
+        Entity data comes from DynamoDB streams where required fields (image_id,
+        receipt_id, etc.) are always present per the table schema. Empty string
+        defaults are defensive but not expected in practice. The fallback for
+        unknown entity types uses sorted items which handles simple dict values.
+
     Args:
         msg: StreamMessage to extract key from
 

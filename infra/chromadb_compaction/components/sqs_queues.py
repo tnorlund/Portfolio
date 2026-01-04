@@ -44,7 +44,12 @@ def _create_queue_policy_document(
                         "Sid": "AllowAccountAccess",
                         "Effect": "Allow",
                         "Principal": {"AWS": f"arn:aws:iam::{args[1]}:root"},
-                        "Action": "sqs:*",
+                        "Action": [
+                            "sqs:SendMessage",
+                            "sqs:SendMessageBatch",
+                            "sqs:GetQueueAttributes",
+                            "sqs:GetQueueUrl",
+                        ],
                         "Resource": args[0],
                     },
                 ],
