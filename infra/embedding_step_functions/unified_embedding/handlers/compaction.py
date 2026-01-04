@@ -166,10 +166,12 @@ def compact_handler(
         return final_merge_handler(event)
     if operation == "final_merge_single":
         return final_merge_single_handler(event)
+    if operation == "final_merge_all":
+        return final_merge_all_handler(event)
 
     logger.error(
         "Invalid operation. Expected 'process_chunk', "
-        "'merge_chunk_group', 'merge_pair', 'final_merge', or 'final_merge_single'",
+        "'merge_chunk_group', 'merge_pair', 'final_merge', 'final_merge_single', or 'final_merge_all'",
         operation=operation,
     )
     return {
@@ -177,7 +179,7 @@ def compact_handler(
         "error": f"Invalid operation: {operation}",
         "message": (
             "Operation must be 'process_chunk', 'merge_chunk_group', "
-            "'merge_pair', 'final_merge', or 'final_merge_single'"
+            "'merge_pair', 'final_merge', 'final_merge_single', or 'final_merge_all'"
         ),
     }
 
@@ -961,6 +963,115 @@ def final_merge_single_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "operation": "final_merge",
             "batch_id": batch_id,
             "chunk_results": chunk_results,
+            "database": database_name,
+            "poll_results_s3_key": poll_results_s3_key,
+            "poll_results_s3_bucket": poll_results_s3_bucket,
+        }
+    )
+
+
+def final_merge_all_handler(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    SIMPLIFIED ARCHITECTURE: Final merge of ALL intermediates directly to snapshot.
+
+    This is a streamlined handler for the simplified workflow where:
+    - We have a small number of intermediates (5-10) from ProcessAllChunksWithMerge
+    - We skip the iterative reduce loop entirely
+    - We merge all intermediates directly to the final snapshot
+
+    Input format:
+    {
+        "operation": "final_merge_all",
+        "batch_id": "batch-uuid",
+        "chunk_results": [
+            {"intermediate_key": "intermediate/batch-uuid/chunk-0/"},
+            {"intermediate_key": "intermediate/batch-uuid/chunk-1/"},
+            ...
+        ],
+        "database": "words" or "lines",
+        "poll_results_s3_key": "...",
+        "poll_results_s3_bucket": "..."
+    }
+
+    Returns:
+    {
+        "statusCode": 200,
+        "batch_id": "...",
+        "snapshot_key": "...",
+        "total_embeddings": N,
+        "poll_results_s3_key": "...",
+        "poll_results_s3_bucket": "..."
+    }
+    """
+    logger.info("Starting FINAL MERGE ALL (simplified architecture)")
+
+    batch_id = event.get("batch_id")
+    chunk_results = event.get("chunk_results", [])
+    database_name = event.get("database", "words")
+    poll_results_s3_key = event.get("poll_results_s3_key")
+    poll_results_s3_bucket = event.get("poll_results_s3_bucket")
+
+    if not batch_id:
+        return {
+            "statusCode": 400,
+            "error": "batch_id is required for final merge all",
+            "poll_results_s3_key": poll_results_s3_key,
+            "poll_results_s3_bucket": poll_results_s3_bucket,
+        }
+
+    # Handle empty chunk_results (no intermediates to merge)
+    if not chunk_results:
+        logger.info("No chunk results to merge - skipping final merge")
+        return {
+            "statusCode": 200,
+            "batch_id": batch_id,
+            "database": database_name,
+            "message": "No intermediates to merge",
+            "poll_results_s3_key": poll_results_s3_key,
+            "poll_results_s3_bucket": poll_results_s3_bucket,
+            "skipped": True,
+        }
+
+    # Filter valid chunk results (have intermediate_key)
+    valid_chunks = [
+        c
+        for c in chunk_results
+        if isinstance(c, dict) and "intermediate_key" in c
+    ]
+
+    if not valid_chunks:
+        logger.warning(
+            "No valid intermediate keys found in chunk_results",
+            batch_id=batch_id,
+            chunk_count=len(chunk_results),
+        )
+        return {
+            "statusCode": 200,
+            "batch_id": batch_id,
+            "database": database_name,
+            "message": "No valid intermediates to merge",
+            "poll_results_s3_key": poll_results_s3_key,
+            "poll_results_s3_bucket": poll_results_s3_bucket,
+            "skipped": True,
+        }
+
+    logger.info(
+        "SIMPLIFIED: Merging all intermediates directly to snapshot",
+        batch_id=batch_id,
+        database=database_name,
+        intermediate_count=len(valid_chunks),
+    )
+
+    # Delegate to existing final_merge_handler which handles:
+    # - Pre-downloading intermediates
+    # - Lock acquisition with retry
+    # - Merging to snapshot
+    # - Lock release and cleanup
+    return final_merge_handler(
+        {
+            "operation": "final_merge",
+            "batch_id": batch_id,
+            "chunk_results": valid_chunks,
             "database": database_name,
             "poll_results_s3_key": poll_results_s3_key,
             "poll_results_s3_bucket": poll_results_s3_bucket,
