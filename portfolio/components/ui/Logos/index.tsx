@@ -16,3 +16,4 @@ export { default as ChromaLogo } from "./ChromaLogo";
 export { default as ClaudeLogo } from "./ClaudeLogo";
 export { default as GithubActionsLogo } from "./GithubActionsLogo";
 export { default as CursorLogo } from "./CursorLogo";
+export { default as AWSLogo } from "./AWSLogo";

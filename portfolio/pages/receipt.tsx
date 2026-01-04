@@ -8,6 +8,7 @@ import styles from "../styles/Receipt.module.css";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
+  CICDLoop,
   ClientImageCounts,
   ClientReceiptCounts,
   CodeBuildDiagram,
@@ -17,14 +18,17 @@ import {
   LockingSwimlane,
   MerchantCount,
   PhotoReceiptBoundingBox,
+  PrecisionRecallDartboard,
   RandomReceiptWithLabels,
   ReceiptStack,
   ScanReceiptBoundingBox,
+  TrainingMetricsAnimation,
   UploadDiagram,
   ZDepthConstrained,
   ZDepthUnconstrained,
 } from "../components/ui/Figures";
 import {
+  AWSLogo,
   ChromaLogo,
   DockerLogo,
   GithubActionsLogo,
@@ -267,12 +271,172 @@ export default function ReceiptPage({
 
       <h1>Introduction</h1>
       <p>
-        I wanted to get better at using AI to automate tasks. I already use
-        ChatGPT for everyday chores, but I wanted to use it on something more
-        challenging: receipts. They may look deceptively simple, but each
-        squeezes a lot of information into a tiny space, making it surprisingly
-        difficult to decode.
+        I wanted to get better at machine learning, LLMs, and programming. This
+        project touches all three disciplines. I was able to learn a lot about
+        each of them, and I'm excited to share what I learned.
       </p>
+
+
+      <h2>Machine Learning</h2>
+      <p>
+        Structuring data quickly and accurately is a challenge. I was able to
+        learn a lot about machine learning by trying different approaches and
+        recording what worked and what didn't.
+      </p>
+
+      <h3>Unsupervised Machine Learning</h3>
+      <p>
+        I group words that are physically close together on the receipt,
+        without telling the system what any word means.
+      </p>
+
+
+      {/*
+      TODO: This should be a grid 2x2 of with the Z depth diagram above
+      and the Scan and Photo Receipt Bounding Box diagrams below.
+*/}
+      <ClientOnly>
+        <ZDepthConstrained />
+      </ClientOnly>
+      <ScanReceiptBoundingBox />
+      <ClientOnly>
+        <ZDepthUnconstrained />
+      </ClientOnly>
+      <PhotoReceiptBoundingBox />
+
+      <p>
+        This process is unsupervised because it discovers structure without any
+        examples to learn from. It is a pre-processing step that helps the
+        supervised learning step be more accurate.
+      </p>
+
+
+      <h3>Supervised Machine Learning</h3>
+      <p>
+        Supervised machine learning is a type of machine learning that uses
+        labeled data to train a model. These cleaned receipts provide the best
+        opportunity to train a model to label the words accurately.
+      </p>
+
+      <ClientOnly>
+        <LayoutLMInferenceVisualization />
+      </ClientOnly>
+
+      <p>
+        Getting a model to label the words accurately is a challenge. It would
+        be easy to label all words the most common label, but that would be
+        inaccurate. Since not all words are important, we need a way to measure
+        how well the model is doing.
+      </p>
+
+      <PrecisionRecallDartboard />
+
+      <p>
+        The model needs high precision and high recall. Precision is when an
+        important word is labeled correctly. Recall is when those words are
+        not missed.
+      </p>
+
+      <ClientOnly>
+        <TrainingMetricsAnimation />
+      </ClientOnly>
+
+      <p>
+        These graphs and numbers became overwhelming. I used LLMs to
+        explain what the results meant and how to improve them. This helped me
+        learn about the model and build quickly. The biggest win
+        described to me was accurate labels.
+      </p>
+
+
+      <h2>LLMs</h2>
+
+      <p>
+        The labels were not accurate to start, but I used LLMs to label the
+        data correctly. Since receipts from the same business are similar, I
+        was able to get the Google Maps associated with the different
+        businesses and compare the labels within and outside of each business.
+      </p>
+
+      {/* TODO: add the Google Maps Logo with the bar chart below it */}
+
+      <h2>Programming</h2>
+      <p>
+        I went into this calling LLMs a "black box" and assuming they're word
+        calculators. This was simply because I hadn't tried it myself! This
+        tech changes programming by making typing and reading cheap, but best
+        practices still apply.
+      </p>
+
+      <ClientOnly>
+        <CICDLoop />
+      </ClientOnly>
+
+      <p>
+        I generated _a lot_ of code, but this loop above allowed me to try
+        something new, test it out, and see if it worked. With LLMs, the goal
+        is not to write code, but get feedback quickly: loop through this as
+        fast as possible.
+      </p>
+
+      <ClientOnly>
+        <div className={styles["logos-container"]}>
+          <AnimatedInView>
+            <GithubLogo />
+          </AnimatedInView>
+          <AnimatedInView>
+            <GithubActionsLogo />
+          </AnimatedInView>
+        </div>
+      </ClientOnly>
+
+      <p>
+        This code is hosted on Amazon Web Services (AWS) and deployed using
+        Pulumi.
+      </p>
+
+      <ClientOnly>
+        <div className={styles["logos-container"]}>
+          <AnimatedInView>
+            <AWSLogo />
+          </AnimatedInView>
+          <AnimatedInView>
+            <PulumiLogo />
+          </AnimatedInView>
+        </div>
+      </ClientOnly>
+
+
+      <p>
+        I got pretty good at using Pulumi to deploy my code as fast as
+        possible. I was abel to reduce my build times using a combination of
+        Pulumi and AWS CodeBuild.
+      </p>
+
+      <ClientOnly>
+        <CodeBuildDiagram chars={codeBuildDiagramChars} />
+      </ClientOnly>
+
+      <p>
+        I learned all the different messsaging and queueing options available in
+        AWS. Since I started coding this on my laptop, the latency between my
+        Macbook and the cloud was a bottleneck. I was able to use AWS's SQS
+        queueing service to stream the information from my laptop to the cloud.
+      </p>
+
+      <ClientOnly>
+        <UploadDiagram chars={uploadDiagramChars} />
+      </ClientOnly>
+
+
+
+
+      {/* TODO: remove what's below this */}
+
+
+
+
+
 
       <h2>Why Receipts?</h2>
 
