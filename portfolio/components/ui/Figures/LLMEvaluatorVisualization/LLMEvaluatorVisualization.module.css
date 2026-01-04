@@ -23,6 +23,17 @@
   opacity: 0.6;
 }
 
+/* Error state */
+.errorState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  font-size: 0.9rem;
+  color: var(--color-red);
+  opacity: 0.8;
+}
+
 /* Data source badge */
 .dataSourceBadge {
   position: absolute;

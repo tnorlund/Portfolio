@@ -56,3 +56,7 @@ export const LLMEvaluatorVisualization = dynamic(
   () => import("./LLMEvaluatorVisualization"),
   { ssr: false }
 );
+export const ConstellationVisualization = dynamic(
+  () => import("./ConstellationVisualization"),
+  { ssr: false }
+);

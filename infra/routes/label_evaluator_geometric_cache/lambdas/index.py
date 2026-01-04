@@ -50,6 +50,15 @@ def _fetch_receipt(key: str) -> dict[str, Any]:
     return json.loads(response["Body"].read().decode("utf-8"))
 
 
+def _has_constellation_data(receipt_data: dict[str, Any]) -> bool:
+    """Check if receipt has valid constellation data."""
+    constellation = receipt_data.get("constellation")
+    if not constellation:
+        return False
+    labels = constellation.get("labels", [])
+    return len(labels) >= 3
+
+
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """Handle API Gateway requests for geometric anomaly cache.
 
@@ -145,8 +154,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "body": json.dumps({
                     "error": "Cache pool empty",
                     "message": "No cached receipts found. Run the cache generator first.",
-                    "bucket": S3_CACHE_BUCKET,
-                    "prefix": CACHE_PREFIX,
                 }),
                 "headers": {
                     "Content-Type": "application/json",
@@ -154,12 +161,32 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 },
             }
 
-        # Randomly select one receipt
-        selected_key = random.choice(cached_keys)
-        logger.info("Selected receipt: %s from pool of %d", selected_key, len(cached_keys))
+        # Shuffle keys for random selection
+        random.shuffle(cached_keys)
 
-        # Fetch the receipt
-        receipt_data = _fetch_receipt(selected_key)
+        # Find a receipt with constellation data
+        receipt_data = None
+        selected_key = None
+        for key in cached_keys:
+            data = _fetch_receipt(key)
+            if _has_constellation_data(data):
+                receipt_data = data
+                selected_key = key
+                break
+
+        if not receipt_data:
+            return {
+                "statusCode": 404,
+                "body": json.dumps({
+                    "error": "No receipts with constellation data found",
+                }),
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            }
+
+        logger.info("Selected receipt: %s from pool of %d", selected_key, len(cached_keys))
 
         # Add fetch timestamp
         receipt_data["fetched_at"] = datetime.now(timezone.utc).isoformat()

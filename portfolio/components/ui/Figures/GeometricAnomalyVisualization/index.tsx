@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useInView } from "react-intersection-observer";
 import ReceiptView from "./ReceiptView";
 import PatternScatterPlot from "./PatternScatterPlot";
-import { mockData, GeometricAnomalyData } from "./mockData";
+import { GeometricAnomalyData } from "./mockData";
 import { api } from "../../../../services/api";
 import { GeometricAnomalyCacheResponse } from "../../../../types/api";
 import styles from "./GeometricAnomalyVisualization.module.css";
@@ -51,6 +51,7 @@ function transformApiResponse(response: GeometricAnomalyCacheResponse): Geometri
     flaggedWord: response.flagged_word
       ? {
           wordId: `${response.flagged_word.line_id}-${response.flagged_word.word_id}`,
+          currentLabel: response.flagged_word.current_label,
           referenceLabel: response.flagged_word.reference_label,
           expected: response.flagged_word.expected,
           actual: response.flagged_word.actual,
@@ -72,9 +73,9 @@ const GeometricAnomalyVisualization: React.FC = () => {
   const [selectedPatternIndex, setSelectedPatternIndex] = useState(0);
   const [highlightedWordId, setHighlightedWordId] = useState<string | null>(null);
   const hasStartedAnimation = useRef(false);
-  const [data, setData] = useState<GeometricAnomalyData>(mockData);
+  const [data, setData] = useState<GeometricAnomalyData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [usingRealData, setUsingRealData] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch real data on mount
   useEffect(() => {
@@ -82,14 +83,15 @@ const GeometricAnomalyVisualization: React.FC = () => {
       .fetchGeometricAnomaly()
       .then((response) => {
         const transformed = transformApiResponse(response);
-        // Only use API data if it has patterns and words
         if (transformed.patterns.labelPairs.length > 0 && transformed.receipt.words.length > 0) {
           setData(transformed);
-          setUsingRealData(true);
+        } else {
+          setError("No geometric anomaly data available");
         }
       })
-      .catch((error) => {
-        console.warn("Failed to fetch geometric anomaly data, using mock data:", error);
+      .catch((err) => {
+        console.error("Failed to fetch geometric anomaly data:", err);
+        setError("Failed to load visualization data");
       })
       .finally(() => {
         setIsLoading(false);
@@ -98,7 +100,7 @@ const GeometricAnomalyVisualization: React.FC = () => {
 
   // Animation sequence when component comes into view
   useEffect(() => {
-    if (!inView || hasStartedAnimation.current) return;
+    if (!inView || !data || hasStartedAnimation.current) return;
 
     hasStartedAnimation.current = true;
     setStage("labeling");
@@ -158,24 +160,7 @@ const GeometricAnomalyVisualization: React.FC = () => {
     };
   }, [inView, data]);
 
-  const handleWordClick = (wordId: string) => {
-    // Find if this word is the flagged one
-    const word = data.receipt.words.find((w) => w.id === wordId);
-    if (word?.isFlagged) {
-      // Find the pattern that matches this word's anomaly
-      // For now, select the first pattern (SUBTOTAL -> GRAND_TOTAL)
-      setSelectedPatternIndex(0);
-      setHighlightedWordId(wordId);
-    }
-  };
-
-  const currentPattern = data.patterns.labelPairs[selectedPatternIndex];
-
-  // Only show flagged word info when the selected pattern matches
-  const showFlaggedWord =
-    currentPattern?.from === "SUBTOTAL" && currentPattern?.to === "GRAND_TOTAL";
-
-  // Show loading state if still loading
+  // Show loading state
   if (isLoading) {
     return (
       <div ref={ref} className={styles.container}>
@@ -184,12 +169,53 @@ const GeometricAnomalyVisualization: React.FC = () => {
     );
   }
 
+  // Show error state
+  if (error || !data) {
+    return (
+      <div ref={ref} className={styles.container}>
+        <div className={styles.errorState}>{error || "No data available"}</div>
+      </div>
+    );
+  }
+
+  // Find the pattern index that matches the flagged word's relationship
+  const matchingPatternIndex = data.flaggedWord
+    ? data.patterns.labelPairs.findIndex(
+        (p) =>
+          p.from === data.flaggedWord?.referenceLabel &&
+          p.to === data.flaggedWord?.currentLabel
+      )
+    : -1;
+
+  // Auto-select matching pattern on first render (use effect to set initial index)
+  const initialPatternIndex = matchingPatternIndex >= 0 ? matchingPatternIndex : 0;
+
+  const handleWordClick = (wordId: string) => {
+    // Find if this word is the flagged one
+    const word = data.receipt.words.find((w) => w.id === wordId);
+    if (word?.isFlagged && matchingPatternIndex >= 0) {
+      // Select the pattern that matches this word's anomaly
+      setSelectedPatternIndex(matchingPatternIndex);
+      setHighlightedWordId(wordId);
+    }
+  };
+
+  // Use initialPatternIndex if selectedPatternIndex is still 0 and we have a match
+  const effectivePatternIndex =
+    selectedPatternIndex === 0 && matchingPatternIndex >= 0
+      ? matchingPatternIndex
+      : selectedPatternIndex;
+
+  const currentPattern = data.patterns.labelPairs[effectivePatternIndex];
+
+  // Show flagged word info when the selected pattern matches the anomaly
+  const showFlaggedWord =
+    data.flaggedWord &&
+    currentPattern?.from === data.flaggedWord.referenceLabel &&
+    currentPattern?.to === data.flaggedWord.currentLabel;
+
   return (
     <div ref={ref} className={styles.container}>
-      {/* Data source indicator */}
-      {usingRealData && (
-        <div className={styles.dataSourceBadge}>Live Data</div>
-      )}
       {/* Stage indicator */}
       <div className={styles.stageIndicator}>
         {(["labeling", "detecting", "pattern", "complete"] as AnimationStage[]).map(
@@ -247,7 +273,7 @@ const GeometricAnomalyVisualization: React.FC = () => {
           flaggedWord={showFlaggedWord ? data.flaggedWord : null}
           animationProgress={animationProgress}
           allPatterns={data.patterns.labelPairs}
-          selectedPatternIndex={selectedPatternIndex}
+          selectedPatternIndex={effectivePatternIndex}
           onSelectPattern={setSelectedPatternIndex}
         />
       </div>

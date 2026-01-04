@@ -38,9 +38,20 @@ const PatternScatterPlot: React.FC<PatternScatterPlotProps> = ({
       };
     }
 
-    // Find data bounds
-    const allDx = pattern.observations.map((o) => o.dx);
-    const allDy = pattern.observations.map((o) => o.dy);
+    // Find data bounds - use mean and stdDeviation when observations are empty
+    const allDx: number[] = [];
+    const allDy: number[] = [];
+
+    // Add observations if available
+    pattern.observations.forEach((o) => {
+      allDx.push(o.dx);
+      allDy.push(o.dy);
+    });
+
+    // Always include mean +/- 3 stdDeviation to ensure ellipses fit
+    const std = pattern.stdDeviation || 0.05;
+    allDx.push(pattern.mean.dx - std * 3, pattern.mean.dx + std * 3);
+    allDy.push(pattern.mean.dy - std * 3, pattern.mean.dy + std * 3);
 
     if (flaggedWord) {
       allDx.push(flaggedWord.actual.dx, flaggedWord.expected.dx);
@@ -98,9 +109,10 @@ const PatternScatterPlot: React.FC<PatternScatterPlotProps> = ({
   }
 
   // Calculate ellipse radii for confidence intervals
-  const ellipse1Radius = pattern.std * 1.5 * scaleX; // 1.5 sigma
-  const ellipse2Radius = pattern.std * 2.0 * scaleX; // 2.0 sigma
-  const ellipse3Radius = pattern.std * 2.5 * scaleX; // 2.5 sigma
+  const std = pattern.stdDeviation || 0.05;
+  const ellipse1Radius = std * 1.5 * scaleX; // 1.5 sigma
+  const ellipse2Radius = std * 2.0 * scaleX; // 2.0 sigma
+  const ellipse3Radius = std * 2.5 * scaleX; // 2.5 sigma
 
   const meanX = toSvgX(pattern.mean.dx);
   const meanY = toSvgY(pattern.mean.dy);

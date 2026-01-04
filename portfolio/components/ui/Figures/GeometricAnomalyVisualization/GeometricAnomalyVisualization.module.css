@@ -14,9 +14,9 @@
 
 .panelsContainer {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1.5fr;
   gap: 2rem;
-  min-height: 400px;
+  min-height: 500px;
 }
 
 @media (max-width: 900px) {
@@ -47,7 +47,10 @@
   background: #fafafa;
   border-radius: 8px;
   padding: 1rem;
-  min-height: 350px;
+  /* Use aspect-ratio to maintain receipt proportions (width:height roughly 1:2) */
+  aspect-ratio: 1 / 2;
+  min-height: 400px;
+  max-height: 600px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   overflow: hidden;
 }
@@ -59,14 +62,15 @@
 
 .receiptWord {
   position: absolute;
-  padding: 2px 4px;
-  font-size: 0.7rem;
+  padding: 1px 2px;
+  font-size: 0.5rem;
   font-family: monospace;
-  border-radius: 3px;
+  border-radius: 2px;
   white-space: nowrap;
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid transparent;
+  line-height: 1;
 }
 
 .receiptWord:hover {
@@ -355,6 +359,17 @@
   font-size: 0.9rem;
   color: var(--text-color);
   opacity: 0.6;
+}
+
+/* Error state */
+.errorState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  font-size: 0.9rem;
+  color: var(--color-red);
+  opacity: 0.8;
 }
 
 /* Data source badge */

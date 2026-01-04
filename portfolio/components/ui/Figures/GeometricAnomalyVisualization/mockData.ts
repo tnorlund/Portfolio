@@ -28,7 +28,8 @@ export interface LabelPairPattern {
 
 export interface FlaggedWordInfo {
   wordId: string;
-  referenceLabel: string;
+  currentLabel: string | null;
+  referenceLabel: string | null;
   expected: { dx: number; dy: number };
   actual: { dx: number; dy: number };
   zScore: number;
@@ -188,6 +189,7 @@ export const mockData: GeometricAnomalyData = {
 
   flaggedWord: {
     wordId: "w22",
+    currentLabel: "GRAND_TOTAL",
     referenceLabel: "SUBTOTAL",
     expected: { dx: 0.0, dy: 0.12 }, // Expected offset from SUBTOTAL
     actual: { dx: 0.0, dy: 0.10 },   // Actual offset (too close, y difference is 0.70 - 0.60 = 0.10)

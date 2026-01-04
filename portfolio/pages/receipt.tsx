@@ -11,6 +11,7 @@ import {
   ClientImageCounts,
   ClientReceiptCounts,
   CodeBuildDiagram,
+  ConstellationVisualization,
   GeometricAnomalyVisualization,
   ImageStack,
   LabelValidationCount,
@@ -615,6 +616,18 @@ export default function ReceiptPage({
         thresholds (1.5σ, 2.0σ, 2.5σ). When a word falls outside these bounds,
         it&apos;s flagged as a potential anomaly.
       </p>
+
+      <p>
+        Beyond pairwise relationships, the system also detects constellation
+        patterns: groups of labels that consistently appear together. By
+        computing the centroid of a label group and tracking each label&apos;s
+        expected offset, the system can catch anomalies that pairwise checks
+        might miss.
+      </p>
+
+      <ClientOnly>
+        <ConstellationVisualization />
+      </ClientOnly>
 
       <h3>LLM-Based Validation</h3>
 

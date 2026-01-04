@@ -10,6 +10,7 @@ import logging
 import math
 import os
 import random
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -155,6 +156,149 @@ def _find_receipts_with_anomalies(
             break
 
     return receipts_with_anomalies
+
+
+def _parse_geometric_reasoning(reasoning: str) -> dict[str, Any]:
+    """Parse expected/actual values from geometric anomaly reasoning string.
+
+    The reasoning format is:
+    "'{word}' labeled {label} has unusual geometric relationship with {other_label}.
+    Expected position ({mean_dx}, {mean_dy}), actual ({actual_dx}, {actual_dy}),
+    deviation {deviation} (adaptive threshold: {threshold_std}σ = {threshold_value})."
+
+    Returns:
+        Dict with reference_label, expected, actual, z_score, threshold
+    """
+    result = {
+        "reference_label": None,
+        "current_label": None,
+        "expected": {"dx": 0, "dy": 0},
+        "actual": {"dx": 0, "dy": 0},
+        "z_score": 2.5,
+        "threshold": 2.0,
+    }
+
+    # Extract current label and reference label
+    # Pattern: "labeled {label} has unusual geometric relationship with {other_label}"
+    label_match = re.search(
+        r"labeled\s+(\w+)\s+has unusual geometric relationship with\s+(\w+)",
+        reasoning,
+    )
+    if label_match:
+        result["current_label"] = label_match.group(1)
+        result["reference_label"] = label_match.group(2)
+
+    # Extract expected position: "Expected position (x, y)"
+    expected_match = re.search(
+        r"Expected position\s*\(([+-]?\d*\.?\d+),\s*([+-]?\d*\.?\d+)\)",
+        reasoning,
+    )
+    if expected_match:
+        result["expected"] = {
+            "dx": float(expected_match.group(1)),
+            "dy": float(expected_match.group(2)),
+        }
+
+    # Extract actual position: "actual (x, y)"
+    actual_match = re.search(
+        r"actual\s*\(([+-]?\d*\.?\d+),\s*([+-]?\d*\.?\d+)\)",
+        reasoning,
+    )
+    if actual_match:
+        result["actual"] = {
+            "dx": float(actual_match.group(1)),
+            "dy": float(actual_match.group(2)),
+        }
+
+    # Extract deviation and threshold: "deviation 0.172 (adaptive threshold: 1.5σ = 0.084)"
+    # or "deviation 0.765 (threshold: 2.0σ = 0.367)"
+    deviation_match = re.search(
+        r"deviation\s+([+-]?\d*\.?\d+)\s*\([^)]*?(\d+\.?\d*)σ",
+        reasoning,
+    )
+    if deviation_match:
+        deviation = float(deviation_match.group(1))
+        threshold_sigma = float(deviation_match.group(2))
+        result["threshold"] = threshold_sigma
+        # Calculate z-score from deviation and threshold
+        threshold_value_match = re.search(r"=\s*([+-]?\d*\.?\d+)\)", reasoning)
+        if threshold_value_match:
+            threshold_value = float(threshold_value_match.group(1))
+            if threshold_value > 0:
+                std_deviation = threshold_value / threshold_sigma
+                result["z_score"] = (
+                    deviation / std_deviation if std_deviation > 0 else 2.5
+                )
+
+    return result
+
+
+def _parse_constellation_reasoning(reasoning: str) -> dict[str, Any]:
+    """Parse expected/actual values from constellation anomaly reasoning string.
+
+    The reasoning format is:
+    "'{word}' labeled {label} has unusual position within constellation
+    [{constellation_str}]. Expected offset ({mean_dx}, {mean_dy}) from cluster
+    center, actual ({actual_dx}, {actual_dy}). Deviation {deviation} exceeds
+    {threshold_std}σ threshold ({threshold_value})."
+
+    Returns:
+        Dict with constellation_labels, expected, actual, deviation, threshold
+    """
+    result = {
+        "labels": [],
+        "flagged_label": None,
+        "expected": {"dx": 0, "dy": 0},
+        "actual": {"dx": 0, "dy": 0},
+        "deviation": 0,
+        "threshold": 2.0,
+    }
+
+    # Extract flagged label: "labeled {label} has unusual position"
+    label_match = re.search(r"labeled\s+(\w+)\s+has unusual position", reasoning)
+    if label_match:
+        result["flagged_label"] = label_match.group(1)
+
+    # Extract constellation labels: "within constellation [{labels}]"
+    constellation_match = re.search(r"within constellation\s*\[([^\]]+)\]", reasoning)
+    if constellation_match:
+        labels_str = constellation_match.group(1)
+        # Split by " + " to get individual labels
+        result["labels"] = [lbl.strip() for lbl in labels_str.split("+")]
+
+    # Extract expected offset: "Expected offset (x, y)"
+    expected_match = re.search(
+        r"Expected offset\s*\(([+-]?\d*\.?\d+),\s*([+-]?\d*\.?\d+)\)",
+        reasoning,
+    )
+    if expected_match:
+        result["expected"] = {
+            "dx": float(expected_match.group(1)),
+            "dy": float(expected_match.group(2)),
+        }
+
+    # Extract actual offset: "actual (x, y)"
+    actual_match = re.search(
+        r"actual\s*\(([+-]?\d*\.?\d+),\s*([+-]?\d*\.?\d+)\)",
+        reasoning,
+    )
+    if actual_match:
+        result["actual"] = {
+            "dx": float(actual_match.group(1)),
+            "dy": float(actual_match.group(2)),
+        }
+
+    # Extract deviation: "Deviation {value}"
+    deviation_match = re.search(r"Deviation\s+([+-]?\d*\.?\d+)", reasoning)
+    if deviation_match:
+        result["deviation"] = float(deviation_match.group(1))
+
+    # Extract threshold: "{sigma}σ threshold"
+    threshold_match = re.search(r"(\d+\.?\d*)σ\s+threshold", reasoning)
+    if threshold_match:
+        result["threshold"] = float(threshold_match.group(1))
+
+    return result
 
 
 def _convert_polar_to_cartesian(angle: float, distance: float) -> tuple[float, float]:
@@ -321,24 +465,124 @@ def _build_visualization_data(
                     "std_deviation": std_deviation,
                 })
 
+    # Extract constellation geometry from patterns file
+    constellation_viz = None
+    if patterns_data and patterns_data.get("patterns"):
+        raw_patterns = patterns_data["patterns"]
+        constellation_geometry = raw_patterns.get("constellation_geometry", [])
+        if constellation_geometry:
+            # Take the first constellation as the main one to visualize
+            for cg in constellation_geometry:
+                labels = cg.get("labels", [])
+                if len(labels) >= 3:
+                    relative_positions = cg.get("relative_positions", {})
+                    constellation_viz = {
+                        "labels": labels,
+                        "observation_count": cg.get("observation_count", 0),
+                        "members": [],
+                    }
+                    for lbl in labels:
+                        rel_pos = relative_positions.get(lbl, {})
+                        constellation_viz["members"].append({
+                            "label": lbl,
+                            "expected": {
+                                "dx": rel_pos.get("mean_dx", 0),
+                                "dy": rel_pos.get("mean_dy", 0),
+                            },
+                            "std_deviation": rel_pos.get("std_deviation", 0.1),
+                        })
+                    break
+
     # Find the first flagged word with geometric details for highlighting
     flagged_word_detail = None
+    constellation_anomaly_detail = None
+
     for issue in result_data.get("issues", []):
-        if issue.get("type") == "geometric_anomaly":
+        issue_type = issue.get("type")
+
+        # Handle geometric_anomaly
+        if issue_type == "geometric_anomaly" and flagged_word_detail is None:
             word_id = issue.get("word_id")
             line_id = issue.get("line_id")
+            reasoning = issue.get("reasoning", "")
             if word_id is not None and line_id is not None:
+                # Parse expected/actual values from the reasoning string
+                parsed = _parse_geometric_reasoning(reasoning)
                 flagged_word_detail = {
                     "word_id": word_id,
                     "line_id": line_id,
-                    "reference_label": issue.get("suggested_label", ""),
-                    "expected": {"dx": 0, "dy": 0},  # Would need pattern lookup
-                    "actual": {"dx": 0, "dy": 0},  # Would need calculation
-                    "z_score": 2.5,  # Default threshold indicator
-                    "threshold": 2.0,
-                    "reasoning": issue.get("reasoning", ""),
+                    "current_label": parsed["current_label"],
+                    "reference_label": parsed["reference_label"],
+                    "expected": parsed["expected"],
+                    "actual": parsed["actual"],
+                    "z_score": parsed["z_score"],
+                    "threshold": parsed["threshold"],
+                    "reasoning": reasoning,
                 }
-                break
+
+                # Ensure the flagged word's pattern exists in patterns_viz
+                ref_label = parsed["reference_label"]
+                cur_label = parsed["current_label"]
+                if ref_label and cur_label:
+                    pattern_exists = any(
+                        p["from_label"] == ref_label and p["to_label"] == cur_label
+                        for p in patterns_viz["label_pairs"]
+                    )
+                    if not pattern_exists:
+                        threshold_match = re.search(
+                            r"(\d+\.?\d*)σ\s*=\s*(\d+\.?\d+)",
+                            reasoning,
+                        )
+                        std_dev = 0.1
+                        if threshold_match:
+                            threshold_sigma = float(threshold_match.group(1))
+                            threshold_value = float(threshold_match.group(2))
+                            if threshold_sigma > 0:
+                                std_dev = threshold_value / threshold_sigma
+
+                        patterns_viz["label_pairs"].insert(0, {
+                            "from_label": ref_label,
+                            "to_label": cur_label,
+                            "observations": [],
+                            "mean": parsed["expected"],
+                            "std_deviation": std_dev,
+                        })
+
+        # Handle constellation_anomaly
+        elif issue_type == "constellation_anomaly" and constellation_anomaly_detail is None:
+            word_id = issue.get("word_id")
+            line_id = issue.get("line_id")
+            reasoning = issue.get("reasoning", "")
+            if word_id is not None and line_id is not None:
+                parsed = _parse_constellation_reasoning(reasoning)
+                constellation_anomaly_detail = {
+                    "word_id": word_id,
+                    "line_id": line_id,
+                    "labels": parsed["labels"],
+                    "flagged_label": parsed["flagged_label"],
+                    "expected": parsed["expected"],
+                    "actual": parsed["actual"],
+                    "deviation": parsed["deviation"],
+                    "threshold": parsed["threshold"],
+                    "reasoning": reasoning,
+                }
+
+                # If we have constellation anomaly data but no viz, create one
+                if constellation_viz is None and parsed["labels"]:
+                    constellation_viz = {
+                        "labels": parsed["labels"],
+                        "observation_count": 0,
+                        "members": [],
+                    }
+                    for lbl in parsed["labels"]:
+                        is_flagged = lbl == parsed["flagged_label"]
+                        constellation_viz["members"].append({
+                            "label": lbl,
+                            "expected": parsed["expected"] if is_flagged else {"dx": 0, "dy": 0},
+                            "actual": parsed["actual"] if is_flagged else {"dx": 0, "dy": 0},
+                            "is_flagged": is_flagged,
+                            "std_deviation": 0.1,
+                        })
 
     return {
         "receipt": {
@@ -349,6 +593,8 @@ def _build_visualization_data(
         },
         "patterns": patterns_viz,
         "flagged_word": flagged_word_detail,
+        "constellation": constellation_viz,
+        "constellation_anomaly": constellation_anomaly_detail,
         "cached_at": datetime.now(timezone.utc).isoformat(),
         "execution_id": execution_id,
     }

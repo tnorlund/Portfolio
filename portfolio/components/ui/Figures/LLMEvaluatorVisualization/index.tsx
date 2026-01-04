@@ -3,9 +3,9 @@ import { useInView } from "react-intersection-observer";
 import PipelineFlow from "./PipelineFlow";
 import SubagentCards from "./SubagentCards";
 import FinancialMathBreakdown from "./FinancialMathBreakdown";
-import mockDataWithError, { LLMEvaluatorData, EvaluationResult, FinancialMathResult, PipelineStage } from "./mockData";
+import { LLMEvaluatorData, EvaluationResult, FinancialMathResult, PipelineStage } from "./mockData";
 import { api } from "../../../../services/api";
-import { LLMEvaluatorCacheResponse, LLMEvaluation, LLMFinancialResult } from "../../../../types/api";
+import { LLMEvaluatorCacheResponse, LLMEvaluation } from "../../../../types/api";
 import styles from "./LLMEvaluatorVisualization.module.css";
 
 /**
@@ -80,9 +80,9 @@ const LLMEvaluatorVisualization: React.FC = () => {
   const [showFinancialResult, setShowFinancialResult] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const hasStartedAnimation = useRef(false);
-  const [data, setData] = useState<LLMEvaluatorData>(mockDataWithError);
+  const [data, setData] = useState<LLMEvaluatorData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [usingRealData, setUsingRealData] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch real data on mount
   useEffect(() => {
@@ -90,14 +90,15 @@ const LLMEvaluatorVisualization: React.FC = () => {
       .fetchLLMEvaluation()
       .then((response) => {
         const transformed = transformApiResponse(response);
-        // Only use API data if it has evaluations
         if (transformed.evaluations.currency.length > 0 || transformed.evaluations.metadata.length > 0) {
           setData(transformed);
-          setUsingRealData(true);
+        } else {
+          setError("No LLM evaluation data available");
         }
       })
-      .catch((error) => {
-        console.warn("Failed to fetch LLM evaluation data, using mock data:", error);
+      .catch((err) => {
+        console.error("Failed to fetch LLM evaluation data:", err);
+        setError("Failed to load visualization data");
       })
       .finally(() => {
         setIsLoading(false);
@@ -151,7 +152,25 @@ const LLMEvaluatorVisualization: React.FC = () => {
     };
   }, [inView]);
 
-  // Calculate summary statistics
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div ref={ref} className={styles.container}>
+        <div className={styles.loadingState}>Loading visualization...</div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error || !data) {
+    return (
+      <div ref={ref} className={styles.container}>
+        <div className={styles.errorState}>{error || "No data available"}</div>
+      </div>
+    );
+  }
+
+  // Calculate summary statistics (after null check)
   const allEvaluations = [
     ...data.evaluations.currency,
     ...data.evaluations.metadata,
@@ -162,21 +181,8 @@ const LLMEvaluatorVisualization: React.FC = () => {
     (e) => e.decision === "NEEDS_REVIEW"
   ).length;
 
-  // Show loading state if still loading
-  if (isLoading) {
-    return (
-      <div ref={ref} className={styles.container}>
-        <div className={styles.loadingState}>Loading visualization...</div>
-      </div>
-    );
-  }
-
   return (
     <div ref={ref} className={styles.container}>
-      {/* Data source indicator */}
-      {usingRealData && (
-        <div className={styles.dataSourceBadge}>Live Data</div>
-      )}
       {/* Pipeline Flow */}
       <PipelineFlow
         stages={data.pipeline}

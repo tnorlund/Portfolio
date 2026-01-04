@@ -351,12 +351,41 @@ export interface GeometricLabelPair {
 export interface GeometricFlaggedWord {
   word_id: number;
   line_id: number;
-  reference_label: string;
+  current_label: string | null;
+  reference_label: string | null;
   expected: { dx: number; dy: number };
   actual: { dx: number; dy: number };
   z_score: number;
   threshold: number;
   reasoning?: string;
+}
+
+// Constellation Types
+
+export interface ConstellationMember {
+  label: string;
+  expected: { dx: number; dy: number };
+  actual?: { dx: number; dy: number };
+  is_flagged?: boolean;
+  std_deviation: number;
+}
+
+export interface ConstellationInfo {
+  labels: string[];
+  observation_count: number;
+  members: ConstellationMember[];
+}
+
+export interface ConstellationAnomaly {
+  word_id: number;
+  line_id: number;
+  labels: string[];
+  flagged_label: string;
+  expected: { dx: number; dy: number };
+  actual: { dx: number; dy: number };
+  deviation: number;
+  threshold: number;
+  reasoning: string;
 }
 
 export interface GeometricAnomalyCacheResponse {
@@ -370,6 +399,8 @@ export interface GeometricAnomalyCacheResponse {
     label_pairs: GeometricLabelPair[];
   };
   flagged_word?: GeometricFlaggedWord;
+  constellation?: ConstellationInfo;
+  constellation_anomaly?: ConstellationAnomaly;
   cached_at: string;
   fetched_at?: string;
   pool_size?: number;
