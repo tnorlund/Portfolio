@@ -104,7 +104,24 @@ def format_job(job: Job) -> str:
     # results attribute may not exist in older versions
     results = getattr(job, "results", None)
     if results:
-        lines.append(f"  Results: {json.dumps(results, indent=4)}")
+        # Format training time nicely
+        if "train_runtime" in results:
+            runtime_secs = results["train_runtime"]
+            mins, secs = divmod(int(runtime_secs), 60)
+            hours, mins = divmod(mins, 60)
+            if hours > 0:
+                runtime_str = f"{hours}h {mins}m {secs}s"
+            elif mins > 0:
+                runtime_str = f"{mins}m {secs}s"
+            else:
+                runtime_str = f"{secs}s"
+            lines.append(f"  Training Time: {runtime_str} ({runtime_secs:.1f}s)")
+        if "best_f1" in results and results["best_f1"] is not None:
+            lines.append(f"  Best F1: {results['best_f1']:.4f} (epoch {results.get('best_epoch', '?')})")
+        if "train_samples_per_second" in results:
+            lines.append(f"  Throughput: {results['train_samples_per_second']:.1f} samples/sec")
+        if "early_stopping_triggered" in results:
+            lines.append(f"  Early Stopping: {results['early_stopping_triggered']}")
     return "\n".join(lines)
 
 

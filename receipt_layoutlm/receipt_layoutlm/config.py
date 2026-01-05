@@ -13,7 +13,32 @@ MERGE_PRESETS: Dict[str, Dict[str, List[str]]] = {
         "DATE": ["TIME"],
         "ADDRESS": ["PHONE_NUMBER", "ADDRESS_LINE"],
     },
+    "hybrid": {
+        # Optimized for hybrid pipeline with ChromaDB post-processing
+        # - Merge amounts (all collapse to LINE_TOTAL anyway)
+        # - Merge address fields
+        # - Keep DATE and TIME separate (both have strong format patterns: 92% and 83%)
+        # - PRODUCT_NAME handled by ChromaDB semantic lookup
+        # - Amount subtypes handled by context rules post-inference
+        "AMOUNT": ["LINE_TOTAL", "UNIT_PRICE", "SUBTOTAL", "TAX", "GRAND_TOTAL"],
+        "ADDRESS": ["PHONE_NUMBER", "ADDRESS_LINE"],
+    },
 }
+
+# Recommended labels for hybrid pipeline (drop low-accuracy labels)
+# These are labels LayoutLM is good at (spatial/format patterns)
+# PRODUCT_NAME (7%), QUANTITY (2.5%), COUPON (0%), DISCOUNT (0%), LOYALTY_ID (0%)
+# are handled by post-processing, not LayoutLM
+HYBRID_ALLOWED_LABELS = [
+    "MERCHANT_NAME",  # 67% - spatial (top of receipt)
+    "DATE",           # 83% - format pattern (MM/DD/YY)
+    "TIME",           # 92% - format pattern (HH:MM)
+    "AMOUNT",         # ~50% merged - format + spatial ($X.XX right-aligned)
+    "ADDRESS",        # ~55% merged - spatial (header region)
+    "WEBSITE",        # 70% - format pattern (.com, www)
+    "STORE_HOURS",    # 71% - format pattern (time ranges)
+    "PAYMENT_METHOD", # 55% - format + spatial
+]
 
 
 @dataclass

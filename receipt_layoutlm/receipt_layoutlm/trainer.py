@@ -880,10 +880,13 @@ class ReceiptLayoutLMTrainer:
         checkpoints = glob(f"{output_dir}/checkpoint-*/")
         if checkpoints:
             latest = max(checkpoints, key=_step_from_path)
-            trainer.train(resume_from_checkpoint=latest)
+            train_output = trainer.train(resume_from_checkpoint=latest)
         else:
-            trainer.train()
-        # Optionally, add a completion status when JobStatus write path is stable
+            train_output = trainer.train()
+
+        # Extract training metrics from TrainOutput
+        # train_output.metrics contains: train_runtime, train_samples_per_second, etc.
+        train_metrics = getattr(train_output, "metrics", {}) or {}
 
         # After training, sync model to S3 if configured
         if self.training_config.output_s3_path:
@@ -984,14 +987,20 @@ class ReceiptLayoutLMTrainer:
                             # Just store local path
                             summary_payload["best_checkpoint_path"] = best_checkpoint
 
-                    # Training time metrics
-                    train_runtime = trainer_state.get("train_runtime")
+                    # Training time metrics - prefer TrainOutput.metrics over trainer_state.json
+                    # trainer_state.json doesn't have train_runtime populated until after train() returns
+                    train_runtime = train_metrics.get("train_runtime") or trainer_state.get("train_runtime")
                     if train_runtime is not None:
                         summary_payload["train_runtime_seconds"] = float(train_runtime)
 
-                    total_flos = trainer_state.get("total_flos")
+                    total_flos = train_metrics.get("total_flos") or trainer_state.get("total_flos")
                     if total_flos is not None:
                         summary_payload["total_flos"] = int(total_flos)
+
+                    # Also capture samples_per_second if available
+                    samples_per_second = train_metrics.get("train_samples_per_second")
+                    if samples_per_second is not None:
+                        summary_payload["train_samples_per_second"] = float(samples_per_second)
 
                     # Number of checkpoints saved (count checkpoint directories)
                     checkpoint_dirs = glob(os.path.join(output_dir, "checkpoint-*/"))
@@ -1000,6 +1009,19 @@ class ReceiptLayoutLMTrainer:
                 except (json.JSONDecodeError, KeyError, ValueError):
                     # Best-effort; ignore errors
                     pass
+            else:
+                # trainer_state.json doesn't exist, use train_metrics directly
+                train_runtime = train_metrics.get("train_runtime")
+                if train_runtime is not None:
+                    summary_payload["train_runtime_seconds"] = float(train_runtime)
+
+                total_flos = train_metrics.get("total_flos")
+                if total_flos is not None:
+                    summary_payload["total_flos"] = int(total_flos)
+
+                samples_per_second = train_metrics.get("train_samples_per_second")
+                if samples_per_second is not None:
+                    summary_payload["train_samples_per_second"] = float(samples_per_second)
 
             summary_log = JobLog(
                 job_id=job.job_id,
@@ -1022,6 +1044,8 @@ class ReceiptLayoutLMTrainer:
                 job.results["train_runtime"] = summary_payload["train_runtime_seconds"]
             if "total_flos" in summary_payload:
                 job.results["total_flos"] = summary_payload["total_flos"]
+            if "train_samples_per_second" in summary_payload:
+                job.results["train_samples_per_second"] = summary_payload["train_samples_per_second"]
             if "best_checkpoint_s3_path" in summary_payload:
                 job.results["best_checkpoint_s3_path"] = summary_payload["best_checkpoint_s3_path"]
             elif "best_checkpoint_path" in summary_payload:
