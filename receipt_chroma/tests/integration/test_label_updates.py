@@ -335,7 +335,7 @@ class TestLabelUpdates:
         # Create an invalid label message (missing required fields)
         from datetime import datetime
 
-        from receipt_dynamo_stream.models import StreamMessage
+        from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
 
         invalid_msg = StreamMessage(
             entity_type="RECEIPT_WORD_LABEL",
@@ -343,9 +343,11 @@ class TestLabelUpdates:
             changes={},
             event_name="MODIFY",
             collections=(ChromaDBCollection.WORDS,),
-            timestamp=datetime.now().isoformat(),
-            stream_record_id="invalid-record",
-            aws_region="us-east-1",
+            context=StreamRecordContext(
+                timestamp=datetime.now().isoformat(),
+                record_id="invalid-record",
+                aws_region="us-east-1",
+            ),
         )
 
         # Apply label updates

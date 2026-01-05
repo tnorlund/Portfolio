@@ -1,10 +1,17 @@
 """Simplified ChromaDB compaction handler using receipt_chroma package.
 
 This handler processes DynamoDB stream messages for ChromaDB compaction by:
-1. Receiving SQS messages from DynamoDB streams
-2. Categorizing messages by collection (lines/words)
-3. Using receipt_chroma.compaction for business logic
-4. Maintaining EMF metrics and structured logging
+1. Receiving SQS messages from DynamoDB streams (Standard queues, batch 1000)
+2. Sorting messages (REMOVE first) for safe ordering
+3. Within-batch deduplication to prevent orphaned embeddings
+4. Categorizing messages by collection (lines/words)
+5. Using receipt_chroma.compaction for business logic
+6. Maintaining EMF metrics and structured logging
+
+Standard queues provide 100x throughput vs FIFO (batch size 1000 vs 10).
+Lambda handles ordering by sorting REMOVE operations first within each batch.
+Within-batch deduplication prevents orphaned embeddings when a delete and
+insert for the same entity arrive in the same batch.
 
 Business logic lives in receipt_chroma package for reusability.
 
@@ -40,7 +47,10 @@ from typing import Optional
 
 # Use receipt_chroma package for compaction logic
 from receipt_chroma import ChromaClient, LockManager
-from receipt_chroma.compaction import process_collection_updates
+from receipt_chroma.compaction import (
+    process_collection_updates,
+    sort_and_deduplicate_messages,
+)
 from receipt_chroma.compaction.models import CollectionUpdateResult
 from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 from receipt_dynamo.constants import ChromaDBCollection
@@ -503,6 +513,11 @@ def process_sqs_messages(
     if not stream_messages:
         op_logger.warning("No valid messages parsed from SQS records")
         return {"batchItemFailures": []}
+
+    # Sort (REMOVE first) and deduplicate within batch
+    # This prevents orphaned embeddings when delete and insert for same entity
+    # arrive in same batch from Standard queue (no ordering guarantee)
+    stream_messages = sort_and_deduplicate_messages(stream_messages)
 
     # Track metrics
     if metrics:

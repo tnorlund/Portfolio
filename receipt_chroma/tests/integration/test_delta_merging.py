@@ -449,7 +449,7 @@ class TestDeltaMerging:
         # Create compaction message without delta_s3_prefix
         from datetime import datetime
 
-        from receipt_dynamo_stream.models import StreamMessage
+        from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
 
         compaction_msg = StreamMessage(
             entity_type="COMPACTION_RUN",
@@ -462,9 +462,11 @@ class TestDeltaMerging:
             changes={},
             event_name="INSERT",
             collections=(ChromaDBCollection.LINES,),
-            timestamp=datetime.now().isoformat(),
-            stream_record_id="record-123",
-            aws_region="us-east-1",
+            context=StreamRecordContext(
+                timestamp=datetime.now().isoformat(),
+                record_id="record-123",
+                aws_region="us-east-1",
+            ),
         )
 
         # Should skip this message

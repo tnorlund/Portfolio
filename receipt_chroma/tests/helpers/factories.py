@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from receipt_dynamo_stream.models import FieldChange, StreamMessage
+from receipt_dynamo_stream.models import FieldChange, StreamMessage, StreamRecordContext
 
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
@@ -47,9 +47,11 @@ def create_place_message(
         changes=changes,
         event_name=event_name,
         collections=collections,
-        timestamp=datetime.now().isoformat(),
-        stream_record_id=f"record-{image_id}-{receipt_id}",
-        aws_region="us-east-1",
+        context=StreamRecordContext(
+            timestamp=datetime.now().isoformat(),
+            record_id=f"record-{image_id}-{receipt_id}",
+            aws_region="us-east-1",
+        ),
     )
 
 
@@ -111,9 +113,11 @@ def create_label_message(
         changes=changes,
         event_name=event_name,
         collections=(ChromaDBCollection.WORDS,),
-        timestamp=datetime.now().isoformat(),
-        stream_record_id=f"record-{image_id}-{receipt_id}-{line_id}-{word_id}",
-        aws_region="us-east-1",
+        context=StreamRecordContext(
+            timestamp=datetime.now().isoformat(),
+            record_id=f"record-{image_id}-{receipt_id}-{line_id}-{word_id}",
+            aws_region="us-east-1",
+        ),
         record_snapshot=record_snapshot,
     )
 
@@ -150,9 +154,11 @@ def create_compaction_run_message(
         changes={},
         event_name=event_name,
         collections=(collection,),
-        timestamp=datetime.now().isoformat(),
-        stream_record_id=f"record-{image_id}-{receipt_id}-{run_id}",
-        aws_region="us-east-1",
+        context=StreamRecordContext(
+            timestamp=datetime.now().isoformat(),
+            record_id=f"record-{image_id}-{receipt_id}-{run_id}",
+            aws_region="us-east-1",
+        ),
     )
 
 

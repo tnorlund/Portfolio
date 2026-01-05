@@ -201,10 +201,10 @@ def test_send_batch_to_queue_missing_queue_url() -> None:
     mock_sqs.send_message_batch.assert_not_called()
 
 
-def test_send_batch_to_queue_compaction_run_message_group(
+def test_send_batch_to_queue_compaction_run_no_message_group_id(
     env_test_queue: None,
 ) -> None:
-    """Test message group ID for COMPACTION_RUN uses single group per collection."""
+    """Test that Standard queues don't use MessageGroupId."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -228,14 +228,14 @@ def test_send_batch_to_queue_compaction_run_message_group(
     assert sent == 1
     call_args = mock_sqs.send_message_batch.call_args
     entries = call_args[1]["Entries"]
-    # All messages use single group per collection for optimal batching
-    assert entries[0]["MessageGroupId"] == "compaction:lines"
+    # Standard queues don't use MessageGroupId - Lambda handles ordering
+    assert "MessageGroupId" not in entries[0]
 
 
-def test_send_batch_to_queue_receipt_place_message_group(
+def test_send_batch_to_queue_receipt_place_no_message_group_id(
     env_test_queue: None,
 ) -> None:
-    """Test message group ID for RECEIPT_PLACE uses single group per collection."""
+    """Test that Standard queues don't use MessageGroupId for RECEIPT_PLACE."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -255,14 +255,14 @@ def test_send_batch_to_queue_receipt_place_message_group(
     assert sent == 1
     call_args = mock_sqs.send_message_batch.call_args
     entries = call_args[1]["Entries"]
-    # All messages use single group per collection for optimal batching
-    assert entries[0]["MessageGroupId"] == "compaction:words"
+    # Standard queues don't use MessageGroupId - Lambda handles ordering
+    assert "MessageGroupId" not in entries[0]
 
 
-def test_send_batch_to_queue_unknown_entity_type_message_group(
+def test_send_batch_to_queue_unknown_entity_type_no_message_group_id(
     env_test_queue: None,
 ) -> None:
-    """Test message group ID for unknown entity type uses single group."""
+    """Test that Standard queues don't use MessageGroupId for unknown types."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -282,14 +282,14 @@ def test_send_batch_to_queue_unknown_entity_type_message_group(
     assert sent == 1
     call_args = mock_sqs.send_message_batch.call_args
     entries = call_args[1]["Entries"]
-    # All messages use single group per collection for optimal batching
-    assert entries[0]["MessageGroupId"] == "compaction:lines"
+    # Standard queues don't use MessageGroupId - Lambda handles ordering
+    assert "MessageGroupId" not in entries[0]
 
 
-def test_send_batch_to_queue_missing_entity_data_fields(
+def test_send_batch_to_queue_missing_entity_data_no_message_group_id(
     env_test_queue: None,
 ) -> None:
-    """Test message group ID when entity_data is missing uses single group."""
+    """Test that Standard queues don't use MessageGroupId even with empty data."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -309,8 +309,8 @@ def test_send_batch_to_queue_missing_entity_data_fields(
     assert sent == 1
     call_args = mock_sqs.send_message_batch.call_args
     entries = call_args[1]["Entries"]
-    # All messages use single group per collection for optimal batching
-    assert entries[0]["MessageGroupId"] == "compaction:lines"
+    # Standard queues don't use MessageGroupId - Lambda handles ordering
+    assert "MessageGroupId" not in entries[0]
 
 
 def test_send_batch_to_queue_batching(
