@@ -778,6 +778,13 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             trace_ctx.set_outputs(result)
 
         except Exception as e:
+            # Re-raise rate limit errors for Step Function retry
+            from receipt_agent.utils.llm_factory import AllProvidersFailedError
+
+            if isinstance(e, (OllamaRateLimitError, AllProvidersFailedError)):
+                logger.error("Rate limit error, propagating for Step Function retry: %s", e)
+                raise OllamaRateLimitError(f"Rate limit error: {e}") from e
+
             logger.error("Error in LLM review batch: %s", e, exc_info=True)
 
             from utils.emf_metrics import emf_metrics

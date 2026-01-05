@@ -235,6 +235,14 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 }
 
     except Exception as e:
+        # Re-raise rate limit errors for Step Function retry
+        from receipt_agent.utils.llm_factory import AllProvidersFailedError
+        from receipt_agent.utils.ollama_rate_limit import OllamaRateLimitError
+
+        if isinstance(e, (OllamaRateLimitError, AllProvidersFailedError)):
+            logger.error("Rate limit error, propagating for Step Function retry: %s", e)
+            raise OllamaRateLimitError(f"Rate limit error: {e}") from e
+
         logger.error("Error discovering patterns: %s", e, exc_info=True)
         # Add timing metadata even on error
         discovery_end_time = datetime.now(timezone.utc).isoformat()
