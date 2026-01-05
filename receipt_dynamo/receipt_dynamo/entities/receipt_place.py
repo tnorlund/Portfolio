@@ -42,7 +42,7 @@ MIN_PHONE_DIGITS = 7
 MIN_NAME_LENGTH = 2
 
 # Fields that are computed (GSI keys) and should not be passed to constructor
-# Includes GSI4 for backward compatibility with older records that had geospatial indexing
+# Includes GSI4 and geohash for backward compatibility with older records that had geospatial indexing
 COMPUTED_FIELDS = {
     "PK",
     "SK",
@@ -55,6 +55,7 @@ COMPUTED_FIELDS = {
     "GSI4PK",
     "GSI4SK",
     "TYPE",
+    "geohash",
 }
 
 
