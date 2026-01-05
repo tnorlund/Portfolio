@@ -155,13 +155,13 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-docker",
             lambda_config={
                 "role_arn": self.lambda_role.arn,
-                # Lambda typically completes in ~25s with 10 messages (FIFO limit).
+                # Lambda processes up to 1000 messages per batch (Standard queue).
                 # Set to 120s for headroom. Must match SQS visibility timeout.
-                "timeout": 120,  # 2 minutes - faster failure detection
+                "timeout": 120,  # 2 minutes - must match visibility timeout
                 # Increased memory to 10240MB (10GB, Lambda max) due to OOM errors:
                 # - ChromaDB collection with ~70K embeddings uses ~8GB
                 # - Snapshot validation downloads and loads full collection
-                # - Phase 2 batching can process up to 500 messages per invocation
+                # - Standard queue batching processes up to 1000 messages per invocation
                 "memory_size": 10240,  # 10GB (Lambda max) for large collections
                 # Increased ephemeral storage from 5GB to 10GB for large snapshot operations
                 "ephemeral_storage": 10240,  # 10GB for ChromaDB snapshots (largest seen: 552MB)
@@ -205,12 +205,10 @@ class HybridLambdaDeployment(ComponentResource):
                     # access via NAT instance. If timeouts occur, consider adding a
                     # CloudWatch Metrics Interface VPC Endpoint (~$7/month).
                     "ENABLE_METRICS": "true",
-                    # Phase 2 batching: max messages to process per compaction cycle
-                    # Higher = better throughput (amortizes snapshot overhead)
-                    # NOTE: With FIFO queues, actual batch size is limited to ~10 msgs
-                    # due to AWS message group locking. See QUEUE_STRATEGY.md for details
-                    # on FIFO limitations and alternative approaches.
-                    "MAX_MESSAGES_PER_COMPACTION": "500",
+                    # Max messages to process per compaction cycle
+                    # Standard queues allow batch_size=1000 from Lambda event source
+                    # Lambda sorts messages (REMOVE first) and deduplicates within batch
+                    "MAX_MESSAGES_PER_COMPACTION": "1000",
                 },
                 "vpc_config": {
                     "subnet_ids": vpc_subnet_ids,
@@ -342,7 +340,6 @@ class HybridLambdaDeployment(ComponentResource):
             timeout=120,  # 2 minutes timeout (reduced from 5 to prevent long hangs)
             memory_size=256,  # Lightweight processing
             # Removed reserved_concurrent_executions to allow parallel processing
-            # FIFO queue MessageGroupId already ensures proper ordering per image
             # Stream processor can safely process multiple images in parallel
             # No VPC config - stream processor only needs AWS service access (DynamoDB, SQS, CloudWatch)
             environment={
@@ -650,15 +647,15 @@ class HybridLambdaDeployment(ComponentResource):
         )
 
         # SQS queues to enhanced compaction handler
-        # Note: FIFO queues do NOT support maximum_batching_window_in_seconds
-        # (that parameter only works with standard queues).
-        # Phase 2 in-Lambda batching compensates by fetching additional messages
-        # within the handler after receiving the initial batch of 10.
+        # Standard queues support batch_size up to 10,000 and batching windows.
+        # Lambda sorts messages (REMOVE first) and uses within-batch deduplication
+        # to prevent orphaned embeddings.
         self.lines_event_source_mapping = aws.lambda_.EventSourceMapping(
             f"{name}-lines-event-source-mapping",
             event_source_arn=chromadb_queues.lines_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
-            batch_size=10,  # FIFO queues max batch size is 10
+            batch_size=1000,  # Standard queues support up to 10,000
+            maximum_batching_window_in_seconds=5,  # Batch for up to 5 seconds
             function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(parent=self),
         )
@@ -667,7 +664,8 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-words-event-source-mapping",
             event_source_arn=chromadb_queues.words_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
-            batch_size=10,  # FIFO queues max batch size is 10
+            batch_size=1000,  # Standard queues support up to 10,000
+            maximum_batching_window_in_seconds=5,  # Batch for up to 5 seconds
             function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(parent=self),
         )

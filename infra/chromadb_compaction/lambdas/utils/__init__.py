@@ -2,8 +2,16 @@
 
 from .aws_clients import get_dynamodb_client, get_s3_client, get_sqs_client
 from .logging import get_logger, get_operation_logger
-from .metrics import emf_metrics, metrics
+from .metrics import emf_metrics, metrics, MetricsAccumulator
 from .response import format_response, is_step_function_invocation
+from .sqs_batching import (
+    CollectionProcessingResult,
+    Phase2FetchResult,
+    cleanup_manual_messages,
+    delete_messages_batch,
+    fetch_additional_messages,
+    fetch_phase2_messages,
+)
 from .timeout_handler import (
     start_lambda_monitoring as start_compaction_lambda_monitoring,
 )
@@ -45,4 +53,11 @@ __all__ = [
     "trace_chromadb_operation",
     "metrics",
     "emf_metrics",
+    "MetricsAccumulator",
+    "Phase2FetchResult",
+    "CollectionProcessingResult",
+    "fetch_phase2_messages",
+    "fetch_additional_messages",
+    "delete_messages_batch",
+    "cleanup_manual_messages",
 ]

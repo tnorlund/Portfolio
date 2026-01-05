@@ -3,6 +3,9 @@
 from receipt_chroma.compaction.deletions import apply_receipt_deletions
 from receipt_chroma.compaction.deltas import merge_compaction_deltas
 from receipt_chroma.compaction.labels import apply_label_updates
+from receipt_chroma.compaction.message_ordering import (
+    sort_and_deduplicate_messages,
+)
 from receipt_chroma.compaction.metadata import apply_place_updates
 from receipt_chroma.compaction.models import (
     CollectionUpdateResult,
@@ -22,4 +25,5 @@ __all__ = [
     "MetadataUpdateResult",
     "process_collection_updates",
     "ReceiptDeletionResult",
+    "sort_and_deduplicate_messages",
 ]

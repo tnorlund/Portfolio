@@ -104,11 +104,12 @@ include = '\\.pyi?$'
 [tool.pylint.format]
 max-line-length = 79
 
-[tool.pylint.messages_control]
-disable = ["duplicate-code"]
-
 [tool.pylint.main]
 persistent = false
+
+[tool.pylint.design]
+# Protocol classes often have minimal interfaces by design
+min-public-methods = 1
 
 [tool.isort]
 profile = "black"

@@ -1,11 +1,13 @@
 """
 Entity parsing logic for DynamoDB stream records.
 
-Handles parsing of stream records into typed entities using receipt_dynamo parsers.
+Parses stream records into typed entities via receipt_dynamo.
 """
 
 import logging
 from typing import Any, Dict, Optional, Union
+
+from receipt_dynamo_stream.stream_types import MetricsRecorder
 
 from receipt_dynamo.entities.receipt_place import (
     ReceiptPlace,
@@ -47,7 +49,7 @@ def parse_entity(
     image_type: str,
     pk: str,
     sk: str,
-    metrics=None,
+    metrics: Optional[MetricsRecorder] = None,
 ) -> Optional[Union[ReceiptPlace, ReceiptWordLabel]]:
     """
     Parse DynamoDB image into typed entity.
@@ -72,7 +74,7 @@ def parse_entity(
         complete_item["PK"] = {"S": pk}
         complete_item["SK"] = {"S": sk}
 
-        # Log detailed field information for RECEIPT_WORD_LABEL parsing diagnostics
+        # Log field info for RECEIPT_WORD_LABEL diagnostics
         if entity_type == "RECEIPT_WORD_LABEL":
             logger.info(
                 "Attempting to parse RECEIPT_WORD_LABEL",
@@ -95,7 +97,10 @@ def parse_entity(
 
     except ValueError as e:
         logger.error(
-            f"Failed to parse entity - {image_type} {entity_type}: {e}",
+            "Failed to parse entity - %s %s: %s",
+            image_type,
+            entity_type,
+            e,
             extra={
                 "available_fields": list(image.keys()) if image else None,
                 "pk": pk,
@@ -112,7 +117,10 @@ def parse_entity(
 
     except Exception as e:
         logger.error(
-            f"Unexpected error parsing {image_type} {entity_type}: {e}",
+            "Unexpected error parsing %s %s: %s",
+            image_type,
+            entity_type,
+            e,
             extra={
                 "error_type": type(e).__name__,
                 "pk": pk,
@@ -131,7 +139,7 @@ def parse_entity(
 
 
 def parse_stream_record(
-    record: Dict[str, Any], metrics=None
+    record: Dict[str, Any], metrics: Optional[MetricsRecorder] = None
 ) -> Optional[ParsedStreamRecord]:
     """
     Parse DynamoDB stream record to identify relevant entity changes.
@@ -178,7 +186,8 @@ def parse_stream_record(
         # Enhanced diagnostic logging for parsing failures
         if old_image and not old_entity:
             logger.error(
-                f"Failed to parse old {entity_type}",
+                "Failed to parse old %s",
+                entity_type,
                 extra={
                     "available_keys": list(old_image.keys()),
                     "pk": pk,
@@ -188,7 +197,8 @@ def parse_stream_record(
 
         if new_image and not new_entity:
             logger.error(
-                f"Failed to parse new {entity_type}",
+                "Failed to parse new %s",
+                entity_type,
                 extra={
                     "available_keys": list(new_image.keys()),
                     "pk": pk,
@@ -206,7 +216,7 @@ def parse_stream_record(
         )
 
     except (KeyError, ValueError) as e:
-        logger.warning(f"Failed to parse stream record: {e}")
+        logger.warning("Failed to parse stream record: %s", e)
 
         if metrics:
             metrics.count("StreamRecordParsingError", 1)

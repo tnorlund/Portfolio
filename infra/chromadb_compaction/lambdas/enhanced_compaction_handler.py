@@ -1,15 +1,40 @@
 """Simplified ChromaDB compaction handler using receipt_chroma package.
 
 This handler processes DynamoDB stream messages for ChromaDB compaction by:
-1. Receiving SQS messages from DynamoDB streams
-2. Categorizing messages by collection (lines/words)
-3. Using receipt_chroma.compaction for business logic
-4. Maintaining EMF metrics and structured logging
+1. Receiving SQS messages from DynamoDB streams (Standard queues, batch 1000)
+2. Sorting messages (REMOVE first) for safe ordering
+3. Within-batch deduplication to prevent orphaned embeddings
+4. Categorizing messages by collection (lines/words)
+5. Using receipt_chroma.compaction for business logic
+6. Maintaining EMF metrics and structured logging
 
-Business logic has been moved to receipt_chroma package for reusability and testability.
+Standard queues provide 100x throughput vs FIFO (batch size 1000 vs 10).
+Lambda handles ordering by sorting REMOVE operations first within each batch.
+Within-batch deduplication prevents orphaned embeddings when a delete and
+insert for the same entity arrive in the same batch.
+
+Business logic lives in receipt_chroma package for reusability.
+
+Lambda Bundling:
+    This Lambda is bundled by Pulumi with a specific directory structure:
+    - `utils/` is copied directly into the Lambda package (local module)
+    - `receipt_chroma`, `receipt_dynamo`, `receipt_dynamo_stream` are installed
+      from the monorepo as pip packages
+    - Third-party deps are installed via requirements.txt
+
+    When running pylint locally, these imports may fail because:
+    - `utils` is not on PYTHONPATH (it's relative to Lambda root)
+    - Monorepo packages may not be installed in the local venv
+
+    The Lambda runtime has all dependencies available via the bundled package.
 """
 
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,import-error,no-name-in-module,wrong-import-order
+# duplicate-code: Some patterns shared with stream_processor
+# import-error: utils is bundled into Lambda package, not available locally
+# no-name-in-module: monorepo packages (receipt_chroma, receipt_dynamo) are
+#   installed at Lambda runtime but may not be in local venv
+# wrong-import-order: utils is local to Lambda, not third-party
 import gc
 import json
 import logging
@@ -18,34 +43,29 @@ import shutil
 import tempfile
 import time
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple, Union
-
-import boto3
-from botocore.exceptions import ClientError
-
-# Module-level SQS client for reuse across Lambda warm starts
-_sqs_client = None
-
-
-def _get_sqs_client():
-    """Get or create SQS client (reused across warm starts)."""
-    global _sqs_client  # pylint: disable=global-statement
-    if _sqs_client is None:
-        _sqs_client = boto3.client("sqs")
-    return _sqs_client
-
+from typing import Optional
 
 # Use receipt_chroma package for compaction logic
 from receipt_chroma import ChromaClient, LockManager
-from receipt_chroma.compaction import process_collection_updates
+from receipt_chroma.compaction import (
+    process_collection_updates,
+    sort_and_deduplicate_messages,
+)
+from receipt_chroma.compaction.models import CollectionUpdateResult
+from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 from receipt_dynamo.constants import ChromaDBCollection
-
-# DynamoDB and ChromaDB imports
 from receipt_dynamo.data.dynamo_client import DynamoClient
+
+from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
+from receipt_dynamo_stream.stream_types import LambdaContext
 
 # Enhanced observability imports
 from utils import (
+    CollectionProcessingResult,
+    MetricsAccumulator,
+    cleanup_manual_messages,
     emf_metrics,
+    fetch_phase2_messages,
     format_response,
     get_operation_logger,
     start_compaction_lambda_monitoring,
@@ -53,22 +73,20 @@ from utils import (
     trace_function,
     with_compaction_timeout_protection,
 )
-
-# Import StreamMessage from receipt_dynamo_stream
-try:
-    from receipt_dynamo_stream.models import StreamMessage
-except ImportError:
-    # Fallback for testing
-    class StreamMessage:
-        def __init__(self, **kwargs):
-            for key, value in kwargs.items():
-                setattr(self, key, value)
+from utils.lambda_types import (
+    ProcessCollectionResult,
+    SQSBatchResponse,
+    SQSEvent,
+    SQSRecord,
+)
+from utils.logging import OperationLogger
 
 
 # Get logger instance
 logger = get_operation_logger(__name__)
 
 
+# pylint: disable-next=too-few-public-methods
 class LambdaResponse:
     """Lambda response wrapper for consistent formatting."""
 
@@ -78,99 +96,16 @@ class LambdaResponse:
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-    def to_dict(self):
-        result = {"statusCode": self.status_code, "message": self.message}
+    def to_dict(self) -> dict[str, object]:
+        """Convert response to dictionary for Lambda return value."""
+        result: dict[str, object] = {
+            "statusCode": self.status_code,
+            "message": self.message,
+        }
         for key, value in self.__dict__.items():
             if key not in ["status_code", "message"] and value is not None:
                 result[key] = value
         return result
-
-
-class MetricsAccumulator:
-    """Wrapper that collects metrics in a dict instead of making API calls.
-
-    This enables cost-effective batch EMF logging instead of per-metric CloudWatch API calls.
-    """
-
-    def __init__(self, collected_metrics: Dict[str, Any]):
-        self.collected_metrics = collected_metrics
-
-    def count(
-        self,
-        metric_name: str,
-        value: int = 1,
-        dimensions: Optional[Dict[str, str]] = None,
-    ):
-        """Accumulate count metric."""
-        key = metric_name
-        if dimensions:
-            # Include dimensions in key for uniqueness
-            dim_str = "_".join(
-                f"{k}={v}" for k, v in sorted(dimensions.items())
-            )
-            key = f"{metric_name}_{dim_str}"
-        self.collected_metrics[key] = (
-            self.collected_metrics.get(key, 0) + value
-        )
-
-    def gauge(
-        self,
-        metric_name: str,
-        value: Union[int, float],
-        _unit: str = "None",
-        dimensions: Optional[Dict[str, str]] = None,
-    ):
-        """Accumulate gauge metric (use latest value)."""
-        key = metric_name
-        if dimensions:
-            dim_str = "_".join(
-                f"{k}={v}" for k, v in sorted(dimensions.items())
-            )
-            key = f"{metric_name}_{dim_str}"
-        self.collected_metrics[key] = value
-
-    def put_metric(
-        self,
-        metric_name: str,
-        value: Union[int, float],
-        unit: str = "Count",
-        dimensions: Optional[Dict[str, str]] = None,
-        _timestamp: Optional[float] = None,
-    ):
-        """Accumulate metric (delegates to count or gauge)."""
-        if unit == "Count":
-            self.count(metric_name, int(value), dimensions)
-        else:
-            self.gauge(metric_name, value, unit, dimensions)
-
-    def timer(
-        self,
-        metric_name: str,
-        dimensions: Optional[Dict[str, str]] = None,
-        unit: str = "Seconds",
-    ):
-        """Context manager for timing operations."""
-
-        # Simple implementation for accumulator
-        class TimerContext:
-            def __init__(self, accumulator, name, dims, unit_val):
-                self.accumulator = accumulator
-                self.name = name
-                self.dims = dims
-                self.unit = unit_val
-                self.start_time = None
-
-            def __enter__(self):
-                self.start_time = time.time()
-                return self
-
-            def __exit__(self, exc_type, exc_val, exc_tb):
-                elapsed = time.time() - self.start_time
-                self.accumulator.gauge(
-                    self.name, elapsed, self.unit, self.dims
-                )
-
-        return TimerContext(self, metric_name, dimensions, unit)
 
 
 def configure_receipt_chroma_loggers():
@@ -189,15 +124,14 @@ def configure_receipt_chroma_loggers():
 
         # Use structured formatter if available
         try:
-            from utils.logging import StructuredFormatter
+            # pylint: disable=import-outside-toplevel
+            from utils.logging import StructuredFormatter  # optional fallback
 
             formatter = StructuredFormatter()
         except ImportError:
             # Fallback to simple format
-            formatter = logging.Formatter(
-                "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
+            fmt = "[%(levelname)s] %(asctime)s %(name)s - %(message)s"
+            formatter = logging.Formatter(fmt, datefmt="%Y-%m-%dT%H:%M:%S")
 
         handler.setFormatter(formatter)
         receipt_chroma_logger.addHandler(handler)
@@ -214,7 +148,7 @@ def configure_receipt_chroma_loggers():
     )
 
 
-def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
+def parse_sqs_messages(records: list[SQSRecord]) -> list[StreamMessage]:
     """Parse SQS records into StreamMessage objects.
 
     Args:
@@ -223,7 +157,7 @@ def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
     Returns:
         List of StreamMessage objects
     """
-    messages = []
+    messages: list[StreamMessage] = []
     for record in records:
         try:
             # Parse message body
@@ -243,18 +177,21 @@ def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
                 changes=message_body.get("changes", {}),
                 event_name=message_body.get("event_name", ""),
                 collections=(collection,),
-                timestamp=message_body.get("timestamp", ""),
-                stream_record_id=record.get("messageId", ""),
-                aws_region=attributes.get("region", {}).get(
-                    "stringValue", "us-east-1"
+                context=StreamRecordContext(
+                    timestamp=message_body.get("timestamp", ""),
+                    record_id=record.get("messageId", ""),
+                    aws_region=attributes.get("region", {}).get(
+                        "stringValue", "us-east-1"
+                    ),
                 ),
                 record_snapshot=message_body.get("record_snapshot"),
             )
             messages.append(stream_msg)
 
-        except Exception:
-            logger.exception(
-                "Failed to parse SQS message",
+        except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
+            logger.warning(
+                "Failed to parse SQS message: %s",
+                type(e).__name__,
                 extra={"message_id": record.get("messageId")},
             )
             # Skip invalid messages
@@ -263,172 +200,102 @@ def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
     return messages
 
 
-# Phase 2: In-Lambda batching configuration
-# Configurable via environment variable for tuning without code deployment.
-def _parse_int_env(name: str, default: int) -> int:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        return default
-
-
-MAX_MESSAGES_PER_COMPACTION = _parse_int_env(
-    "MAX_MESSAGES_PER_COMPACTION", 500
-)
-ADDITIONAL_FETCH_VISIBILITY_TIMEOUT = _parse_int_env(
-    "ADDITIONAL_FETCH_VISIBILITY_TIMEOUT", 120
-)  # Should match Lambda timeout
-
-
-def fetch_additional_messages(
-    queue_url: str,
-    current_count: int,
-    max_messages: int = MAX_MESSAGES_PER_COMPACTION,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """Greedily fetch additional messages from SQS queue.
-
-    Phase 2 optimization: Since FIFO queues limit batch size to 10,
-    we fetch more messages within the handler to process them in
-    a single compaction cycle, amortizing the S3 transfer cost.
+def _process_collections(
+    messages_by_collection: dict[ChromaDBCollection, list[StreamMessage]],
+    op_logger: OperationLogger,
+    metrics: Optional[MetricsAccumulator] = None,
+) -> CollectionProcessingResult:
+    """Process each collection and collect failures.
 
     Args:
-        queue_url: The SQS queue URL to fetch from
-        current_count: Number of messages already received
-        max_messages: Maximum total messages to process
+        messages_by_collection: Messages grouped by collection
+        op_logger: Logger instance
+        metrics: Optional metrics accumulator
 
     Returns:
-        Tuple of (additional_records, receipt_handles_to_delete)
+        CollectionProcessingResult with failures and success status
     """
-    if current_count >= max_messages:
-        return [], []
+    failed_message_ids: list[str] = []
+    processing_successful = True
 
-    sqs = _get_sqs_client()
-    additional_records = []
-    receipt_handles = []
-    remaining = max_messages - current_count
-
-    while remaining > 0:
-        # FIFO queues allow max 10 messages per receive
-        batch_size = min(10, remaining)
-
+    for collection, msgs in messages_by_collection.items():
         try:
-            response = sqs.receive_message(
-                QueueUrl=queue_url,
-                MaxNumberOfMessages=batch_size,
-                VisibilityTimeout=ADDITIONAL_FETCH_VISIBILITY_TIMEOUT,
-                WaitTimeSeconds=0,  # Don't wait, just grab what's available
-                MessageAttributeNames=["All"],
+            result = process_collection(
+                collection=collection,
+                messages=msgs,
+                op_logger=op_logger,
+                metrics=metrics,
             )
-        except ClientError as e:
-            logger.warning(
-                "Failed to fetch additional messages",
-                error=str(e),
-                fetched_so_far=len(additional_records),
+            if result.get("failed_message_ids"):
+                failed_message_ids.extend(result["failed_message_ids"])
+                processing_successful = False
+        # Broad exception needed: process_collection can fail from S3,
+        # DynamoDB, ChromaDB, or file system errors
+        except Exception:  # pylint: disable=broad-exception-caught
+            op_logger.exception(
+                "Collection processing failed",
+                collection=collection.value,
             )
-            break
+            if metrics:
+                metrics.count("CompactionCollectionProcessingError", 1)
+            failed_message_ids.extend([m.context.record_id for m in msgs])
+            processing_successful = False
 
-        messages = response.get("Messages", [])
-        if not messages:
-            # No more messages available
-            break
-
-        for msg in messages:
-            # Convert to the same format as Lambda event records
-            message_attributes = {}
-            for key, attr in msg.get("MessageAttributes", {}).items():
-                if "StringValue" in attr:
-                    message_attributes[key] = {
-                        "stringValue": attr.get("StringValue", "")
-                    }
-                elif "NumberValue" in attr:
-                    message_attributes[key] = {
-                        "numberValue": attr.get("NumberValue", "")
-                    }
-                elif "BinaryValue" in attr:
-                    message_attributes[key] = {
-                        "binaryValue": attr.get("BinaryValue", b"")
-                    }
-
-            record = {
-                "messageId": msg["MessageId"],
-                "receiptHandle": msg["ReceiptHandle"],
-                "body": msg["Body"],
-                "messageAttributes": message_attributes,
-            }
-            additional_records.append(record)
-            receipt_handles.append(msg["ReceiptHandle"])
-
-        remaining -= len(messages)
-
-        logger.debug(
-            "Fetched additional messages",
-            batch_count=len(messages),
-            total_additional=len(additional_records),
-        )
-
-    return additional_records, receipt_handles
+    return CollectionProcessingResult(
+        failed_message_ids, processing_successful
+    )
 
 
-def delete_messages_batch(
-    queue_url: str, receipt_handles: List[str]
-) -> List[str]:
-    """Delete messages from SQS in batches.
+def _collect_failed_message_ids(
+    result: CollectionUpdateResult, messages: list[StreamMessage]
+) -> list[str]:
+    """Collect message IDs for failed processing operations.
 
     Args:
-        queue_url: The SQS queue URL
-        receipt_handles: List of receipt handles to delete
+        result: CollectionUpdateResult with metadata_updates and label_updates
+        messages: Original stream messages to match against
 
     Returns:
-        List of receipt handles that failed to delete
+        List of stream record IDs for messages that failed processing
     """
-    if not receipt_handles:
-        return []
+    failed_ids: list[str] = []
 
-    sqs = _get_sqs_client()
-    failed_handles = []
+    # Check metadata update failures
+    for meta_result in result.metadata_updates:
+        if meta_result.error:
+            for msg in messages:
+                entity_data = msg.entity_data
+                if (
+                    entity_data.get("image_id") == meta_result.image_id
+                    and entity_data.get("receipt_id") == meta_result.receipt_id
+                ):
+                    failed_ids.append(msg.context.record_id)
 
-    # SQS delete_message_batch allows max 10 entries
-    for i in range(0, len(receipt_handles), 10):
-        batch = receipt_handles[i : i + 10]
-        entries = [
-            {"Id": str(idx), "ReceiptHandle": handle}
-            for idx, handle in enumerate(batch)
-        ]
+    # Check label update failures
+    for label_result in result.label_updates:
+        if label_result.error:
+            for msg in messages:
+                entity_data = msg.entity_data
+                image_id = entity_data.get("image_id")
+                chromadb_prefix = f"IMAGE#{image_id}"
+                if (
+                    image_id is not None
+                    and entity_data.get("word_id") is not None
+                    and label_result.chromadb_id.startswith(chromadb_prefix)
+                ):
+                    failed_ids.append(msg.context.record_id)
 
-        try:
-            response = sqs.delete_message_batch(
-                QueueUrl=queue_url, Entries=entries
-            )
-
-            # Track failed deletions
-            for failure in response.get("Failed", []):
-                idx = int(failure["Id"])
-                failed_handles.append(batch[idx])
-                logger.warning(
-                    "Failed to delete message",
-                    receipt_handle=batch[idx][:50],
-                    error=failure.get("Message"),
-                )
-
-        except ClientError:
-            logger.exception(
-                "Batch delete failed",
-                batch_size=len(batch),
-            )
-            failed_handles.extend(batch)
-
-    return failed_handles
+    return failed_ids
 
 
-def process_collection(
+# Local variables are inherent to 3-phase atomic operation (lock, download,
+# update, upload) - splitting would break transactional semantics
+def process_collection(  # pylint: disable=too-many-locals
     collection: ChromaDBCollection,
-    messages: List[StreamMessage],
-    logger: Any,
-    metrics: Any = None,
-) -> Dict[str, Any]:
+    messages: list[StreamMessage],
+    op_logger: OperationLogger,
+    metrics: Optional[MetricsAccumulator] = None,
+) -> ProcessCollectionResult:
     """Process stream messages for a single collection using receipt_chroma.
 
     This function orchestrates:
@@ -439,17 +306,17 @@ def process_collection(
     Args:
         collection: Target collection (LINES or WORDS)
         messages: List of StreamMessage objects
-        logger: OperationLogger instance
+        op_logger: OperationLogger instance (named to avoid shadowing)
         metrics: MetricsAccumulator for EMF logging
 
     Returns:
-        Dict with processing results and failed message IDs
+        ProcessCollectionResult with processing results and failed message IDs
     """
     # Environment configuration
     bucket = os.environ["CHROMADB_BUCKET"]
     table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
-    logger.info(
+    op_logger.info(
         "Processing collection",
         collection=collection.value,
         message_count=len(messages),
@@ -467,19 +334,17 @@ def process_collection(
     # Acquire lock for atomic snapshot upload
     lock_id = f"chroma-{collection.value}-compaction"
     if not lock_manager.acquire(lock_id):
-        logger.error("Failed to acquire lock for snapshot upload")
+        op_logger.error("Failed to acquire lock for snapshot upload")
         if metrics:
             metrics.count("CompactionLockAcquisitionFailed", 1)
-        return {"failed_message_ids": [m.stream_record_id for m in messages]}
+        return {"failed_message_ids": [m.context.record_id for m in messages]}
 
     # Create temp directory for snapshot
     temp_dir = tempfile.mkdtemp(prefix=f"chroma-{collection.value}-")
 
     try:
         # Phase 1: Download snapshot from S3
-        with logger.operation_timer("snapshot_download"):
-            from receipt_chroma.s3 import download_snapshot_atomic
-
+        with op_logger.operation_timer("snapshot_download"):
             download_result = download_snapshot_atomic(
                 bucket=bucket,
                 collection=collection.value,
@@ -488,23 +353,23 @@ def process_collection(
             )
 
         if download_result.get("status") == "error":
-            logger.error(
+            op_logger.error(
                 "Snapshot download failed",
                 error=download_result.get("error"),
             )
             if metrics:
                 metrics.count("CompactionSnapshotDownloadError", 1)
             return {
-                "failed_message_ids": [m.stream_record_id for m in messages]
+                "failed_message_ids": [m.context.record_id for m in messages]
             }
 
-        logger.info(
+        op_logger.info(
             "Snapshot downloaded",
             version=download_result.get("version"),
         )
 
         # Phase 2: Open ChromaDB client and apply updates
-        with logger.operation_timer("in_memory_updates"):
+        with op_logger.operation_timer("in_memory_updates"):
             with ChromaClient(
                 persist_directory=temp_dir, mode="write", metadata_only=True
             ) as client:
@@ -513,12 +378,12 @@ def process_collection(
                     stream_messages=messages,
                     collection=collection,
                     chroma_client=client,
-                    logger=logger,
+                    logger=op_logger,
                     metrics=metrics,
                     dynamo_client=dynamo_client,
                 )
 
-        logger.info(
+        op_logger.info(
             "Updates applied",
             metadata_updates=result.total_metadata_updated,
             label_updates=result.total_labels_updated,
@@ -541,42 +406,15 @@ def process_collection(
             if result.has_errors:
                 metrics.count("CompactionProcessingErrors", 1)
 
-        # If errors occurred, determine failed messages
-        failed_message_ids = []
-        if result.has_errors:
-            # Mark messages with errors for retry
-            for meta_result in result.metadata_updates:
-                if meta_result.error:
-                    # Find corresponding message
-                    for msg in messages:
-                        entity_data = msg.entity_data
-                        if (
-                            entity_data.get("image_id") is not None
-                            and entity_data.get("receipt_id") is not None
-                            and entity_data["image_id"] == meta_result.image_id
-                            and entity_data["receipt_id"]
-                            == meta_result.receipt_id
-                        ):
-                            failed_message_ids.append(msg.stream_record_id)
-
-            for label_result in result.label_updates:
-                if label_result.error:
-                    # Find corresponding message
-                    for msg in messages:
-                        entity_data = msg.entity_data
-                        if (
-                            entity_data.get("image_id") is not None
-                            and entity_data.get("word_id") is not None
-                            and label_result.chromadb_id.startswith(
-                                f"IMAGE#{entity_data['image_id']}"
-                            )
-                        ):
-                            failed_message_ids.append(msg.stream_record_id)
+        # Collect failed message IDs for retry
+        failed_message_ids = (
+            _collect_failed_message_ids(result, messages)
+            if result.has_errors
+            else []
+        )
 
         # Phase 3: Upload snapshot atomically with lock
-        with logger.operation_timer("snapshot_upload"):
-            from receipt_chroma.s3 import upload_snapshot_atomic
-
+        with op_logger.operation_timer("snapshot_upload"):
             upload_result = upload_snapshot_atomic(
                 local_path=temp_dir,
                 bucket=bucket,
@@ -592,16 +430,16 @@ def process_collection(
             )
 
         if upload_result.get("status") == "error":
-            logger.error(
+            op_logger.error(
                 "Snapshot upload failed", error=upload_result.get("error")
             )
             if metrics:
                 metrics.count("CompactionSnapshotUploadError", 1)
             return {
-                "failed_message_ids": [m.stream_record_id for m in messages]
+                "failed_message_ids": [m.context.record_id for m in messages]
             }
 
-        logger.info(
+        op_logger.info(
             "Snapshot uploaded",
             new_version=upload_result.get("version_id"),
             promoted=upload_result.get("promoted"),
@@ -617,23 +455,27 @@ def process_collection(
         # Release lock if acquired
         try:
             lock_manager.release()
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             # Log but don't fail - lock will expire naturally
-            logger.debug("Failed to release lock during cleanup", error=str(e))
+            op_logger.debug(
+                "Failed to release lock during cleanup", error=str(e)
+            )
 
         # Cleanup temp directory
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-        # Aggressive memory cleanup to prevent OOM on warm container reuse.
-        # Repeated gc.collect() helps release cyclic references with finalizers.
+        # Aggressive memory cleanup to prevent OOM on warm container reuse
+        # (repeated gc.collect() releases cyclic refs with finalizers).
         gc.collect()
         gc.collect()
         gc.collect()
 
 
 def process_sqs_messages(
-    records: List[Dict[str, Any]], logger: Any, metrics: Any = None
-) -> Dict[str, Any]:
+    records: list[SQSRecord],
+    op_logger: OperationLogger,
+    metrics: Optional[MetricsAccumulator] = None,
+) -> SQSBatchResponse:
     """Parse SQS messages and route to collection processors.
 
     Phase 2 optimization: After receiving initial batch from Lambda trigger,
@@ -642,71 +484,21 @@ def process_sqs_messages(
 
     Args:
         records: List of SQS record dicts
-        logger: Logger instance
+        op_logger: Logger instance (named to avoid shadowing module logger)
         metrics: Optional metrics accumulator
 
     Returns:
-        Dict with batchItemFailures for partial batch retry
+        SQSBatchResponse with batchItemFailures for partial batch retry
     """
-    # Determine which queue we're processing from the first record
-    # Each Lambda invocation only processes messages from ONE queue
-    # (separate event source mappings for lines vs words)
-    queue_url = None
-    manually_fetched_handles: List[str] = []
-
-    if records:
-        first_record = records[0]
-        collection_attr = first_record.get("messageAttributes", {}).get(
-            "collection", {}
-        )
-        collection_value = collection_attr.get("stringValue", "words")
-
-        if collection_value == "lines":
-            queue_url = os.environ.get("LINES_QUEUE_URL")
-        else:
-            queue_url = os.environ.get("WORDS_QUEUE_URL")
-
-        # Phase 2: Fetch additional messages if queue URL is available
-        if queue_url:
-            logger.info(
-                "Phase 2: attempting to fetch additional messages",
-                queue_url=queue_url[-50:],  # Last 50 chars for brevity
-                current_count=len(records),
-                max_messages=MAX_MESSAGES_PER_COMPACTION,
-            )
-            additional_records, manually_fetched_handles = (
-                fetch_additional_messages(
-                    queue_url=queue_url,
-                    current_count=len(records),
-                    max_messages=MAX_MESSAGES_PER_COMPACTION,
-                )
-            )
-
-            if additional_records:
-                logger.info(
-                    "Phase 2 batching: fetched additional messages",
-                    initial_count=len(records),
-                    additional_count=len(additional_records),
-                    total_count=len(records) + len(additional_records),
-                )
-                records = records + additional_records
-
-                if metrics:
-                    metrics.count(
-                        "CompactionAdditionalMessagesFetched",
-                        len(additional_records),
-                    )
-            else:
-                logger.info(
-                    "Phase 2: no additional messages available",
-                    initial_count=len(records),
-                )
+    # Phase 2: Fetch additional messages to batch with initial records
+    phase2 = fetch_phase2_messages(records, op_logger, metrics)
+    records = phase2.all_records
 
     # Parse StreamMessage objects from SQS records
     try:
         stream_messages = parse_sqs_messages(records)
-    except Exception:
-        logger.exception("Failed to parse SQS messages")
+    except (json.JSONDecodeError, ValueError, TypeError, KeyError):
+        op_logger.exception("Failed to parse SQS messages")
         if metrics:
             metrics.count("CompactionMessageParseError", 1)
         # Return all as failures for retry
@@ -719,8 +511,13 @@ def process_sqs_messages(
         }
 
     if not stream_messages:
-        logger.warning("No valid messages parsed from SQS records")
+        op_logger.warning("No valid messages parsed from SQS records")
         return {"batchItemFailures": []}
+
+    # Sort (REMOVE first) and deduplicate within batch
+    # This prevents orphaned embeddings when delete and insert for same entity
+    # arrive in same batch from Standard queue (no ordering guarantee)
+    stream_messages = sort_and_deduplicate_messages(stream_messages)
 
     # Track metrics
     if metrics:
@@ -732,87 +529,31 @@ def process_sqs_messages(
         for collection in msg.collections:
             messages_by_collection[collection].append(msg)
 
-    logger.info(
+    op_logger.info(
         "Grouped messages by collection",
         collections=[c.value for c in messages_by_collection.keys()],
         total_messages=len(stream_messages),
     )
 
     # Process each collection
-    failed_message_ids = []
-    processing_successful = True
+    result = _process_collections(messages_by_collection, op_logger, metrics)
 
-    for collection, msgs in messages_by_collection.items():
-        try:
-            result = process_collection(
-                collection=collection,
-                messages=msgs,
-                logger=logger,
-                metrics=metrics,
-            )
-            # Collect failures
-            if result.get("failed_message_ids"):
-                failed_message_ids.extend(result["failed_message_ids"])
-                processing_successful = False
-        except Exception:
-            logger.exception(
-                "Collection processing failed",
-                collection=collection.value,
-            )
-            if metrics:
-                metrics.count("CompactionCollectionProcessingError", 1)
-            # Mark all messages for this collection as failed
-            failed_message_ids.extend([m.stream_record_id for m in msgs])
-            processing_successful = False
-
-    # Phase 2: Delete manually-fetched messages after successful processing
-    # Lambda-triggered messages are auto-deleted by the event source mapping
-    # but manually-fetched messages must be explicitly deleted
-    if manually_fetched_handles and queue_url:
-        if processing_successful and not failed_message_ids:
-            # All processing succeeded - delete all manually-fetched messages
-            failed_deletes = delete_messages_batch(
-                queue_url, manually_fetched_handles
-            )
-            if failed_deletes:
-                logger.warning(
-                    "Some manually-fetched messages failed to delete",
-                    failed_count=len(failed_deletes),
-                    total_fetched=len(manually_fetched_handles),
-                )
-                if metrics:
-                    metrics.count(
-                        "CompactionMessageDeleteFailures", len(failed_deletes)
-                    )
-            else:
-                logger.info(
-                    "Deleted manually-fetched messages",
-                    count=len(manually_fetched_handles),
-                )
-                if metrics:
-                    metrics.count(
-                        "CompactionManualMessagesDeleted",
-                        len(manually_fetched_handles),
-                    )
-        else:
-            # Processing had failures - let manually-fetched messages
-            # become visible again for retry (visibility timeout will expire)
-            logger.info(
-                "Skipping delete of manually-fetched messages due to failures",
-                failed_count=len(failed_message_ids),
-                manual_count=len(manually_fetched_handles),
-            )
+    # Clean up manually-fetched messages
+    cleanup_manual_messages(phase2, result, op_logger, metrics)
 
     return {
         "batchItemFailures": [
-            {"itemIdentifier": msg_id} for msg_id in failed_message_ids
+            {"itemIdentifier": msg_id}
+            for msg_id in result.failed_message_ids
         ]
     }
 
 
 @trace_function(operation_name="enhanced_compaction_handler")
 @with_compaction_timeout_protection(max_duration=840)  # 14 minutes
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(
+    event: SQSEvent, context: LambdaContext
+) -> SQSBatchResponse:
     """Simplified Lambda handler using receipt_chroma package.
 
     Routes SQS messages to appropriate collection processors.
@@ -833,8 +574,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     start_time = time.time()
 
     # Collect metrics for batch EMF logging (cost-effective)
-    collected_metrics: Dict[str, Any] = {}
-    error_types: Dict[str, int] = {}
+    collected_metrics: dict[str, object] = {}
+    error_types: dict[str, int] = {}
 
     # Create metrics accumulator
     metrics_accumulator = MetricsAccumulator(collected_metrics)
@@ -850,7 +591,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Process SQS messages
             result = process_sqs_messages(
                 records=event["Records"],
-                logger=logger,
+                op_logger=logger,
                 metrics=metrics_accumulator,
             )
 
@@ -924,6 +665,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         return format_response(response.to_dict(), event, is_error=True)
 
+    # pylint: disable-next=broad-exception-caught
     except Exception as e:
         execution_time = time.time() - start_time
         error_type = type(e).__name__

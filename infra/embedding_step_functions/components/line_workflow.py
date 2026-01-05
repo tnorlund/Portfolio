@@ -158,7 +158,19 @@ class LineEmbeddingWorkflow(ComponentResource):
         )
 
     def _create_ingest_workflow(self) -> StateMachine:
-        """Create the line embedding ingestion workflow."""
+        """Create the line embedding ingestion workflow.
+
+        SIMPLIFIED ARCHITECTURE (v2):
+        - ListPendingBatches
+        - PollBatches (Map 100x)
+        - PrepareChunks (creates ~8 big chunks)
+        - ProcessChunksInParallel (Map ~8x, each processes many deltas)
+        - FinalMergeToSnapshot (single Lambda, merge all intermediates with lock)
+        - MarkBatchesComplete
+
+        No reduce loop! Each parallel Lambda creates one intermediate, and
+        FinalMergeToSnapshot merges all of them directly.
+        """
         return StateMachine(
             f"line-ingest-sf-{stack}",
             role_arn=self.sf_role.arn,
@@ -168,10 +180,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                 self.lambda_functions["embedding-poll-lines"].arn,
                 self.lambda_functions["embedding-compact"].arn,
                 self.lambda_functions["embedding-normalize-batches"].arn,
-                self.lambda_functions["embedding-split-chunks"].arn,
-                self.lambda_functions["embedding-prepare-chunk-groups"].arn,
                 self.lambda_functions["embedding-mark-complete"].arn,
-                self.lambda_functions["embedding-prepare-merge-pairs"].arn,
                 self.batch_bucket.bucket,
             ).apply(self._create_ingest_definition),
             opts=ResourceOptions(parent=self),
@@ -180,22 +189,26 @@ class LineEmbeddingWorkflow(ComponentResource):
     def _create_ingest_definition(self, arns_and_bucket: list) -> str:
         """Create ingestion workflow definition.
 
+        SIMPLIFIED ARCHITECTURE (v2):
         arns_and_bucket[0] = embedding-list-pending
         arns_and_bucket[1] = embedding-poll-lines
         arns_and_bucket[2] = embedding-compact
         arns_and_bucket[3] = embedding-normalize-batches
-        arns_and_bucket[4] = embedding-split-chunks
-        arns_and_bucket[5] = embedding-prepare-chunk-groups
-        arns_and_bucket[6] = embedding-mark-complete
-        arns_and_bucket[7] = embedding-prepare-merge-pairs
-        arns_and_bucket[8] = batch_bucket_name
+        arns_and_bucket[4] = embedding-mark-complete
+        arns_and_bucket[5] = batch_bucket_name
+
+        Flow:
+        ListPendingBatches
+          → PollBatches (Map 100x)
+            → PrepareChunks (creates ~8 big chunks)
+              → ProcessChunksInParallel (Map ~8x)
+                → FinalMergeToSnapshot (single Lambda, locks + merges all)
+                  → MarkBatchesComplete
         """
         arns = arns_and_bucket[:-1]
-        batch_bucket_name = arns_and_bucket[-1]
 
-        # Build state definition with proper bucket name interpolation
         state_definition = {
-            "Comment": "Poll and ingest line embeddings",
+            "Comment": "Poll and ingest line embeddings (SIMPLIFIED v2)",
             "StartAt": "ListPendingBatches",
             "States": {
                 "ListPendingBatches": {
@@ -237,7 +250,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                 },
                 "PollBatches": {
                     "Type": "Map",
-                    "Comment": "Poll batches in parallel - supports both inline and S3 manifest modes. Results are normalized and uploaded to S3 by NormalizePollBatchesData handler.",
+                    "Comment": "Poll batches in parallel (100 concurrent)",
                     "ItemsPath": "$.poll_batches_data.batch_indices",
                     "MaxConcurrency": 100,
                     "Parameters": {
@@ -285,7 +298,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                 "PrepareChunks": {
                     "Type": "Task",
                     "Resource": arns[3],
-                    "Comment": "Combine poll results, create chunks, upload to S3. Replaces NormalizePollBatchesData + SplitIntoChunks + LoadChunksFromS3.",
+                    "Comment": "SIMPLIFIED: Create ~8 big chunks instead of many small ones",
                     "Parameters": {
                         "batch_id.$": "$$.Execution.Name",
                         "poll_results.$": "$.poll_results",
@@ -328,26 +341,25 @@ class LineEmbeddingWorkflow(ComponentResource):
                 },
                 "ProcessChunksInParallel": {
                     "Type": "Map",
-                    "Comment": "Process chunk batches in parallel (batched optimization: processes multiple chunks per Lambda)",
+                    "Comment": "SIMPLIFIED: Process ~8 big chunks in parallel (each creates 1 intermediate)",
                     "ItemsPath": "$.chunked_data.chunks",
-                    "MaxConcurrency": 20,
+                    "MaxConcurrency": 10,
                     "Parameters": {
-                        "chunk_batch.$": "$$.Map.Item.Value",
+                        "chunk_item.$": "$$.Map.Item.Value",
                     },
                     "Iterator": {
-                        "StartAt": "ProcessChunkBatch",
+                        "StartAt": "ProcessChunk",
                         "States": {
-                            "ProcessChunkBatch": {
+                            "ProcessChunk": {
                                 "Type": "Task",
                                 "Resource": arns[2],
-                                "Comment": "Process a batch of chunks (reduces Lambda invocations by processing multiple chunks sequentially)",
+                                "Comment": "Process a big chunk of deltas",
                                 "Parameters": {
                                     "operation": "process_chunk",
-                                    "batch_id.$": "$.chunk_batch.batch_id",
-                                    "chunk_indices.$": "$.chunk_batch.chunk_indices",  # Array of chunk indices (batched)
-                                    # Chunks are always in S3, keys come from chunk_batch object
-                                    "chunks_s3_key.$": "$.chunk_batch.chunks_s3_key",
-                                    "chunks_s3_bucket.$": "$.chunk_batch.chunks_s3_bucket",
+                                    "batch_id.$": "$.chunk_item.batch_id",
+                                    "chunk_index.$": "$.chunk_item.chunk_index",
+                                    "chunks_s3_key.$": "$.chunk_item.chunks_s3_key",
+                                    "chunks_s3_bucket.$": "$.chunk_item.chunks_s3_bucket",
                                     "database": "lines",
                                 },
                                 "End": True,
@@ -366,8 +378,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                                     },
                                     {
                                         "ErrorEquals": [
-                                            "Lambda."
-                                            "TooManyRequestsException"
+                                            "Lambda.TooManyRequestsException"
                                         ],
                                         "IntervalSeconds": 10,
                                         "MaxAttempts": 5,
@@ -378,7 +389,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                         },
                     },
                     "ResultPath": "$.chunk_results",
-                    "Next": "PrepareMergePairs",
+                    "Next": "FinalMergeToSnapshot",
                     "Catch": [
                         {
                             "ErrorEquals": ["States.ALL"],
@@ -388,166 +399,21 @@ class LineEmbeddingWorkflow(ComponentResource):
                     ],
                 },
                 # ============================================================
-                # PARALLEL REDUCE PATTERN
-                # Merges N intermediates down to 1 using parallel pair merging
+                # SIMPLIFIED: No reduce loop! Merge all intermediates directly
                 # ============================================================
-                "PrepareMergePairs": {
-                    "Type": "Task",
-                    "Resource": arns[7],
-                    "Comment": "Prepare pairs for parallel reduce - groups intermediates into pairs",
-                    "Parameters": {
-                        "intermediates.$": "$.chunk_results",
-                        "batch_id.$": "$.chunked_data.batch_id",
-                        "database": "lines",
-                        "round": 0,
-                        "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
-                        "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
-                    },
-                    "ResultPath": "$.reduce_state",
-                    "Next": "CheckReduceComplete",
-                    "Retry": [
-                        {
-                            "ErrorEquals": [
-                                "Lambda.ServiceException",
-                                "Lambda.AWSLambdaException",
-                                "Lambda.ResourceConflictException",
-                            ],
-                            "IntervalSeconds": 5,
-                            "MaxAttempts": 5,
-                            "BackoffRate": 2.0,
-                            "JitterStrategy": "FULL",
-                        }
-                    ],
-                    "Catch": [
-                        {
-                            "ErrorEquals": ["States.ALL"],
-                            "Next": "LineReduceFailed",
-                            "ResultPath": "$.error",
-                        }
-                    ],
-                },
-                "CheckReduceComplete": {
-                    "Type": "Choice",
-                    "Comment": "Check if reduction to single intermediate is complete",
-                    "Choices": [
-                        {
-                            "Variable": "$.reduce_state.done",
-                            "BooleanEquals": True,
-                            "Next": "LineFinalMergeSingle",
-                        }
-                    ],
-                    "Default": "MergePairsInParallel",
-                },
-                "MergePairsInParallel": {
-                    "Type": "Map",
-                    "Comment": "Parallel merge of pairs - O(log N) rounds",
-                    "ItemsPath": "$.reduce_state.pairs",
-                    "MaxConcurrency": 10,
-                    "Parameters": {
-                        "operation": "merge_pair",
-                        "pair_data.$": "$$.Map.Item.Value",
-                    },
-                    "Iterator": {
-                        "StartAt": "MergeSinglePair",
-                        "States": {
-                            "MergeSinglePair": {
-                                "Type": "Task",
-                                "Resource": arns[2],
-                                "End": True,
-                                "Retry": [
-                                    {
-                                        "ErrorEquals": [
-                                            "Lambda.ServiceException",
-                                            "Lambda.AWSLambdaException",
-                                            "Lambda.ResourceConflictException",
-                                            "Runtime.ExitError",
-                                        ],
-                                        "IntervalSeconds": 5,
-                                        "MaxAttempts": 5,
-                                        "BackoffRate": 2.0,
-                                        "JitterStrategy": "FULL",
-                                    },
-                                ],
-                            },
-                        },
-                    },
-                    "ResultPath": "$.merged_results",
-                    "Next": "PrepareNextReduceRound",
-                    "Catch": [
-                        {
-                            "ErrorEquals": ["States.ALL"],
-                            "Next": "LineReduceFailed",
-                            "ResultPath": "$.error",
-                        }
-                    ],
-                },
-                "PrepareNextReduceRound": {
-                    "Type": "Task",
-                    "Resource": arns[7],
-                    "Comment": "Prepare next round of pair merging",
-                    "Parameters": {
-                        "intermediates.$": "$.merged_results",
-                        "batch_id.$": "$.reduce_state.batch_id",
-                        "database.$": "$.reduce_state.database",
-                        "round.$": "$.reduce_state.round",
-                        "poll_results_s3_key.$": "$.reduce_state.poll_results_s3_key",
-                        "poll_results_s3_bucket.$": "$.reduce_state.poll_results_s3_bucket",
-                    },
-                    "ResultPath": "$.reduce_state",
-                    "Next": "CheckReduceComplete",
-                    "Retry": [
-                        {
-                            "ErrorEquals": [
-                                "Lambda.ServiceException",
-                                "Lambda.AWSLambdaException",
-                                "Lambda.ResourceConflictException",
-                            ],
-                            "IntervalSeconds": 5,
-                            "MaxAttempts": 5,
-                            "BackoffRate": 2.0,
-                            "JitterStrategy": "FULL",
-                        }
-                    ],
-                    "Catch": [
-                        {
-                            "ErrorEquals": ["States.ALL"],
-                            "Next": "LineReduceFailed",
-                            "ResultPath": "$.error",
-                        }
-                    ],
-                },
-                "LineReduceFailed": {
-                    "Type": "Fail",
-                    "Error": "LineReduceFailed",
-                    "Cause": "Failed during parallel reduce of line intermediates",
-                },
-                "NoChunksToProcess": {
-                    "Type": "Pass",
-                    "Comment": "No chunks to process - prepare data for marking batches complete",
-                    "Parameters": {
-                        "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
-                        "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
-                        "poll_results_s3_key_fallback.$": "$.chunked_data.poll_results_s3_key",
-                        "poll_results_s3_bucket_fallback.$": "$.chunked_data.poll_results_s3_bucket",
-                        "poll_results_s3_key_poll_data": None,
-                        "poll_results_s3_bucket_poll_data": None,
-                    },
-                    "Next": "MarkBatchesComplete",
-                },
-                "LineFinalMergeSingle": {
+                "FinalMergeToSnapshot": {
                     "Type": "Task",
                     "Resource": arns[2],
-                    "Comment": "Final merge of single intermediate to S3 snapshot",
+                    "Comment": "SIMPLIFIED: Merge ALL intermediates directly to snapshot (no reduce loop)",
                     "Parameters": {
-                        "operation": "final_merge_single",
-                        "batch_id.$": "$.reduce_state.batch_id",
-                        "single_intermediate.$": "$.reduce_state.single_intermediate",
+                        "operation": "final_merge_all",
+                        "batch_id.$": "$.chunked_data.batch_id",
+                        "chunk_results.$": "$.chunk_results",
                         "database": "lines",
-                        "poll_results_s3_key.$": "$.reduce_state.poll_results_s3_key",
-                        "poll_results_s3_bucket.$": "$.reduce_state.poll_results_s3_bucket",
+                        "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
+                        "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
                     },
                     "ResultPath": "$.final_merge_result",
-                    "OutputPath": "$",
                     "Next": "PrepareMarkBatchesComplete",
                     "Retry": [
                         {
@@ -577,37 +443,32 @@ class LineEmbeddingWorkflow(ComponentResource):
                         }
                     ],
                 },
+                "NoChunksToProcess": {
+                    "Type": "Pass",
+                    "Comment": "No chunks to process - prepare data for marking batches complete",
+                    "Parameters": {
+                        "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
+                        "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
+                    },
+                    "Next": "MarkBatchesComplete",
+                },
                 "PrepareMarkBatchesComplete": {
                     "Type": "Pass",
-                    "Comment": "Prepare data for MarkBatchesComplete - normalize poll_results_s3_key",
+                    "Comment": "Prepare data for MarkBatchesComplete",
                     "Parameters": {
                         "final_merge_result.$": "$.final_merge_result",
                         "poll_results_s3_key.$": "$.final_merge_result.poll_results_s3_key",
                         "poll_results_s3_bucket.$": "$.final_merge_result.poll_results_s3_bucket",
-                        "poll_results_s3_key_fallback.$": "$.reduce_state.poll_results_s3_key",
-                        "poll_results_s3_bucket_fallback.$": "$.reduce_state.poll_results_s3_bucket",
-                        "poll_results_s3_key_poll_data": None,
-                        "poll_results_s3_bucket_poll_data": None,
                     },
                     "Next": "MarkBatchesComplete",
                 },
                 "MarkBatchesComplete": {
                     "Type": "Task",
-                    "Resource": arns[6],
-                    "Comment": "Mark batch summaries as COMPLETED after successful compaction",
+                    "Resource": arns[4],
+                    "Comment": "Mark batch summaries as COMPLETED",
                     "Parameters": {
-                        # poll_results is always None after NormalizePollBatchesData (it's in S3)
-                        # Handler will load from S3 using poll_results_s3_key when poll_results is null/empty
-                        # Priority: primary > fallback > poll_data (source of truth)
                         "poll_results_s3_key.$": "$.poll_results_s3_key",
                         "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
-                        "poll_results_s3_key_fallback.$": "$.poll_results_s3_key_fallback",
-                        "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket_fallback",
-                        # poll_results_s3_key_poll_data is set by PrepareMarkBatchesComplete if available
-                        "poll_results_s3_key_poll_data.$": "$.poll_results_s3_key_poll_data",
-                        "poll_results_s3_bucket_poll_data.$": "$.poll_results_s3_bucket_poll_data",
-                        "poll_results_s3_key_chunked": None,
-                        "poll_results_s3_bucket_chunked": None,
                     },
                     "ResultPath": "$.mark_complete_result",
                     "End": True,
@@ -635,7 +496,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                 "MarkCompleteFailed": {
                     "Type": "Fail",
                     "Error": "MarkCompleteFailed",
-                    "Cause": "Failed to mark batches as complete (compaction succeeded but marking failed)",
+                    "Cause": "Failed to mark batches as complete",
                 },
                 "ChunkProcessingFailed": {
                     "Type": "Fail",

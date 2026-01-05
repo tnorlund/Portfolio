@@ -364,17 +364,20 @@ class LambdaFunctionsComponent(ComponentResource):
         ]:
             env_vars["CHROMADB_BUCKET"] = self.chromadb_buckets.bucket_name
 
-        # Add optimization configuration for batched chunk processing
-        # CHUNKS_PER_LAMBDA: Process multiple chunks per Lambda invocation (default: 4)
-        # Reduces Lambda invocations by ~75% (e.g., 64 chunks → 16 Lambda invocations)
+        # SIMPLIFIED ARCHITECTURE (v2): Configuration for big chunks
+        # TARGET_PARALLEL_LAMBDAS: Number of parallel Lambdas for chunk processing
+        # Each Lambda processes many deltas, creating one intermediate
+        # No reduce loop needed since we only have ~8 intermediates to merge
         if config["source_dir"] == "normalize_poll_batches_data":
-            env_vars["CHUNKS_PER_LAMBDA"] = "4"  # Conservative: 3, Recommended: 4, Aggressive: 5
+            env_vars["TARGET_PARALLEL_LAMBDAS"] = "8"  # Creates ~8 big chunks
+            env_vars["MIN_DELTAS_PER_CHUNK"] = "5"  # Minimum deltas per chunk
+            # Legacy config (kept for backward compatibility, not used in simplified mode)
+            env_vars["CHUNKS_PER_LAMBDA"] = "4"
 
-        # Add optimization configuration for N-way merge
+        # Add optimization configuration for N-way merge (legacy, not used in simplified mode)
         # MERGE_GROUP_SIZE: Group size for parallel reduce (default: 10 instead of 2)
-        # Reduces merge rounds from O(log₂ N) to O(log₁₀ N)
         if config["source_dir"] == "prepare_merge_pairs":
-            env_vars["MERGE_GROUP_SIZE"] = "10"  # Conservative: 8, Recommended: 10, Aggressive: 12
+            env_vars["MERGE_GROUP_SIZE"] = "10"
 
         # Create the Lambda function
         # Determine which layers are needed based on imports

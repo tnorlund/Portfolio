@@ -4,14 +4,14 @@ from datetime import datetime
 from typing import Any, Dict, Mapping, Optional
 
 import pytest
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+
 from receipt_dynamo_stream.parsing.parsers import (
     detect_entity_type,
     parse_entity,
     parse_stream_record,
 )
-
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 # Import MockMetrics from conftest (same directory)
 from .conftest import MockMetrics
@@ -106,7 +106,7 @@ def test_detect_entity_type_case_sensitive() -> None:
 
 def test_parse_entity_none_image() -> None:
     """Test parsing with None image."""
-    result = parse_entity(None, "RECEIPT_PLACE", "new", "PK", "SK")
+    result = parse_entity(None, "RECEIPT_PLACE", "new", ("PK", "SK"))
     assert result is None
 
 
@@ -132,7 +132,7 @@ def test_parse_entity_place_success() -> None:
     image.pop("PK", None)
     image.pop("SK", None)
 
-    result = parse_entity(image, "RECEIPT_PLACE", "new", pk, sk)
+    result = parse_entity(image, "RECEIPT_PLACE", "new", (pk, sk))
 
     assert result is not None
     assert isinstance(result, ReceiptPlace)
@@ -160,7 +160,7 @@ def test_parse_entity_word_label_success() -> None:
     image.pop("PK", None)
     image.pop("SK", None)
 
-    result = parse_entity(image, "RECEIPT_WORD_LABEL", "new", pk, sk)
+    result = parse_entity(image, "RECEIPT_WORD_LABEL", "new", (pk, sk))
 
     assert result is not None
     assert isinstance(result, ReceiptWordLabel)
@@ -170,7 +170,7 @@ def test_parse_entity_word_label_success() -> None:
 def test_parse_entity_invalid_entity_type() -> None:
     """Test with unknown entity type."""
     image: Dict[str, Mapping[str, object]] = {}
-    result = parse_entity(image, "UNKNOWN_TYPE", "new", "PK", "SK")
+    result = parse_entity(image, "UNKNOWN_TYPE", "new", ("PK", "SK"))
     assert result is None
 
 
@@ -183,7 +183,7 @@ def test_parse_entity_value_error_with_metrics() -> None:
     # Invalid image that will cause ValueError
     image: Dict[str, Mapping[str, object]] = {"invalid_field": {"S": "value"}}
 
-    result = parse_entity(image, "RECEIPT_PLACE", "old", pk, sk, metrics)
+    result = parse_entity(image, "RECEIPT_PLACE", "old", (pk, sk), metrics)
 
     assert result is None
     metric_names = [m[0] for m in metrics.counts]
@@ -199,8 +199,7 @@ def test_parse_entity_type_error_with_metrics() -> None:
         {"bad": "data"},  # type: ignore
         "RECEIPT_PLACE",
         "new",
-        "PK",
-        "SK",
+        ("PK", "SK"),
         metrics,
     )
 

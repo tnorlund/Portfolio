@@ -57,9 +57,8 @@ def sample_sqs_event():
 @pytest.fixture
 def sample_stream_message():
     """Create a sample StreamMessage for testing."""
-    from receipt_dynamo_stream.models import StreamMessage
-
     from receipt_dynamo.constants import ChromaDBCollection
+    from receipt_dynamo_stream.models import StreamMessage
 
     return StreamMessage(
         entity_type="RECEIPT_PLACE",
@@ -102,7 +101,6 @@ class TestProcessCollection:
         """Test successful collection processing."""
         from enhanced_compaction_handler import process_collection
         from receipt_chroma.compaction.models import CollectionUpdateResult
-
         from receipt_dynamo.constants import ChromaDBCollection
 
         # Setup mocks
@@ -178,7 +176,6 @@ class TestProcessCollection:
     ):
         """Test handling of snapshot download failure."""
         from enhanced_compaction_handler import process_collection
-
         from receipt_dynamo.constants import ChromaDBCollection
 
         # Setup mocks
@@ -239,7 +236,6 @@ class TestProcessCollection:
     ):
         """Test handling of snapshot upload failure."""
         from enhanced_compaction_handler import process_collection
-
         from receipt_dynamo.constants import ChromaDBCollection
 
         # Setup mocks
@@ -310,9 +306,8 @@ class TestProcessCollection:
     ):
         """Test handling of processing errors in updates."""
         from enhanced_compaction_handler import process_collection
-        from receipt_dynamo_stream.models import StreamMessage
-
         from receipt_dynamo.constants import ChromaDBCollection
+        from receipt_dynamo_stream.models import StreamMessage
 
         # Create test messages
         test_image_id = str(uuid4())
@@ -496,9 +491,8 @@ class TestProcessSQSMessages:
     ):
         """Test handling of partial batch failures."""
         from enhanced_compaction_handler import process_sqs_messages
-        from receipt_dynamo_stream.models import StreamMessage
-
         from receipt_dynamo.constants import ChromaDBCollection
+        from receipt_dynamo_stream.models import StreamMessage
 
         # Create test messages
         msg1 = StreamMessage(

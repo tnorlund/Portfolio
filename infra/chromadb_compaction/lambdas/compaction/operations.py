@@ -3,7 +3,7 @@
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
@@ -16,17 +16,17 @@ def update_receipt_metadata(
     changes: Dict[str, Any],
     logger: Any,
     metrics: Any = None,
-    OBSERVABILITY_AVAILABLE: bool = False,
+    observability_available: bool = False,
     get_dynamo_client_func: Any = None,
 ) -> int:
     """Update metadata for all embeddings of a specific receipt.
 
-    Uses DynamoDB to construct exact ChromaDB IDs instead of scanning entire collection.
-    This is much more efficient for large collections.
+    Uses DynamoDB to construct exact ChromaDB IDs vs scanning.
+    Much more efficient for large collections.
     """
     start_time = time.time()
 
-    if OBSERVABILITY_AVAILABLE:
+    if observability_available:
         logger.info(
             "Starting metadata update",
             image_id=image_id,
@@ -63,22 +63,25 @@ def update_receipt_metadata(
             )
 
             logger.info("Found words in DynamoDB", count=len(words))
-            if OBSERVABILITY_AVAILABLE and metrics:
+            if observability_available and metrics:
                 metrics.gauge("CompactionDynamoDBWords", len(words))
 
             # Construct exact ChromaDB IDs for words
             chromadb_ids = [
-                f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                (
+                    f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}"
+                    f"#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                )
                 for word in words
             ]
-        except Exception as e:
-            logger.error("Failed to query words from DynamoDB", error=str(e))
+        except Exception:
+            logger.exception("Failed to query words from DynamoDB")
 
-            if OBSERVABILITY_AVAILABLE and metrics:
+            if observability_available and metrics:
                 metrics.count(
                     "CompactionDynamoDBQueryError",
                     1,
-                    {"entity_type": "words", "error_type": type(e).__name__},
+                    {"entity_type": "words"},
                 )
             return 0
 
@@ -90,22 +93,25 @@ def update_receipt_metadata(
             )
 
             logger.info("Found lines in DynamoDB", count=len(lines))
-            if OBSERVABILITY_AVAILABLE and metrics:
+            if observability_available and metrics:
                 metrics.gauge("CompactionDynamoDBLines", len(lines))
 
             # Construct exact ChromaDB IDs for lines
             chromadb_ids = [
-                f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
+                (
+                    f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}"
+                    f"#LINE#{line.line_id:05d}"
+                )
                 for line in lines
             ]
-        except Exception as e:
-            logger.error("Failed to query lines from DynamoDB", error=str(e))
+        except Exception:
+            logger.exception("Failed to query lines from DynamoDB")
 
-            if OBSERVABILITY_AVAILABLE and metrics:
+            if observability_available and metrics:
                 metrics.count(
                     "CompactionDynamoDBQueryError",
                     1,
-                    {"entity_type": "lines", "error_type": type(e).__name__},
+                    {"entity_type": "lines"},
                 )
             return 0
     else:
@@ -113,7 +119,7 @@ def update_receipt_metadata(
             "Unknown collection type", collection_name=collection_name
         )
 
-        if OBSERVABILITY_AVAILABLE and metrics:
+        if observability_available and metrics:
             metrics.count(
                 "CompactionUnknownCollectionType",
                 1,
@@ -146,7 +152,7 @@ def update_receipt_metadata(
 
         if found_count == 0:
             logger.error(
-                "No matching embeddings found in ChromaDB for metadata update",
+                "No matching embeddings found for metadata update",
                 receipt_id=receipt_id,
                 image_id=image_id,
                 expected=len(chromadb_ids),
@@ -204,7 +210,7 @@ def update_receipt_metadata(
             collection.update(ids=matching_ids, metadatas=matching_metadatas)
             elapsed_time = time.time() - start_time
 
-            if OBSERVABILITY_AVAILABLE:
+            if observability_available:
                 logger.info(
                     "Successfully updated metadata",
                     updated_count=len(matching_ids),
@@ -224,7 +230,7 @@ def update_receipt_metadata(
         except Exception as e:
             logger.error("Failed to update ChromaDB metadata", error=str(e))
 
-            if OBSERVABILITY_AVAILABLE and metrics:
+            if observability_available and metrics:
                 metrics.count(
                     "CompactionChromaDBUpdateError",
                     1,
@@ -237,16 +243,16 @@ def update_receipt_metadata(
             dynamodb_ids=len(chromadb_ids),
         )
 
-        # If no records found in ChromaDB but DynamoDB has entities, this might indicate
-        # that embeddings haven't been created yet
+        # No ChromaDB records but DynamoDB has entities:
+        # embeddings may not be created yet
         if chromadb_ids:
             logger.info(
-                "DynamoDB entities exist but no ChromaDB embeddings found - embeddings may not be created yet"
+                "DynamoDB entities exist but no embeddings found"
             )
 
     elapsed_time = time.time() - start_time
 
-    if OBSERVABILITY_AVAILABLE:
+    if observability_available:
         logger.info(
             "Metadata update completed",
             elapsed_seconds=elapsed_time,
@@ -266,16 +272,16 @@ def remove_receipt_metadata(
     receipt_id: int,
     logger: Any,
     metrics: Any = None,
-    OBSERVABILITY_AVAILABLE: bool = False,
+    observability_available: bool = False,
     get_dynamo_client_func: Any = None,
 ) -> int:
-    """Remove merchant metadata fields from all embeddings of a specific receipt.
+    """Remove merchant metadata fields from embeddings of a receipt.
 
-    Uses DynamoDB to construct exact ChromaDB IDs instead of scanning entire collection.
+    Uses DynamoDB to construct exact ChromaDB IDs vs scanning.
     """
     start_time = time.time()
 
-    if OBSERVABILITY_AVAILABLE:
+    if observability_available:
         logger.info(
             "Starting metadata removal",
             image_id=image_id,
@@ -307,7 +313,10 @@ def remove_receipt_metadata(
                 image_id, receipt_id
             )
             chromadb_ids = [
-                f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                (
+                    f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}"
+                    f"#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                )
                 for word in words
             ]
         except Exception as e:
@@ -321,7 +330,10 @@ def remove_receipt_metadata(
                 image_id, receipt_id
             )
             chromadb_ids = [
-                f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
+                (
+                    f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}"
+                    f"#LINE#{line.line_id:05d}"
+                )
                 for line in lines
             ]
         except Exception as e:
@@ -342,7 +354,7 @@ def remove_receipt_metadata(
         return 0
 
     # Fields to remove when place info is deleted
-    # Include both old (ReceiptMetadata) and new (ReceiptPlace) field names for cleanup
+    # Include old and new field names for cleanup
     fields_to_remove = [
         "merchant_name",
         "merchant_category",
@@ -390,7 +402,7 @@ def remove_receipt_metadata(
             collection.update(ids=matching_ids, metadatas=matching_metadatas)
             elapsed_time = time.time() - start_time
 
-            if OBSERVABILITY_AVAILABLE:
+            if observability_available:
                 logger.info(
                     "Removed metadata",
                     removed_count=len(matching_ids),
@@ -420,7 +432,7 @@ def remove_receipt_metadata(
 
     elapsed_time = time.time() - start_time
 
-    if OBSERVABILITY_AVAILABLE:
+    if observability_available:
         logger.info(
             "Metadata removal completed",
             elapsed_seconds=elapsed_time,
@@ -442,16 +454,16 @@ def update_word_labels(
     entity_data: Optional[Dict[str, Any]] = None,
     logger: Any = None,
     metrics: Any = None,
-    OBSERVABILITY_AVAILABLE: bool = False,
+    observability_available: bool = False,
     get_dynamo_client_func: Any = None,
 ) -> int:
-    """Update label metadata for a specific word embedding using message snapshot when available.
+    """Update label metadata using snapshot or DynamoDB fallback.
 
-    Falls back to reconstructing from DynamoDB only if snapshot is missing.
+    Prefers message snapshot to avoid DynamoDB race conditions.
     """
     try:
-        # Parse ChromaDB ID to extract word identifiers
-        # Format: IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}
+        # Parse ID to extract word identifiers
+        # Format: IMAGE#id#RECEIPT#id#LINE#id#WORD#id
         parts = chromadb_id.split("#")
         if len(parts) < 8 or "WORD" not in parts:
             if logger:
@@ -459,7 +471,7 @@ def update_word_labels(
                     "Invalid ChromaDB ID format for word",
                     chromadb_id=chromadb_id,
                 )
-            if OBSERVABILITY_AVAILABLE and metrics:
+            if observability_available and metrics:
                 metrics.count("CompactionInvalidChromaDBID", 1)
             return 0
 
@@ -493,14 +505,14 @@ def update_word_labels(
                 )
             return 0
 
-        # Prefer snapshot data if available to avoid DynamoDB race conditions
+        # Prefer snapshot to avoid DynamoDB race conditions
         if record_snapshot:
-            # Build the minimal fields needed for label metadata derivation from snapshot
+            # Minimal fields for label metadata from snapshot
             reconstructed_metadata = {
                 "label_status": None,  # will be derived below if needed
             }
         else:
-            # Reconstruct complete label metadata using the same logic as step function
+            # Reconstruct complete label metadata via step function logic
             if get_dynamo_client_func:
                 dynamo_client = get_dynamo_client_func()
             else:
@@ -520,7 +532,7 @@ def update_word_labels(
 
         # Update with reconstructed/snapshot-derived label fields
         if record_snapshot:
-            # Apply targeted changes directly based on the incoming change set for this word
+            # Apply targeted changes from incoming change set
             if changes:
                 # validation_status
                 if "validation_status" in changes:
@@ -545,7 +557,7 @@ def update_word_labels(
                     if val is not None:
                         updated_metadata["label_proposed_by"] = val
 
-            # Always add/update the current label in validated/invalid sets based on status when provided
+            # Add/update current label in validated/invalid sets
             status = (
                 changes.get("validation_status", {}).get("new")
                 if changes
@@ -605,7 +617,7 @@ def update_word_labels(
                 ),
             )
 
-        if OBSERVABILITY_AVAILABLE and metrics:
+        if observability_available and metrics:
             metrics.count("CompactionWordLabelUpdated", 1)
             metrics.gauge(
                 "CompactionValidatedLabelsCount",
@@ -631,7 +643,7 @@ def update_word_labels(
                 error=str(e),
             )
 
-        if OBSERVABILITY_AVAILABLE and metrics:
+        if observability_available and metrics:
             metrics.count(
                 "CompactionWordLabelUpdateError",
                 1,
@@ -645,7 +657,7 @@ def remove_word_labels(
     chromadb_id: str,
     logger: Any = None,
     metrics: Any = None,
-    OBSERVABILITY_AVAILABLE: bool = False,
+    observability_available: bool = False,
 ) -> int:
     """Remove label metadata from a specific word embedding."""
     try:
@@ -658,7 +670,7 @@ def remove_word_labels(
                     "Word embedding not found", chromadb_id=chromadb_id
                 )
 
-            if OBSERVABILITY_AVAILABLE and metrics:
+            if observability_available and metrics:
                 metrics.count("CompactionWordEmbeddingNotFoundForRemoval", 1)
             return 0
 
@@ -698,7 +710,7 @@ def remove_word_labels(
 
         if logger:
             logger.info("Removed labels from word", chromadb_id=chromadb_id)
-        if OBSERVABILITY_AVAILABLE and metrics:
+        if observability_available and metrics:
             metrics.count("CompactionWordLabelRemoved", 1)
         return 1
 
@@ -710,7 +722,7 @@ def remove_word_labels(
                 error=str(e),
             )
 
-        if OBSERVABILITY_AVAILABLE and metrics:
+        if observability_available and metrics:
             metrics.count(
                 "CompactionWordLabelRemovalError",
                 1,
@@ -727,7 +739,7 @@ def reconstruct_label_metadata(
     dynamo_client: Any,
 ) -> Dict[str, Any]:
     """
-    Reconstruct all label-related metadata fields exactly as the step function does.
+    Reconstruct label metadata fields as step function does.
 
     Args:
         image_id: Image ID
@@ -847,13 +859,13 @@ def delete_receipt_embeddings(
     receipt_id: int,
     logger: Any,
     metrics: Any = None,
-    OBSERVABILITY_AVAILABLE: bool = False,
+    observability_available: bool = False,
     get_dynamo_client_func: Any = None,
 ) -> int:
     """Delete all embeddings for a specific receipt from ChromaDB.
 
-    Uses DynamoDB to construct exact ChromaDB IDs instead of scanning entire collection.
-    This is much more efficient for large collections.
+    Uses DynamoDB to construct exact ChromaDB IDs vs scanning.
+    Much more efficient for large collections.
 
     Args:
         collection: ChromaDB collection object
@@ -861,7 +873,7 @@ def delete_receipt_embeddings(
         receipt_id: Receipt ID
         logger: Logger instance
         metrics: Optional metrics collector
-        OBSERVABILITY_AVAILABLE: Whether observability features are available
+        observability_available: Whether observability features are available
         get_dynamo_client_func: Optional function to get DynamoDB client
 
     Returns:
@@ -869,7 +881,7 @@ def delete_receipt_embeddings(
     """
     start_time = time.time()
 
-    if OBSERVABILITY_AVAILABLE:
+    if observability_available:
         logger.info(
             "Starting receipt embedding deletion",
             image_id=image_id,
@@ -904,22 +916,25 @@ def delete_receipt_embeddings(
             )
 
             logger.info("Found words in DynamoDB", count=len(words))
-            if OBSERVABILITY_AVAILABLE and metrics:
+            if observability_available and metrics:
                 metrics.gauge("CompactionDynamoDBWords", len(words))
 
             # Construct exact ChromaDB IDs for words
             chromadb_ids = [
-                f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                (
+                    f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}"
+                    f"#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                )
                 for word in words
             ]
-        except Exception as e:
-            logger.error("Failed to query words from DynamoDB", error=str(e))
+        except Exception:
+            logger.exception("Failed to query words from DynamoDB")
 
-            if OBSERVABILITY_AVAILABLE and metrics:
+            if observability_available and metrics:
                 metrics.count(
                     "CompactionDynamoDBQueryError",
                     1,
-                    {"entity_type": "words", "error_type": type(e).__name__},
+                    {"entity_type": "words"},
                 )
             return 0
 
@@ -931,22 +946,25 @@ def delete_receipt_embeddings(
             )
 
             logger.info("Found lines in DynamoDB", count=len(lines))
-            if OBSERVABILITY_AVAILABLE and metrics:
+            if observability_available and metrics:
                 metrics.gauge("CompactionDynamoDBLines", len(lines))
 
             # Construct exact ChromaDB IDs for lines
             chromadb_ids = [
-                f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
+                (
+                    f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}"
+                    f"#LINE#{line.line_id:05d}"
+                )
                 for line in lines
             ]
-        except Exception as e:
-            logger.error("Failed to query lines from DynamoDB", error=str(e))
+        except Exception:
+            logger.exception("Failed to query lines from DynamoDB")
 
-            if OBSERVABILITY_AVAILABLE and metrics:
+            if observability_available and metrics:
                 metrics.count(
                     "CompactionDynamoDBQueryError",
                     1,
-                    {"entity_type": "lines", "error_type": type(e).__name__},
+                    {"entity_type": "lines"},
                 )
             return 0
     else:
@@ -954,7 +972,7 @@ def delete_receipt_embeddings(
             "Unknown collection type", collection_name=collection_name
         )
 
-        if OBSERVABILITY_AVAILABLE and metrics:
+        if observability_available and metrics:
             metrics.count(
                 "CompactionUnknownCollectionType",
                 1,
@@ -979,7 +997,7 @@ def delete_receipt_embeddings(
         found_ids = results.get("ids", [])
         found_count = len(found_ids)
 
-        if OBSERVABILITY_AVAILABLE:
+        if observability_available:
             logger.info(
                 "Found embeddings in ChromaDB",
                 found_count=found_count,
@@ -999,7 +1017,7 @@ def delete_receipt_embeddings(
             collection.delete(ids=found_ids)
             elapsed_time = time.time() - start_time
 
-            if OBSERVABILITY_AVAILABLE:
+            if observability_available:
                 logger.info(
                     "Successfully deleted embeddings",
                     deleted_count=found_count,
@@ -1022,16 +1040,16 @@ def delete_receipt_embeddings(
                 dynamodb_ids=len(chromadb_ids),
             )
 
-            # If no records found in ChromaDB but DynamoDB has entities, this might indicate
-            # that embeddings haven't been created yet or were already deleted
+            # No ChromaDB records but DynamoDB has entities:
+            # embeddings may not exist or were already deleted
             if chromadb_ids:
                 logger.info(
-                    "DynamoDB entities exist but no ChromaDB embeddings found - embeddings may not exist or were already deleted"
+                    "DynamoDB entities exist but no embeddings found"
                 )
 
         elapsed_time = time.time() - start_time
 
-        if OBSERVABILITY_AVAILABLE:
+        if observability_available:
             logger.info(
                 "Embedding deletion completed",
                 elapsed_seconds=elapsed_time,
@@ -1047,7 +1065,7 @@ def delete_receipt_embeddings(
     except Exception as e:
         logger.error("Failed to delete ChromaDB embeddings", error=str(e))
 
-        if OBSERVABILITY_AVAILABLE and metrics:
+        if observability_available and metrics:
             metrics.count(
                 "CompactionChromaDBDeletionError",
                 1,

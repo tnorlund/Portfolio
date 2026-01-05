@@ -4,14 +4,14 @@ import dataclasses
 from datetime import datetime
 
 import pytest
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+
 from receipt_dynamo_stream.change_detection.detector import (
     CHROMADB_RELEVANT_FIELDS,
     get_chromadb_relevant_changes,
 )
 from receipt_dynamo_stream.models import FieldChange
-
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 
 def _make_place(**kwargs: object) -> ReceiptPlace:
@@ -82,9 +82,7 @@ def test_get_chromadb_relevant_changes_both_none() -> None:
 def test_get_chromadb_relevant_changes_old_none() -> None:
     """Test when old entity is None (INSERT case)."""
     new_entity = _make_place(merchant_name="New Merchant")
-    changes = get_chromadb_relevant_changes(
-        "RECEIPT_PLACE", None, new_entity
-    )
+    changes = get_chromadb_relevant_changes("RECEIPT_PLACE", None, new_entity)
 
     # All relevant fields should be detected as changes
     assert "merchant_name" in changes
@@ -95,9 +93,7 @@ def test_get_chromadb_relevant_changes_old_none() -> None:
 def test_get_chromadb_relevant_changes_new_none() -> None:
     """Test when new entity is None (REMOVE case)."""
     old_entity = _make_place(merchant_name="Old Merchant")
-    changes = get_chromadb_relevant_changes(
-        "RECEIPT_PLACE", old_entity, None
-    )
+    changes = get_chromadb_relevant_changes("RECEIPT_PLACE", old_entity, None)
 
     # All relevant fields should be detected as changes
     assert "merchant_name" in changes
@@ -109,9 +105,7 @@ def test_get_chromadb_relevant_changes_no_changes() -> None:
     """Test when entities are identical."""
     entity1 = _make_place()
     entity2 = _make_place()
-    changes = get_chromadb_relevant_changes(
-        "RECEIPT_PLACE", entity1, entity2
-    )
+    changes = get_chromadb_relevant_changes("RECEIPT_PLACE", entity1, entity2)
     assert changes == {}
 
 

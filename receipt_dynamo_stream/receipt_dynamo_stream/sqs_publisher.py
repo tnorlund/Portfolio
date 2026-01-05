@@ -1,33 +1,25 @@
 """
 SQS publishing utilities for stream messages.
-"""
 
-# pylint: disable=broad-exception-caught
+Publishes to Standard SQS queues for high throughput (batch size 1000).
+The compactor Lambda handles ordering by sorting REMOVE first and using
+within-batch deduplication to prevent orphaned embeddings.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
-from typing import Any, Iterable, Mapping, Optional, Protocol, cast
+from typing import Any, Iterable, Optional
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+
 from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
+from receipt_dynamo_stream.stream_types import MetricsRecorder
 
 logger = logging.getLogger(__name__)
-
-
-class MetricsRecorder(Protocol):  # pylint: disable=too-few-public-methods
-    """Minimal protocol for metrics clients."""
-
-    def count(
-        self,
-        name: str,
-        value: int,
-        dimensions: Optional[Mapping[str, str]] = None,
-    ) -> object:
-        """Record a count metric."""
-        return None
 
 
 def publish_messages(
@@ -82,27 +74,57 @@ def _message_to_dict(msg: StreamMessage) -> dict[str, object]:
         }
 
     return {
-        "source": msg.source,
+        "source": msg.context.source,
         "entity_type": msg.entity_type,
         "entity_data": dict(msg.entity_data),
         "changes": changes_dict,
         "event_name": msg.event_name,
-        "timestamp": msg.timestamp,
-        "stream_record_id": msg.stream_record_id,
-        "aws_region": msg.aws_region,
+        "timestamp": msg.context.timestamp,
+        "stream_record_id": msg.context.record_id,
+        "aws_region": msg.context.aws_region,
     }
 
 
-def send_batch_to_queue(  # pylint: disable=too-many-locals
+def _build_sqs_entry(
+    entry_id: str,
+    message_dict: dict[str, object],
+    collection: ChromaDBCollection,
+) -> dict[str, object]:
+    """Build a single SQS batch entry for Standard queues."""
+    return {
+        "Id": entry_id,
+        "MessageBody": json.dumps(message_dict),
+        # No MessageGroupId - Standard queues don't support it
+        # Lambda handles ordering by sorting REMOVE first within each batch
+        "MessageAttributes": {
+            "source": {
+                "StringValue": "dynamodb_stream",
+                "DataType": "String",
+            },
+            "entity_type": {
+                "StringValue": str(message_dict.get("entity_type")),
+                "DataType": "String",
+            },
+            "event_name": {
+                "StringValue": str(message_dict.get("event_name")),
+                "DataType": "String",
+            },
+            "collection": {
+                "StringValue": collection.value,
+                "DataType": "String",
+            },
+        },
+    }
+
+
+def send_batch_to_queue(
     sqs: Any,
     messages: list[tuple[dict[str, object], ChromaDBCollection]],
     queue_env_var: str,
     collection: ChromaDBCollection,
     metrics: Optional[MetricsRecorder] = None,
 ) -> int:
-    """
-    Send a batch of messages to a specific queue.
-    """
+    """Send a batch of messages to a specific queue."""
     sent_count = 0
     queue_url = os.environ.get(queue_env_var)
 
@@ -112,42 +134,10 @@ def send_batch_to_queue(  # pylint: disable=too-many-locals
 
     for i in range(0, len(messages), 10):
         batch = messages[i : i + 10]
-        entries = []
-
-        for j, (message_dict, _) in enumerate(batch):
-            # Single message group per collection for optimal batching.
-            # This allows Phase 2 batching in the compaction Lambda to fetch
-            # up to 500 messages per invocation instead of being limited
-            # by per-image message group locks in FIFO queues.
-            message_group_id = f"compaction:{collection.value}"
-
-            entries.append(
-                {
-                    "Id": str(i + j),
-                    "MessageBody": json.dumps(message_dict),
-                    "MessageGroupId": message_group_id,
-                    "MessageAttributes": {
-                        "source": {
-                            "StringValue": "dynamodb_stream",
-                            "DataType": "String",
-                        },
-                        "entity_type": {
-                            "StringValue": str(
-                                message_dict.get("entity_type")
-                            ),
-                            "DataType": "String",
-                        },
-                        "event_name": {
-                            "StringValue": str(message_dict.get("event_name")),
-                            "DataType": "String",
-                        },
-                        "collection": {
-                            "StringValue": collection.value,
-                            "DataType": "String",
-                        },
-                    },
-                }
-            )
+        entries = [
+            _build_sqs_entry(str(i + j), msg_dict, collection)
+            for j, (msg_dict, _) in enumerate(batch)
+        ]
 
         try:
             response = sqs.send_message_batch(
@@ -167,10 +157,11 @@ def send_batch_to_queue(  # pylint: disable=too-many-locals
                     {"collection": collection.value},
                 )
 
-        except Exception:  # pragma: no cover - defensive
+        except (ClientError, BotoCoreError) as exc:
             logger.exception(
-                "Failed to send messages to %s queue",
+                "Failed to send messages to %s queue: %s",
                 collection.value,
+                exc,
             )
             if metrics:
                 metrics.count(

@@ -12,9 +12,9 @@ from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 from .change_detector import get_chromadb_relevant_changes
-from .models import ChromaDBCollection, ParsedStreamRecord, StreamMessage
+from .models import ChromaDBCollection, StreamMessage
 
-# Avoid importing CompactionRun from receipt_dynamo to keep Lambda layer optional
+# Avoid CompactionRun import to keep Lambda layer optional
 
 
 # Module-level logger
@@ -75,7 +75,8 @@ def build_compaction_run_messages(
     Returns:
         List of StreamMessage objects (empty if not a compaction run)
     """
-    from .compaction_run import is_compaction_run, parse_compaction_run
+    # pylint: disable-next=import-outside-toplevel
+    from .compaction_run import is_compaction_run, parse_compaction_run  # lazy
 
     messages: List[StreamMessage] = []
 
@@ -122,15 +123,15 @@ def build_compaction_run_messages(
             messages.append(stream_msg)
 
         logger.info(
-            f"Created compaction run messages",
+            "Created compaction run messages",
             extra={
                 "run_id": compaction_run.get("run_id"),
                 "image_id": compaction_run.get("image_id"),
             },
         )
 
-    except Exception as e:
-        logger.error(f"Failed to build compaction run message: {e}")
+    except Exception:
+        logger.exception("Failed to build compaction run message")
         if metrics:
             metrics.count("CompactionRunMessageBuildError", 1)
 
@@ -141,7 +142,7 @@ def build_compaction_run_completion_messages(
     record: Dict[str, Any], metrics=None
 ) -> List[StreamMessage]:
     """
-    Build messages for COMPACTION_RUN MODIFY events when embeddings are complete.
+    Build messages for COMPACTION_RUN MODIFY on embedding completion.
 
     Detects when both lines_state and words_state are COMPLETED and creates
     messages to trigger compaction for both collections.
@@ -151,9 +152,13 @@ def build_compaction_run_completion_messages(
         metrics: Optional metrics client
 
     Returns:
-        List of StreamMessage objects (one for lines, one for words) or empty list
+        List of StreamMessage objects (lines, words) or empty
     """
-    from .compaction_run import is_compaction_run, is_embeddings_completed
+    # pylint: disable-next=import-outside-toplevel
+    from .compaction_run import (  # lazy load
+        is_compaction_run,
+        is_embeddings_completed,
+    )
 
     messages = []
 
@@ -177,12 +182,13 @@ def build_compaction_run_completion_messages(
             return messages
 
         # Parse the compaction run entity
-        from .compaction_run import parse_compaction_run
+        # pylint: disable-next=import-outside-toplevel
+        from .compaction_run import parse_compaction_run  # lazy
 
         compaction_run = parse_compaction_run(new_image, pk, sk)
 
         # Create messages for both collections
-        for collection in ["lines", "words"]:
+        for collection in [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]:
             message = StreamMessage(
                 entity_type="COMPACTION_RUN",
                 entity_data={
@@ -190,8 +196,10 @@ def build_compaction_run_completion_messages(
                     "image_id": compaction_run.get("image_id"),
                     "receipt_id": compaction_run.get("receipt_id"),
                 },
-                collection=collection,
+                changes={},
                 event_name=record.get("eventName", "MODIFY"),
+                collections=[collection],
+                source="dynamodb_stream",
             )
             messages.append(message)
 
@@ -199,7 +207,7 @@ def build_compaction_run_completion_messages(
             metrics.count("CompactionRunCompletionDetected", 1)
 
         logger.info(
-            f"Detected COMPACTION_RUN completion, queuing compaction",
+            "Detected COMPACTION_RUN completion, queuing compaction",
             extra={
                 "run_id": compaction_run.get("run_id"),
                 "image_id": compaction_run.get("image_id"),
@@ -207,8 +215,8 @@ def build_compaction_run_completion_messages(
             },
         )
 
-    except Exception as e:
-        logger.error(f"Failed to build compaction run completion message: {e}")
+    except Exception:
+        logger.exception("Failed to build compaction run completion message")
         if metrics:
             metrics.count("CompactionRunCompletionMessageBuildError", 1)
 
@@ -228,7 +236,8 @@ def build_entity_change_message(
     Returns:
         StreamMessage or None if no relevant changes
     """
-    from .parsers import parse_stream_record
+    # pylint: disable-next=import-outside-toplevel
+    from .parsers import parse_stream_record  # lazy
 
     try:
         # Parse the stream record
@@ -279,7 +288,8 @@ def build_entity_change_message(
         )
 
         logger.info(
-            f"Created {entity_type} message",
+            "Created %s message",
+            entity_type,
             extra={
                 "target_collections": [c.value for c in target_collections],
                 "change_count": len(changes),
@@ -299,8 +309,8 @@ def build_entity_change_message(
 
         return stream_msg
 
-    except Exception as e:
-        logger.error(f"Failed to build entity change message: {e}")
+    except Exception:
+        logger.exception("Failed to build entity change message")
         if metrics:
             metrics.count("EntityMessageBuildError", 1)
         return None
