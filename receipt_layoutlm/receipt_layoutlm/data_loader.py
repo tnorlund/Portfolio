@@ -91,7 +91,8 @@ class WordInfo:
     word_id: int
     text: str
     bbox: List[int]  # [x0, y0, x1, y1] normalized
-    label: str  # Raw label (not BIO)
+    label: str  # Merged label for BIO tagging (not BIO prefix)
+    original_label: str  # Original label before merging (for grouping)
     line_id: int
     image_id: str
     receipt_id: int
@@ -175,35 +176,40 @@ def _find_below_neighbor(word: WordInfo, all_words: List[WordInfo]) -> Optional[
 
 
 def _group_words_into_blocks(words: List[WordInfo]) -> List[List[WordInfo]]:
-    """Group words into spatially contiguous blocks of the same label.
+    """Group words into spatially contiguous blocks of the same ORIGINAL label.
 
     Uses spatial adjacency (right neighbor, below neighbor) to build a graph,
-    then finds connected components where all words share the same label.
+    then finds connected components where all words share the same original label.
+
+    Grouping by original_label (before merging) ensures that:
+    - Multi-line addresses (all ADDRESS_LINE) are grouped together
+    - Separate amounts (SUBTOTAL, TAX, GRAND_TOTAL) stay as separate blocks
+      even though they merge to the same AMOUNT label
 
     Args:
         words: List of WordInfo objects to group.
 
     Returns:
-        List of word groups, each containing words of the same label.
+        List of word groups, each containing words of the same original label.
     """
     if not words:
         return []
 
     n = len(words)
 
-    # Build adjacency list: connect words with same label that are neighbors
+    # Build adjacency list: connect words with same ORIGINAL label that are neighbors
     adjacency: List[List[int]] = [[] for _ in range(n)]
 
     for i, word in enumerate(words):
         # Find right neighbor
         right_idx = _find_right_neighbor(word, words)
-        if right_idx is not None and words[right_idx].label == word.label:
+        if right_idx is not None and words[right_idx].original_label == word.original_label:
             adjacency[i].append(right_idx)
             adjacency[right_idx].append(i)
 
         # Find below neighbor
         below_idx = _find_below_neighbor(word, words)
-        if below_idx is not None and words[below_idx].label == word.label:
+        if below_idx is not None and words[below_idx].original_label == word.original_label:
             adjacency[i].append(below_idx)
             adjacency[below_idx].append(i)
 
@@ -397,6 +403,55 @@ def _raw_label(
     return _normalize_word_label(labels[0], allowed, merge_lookup)
 
 
+def _get_original_and_merged_labels(
+    labels: List[str],
+    allowed: Optional[set[str]] = None,
+    merge_lookup: Optional[Dict[str, str]] = None,
+) -> Tuple[str, str]:
+    """Get both original (pre-merge) and merged labels for a word.
+
+    Args:
+        labels: List of label strings from DynamoDB.
+        allowed: Optional set of allowed labels. Others map to "O".
+        merge_lookup: Dict mapping source labels to target labels.
+
+    Returns:
+        Tuple of (original_label, merged_label).
+        - original_label: Label before merging (for spatial grouping)
+        - merged_label: Label after merging (for BIO tagging)
+    """
+    if not labels:
+        return "O", "O"
+
+    raw = (labels[0] or "").upper()
+    if raw == "O":
+        return "O", "O"
+
+    # Get original label (before merge, but after allowed filtering)
+    original = raw
+
+    # Apply merge lookup to get merged label
+    merged = raw
+    if merge_lookup and raw in merge_lookup:
+        merged = merge_lookup[raw]
+
+    # Filter to allowed labels - apply to merged label
+    if allowed is not None and merged not in allowed:
+        return "O", "O"
+
+    # Validate against core labels + merge targets
+    valid_labels = _CORE_SET.copy()
+    if merge_lookup:
+        valid_labels.update(merge_lookup.values())
+
+    if merged not in valid_labels:
+        return "O", "O"
+
+    # If original was merged, keep original for grouping
+    # If original was filtered out, both are O
+    return original, merged
+
+
 @dataclass
 class MergeInfo:
     """Information about label merging applied during dataset loading."""
@@ -503,14 +558,15 @@ def load_datasets(
     for w in words:
         word_key = (w.image_id, w.receipt_id, w.line_id, w.word_id)
         receipt_key_tuple = (w.image_id, w.receipt_id)
-        label = _raw_label(
+        # Get both original (for grouping) and merged (for BIO tags) labels
+        original_label, merged_label = _get_original_and_merged_labels(
             label_map.get(word_key, []),
             allowed,
             merge_lookup,
         )
-        # Track non-O labels for resulting_labels
-        if label != "O":
-            resulting_labels_set.add(label)
+        # Track non-O labels for resulting_labels (use merged)
+        if merged_label != "O":
+            resulting_labels_set.add(merged_label)
         max_x, max_y = image_extents.get(w.image_id, (1.0, 1.0))
         x0, y0, x1, y1 = _box_from_word(w)
         norm_box = _normalize_box_from_extents(x0, y0, x1, y1, max_x, max_y)
@@ -519,7 +575,8 @@ def load_datasets(
             word_id=w.word_id,
             text=w.text,
             bbox=norm_box,
-            label=label,
+            label=merged_label,  # Used for BIO tagging
+            original_label=original_label,  # Used for spatial grouping
             line_id=w.line_id,
             image_id=w.image_id,
             receipt_id=w.receipt_id,
