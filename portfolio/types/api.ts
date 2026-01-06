@@ -222,11 +222,22 @@ export interface TrainingMetricsEpoch {
   >;
 }
 
+export interface DatasetMetrics {
+  num_train_samples?: number;
+  num_val_samples?: number;
+  o_entity_ratio_train?: number;
+  o_entity_ratio_val?: number;
+  random_seed?: number;
+  num_train_receipts?: number;
+  num_val_receipts?: number;
+}
+
 export interface TrainingMetricsResponse {
   job_id: string;
   job_name: string;
   status: string;
   created_at: string;
+  dataset_metrics?: DatasetMetrics;
   epochs: TrainingMetricsEpoch[];
   best_epoch: number;
   best_f1: number;

@@ -22,7 +22,7 @@ DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
 # This can be updated to point to the best trained model
 FEATURED_JOB_ID = os.environ.get(
     "FEATURED_JOB_ID",
-    "b8af06b6-27eb-41bc-846a-8b0ff93b8845"  # confusion-matrix-test-2
+    "18da9414-37a5-4837-b65a-a03b7f8df4cd"  # layoutlm-hybrid-8-labels-orig-label-fix
 )
 
 
@@ -78,6 +78,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Get all metrics for the job
         metrics_data = _fetch_all_metrics(client, job_id)
 
+        # Get dataset-level metrics (epoch=None)
+        dataset_metrics = _fetch_dataset_metrics(client, job_id)
+
         # Aggregate metrics by epoch
         epochs = _aggregate_by_epoch(
             metrics_data,
@@ -104,6 +107,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "job_name": job.name,
             "status": job.status,
             "created_at": job.created_at,
+            "dataset_metrics": dataset_metrics if dataset_metrics else None,
             "epochs": epochs,
             "best_epoch": best_epoch,
             "best_f1": best_f1,
@@ -157,6 +161,25 @@ def _fetch_all_metrics(client: DynamoClient, job_id: str) -> Dict[str, List]:
     result["label_metrics"] = label_metrics
 
     return result
+
+
+def _fetch_dataset_metrics(client: DynamoClient, job_id: str) -> Dict[str, Any]:
+    """Fetch dataset-level metrics (epoch=None).
+
+    These are metrics recorded once at training start, not per-epoch.
+    Includes: num_train_samples, num_val_samples, o_entity_ratio_train, etc.
+    """
+    all_metrics = []
+    last_key = None
+    while True:
+        metrics, last_key = client.list_job_metrics(
+            job_id, last_evaluated_key=last_key
+        )
+        all_metrics.extend(metrics)
+        if not last_key:
+            break
+
+    return {m.metric_name: m.value for m in all_metrics if m.epoch is None}
 
 
 def _aggregate_by_epoch(

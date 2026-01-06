@@ -20,6 +20,7 @@ import {
   RandomReceiptWithLabels,
   ReceiptStack,
   ScanReceiptBoundingBox,
+  TrainingMetricsAnimation,
   UploadDiagram,
   ZDepthConstrained,
   ZDepthUnconstrained,
@@ -577,10 +578,14 @@ export default function ReceiptPage({
         configurations faster.
       </p>
 
+      <ClientOnly>
+        <TrainingMetricsAnimation />
+      </ClientOnly>
+
       <p>
         The custom model processes receipts in about 100ms, compared to
         30-60 seconds with the AI Agent. The tradeoff is coverage: the model
-        focuses on 4 core labels, while the AI Agent provides comprehensive
+        focuses on 8 core labels, while the AI Agent provides comprehensive
         labeling including product names, quantities, and unit prices.
       </p>
 
