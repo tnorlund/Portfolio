@@ -117,7 +117,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         }
 
     # Register destination with LangSmith
-    # Note: endpoint_url is optional for AWS S3, only needed for S3-compatible buckets
+    # Note: endpoint_url is required for LangSmith to properly access the S3 bucket
     request_body = {
         "destination_type": "s3",
         "display_name": f"portfolio-traces-{stack}",
@@ -125,6 +125,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "bucket_name": bucket_name,
             "prefix": "traces/",
             "region": region,
+            "endpoint_url": f"https://s3.{region}.amazonaws.com",
+            "include_bucket_in_prefix": True,
         },
         "credentials": {
             "access_key_id": s3_credentials["access_key_id"],
