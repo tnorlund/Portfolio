@@ -17,6 +17,7 @@ import {
   LockingSwimlane,
   MerchantCount,
   PhotoReceiptBoundingBox,
+  PrecisionRecallDartboard,
   RandomReceiptWithLabels,
   ReceiptStack,
   ScanReceiptBoundingBox,
@@ -552,11 +553,21 @@ export default function ReceiptPage({
       </ClientOnly>
 
       <p>
-        Training the model to produce the best results means finding the right
-        settings. Instead of trying every possible setting, I use an LLM to
-        review training results and suggest which settings to try next. It
-        learns what works and what doesn&apos;t, helping me find better
-        configurations faster.
+        Training optimizes for two competing goals: <strong>precision</strong>{" "}
+        (accuracy of predictions) and <strong>recall</strong> (coverage of all
+        entities). Think of it like throwing darts&mdash;high precision means
+        tight groupings, high recall means hitting more targets.
+      </p>
+
+      <ClientOnly>
+        <PrecisionRecallDartboard />
+      </ClientOnly>
+
+      <p>
+        Finding the right hyperparameters to maximize both is tedious. I use an
+        LLM agent to review training metrics and suggest the next configuration
+        to try. It learns from each run, converging on optimal settings faster
+        than manual tuning.
       </p>
 
       <ClientOnly>
@@ -564,10 +575,10 @@ export default function ReceiptPage({
       </ClientOnly>
 
       <p>
-        The custom model processes receipts in about 100ms, compared to
-        30-60 seconds with the AI Agent. The tradeoff is coverage: the model
-        focuses on 8 core labels, while the AI Agent provides comprehensive
-        labeling including product names, quantities, and unit prices.
+        The trained model processes receipts in ~100ms versus 30-60 seconds
+        with an AI agent. The tradeoff is scope: the model extracts 8 core
+        entity types, while the agent provides comprehensive labeling including
+        line items and quantities.
       </p>
 
       <h1>What I Learned</h1>
