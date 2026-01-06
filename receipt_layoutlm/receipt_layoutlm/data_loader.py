@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
+from collections import deque
 import hashlib
 
 import importlib
@@ -216,11 +217,11 @@ def _group_words_into_blocks(words: List[WordInfo]) -> List[List[WordInfo]]:
 
         # BFS to find all words in this component
         component: List[WordInfo] = []
-        queue = [start]
+        queue: deque[int] = deque([start])
         visited[start] = True
 
         while queue:
-            idx = queue.pop(0)
+            idx = queue.popleft()
             component.append(words[idx])
 
             for neighbor in adjacency[idx]:
@@ -274,71 +275,6 @@ def _build_block_example(
         line_id=first_word.line_id,  # Use first word's line_id
         tokens=tokens,
         bboxes=bboxes,
-        ner_tags=bio_labels,
-        receipt_key=receipt_key,
-    )
-
-
-def _build_line_example(
-    line_key: Tuple[str, int, int],
-    items: List[Tuple[int, str, List[int], str]],
-    line_to_receipt: Dict[Tuple[str, int, int], Tuple[str, int]],
-) -> LineExample:
-    # sort by word_id to preserve order
-    items.sort(key=lambda t: t[0])
-    img_id, rec_id, ln_id = line_key
-
-    tokens: List[str] = []
-    boxes: List[List[int]] = []
-    raw_labels: List[str] = []
-
-    for wid, tok, box, lbl in items:
-        if not isinstance(tok, str):
-            raise ValueError(
-                "Invalid token type: expected str, got "
-                f"{type(tok).__name__} for image_id={img_id} "
-                f"receipt_id={rec_id} line_id={ln_id} word_id={wid}"
-            )
-        if (
-            not isinstance(box, list)
-            or len(box) != 4
-            or any(not isinstance(v, int) for v in box)
-        ):
-            raise ValueError(
-                "Invalid bbox: expected list[int] of length 4 for "
-                f"image_id={img_id} receipt_id={rec_id} "
-                f"line_id={ln_id} word_id={wid}; got {box!r}"
-            )
-        if not isinstance(lbl, str):
-            raise ValueError(
-                "Invalid label type: expected str, got "
-                f"{type(lbl).__name__} for image_id={img_id} "
-                f"receipt_id={rec_id} line_id={ln_id} word_id={wid}"
-            )
-        tokens.append(tok)
-        boxes.append(box)
-        raw_labels.append(lbl)
-
-    # Compute simple BIO tags per-line: B- for first occurrence, I- for contiguous same label
-    bio_labels: List[str] = []
-    prev = "O"
-    for lbl in raw_labels:
-        if lbl == "O":
-            bio_labels.append("O")
-            prev = "O"
-        else:
-            bio_labels.append("B-" + lbl if prev != lbl else "I-" + lbl)
-            prev = lbl
-
-    rk = line_to_receipt.get(line_key)
-    receipt_key = f"{rk[0]}#{rk[1]:05d}" if rk else ""
-
-    return LineExample(
-        image_id=img_id,
-        receipt_id=rec_id,
-        line_id=ln_id,
-        tokens=tokens,
-        bboxes=boxes,
         ner_tags=bio_labels,
         receipt_key=receipt_key,
     )
