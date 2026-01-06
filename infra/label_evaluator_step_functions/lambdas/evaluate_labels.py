@@ -439,6 +439,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 result.get("issues_found", 0),
             )
 
+            # Add compute_time_seconds to result for S3 storage
+            result["compute_time_seconds"] = round(compute_time, 3)
+
             # Set rich outputs for visualization
             eval_ctx.set_outputs({
                 "issues_found": result.get("issues_found", 0),

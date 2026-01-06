@@ -537,6 +537,7 @@ export interface LabelEvaluatorGeometric {
   error: string | null;
   merchant_receipts_analyzed: number;
   label_types_found: number;
+  duration_seconds?: number;
 }
 
 export interface LabelEvaluatorReceipt {

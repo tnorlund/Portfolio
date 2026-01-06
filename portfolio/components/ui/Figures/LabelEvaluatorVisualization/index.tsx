@@ -20,21 +20,26 @@ interface ScannerState {
 
 type Phase = "idle" | "scanning" | "complete";
 
-// Scanner configuration with colors
+// Scanner colors - grouped by dependency chain
+// Using CSS variables for automatic light/dark mode support
 const SCANNER_COLORS = {
-  lineItem: "#FF5722",    // Deep Orange - LLM (line item structure)
-  geometric: "#9C27B0",   // Purple - deterministic (no LLM)
-  currency: "#4CAF50",    // Green - LLM (depends on line item)
-  metadata: "#2196F3",    // Blue - LLM (independent)
-  financial: "#FF9800",   // Orange - LLM (runs after currency)
-  review: "#E91E63",      // Pink - LLM (conditional final review)
+  // Chain 1: Line Item → Currency (same color - purple)
+  lineItem: "var(--color-purple)",
+  currency: "var(--color-purple)",
+  // Independent: Metadata (blue)
+  metadata: "var(--color-blue)",
+  // After Chain 1 + Metadata: Financial (yellow)
+  financial: "var(--color-yellow)",
+  // Chain 2: Geometric → Review (same color - orange)
+  geometric: "var(--color-orange)",
+  review: "var(--color-orange)",
 };
 
-// Decision colors
+// Decision colors - using CSS variables
 const DECISION_COLORS: Record<string, string> = {
-  VALID: "#4CAF50",
-  INVALID: "#F44336",
-  NEEDS_REVIEW: "#FF9800",
+  VALID: "var(--color-green)",
+  INVALID: "var(--color-red)",
+  NEEDS_REVIEW: "var(--color-yellow)",
 };
 
 // Revealed decision for tracking individual V/I/R decisions as scanner progresses
@@ -496,6 +501,7 @@ const PipelinePanel: React.FC<PipelinePanelProps> = ({
             isActive={scannerState.geometric > 0 && scannerState.geometric < 100}
             isComplete={scannerState.geometric >= 100}
             isLLM={false}
+            durationMs={scannerState.geometric >= 100 ? (geometric.duration_seconds || 0.1) * 1000 : undefined}
             decisions={{
               VALID: 0,
               INVALID: geometric.issues_found,
@@ -563,6 +569,7 @@ const PipelinePanel: React.FC<PipelinePanelProps> = ({
             isActive={scannerState.review > 0 && scannerState.review < 100}
             isComplete={scannerState.review >= 100}
             isLLM={true}
+            durationMs={scannerState.review >= 100 ? 1000 : undefined}
             decisions={{
               VALID: 0,
               INVALID: 0,
@@ -585,6 +592,242 @@ const PipelinePanel: React.FC<PipelinePanelProps> = ({
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+// Scanner legend item - shows colored circle or hourglass + name + status + decision tally
+interface ScannerLegendItemProps {
+  name: string;
+  color: string;
+  progress: number;
+  isWaiting: boolean;
+  isComplete: boolean;
+  durationMs?: number;
+  decisions?: RevealedDecision[];
+  totalDecisions?: number;
+}
+
+const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
+  name,
+  color,
+  progress,
+  isWaiting,
+  isComplete,
+  durationMs,
+  decisions = [],
+  totalDecisions = 0,
+}) => {
+  const isActive = progress > 0 && progress < 100;
+  const hasDecisions = totalDecisions > 0;
+
+  return (
+    <div className={`${styles.legendItem} ${isActive ? styles.active : ""} ${isComplete ? styles.complete : ""}`}>
+      <div className={styles.legendIcon}>
+        {isWaiting ? (
+          // Hourglass SVG icon
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className={styles.hourglassIcon}>
+            <path
+              d="M4 2h8v3l-2.5 3L12 11v3H4v-3l2.5-3L4 5V2z"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+            <path
+              d="M6 3h4M6 13h4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+        ) : (
+          // Progress circle that fills like a clock
+          <svg width="16" height="16" viewBox="0 0 16 16" className={styles.legendDot}>
+            {/* Background circle (unfilled) */}
+            <circle
+              cx="8"
+              cy="8"
+              r="6"
+              fill="none"
+              stroke={color}
+              strokeWidth="2"
+              opacity={0.3}
+            />
+            {/* Progress arc - uses stroke-dasharray to show progress */}
+            <circle
+              cx="8"
+              cy="8"
+              r="6"
+              fill="none"
+              stroke={color}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeDasharray={`${(progress / 100) * 37.7} 37.7`}
+              transform="rotate(-90 8 8)"
+              style={{ transition: 'stroke-dasharray 0.1s ease-out' }}
+            />
+            {/* Center fill when complete */}
+            {isComplete && (
+              <circle
+                cx="8"
+                cy="8"
+                r="4"
+                fill={color}
+              />
+            )}
+          </svg>
+        )}
+      </div>
+      <span className={styles.legendName}>{name}</span>
+      <div className={styles.legendStatus}>
+        {isComplete && durationMs !== undefined ? (
+          <span className={styles.legendDuration}>
+            {durationMs < 1000 ? `${durationMs.toFixed(0)}ms` : `${(durationMs / 1000).toFixed(1)}s`}
+          </span>
+        ) : isActive ? (
+          <span className={styles.legendProgress}>{Math.round(progress)}%</span>
+        ) : isWaiting ? (
+          <span className={styles.legendWaiting}>waiting</span>
+        ) : null}
+      </div>
+      {/* Decision tally row - colored circles with white icons (matches bounding boxes) */}
+      {hasDecisions && decisions.length > 0 && (
+        <div className={styles.legendTally}>
+          {decisions.map((d) => {
+            const bgColor = DECISION_COLORS[d.decision];
+            return (
+              <span
+                key={d.key}
+                className={styles.tallyIcon}
+                title={`${d.wordText}: ${d.decision}`}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  {/* Background circle */}
+                  <circle cx="7" cy="7" r="6" fill={bgColor} />
+                  {/* White icon inside */}
+                  {d.decision === 'VALID' && (
+                    <path
+                      d="M4 7 L6 9.5 L10 5"
+                      fill="none"
+                      stroke="white"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  )}
+                  {d.decision === 'INVALID' && (
+                    <g>
+                      <line x1="4.5" y1="4.5" x2="9.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                      <line x1="9.5" y1="4.5" x2="4.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                    </g>
+                  )}
+                  {d.decision === 'NEEDS_REVIEW' && (
+                    <g>
+                      {/* Head */}
+                      <circle cx="7" cy="5" r="1.8" fill="white" />
+                      {/* Body */}
+                      <path d="M3.5 11.5 Q3.5 8 7 8 Q10.5 8 10.5 11.5" fill="white" />
+                    </g>
+                  )}
+                </svg>
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Scanner legend - shows all scanners with their status
+interface ScannerLegendProps {
+  receipt: LabelEvaluatorReceipt;
+  scannerState: ScannerState;
+  revealedDecisions: RevealedDecision[];
+}
+
+const ScannerLegend: React.FC<ScannerLegendProps> = ({
+  receipt,
+  scannerState,
+  revealedDecisions,
+}) => {
+  const { currency, metadata, geometric, financial } = receipt;
+  const hasGeometricIssues = geometric.issues_found > 0;
+
+  // Determine waiting states based on dependencies
+  // Currency waits for Line Item
+  const currencyIsWaiting = scannerState.lineItem < 100 && scannerState.currency === 0;
+  // Financial waits for Currency + Metadata
+  const currencyEndTime = scannerState.lineItem >= 100 ? scannerState.currency : 0;
+  const financialIsWaiting = (currencyEndTime < 100 || scannerState.metadata < 100) && scannerState.financial === 0;
+  // Review waits for Geometric (and only shows if issues found)
+  const reviewIsWaiting = hasGeometricIssues && scannerState.geometric < 100 && scannerState.review === 0;
+
+  // Filter decisions by scanner type
+  const metadataDecisions = revealedDecisions.filter(d => d.type === 'metadata');
+  const currencyDecisions = revealedDecisions.filter(d => d.type === 'currency');
+  const financialDecisions = revealedDecisions.filter(d => d.type === 'financial');
+
+  return (
+    <div className={styles.scannerLegend}>
+      <ScannerLegendItem
+        name="Line Item"
+        color={SCANNER_COLORS.lineItem}
+        progress={scannerState.lineItem}
+        isWaiting={false}
+        isComplete={scannerState.lineItem >= 100}
+        durationMs={receipt.line_item_duration_seconds ? receipt.line_item_duration_seconds * 1000 : undefined}
+      />
+      <ScannerLegendItem
+        name="Metadata"
+        color={SCANNER_COLORS.metadata}
+        progress={scannerState.metadata}
+        isWaiting={false}
+        isComplete={scannerState.metadata >= 100}
+        durationMs={metadata.duration_seconds * 1000}
+        decisions={metadataDecisions}
+        totalDecisions={metadata.all_decisions.length}
+      />
+      <ScannerLegendItem
+        name="Geometric"
+        color={SCANNER_COLORS.geometric}
+        progress={scannerState.geometric}
+        isWaiting={false}
+        isComplete={scannerState.geometric >= 100}
+        durationMs={(geometric.duration_seconds || 0.1) * 1000}
+      />
+      <ScannerLegendItem
+        name="Currency"
+        color={SCANNER_COLORS.currency}
+        progress={scannerState.currency}
+        isWaiting={currencyIsWaiting}
+        isComplete={scannerState.currency >= 100}
+        durationMs={currency.duration_seconds * 1000}
+        decisions={currencyDecisions}
+        totalDecisions={currency.all_decisions.length}
+      />
+      <ScannerLegendItem
+        name="Financial"
+        color={SCANNER_COLORS.financial}
+        progress={scannerState.financial}
+        isWaiting={financialIsWaiting}
+        isComplete={scannerState.financial >= 100}
+        durationMs={financial.duration_seconds * 1000}
+        decisions={financialDecisions}
+        totalDecisions={financial.all_decisions.length}
+      />
+      {hasGeometricIssues && (
+        <ScannerLegendItem
+          name="Review"
+          color={SCANNER_COLORS.review}
+          progress={scannerState.review}
+          isWaiting={reviewIsWaiting}
+          isComplete={scannerState.review >= 100}
+          durationMs={1000}
+        />
+      )}
     </div>
   );
 };
@@ -733,15 +976,20 @@ const LabelEvaluatorVisualization: React.FC = () => {
     // Use line item duration from the merchant's pattern file, fallback to 2s estimate
     const rawLineItem = receipt.line_item_duration_seconds ?? 2;
     const rawMetadata = receipt.metadata.duration_seconds || 1;
-    const rawGeometric = 0.3;  // Deterministic, very fast
+    const rawGeometric = receipt.geometric.duration_seconds || 0.3;  // Deterministic, usually very fast
     const rawFinancial = receipt.financial.duration_seconds || 1;
     const rawCurrency = receipt.currency.duration_seconds || 1;
     const rawReview = hasGeometricIssues ? 1 : 0;
 
-    // Find the longest duration to scale everything
-    const maxDuration = Math.max(rawLineItem, rawMetadata, rawFinancial, rawLineItem + rawCurrency);
-    const totalWithReview = maxDuration + rawReview;
-    const scaleFactor = TARGET_TOTAL_DURATION / (totalWithReview * 1000);
+    // Calculate total raw duration to find scale factor
+    // Branch 1: Line Item -> Currency -> Financial (sequential after Currency+Metadata)
+    // Branch 2: Geometric -> Review (conditional, independent)
+    const currencyEnd = rawLineItem + rawCurrency;
+    const financialStart = Math.max(currencyEnd, rawMetadata);
+    const branch1End = financialStart + rawFinancial;
+    const branch2End = rawGeometric + (hasGeometricIssues ? rawReview : 0);
+    const totalRawDuration = Math.max(branch1End, branch2End);
+    const scaleFactor = TARGET_TOTAL_DURATION / (totalRawDuration * 1000);
 
     // Scale each scanner's duration
     const lineItemDuration = Math.max(rawLineItem * 1000 * scaleFactor, MIN_PHASE_DURATION);
@@ -753,19 +1001,19 @@ const LabelEvaluatorVisualization: React.FC = () => {
       ? Math.max(rawReview * 1000 * scaleFactor, MIN_PHASE_DURATION)
       : 0;
 
-    // Calculate when currency starts (after line item completes)
+    // Branch 1 timing: Line Item -> Currency, then Financial after Currency+Metadata
     const currencyStartTime = lineItemDuration;
+    const currencyEndTime = currencyStartTime + currencyDuration;
+    const financialStartTime = Math.max(currencyEndTime, metadataDuration);
 
-    // Calculate total animation time
-    const allScannersEnd = Math.max(
-      lineItemDuration,
-      metadataDuration,
-      geometricDuration,
-      financialDuration,
-      currencyStartTime + currencyDuration
-    );
-    const reviewEnd = hasGeometricIssues ? allScannersEnd + reviewDuration : allScannersEnd;
-    const holdEnd = reviewEnd + HOLD_DURATION;
+    // Branch 2 timing: Geometric -> Review (independent of Branch 1)
+    const reviewStartTime = geometricDuration;
+
+    // Calculate total animation time (longest branch)
+    const branch1EndTime = financialStartTime + financialDuration;
+    const branch2EndTime = hasGeometricIssues ? reviewStartTime + reviewDuration : geometricDuration;
+    const allScannersEnd = Math.max(branch1EndTime, branch2EndTime);
+    const holdEnd = allScannersEnd + HOLD_DURATION;
     const totalCycle = holdEnd + TRANSITION_DURATION;
 
     let receiptIdx = currentIndex;
@@ -784,24 +1032,32 @@ const LabelEvaluatorVisualization: React.FC = () => {
     const animate = (time: number) => {
       const elapsed = time - startTime;
 
-      if (elapsed < allScannersEnd || (hasGeometricIssues && elapsed < reviewEnd)) {
-        // Calculate each scanner's progress independently
+      if (elapsed < allScannersEnd) {
+        // Branch 1: Line Item, Metadata start at t=0
         const lineItemProgress = Math.min((elapsed / lineItemDuration) * 100, 100);
         const metadataProgress = Math.min((elapsed / metadataDuration) * 100, 100);
-        const geometricProgress = Math.min((elapsed / geometricDuration) * 100, 100);
-        const financialProgress = Math.min((elapsed / financialDuration) * 100, 100);
 
-        // Currency only starts after line item completes
+        // Branch 1: Currency starts after Line Item completes
         let currencyProgress = 0;
         if (elapsed >= currencyStartTime) {
           const currencyElapsed = elapsed - currencyStartTime;
           currencyProgress = Math.min((currencyElapsed / currencyDuration) * 100, 100);
         }
 
-        // Review only starts after all other scanners complete
+        // Branch 1: Financial starts after Currency + Metadata complete
+        let financialProgress = 0;
+        if (elapsed >= financialStartTime) {
+          const financialElapsed = elapsed - financialStartTime;
+          financialProgress = Math.min((financialElapsed / financialDuration) * 100, 100);
+        }
+
+        // Branch 2: Geometric starts at t=0
+        const geometricProgress = Math.min((elapsed / geometricDuration) * 100, 100);
+
+        // Branch 2: Review starts after Geometric completes (if issues found)
         let reviewProgress = 0;
-        if (hasGeometricIssues && elapsed >= allScannersEnd) {
-          const reviewElapsed = elapsed - allScannersEnd;
+        if (hasGeometricIssues && elapsed >= reviewStartTime) {
+          const reviewElapsed = elapsed - reviewStartTime;
           reviewProgress = Math.min((reviewElapsed / reviewDuration) * 100, 100);
         }
 
@@ -893,7 +1149,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
           revealedDecisions={revealedDecisions}
           formatSupport={formatSupport}
         />
-        <PipelinePanel
+        <ScannerLegend
           receipt={currentReceipt}
           scannerState={scannerState}
           revealedDecisions={revealedDecisions}

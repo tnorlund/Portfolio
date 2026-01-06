@@ -85,8 +85,20 @@ def _load_json(bucket: str, key: str) -> dict[str, Any] | None:
         return None
 
 
+def _extract_timestamp(execution_id: str) -> int:
+    """Extract numeric timestamp from execution ID (e.g., 'viz-test-1767632575' -> 1767632575)."""
+    try:
+        # Get the last segment after splitting by '-'
+        parts = execution_id.split("-")
+        # Try to parse the last part as an integer timestamp
+        return int(parts[-1])
+    except (ValueError, IndexError):
+        # If no valid timestamp, return 0 (will sort to end)
+        return 0
+
+
 def _list_executions() -> list[str]:
-    """List recent execution IDs from the batch bucket."""
+    """List recent execution IDs from the batch bucket, sorted by timestamp (newest first)."""
     execution_ids = set()
     try:
         paginator = s3_client.get_paginator("list_objects_v2")
@@ -101,7 +113,8 @@ def _list_executions() -> list[str]:
                     execution_ids.add(execution_id)
     except ClientError:
         logger.exception("Error listing executions")
-    return sorted(execution_ids, reverse=True)
+    # Sort by timestamp (newest first) instead of alphabetically
+    return sorted(execution_ids, key=_extract_timestamp, reverse=True)
 
 
 def _list_receipt_files(execution_id: str) -> list[str]:
@@ -151,7 +164,7 @@ def _load_evaluation_results(execution_id: str, image_id: str, receipt_id: int) 
     Returns dict with currency, metadata, financial, and geometric evaluations.
     """
     results = {
-        "geometric": {"issues": [], "issues_found": 0, "error": None},
+        "geometric": {"issues": [], "issues_found": 0, "error": None, "duration_seconds": 0},
         "currency": {"decisions": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}, "all_decisions": [], "duration_seconds": 0},
         "metadata": {"decisions": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}, "all_decisions": [], "duration_seconds": 0},
         "financial": {"decisions": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}, "all_decisions": [], "duration_seconds": 0},
@@ -164,6 +177,7 @@ def _load_evaluation_results(execution_id: str, image_id: str, receipt_id: int) 
         issues = geometric_data.get("issues", [])
         results["geometric"]["issues"] = issues
         results["geometric"]["issues_found"] = len(issues)
+        results["geometric"]["duration_seconds"] = geometric_data.get("compute_time_seconds", 0)
 
     # Load currency results
     currency_key = f"currency/{execution_id}/{image_id}_{receipt_id}.json"
@@ -286,6 +300,7 @@ def _build_receipt_visualization(
             "error": evaluations["geometric"]["error"],
             "merchant_receipts_analyzed": 0,
             "label_types_found": 0,
+            "duration_seconds": evaluations["geometric"]["duration_seconds"],
         },
         "currency": {
             "image_id": image_id,
