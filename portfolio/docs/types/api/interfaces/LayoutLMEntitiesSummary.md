@@ -6,7 +6,7 @@
 
 # Interface: LayoutLMEntitiesSummary
 
-Defined in: [types/api.ts:265](https://github.com/tnorlund/Portfolio/blob/a85a3f96332dd628b2d0e89071db8e7ff0788be7/portfolio/types/api.ts#L265)
+Defined in: [types/api.ts:265](https://github.com/tnorlund/Portfolio/blob/e3ab333b578a9b221255a46faca47a8c86b93366/portfolio/types/api.ts#L265)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:265](https://github.com/tnorlund/Portfolio/blob/a85a3f
 
 > **address**: `string` \| `null`
 
-Defined in: [types/api.ts:268](https://github.com/tnorlund/Portfolio/blob/a85a3f96332dd628b2d0e89071db8e7ff0788be7/portfolio/types/api.ts#L268)
+Defined in: [types/api.ts:268](https://github.com/tnorlund/Portfolio/blob/e3ab333b578a9b221255a46faca47a8c86b93366/portfolio/types/api.ts#L268)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:268](https://github.com/tnorlund/Portfolio/blob/a85a3f
 
 > **amount**: `string` \| `null`
 
-Defined in: [types/api.ts:269](https://github.com/tnorlund/Portfolio/blob/a85a3f96332dd628b2d0e89071db8e7ff0788be7/portfolio/types/api.ts#L269)
+Defined in: [types/api.ts:269](https://github.com/tnorlund/Portfolio/blob/e3ab333b578a9b221255a46faca47a8c86b93366/portfolio/types/api.ts#L269)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:269](https://github.com/tnorlund/Portfolio/blob/a85a3f
 
 > **date**: `string` \| `null`
 
-Defined in: [types/api.ts:267](https://github.com/tnorlund/Portfolio/blob/a85a3f96332dd628b2d0e89071db8e7ff0788be7/portfolio/types/api.ts#L267)
+Defined in: [types/api.ts:267](https://github.com/tnorlund/Portfolio/blob/e3ab333b578a9b221255a46faca47a8c86b93366/portfolio/types/api.ts#L267)
 
 ***
 
@@ -38,4 +38,4 @@ Defined in: [types/api.ts:267](https://github.com/tnorlund/Portfolio/blob/a85a3f
 
 > **merchant\_name**: `string` \| `null`
 
-Defined in: [types/api.ts:266](https://github.com/tnorlund/Portfolio/blob/a85a3f96332dd628b2d0e89071db8e7ff0788be7/portfolio/types/api.ts#L266)
+Defined in: [types/api.ts:266](https://github.com/tnorlund/Portfolio/blob/e3ab333b578a9b221255a46faca47a8c86b93366/portfolio/types/api.ts#L266)
