@@ -173,20 +173,20 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
 
   const imageUrl = useMemo(() => {
     if (!formatSupport || !receipt) return null;
-    return getBestImageUrl(receipt, formatSupport, 'medium');
+    return getBestImageUrl(receipt, formatSupport);
   }, [receipt, formatSupport]);
 
   // Calculate display dimensions - constrained by both max-height (500px) and max-width (350px)
-  // Must match the active receipt's CSS constraints
+  // Must match the active receipt's CSS constraints (max-height: 500px, max-width: 100% of 350px container)
   const aspectRatio = width / height;
   const maxHeight = 500;
-  const maxWidth = 350; // centerColumnWidth - matches CSS max-width: 100% of center column
+  const maxWidth = 350; // matches centerColumn max-width
 
-  // Calculate dimensions respecting both constraints
+  // Start with height constraint
   let displayHeight = Math.min(maxHeight, height);
   let displayWidth = displayHeight * aspectRatio;
 
-  // If width exceeds max, scale down to fit
+  // If width exceeds container, scale down to fit width instead
   if (displayWidth > maxWidth) {
     displayWidth = maxWidth;
     displayHeight = displayWidth / aspectRatio;
@@ -428,9 +428,10 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   const { words, width, height } = receipt;
 
   // Get the best image URL based on format support
+  // Use full-size image so dimensions match receipt.width/height
   const imageUrl = useMemo(() => {
     if (!formatSupport) return null;
-    return getBestImageUrl(receipt, formatSupport, 'medium');
+    return getBestImageUrl(receipt, formatSupport);
   }, [receipt, formatSupport]);
 
   if (!imageUrl) {
