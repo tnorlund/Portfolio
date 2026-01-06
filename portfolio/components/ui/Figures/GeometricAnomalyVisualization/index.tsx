@@ -76,6 +76,9 @@ const GeometricAnomalyVisualization: React.FC = () => {
   const [data, setData] = useState<GeometricAnomalyData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Refs to track intervals created inside timeouts for proper cleanup
+  const detectingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const patternIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Fetch real data on mount
   useEffect(() => {
@@ -119,10 +122,10 @@ const GeometricAnomalyVisualization: React.FC = () => {
     // Stage 2: Detecting anomalies
     const detectingTimeout = setTimeout(() => {
       setStage("detecting");
-      const detectingInterval = setInterval(() => {
+      detectingIntervalRef.current = setInterval(() => {
         setAnimationProgress((prev) => {
           if (prev >= 0.7) {
-            clearInterval(detectingInterval);
+            if (detectingIntervalRef.current) clearInterval(detectingIntervalRef.current);
             return prev;
           }
           return prev + 0.02;
@@ -136,10 +139,10 @@ const GeometricAnomalyVisualization: React.FC = () => {
       // Highlight the flagged word
       setHighlightedWordId(data.flaggedWord?.wordId || null);
 
-      const patternInterval = setInterval(() => {
+      patternIntervalRef.current = setInterval(() => {
         setAnimationProgress((prev) => {
           if (prev >= 1) {
-            clearInterval(patternInterval);
+            if (patternIntervalRef.current) clearInterval(patternIntervalRef.current);
             return 1;
           }
           return prev + 0.02;
@@ -157,6 +160,9 @@ const GeometricAnomalyVisualization: React.FC = () => {
       clearTimeout(detectingTimeout);
       clearTimeout(patternTimeout);
       clearTimeout(completeTimeout);
+      // Clean up intervals created inside timeouts
+      if (detectingIntervalRef.current) clearInterval(detectingIntervalRef.current);
+      if (patternIntervalRef.current) clearInterval(patternIntervalRef.current);
     };
   }, [inView, data]);
 

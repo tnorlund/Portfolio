@@ -176,7 +176,7 @@ class LabelEvaluatorVizCache(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Write to cache bucket for Generator Lambda
+        # Read/write to cache bucket for Generator Lambda (ListBucket needed for cache operations)
         aws.iam.RolePolicy(
             f"{name}-generator-cache-bucket-policy",
             role=self.generator_lambda_role.id,
@@ -185,9 +185,10 @@ class LabelEvaluatorVizCache(ComponentResource):
                     "Version": "2012-10-17",
                     "Statement": [{
                         "Effect": "Allow",
-                        "Action": ["s3:PutObject", "s3:GetObject"],
+                        "Action": ["s3:PutObject", "s3:GetObject", "s3:ListBucket"],
                         "Resource": [
                             f"arn:aws:s3:::{bucket}/*",
+                            f"arn:aws:s3:::{bucket}",
                         ],
                     }],
                 })

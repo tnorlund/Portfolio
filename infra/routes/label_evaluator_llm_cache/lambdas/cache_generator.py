@@ -348,10 +348,11 @@ def _save_to_cache(receipt_data: dict[str, Any]) -> bool:
 def _cleanup_old_cache() -> int:
     """Remove old cache entries if over limit."""
     try:
-        response = s3_client.list_objects_v2(
-            Bucket=S3_CACHE_BUCKET, Prefix=CACHE_PREFIX
-        )
-        objects = response.get("Contents", [])
+        # Use paginator to handle large number of objects
+        paginator = s3_client.get_paginator("list_objects_v2")
+        objects = []
+        for page in paginator.paginate(Bucket=S3_CACHE_BUCKET, Prefix=CACHE_PREFIX):
+            objects.extend(page.get("Contents", []))
 
         if len(objects) <= MAX_CACHED_RECEIPTS:
             return 0

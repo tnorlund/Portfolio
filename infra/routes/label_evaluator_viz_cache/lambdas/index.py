@@ -90,7 +90,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     except (KeyError, TypeError) as e:
         logger.error("Invalid event structure: %s", e)
         return {
-            "statusCode": 500,
+            "statusCode": 400,
             "body": json.dumps({"error": "Invalid event structure"}),
             "headers": {
                 "Content-Type": "application/json",

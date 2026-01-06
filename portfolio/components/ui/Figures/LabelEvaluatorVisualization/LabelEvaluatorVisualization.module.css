@@ -269,11 +269,7 @@
   min-height: 14px;
 }
 
-.tallyRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-}
+/* Note: .tallyRow is defined below in "Decision Tally Row" section */
 
 .tallyRowOverlay {
   position: absolute;

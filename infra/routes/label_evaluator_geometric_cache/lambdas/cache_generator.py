@@ -5,6 +5,7 @@ finds receipts with interesting geometric anomalies, and caches them
 in a visualization-friendly format.
 """
 
+import ast
 import json
 import logging
 import math
@@ -494,8 +495,9 @@ def _build_visualization_data(
             for pair_key, geometry in label_pair_geometry.items():
                 if isinstance(pair_key, str):
                     try:
-                        pair_key = eval(pair_key)  # noqa: S307
-                    except Exception:
+                        # Use ast.literal_eval for safe parsing of tuple strings
+                        pair_key = ast.literal_eval(pair_key)
+                    except (ValueError, SyntaxError):
                         continue
                 from_label, to_label = pair_key
 
@@ -684,11 +686,11 @@ def _cleanup_old_cache() -> int:
         Number of entries removed
     """
     try:
-        # List all cached entries
-        response = s3_client.list_objects_v2(
-            Bucket=S3_CACHE_BUCKET, Prefix=CACHE_PREFIX
-        )
-        objects = response.get("Contents", [])
+        # Use paginator to handle large number of objects
+        paginator = s3_client.get_paginator("list_objects_v2")
+        objects = []
+        for page in paginator.paginate(Bucket=S3_CACHE_BUCKET, Prefix=CACHE_PREFIX):
+            objects.extend(page.get("Contents", []))
 
         if len(objects) <= MAX_CACHED_RECEIPTS:
             return 0
