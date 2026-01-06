@@ -709,11 +709,31 @@ def _cleanup_old_cache() -> int:
         return 0
 
 
+def _find_receipts_with_anomalies_from_langsmith() -> list[dict[str, Any]]:
+    """Query LangSmith for receipts with geometric anomalies.
+
+    Returns:
+        List of receipt info dicts from LangSmith traces
+    """
+    try:
+        from receipt_langsmith import find_receipts_with_anomalies
+
+        project_name = os.environ.get("LANGCHAIN_PROJECT", "label-evaluator-dev")
+        return find_receipts_with_anomalies(project_name, hours_back=168)  # 7 days
+    except ImportError:
+        logger.warning("receipt_langsmith not available, falling back to S3")
+        return []
+    except Exception:
+        logger.exception("Error querying LangSmith")
+        return []
+
+
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """Generate geometric anomaly cache.
 
-    Scans recent label evaluator executions for receipts with geometric
-    anomalies and caches them in visualization-ready format.
+    Queries LangSmith traces for receipts with geometric anomalies,
+    then fetches word coordinates and patterns from S3 to build
+    visualization-ready cached data.
     """
     logger.info("Starting geometric anomaly cache generation")
 
@@ -723,28 +743,31 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "error": "Missing environment variables",
         }
 
-    # List recent executions
-    execution_ids = _list_recent_executions()
-    if not execution_ids:
-        logger.warning("No executions found in batch bucket")
-        return {
-            "statusCode": 200,
-            "message": "No executions found",
-            "cached_count": 0,
-        }
+    # Query LangSmith for receipts with anomalies
+    langsmith_receipts = _find_receipts_with_anomalies_from_langsmith()
 
-    logger.info("Found %d executions", len(execution_ids))
-
-    # Find receipts with anomalies (limit to 3 most recent executions)
-    all_anomaly_receipts = []
-    for execution_id in execution_ids[:3]:
-        anomaly_receipts = _find_receipts_with_anomalies(execution_id, max_count=20)
-        all_anomaly_receipts.extend(anomaly_receipts)
+    if langsmith_receipts:
         logger.info(
-            "Found %d receipts with anomalies in execution %s",
-            len(anomaly_receipts),
-            execution_id,
+            "Found %d receipts with anomalies from LangSmith",
+            len(langsmith_receipts),
         )
+        all_anomaly_receipts = langsmith_receipts
+    else:
+        # Fallback to S3 scanning if LangSmith unavailable
+        logger.info("Falling back to S3 scanning")
+        execution_ids = _list_recent_executions()
+        if not execution_ids:
+            logger.warning("No executions found in batch bucket")
+            return {
+                "statusCode": 200,
+                "message": "No executions found",
+                "cached_count": 0,
+            }
+
+        all_anomaly_receipts = []
+        for execution_id in execution_ids[:3]:
+            anomaly_receipts = _find_receipts_with_anomalies(execution_id, max_count=20)
+            all_anomaly_receipts.extend(anomaly_receipts)
 
     if not all_anomaly_receipts:
         logger.warning("No receipts with geometric anomalies found")
@@ -763,12 +786,20 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     # Build and cache visualization data
     cached_count = 0
     for receipt_info in all_anomaly_receipts:
-        # Load result data
-        result_data = _load_json_from_batch_bucket(receipt_info["result_key"])
-        if not result_data:
-            continue
+        # Determine data source (LangSmith vs S3)
+        if "run_id" in receipt_info:
+            # LangSmith source: issues already available, just need word coords from S3
+            result_data = {
+                "issues": receipt_info.get("all_issues", receipt_info.get("issues", [])),
+                "flagged_words": receipt_info.get("flagged_words", []),
+            }
+        else:
+            # S3 source: load result data from S3
+            result_data = _load_json_from_batch_bucket(receipt_info["result_key"])
+            if not result_data:
+                continue
 
-        # Build visualization data
+        # Build visualization data (word coords and patterns still from S3)
         viz_data = _build_visualization_data(
             execution_id=receipt_info["execution_id"],
             image_id=receipt_info["image_id"],
@@ -791,7 +822,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     return {
         "statusCode": 200,
         "message": "Cache generation complete",
-        "executions_scanned": len(execution_ids[:3]),
+        "source": "langsmith" if langsmith_receipts else "s3",
         "anomalies_found": len(all_anomaly_receipts),
         "cached_count": cached_count,
         "cleaned_count": cleaned_count,

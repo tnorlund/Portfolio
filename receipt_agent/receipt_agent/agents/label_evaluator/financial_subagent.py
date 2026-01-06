@@ -653,6 +653,11 @@ def evaluate_financial_math(
                             "current_label": fv.label,
                             "word_text": fv.word_text,
                             "issue_type": issue.issue_type,
+                            # Equation breakdown for visualization
+                            "expected_value": issue.expected_value,
+                            "actual_value": issue.actual_value,
+                            "difference": issue.difference,
+                            "description": issue.description,
                         },
                         "llm_review": {
                             "decision": decision.get("decision", "NEEDS_REVIEW"),
@@ -701,6 +706,11 @@ def evaluate_financial_math(
                             "current_label": fv.label,
                             "word_text": fv.word_text,
                             "issue_type": issue.issue_type,
+                            # Equation breakdown for visualization
+                            "expected_value": issue.expected_value,
+                            "actual_value": issue.actual_value,
+                            "difference": issue.difference,
+                            "description": issue.description,
                         },
                         "llm_review": {
                             "decision": "NEEDS_REVIEW",

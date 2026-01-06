@@ -18,7 +18,7 @@ from pulumi import AssetArchive, ComponentResource, FileArchive, Input, Output, 
 
 # Import shared components
 from dynamo_db import dynamodb_table
-from infra.components.lambda_layer import dynamo_layer
+from infra.components.lambda_layer import dynamo_layer, langsmith_layer
 
 # Get stack configuration
 stack = pulumi.get_stack()
@@ -35,6 +35,7 @@ class LabelEvaluatorLLMCache(ComponentResource):
         name: str,
         *,
         label_evaluator_batch_bucket: Input[str],
+        langsmith_export_bucket: Optional[Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -46,6 +47,11 @@ class LabelEvaluatorLLMCache(ComponentResource):
 
         # Convert to Output for proper resolution
         batch_bucket_output = Output.from_input(label_evaluator_batch_bucket)
+        export_bucket_output = (
+            Output.from_input(langsmith_export_bucket)
+            if langsmith_export_bucket
+            else None
+        )
 
         # ============================================================
         # S3 Cache Bucket
@@ -161,6 +167,27 @@ class LabelEvaluatorLLMCache(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Read from LangSmith export bucket (if configured)
+        if export_bucket_output:
+            aws.iam.RolePolicy(
+                f"{name}-export-bucket-policy",
+                role=self.lambda_role.id,
+                policy=export_bucket_output.apply(
+                    lambda bucket: json.dumps({
+                        "Version": "2012-10-17",
+                        "Statement": [{
+                            "Effect": "Allow",
+                            "Action": ["s3:GetObject", "s3:ListBucket"],
+                            "Resource": [
+                                f"arn:aws:s3:::{bucket}/*",
+                                f"arn:aws:s3:::{bucket}",
+                            ],
+                        }],
+                    })
+                ),
+                opts=ResourceOptions(parent=self),
+            )
+
         # ============================================================
         # API Lambda (GET endpoint)
         # ============================================================
@@ -192,6 +219,25 @@ class LabelEvaluatorLLMCache(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Get LangSmith API key from Pulumi config
+        config = pulumi.Config()
+        langsmith_api_key = config.get_secret("LANGCHAIN_API_KEY") or ""
+
+        # Build environment variables for generator Lambda
+        generator_env_vars: dict[str, Input[str]] = {
+            "S3_CACHE_BUCKET": self.cache_bucket.id,
+            "LABEL_EVALUATOR_BATCH_BUCKET": batch_bucket_output,
+            "DYNAMODB_TABLE_NAME": dynamodb_table.name,
+            # LangSmith configuration for querying traces
+            "LANGCHAIN_API_KEY": langsmith_api_key,
+            "LANGCHAIN_PROJECT": f"label-evaluator-{stack}",
+        }
+
+        # Add export bucket if configured (Parquet files from bulk export)
+        if export_bucket_output:
+            generator_env_vars["LANGSMITH_EXPORT_BUCKET"] = export_bucket_output
+            generator_env_vars["LANGSMITH_EXPORT_PREFIX"] = "traces/"
+
         # ============================================================
         # Cache Generator Lambda
         # ============================================================
@@ -202,13 +248,9 @@ class LabelEvaluatorLLMCache(ComponentResource):
             role=self.lambda_role.arn,
             code=AssetArchive({".": FileArchive(LAMBDAS_DIR)}),
             handler="cache_generator.handler",
-            layers=[dynamo_layer.arn],
+            layers=[dynamo_layer.arn, langsmith_layer.arn],
             environment=aws.lambda_.FunctionEnvironmentArgs(
-                variables={
-                    "S3_CACHE_BUCKET": self.cache_bucket.id,
-                    "LABEL_EVALUATOR_BATCH_BUCKET": batch_bucket_output,
-                    "DYNAMODB_TABLE_NAME": dynamodb_table.name,
-                }
+                variables=generator_env_vars
             ),
             memory_size=1024,
             timeout=300,  # 5 minutes for batch processing
@@ -263,11 +305,19 @@ class LabelEvaluatorLLMCache(ComponentResource):
 
 def create_label_evaluator_llm_cache(
     label_evaluator_batch_bucket: Input[str],
+    langsmith_export_bucket: Optional[Input[str]] = None,
     opts: Optional[ResourceOptions] = None,
 ) -> LabelEvaluatorLLMCache:
-    """Factory function to create LLM evaluator cache infrastructure."""
+    """Factory function to create LLM evaluator cache infrastructure.
+
+    Args:
+        label_evaluator_batch_bucket: S3 bucket with label evaluator batch data
+        langsmith_export_bucket: Optional S3 bucket with LangSmith Parquet exports
+        opts: Optional Pulumi resource options
+    """
     return LabelEvaluatorLLMCache(
         f"llm-evaluator-cache-{pulumi.get_stack()}",
         label_evaluator_batch_bucket=label_evaluator_batch_bucket,
+        langsmith_export_bucket=langsmith_export_bucket,
         opts=opts,
     )

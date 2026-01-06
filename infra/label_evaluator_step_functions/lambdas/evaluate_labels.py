@@ -439,12 +439,32 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 result.get("issues_found", 0),
             )
 
-            # Set rich outputs
+            # Set rich outputs for visualization
             eval_ctx.set_outputs({
                 "issues_found": result.get("issues_found", 0),
                 "compute_time_seconds": round(compute_time, 3),
                 "flagged_words": result.get("flagged_words", []),
                 "issues": result.get("issues", []),
+                # Receipt context for visualization
+                "receipt_summary": {
+                    "word_count": len(words),
+                    "label_count": len(labels),
+                    "merchant_name": merchant_name,
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                },
+                # Pattern info used for analysis
+                "patterns_used": {
+                    "label_pair_count": (
+                        len(patterns_data.get("label_pair_geometry", {}))
+                        if patterns_data else 0
+                    ),
+                    "constellation_count": (
+                        len(patterns_data.get("constellation_geometry", {}))
+                        if patterns_data else 0
+                    ),
+                    "pattern_receipt_count": pattern_count,
+                },
             })
 
         # 7. Upload results to S3

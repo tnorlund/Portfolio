@@ -18,7 +18,7 @@ from pulumi import AssetArchive, ComponentResource, FileArchive, Input, Output, 
 
 # Import shared components
 from dynamo_db import dynamodb_table
-from infra.components.lambda_layer import dynamo_layer
+from infra.components.lambda_layer import dynamo_layer, langsmith_layer
 
 # Get stack configuration
 stack = pulumi.get_stack()
@@ -192,6 +192,10 @@ class LabelEvaluatorGeometricCache(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Get LangSmith API key from Pulumi config
+        config = pulumi.Config()
+        langsmith_api_key = config.get_secret("LANGCHAIN_API_KEY") or ""
+
         # ============================================================
         # Cache Generator Lambda
         # ============================================================
@@ -202,12 +206,15 @@ class LabelEvaluatorGeometricCache(ComponentResource):
             role=self.lambda_role.arn,
             code=AssetArchive({".": FileArchive(LAMBDAS_DIR)}),
             handler="cache_generator.handler",
-            layers=[dynamo_layer.arn],
+            layers=[dynamo_layer.arn, langsmith_layer.arn],
             environment=aws.lambda_.FunctionEnvironmentArgs(
                 variables={
                     "S3_CACHE_BUCKET": self.cache_bucket.id,
                     "LABEL_EVALUATOR_BATCH_BUCKET": batch_bucket_output,
                     "DYNAMODB_TABLE_NAME": dynamodb_table.name,
+                    # LangSmith configuration for querying traces
+                    "LANGCHAIN_API_KEY": langsmith_api_key,
+                    "LANGCHAIN_PROJECT": f"label-evaluator-{stack}",
                 }
             ),
             memory_size=1024,

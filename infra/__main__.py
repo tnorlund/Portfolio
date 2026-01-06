@@ -1187,12 +1187,25 @@ pulumi.export(
 )
 
 # Label Evaluator Visualization Cache (Geometric Anomaly + LLM Evaluator)
+from components.langsmith_bulk_export import LangSmithBulkExport
 from routes.label_evaluator_geometric_cache.infra import (
     create_label_evaluator_geometric_cache,
 )
 from routes.label_evaluator_llm_cache.infra import (
     create_label_evaluator_llm_cache,
 )
+from routes.label_evaluator_viz_cache.infra import (
+    create_label_evaluator_viz_cache,
+)
+
+# Create LangSmith bulk export infrastructure for Parquet exports
+langsmith_bulk_export = LangSmithBulkExport(
+    f"langsmith-export-{stack}",
+    project_name=f"label-evaluator-{stack}",
+)
+pulumi.export("langsmith_export_bucket", langsmith_bulk_export.export_bucket.id)
+pulumi.export("langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name)
+pulumi.export("langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name)
 
 # Create geometric anomaly cache
 geometric_anomaly_cache = create_label_evaluator_geometric_cache(
@@ -1202,9 +1215,10 @@ pulumi.export(
     "geometric_anomaly_cache_bucket", geometric_anomaly_cache.cache_bucket.id
 )
 
-# Create LLM evaluator cache
+# Create LLM evaluator cache (uses Parquet from bulk export as primary source)
 llm_evaluator_cache = create_label_evaluator_llm_cache(
     label_evaluator_batch_bucket=label_evaluator_sf.batch_bucket_name,
+    langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
 )
 pulumi.export("llm_evaluator_cache_bucket", llm_evaluator_cache.cache_bucket.id)
 
@@ -1260,6 +1274,45 @@ if hasattr(api_gateway, "api"):
         "llm_evaluator_lambda_permission",
         action="lambda:InvokeFunction",
         function=llm_evaluator_cache.api_lambda.name,
+        principal="apigateway.amazonaws.com",
+        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+    )
+
+    # Import dynamo layer for viz cache generator
+    from infra.components.lambda_layer import dynamo_layer
+
+    # Create label evaluator visualization cache (reads from batch bucket and LLM cache bucket)
+    label_evaluator_viz_cache = create_label_evaluator_viz_cache(
+        llm_cache_bucket=llm_evaluator_cache.cache_bucket.id,
+        batch_bucket=label_evaluator_sf.batch_bucket_name,
+        dynamodb_table_name=dynamodb_table.name,
+        dynamodb_table_arn=dynamodb_table.arn,
+        receipt_dynamo_layer_arn=dynamo_layer.arn,
+    )
+
+    # Label evaluator visualization endpoint
+    integration_viz = aws.apigatewayv2.Integration(
+        "label_evaluator_viz_cache_integration",
+        api_id=api_gateway.api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=label_evaluator_viz_cache.api_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    route_viz = aws.apigatewayv2.Route(
+        "label_evaluator_viz_cache_route",
+        api_id=api_gateway.api.id,
+        route_key="GET /label_evaluator/visualization",
+        target=integration_viz.id.apply(lambda id: f"integrations/{id}"),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+    aws.lambda_.Permission(
+        "label_evaluator_viz_lambda_permission",
+        action="lambda:InvokeFunction",
+        function=label_evaluator_viz_cache.api_lambda.name,
         principal="apigateway.amazonaws.com",
         source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
     )

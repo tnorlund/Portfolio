@@ -21,6 +21,8 @@ logger.setLevel(logging.INFO)
 # Environment variables
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET")
 LABEL_EVALUATOR_BATCH_BUCKET = os.environ.get("LABEL_EVALUATOR_BATCH_BUCKET")
+LANGSMITH_EXPORT_BUCKET = os.environ.get("LANGSMITH_EXPORT_BUCKET")
+LANGSMITH_EXPORT_PREFIX = os.environ.get("LANGSMITH_EXPORT_PREFIX", "traces/")
 CACHE_PREFIX = "llm-evaluator-cache/receipts/"
 MAX_CACHED_RECEIPTS = 50
 
@@ -367,25 +369,212 @@ def _cleanup_old_cache() -> int:
         return 0
 
 
+def _find_receipts_with_llm_decisions_from_parquet() -> list[dict[str, Any]]:
+    """Read receipts with LLM decisions from Parquet export files.
+
+    Returns:
+        List of receipt info dicts from Parquet files
+    """
+    if not LANGSMITH_EXPORT_BUCKET:
+        logger.info("LANGSMITH_EXPORT_BUCKET not set, skipping Parquet source")
+        return []
+
+    try:
+        from receipt_langsmith import find_receipts_with_decisions_from_parquet
+
+        logger.info(
+            "Reading from Parquet export: s3://%s/%s",
+            LANGSMITH_EXPORT_BUCKET,
+            LANGSMITH_EXPORT_PREFIX,
+        )
+        return find_receipts_with_decisions_from_parquet(
+            LANGSMITH_EXPORT_BUCKET, LANGSMITH_EXPORT_PREFIX
+        )
+    except ImportError:
+        logger.warning("receipt_langsmith not available for Parquet reading")
+        return []
+    except Exception:
+        logger.exception("Error reading from Parquet export")
+        return []
+
+
+def _find_receipts_with_llm_decisions_from_langsmith() -> list[dict[str, Any]]:
+    """Query LangSmith for receipts with LLM evaluation decisions.
+
+    Returns:
+        List of receipt info dicts from LangSmith traces
+    """
+    try:
+        from receipt_langsmith import find_receipts_with_llm_decisions
+
+        project_name = os.environ.get("LANGCHAIN_PROJECT", "label-evaluator-dev")
+        return find_receipts_with_llm_decisions(project_name, hours_back=168)  # 7 days
+    except ImportError:
+        logger.warning("receipt_langsmith not available, falling back to S3")
+        return []
+    except Exception:
+        logger.exception("Error querying LangSmith")
+        return []
+
+
+def _build_visualization_data_from_langsmith(
+    receipt_info: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Build visualization-ready data from LangSmith trace data.
+
+    Uses LangSmith for evaluation decisions, S3 for word coordinates.
+    """
+    execution_id = receipt_info["execution_id"]
+    image_id = receipt_info["image_id"]
+    receipt_id = receipt_info["receipt_id"]
+
+    # Load receipt data from S3 (word coordinates)
+    data_key = f"data/{execution_id}/{image_id}_{receipt_id}.json"
+    receipt_data = _load_json(data_key)
+    if not receipt_data:
+        logger.warning("Could not load receipt data: %s", data_key)
+        return None
+
+    place = receipt_data.get("place", {})
+    merchant_name = place.get("merchant_name", "Unknown") if place else "Unknown"
+
+    # Get decisions from LangSmith trace data
+    currency_decisions = receipt_info.get("currency_decisions", [])
+    metadata_decisions = receipt_info.get("metadata_decisions", [])
+    financial_decisions = receipt_info.get("financial_decisions", [])
+
+    # Convert decisions to evaluation format
+    currency_evals = []
+    for decision in currency_decisions:
+        llm_review = decision.get("llm_review", {})
+        issue = decision.get("issue", {})
+        currency_evals.append({
+            "word_text": issue.get("word_text", ""),
+            "current_label": issue.get("current_label", ""),
+            "decision": llm_review.get("decision", "NEEDS_REVIEW"),
+            "reasoning": llm_review.get("reasoning", ""),
+            "suggested_label": llm_review.get("suggested_label"),
+            "confidence": llm_review.get("confidence", "medium"),
+        })
+
+    metadata_evals = []
+    for decision in metadata_decisions:
+        llm_review = decision.get("llm_review", {})
+        issue = decision.get("issue", {})
+        metadata_evals.append({
+            "word_text": issue.get("word_text", ""),
+            "current_label": issue.get("current_label", ""),
+            "decision": llm_review.get("decision", "NEEDS_REVIEW"),
+            "reasoning": llm_review.get("reasoning", ""),
+            "suggested_label": llm_review.get("suggested_label"),
+            "confidence": llm_review.get("confidence", "medium"),
+        })
+
+    # Build financial math from financial decisions or extract from receipt
+    if financial_decisions:
+        # Use financial decisions from trace
+        fin_decision = financial_decisions[0] if financial_decisions else {}
+        llm_review = fin_decision.get("llm_review", {})
+        issue = fin_decision.get("issue", {})
+        financial = {
+            "equation": "GRAND_TOTAL = SUBTOTAL + TAX",
+            "subtotal": issue.get("expected_value", 0),
+            "tax": 0,  # Would need to calculate
+            "expected_total": issue.get("expected_value", 0),
+            "actual_total": issue.get("actual_value", 0),
+            "difference": issue.get("difference", 0),
+            "decision": llm_review.get("decision", "VALID"),
+            "reasoning": llm_review.get("reasoning", ""),
+            "wrong_value": issue.get("label") if llm_review.get("decision") == "INVALID" else None,
+        }
+    else:
+        # Fall back to extracting from receipt data
+        financial = _extract_financial_math(receipt_data)
+
+    # Build pipeline stages
+    pipeline = [
+        {"id": "input", "name": "Load Receipt", "status": "complete"},
+        {"id": "currency", "name": "Currency Review", "status": "complete"},
+        {"id": "metadata", "name": "Metadata Review", "status": "complete"},
+        {"id": "financial", "name": "Financial Math", "status": "complete"},
+        {"id": "output", "name": "Apply Decisions", "status": "complete"},
+    ]
+
+    return {
+        "receipt": {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "merchant_name": merchant_name,
+            "subtotal": financial.get("subtotal", 0),
+            "tax": financial.get("tax", 0),
+            "grand_total": financial.get("actual_total", 0),
+            "line_items": [],
+        },
+        "evaluations": {
+            "currency": currency_evals,
+            "metadata": metadata_evals,
+            "financial": financial,
+        },
+        "pipeline": pipeline,
+        "cached_at": datetime.now(timezone.utc).isoformat(),
+        "execution_id": execution_id,
+        "source": "langsmith",
+    }
+
+
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
-    """Generate LLM evaluator cache."""
+    """Generate LLM evaluator cache.
+
+    Data source priority:
+    1. Parquet export files (bulk-exported from LangSmith to S3)
+    2. LangSmith API (rate-limited, may be slow)
+    3. S3 batch bucket scanning (legacy fallback)
+
+    Then fetches word coordinates from S3 to build visualization-ready
+    cached data.
+    """
     logger.info("Starting LLM evaluator cache generation")
 
     if not S3_CACHE_BUCKET or not LABEL_EVALUATOR_BATCH_BUCKET:
         return {"statusCode": 500, "error": "Missing environment variables"}
 
-    execution_ids = _list_recent_executions()
-    if not execution_ids:
-        logger.warning("No executions found")
-        return {"statusCode": 200, "message": "No executions found", "cached_count": 0}
+    # Priority 1: Try Parquet export files (fastest, no rate limits)
+    parquet_receipts = _find_receipts_with_llm_decisions_from_parquet()
+    if parquet_receipts:
+        logger.info(
+            "Found %d receipts with LLM decisions from Parquet export",
+            len(parquet_receipts),
+        )
+        all_interesting = parquet_receipts
+        source = "parquet"
+    else:
+        # Priority 2: Try LangSmith API (may be slow/rate-limited)
+        langsmith_receipts = _find_receipts_with_llm_decisions_from_langsmith()
 
-    logger.info("Found %d executions", len(execution_ids))
+        if langsmith_receipts:
+            logger.info(
+                "Found %d receipts with LLM decisions from LangSmith API",
+                len(langsmith_receipts),
+            )
+            all_interesting = langsmith_receipts
+            source = "langsmith"
+        else:
+            # Priority 3: Fallback to S3 scanning
+            logger.info("Falling back to S3 scanning")
+            execution_ids = _list_recent_executions()
+            if not execution_ids:
+                logger.warning("No executions found")
+                return {"statusCode": 200, "message": "No executions found", "cached_count": 0}
 
-    all_interesting = []
-    for execution_id in execution_ids[:3]:
-        interesting = _find_interesting_receipts(execution_id, max_count=20)
-        all_interesting.extend(interesting)
-        logger.info("Found %d interesting receipts in %s", len(interesting), execution_id)
+            logger.info("Found %d executions", len(execution_ids))
+
+            all_interesting = []
+            for execution_id in execution_ids[:3]:
+                interesting = _find_interesting_receipts(execution_id, max_count=20)
+                all_interesting.extend(interesting)
+                logger.info("Found %d interesting receipts in %s", len(interesting), execution_id)
+
+            source = "s3"
 
     if not all_interesting:
         logger.warning("No interesting LLM reviews found")
@@ -396,16 +585,22 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     cached_count = 0
     for receipt_info in all_interesting:
-        reviewed_data = _load_json(receipt_info["reviewed_key"])
-        if not reviewed_data:
-            continue
+        # Determine data source (LangSmith vs S3)
+        if "run_id" in receipt_info:
+            # LangSmith source: use LangSmith data for decisions
+            viz_data = _build_visualization_data_from_langsmith(receipt_info)
+        else:
+            # S3 source: load reviewed data from S3
+            reviewed_data = _load_json(receipt_info["reviewed_key"])
+            if not reviewed_data:
+                continue
 
-        viz_data = _build_visualization_data(
-            execution_id=receipt_info["execution_id"],
-            image_id=receipt_info["image_id"],
-            receipt_id=receipt_info["receipt_id"],
-            reviewed_data=reviewed_data,
-        )
+            viz_data = _build_visualization_data(
+                execution_id=receipt_info["execution_id"],
+                image_id=receipt_info["image_id"],
+                receipt_id=receipt_info["receipt_id"],
+                reviewed_data=reviewed_data,
+            )
 
         if viz_data and _save_to_cache(viz_data):
             cached_count += 1
@@ -417,7 +612,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     return {
         "statusCode": 200,
         "message": "Cache generation complete",
-        "executions_scanned": len(execution_ids[:3]),
+        "source": source,
         "interesting_found": len(all_interesting),
         "cached_count": cached_count,
         "cleaned_count": cleaned_count,

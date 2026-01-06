@@ -60,3 +60,7 @@ export const ConstellationVisualization = dynamic(
   () => import("./ConstellationVisualization"),
   { ssr: false }
 );
+export const LabelEvaluatorVisualization = dynamic(
+  () => import("./LabelEvaluatorVisualization"),
+  { ssr: false }
+);

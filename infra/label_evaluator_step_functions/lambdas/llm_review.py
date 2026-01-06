@@ -771,6 +771,8 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                 "reviewed_issues_s3_key": reviewed_s3_key,
                 "rate_limit_stats": rate_limit_stats,
                 "dry_run": dry_run,
+                # Full reviewed issues for visualization
+                "reviewed_issues": reviewed_issues,
             }
             if apply_stats:
                 result["apply_stats"] = apply_stats

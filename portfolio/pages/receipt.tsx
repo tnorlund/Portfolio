@@ -11,13 +11,11 @@ import {
   ClientImageCounts,
   ClientReceiptCounts,
   CodeBuildDiagram,
-  ConstellationVisualization,
-  GeometricAnomalyVisualization,
   ImageStack,
+  LabelEvaluatorVisualization,
   LabelValidationCount,
   LayoutLMBatchVisualization,
   LayoutLMInferenceVisualization,
-  LLMEvaluatorVisualization,
   LockingSwimlane,
   MerchantCount,
   PhotoReceiptBoundingBox,
@@ -596,8 +594,6 @@ export default function ReceiptPage({
         words. I use a two-tier evaluation system to catch these issues.
       </p>
 
-      <h3>Geometric Pattern Detection</h3>
-
       <p>
         The first tier is fast and deterministic. By analyzing thousands of
         receipts, the system learns spatial patterns: where labels typically
@@ -606,48 +602,16 @@ export default function ReceiptPage({
         it gets flagged for review.
       </p>
 
-      <ClientOnly>
-        <GeometricAnomalyVisualization />
-      </ClientOnly>
-
       <p>
-        The scatter plot shows learned patterns between label pairs. Each dot
-        represents a training observation, and the ellipses show confidence
-        thresholds (1.5σ, 2.0σ, 2.5σ). When a word falls outside these bounds,
-        it&apos;s flagged as a potential anomaly.
-      </p>
-
-      <p>
-        Beyond pairwise relationships, the system also detects constellation
-        patterns: groups of labels that consistently appear together. By
-        computing the centroid of a label group and tracking each label&apos;s
-        expected offset, the system can catch anomalies that pairwise checks
-        might miss.
-      </p>
-
-      <ClientOnly>
-        <ConstellationVisualization />
-      </ClientOnly>
-
-      <h3>LLM-Based Validation</h3>
-
-      <p>
-        Flagged issues go through specialized LLM evaluators that understand
+        Flagged issues then go through specialized LLM evaluators that understand
         context. Three subagents work in parallel: one validates currency
         formats and line item structure, another verifies metadata against
         Google Places data, and a third checks that the math adds up.
       </p>
 
       <ClientOnly>
-        <LLMEvaluatorVisualization />
+        <LabelEvaluatorVisualization />
       </ClientOnly>
-
-      <p>
-        Each evaluator makes an independent decision (VALID, INVALID, or
-        NEEDS_REVIEW) with reasoning. The financial math validator is
-        particularly useful—it catches OCR errors by verifying that SUBTOTAL +
-        TAX = GRAND_TOTAL.
-      </p>
 
       <h1>What I Learned</h1>
 

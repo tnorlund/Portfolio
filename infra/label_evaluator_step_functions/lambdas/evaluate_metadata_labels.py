@@ -353,10 +353,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "status": "completed",
                 "image_id": image_id,
                 "receipt_id": receipt_id,
+                "merchant_name": merchant_name,
                 "metadata_words_evaluated": len(decisions),
                 "decisions": decision_counts,
                 "results_s3_key": results_s3_key,
                 "applied_stats": applied_stats,
+                # Full evaluations for visualization
+                "all_decisions": decisions,
             }
 
             trace_ctx.set_outputs(result)
