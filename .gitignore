@@ -251,4 +251,3 @@ backups/
 
 # Local development packages (not ready for commit)
 receipt_langsmith/
-infra/components/langsmith_bulk_export/
