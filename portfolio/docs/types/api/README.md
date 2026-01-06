@@ -11,6 +11,7 @@
 - [AddressBoundingBox](interfaces/AddressBoundingBox.md)
 - [AddressSimilarityResponse](interfaces/AddressSimilarityResponse.md)
 - [BoundingBox](interfaces/BoundingBox.md)
+- [DatasetMetrics](interfaces/DatasetMetrics.md)
 - [Image](interfaces/Image.md)
 - [ImageCountApiResponse](interfaces/ImageCountApiResponse.md)
 - [ImageDetailsApiResponse](interfaces/ImageDetailsApiResponse.md)
