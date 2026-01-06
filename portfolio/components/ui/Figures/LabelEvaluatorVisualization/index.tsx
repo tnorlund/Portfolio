@@ -159,12 +159,14 @@ interface FlyingReceiptProps {
   receipt: LabelEvaluatorReceipt | null;
   formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
   isFlying: boolean;
+  measuredContainerWidth?: number | null;
 }
 
 const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   receipt,
   formatSupport,
   isFlying,
+  measuredContainerWidth,
 }) => {
   const width = receipt?.width ?? 100;
   const height = receipt?.height ?? 150;
@@ -176,13 +178,13 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     return getBestImageUrl(receipt, formatSupport);
   }, [receipt, formatSupport]);
 
-  // Calculate display dimensions - constrained by both max-height (500px) and max-width (350px)
-  // Must match the active receipt's CSS constraints (max-height: 500px, max-width: 100% of 350px container)
+  // Calculate display dimensions using the same logic as CSS constraints
+  // Use measured container width if available, otherwise fall back to 350px
   const aspectRatio = width / height;
   const maxHeight = 500;
-  const maxWidth = 350; // matches centerColumn max-width
+  const maxWidth = measuredContainerWidth ?? 350;
 
-  // Start with height constraint
+  // Apply constraints: start with height, then check width
   let displayHeight = Math.min(maxHeight, height);
   let displayWidth = displayHeight * aspectRatio;
 
@@ -416,6 +418,7 @@ interface ReceiptViewerProps {
   phase: Phase;
   revealedDecisions: RevealedDecision[];
   formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
+  onContainerMeasure?: (containerWidth: number) => void;
 }
 
 const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
@@ -424,8 +427,10 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   phase,
   revealedDecisions,
   formatSupport,
+  onContainerMeasure,
 }) => {
   const { words, width, height } = receipt;
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Get the best image URL based on format support
   // Use full-size image so dimensions match receipt.width/height
@@ -433,6 +438,13 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
     if (!formatSupport) return null;
     return getBestImageUrl(receipt, formatSupport);
   }, [receipt, formatSupport]);
+
+  // Measure container width after image loads (when layout is stable)
+  const handleImageLoad = () => {
+    if (wrapperRef.current && onContainerMeasure) {
+      onContainerMeasure(wrapperRef.current.offsetWidth);
+    }
+  };
 
   if (!imageUrl) {
     return <div className={styles.receiptLoading}>Loading...</div>;
@@ -448,7 +460,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
 
   return (
     <div className={styles.receiptViewer}>
-      <div className={styles.receiptImageWrapper}>
+      <div ref={wrapperRef} className={styles.receiptImageWrapper}>
         <div className={styles.receiptImageInner}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -457,6 +469,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
             className={styles.receiptImage}
             width={width}
             height={height}
+            onLoad={handleImageLoad}
           />
           {/* SVG overlay for bounding boxes and scan lines */}
           <svg
@@ -1102,6 +1115,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
     supportsAVIF: boolean;
   } | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [measuredContainerWidth, setMeasuredContainerWidth] = useState<number | null>(null);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
@@ -1450,6 +1464,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
               phase={phase}
               revealedDecisions={revealedDecisions}
               formatSupport={formatSupport}
+              onContainerMeasure={setMeasuredContainerWidth}
             />
           </div>
 
@@ -1461,6 +1476,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
                 receipt={nextReceipt}
                 formatSupport={formatSupport}
                 isFlying={isTransitioning}
+                measuredContainerWidth={measuredContainerWidth}
               />
             )}
           </div>
