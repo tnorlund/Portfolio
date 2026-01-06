@@ -125,9 +125,12 @@ class LayoutLMInference:
             # Download run.json to local model_dir
             s3.download_file(bucket, run_json_key, local_run_json)
             self._parse_run_json(local_run_json)
-        except Exception:
+        except Exception as e:
             # run.json not found or other error - continue without it
-            pass
+            import logging
+            logging.getLogger(__name__).debug(
+                "Could not load run.json from S3: %s", e
+            )
 
     def _parse_run_json(self, path: str) -> None:
         """Parse run.json and build reverse label mapping."""
