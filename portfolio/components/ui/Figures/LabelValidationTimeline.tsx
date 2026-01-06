@@ -20,9 +20,6 @@ const STATUS_COLORS: Record<StatusType, string> = {
   NONE: "var(--text-color)",
 };
 
-// Smoothstep cubic easing - smooth acceleration and deceleration
-const smoothstep = (t: number) => t * t * (3 - 2 * t);
-
 /**
  * Interpolate between keyframes based on progress [0, 1]
  * Returns smoothly interpolated label counts
@@ -199,10 +196,10 @@ export default function LabelValidationTimeline() {
     }
   }, [inView, timeline, hasAnimated]);
 
-  // Animate progress 0 → 1 with cubic easing over 4 seconds
+  // Animate progress 0 → 1 with spring physics
   const { progress } = useSpring({
     progress: hasAnimated ? 1 : 0,
-    config: { duration: 4000, easing: smoothstep },
+    config: { mass: 1, tension: 20, friction: 14 },
   });
 
   if (error) {
