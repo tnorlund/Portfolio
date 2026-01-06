@@ -531,39 +531,20 @@ export default function ReceiptPage({
       </ClientOnly>
 
       <p>
-        LayoutLM is a transformer model that understands both text and layout
-        information. By training it on my labeled receipts, it learns to
-        identify entities like merchant names, dates, addresses, and amounts
-        with high accuracy.
-      </p>
-
-      <p>
-        After reading the research paper, I learned that the model works best
-        using evenly distributed labels. In order to do this, I had to
-        compromise with labeled data I&apos;d know to be disproportionate: an
-        average receipt has more line item prices than it does totals and taxes.
-        Here is how I balanced the labels:
+        LayoutLM is a transformer model that understands both text and layout.
+        I trained it on my labeled receipts to identify 8 entity types:
       </p>
 
       <ul>
-        <li>
-          <strong>Merchant Name</strong>: Merchant Name
-        </li>
-        <li>
-          <strong>Date</strong>: Date and Time
-        </li>
-        <li>
-          <strong>Address</strong>: Address and Phone Number
-        </li>
-        <li>
-          <strong>Amount</strong>: Line Total, Subtotal, Tax, and Grand Total
-        </li>
+        <li><strong>Merchant</strong>, <strong>Date</strong>, <strong>Time</strong></li>
+        <li><strong>Amount</strong> (prices, subtotals, tax, totals)</li>
+        <li><strong>Address</strong> (street, phone)</li>
+        <li><strong>Website</strong>, <strong>Hours</strong>, <strong>Payment</strong></li>
       </ul>
 
       <p>
-        The visualization below shows how the model scans through receipts,
-        identifying entities as it processes each word. A scan line sweeps
-        down the image, revealing bounding boxes for detected entities.
+        The visualization below shows the model scanning receipts, revealing
+        bounding boxes as it identifies each entity.
       </p>
 
       <ClientOnly>
