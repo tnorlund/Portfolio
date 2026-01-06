@@ -192,7 +192,8 @@ export const mockData: GeometricAnomalyData = {
     currentLabel: "GRAND_TOTAL",
     referenceLabel: "SUBTOTAL",
     expected: { dx: 0.0, dy: 0.12 }, // Expected offset from SUBTOTAL
-    actual: { dx: 0.0, dy: 0.10 },   // Actual offset (too close, y difference is 0.70 - 0.60 = 0.10)
+    actual: { dx: 0.0, dy: 0.078 },  // Actual offset - anomalously close to SUBTOTAL
+    // z-score = |0.078 - 0.12| / 0.015 = 0.042 / 0.015 = 2.8
     zScore: 2.8,
     threshold: 2.5,
   },

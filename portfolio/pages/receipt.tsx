@@ -15,7 +15,6 @@ import {
   LabelEvaluatorVisualization,
   LabelValidationTimeline,
   LayoutLMBatchVisualization,
-  LayoutLMInferenceVisualization,
   LockingSwimlane,
   MerchantCount,
   PhotoReceiptBoundingBox,

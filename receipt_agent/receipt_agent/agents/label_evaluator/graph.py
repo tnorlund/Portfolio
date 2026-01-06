@@ -1265,6 +1265,7 @@ async def run_compute_only(
                 "reasoning": issue.reasoning,
             }
             # Include drill_down for constellation anomalies
+            # Note: matches review_flagged_labels serialization (excludes unused offset fields)
             if issue.drill_down:
                 issue_dict["drill_down"] = [
                     {
@@ -1272,8 +1273,6 @@ async def run_compute_only(
                         "line_id": w.line_id,
                         "text": w.text,
                         "position": w.position,
-                        "expected_offset": w.expected_offset,
-                        "actual_offset": w.actual_offset,
                         "deviation": w.deviation,
                         "is_culprit": w.is_culprit,
                     }

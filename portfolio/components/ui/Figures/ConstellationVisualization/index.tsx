@@ -630,12 +630,17 @@ interface WordBoxProps {
 const WordBox: React.FC<WordBoxProps> = ({ word, showHighlight }) => {
   const labelColor = word.label ? LABEL_COLORS[word.label] || "#666" : "#666";
 
+  // Use color-mix for CSS variable compatibility (hex suffixes don't work with var())
   const bgColor = showHighlight
-    ? `${labelColor}30`
+    ? `color-mix(in srgb, ${labelColor} 19%, transparent)`
     : word.label
-    ? `${labelColor}15`
+    ? `color-mix(in srgb, ${labelColor} 8%, transparent)`
     : "transparent";
-  const borderCol = showHighlight ? labelColor : word.label ? `${labelColor}50` : "transparent";
+  const borderCol = showHighlight
+    ? labelColor
+    : word.label
+    ? `color-mix(in srgb, ${labelColor} 31%, transparent)`
+    : "transparent";
 
   return (
     <div
