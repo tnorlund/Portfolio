@@ -38,17 +38,16 @@ if not DYNAMODB_TABLE_NAME:
 
 # Initialize clients
 s3_client = boto3.client("s3")
-dynamo_client: DynamoClient | None = None
+_dynamo_client_cache: dict[str, DynamoClient] = {}
 
 
 def _get_dynamo_client() -> DynamoClient:
     """Get or create the DynamoDB client singleton."""
-    global dynamo_client
-    if dynamo_client is None:
+    if "client" not in _dynamo_client_cache:
         if not DYNAMODB_TABLE_NAME:
             raise ValueError("DYNAMODB_TABLE_NAME not set")
-        dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME)
-    return dynamo_client
+        _dynamo_client_cache["client"] = DynamoClient(DYNAMODB_TABLE_NAME)
+    return _dynamo_client_cache["client"]
 
 
 def _get_receipt_image_data(image_id: str, receipt_id: int) -> dict[str, Any] | None:

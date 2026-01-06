@@ -160,6 +160,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     ) as trace_ctx:
 
         try:
+            # Import rate limit exceptions early for error handling
+            from receipt_agent.utils.llm_factory import AllProvidersFailedError
+            from receipt_agent.utils.ollama_rate_limit import OllamaRateLimitError
+
             # Import utilities
             from utils.serialization import (
                 deserialize_label,
@@ -366,12 +370,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         except Exception as e:
             # Re-raise rate limit errors for Step Function retry
-            from receipt_agent.utils.llm_factory import AllProvidersFailedError
-            from receipt_agent.utils.ollama_rate_limit import OllamaRateLimitError
-
-            if isinstance(e, (OllamaRateLimitError, AllProvidersFailedError)):
-                logger.error("Rate limit error, propagating for Step Function retry: %s", e)
-                raise OllamaRateLimitError(f"Rate limit error: {e}") from e
+            # Note: AllProvidersFailedError and OllamaRateLimitError imported at top of try block
+            if isinstance(e, OllamaRateLimitError):
+                logger.exception("Rate limit error, propagating for Step Function retry")
+                raise
+            if isinstance(e, AllProvidersFailedError):
+                logger.exception("All providers failed, propagating for Step Function retry")
+                raise OllamaRateLimitError(str(e)) from e
 
             logger.exception("Metadata evaluation failed")
             result = {

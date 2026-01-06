@@ -141,7 +141,7 @@ class LabelEvaluatorGeometricCache(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Read/write to cache bucket
+        # Read/write/delete to cache bucket (DeleteObject needed for cache cleanup)
         aws.iam.RolePolicy(
             f"{name}-cache-bucket-policy",
             role=self.lambda_role.id,
@@ -150,7 +150,7 @@ class LabelEvaluatorGeometricCache(ComponentResource):
                     "Version": "2012-10-17",
                     "Statement": [{
                         "Effect": "Allow",
-                        "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
+                        "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
                         "Resource": [
                             f"arn:aws:s3:::{bucket}/*",
                             f"arn:aws:s3:::{bucket}",

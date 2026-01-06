@@ -94,6 +94,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 status = receipt_result.get("status", "unknown")
                 issues_found = receipt_result.get("issues_found", 0)
 
+                # Aggregate issue types if available
+                by_type = receipt_result.get("by_issue_type", {})
+                if isinstance(by_type, dict):
+                    for issue_type, count in by_type.items():
+                        issue_type_counter[issue_type] += count
+
                 # Aggregate by merchant
                 if merchant_name not in merchant_stats:
                     merchant_stats[merchant_name] = {

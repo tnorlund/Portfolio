@@ -66,14 +66,14 @@ class LangSmithBulkExport(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Ensure no public access blocks interfere with IAM user access
+        # Block all public access - cross-account IAM access works via IAM policies
         aws.s3.BucketPublicAccessBlock(
             f"{name}-export-bucket-public-access",
             bucket=self.export_bucket.id,
             block_public_acls=True,
             block_public_policy=True,
             ignore_public_acls=True,
-            restrict_public_buckets=False,  # Must be False for cross-account IAM
+            restrict_public_buckets=True,
             opts=ResourceOptions(parent=self),
         )
 
