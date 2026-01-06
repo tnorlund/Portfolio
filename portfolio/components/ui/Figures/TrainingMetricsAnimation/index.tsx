@@ -131,19 +131,29 @@ interface DatasetStatsProps {
 }
 
 const DatasetStats: React.FC<DatasetStatsProps> = ({ datasetMetrics }) => {
-  if (!datasetMetrics) return null;
+  // Validate required fields exist
+  if (
+    !datasetMetrics ||
+    datasetMetrics.num_train_samples == null ||
+    datasetMetrics.num_val_samples == null ||
+    datasetMetrics.o_entity_ratio_train == null
+  ) {
+    return null;
+  }
 
   const { num_train_samples, num_val_samples, o_entity_ratio_train } =
     datasetMetrics;
 
   // Calculate percentages for train/val split
-  const total = (num_train_samples || 0) + (num_val_samples || 0);
-  const trainPercent = total > 0 ? ((num_train_samples || 0) / total) * 100 : 80;
-  const valPercent = total > 0 ? ((num_val_samples || 0) / total) * 100 : 20;
+  const total = num_train_samples + num_val_samples;
+  if (total === 0) return null;
+
+  const trainPercent = (num_train_samples / total) * 100;
+  const valPercent = (num_val_samples / total) * 100;
 
   // Calculate percentages for O:entity ratio
   // ratio = O / entity, so entity% = 1 / (1 + ratio), O% = ratio / (1 + ratio)
-  const ratio = o_entity_ratio_train || 1;
+  const ratio = o_entity_ratio_train;
   const entityPercent = (1 / (1 + ratio)) * 100;
   const oPercent = (ratio / (1 + ratio)) * 100;
 
@@ -293,7 +303,11 @@ const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => 
 
         {/* X-axis labels (top) */}
         {labels.map((label) => (
-          <div key={`x-${label}`} className={styles.matrixAxisLabel}>
+          <div
+            key={`x-${label}`}
+            className={styles.matrixAxisLabel}
+            title={formatLabel(label)}
+          >
             {formatLabelAbbrev(label)}
           </div>
         ))}
@@ -304,6 +318,7 @@ const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => 
             {/* Y-axis label */}
             <div
               className={`${styles.matrixAxisLabel} ${styles.matrixAxisLabelY}`}
+              title={formatLabel(labels[i])}
             >
               {formatLabelAbbrev(labels[i])}
             </div>

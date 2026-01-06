@@ -75,11 +75,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         except EntityNotFoundError:
             return _error_response(404, f"Job not found: {job_id}")
 
-        # Get all metrics for the job
+        # Get all metrics for the job (includes dataset_metrics)
         metrics_data = _fetch_all_metrics(client, job_id)
 
-        # Get dataset-level metrics (epoch=None)
-        dataset_metrics = _fetch_dataset_metrics(client, job_id)
+        # Get dataset-level metrics (already extracted in _fetch_all_metrics)
+        dataset_metrics = metrics_data.get("dataset_metrics", {})
 
         # Aggregate metrics by epoch
         epochs = _aggregate_by_epoch(
@@ -160,26 +160,12 @@ def _fetch_all_metrics(client: DynamoClient, job_id: str) -> Dict[str, List]:
     label_metrics = [m for m in all_metrics if m.metric_name.startswith("label_")]
     result["label_metrics"] = label_metrics
 
+    # Extract dataset-level metrics (epoch=None) from the same fetch
+    result["dataset_metrics"] = {
+        m.metric_name: m.value for m in all_metrics if m.epoch is None
+    }
+
     return result
-
-
-def _fetch_dataset_metrics(client: DynamoClient, job_id: str) -> Dict[str, Any]:
-    """Fetch dataset-level metrics (epoch=None).
-
-    These are metrics recorded once at training start, not per-epoch.
-    Includes: num_train_samples, num_val_samples, o_entity_ratio_train, etc.
-    """
-    all_metrics = []
-    last_key = None
-    while True:
-        metrics, last_key = client.list_job_metrics(
-            job_id, last_evaluated_key=last_key
-        )
-        all_metrics.extend(metrics)
-        if not last_key:
-            break
-
-    return {m.metric_name: m.value for m in all_metrics if m.epoch is None}
 
 
 def _aggregate_by_epoch(
