@@ -125,6 +125,7 @@ celerybeat.pid
 .env
 .venv
 .venv-ci/
+.venv-dev/
 .test-venv/
 env/
 venv/
@@ -247,3 +248,7 @@ infra/backups/
 .github/pr-reviews/reports/*-review-tracking.md
 .venv312/
 backups/
+
+# Local development packages (not ready for commit)
+receipt_langsmith/
+infra/components/langsmith_bulk_export/
