@@ -236,6 +236,8 @@ li {
     /* RGB values for #66BB6A */
     --color-blue: #42A5F5;
     --color-yellow: #FFEE58;
+    --color-orange: #FF9800;
+    --color-orange-rgb: 255, 152, 0;
 
     --background-color-rgb: 18, 18, 18;
     /* Add this for dark mode */
