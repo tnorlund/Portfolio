@@ -825,6 +825,9 @@ interface ScannerLegendItemProps {
   durationMs?: number;
   decisions?: RevealedDecision[];
   totalDecisions?: number;
+  isTransitioning?: boolean;
+  nextTotalDecisions?: number;
+  showPlaceholders?: boolean; // false = only show filled icons (allows layout shift)
 }
 
 // Generate SVG path for a pie slice from 12 o'clock, filling clockwise
@@ -857,9 +860,14 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
   durationMs,
   decisions = [],
   totalDecisions = 0,
+  isTransitioning = false,
+  nextTotalDecisions = 0,
+  showPlaceholders = true,
 }) => {
   const isActive = progress > 0 && progress < 100;
   const hasDecisions = totalDecisions > 0;
+  const hasNextDecisions = nextTotalDecisions > 0;
+  const hasVisibleContent = showPlaceholders ? hasDecisions : decisions.length > 0;
 
   return (
     <div className={`${styles.legendItem} ${isActive ? styles.active : ""} ${isComplete ? styles.complete : ""} ${isSkipped ? styles.skipped : ""}`}>
@@ -941,49 +949,87 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
           <span className={styles.legendWaiting}>waiting</span>
         ) : null}
       </div>
-      {/* Decision tally row - colored circles with white icons (matches bounding boxes) */}
-      {hasDecisions && decisions.length > 0 && (
+      {/* Decision tally row - shows filled icons + empty placeholders (if enabled) */}
+      {/* During transition: current row fades out, next row overlays and fades in */}
+      {(hasVisibleContent || (isTransitioning && hasNextDecisions)) && (
         <div className={styles.legendTally}>
-          {decisions.map((d) => {
-            const bgColor = DECISION_COLORS[d.decision];
-            return (
-              <span
-                key={d.key}
-                className={styles.tallyIcon}
-                title={`${d.wordText}: ${d.decision}`}
-              >
+          {/* Current receipt's tally - filled icons + optional empty placeholders */}
+          {/* Stays in normal flow to maintain container height, fades out during transition */}
+          <div className={`${styles.tallyRow} ${isTransitioning ? styles.tallyFadeOut : ''}`}>
+            {/* Filled icons for revealed decisions */}
+            {decisions.map((d) => {
+              const bgColor = DECISION_COLORS[d.decision];
+              return (
+                <span
+                  key={d.key}
+                  className={styles.tallyIcon}
+                  title={`${d.wordText}: ${d.decision}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <circle cx="7" cy="7" r="6" fill={bgColor} />
+                    {d.decision === 'VALID' && (
+                      <path
+                        d="M4 7 L6 9.5 L10 5"
+                        fill="none"
+                        stroke="white"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    )}
+                    {d.decision === 'INVALID' && (
+                      <g>
+                        <line x1="4.5" y1="4.5" x2="9.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                        <line x1="9.5" y1="4.5" x2="4.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                      </g>
+                    )}
+                    {d.decision === 'NEEDS_REVIEW' && (
+                      <g>
+                        <circle cx="7" cy="5" r="1.8" fill="white" />
+                        <path d="M3.5 11.5 Q3.5 8 7 8 Q10.5 8 10.5 11.5" fill="white" />
+                      </g>
+                    )}
+                  </svg>
+                </span>
+              );
+            })}
+            {/* Empty placeholders for unrevealed decisions (only if showPlaceholders is true) */}
+            {showPlaceholders && Array.from({ length: Math.max(0, totalDecisions - decisions.length) }).map((_, idx) => (
+              <span key={`empty-${idx}`} className={styles.tallyIcon}>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  {/* Background circle */}
-                  <circle cx="7" cy="7" r="6" fill={bgColor} />
-                  {/* White icon inside */}
-                  {d.decision === 'VALID' && (
-                    <path
-                      d="M4 7 L6 9.5 L10 5"
-                      fill="none"
-                      stroke="white"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  )}
-                  {d.decision === 'INVALID' && (
-                    <g>
-                      <line x1="4.5" y1="4.5" x2="9.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-                      <line x1="9.5" y1="4.5" x2="4.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-                    </g>
-                  )}
-                  {d.decision === 'NEEDS_REVIEW' && (
-                    <g>
-                      {/* Head */}
-                      <circle cx="7" cy="5" r="1.8" fill="white" />
-                      {/* Body */}
-                      <path d="M3.5 11.5 Q3.5 8 7 8 Q10.5 8 10.5 11.5" fill="white" />
-                    </g>
-                  )}
+                  <circle
+                    cx="7"
+                    cy="7"
+                    r="5.5"
+                    fill="none"
+                    stroke="var(--text-color)"
+                    strokeWidth="1"
+                    opacity="0.3"
+                  />
                 </svg>
               </span>
-            );
-          })}
+            ))}
+          </div>
+          {/* Next receipt's empty placeholders - absolutely positioned overlay, fades in */}
+          {isTransitioning && hasNextDecisions && showPlaceholders && (
+            <div className={`${styles.tallyRow} ${styles.tallyRowOverlay} ${styles.tallyFadeIn}`}>
+              {Array.from({ length: nextTotalDecisions }).map((_, idx) => (
+                <span key={`next-${idx}`} className={styles.tallyIcon}>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <circle
+                      cx="7"
+                      cy="7"
+                      r="5.5"
+                      fill="none"
+                      stroke="var(--text-color)"
+                      strokeWidth="1"
+                      opacity="0.3"
+                    />
+                  </svg>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -995,12 +1041,16 @@ interface ScannerLegendProps {
   receipt: LabelEvaluatorReceipt;
   scannerState: ScannerState;
   revealedDecisions: RevealedDecision[];
+  isTransitioning: boolean;
+  nextReceipt: LabelEvaluatorReceipt | null;
 }
 
 const ScannerLegend: React.FC<ScannerLegendProps> = ({
   receipt,
   scannerState,
   revealedDecisions,
+  isTransitioning,
+  nextReceipt,
 }) => {
   const { currency, metadata, geometric, financial } = receipt;
   const hasGeometricIssues = geometric.issues_found > 0;
@@ -1023,6 +1073,7 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
 
   // Get review data (may be undefined if no geometric issues)
   const review = receipt.review;
+  const nextReview = nextReceipt?.review;
 
   return (
     <div className={styles.scannerLegend}>
@@ -1036,6 +1087,8 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         durationMs={metadata.duration_seconds * 1000}
         decisions={metadataDecisions}
         totalDecisions={metadata.all_decisions.length}
+        isTransitioning={isTransitioning}
+        nextTotalDecisions={nextReceipt?.metadata.all_decisions.length ?? 0}
       />
       {/* Orange - Geometric → Review chain */}
       <ScannerLegendItem
@@ -1056,6 +1109,9 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         durationMs={review ? review.duration_seconds * 1000 : undefined}
         decisions={reviewDecisions}
         totalDecisions={review ? review.all_decisions.length : 0}
+        isTransitioning={isTransitioning}
+        nextTotalDecisions={nextReview?.all_decisions.length ?? 0}
+        showPlaceholders={hasReviewData && scannerState.geometric >= 100}
       />
       {/* Purple - Line Item → Currency → Financial chain */}
       <ScannerLegendItem
@@ -1075,6 +1131,9 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         durationMs={currency.duration_seconds * 1000}
         decisions={currencyDecisions}
         totalDecisions={currency.all_decisions.length}
+        isTransitioning={isTransitioning}
+        nextTotalDecisions={nextReceipt?.currency.all_decisions.length ?? 0}
+        showPlaceholders={scannerState.lineItem >= 100}
       />
       <ScannerLegendItem
         name="Financial"
@@ -1085,6 +1144,9 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         durationMs={financial.duration_seconds * 1000}
         decisions={financialDecisions}
         totalDecisions={financial.all_decisions.length}
+        isTransitioning={isTransitioning}
+        nextTotalDecisions={nextReceipt?.financial.all_decisions.length ?? 0}
+        showPlaceholders={scannerState.currency >= 100 && scannerState.metadata >= 100}
       />
     </div>
   );
@@ -1499,6 +1561,8 @@ const LabelEvaluatorVisualization: React.FC = () => {
           receipt={currentReceipt}
           scannerState={scannerState}
           revealedDecisions={revealedDecisions}
+          isTransitioning={isTransitioning}
+          nextReceipt={nextReceipt}
         />
       </div>
     </div>

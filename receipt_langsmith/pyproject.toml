@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "receipt-langsmith"
+version = "0.1.0"
+authors = [
+  { name="Tyler Norlund", email="tnorlund@icloud.com" },
+]
+description = "LangSmith query helpers for receipt evaluation visualization caches"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+]
+dependencies = [
+    "receipt-dynamo",
+    "langsmith>=0.1.0",
+    "pyarrow>=14.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0,<10.0.0",
+    "pytest-mock>=3.14.0,<4.0.0",
+    "black==25.12.0",
+    "pylint>=3.0.0,<5.0.0",
+    "mypy>=1.16.1",
+    "isort==6.0.1",
+]
+
+[tool.hatch.build]
+exclude = [
+  "tests/",
+  "**/*.md",
+  "**/*.txt",
+  "**/__pycache__/",
+  "**/*.pyc",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["receipt_langsmith"]
+include = ["receipt_langsmith/py.typed"]
+
+[tool.black]
+line-length = 79
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 79
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

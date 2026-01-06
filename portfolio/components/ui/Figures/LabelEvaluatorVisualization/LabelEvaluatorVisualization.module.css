@@ -262,12 +262,24 @@
 
 /* Decision tally in legend - shows below the scanner row */
 .legendTally {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
+  position: relative;
   width: 100%;
   padding-left: 24px;
   margin-top: -2px;
+  min-height: 14px;
+}
+
+.tallyRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.tallyRowOverlay {
+  position: absolute;
+  top: 0;
+  left: 24px;
+  right: 0;
 }
 
 .tallyIcon {
@@ -280,6 +292,24 @@
 
 .tallyIcon svg {
   flex-shrink: 0;
+}
+
+.tallyFadeOut {
+  animation: tallyFadeOut 0.4s ease-out forwards;
+}
+
+.tallyFadeIn {
+  animation: tallyFadeIn 0.4s ease-in forwards;
+}
+
+@keyframes tallyFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes tallyFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* Pipeline Panel - Right Column */
