@@ -4,6 +4,30 @@ export interface LabelValidationCountResponse {
   };
 }
 
+export interface LabelValidationStatusCounts {
+  VALID: number;
+  INVALID: number;
+  PENDING: number;
+  NEEDS_REVIEW: number;
+  NONE: number;
+  total: number;
+}
+
+export interface LabelValidationKeyframe {
+  progress: number;
+  timestamp: string;
+  records_processed: number;
+  labels: {
+    [labelName: string]: LabelValidationStatusCounts;
+  };
+}
+
+export interface LabelValidationTimelineResponse {
+  generated_at: string;
+  total_records: number;
+  keyframes: LabelValidationKeyframe[];
+}
+
 export interface ImageDetailsApiResponse {
   image: Image;
   lines: Line[];

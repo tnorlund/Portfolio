@@ -48,3 +48,7 @@ export const LayoutLMBatchVisualization = dynamic(
   () => import("./LayoutLMBatchVisualization"),
   { ssr: false }
 );
+export const LabelValidationTimeline = dynamic(
+  () => import("./LabelValidationTimeline"),
+  { ssr: false }
+);
