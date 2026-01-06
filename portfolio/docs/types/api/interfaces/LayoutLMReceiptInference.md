@@ -6,7 +6,7 @@
 
 # Interface: LayoutLMReceiptInference
 
-Defined in: [types/api.ts:272](https://github.com/tnorlund/Portfolio/blob/06f873ed204757c89b4b117cf68a4de73bb144fd/portfolio/types/api.ts#L272)
+Defined in: [types/api.ts:296](https://github.com/tnorlund/Portfolio/blob/4dce85e6326d93d99838fb15b49eb26d19c6e506/portfolio/types/api.ts#L296)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:272](https://github.com/tnorlund/Portfolio/blob/06f873
 
 > **cached\_at**: `string`
 
-Defined in: [types/api.ts:306](https://github.com/tnorlund/Portfolio/blob/06f873ed204757c89b4b117cf68a4de73bb144fd/portfolio/types/api.ts#L306)
+Defined in: [types/api.ts:330](https://github.com/tnorlund/Portfolio/blob/4dce85e6326d93d99838fb15b49eb26d19c6e506/portfolio/types/api.ts#L330)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:306](https://github.com/tnorlund/Portfolio/blob/06f873
 
 > **entities\_summary**: [`LayoutLMEntitiesSummary`](LayoutLMEntitiesSummary.md)
 
-Defined in: [types/api.ts:304](https://github.com/tnorlund/Portfolio/blob/06f873ed204757c89b4b117cf68a4de73bb144fd/portfolio/types/api.ts#L304)
+Defined in: [types/api.ts:328](https://github.com/tnorlund/Portfolio/blob/4dce85e6326d93d99838fb15b49eb26d19c6e506/portfolio/types/api.ts#L328)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:304](https://github.com/tnorlund/Portfolio/blob/06f873
 
 > **inference\_time\_ms**: `number`
 
-Defined in: [types/api.ts:305](https://github.com/tnorlund/Portfolio/blob/06f873ed204757c89b4b117cf68a4de73bb144fd/portfolio/types/api.ts#L305)
+Defined in: [types/api.ts:329](https://github.com/tnorlund/Portfolio/blob/4dce85e6326d93d99838fb15b49eb26d19c6e506/portfolio/types/api.ts#L329)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:305](https://github.com/tnorlund/Portfolio/blob/06f873
 
 > **metrics**: `object`
 
-Defined in: [types/api.ts:291](https://github.com/tnorlund/Portfolio/blob/06f873ed204757c89b4b117cf68a4de73bb144fd/portfolio/types/api.ts#L291)
+Defined in: [types/api.ts:315](https://github.com/tnorlund/Portfolio/blob/4dce85e6326d93d99838fb15b49eb26d19c6e506/portfolio/types/api.ts#L315)
 
 #### correct\_predictions
 
@@ -70,7 +70,7 @@ Defined in: [types/api.ts:291](https://github.com/tnorlund/Portfolio/blob/06f873
 
 > **model\_info**: `object`
 
-Defined in: [types/api.ts:299](https://github.com/tnorlund/Portfolio/blob/06f873ed204757c89b4b117cf68a4de73bb144fd/portfolio/types/api.ts#L299)
+Defined in: [types/api.ts:323](https://github.com/tnorlund/Portfolio/blob/4dce85e6326d93d99838fb15b49eb26d19c6e506/portfolio/types/api.ts#L323)
 
 #### device
 
@@ -90,7 +90,7 @@ Defined in: [types/api.ts:299](https://github.com/tnorlund/Portfolio/blob/06f873
 
 > **original**: `object`
 
-Defined in: [types/api.ts:274](https://github.com/tnorlund/Portfolio/blob/06f873ed204757c89b4b117cf68a4de73bb144fd/portfolio/types/api.ts#L274)
+Defined in: [types/api.ts:298](https://github.com/tnorlund/Portfolio/blob/4dce85e6326d93d99838fb15b49eb26d19c6e506/portfolio/types/api.ts#L298)
 
 #### predictions
 
@@ -154,4 +154,4 @@ Defined in: [types/api.ts:274](https://github.com/tnorlund/Portfolio/blob/06f873
 
 > **receipt\_id**: `string`
 
-Defined in: [types/api.ts:273](https://github.com/tnorlund/Portfolio/blob/06f873ed204757c89b4b117cf68a4de73bb144fd/portfolio/types/api.ts#L273)
+Defined in: [types/api.ts:297](https://github.com/tnorlund/Portfolio/blob/4dce85e6326d93d99838fb15b49eb26d19c6e506/portfolio/types/api.ts#L297)
