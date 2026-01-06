@@ -22,7 +22,7 @@ DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
 # This can be updated to point to the best trained model
 FEATURED_JOB_ID = os.environ.get(
     "FEATURED_JOB_ID",
-    "b8af06b6-27eb-41bc-846a-8b0ff93b8845"  # confusion-matrix-test-2
+    "18da9414-37a5-4837-b65a-a03b7f8df4cd"  # layoutlm-hybrid-8-labels-orig-label-fix
 )
 
 
@@ -75,8 +75,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         except EntityNotFoundError:
             return _error_response(404, f"Job not found: {job_id}")
 
-        # Get all metrics for the job
+        # Get all metrics for the job (includes dataset_metrics)
         metrics_data = _fetch_all_metrics(client, job_id)
+
+        # Get dataset-level metrics (already extracted in _fetch_all_metrics)
+        dataset_metrics = metrics_data.get("dataset_metrics", {})
 
         # Aggregate metrics by epoch
         epochs = _aggregate_by_epoch(
@@ -104,6 +107,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "job_name": job.name,
             "status": job.status,
             "created_at": job.created_at,
+            "dataset_metrics": dataset_metrics if dataset_metrics else None,
             "epochs": epochs,
             "best_epoch": best_epoch,
             "best_f1": best_f1,
@@ -155,6 +159,11 @@ def _fetch_all_metrics(client: DynamoClient, job_id: str) -> Dict[str, List]:
             break
     label_metrics = [m for m in all_metrics if m.metric_name.startswith("label_")]
     result["label_metrics"] = label_metrics
+
+    # Extract dataset-level metrics (epoch=None) from the same fetch
+    result["dataset_metrics"] = {
+        m.metric_name: m.value for m in all_metrics if m.epoch is None
+    }
 
     return result
 

@@ -1186,6 +1186,62 @@ pulumi.export(
     "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
 )
 
+# Label Validation Timeline API (S3-cached timeline for animated visualization)
+from routes.label_validation_timeline_cache.infra import (
+    create_label_validation_timeline_cache,
+)
+from routes.label_validation_timeline.infra import (
+    create_label_validation_timeline_lambda,
+)
+
+# Create cache generator (which creates the cache bucket)
+timeline_cache_bucket, timeline_cache_generator_lambda = (
+    create_label_validation_timeline_cache()
+)
+
+# Create the API Lambda using the cache bucket
+label_validation_timeline_lambda = create_label_validation_timeline_lambda(
+    cache_bucket_name=timeline_cache_bucket.id,
+)
+
+# Create API Gateway route for label_validation_timeline
+if hasattr(api_gateway, "api"):
+    integration_label_validation_timeline = aws.apigatewayv2.Integration(
+        "label_validation_timeline_lambda_integration",
+        api_id=api_gateway.api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=label_validation_timeline_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    route_label_validation_timeline = aws.apigatewayv2.Route(
+        "label_validation_timeline_route",
+        api_id=api_gateway.api.id,
+        route_key="GET /label_validation_timeline",
+        target=integration_label_validation_timeline.id.apply(
+            lambda id: f"integrations/{id}"
+        ),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+    lambda_permission_label_validation_timeline = aws.lambda_.Permission(
+        "label_validation_timeline_lambda_permission",
+        action="lambda:InvokeFunction",
+        function=label_validation_timeline_lambda.name,
+        principal="apigateway.amazonaws.com",
+        source_arn=api_gateway.api.execution_arn.apply(
+            lambda arn: f"{arn}/*/*"
+        ),
+    )
+
+pulumi.export("label_validation_timeline_cache_bucket", timeline_cache_bucket.id)
+pulumi.export(
+    "label_validation_timeline_cache_generator_lambda",
+    timeline_cache_generator_lambda.name,
+)
+
 # Label Evaluator Visualization Cache (Geometric Anomaly + LLM Evaluator)
 from components.langsmith_bulk_export import LangSmithBulkExport
 from routes.label_evaluator_geometric_cache.infra import (

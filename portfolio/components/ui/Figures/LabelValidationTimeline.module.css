@@ -1,0 +1,106 @@
+.container {
+  width: 100%;
+  max-width: 900px;
+  margin: 2rem auto;
+  font-family: sans-serif;
+}
+
+.title {
+  text-align: center;
+  margin: 0;
+  color: var(--text-color);
+}
+
+.subtitle {
+  text-align: center;
+  margin: 0.25rem 0 1rem 0;
+  color: var(--text-color);
+  opacity: 0.7;
+  font-size: 0.95rem;
+}
+
+.barsContainer {
+  display: grid;
+  grid-template-columns: max-content auto max-content;
+  column-gap: 8px;
+  row-gap: 6px;
+  align-items: center;
+}
+
+.labelName {
+  font-weight: 500;
+  text-align: right;
+  text-transform: capitalize;
+  color: var(--text-color);
+}
+
+.barWrapper {
+  display: flex;
+  height: 20px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.barSegment {
+  height: 100%;
+}
+
+.total {
+  text-align: right;
+  color: var(--text-color);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: 24px;
+  margin-bottom: 1rem;
+}
+
+.legendItem {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-color);
+}
+
+.legendDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.loading,
+.error {
+  min-height: 675px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-color);
+}
+
+.error {
+  color: var(--color-red);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .labelName {
+    font-size: 0.85rem;
+  }
+
+  .total {
+    font-size: 0.85rem;
+  }
+
+  .legend {
+    column-gap: 16px;
+  }
+
+  .legendItem {
+    font-size: 0.85rem;
+  }
+}

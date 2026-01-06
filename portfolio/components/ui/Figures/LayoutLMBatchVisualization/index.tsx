@@ -10,12 +10,16 @@ import {
 import { detectImageFormatSupport, getBestImageUrl } from "../../../../utils/imageFormat";
 import styles from "./LayoutLMBatchVisualization.module.css";
 
-// Label colors matching the existing carousel
+// Label colors for 8-label hybrid model
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
   DATE: "var(--color-blue)",
-  ADDRESS: "var(--color-red)",
+  TIME: "var(--color-blue)",
   AMOUNT: "var(--color-green)",
+  ADDRESS: "var(--color-red)",
+  WEBSITE: "var(--color-purple)",
+  STORE_HOURS: "var(--color-orange)",
+  PAYMENT_METHOD: "var(--color-orange)",
   O: "var(--text-color)",
 };
 
@@ -23,12 +27,35 @@ const LABEL_COLORS: Record<string, string> = {
 const ENTITY_DISPLAY_NAMES: Record<string, string> = {
   MERCHANT_NAME: "Merchant",
   DATE: "Date",
-  ADDRESS: "Address",
+  TIME: "Time",
   AMOUNT: "Amount",
+  ADDRESS: "Address",
+  WEBSITE: "Website",
+  STORE_HOURS: "Hours",
+  PAYMENT_METHOD: "Payment",
 };
 
-// Entity types in order
-const ENTITY_TYPES = ["MERCHANT_NAME", "DATE", "ADDRESS", "AMOUNT"];
+// Entity types in order (grouped by color for visual clarity)
+const ENTITY_TYPES = [
+  "MERCHANT_NAME",
+  "DATE",
+  "TIME",
+  "AMOUNT",
+  "ADDRESS",
+  "WEBSITE",
+  "STORE_HOURS",
+  "PAYMENT_METHOD",
+];
+
+// Mobile legend groups - combine same-colored labels
+const MOBILE_LEGEND_GROUPS = [
+  { color: "var(--color-yellow)", label: "Merchant", types: ["MERCHANT_NAME"] },
+  { color: "var(--color-blue)", label: "Date / Time", types: ["DATE", "TIME"] },
+  { color: "var(--color-green)", label: "Amount", types: ["AMOUNT"] },
+  { color: "var(--color-red)", label: "Address", types: ["ADDRESS"] },
+  { color: "var(--color-purple)", label: "Website", types: ["WEBSITE"] },
+  { color: "var(--color-orange)", label: "Hours / Payment", types: ["STORE_HOURS", "PAYMENT_METHOD"] },
+];
 
 // Animation timing
 const HOLD_DURATION = 1000;
@@ -303,13 +330,31 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
 
   return (
     <div className={styles.entityLegend}>
-      {ENTITY_TYPES.map((entityType) => (
-        <LegendItem
-          key={entityType}
-          entityType={entityType}
-          isRevealed={revealedEntityTypes.has(entityType)}
-        />
-      ))}
+      {/* Desktop: full legend (hidden on mobile via CSS) */}
+      <div className={styles.legendDesktop}>
+        {ENTITY_TYPES.map((entityType) => (
+          <LegendItem
+            key={entityType}
+            entityType={entityType}
+            isRevealed={revealedEntityTypes.has(entityType)}
+          />
+        ))}
+      </div>
+      {/* Mobile: grouped legend (hidden on desktop via CSS) */}
+      <div className={styles.legendMobile}>
+        {MOBILE_LEGEND_GROUPS.map((group) => {
+          const isRevealed = group.types.some((t) => revealedEntityTypes.has(t));
+          return (
+            <div
+              key={group.label}
+              className={`${styles.legendItem} ${isRevealed ? styles.revealed : ""}`}
+            >
+              <div className={styles.legendDot} style={{ backgroundColor: group.color }} />
+              <span className={styles.legendLabel}>{group.label}</span>
+            </div>
+          );
+        })}
+      </div>
       <animated.div className={styles.inferenceTime} style={inferenceSpring}>
         <span className={styles.inferenceLabel}>Inference Time</span>
         <span className={styles.inferenceValue}>{inferenceTimeMs.toFixed(0)}ms</span>

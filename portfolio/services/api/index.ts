@@ -1,6 +1,7 @@
 import {
   ImageDetailsApiResponse,
   LabelValidationCountResponse,
+  LabelValidationTimelineResponse,
   MerchantCountsResponse,
   ReceiptApiResponse,
   ImageCountApiResponse,
@@ -66,6 +67,20 @@ const baseApi = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/label_validation_count`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchLabelValidationTimeline(): Promise<LabelValidationTimelineResponse> {
+    const apiUrl = getAPIUrl();
+    const response = await fetch(
+      `${apiUrl}/label_validation_timeline`,
       fetchConfig
     );
     if (!response.ok) {
