@@ -12,7 +12,6 @@ import {
   ClientReceiptCounts,
   CodeBuildDiagram,
   ImageStack,
-  LabelValidationCount,
   LabelValidationTimeline,
   LayoutLMBatchVisualization,
   LockingSwimlane,
@@ -515,8 +514,6 @@ export default function ReceiptPage({
         verify the label. If the label is incorrect, the agent generates a new
         label and verifies it again.
       </p>
-
-      <LabelValidationCount />
 
       <LabelValidationTimeline />
 
