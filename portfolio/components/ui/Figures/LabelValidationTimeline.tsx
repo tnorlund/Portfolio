@@ -228,6 +228,18 @@ export default function LabelValidationTimeline() {
     <div ref={ref} className={styles.container}>
       <h2 className={styles.title}>Label Validation</h2>
 
+      {/* Animated subtitle with month/year and label count */}
+      <animated.p className={styles.subtitle}>
+        {progress.to((p) => {
+          const frame = interpolateKeyframes(timeline.keyframes, p);
+          if (!frame.timestamp) return "";
+          const date = new Date(frame.timestamp);
+          const month = date.toLocaleString("default", { month: "long" });
+          const year = date.getFullYear();
+          return `${month} ${year} · ${frame.records_processed.toLocaleString()} labels`;
+        })}
+      </animated.p>
+
       {/* Animated bars */}
       <div className={styles.barsContainer}>
         {sortedLabels.map((labelName) => (

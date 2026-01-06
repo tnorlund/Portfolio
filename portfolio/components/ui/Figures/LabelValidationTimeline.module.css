@@ -11,6 +11,14 @@
   color: var(--text-color);
 }
 
+.subtitle {
+  text-align: center;
+  margin: 0.25rem 0 1rem 0;
+  color: var(--text-color);
+  opacity: 0.7;
+  font-size: 0.95rem;
+}
+
 .barsContainer {
   display: grid;
   grid-template-columns: max-content auto max-content;
