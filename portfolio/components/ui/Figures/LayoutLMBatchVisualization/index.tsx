@@ -47,6 +47,30 @@ const ENTITY_TYPES = [
   "PAYMENT_METHOD",
 ];
 
+// Mobile legend groups - combine same-colored labels
+const MOBILE_LEGEND_GROUPS = [
+  { color: "var(--color-yellow)", label: "Merchant", types: ["MERCHANT_NAME"] },
+  { color: "var(--color-blue)", label: "Date / Time", types: ["DATE", "TIME"] },
+  { color: "var(--color-green)", label: "Amount", types: ["AMOUNT"] },
+  { color: "var(--color-red)", label: "Address", types: ["ADDRESS"] },
+  { color: "var(--color-purple)", label: "Website", types: ["WEBSITE"] },
+  { color: "var(--color-orange)", label: "Hours / Payment", types: ["STORE_HOURS", "PAYMENT_METHOD"] },
+];
+
+// Hook to detect mobile viewport
+const useIsMobile = (breakpoint = 768) => {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= breakpoint);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, [breakpoint]);
+
+  return isMobile;
+};
+
 // Animation timing
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
@@ -313,6 +337,7 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
   inferenceTimeMs,
   showInferenceTime,
 }) => {
+  const isMobile = useIsMobile();
   const inferenceSpring = useSpring({
     opacity: showInferenceTime ? 1 : 0.2,
     config: { tension: 280, friction: 24 },
@@ -320,13 +345,30 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
 
   return (
     <div className={styles.entityLegend}>
-      {ENTITY_TYPES.map((entityType) => (
-        <LegendItem
-          key={entityType}
-          entityType={entityType}
-          isRevealed={revealedEntityTypes.has(entityType)}
-        />
-      ))}
+      {isMobile ? (
+        // Mobile: grouped legend
+        MOBILE_LEGEND_GROUPS.map((group) => {
+          const isRevealed = group.types.some((t) => revealedEntityTypes.has(t));
+          return (
+            <div
+              key={group.label}
+              className={`${styles.legendItem} ${isRevealed ? styles.revealed : ""}`}
+            >
+              <div className={styles.legendDot} style={{ backgroundColor: group.color }} />
+              <span className={styles.legendLabel}>{group.label}</span>
+            </div>
+          );
+        })
+      ) : (
+        // Desktop: full legend
+        ENTITY_TYPES.map((entityType) => (
+          <LegendItem
+            key={entityType}
+            entityType={entityType}
+            isRevealed={revealedEntityTypes.has(entityType)}
+          />
+        ))
+      )}
       <animated.div className={styles.inferenceTime} style={inferenceSpring}>
         <span className={styles.inferenceLabel}>Inference Time</span>
         <span className={styles.inferenceValue}>{inferenceTimeMs.toFixed(0)}ms</span>
