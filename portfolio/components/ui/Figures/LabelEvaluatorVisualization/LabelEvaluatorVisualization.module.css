@@ -68,7 +68,7 @@
 /* Scanner Legend - Right Column (like LayoutLM EntityLegend) */
 .scannerLegend {
   flex: 1;
-  max-width: 250px;
+  max-width: 280px;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -93,6 +93,10 @@
 
 .legendItem.complete {
   opacity: 1;
+}
+
+.legendItem.skipped {
+  opacity: 0.5;
 }
 
 .legendIcon {
@@ -131,8 +135,10 @@
 .legendStatus {
   font-size: 0.8rem;
   font-family: "Monaco", "Menlo", "Consolas", monospace;
-  min-width: 50px;
+  min-width: 80px;
   text-align: right;
+  flex-shrink: 0;
+  overflow: visible;
 }
 
 .legendDuration {
@@ -148,6 +154,14 @@
   color: var(--text-color);
   opacity: 0.5;
   font-style: italic;
+  padding-right: 2px;
+}
+
+.legendSkipped {
+  color: var(--text-color);
+  opacity: 0.5;
+  font-style: italic;
+  padding-right: 2px;
 }
 
 /* Decision tally in legend - shows below the scanner row */

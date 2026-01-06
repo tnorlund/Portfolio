@@ -23,14 +23,15 @@ type Phase = "idle" | "scanning" | "complete";
 // Scanner colors - grouped by dependency chain
 // Using CSS variables for automatic light/dark mode support
 const SCANNER_COLORS = {
-  // Chain 1: Line Item → Currency (same color - purple)
+  // Chain 1: Line Item → Currency → Financial (purple)
+  // Financial validates currency labels (GRAND_TOTAL, SUBTOTAL, TAX, etc.)
+  // It needs Currency's corrections but NOT Metadata's
   lineItem: "var(--color-purple)",
   currency: "var(--color-purple)",
-  // Independent: Metadata (blue)
+  financial: "var(--color-purple)",
+  // Independent: Metadata (blue) - no data flows to Financial
   metadata: "var(--color-blue)",
-  // After Chain 1 + Metadata: Financial (yellow)
-  financial: "var(--color-yellow)",
-  // Chain 2: Geometric → Review (same color - orange)
+  // Chain 2: Geometric → Review (orange)
   geometric: "var(--color-orange)",
   review: "var(--color-orange)",
 };
@@ -45,7 +46,7 @@ const DECISION_COLORS: Record<string, string> = {
 // Revealed decision for tracking individual V/I/R decisions as scanner progresses
 interface RevealedDecision {
   key: string;                    // "metadata_1_3"
-  type: 'currency' | 'metadata' | 'financial';
+  type: 'currency' | 'metadata' | 'financial' | 'review';
   decision: "VALID" | "INVALID" | "NEEDS_REVIEW";
   wordText: string;
   lineId: number;
@@ -149,7 +150,7 @@ const ScannerBar: React.FC<ScannerBarProps> = ({
 
 // Decision tally component - shows ✓/✗/👤 icons as scanner reveals decisions
 interface DecisionTallyProps {
-  scannerType: 'currency' | 'metadata' | 'financial';
+  scannerType: 'currency' | 'metadata' | 'financial' | 'review';
   revealedDecisions: RevealedDecision[];
   totalDecisions: number;
 }
@@ -603,10 +604,31 @@ interface ScannerLegendItemProps {
   progress: number;
   isWaiting: boolean;
   isComplete: boolean;
+  isSkipped?: boolean;
   durationMs?: number;
   decisions?: RevealedDecision[];
   totalDecisions?: number;
 }
+
+// Generate SVG path for a pie slice from 12 o'clock, filling clockwise
+const getPieSlicePath = (progress: number, cx: number, cy: number, r: number): string => {
+  if (progress <= 0) return '';
+  if (progress >= 100) return `M ${cx} ${cy} m -${r} 0 a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 -${r * 2} 0`;
+
+  const angle = (progress / 100) * 2 * Math.PI;
+  // Start at 12 o'clock (-π/2)
+  const startAngle = -Math.PI / 2;
+  const endAngle = startAngle + angle;
+
+  const x1 = cx + r * Math.cos(startAngle);
+  const y1 = cy + r * Math.sin(startAngle);
+  const x2 = cx + r * Math.cos(endAngle);
+  const y2 = cy + r * Math.sin(endAngle);
+
+  const largeArcFlag = progress > 50 ? 1 : 0;
+
+  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+};
 
 const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
   name,
@@ -614,6 +636,7 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
   progress,
   isWaiting,
   isComplete,
+  isSkipped = false,
   durationMs,
   decisions = [],
   totalDecisions = 0,
@@ -622,9 +645,32 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
   const hasDecisions = totalDecisions > 0;
 
   return (
-    <div className={`${styles.legendItem} ${isActive ? styles.active : ""} ${isComplete ? styles.complete : ""}`}>
+    <div className={`${styles.legendItem} ${isActive ? styles.active : ""} ${isComplete ? styles.complete : ""} ${isSkipped ? styles.skipped : ""}`}>
       <div className={styles.legendIcon}>
-        {isWaiting ? (
+        {isSkipped ? (
+          // Skipped indicator - dashed circle with dash through
+          <svg width="16" height="16" viewBox="0 0 16 16" className={styles.legendDot}>
+            <circle
+              cx="8"
+              cy="8"
+              r="6"
+              fill="none"
+              stroke={color}
+              strokeWidth="1.5"
+              strokeDasharray="3 2"
+              opacity={0.4}
+            />
+            <line
+              x1="4"
+              y1="8"
+              x2="12"
+              y2="8"
+              stroke={color}
+              strokeWidth="1.5"
+              opacity={0.4}
+            />
+          </svg>
+        ) : isWaiting ? (
           // Hourglass SVG icon
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className={styles.hourglassIcon}>
             <path
@@ -643,38 +689,24 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
             />
           </svg>
         ) : (
-          // Progress circle that fills like a clock
+          // Progress circle that fills like a clock (pie slice from 12 o'clock)
           <svg width="16" height="16" viewBox="0 0 16 16" className={styles.legendDot}>
-            {/* Background circle (unfilled) */}
+            {/* Background circle (unfilled outline) */}
             <circle
               cx="8"
               cy="8"
               r="6"
               fill="none"
               stroke={color}
-              strokeWidth="2"
+              strokeWidth="1.5"
               opacity={0.3}
             />
-            {/* Progress arc - uses stroke-dasharray to show progress */}
-            <circle
-              cx="8"
-              cy="8"
-              r="6"
-              fill="none"
-              stroke={color}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeDasharray={`${(progress / 100) * 37.7} 37.7`}
-              transform="rotate(-90 8 8)"
-              style={{ transition: 'stroke-dasharray 0.1s ease-out' }}
-            />
-            {/* Center fill when complete */}
-            {isComplete && (
-              <circle
-                cx="8"
-                cy="8"
-                r="4"
+            {/* Pie slice fill - grows clockwise from 12 o'clock */}
+            {progress > 0 && (
+              <path
+                d={getPieSlicePath(progress, 8, 8, 6)}
                 fill={color}
+                opacity={isComplete ? 1 : 0.8}
               />
             )}
           </svg>
@@ -682,12 +714,12 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
       </div>
       <span className={styles.legendName}>{name}</span>
       <div className={styles.legendStatus}>
-        {isComplete && durationMs !== undefined ? (
+        {isSkipped ? (
+          <span className={styles.legendSkipped}>skipped</span>
+        ) : isComplete && durationMs !== undefined ? (
           <span className={styles.legendDuration}>
             {durationMs < 1000 ? `${durationMs.toFixed(0)}ms` : `${(durationMs / 1000).toFixed(1)}s`}
           </span>
-        ) : isActive ? (
-          <span className={styles.legendProgress}>{Math.round(progress)}%</span>
         ) : isWaiting ? (
           <span className={styles.legendWaiting}>waiting</span>
         ) : null}
@@ -762,24 +794,22 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
   // Financial waits for Currency + Metadata
   const currencyEndTime = scannerState.lineItem >= 100 ? scannerState.currency : 0;
   const financialIsWaiting = (currencyEndTime < 100 || scannerState.metadata < 100) && scannerState.financial === 0;
-  // Review waits for Geometric (and only shows if issues found)
-  const reviewIsWaiting = hasGeometricIssues && scannerState.geometric < 100 && scannerState.review === 0;
+  // Review waits for Geometric (and only shows if review data exists)
+  const hasReviewData = receipt.review !== null && receipt.review !== undefined;
+  const reviewIsWaiting = hasReviewData && scannerState.geometric < 100 && scannerState.review === 0;
 
   // Filter decisions by scanner type
   const metadataDecisions = revealedDecisions.filter(d => d.type === 'metadata');
   const currencyDecisions = revealedDecisions.filter(d => d.type === 'currency');
   const financialDecisions = revealedDecisions.filter(d => d.type === 'financial');
+  const reviewDecisions = revealedDecisions.filter(d => d.type === 'review');
+
+  // Get review data (may be undefined if no geometric issues)
+  const review = receipt.review;
 
   return (
     <div className={styles.scannerLegend}>
-      <ScannerLegendItem
-        name="Line Item"
-        color={SCANNER_COLORS.lineItem}
-        progress={scannerState.lineItem}
-        isWaiting={false}
-        isComplete={scannerState.lineItem >= 100}
-        durationMs={receipt.line_item_duration_seconds ? receipt.line_item_duration_seconds * 1000 : undefined}
-      />
+      {/* Blue - Independent */}
       <ScannerLegendItem
         name="Metadata"
         color={SCANNER_COLORS.metadata}
@@ -790,6 +820,7 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         decisions={metadataDecisions}
         totalDecisions={metadata.all_decisions.length}
       />
+      {/* Orange - Geometric → Review chain */}
       <ScannerLegendItem
         name="Geometric"
         color={SCANNER_COLORS.geometric}
@@ -797,6 +828,26 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         isWaiting={false}
         isComplete={scannerState.geometric >= 100}
         durationMs={(geometric.duration_seconds || 0.1) * 1000}
+      />
+      <ScannerLegendItem
+        name="Review"
+        color={SCANNER_COLORS.review}
+        progress={hasReviewData ? scannerState.review : 0}
+        isWaiting={reviewIsWaiting}
+        isComplete={hasReviewData && scannerState.review >= 100}
+        isSkipped={!hasReviewData}
+        durationMs={review ? review.duration_seconds * 1000 : undefined}
+        decisions={reviewDecisions}
+        totalDecisions={review ? review.all_decisions.length : 0}
+      />
+      {/* Purple - Line Item → Currency → Financial chain */}
+      <ScannerLegendItem
+        name="Line Item"
+        color={SCANNER_COLORS.lineItem}
+        progress={scannerState.lineItem}
+        isWaiting={false}
+        isComplete={scannerState.lineItem >= 100}
+        durationMs={receipt.line_item_duration_seconds ? receipt.line_item_duration_seconds * 1000 : undefined}
       />
       <ScannerLegendItem
         name="Currency"
@@ -818,16 +869,6 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         decisions={financialDecisions}
         totalDecisions={financial.all_decisions.length}
       />
-      {hasGeometricIssues && (
-        <ScannerLegendItem
-          name="Review"
-          color={SCANNER_COLORS.review}
-          progress={scannerState.review}
-          isWaiting={reviewIsWaiting}
-          isComplete={scannerState.review >= 100}
-          durationMs={1000}
-        />
-      )}
     </div>
   );
 };
@@ -890,7 +931,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
   useEffect(() => {
     if (!currentReceipt) return;
 
-    const { words, currency, metadata, financial } = currentReceipt;
+    const { words, currency, metadata, financial, review } = currentReceipt;
     const decisions: RevealedDecision[] = [];
 
     // Helper to check if a word's top edge has been passed by a scanner
@@ -955,6 +996,26 @@ const LabelEvaluatorVisualization: React.FC = () => {
       }
     });
 
+    // Review decisions - LLM decisions on geometrically-flagged words
+    if (review) {
+      review.all_decisions.forEach((d) => {
+        if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.review)) {
+          const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
+          if (word) {
+            decisions.push({
+              key: `review_${d.issue.line_id}_${d.issue.word_id}`,
+              type: 'review',
+              decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
+              wordText: d.issue.word_text,
+              lineId: d.issue.line_id,
+              wordId: d.issue.word_id,
+              bbox: word.bbox,
+            });
+          }
+        }
+      });
+    }
+
     setRevealedDecisions(decisions);
   }, [currentReceipt, scannerState]);
 
@@ -979,7 +1040,10 @@ const LabelEvaluatorVisualization: React.FC = () => {
     const rawGeometric = receipt.geometric.duration_seconds || 0.3;  // Deterministic, usually very fast
     const rawFinancial = receipt.financial.duration_seconds || 1;
     const rawCurrency = receipt.currency.duration_seconds || 1;
-    const rawReview = hasGeometricIssues ? 1 : 0;
+    // Review uses actual duration from data - only show if review actually ran
+    // If review is null but hasGeometricIssues, it means review didn't run for this receipt
+    const hasReviewData = receipt.review !== null && receipt.review !== undefined;
+    const rawReview = hasReviewData ? (receipt.review!.duration_seconds || 1) : 0;
 
     // Calculate total raw duration to find scale factor
     // Branch 1: Line Item -> Currency -> Financial (sequential after Currency+Metadata)
@@ -987,7 +1051,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
     const currencyEnd = rawLineItem + rawCurrency;
     const financialStart = Math.max(currencyEnd, rawMetadata);
     const branch1End = financialStart + rawFinancial;
-    const branch2End = rawGeometric + (hasGeometricIssues ? rawReview : 0);
+    const branch2End = rawGeometric + (hasReviewData ? rawReview : 0);
     const totalRawDuration = Math.max(branch1End, branch2End);
     const scaleFactor = TARGET_TOTAL_DURATION / (totalRawDuration * 1000);
 
@@ -997,7 +1061,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
     const geometricDuration = Math.max(rawGeometric * 1000 * scaleFactor, MIN_PHASE_DURATION);
     const financialDuration = Math.max(rawFinancial * 1000 * scaleFactor, MIN_PHASE_DURATION);
     const currencyDuration = Math.max(rawCurrency * 1000 * scaleFactor, MIN_PHASE_DURATION);
-    const reviewDuration = hasGeometricIssues
+    const reviewDuration = hasReviewData
       ? Math.max(rawReview * 1000 * scaleFactor, MIN_PHASE_DURATION)
       : 0;
 
@@ -1011,7 +1075,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
 
     // Calculate total animation time (longest branch)
     const branch1EndTime = financialStartTime + financialDuration;
-    const branch2EndTime = hasGeometricIssues ? reviewStartTime + reviewDuration : geometricDuration;
+    const branch2EndTime = hasReviewData ? reviewStartTime + reviewDuration : geometricDuration;
     const allScannersEnd = Math.max(branch1EndTime, branch2EndTime);
     const holdEnd = allScannersEnd + HOLD_DURATION;
     const totalCycle = holdEnd + TRANSITION_DURATION;
@@ -1054,9 +1118,9 @@ const LabelEvaluatorVisualization: React.FC = () => {
         // Branch 2: Geometric starts at t=0
         const geometricProgress = Math.min((elapsed / geometricDuration) * 100, 100);
 
-        // Branch 2: Review starts after Geometric completes (if issues found)
+        // Branch 2: Review starts after Geometric completes (if review data exists)
         let reviewProgress = 0;
-        if (hasGeometricIssues && elapsed >= reviewStartTime) {
+        if (hasReviewData && elapsed >= reviewStartTime) {
           const reviewElapsed = elapsed - reviewStartTime;
           reviewProgress = Math.min((reviewElapsed / reviewDuration) * 100, 100);
         }
@@ -1079,7 +1143,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
           geometric: 100,
           financial: 100,
           currency: 100,
-          review: hasGeometricIssues ? 100 : 0,
+          review: hasReviewData ? 100 : 0,
         });
       } else if (elapsed < totalCycle) {
         // Transition phase - keep showing complete

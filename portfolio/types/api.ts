@@ -550,6 +550,8 @@ export interface LabelEvaluatorReceipt {
   currency: LabelEvaluatorEvaluation;
   metadata: LabelEvaluatorEvaluation;
   financial: LabelEvaluatorEvaluation;
+  // Review runs after Geometric if issues were found - produces V/I/R decisions
+  review?: LabelEvaluatorEvaluation;
   // Line item structure discovery duration (seconds)
   line_item_duration_seconds?: number | null;
   // CDN image keys

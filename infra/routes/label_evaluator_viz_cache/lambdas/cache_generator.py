@@ -158,16 +158,57 @@ def _get_line_item_duration(merchant_name: str) -> float | None:
     return duration
 
 
+def _list_reviewed_files(execution_id: str) -> list[str]:
+    """List all reviewed files for an execution."""
+    keys = []
+    try:
+        paginator = s3_client.get_paginator("list_objects_v2")
+        prefix = f"reviewed/{execution_id}/"
+        for page in paginator.paginate(
+            Bucket=LABEL_EVALUATOR_BATCH_BUCKET, Prefix=prefix
+        ):
+            for obj in page.get("Contents", []):
+                key = obj.get("Key", "")
+                if key.endswith(".json"):
+                    keys.append(key)
+    except ClientError:
+        logger.debug("Error listing reviewed files for %s", execution_id)
+    return keys
+
+
+# Cache for reviewed files per execution to avoid repeated S3 listings
+_reviewed_files_cache: dict[str, list[dict[str, Any]]] = {}
+
+
+def _load_all_reviewed_data(execution_id: str) -> list[dict[str, Any]]:
+    """Load and cache all reviewed data for an execution."""
+    if execution_id in _reviewed_files_cache:
+        return _reviewed_files_cache[execution_id]
+
+    all_reviewed = []
+    reviewed_keys = _list_reviewed_files(execution_id)
+
+    for key in reviewed_keys:
+        data = _load_json(LABEL_EVALUATOR_BATCH_BUCKET, key)
+        if data:
+            all_reviewed.append(data)
+
+    _reviewed_files_cache[execution_id] = all_reviewed
+    logger.debug("Loaded %d reviewed files for %s", len(all_reviewed), execution_id)
+    return all_reviewed
+
+
 def _load_evaluation_results(execution_id: str, image_id: str, receipt_id: int) -> dict[str, Any]:
     """Load evaluation results for a receipt from all evaluation folders.
 
-    Returns dict with currency, metadata, financial, and geometric evaluations.
+    Returns dict with currency, metadata, financial, geometric, and review evaluations.
     """
     results = {
         "geometric": {"issues": [], "issues_found": 0, "error": None, "duration_seconds": 0},
         "currency": {"decisions": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}, "all_decisions": [], "duration_seconds": 0},
         "metadata": {"decisions": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}, "all_decisions": [], "duration_seconds": 0},
         "financial": {"decisions": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}, "all_decisions": [], "duration_seconds": 0},
+        "review": {"decisions": {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}, "all_decisions": [], "duration_seconds": 0},
     }
 
     # Load geometric results
@@ -212,6 +253,24 @@ def _load_evaluation_results(execution_id: str, image_id: str, receipt_id: int) 
             decision = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
             results["financial"]["decisions"][decision] = results["financial"]["decisions"].get(decision, 0) + 1
 
+    # Load review results (from reviewed/ folder - per-merchant files)
+    # Review only runs if geometric found issues, so filter by this receipt
+    all_reviewed = _load_all_reviewed_data(execution_id)
+    for reviewed_data in all_reviewed:
+        # Get duration from this reviewed batch (applies to all issues in batch)
+        batch_duration = reviewed_data.get("duration_seconds", 0)
+
+        # Filter issues for this specific receipt
+        for issue in reviewed_data.get("issues", []):
+            if issue.get("image_id") == image_id and issue.get("receipt_id") == receipt_id:
+                # This issue belongs to our receipt
+                results["review"]["all_decisions"].append(issue)
+                decision = issue.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
+                results["review"]["decisions"][decision] = results["review"]["decisions"].get(decision, 0) + 1
+                # Use the batch duration (will be the same for all issues in this receipt)
+                if batch_duration > 0:
+                    results["review"]["duration_seconds"] = batch_duration
+
     return results
 
 
@@ -241,6 +300,20 @@ def _build_receipt_visualization(
 
     # Load evaluation results
     evaluations = _load_evaluation_results(execution_id, image_id, receipt_id)
+
+    # Skip receipts with data quality issues (all NEEDS_REVIEW = parsing failures)
+    currency_decisions = evaluations["currency"]["decisions"]
+    metadata_decisions = evaluations["metadata"]["decisions"]
+    currency_total = sum(currency_decisions.values())
+    metadata_total = sum(metadata_decisions.values())
+
+    # If all currency or metadata decisions are NEEDS_REVIEW, skip this receipt
+    if currency_total > 0 and currency_decisions.get("NEEDS_REVIEW", 0) == currency_total:
+        logger.debug("Skipping %s_%d: all currency decisions are NEEDS_REVIEW (parsing failures)", image_id, receipt_id)
+        return None
+    if metadata_total > 0 and metadata_decisions.get("NEEDS_REVIEW", 0) == metadata_total:
+        logger.debug("Skipping %s_%d: all metadata decisions are NEEDS_REVIEW (parsing failures)", image_id, receipt_id)
+        return None
 
     # Build label lookup
     labels_by_word = {}
@@ -326,6 +399,15 @@ def _build_receipt_visualization(
             "decisions": evaluations["financial"]["decisions"],
             "all_decisions": evaluations["financial"]["all_decisions"],
         },
+        # Review runs after Geometric if issues were found - LLM decides V/I/R for flagged words
+        "review": {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "merchant_name": merchant_name,
+            "duration_seconds": evaluations["review"]["duration_seconds"],
+            "decisions": evaluations["review"]["decisions"],
+            "all_decisions": evaluations["review"]["all_decisions"],
+        } if evaluations["review"]["all_decisions"] else None,
         # Line item structure duration from pattern file
         "line_item_duration_seconds": line_item_duration,
         # CDN image keys from DynamoDB
@@ -340,14 +422,57 @@ def _build_receipt_visualization(
     }
 
 
+def _get_reviewed_receipt_ids(execution_id: str) -> set[tuple[str, int]]:
+    """Get set of (image_id, receipt_id) tuples that have review data."""
+    reviewed_ids = set()
+    all_reviewed = _load_all_reviewed_data(execution_id)
+
+    for reviewed_data in all_reviewed:
+        for issue in reviewed_data.get("issues", []):
+            image_id = issue.get("image_id")
+            receipt_id = issue.get("receipt_id")
+            if image_id and receipt_id is not None:
+                reviewed_ids.add((image_id, receipt_id))
+
+    logger.info("Found %d unique receipts with review data", len(reviewed_ids))
+    return reviewed_ids
+
+
 def _find_interesting_receipts(execution_id: str, max_count: int = 20) -> list[dict[str, Any]]:
-    """Find receipts with interesting evaluation results."""
-    interesting = []
+    """Find receipts with interesting evaluation results.
+
+    Prioritizes receipts in this order:
+    1. Receipts with review data (highest priority for visualization demo)
+    2. Receipts with geometric issues but no review data
+    3. Receipts without issues
+    """
+    with_review = []
+    with_issues = []
+    without_issues = []
+
+    # Get set of receipts that have review data for quick lookup
+    reviewed_ids = _get_reviewed_receipt_ids(execution_id)
     receipt_files = _list_receipt_files(execution_id)
 
+    # First pass: prioritize receipts that have review data
     for data_key in receipt_files:
-        if len(interesting) >= max_count:
-            break
+        # Extract image_id and receipt_id from filename (e.g., "data/exec/uuid_1.json")
+        filename = data_key.split("/")[-1].replace(".json", "")
+        parts = filename.rsplit("_", 1)
+        if len(parts) != 2:
+            continue
+        image_id, receipt_id_str = parts
+        try:
+            receipt_id = int(receipt_id_str)
+        except ValueError:
+            continue
+
+        # Check if this receipt has review data
+        has_review_data = (image_id, receipt_id) in reviewed_ids
+
+        # Skip non-reviewed receipts in first pass (process them in second pass)
+        if not has_review_data:
+            continue
 
         receipt_data = _load_json(LABEL_EVALUATOR_BATCH_BUCKET, data_key)
         if not receipt_data:
@@ -357,13 +482,47 @@ def _find_interesting_receipts(execution_id: str, max_count: int = 20) -> list[d
         if not viz_receipt:
             continue
 
-        # Prioritize receipts with issues
-        if viz_receipt["issues_found"] > 0:
-            interesting.insert(0, viz_receipt)
-        else:
-            interesting.append(viz_receipt)
+        with_review.append(viz_receipt)
+        if len(with_review) >= max_count:
+            break
 
-    return interesting
+    logger.info("Found %d receipts with review data", len(with_review))
+
+    # Second pass: fill remaining slots with receipts that have issues or none
+    if len(with_review) < max_count:
+        for data_key in receipt_files:
+            if len(with_review) + len(with_issues) + len(without_issues) >= max_count * 2:
+                break
+
+            filename = data_key.split("/")[-1].replace(".json", "")
+            parts = filename.rsplit("_", 1)
+            if len(parts) != 2:
+                continue
+            image_id, receipt_id_str = parts
+            try:
+                receipt_id = int(receipt_id_str)
+            except ValueError:
+                continue
+
+            # Skip already processed (reviewed) receipts
+            if (image_id, receipt_id) in reviewed_ids:
+                continue
+
+            receipt_data = _load_json(LABEL_EVALUATOR_BATCH_BUCKET, data_key)
+            if not receipt_data:
+                continue
+
+            viz_receipt = _build_receipt_visualization(execution_id, receipt_data)
+            if not viz_receipt:
+                continue
+
+            if viz_receipt["issues_found"] > 0:
+                with_issues.append(viz_receipt)
+            else:
+                without_issues.append(viz_receipt)
+
+    # Combine in priority order
+    return with_review + with_issues + without_issues
 
 
 def _save_cache(cache_data: dict[str, Any]) -> bool:
@@ -399,17 +558,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         logger.warning("No executions found")
         return {"statusCode": 200, "message": "No executions found", "receipts_cached": 0}
 
-    logger.info("Found %d executions, checking most recent", len(execution_ids))
+    logger.info("Found %d executions, using most recent", len(execution_ids))
 
-    # Gather receipts from recent executions
-    all_receipts = []
-    for execution_id in execution_ids[:3]:  # Check up to 3 most recent
-        receipts = _find_interesting_receipts(execution_id, max_count=MAX_RECEIPTS * 2)
-        logger.info("Found %d receipts in %s", len(receipts), execution_id)
-        all_receipts.extend(receipts)
-
-        if len(all_receipts) >= MAX_RECEIPTS * 3:
-            break
+    # Use only the most recent execution for consistency
+    execution_id = execution_ids[0]
+    all_receipts = _find_interesting_receipts(execution_id, max_count=MAX_RECEIPTS * 2)
+    logger.info("Found %d receipts in %s", len(all_receipts), execution_id)
 
     if not all_receipts:
         logger.warning("No receipts found with evaluation data")
@@ -433,7 +587,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     # Build cache payload
     cache_data = {
-        "execution_id": execution_ids[0],
+        "execution_id": execution_id,
         "receipts": selected,
         "summary": {
             "total_receipts": len(selected),
@@ -450,7 +604,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "message": "Cache generation complete",
             "receipts_cached": len(selected),
             "receipts_with_issues": cache_data["summary"]["receipts_with_issues"],
-            "execution_id": execution_ids[0],
+            "execution_id": execution_id,
         }
     else:
         return {"statusCode": 500, "error": "Failed to save cache"}

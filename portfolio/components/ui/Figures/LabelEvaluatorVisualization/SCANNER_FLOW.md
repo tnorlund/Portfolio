@@ -21,20 +21,21 @@ The label evaluator runs multiple scanners to validate receipt labels. These sca
 
 There are two independent branches:
 
-### Branch 1: Currency/Metadata/Financial Chain
+### Branch 1: Line Item → Currency → Financial Chain
 
 ```
 t=0 ─────────────────────────────────────────────────────────────►
 
     Line Item ████████████┐
-                          └──► Currency ██████──┐
-                                                ├──► Financial ████
-    Metadata  ████████████──────────────────────┘
+                          └──► Currency ██████──► Financial ████
+
+    Metadata  ████████████ (independent, no data flows to Financial)
 ```
 
 **Dependencies:**
 - **Currency** waits for **Line Item** (needs line item patterns to validate prices)
-- **Financial** waits for **Currency + Metadata** (needs all corrections before validating math)
+- **Financial** waits for **Currency** (needs corrected currency labels like GRAND_TOTAL, SUBTOTAL, TAX)
+- **Metadata** is independent - Financial does NOT use metadata labels
 
 ### Branch 2: Geometric/Review Chain
 
@@ -54,9 +55,9 @@ t=0 ─────────────────────────�
 t=0 ─────────────────────────────────────────────────────────────►
 
     ┌─ Line Item ████████████┐
-    │                        └──► Currency ██████──┐
-    │                                              ├──► Financial ████
-    │  Metadata  ████████████──────────────────────┘
+    │                        └──► Currency ██████──► Financial ████
+    │
+    │  Metadata  ████████████ (independent)
     │
     └─ Geometric ████──► [if issues] Review ████
 ```
@@ -68,15 +69,15 @@ For visualization purposes, the scanners are animated with durations based on ac
 | Scanner | Duration Source | Notes |
 |---------|----------------|-------|
 | Line Item | `line_item_duration_seconds` | From merchant pattern file |
-| Geometric | ~0.3s (fixed) | Deterministic, very fast |
+| Geometric | `geometric.duration_seconds` | Deterministic, very fast (~0.3s) |
 | Metadata | `metadata.duration_seconds` | LLM call duration |
 | Currency | `currency.duration_seconds` | LLM call duration, starts after Line Item |
-| Financial | `financial.duration_seconds` | LLM call duration, starts after Currency+Metadata |
-| Review | ~1s (fixed) | Only shown if geometric issues found |
+| Financial | `financial.duration_seconds` | LLM call duration, starts after Currency |
+| Review | `review.duration_seconds` | LLM call duration, only runs if geometric issues found |
 
 ## Decision Types
 
-Each LLM scanner produces decisions for the words it evaluates:
+Each LLM scanner (Metadata, Currency, Financial, Review) produces decisions for the words it evaluates:
 
 | Decision | Color | Icon | Meaning |
 |----------|-------|------|---------|
@@ -84,16 +85,19 @@ Each LLM scanner produces decisions for the words it evaluates:
 | INVALID | Red | ✗ | Label is incorrect |
 | NEEDS_REVIEW | Orange | Person | Requires human review |
 
+Note: Review is an LLM scanner that produces V/I/R decisions for geometrically-flagged words, using ChromaDB similarity evidence to help the LLM make its decision.
+
 ## Scanner Colors (Grouped by Dependency)
 
 Scanners that depend on each other share the same color:
 
 | Chain | Scanners | Color | CSS Variable |
 |-------|----------|-------|--------------|
-| Chain 1 | Line Item → Currency | Purple | --color-purple |
+| Chain 1 | Line Item → Currency → Financial | Purple | --color-purple |
 | Independent | Metadata | Blue | --color-blue |
-| After Chain 1 | Financial | Yellow | --color-yellow |
 | Chain 2 | Geometric → Review | Orange | --color-orange |
+
+Note: Financial is purple because it validates currency labels (GRAND_TOTAL, SUBTOTAL, TAX, etc.) using Currency's corrections. It does NOT use any data from Metadata - the Step Function wait is just an implementation artifact (they're in the same Parallel block).
 
 | Decision | Color | CSS Variable |
 |----------|-------|--------------|

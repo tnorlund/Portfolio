@@ -694,6 +694,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
                 rate_limit_stats = llm_invoker.get_stats()
 
+                # Calculate duration for visualization
+                review_duration_seconds = round(time.time() - start_time, 3)
+
                 reviewed_data = {
                     "execution_id": execution_id,
                     "merchant_name": merchant_name,
@@ -704,6 +707,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     "decisions": dict(decisions),
                     "issues": reviewed_issues,
                     "rate_limit_stats": rate_limit_stats,
+                    "duration_seconds": review_duration_seconds,
                 }
 
                 upload_json_to_s3(
