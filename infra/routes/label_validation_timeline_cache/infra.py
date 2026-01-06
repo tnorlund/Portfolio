@@ -5,9 +5,7 @@ This module creates:
 1. S3 bucket for storing the timeline cache
 2. Lambda function for generating the cache
 3. IAM roles and policies for DynamoDB read and S3 write access
-
-The Lambda is manually invoked (no schedule) as the cache only needs
-to be regenerated occasionally.
+4. Weekly EventBridge schedule to regenerate the cache
 """
 
 import json
@@ -180,9 +178,33 @@ def create_label_validation_timeline_cache() -> tuple[
         retention_in_days=7 if is_production else 3,
     )
 
+    # Weekly schedule to regenerate the cache (Sundays at midnight UTC)
+    cache_update_schedule = aws.cloudwatch.EventRule(
+        f"{ROUTE_NAME}_schedule",
+        description="Regenerate label validation timeline cache weekly",
+        schedule_expression="cron(0 0 ? * SUN *)",
+    )
+
+    # EventBridge target to invoke Lambda
+    aws.cloudwatch.EventTarget(
+        f"{ROUTE_NAME}_target",
+        rule=cache_update_schedule.name,
+        arn=cache_generator_lambda.arn,
+    )
+
+    # Permission for EventBridge to invoke Lambda
+    aws.lambda_.Permission(
+        f"{ROUTE_NAME}_schedule_permission",
+        action="lambda:InvokeFunction",
+        function=cache_generator_lambda.name,
+        principal="events.amazonaws.com",
+        source_arn=cache_update_schedule.arn,
+    )
+
     # Export Lambda details
     pulumi.export(f"{ROUTE_NAME}_lambda_arn", cache_generator_lambda.arn)
     pulumi.export(f"{ROUTE_NAME}_lambda_name", cache_generator_lambda.name)
     pulumi.export(f"{ROUTE_NAME}_bucket_name", cache_bucket.id)
+    pulumi.export(f"{ROUTE_NAME}_schedule_arn", cache_update_schedule.arn)
 
     return cache_bucket, cache_generator_lambda
