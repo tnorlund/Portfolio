@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any, Tuple
-
+from typing import List, Optional, Dict, Any, Tuple, Set
+import json
 import os
 import importlib
 
@@ -80,6 +80,101 @@ class LayoutLMInference:
         )
         self._device = "cuda" if self._torch.cuda.is_available() else "cpu"
         self._model.to(self._device)
+
+        # Load label configuration from run.json if available
+        self._label_list: List[str] = list(self._model.config.id2label.values())
+        self._label_merges: Dict[str, List[str]] = {}
+        self._reverse_label_map: Dict[str, str] = {}
+        self._load_run_config(model_s3_uri)
+
+    # ----------------------- Label configuration -----------------------
+    def _load_run_config(self, s3_uri: Optional[str]) -> None:
+        """Load run.json from S3 to get label_merges configuration.
+
+        The run.json is stored at the run level (parent of best/ or checkpoint/).
+        """
+        # First try local model_dir
+        local_run_json = os.path.join(self._model_dir, "run.json")
+        if os.path.exists(local_run_json):
+            self._parse_run_json(local_run_json)
+            return
+
+        if not s3_uri or not s3_uri.startswith("s3://"):
+            return
+
+        try:
+            boto3 = importlib.import_module("boto3")
+            from urllib.parse import urlparse
+        except ModuleNotFoundError:
+            return
+
+        # run.json is at the run level, not in best/ or checkpoint-*/
+        # e.g., s3://bucket/runs/layoutlm-8-labels/run.json
+        parsed = urlparse(s3_uri)
+        bucket = parsed.netloc
+        prefix = parsed.path.lstrip("/")
+
+        # Go up one level from best/ or checkpoint-* to find run.json
+        if prefix.endswith("/"):
+            prefix = prefix[:-1]
+        parent_prefix = prefix.rsplit("/", 1)[0] if "/" in prefix else ""
+        run_json_key = f"{parent_prefix}/run.json" if parent_prefix else "run.json"
+
+        s3 = boto3.client("s3")
+        try:
+            # Download run.json to local model_dir
+            s3.download_file(bucket, run_json_key, local_run_json)
+            self._parse_run_json(local_run_json)
+        except Exception as e:
+            # run.json not found or other error - continue without it
+            import logging
+            logging.getLogger(__name__).debug(
+                "Could not load run.json from S3: %s", e
+            )
+
+    def _parse_run_json(self, path: str) -> None:
+        """Parse run.json and build reverse label mapping."""
+        with open(path, "r") as f:
+            config = json.load(f)
+
+        self._label_merges = config.get("label_merges", {})
+
+        # Build reverse mapping: original_label -> merged_label
+        for merged_label, original_labels in self._label_merges.items():
+            for orig in original_labels:
+                self._reverse_label_map[orig] = merged_label
+
+    @property
+    def label_list(self) -> List[str]:
+        """List of labels the model was trained on."""
+        return self._label_list
+
+    @property
+    def label_merges(self) -> Dict[str, List[str]]:
+        """Label merge configuration from run.json."""
+        return self._label_merges
+
+    @property
+    def base_labels(self) -> Set[str]:
+        """Set of base labels (excluding O)."""
+        return {lbl for lbl in self._label_list if lbl != "O"}
+
+    def normalize_label(self, raw_label: str) -> str:
+        """Normalize a raw label to match the model's label set.
+
+        Uses label_merges from run.json to map original labels to merged ones.
+        Returns 'O' for unknown labels.
+        """
+        # Already a valid label
+        if raw_label in self._label_list:
+            return raw_label
+
+        # Check if it's a label that was merged
+        if raw_label in self._reverse_label_map:
+            return self._reverse_label_map[raw_label]
+
+        # Unknown label
+        return "O"
 
     # ----------------------- S3 utilities -----------------------
     def _resolve_latest_s3_uri(self, bucket_env_var: str) -> Optional[str]:

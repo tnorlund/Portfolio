@@ -104,18 +104,15 @@ def _combine_bio_probabilities(
     return base_probs
 
 
-def _normalize_label_for_4label_setup(raw_label: str) -> str:
-    """Normalize ground truth labels to match 4-label training setup.
+def _normalize_label_with_model(raw_label: str, infer: LayoutLMInference) -> str:
+    """Normalize ground truth labels using the model's label configuration.
 
-    This matches the training normalization logic exactly:
-    - Removes BIO prefix (training adds it later per-line)
-    - Merges labels: LINE_TOTAL/SUBTOTAL/TAX/GRAND_TOTAL → AMOUNT
-    - Merges labels: TIME → DATE
-    - Merges labels: PHONE_NUMBER/ADDRESS_LINE → ADDRESS
-    - Filters to allowed labels: MERCHANT_NAME, DATE, ADDRESS, AMOUNT
+    Uses the model's run.json to determine label merges dynamically.
+    This supports any training configuration (4-label, 8-label, etc.).
 
     Args:
         raw_label: Raw label from DynamoDB (e.g., "LINE_TOTAL", "B-DATE", "PHONE_NUMBER")
+        infer: LayoutLMInference instance with label configuration loaded
 
     Returns:
         Normalized base label WITHOUT BIO prefix (e.g., "AMOUNT", "DATE", "ADDRESS", "O")
@@ -129,25 +126,8 @@ def _normalize_label_for_4label_setup(raw_label: str) -> str:
     if label.startswith("B-") or label.startswith("I-"):
         label = label[2:]
 
-    # Merge amounts (matches training: merge_amounts flag)
-    if label in {"LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"}:
-        label = "AMOUNT"
-
-    # Merge DATE and TIME (matches training: merge_date_time flag)
-    if label == "TIME":
-        label = "DATE"
-
-    # Merge ADDRESS_LINE and PHONE_NUMBER (matches training: merge_address_phone flag)
-    if label in {"PHONE_NUMBER", "ADDRESS_LINE"}:
-        label = "ADDRESS"
-
-    # Only keep the 4 allowed labels, map others to O (matches training: allowed_labels)
-    allowed = {"MERCHANT_NAME", "DATE", "ADDRESS", "AMOUNT"}
-    if label not in allowed:
-        return "O"
-
-    # Return base label WITHOUT BIO prefix (training adds BIO per-line)
-    return label
+    # Use the model's normalize_label method which uses run.json config
+    return infer.normalize_label(label)
 
 
 def calculate_metrics(
@@ -343,7 +323,7 @@ def handler(event, context):
                     label.label
                 )
                 # Normalize label to base form (matches training normalization)
-                normalized = _normalize_label_for_4label_setup(label.label)
+                normalized = _normalize_label_with_model(label.label, infer)
                 ground_truth_base[(label.line_id, label.word_id)] = normalized
 
         # Step 5: Build predictions array
@@ -590,6 +570,8 @@ def handler(event, context):
                 "device": infer._device,
                 "s3_uri": infer._s3_uri_used,
                 "model_dir": infer._model_dir,
+                "label_list": infer.label_list,
+                "label_merges": infer.label_merges,
             },
             "cached_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -632,6 +614,7 @@ def handler(event, context):
 
 def _extract_entities_summary(
     predictions: List[Dict[str, Any]],
+    label_list: Optional[List[str]] = None,
 ) -> Dict[str, Optional[str]]:
     """Extract consolidated entity values from predictions.
 
@@ -639,17 +622,27 @@ def _extract_entities_summary(
 
     Args:
         predictions: List of prediction dicts with predicted_label_base and text
+        label_list: Optional list of labels from the model (used for dynamic label support)
 
     Returns:
-        Dict with merchant_name, date, address, amount (each may be None)
+        Dict mapping label names (lowercase) to their best extracted value (each may be None)
     """
-    # Group consecutive tokens by label
-    entities: Dict[str, List[str]] = {
-        "MERCHANT_NAME": [],
-        "DATE": [],
-        "ADDRESS": [],
-        "AMOUNT": [],
-    }
+    # Build entities dict from label_list if provided, else use default 4 labels
+    if label_list:
+        # Extract base labels from BIO format (remove B- and I- prefixes, dedupe)
+        seen = set()
+        base_labels = []
+        for lbl in label_list:
+            if lbl == "O":
+                continue
+            base = lbl[2:] if lbl.startswith("B-") or lbl.startswith("I-") else lbl
+            if base not in seen:
+                seen.add(base)
+                base_labels.append(base)
+    else:
+        base_labels = ["MERCHANT_NAME", "DATE", "ADDRESS", "AMOUNT"]
+
+    entities: Dict[str, List[str]] = {lbl: [] for lbl in base_labels}
 
     current_label = None
     current_tokens: List[str] = []
@@ -660,7 +653,8 @@ def _extract_entities_summary(
         if label == "O":
             # Flush current tokens if any
             if current_label and current_tokens:
-                entities[current_label].append(" ".join(current_tokens))
+                if current_label in entities:
+                    entities[current_label].append(" ".join(current_tokens))
             current_label = None
             current_tokens = []
         elif label == current_label:
@@ -669,13 +663,15 @@ def _extract_entities_summary(
         else:
             # New label - flush previous and start new
             if current_label and current_tokens:
-                entities[current_label].append(" ".join(current_tokens))
+                if current_label in entities:
+                    entities[current_label].append(" ".join(current_tokens))
             current_label = label
             current_tokens = [pred.get("text", "")]
 
     # Flush final tokens
     if current_label and current_tokens:
-        entities[current_label].append(" ".join(current_tokens))
+        if current_label in entities:
+            entities[current_label].append(" ".join(current_tokens))
 
     # Take the longest/best entity for each type
     def best_entity(values: List[str]) -> Optional[str]:
@@ -684,12 +680,8 @@ def _extract_entities_summary(
         # Return the longest entity (usually most complete)
         return max(values, key=len)
 
-    return {
-        "merchant_name": best_entity(entities["MERCHANT_NAME"]),
-        "date": best_entity(entities["DATE"]),
-        "address": best_entity(entities["ADDRESS"]),
-        "amount": best_entity(entities["AMOUNT"]),
-    }
+    # Return with lowercase keys for API consistency
+    return {lbl.lower(): best_entity(entities[lbl]) for lbl in base_labels}
 
 
 def _process_single_receipt(
@@ -727,7 +719,7 @@ def _process_single_receipt(
     for label in receipt_details.labels:
         if label.validation_status == ValidationStatus.VALID:
             ground_truth_original[(label.line_id, label.word_id)] = label.label
-            normalized = _normalize_label_for_4label_setup(label.label)
+            normalized = _normalize_label_with_model(label.label, infer)
             ground_truth_base[(label.line_id, label.word_id)] = normalized
 
     # Build word lookups
@@ -857,8 +849,8 @@ def _process_single_receipt(
 
     metrics = calculate_metrics(predictions, ground_truth_bio_dict)
 
-    # Extract entity summary
-    entities_summary = _extract_entities_summary(predictions)
+    # Extract entity summary using model's label list
+    entities_summary = _extract_entities_summary(predictions, infer.label_list)
 
     # Build response
     return {
@@ -873,6 +865,8 @@ def _process_single_receipt(
             "model_name": "microsoft/layoutlm-base-uncased",
             "device": infer._device,
             "s3_uri": infer._s3_uri_used,
+            "label_list": infer.label_list,
+            "label_merges": infer.label_merges,
         },
         "entities_summary": entities_summary,
         "inference_time_ms": round(inference_time_ms, 2),

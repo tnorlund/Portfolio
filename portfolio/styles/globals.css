@@ -42,6 +42,9 @@ html {
   --color-purple: #9C27B0;
   --color-purple-rgb: 156, 39, 176;
   /* RGB values for #9C27B0 */
+  --color-orange: #FB8C00;
+  --color-orange-rgb: 251, 140, 0;
+  /* RGB values for #FB8C00 */
 
   --background-color-rgb: 255, 255, 255;
   /* Add this for light mode */
@@ -233,6 +236,8 @@ li {
     /* RGB values for #66BB6A */
     --color-blue: #42A5F5;
     --color-yellow: #FFEE58;
+    --color-orange: #FF9800;
+    --color-orange-rgb: 255, 152, 0;
 
     --background-color-rgb: 18, 18, 18;
     /* Add this for dark mode */
