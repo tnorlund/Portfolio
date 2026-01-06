@@ -12,7 +12,7 @@ import {
   ClientReceiptCounts,
   CodeBuildDiagram,
   ImageStack,
-  LabelValidationCount,
+  LabelValidationTimeline,
   LayoutLMBatchVisualization,
   LockingSwimlane,
   MerchantCount,
@@ -515,7 +515,7 @@ export default function ReceiptPage({
         label and verifies it again.
       </p>
 
-      <LabelValidationCount />
+      <LabelValidationTimeline />
 
       <p>
         This dataset is used to train a model to label the words faster and
