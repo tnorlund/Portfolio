@@ -10,12 +10,16 @@ import {
 import { detectImageFormatSupport, getBestImageUrl } from "../../../../utils/imageFormat";
 import styles from "./LayoutLMBatchVisualization.module.css";
 
-// Label colors matching the existing carousel
+// Label colors for 8-label hybrid model
 const LABEL_COLORS: Record<string, string> = {
   MERCHANT_NAME: "var(--color-yellow)",
   DATE: "var(--color-blue)",
-  ADDRESS: "var(--color-red)",
+  TIME: "var(--color-blue)",
   AMOUNT: "var(--color-green)",
+  ADDRESS: "var(--color-red)",
+  WEBSITE: "var(--color-purple)",
+  STORE_HOURS: "var(--color-orange)",
+  PAYMENT_METHOD: "var(--color-orange)",
   O: "var(--text-color)",
 };
 
@@ -23,12 +27,25 @@ const LABEL_COLORS: Record<string, string> = {
 const ENTITY_DISPLAY_NAMES: Record<string, string> = {
   MERCHANT_NAME: "Merchant",
   DATE: "Date",
-  ADDRESS: "Address",
+  TIME: "Time",
   AMOUNT: "Amount",
+  ADDRESS: "Address",
+  WEBSITE: "Website",
+  STORE_HOURS: "Hours",
+  PAYMENT_METHOD: "Payment",
 };
 
-// Entity types in order
-const ENTITY_TYPES = ["MERCHANT_NAME", "DATE", "ADDRESS", "AMOUNT"];
+// Entity types in order (grouped by color for visual clarity)
+const ENTITY_TYPES = [
+  "MERCHANT_NAME",
+  "DATE",
+  "TIME",
+  "AMOUNT",
+  "ADDRESS",
+  "WEBSITE",
+  "STORE_HOURS",
+  "PAYMENT_METHOD",
+];
 
 // Animation timing
 const HOLD_DURATION = 1000;

@@ -2,15 +2,19 @@ import React, { useEffect, useState, useMemo, useRef } from "react";
 import { animated, useSpring, config } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
-import { TrainingMetricsEpoch } from "../../../../types/api";
+import { DatasetMetrics, TrainingMetricsEpoch } from "../../../../types/api";
 import styles from "./TrainingMetricsAnimation.module.css";
 
-// Label color mapping
+// Label color mapping for 8-label hybrid model
 const LABEL_COLORS: Record<string, string> = {
-  ADDRESS: "var(--color-red)",
-  AMOUNT: "var(--color-green)",
-  DATE: "var(--color-blue)",
   MERCHANT_NAME: "var(--color-yellow)",
+  DATE: "var(--color-blue)",
+  TIME: "var(--color-blue)",
+  AMOUNT: "var(--color-green)",
+  ADDRESS: "var(--color-red)",
+  WEBSITE: "var(--color-purple)",
+  STORE_HOURS: "var(--color-orange)",
+  PAYMENT_METHOD: "var(--color-orange)",
   O: "var(--color-purple)",
 };
 
@@ -25,6 +29,23 @@ const formatLabel = (label: string): string => {
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(" ");
+};
+
+// Abbreviated labels for confusion matrix
+const LABEL_ABBREV: Record<string, string> = {
+  MERCHANT_NAME: "Merch",
+  DATE: "Date",
+  TIME: "Time",
+  AMOUNT: "Amt",
+  ADDRESS: "Addr",
+  WEBSITE: "Web",
+  STORE_HOURS: "Hours",
+  PAYMENT_METHOD: "Pay",
+  O: "O",
+};
+
+const formatLabelAbbrev = (label: string): string => {
+  return LABEL_ABBREV[label] || label.slice(0, 4);
 };
 
 // Spring config for smooth animations
@@ -104,6 +125,71 @@ const EpochTimeline: React.FC<EpochTimelineProps> = ({
   );
 };
 
+// Dataset Stats Component with segmented bars
+interface DatasetStatsProps {
+  datasetMetrics?: DatasetMetrics;
+}
+
+const DatasetStats: React.FC<DatasetStatsProps> = ({ datasetMetrics }) => {
+  if (!datasetMetrics) return null;
+
+  const { num_train_samples, num_val_samples, o_entity_ratio_train } =
+    datasetMetrics;
+
+  // Calculate percentages for train/val split
+  const total = (num_train_samples || 0) + (num_val_samples || 0);
+  const trainPercent = total > 0 ? ((num_train_samples || 0) / total) * 100 : 80;
+  const valPercent = total > 0 ? ((num_val_samples || 0) / total) * 100 : 20;
+
+  // Calculate percentages for O:entity ratio
+  // ratio = O / entity, so entity% = 1 / (1 + ratio), O% = ratio / (1 + ratio)
+  const ratio = o_entity_ratio_train || 1;
+  const entityPercent = (1 / (1 + ratio)) * 100;
+  const oPercent = (ratio / (1 + ratio)) * 100;
+
+  return (
+    <div className={styles.datasetStats}>
+      {/* Train/Val Split Bar */}
+      <div className={styles.statGroup}>
+        <span className={styles.statLabel}>Train/Val</span>
+        <div className={styles.segmentedBar}>
+          <div
+            className={styles.segmentTrain}
+            style={{ width: `${trainPercent}%` }}
+            title={`Train: ${num_train_samples?.toLocaleString()}`}
+          />
+          <div
+            className={styles.segmentVal}
+            style={{ width: `${valPercent}%` }}
+            title={`Val: ${num_val_samples?.toLocaleString()}`}
+          />
+        </div>
+        <span className={styles.statValues}>
+          {num_train_samples?.toLocaleString()} / {num_val_samples?.toLocaleString()}
+        </span>
+      </div>
+
+      {/* O:Entity Ratio Bar */}
+      <div className={styles.statGroup}>
+        <span className={styles.statLabel}>Labeled</span>
+        <div className={styles.segmentedBar}>
+          <div
+            className={styles.segmentEntity}
+            style={{ width: `${entityPercent}%` }}
+            title={`Entity tokens: ${entityPercent.toFixed(0)}%`}
+          />
+          <div
+            className={styles.segmentO}
+            style={{ width: `${oPercent}%` }}
+            title={`O tokens: ${oPercent.toFixed(0)}%`}
+          />
+        </div>
+        <span className={styles.statValues}>{ratio.toFixed(1)}:1</span>
+      </div>
+    </div>
+  );
+};
+
 // F1 Score Gauge Component
 interface F1GaugeProps {
   value: number;
@@ -155,25 +241,26 @@ interface LabelBarProps {
 
 const LabelBar: React.FC<LabelBarProps> = ({ label, value }) => {
   const spring = useSpring({
-    to: { width: value * 100, displayValue: value * 100 },
+    to: { width: value * 100, displayValue: value },
     config: SPRING_CONFIG,
   });
 
   return (
     <div className={styles.labelRow}>
       <span className={styles.labelName}>{formatLabel(label)}</span>
-      <div className={styles.labelBarContainer}>
+      <div className={styles.labelBarSegmented}>
         <animated.div
-          className={styles.labelBar}
-          style={{
-            width: spring.width.to((w) => `${w}%`),
-            backgroundColor: getLabelColor(label),
-          }}
+          className={styles.labelBarFilled}
+          style={{ width: spring.width.to((w) => `${w}%`) }}
         />
-        <animated.span className={styles.labelBarValue}>
-          {spring.displayValue.to((v) => `${v.toFixed(0)}%`)}
-        </animated.span>
+        <animated.div
+          className={styles.labelBarEmpty}
+          style={{ width: spring.width.to((w) => `${100 - w}%`) }}
+        />
       </div>
+      <animated.span className={styles.labelBarValue}>
+        {spring.displayValue.to((v) => v.toFixed(2))}
+      </animated.span>
     </div>
   );
 };
@@ -191,9 +278,9 @@ const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => 
   }, [matrix]);
 
   // Grid template: first column for Y labels, then fixed-size columns for cells
-  const cellSize = "50px";
-  const gridTemplateColumns = `45px repeat(${labels.length}, ${cellSize})`;
-  const gridTemplateRows = `35px repeat(${labels.length}, ${cellSize})`;
+  const cellSize = "34px";
+  const gridTemplateColumns = `42px repeat(${labels.length}, ${cellSize})`;
+  const gridTemplateRows = `32px repeat(${labels.length}, ${cellSize})`;
 
   return (
     <div className={styles.matrixContainer}>
@@ -207,7 +294,7 @@ const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => 
         {/* X-axis labels (top) */}
         {labels.map((label) => (
           <div key={`x-${label}`} className={styles.matrixAxisLabel}>
-            {formatLabel(label)}
+            {formatLabelAbbrev(label)}
           </div>
         ))}
 
@@ -218,7 +305,7 @@ const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => 
             <div
               className={`${styles.matrixAxisLabel} ${styles.matrixAxisLabelY}`}
             >
-              {formatLabel(labels[i])}
+              {formatLabelAbbrev(labels[i])}
             </div>
 
             {/* Cells */}
@@ -281,6 +368,7 @@ const TrainingMetricsAnimation: React.FC = () => {
     triggerOnce: true,
   });
   const [epochs, setEpochs] = useState<TrainingMetricsEpoch[]>([]);
+  const [datasetMetrics, setDatasetMetrics] = useState<DatasetMetrics | undefined>();
   const [currentEpochIndex, setCurrentEpochIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [showBestLabel, setShowBestLabel] = useState(false);
@@ -292,6 +380,7 @@ const TrainingMetricsAnimation: React.FC = () => {
       .fetchFeaturedTrainingMetrics()
       .then((data) => {
         setEpochs(data.epochs);
+        setDatasetMetrics(data.dataset_metrics);
         setIsLoading(false);
       })
       .catch((err) => {
@@ -361,6 +450,7 @@ const TrainingMetricsAnimation: React.FC = () => {
 
   return (
     <animated.div ref={ref} className={styles.container}>
+      <DatasetStats datasetMetrics={datasetMetrics} />
       <EpochTimeline
         epochs={epochs}
         currentIndex={currentEpochIndex}
