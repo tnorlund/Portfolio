@@ -171,6 +171,16 @@
   padding: 1rem 0;
 }
 
+/* Desktop legend - shown by default, hidden on mobile */
+.legendDesktop {
+  display: contents;
+}
+
+/* Mobile legend - hidden by default, shown on mobile */
+.legendMobile {
+  display: none;
+}
+
 .legendItem {
   display: flex;
   align-items: center;
@@ -319,6 +329,15 @@
 
   .legendItem {
     flex: 0 0 auto;
+  }
+
+  /* Show mobile legend, hide desktop legend */
+  .legendDesktop {
+    display: none;
+  }
+
+  .legendMobile {
+    display: contents;
   }
 
   .inferenceTime {

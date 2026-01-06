@@ -166,16 +166,16 @@ const DatasetStats: React.FC<DatasetStatsProps> = ({ datasetMetrics }) => {
           <div
             className={styles.segmentTrain}
             style={{ width: `${trainPercent}%` }}
-            title={`Train: ${num_train_samples?.toLocaleString()}`}
+            title={`Train: ${num_train_samples.toLocaleString()}`}
           />
           <div
             className={styles.segmentVal}
             style={{ width: `${valPercent}%` }}
-            title={`Val: ${num_val_samples?.toLocaleString()}`}
+            title={`Val: ${num_val_samples.toLocaleString()}`}
           />
         </div>
         <span className={styles.statValues}>
-          {num_train_samples?.toLocaleString()} / {num_val_samples?.toLocaleString()}
+          {num_train_samples.toLocaleString()} / {num_val_samples.toLocaleString()}
         </span>
       </div>
 

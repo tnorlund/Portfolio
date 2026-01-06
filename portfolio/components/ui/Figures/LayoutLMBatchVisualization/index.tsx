@@ -57,20 +57,6 @@ const MOBILE_LEGEND_GROUPS = [
   { color: "var(--color-orange)", label: "Hours / Payment", types: ["STORE_HOURS", "PAYMENT_METHOD"] },
 ];
 
-// Hook to detect mobile viewport
-const useIsMobile = (breakpoint = 768) => {
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth <= breakpoint);
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, [breakpoint]);
-
-  return isMobile;
-};
-
 // Animation timing
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
@@ -337,7 +323,6 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
   inferenceTimeMs,
   showInferenceTime,
 }) => {
-  const isMobile = useIsMobile();
   const inferenceSpring = useSpring({
     opacity: showInferenceTime ? 1 : 0.2,
     config: { tension: 280, friction: 24 },
@@ -345,9 +330,19 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
 
   return (
     <div className={styles.entityLegend}>
-      {isMobile ? (
-        // Mobile: grouped legend
-        MOBILE_LEGEND_GROUPS.map((group) => {
+      {/* Desktop: full legend (hidden on mobile via CSS) */}
+      <div className={styles.legendDesktop}>
+        {ENTITY_TYPES.map((entityType) => (
+          <LegendItem
+            key={entityType}
+            entityType={entityType}
+            isRevealed={revealedEntityTypes.has(entityType)}
+          />
+        ))}
+      </div>
+      {/* Mobile: grouped legend (hidden on desktop via CSS) */}
+      <div className={styles.legendMobile}>
+        {MOBILE_LEGEND_GROUPS.map((group) => {
           const isRevealed = group.types.some((t) => revealedEntityTypes.has(t));
           return (
             <div
@@ -358,17 +353,8 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
               <span className={styles.legendLabel}>{group.label}</span>
             </div>
           );
-        })
-      ) : (
-        // Desktop: full legend
-        ENTITY_TYPES.map((entityType) => (
-          <LegendItem
-            key={entityType}
-            entityType={entityType}
-            isRevealed={revealedEntityTypes.has(entityType)}
-          />
-        ))
-      )}
+        })}
+      </div>
       <animated.div className={styles.inferenceTime} style={inferenceSpring}>
         <span className={styles.inferenceLabel}>Inference Time</span>
         <span className={styles.inferenceValue}>{inferenceTimeMs.toFixed(0)}ms</span>
