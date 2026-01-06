@@ -234,7 +234,6 @@
   min-width: 80px;
   text-align: right;
   flex-shrink: 0;
-  overflow: visible;
 }
 
 .legendDuration {
@@ -267,6 +266,7 @@
   padding-left: 24px;
   margin-top: -2px;
   min-height: 14px;
+  overflow: hidden;
 }
 
 /* Note: .tallyRow is defined below in "Decision Tally Row" section */
@@ -685,9 +685,11 @@
 .tallyRow {
   display: flex;
   align-items: center;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 2px;
   padding: 2px 0 4px 0;
   min-height: 20px;
+  max-width: 100%;
 }
 
 .tallyIcons {
