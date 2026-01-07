@@ -1287,7 +1287,8 @@ if hasattr(api_gateway, "api"):
     # Create label evaluator visualization cache (reads from LangSmith exports + DynamoDB)
     label_evaluator_viz_cache = create_label_evaluator_viz_cache(
         langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
-        langsmith_export_prefix="traces/",
+        langsmith_export_prefix="traces//export_id=2dfc1459-1ae5-4d73-85a6-613d8eac8f87/",
+        batch_bucket=label_evaluator_sf.batch_bucket_name,
         dynamodb_table_name=dynamodb_table.name,
         dynamodb_table_arn=dynamodb_table.arn,
         receipt_dynamo_layer_arn=dynamo_layer.arn,

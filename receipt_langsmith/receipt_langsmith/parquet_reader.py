@@ -5,6 +5,7 @@ feature and provides the same interface as the queries module but without
 rate limit issues.
 """
 
+import json
 import logging
 from datetime import datetime
 from io import BytesIO
@@ -14,6 +15,20 @@ import boto3
 import pyarrow.parquet as pq
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_json_field(value: Any) -> Any:
+    """Parse JSON string field, returning empty dict if parsing fails."""
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    return {}
 
 
 def read_traces_from_parquet(bucket: str, prefix: str = "traces/") -> list[dict]:
@@ -42,7 +57,15 @@ def read_traces_from_parquet(bucket: str, prefix: str = "traces/") -> list[dict]
                 try:
                     response = s3.get_object(Bucket=bucket, Key=key)
                     table = pq.read_table(BytesIO(response["Body"].read()))
-                    traces.extend(table.to_pylist())
+                    raw_traces = table.to_pylist()
+
+                    # Parse JSON string fields (outputs, inputs, extra)
+                    for trace in raw_traces:
+                        trace["outputs"] = _parse_json_field(trace.get("outputs"))
+                        trace["inputs"] = _parse_json_field(trace.get("inputs"))
+                        trace["extra"] = _parse_json_field(trace.get("extra"))
+
+                    traces.extend(raw_traces)
                 except Exception:
                     logger.exception(f"Error reading Parquet file: {key}")
                     continue
@@ -121,7 +144,9 @@ def find_receipts_with_decisions_from_parquet(
     results = []
     for parent in parents:
         parent_id = parent.get("id")
-        metadata = parent.get("metadata", {}) or {}
+        # Metadata is in extra.metadata for LangSmith exports
+        extra = parent.get("extra", {}) or {}
+        metadata = extra.get("metadata", {}) or {}
         children = children_by_parent.get(parent_id, [])
 
         # Build children lookup by name
@@ -239,7 +264,9 @@ def find_receipts_with_anomalies_from_parquet(
     results = []
     for parent in parents:
         parent_id = parent.get("id")
-        metadata = parent.get("metadata", {}) or {}
+        # Metadata is in extra.metadata for LangSmith exports
+        extra = parent.get("extra", {}) or {}
+        metadata = extra.get("metadata", {}) or {}
         children = children_by_parent.get(parent_id, [])
 
         # Find EvaluateLabels child
@@ -274,10 +301,50 @@ def find_receipts_with_anomalies_from_parquet(
     return results
 
 
+def _load_s3_result(
+    batch_bucket: str,
+    execution_id: str,
+    result_type: str,
+    s3_key_base: str,
+) -> dict | None:
+    """Load a result file from S3.
+
+    Args:
+        batch_bucket: S3 bucket containing Step Function results
+        execution_id: Step Function execution ID
+        result_type: Type of result (currency, metadata, financial, reviewed)
+        s3_key_base: Base key like "image_id_receipt_id.json"
+
+    Returns:
+        Parsed JSON dict or None if not found
+    """
+    s3 = boto3.client("s3")
+    s3_key = f"{result_type}/{execution_id}/{s3_key_base}"
+
+    try:
+        response = s3.get_object(Bucket=batch_bucket, Key=s3_key)
+        return json.loads(response["Body"].read().decode("utf-8"))
+    except Exception:
+        # File doesn't exist or error reading
+        return None
+
+
+def _get_trace_key(trace: dict) -> tuple[str, int] | None:
+    """Extract (image_id, receipt_id) from trace metadata."""
+    extra = trace.get("extra", {}) or {}
+    metadata = extra.get("metadata", {}) or {}
+    image_id = metadata.get("image_id")
+    receipt_id = metadata.get("receipt_id")
+    if image_id and receipt_id is not None:
+        return (image_id, int(receipt_id))
+    return None
+
+
 def find_visualization_receipts_from_parquet(
     bucket: str,
     prefix: str = "traces/",
     max_receipts: int = 20,
+    batch_bucket: str | None = None,
 ) -> list[dict[str, Any]]:
     """Extract receipt data for scanner visualization from LangSmith Parquet exports.
 
@@ -285,10 +352,16 @@ def find_visualization_receipts_from_parquet(
     component, including evaluator decisions, timing, geometric issues, and
     line item discovery duration.
 
+    Note: Evaluation results (currency, metadata, financial) are loaded from S3
+    rather than LangSmith traces because the trace hierarchy is incomplete.
+    Traces from different Step Function Lambdas are matched by image_id/receipt_id.
+
     Args:
         bucket: S3 bucket name containing Parquet exports
         prefix: S3 prefix for Parquet files
         max_receipts: Maximum number of receipts to return (prioritizes those with review data)
+        batch_bucket: S3 bucket containing Step Function results (currency, metadata, etc.)
+                     If not provided, defaults to label-evaluator-dev-batch-bucket
 
     Returns:
         List of receipt visualization dicts with:
@@ -300,14 +373,17 @@ def find_visualization_receipts_from_parquet(
         - review: {decisions{}, all_decisions[], duration_seconds} or None
         - line_item_duration_seconds (from DiscoverPatterns span)
     """
+    # Default batch bucket for Step Function results
+    if not batch_bucket:
+        batch_bucket = "label-evaluator-dev-batch-bucket-0c95650"
     traces = read_traces_from_parquet(bucket, prefix)
 
     if not traces:
         logger.warning("No traces found in Parquet export")
         return []
 
-    # Separate parents and children
-    parents = []
+    # Index traces by (image_id, receipt_id) and name for cross-Lambda matching
+    traces_by_key_and_name: dict[tuple[str, int], dict[str, dict]] = {}
     children_by_parent: dict[str, list[dict]] = {}
 
     for trace in traces:
@@ -316,70 +392,100 @@ def find_visualization_receipts_from_parquet(
             if parent_id not in children_by_parent:
                 children_by_parent[parent_id] = []
             children_by_parent[parent_id].append(trace)
-        elif trace.get("name") == "ReceiptEvaluation":
-            parents.append(trace)
 
+        # Index by (image_id, receipt_id) for cross-Lambda matching
+        key = _get_trace_key(trace)
+        if key:
+            if key not in traces_by_key_and_name:
+                traces_by_key_and_name[key] = {}
+            name = trace.get("name")
+            if name:
+                # Keep the most recent trace if duplicates exist
+                traces_by_key_and_name[key][name] = trace
+
+    # Find ReceiptEvaluation traces as the base
+    parents = [t for t in traces if t.get("name") == "ReceiptEvaluation"]
     logger.info(f"Found {len(parents)} ReceiptEvaluation traces")
 
-    # Process each parent with its children
+    # Process each receipt
     with_review = []
     without_review = []
 
     for parent in parents:
         parent_id = parent.get("id")
-        metadata = parent.get("metadata", {}) or {}
-        children = children_by_parent.get(parent_id, [])
+        extra = parent.get("extra", {}) or {}
+        metadata = extra.get("metadata", {}) or {}
+        receipt_key = _get_trace_key(parent)
 
-        # Build children lookup by name
+        # Get children of ReceiptEvaluation for geometric evaluation
+        children = children_by_parent.get(parent_id, [])
         children_by_name: dict[str, dict] = {}
         for c in children:
             name = c.get("name")
             if name:
                 children_by_name[name] = c
 
-        # Extract geometric issues from EvaluateLabels
+        # Get traces matching this receipt from other Lambdas
+        receipt_traces = traces_by_key_and_name.get(receipt_key, {}) if receipt_key else {}
+
+        # Extract geometric issues from EvaluateLabels (child of ReceiptEvaluation)
         evaluate_labels = children_by_name.get("EvaluateLabels", {})
         evaluate_labels_outputs = evaluate_labels.get("outputs", {}) or {}
         geometric_issues = evaluate_labels_outputs.get("issues", [])
         geometric_duration = _get_duration_seconds(evaluate_labels)
 
-        # Extract currency decisions
-        currency_child = children_by_name.get("EvaluateCurrencyLabels", {})
-        currency_outputs = currency_child.get("outputs", {}) or {}
-        currency_decisions = currency_outputs.get("all_decisions", [])
-        currency_duration = (
-            currency_outputs.get("duration_seconds")
-            or _get_duration_seconds(currency_child)
-        )
+        # Get execution_id and batch_bucket from metadata to fetch S3 results
+        execution_id = metadata.get("execution_id", "")
+        image_id = metadata.get("image_id")
+        receipt_id = metadata.get("receipt_id")
 
-        # Extract metadata decisions
-        metadata_child = children_by_name.get("EvaluateMetadataLabels", {})
-        metadata_outputs = metadata_child.get("outputs", {}) or {}
-        metadata_decisions = metadata_outputs.get("all_decisions", [])
-        metadata_duration = (
-            metadata_outputs.get("duration_seconds")
-            or _get_duration_seconds(metadata_child)
-        )
+        # Try to get decisions from S3 results if available
+        # The Step Function stores detailed results in S3 rather than LangSmith traces
+        currency_decisions = []
+        currency_duration = 0
+        metadata_decisions = []
+        metadata_duration = 0
+        financial_decisions = []
+        financial_duration = 0
+        review_decisions = []
+        review_duration = 0
 
-        # Extract financial decisions
-        financial_child = children_by_name.get("ValidateFinancialMath", {})
-        financial_outputs = financial_child.get("outputs", {}) or {}
-        financial_decisions = financial_outputs.get("all_decisions", [])
-        financial_duration = (
-            financial_outputs.get("duration_seconds")
-            or _get_duration_seconds(financial_child)
-        )
+        if execution_id and image_id and receipt_id is not None:
+            s3_key_base = f"{image_id}_{receipt_id}.json"
 
-        # Extract review decisions (LLMReview - only exists if geometric issues found)
-        review_child = children_by_name.get("LLMReview", {})
-        review_outputs = review_child.get("outputs", {}) or {}
-        review_decisions = review_outputs.get("all_decisions", [])
-        review_duration = (
-            review_outputs.get("duration_seconds")
-            or _get_duration_seconds(review_child)
-        )
+            # Currency results
+            currency_result = _load_s3_result(
+                batch_bucket, execution_id, "currency", s3_key_base
+            )
+            if currency_result:
+                currency_decisions = currency_result.get("all_decisions", [])
+                currency_duration = currency_result.get("duration_seconds", 0)
 
-        # Extract line item duration from DiscoverPatterns span
+            # Metadata results
+            metadata_result = _load_s3_result(
+                batch_bucket, execution_id, "metadata", s3_key_base
+            )
+            if metadata_result:
+                metadata_decisions = metadata_result.get("all_decisions", [])
+                metadata_duration = metadata_result.get("duration_seconds", 0)
+
+            # Financial results
+            financial_result = _load_s3_result(
+                batch_bucket, execution_id, "financial", s3_key_base
+            )
+            if financial_result:
+                financial_decisions = financial_result.get("all_decisions", [])
+                financial_duration = financial_result.get("duration_seconds", 0)
+
+            # Review results (LLM review of geometric issues)
+            review_result = _load_s3_result(
+                batch_bucket, execution_id, "reviewed", s3_key_base
+            )
+            if review_result:
+                review_decisions = review_result.get("reviewed_issues", [])
+                review_duration = review_result.get("duration_seconds", 0)
+
+        # Extract line item duration from DiscoverPatterns span (child of ReceiptEvaluation)
         discover_patterns = children_by_name.get("DiscoverPatterns", {})
         line_item_duration = _get_duration_seconds(discover_patterns)
 

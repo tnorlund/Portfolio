@@ -24,6 +24,7 @@ logger.setLevel(logging.INFO)
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET")
 LANGSMITH_EXPORT_BUCKET = os.environ.get("LANGSMITH_EXPORT_BUCKET")
 LANGSMITH_EXPORT_PREFIX = os.environ.get("LANGSMITH_EXPORT_PREFIX", "traces/")
+BATCH_BUCKET = os.environ.get("BATCH_BUCKET")  # Step Function results bucket
 DYNAMODB_TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable")
 CACHE_KEY = "viz-sample-data.json"
 MAX_RECEIPTS = 10  # Number of receipts to include in visualization cache
@@ -260,6 +261,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         bucket=LANGSMITH_EXPORT_BUCKET,
         prefix=LANGSMITH_EXPORT_PREFIX,
         max_receipts=MAX_RECEIPTS * 3,  # Get more to allow for filtering
+        batch_bucket=BATCH_BUCKET,  # Step Function results (currency, metadata, etc.)
     )
 
     if not trace_receipts:

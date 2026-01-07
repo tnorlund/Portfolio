@@ -28,43 +28,58 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Trigger a LangSmith bulk export job.
 
-    Environment variables:
+    Environment variables (used as defaults):
         LANGCHAIN_API_KEY: LangSmith API key
+        LANGSMITH_TENANT_ID: LangSmith workspace/tenant ID
         LANGSMITH_PROJECT: LangSmith project name
         STACK: Pulumi stack name (dev/prod)
 
-    Event parameters (optional):
+    Event parameters (override environment variables):
+        tenant_id: LangSmith workspace ID (overrides LANGSMITH_TENANT_ID)
+        project_name: LangSmith project name (overrides LANGSMITH_PROJECT)
+        project_id: Direct project ID (skips name lookup)
+        destination_id: S3 destination ID (overrides SSM lookup)
         days_back: Number of days to export (default: 7)
-        project_id: Override project ID (default: from env)
+        export_fields: List of fields to export (default: standard set)
 
     Returns:
         Dict with export_id and status
     """
-    api_key = os.environ["LANGCHAIN_API_KEY"]
-    tenant_id = os.environ["LANGSMITH_TENANT_ID"]
-    project_name = os.environ["LANGSMITH_PROJECT"]
-    stack = os.environ["STACK"]
+    # Get config from event or fall back to environment variables
+    api_key = event.get("api_key") or os.environ["LANGCHAIN_API_KEY"]
+    tenant_id = event.get("tenant_id") or os.environ.get("LANGSMITH_TENANT_ID")
+    project_name = event.get("project_name") or os.environ.get("LANGSMITH_PROJECT")
+    stack = os.environ.get("STACK", "dev")
 
     # Get parameters from event or use defaults
     days_back = event.get("days_back", 7)
     project_id = event.get("project_id")
+    destination_id = event.get("destination_id")
 
-    logger.info(f"Triggering bulk export for project: {project_name}")
-    logger.info(f"Days back: {days_back}")
-
-    # Get destination_id from SSM
-    ssm = boto3.client("ssm")
-    param_name = f"/langsmith/{stack}/destination_id"
-
-    try:
-        response = ssm.get_parameter(Name=param_name)
-        destination_id = response["Parameter"]["Value"]
-    except ssm.exceptions.ParameterNotFound:
-        logger.error(f"Destination not found in SSM: {param_name}")
+    if not tenant_id:
         return {
             "statusCode": 400,
-            "message": "Destination not registered. Run setup Lambda first.",
+            "message": "tenant_id required (via event or LANGSMITH_TENANT_ID env var)",
         }
+
+    logger.info(f"Triggering bulk export for project: {project_name or project_id}")
+    logger.info(f"Tenant ID: {tenant_id}")
+    logger.info(f"Days back: {days_back}")
+
+    # Get destination_id from event, SSM, or fail
+    if not destination_id:
+        ssm = boto3.client("ssm")
+        param_name = f"/langsmith/{stack}/destination_id"
+
+        try:
+            response = ssm.get_parameter(Name=param_name)
+            destination_id = response["Parameter"]["Value"]
+        except Exception as e:
+            logger.error(f"Destination not found in SSM: {param_name} - {e}")
+            return {
+                "statusCode": 400,
+                "message": "destination_id required (via event or SSM parameter). Run setup Lambda first.",
+            }
 
     logger.info(f"Using destination_id: {destination_id}")
 
@@ -119,8 +134,34 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     logger.info(f"Export range: {start_time.isoformat()} to {end_time.isoformat()}")
 
+    # Default export fields for visualization
+    default_export_fields = [
+        "id",
+        "name",
+        "outputs",
+        "extra",  # Contains metadata
+        "parent_run_id",
+        "start_time",
+        "end_time",
+        "run_type",
+        "status",
+    ]
+    export_fields = event.get("export_fields", default_export_fields)
+
     # Trigger bulk export
     try:
+        export_body = {
+            "bulk_export_destination_id": destination_id,
+            "session_id": project_id,  # LangSmith uses session_id for project
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+        }
+        # Only include export_fields if specified (omitting uses all fields)
+        if export_fields:
+            export_body["export_fields"] = export_fields
+
+        logger.info(f"Export body: {json.dumps(export_body)}")
+
         response = http.request(
             "POST",
             f"{LANGSMITH_API_URL}/api/v1/bulk-exports",
@@ -129,24 +170,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "X-Tenant-Id": tenant_id,
                 "Content-Type": "application/json",
             },
-            body=json.dumps({
-                "destination_id": destination_id,
-                "session_id": project_id,  # LangSmith uses session_id for project
-                "start_time": start_time.isoformat(),
-                "end_time": end_time.isoformat(),
-                # Only export fields we need for visualization
-                "export_fields": [
-                    "id",
-                    "name",
-                    "outputs",
-                    "metadata",
-                    "parent_run_id",
-                    "start_time",
-                    "end_time",
-                    "run_type",
-                    "status",
-                ],
-            }),
+            body=json.dumps(export_body),
         )
 
         if response.status not in (200, 201, 202):

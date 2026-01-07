@@ -36,23 +36,39 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Register S3 destination with LangSmith bulk export API.
 
-    Environment variables:
+    Environment variables (used as defaults):
         LANGCHAIN_API_KEY: LangSmith API key
+        LANGSMITH_TENANT_ID: LangSmith workspace/tenant ID
         EXPORT_BUCKET: S3 bucket name for exports
         S3_CREDENTIALS_SECRET_ARN: ARN of Secrets Manager secret with S3 credentials
         LANGSMITH_PROJECT: LangSmith project name
         STACK: Pulumi stack name (dev/prod)
 
+    Event parameters (override environment variables):
+        tenant_id: LangSmith workspace ID (overrides LANGSMITH_TENANT_ID)
+        display_name: Custom display name for the destination
+        prefix: S3 prefix for exports (default: "traces/")
+        skip_ssm: If True, don't store destination_id in SSM (default: False)
+
     Returns:
         Dict with destination_id and status
     """
-    api_key = os.environ["LANGCHAIN_API_KEY"]
-    tenant_id = os.environ["LANGSMITH_TENANT_ID"]
-    bucket_name = os.environ["EXPORT_BUCKET"]
-    project_name = os.environ["LANGSMITH_PROJECT"]
-    stack = os.environ["STACK"]
+    # Get config from event or fall back to environment variables
+    api_key = event.get("api_key") or os.environ["LANGCHAIN_API_KEY"]
+    tenant_id = event.get("tenant_id") or os.environ.get("LANGSMITH_TENANT_ID")
+    bucket_name = event.get("bucket_name") or os.environ["EXPORT_BUCKET"]
+    project_name = event.get("project_name") or os.environ.get("LANGSMITH_PROJECT", "")
+    stack = os.environ.get("STACK", "dev")
+    prefix = event.get("prefix", "traces/")
+    skip_ssm = event.get("skip_ssm", False)
 
-    logger.info(f"Registering bulk export destination for project: {project_name}")
+    if not tenant_id:
+        return {
+            "statusCode": 400,
+            "message": "tenant_id required (via event or LANGSMITH_TENANT_ID env var)",
+        }
+
+    logger.info(f"Registering bulk export destination for tenant: {tenant_id}")
     logger.info(f"Export bucket: {bucket_name}")
 
     # Get S3 credentials from Secrets Manager
@@ -86,7 +102,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     # Test that credentials work before sending to LangSmith
     # Test with the same prefix we'll use for exports
-    prefix = "traces/"
     test_s3 = boto3.client(
         "s3",
         aws_access_key_id=s3_credentials["access_key_id"],
@@ -118,12 +133,13 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     # Register destination with LangSmith
     # Note: endpoint_url is required for LangSmith to properly access the S3 bucket
+    display_name = event.get("display_name", f"portfolio-traces-{stack}")
     request_body = {
         "destination_type": "s3",
-        "display_name": f"portfolio-traces-{stack}",
+        "display_name": display_name,
         "config": {
             "bucket_name": bucket_name,
-            "prefix": "traces/",
+            "prefix": prefix,
             "region": region,
             "endpoint_url": f"https://s3.{region}.amazonaws.com",
             "include_bucket_in_prefix": True,
@@ -133,7 +149,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "secret_access_key": s3_credentials["secret_access_key"],
         },
     }
-    logger.info(f"Registering with bucket={bucket_name}, region={region}, prefix=traces/")
+    logger.info(f"Registering with bucket={bucket_name}, region={region}, prefix={prefix}")
     logger.info(f"Request body: {json.dumps({k: v if k != 'credentials' else '***' for k, v in request_body.items()})}")
 
     try:
@@ -169,21 +185,25 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         logger.info(f"Destination registered: {destination_id}")
 
-        # Store destination_id in SSM Parameter Store
-        ssm.put_parameter(
-            Name=param_name,
-            Value=destination_id,
-            Type="String",
-            Description=f"LangSmith bulk export destination ID for {project_name}",
-            Overwrite=True,
-        )
-
-        logger.info(f"Stored destination_id in SSM: {param_name}")
+        # Store destination_id in SSM Parameter Store (unless skip_ssm is True)
+        if not skip_ssm:
+            ssm.put_parameter(
+                Name=param_name,
+                Value=destination_id,
+                Type="String",
+                Description=f"LangSmith bulk export destination ID for {tenant_id}",
+                Overwrite=True,
+            )
+            logger.info(f"Stored destination_id in SSM: {param_name}")
+        else:
+            logger.info("Skipping SSM storage (skip_ssm=True)")
 
         return {
             "statusCode": 200,
             "message": "Destination registered successfully",
             "destination_id": destination_id,
+            "tenant_id": tenant_id,
+            "display_name": display_name,
         }
 
     except Exception as e:

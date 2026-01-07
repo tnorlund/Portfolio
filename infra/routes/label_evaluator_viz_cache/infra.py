@@ -30,6 +30,7 @@ class LabelEvaluatorVizCache(ComponentResource):
         *,
         langsmith_export_bucket: Input[str],
         langsmith_export_prefix: Input[str],
+        batch_bucket: Input[str],
         dynamodb_table_name: Input[str],
         dynamodb_table_arn: Input[str],
         receipt_dynamo_layer_arn: Input[str],
@@ -46,6 +47,7 @@ class LabelEvaluatorVizCache(ComponentResource):
         # Convert to Output for proper resolution
         langsmith_export_bucket_output = Output.from_input(langsmith_export_bucket)
         langsmith_export_prefix_output = Output.from_input(langsmith_export_prefix)
+        batch_bucket_output = Output.from_input(batch_bucket)
         dynamodb_table_name_output = Output.from_input(dynamodb_table_name)
         dynamodb_table_arn_output = Output.from_input(dynamodb_table_arn)
         receipt_dynamo_layer_arn_output = Output.from_input(receipt_dynamo_layer_arn)
@@ -193,6 +195,26 @@ class LabelEvaluatorVizCache(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Read from batch bucket for Step Function results
+        aws.iam.RolePolicy(
+            f"{name}-generator-batch-bucket-policy",
+            role=self.generator_lambda_role.id,
+            policy=batch_bucket_output.apply(
+                lambda bucket: json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Action": ["s3:GetObject", "s3:ListBucket"],
+                        "Resource": [
+                            f"arn:aws:s3:::{bucket}/*",
+                            f"arn:aws:s3:::{bucket}",
+                        ],
+                    }],
+                })
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
         # Read/write to cache bucket for Generator Lambda (ListBucket needed for cache operations)
         aws.iam.RolePolicy(
             f"{name}-generator-cache-bucket-policy",
@@ -256,6 +278,7 @@ class LabelEvaluatorVizCache(ComponentResource):
                     "S3_CACHE_BUCKET": cache_bucket_output,
                     "LANGSMITH_EXPORT_BUCKET": langsmith_export_bucket_output,
                     "LANGSMITH_EXPORT_PREFIX": langsmith_export_prefix_output,
+                    "BATCH_BUCKET": batch_bucket_output,
                     "DYNAMODB_TABLE_NAME": dynamodb_table_name_output,
                 }
             ),
@@ -289,6 +312,7 @@ class LabelEvaluatorVizCache(ComponentResource):
 def create_label_evaluator_viz_cache(
     langsmith_export_bucket: Input[str],
     langsmith_export_prefix: Input[str],
+    batch_bucket: Input[str],
     dynamodb_table_name: Input[str],
     dynamodb_table_arn: Input[str],
     receipt_dynamo_layer_arn: Input[str],
@@ -300,6 +324,7 @@ def create_label_evaluator_viz_cache(
         f"label-evaluator-viz-cache-{pulumi.get_stack()}",
         langsmith_export_bucket=langsmith_export_bucket,
         langsmith_export_prefix=langsmith_export_prefix,
+        batch_bucket=batch_bucket,
         dynamodb_table_name=dynamodb_table_name,
         dynamodb_table_arn=dynamodb_table_arn,
         receipt_dynamo_layer_arn=receipt_dynamo_layer_arn,
