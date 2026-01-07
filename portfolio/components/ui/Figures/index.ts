@@ -52,18 +52,6 @@ export const LabelValidationTimeline = dynamic(
   () => import("./LabelValidationTimeline"),
   { ssr: false }
 );
-export const GeometricAnomalyVisualization = dynamic(
-  () => import("./GeometricAnomalyVisualization"),
-  { ssr: false }
-);
-export const LLMEvaluatorVisualization = dynamic(
-  () => import("./LLMEvaluatorVisualization"),
-  { ssr: false }
-);
-export const ConstellationVisualization = dynamic(
-  () => import("./ConstellationVisualization"),
-  { ssr: false }
-);
 export const LabelEvaluatorVisualization = dynamic(
   () => import("./LabelEvaluatorVisualization"),
   { ssr: false }

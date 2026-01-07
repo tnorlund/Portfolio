@@ -3,7 +3,7 @@ Infrastructure for Label Evaluator Visualization Cache.
 
 This component creates:
 1. An API Lambda that serves cached visualization data
-2. A cache generator Lambda that builds the cache from batch bucket data
+2. A cache generator Lambda that builds the cache from LangSmith exports + DynamoDB
 """
 
 import json
@@ -28,11 +28,12 @@ class LabelEvaluatorVizCache(ComponentResource):
         self,
         name: str,
         *,
-        llm_cache_bucket: Input[str],
-        batch_bucket: Input[str],
+        langsmith_export_bucket: Input[str],
+        langsmith_export_prefix: Input[str],
         dynamodb_table_name: Input[str],
         dynamodb_table_arn: Input[str],
         receipt_dynamo_layer_arn: Input[str],
+        receipt_langsmith_layer_arn: Input[str],
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -43,11 +44,27 @@ class LabelEvaluatorVizCache(ComponentResource):
         )
 
         # Convert to Output for proper resolution
-        cache_bucket_output = Output.from_input(llm_cache_bucket)
-        batch_bucket_output = Output.from_input(batch_bucket)
+        langsmith_export_bucket_output = Output.from_input(langsmith_export_bucket)
+        langsmith_export_prefix_output = Output.from_input(langsmith_export_prefix)
         dynamodb_table_name_output = Output.from_input(dynamodb_table_name)
         dynamodb_table_arn_output = Output.from_input(dynamodb_table_arn)
         receipt_dynamo_layer_arn_output = Output.from_input(receipt_dynamo_layer_arn)
+        receipt_langsmith_layer_arn_output = Output.from_input(receipt_langsmith_layer_arn)
+
+        # ============================================================
+        # S3 Cache Bucket
+        # ============================================================
+        self.cache_bucket = aws.s3.Bucket(
+            f"{name}-cache-bucket",
+            acl="private",
+            tags={
+                "Name": f"{name}-cache-bucket",
+                "Environment": stack,
+                "ManagedBy": "Pulumi",
+            },
+            opts=ResourceOptions(parent=self),
+        )
+        cache_bucket_output = self.cache_bucket.id
 
         # ============================================================
         # IAM Role for API Lambda
@@ -156,11 +173,11 @@ class LabelEvaluatorVizCache(ComponentResource):
             opts=ResourceOptions(parent=self.generator_lambda_role),
         )
 
-        # Read from batch bucket (label evaluator data) for Generator Lambda
+        # Read from LangSmith export bucket (Parquet traces) for Generator Lambda
         aws.iam.RolePolicy(
-            f"{name}-generator-batch-bucket-policy",
+            f"{name}-generator-langsmith-bucket-policy",
             role=self.generator_lambda_role.id,
-            policy=batch_bucket_output.apply(
+            policy=langsmith_export_bucket_output.apply(
                 lambda bucket: json.dumps({
                     "Version": "2012-10-17",
                     "Statement": [{
@@ -196,7 +213,7 @@ class LabelEvaluatorVizCache(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # DynamoDB access for Generator Lambda (to fetch receipt CDN keys)
+        # DynamoDB access for Generator Lambda (fetch receipt CDN keys, words, labels)
         aws.iam.RolePolicy(
             f"{name}-generator-dynamodb-policy",
             role=self.generator_lambda_role.id,
@@ -210,7 +227,10 @@ class LabelEvaluatorVizCache(ComponentResource):
                             "dynamodb:Query",
                             "dynamodb:DescribeTable",
                         ],
-                        "Resource": [table_arn],
+                        "Resource": [
+                            table_arn,
+                            f"{table_arn}/index/*",  # Allow GSI queries
+                        ],
                     }],
                 })
             ),
@@ -227,16 +247,20 @@ class LabelEvaluatorVizCache(ComponentResource):
             role=self.generator_lambda_role.arn,
             code=AssetArchive({".": FileArchive(LAMBDAS_DIR)}),
             handler="cache_generator.handler",
-            layers=[receipt_dynamo_layer_arn_output],
+            layers=[
+                receipt_dynamo_layer_arn_output,
+                receipt_langsmith_layer_arn_output,
+            ],
             environment=aws.lambda_.FunctionEnvironmentArgs(
                 variables={
                     "S3_CACHE_BUCKET": cache_bucket_output,
-                    "LABEL_EVALUATOR_BATCH_BUCKET": batch_bucket_output,
+                    "LANGSMITH_EXPORT_BUCKET": langsmith_export_bucket_output,
+                    "LANGSMITH_EXPORT_PREFIX": langsmith_export_prefix_output,
                     "DYNAMODB_TABLE_NAME": dynamodb_table_name_output,
                 }
             ),
-            memory_size=512,
-            timeout=120,  # 2 minutes for cache generation
+            memory_size=1024,  # Need more memory for Parquet reading
+            timeout=180,  # 3 minutes for cache generation
             tags={"environment": stack},
             opts=ResourceOptions(parent=self),
         )
@@ -253,6 +277,8 @@ class LabelEvaluatorVizCache(ComponentResource):
         # Exports
         # ============================================================
         self.register_outputs({
+            "cache_bucket_id": self.cache_bucket.id,
+            "cache_bucket_arn": self.cache_bucket.arn,
             "api_lambda_arn": self.api_lambda.arn,
             "api_lambda_name": self.api_lambda.name,
             "generator_lambda_arn": self.generator_lambda.arn,
@@ -261,20 +287,22 @@ class LabelEvaluatorVizCache(ComponentResource):
 
 
 def create_label_evaluator_viz_cache(
-    llm_cache_bucket: Input[str],
-    batch_bucket: Input[str],
+    langsmith_export_bucket: Input[str],
+    langsmith_export_prefix: Input[str],
     dynamodb_table_name: Input[str],
     dynamodb_table_arn: Input[str],
     receipt_dynamo_layer_arn: Input[str],
+    receipt_langsmith_layer_arn: Input[str],
     opts: Optional[ResourceOptions] = None,
 ) -> LabelEvaluatorVizCache:
     """Factory function to create label evaluator viz cache infrastructure."""
     return LabelEvaluatorVizCache(
         f"label-evaluator-viz-cache-{pulumi.get_stack()}",
-        llm_cache_bucket=llm_cache_bucket,
-        batch_bucket=batch_bucket,
+        langsmith_export_bucket=langsmith_export_bucket,
+        langsmith_export_prefix=langsmith_export_prefix,
         dynamodb_table_name=dynamodb_table_name,
         dynamodb_table_arn=dynamodb_table_arn,
         receipt_dynamo_layer_arn=receipt_dynamo_layer_arn,
+        receipt_langsmith_layer_arn=receipt_langsmith_layer_arn,
         opts=opts,
     )
