@@ -51,7 +51,7 @@ const formatLabelAbbrev = (label: string): string => {
 // Spring config for smooth animations
 const SPRING_CONFIG = { tension: 120, friction: 14 };
 
-// Epoch Timeline Component
+// Epoch Timeline Component (Desktop - dots)
 interface EpochTimelineProps {
   epochs: TrainingMetricsEpoch[];
   currentIndex: number;
@@ -95,33 +95,65 @@ const EpochTimeline: React.FC<EpochTimelineProps> = ({
     return () => window.removeEventListener('resize', updateLine);
   }, [epochs.length]);
 
+  const currentEpoch = epochs[currentIndex];
+  const isBest = currentEpoch?.is_best && showBestLabel;
+
   return (
-    <div className={styles.timeline}>
-      <div ref={nodesRef} className={styles.timelineNodes}>
-        {lineStyle && (
-          <div
-            className={styles.timelineLine}
-            style={{ left: lineStyle.left, width: lineStyle.width }}
-          />
-        )}
-        {epochs.map((epoch, index) => (
-          <button
-            key={epoch.epoch}
-            className={`${styles.timelineNode} ${
-              index === currentIndex ? styles.timelineNodeActive : ""
-            }`}
-            onClick={() => onSelectEpoch(index)}
-            title={`Epoch ${epoch.epoch}${epoch.is_best ? " (Best)" : ""}`}
-          >
-            {epoch.is_best && showBestLabel && (
-              <span className={styles.timelineBestLabel}>Best</span>
-            )}
-            <span className={styles.timelineNodeDot} />
-            <span className={styles.timelineNodeLabel}>{epoch.epoch}</span>
-          </button>
-        ))}
+    <>
+      {/* Desktop timeline with dots */}
+      <div className={styles.timeline}>
+        <div ref={nodesRef} className={styles.timelineNodes}>
+          {lineStyle && (
+            <div
+              className={styles.timelineLine}
+              style={{ left: lineStyle.left, width: lineStyle.width }}
+            />
+          )}
+          {epochs.map((epoch, index) => (
+            <button
+              key={epoch.epoch}
+              className={`${styles.timelineNode} ${
+                index === currentIndex ? styles.timelineNodeActive : ""
+              }`}
+              onClick={() => onSelectEpoch(index)}
+              title={`Epoch ${epoch.epoch}${epoch.is_best ? " (Best)" : ""}`}
+            >
+              {epoch.is_best && showBestLabel && (
+                <span className={styles.timelineBestLabel}>Best</span>
+              )}
+              <span className={styles.timelineNodeDot} />
+              <span className={styles.timelineNodeLabel}>{epoch.epoch}</span>
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
+
+      {/* Mobile timeline with arrows */}
+      <div className={styles.timelineMobile}>
+        <button
+          className={styles.timelineArrow}
+          onClick={() => onSelectEpoch(Math.max(0, currentIndex - 1))}
+          disabled={currentIndex === 0}
+          aria-label="Previous epoch"
+        >
+          ‹
+        </button>
+        <div className={styles.timelineMobileCenter}>
+          {isBest && <span className={styles.timelineBestLabelMobile}>Best</span>}
+          <span className={styles.timelineMobileText}>
+            {currentIndex + 1} / {epochs.length}
+          </span>
+        </div>
+        <button
+          className={styles.timelineArrow}
+          onClick={() => onSelectEpoch(Math.min(epochs.length - 1, currentIndex + 1))}
+          disabled={currentIndex === epochs.length - 1}
+          aria-label="Next epoch"
+        >
+          ›
+        </button>
+      </div>
+    </>
   );
 };
 

@@ -72,7 +72,7 @@
   min-width: 70px;
 }
 
-/* Epoch Timeline */
+/* Epoch Timeline (Desktop) */
 .timeline {
   grid-column: 1 / -1;
   display: flex;
@@ -80,6 +80,11 @@
   justify-content: center;
   position: relative;
   padding: 1.5rem 0 1.5rem;
+}
+
+/* Mobile Timeline (hidden on desktop) */
+.timelineMobile {
+  display: none;
 }
 
 .timelineNodes {
@@ -345,27 +350,150 @@
 @media (max-width: 600px) {
   .container {
     grid-template-columns: 1fr;
-    max-width: 400px;
+    max-width: 100%;
+    padding: 1rem;
+    gap: 1rem;
   }
 
-  .leftPanel {
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: space-between;
+  /* Hide desktop timeline, show mobile */
+  .timeline {
+    display: none;
+  }
+
+  .timelineMobile {
+    grid-column: 1 / -1;
+    display: flex;
     align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 0.75rem 0;
+  }
+
+  .timelineArrow {
+    background: transparent;
+    border: 1px solid rgba(var(--text-color-rgb), 0.3);
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    font-size: 1.25rem;
+    color: var(--text-color);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+  }
+
+  .timelineArrow:hover:not(:disabled) {
+    background: rgba(var(--text-color-rgb), 0.1);
+    border-color: var(--text-color);
+  }
+
+  .timelineArrow:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .timelineMobileCenter {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 60px;
+  }
+
+  .timelineMobileText {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-color);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .timelineBestLabelMobile {
+    font-size: 0.55rem;
+    font-weight: 600;
+    color: var(--text-color);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    animation: fadeInDown 0.3s ease;
+  }
+
+  /* Dataset stats more compact */
+  .datasetStats {
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .statGroup {
+    gap: 0.35rem;
+  }
+
+  .segmentedBar {
+    width: 60px;
+  }
+
+  /* Left panel stacks vertically */
+  .leftPanel {
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
   }
 
   .gaugeContainer {
     flex: 0 0 auto;
   }
 
+  .gaugeValue {
+    font-size: 1.5rem;
+  }
+
+  .gaugeBar {
+    max-width: 80px;
+  }
+
+  /* Smaller per-label bars */
   .perLabelContainer {
-    flex: 1;
-    min-width: 150px;
+    width: 100%;
+    gap: 0.35rem;
+  }
+
+  .labelRow {
+    height: 16px;
+    gap: 0.35rem;
+  }
+
+  .labelName {
+    width: 55px;
+    font-size: 0.5rem;
+  }
+
+  .labelBarSegmented {
+    height: 4px;
+    min-width: 40px;
+  }
+
+  .labelBarValue {
+    font-size: 0.55rem;
+    min-width: 28px;
+  }
+
+  /* Center confusion matrix */
+  .rightPanel {
+    justify-content: center;
+  }
+
+  .matrixContainer {
+    margin: 0 auto;
   }
 
   .matrixCell {
-    min-width: 24px;
-    min-height: 24px;
+    min-width: 28px;
+    min-height: 28px;
+    font-size: 0.45rem;
+  }
+
+  .matrixAxisLabel {
+    font-size: 0.45rem;
   }
 }
