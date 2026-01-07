@@ -1170,7 +1170,30 @@ pulumi.export(
     metadata_harmonizer_sf.batch_bucket_name,
 )
 
-# Label Evaluator Step Function (with LangSmith observability)
+# LangSmith Bulk Export infrastructure (for Parquet exports)
+# Created early so Label Evaluator SF can reference it for EMR analytics
+from components.langsmith_bulk_export import LangSmithBulkExport
+
+langsmith_bulk_export = LangSmithBulkExport(
+    f"langsmith-export-{stack}",
+    project_name=f"label-evaluator-{stack}",
+)
+pulumi.export("langsmith_export_bucket", langsmith_bulk_export.export_bucket.id)
+pulumi.export("langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name)
+pulumi.export("langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name)
+
+# EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
+from components.emr_serverless_analytics import create_emr_serverless_analytics
+
+emr_analytics = create_emr_serverless_analytics(
+    langsmith_export_bucket_name=langsmith_bulk_export.export_bucket.id,
+    langsmith_export_bucket_arn=langsmith_bulk_export.export_bucket.arn,
+)
+pulumi.export("emr_application_id", emr_analytics.emr_application.id)
+pulumi.export("emr_analytics_bucket", emr_analytics.analytics_bucket.id)
+pulumi.export("emr_artifacts_bucket", emr_analytics.artifacts_bucket.id)
+
+# Label Evaluator Step Function (with LangSmith observability + EMR analytics)
 label_evaluator_sf = LabelEvaluatorStepFunction(
     f"label-evaluator-{stack}",
     dynamodb_table_name=dynamodb_table.name,
@@ -1179,6 +1202,12 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
     max_concurrency=8,  # Increased from 3 - OpenRouter fallback handles rate limits
     batch_size=25,  # 25 receipts per batch
+    # EMR Serverless Analytics integration
+    emr_application_id=emr_analytics.emr_application.id,
+    emr_job_execution_role_arn=emr_analytics.emr_job_role.arn,
+    langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
+    analytics_output_bucket=emr_analytics.analytics_bucket.id,
+    spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
 )
 
 pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
@@ -1243,19 +1272,12 @@ pulumi.export(
 )
 
 # Label Evaluator Visualization Cache (reads from LangSmith exports + DynamoDB)
-from components.langsmith_bulk_export import LangSmithBulkExport
 from routes.label_evaluator_viz_cache.infra import (
     create_label_evaluator_viz_cache,
 )
 
-# Create LangSmith bulk export infrastructure for Parquet exports
-langsmith_bulk_export = LangSmithBulkExport(
-    f"langsmith-export-{stack}",
-    project_name=f"label-evaluator-{stack}",
-)
-pulumi.export("langsmith_export_bucket", langsmith_bulk_export.export_bucket.id)
-pulumi.export("langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name)
-pulumi.export("langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name)
+# Note: langsmith_bulk_export is created earlier (before label_evaluator_sf)
+# to support EMR Serverless analytics integration
 
 # Create API Gateway route for label evaluator visualization
 if hasattr(api_gateway, "api"):

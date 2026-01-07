@@ -94,6 +94,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
         chromadb_bucket_arn: Optional[pulumi.Input[str]] = None,
         max_concurrency: Optional[int] = None,
         batch_size: Optional[int] = None,
+        # EMR Serverless Analytics integration (optional)
+        emr_application_id: Optional[pulumi.Input[str]] = None,
+        emr_job_execution_role_arn: Optional[pulumi.Input[str]] = None,
+        langsmith_export_bucket: Optional[pulumi.Input[str]] = None,
+        analytics_output_bucket: Optional[pulumi.Input[str]] = None,
+        spark_artifacts_bucket: Optional[pulumi.Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(f"label-evaluator-step-function:{name}", name, None, opts)
@@ -103,6 +109,14 @@ class LabelEvaluatorStepFunction(ComponentResource):
         self.batch_size = batch_size or batch_size_default
         self.chromadb_bucket_name = chromadb_bucket_name
         self.chromadb_bucket_arn = chromadb_bucket_arn
+
+        # EMR Analytics config
+        self.emr_enabled = emr_application_id is not None
+        self.emr_application_id = emr_application_id
+        self.emr_job_execution_role_arn = emr_job_execution_role_arn
+        self.langsmith_export_bucket = langsmith_export_bucket
+        self.analytics_output_bucket = analytics_output_bucket
+        self.spark_artifacts_bucket = spark_artifacts_bucket
 
         # ============================================================
         # S3 Bucket for batch files and results
@@ -954,6 +968,64 @@ class LabelEvaluatorStepFunction(ComponentResource):
             opts=ResourceOptions(parent=sfn_role),
         )
 
+        # EMR Serverless policy (if EMR analytics enabled)
+        if self.emr_enabled:
+            import pulumi_aws as aws
+
+            region = aws.get_region().name
+            account_id = aws.get_caller_identity().account_id
+
+            RolePolicy(
+                f"{name}-sfn-emr-serverless-policy",
+                role=sfn_role.id,
+                policy=Output.all(
+                    self.emr_application_id,
+                    self.emr_job_execution_role_arn,
+                ).apply(
+                    lambda args: json.dumps({
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            # EMR Serverless job management
+                            {
+                                "Effect": "Allow",
+                                "Action": ["emr-serverless:StartJobRun"],
+                                "Resource": f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}",
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "emr-serverless:GetJobRun",
+                                    "emr-serverless:CancelJobRun",
+                                ],
+                                "Resource": f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}/jobruns/*",
+                            },
+                            # Pass role to EMR Serverless
+                            {
+                                "Effect": "Allow",
+                                "Action": "iam:PassRole",
+                                "Resource": args[1],
+                                "Condition": {
+                                    "StringEquals": {
+                                        "iam:PassedToService": "emr-serverless.amazonaws.com",
+                                    }
+                                },
+                            },
+                            # EventBridge rules for .sync waiter pattern
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "events:PutTargets",
+                                    "events:PutRule",
+                                    "events:DescribeRule",
+                                ],
+                                "Resource": f"arn:aws:events:{region}:{account_id}:rule/StepFunctionsGetEventsForEMRServerlessJobRule",
+                            },
+                        ],
+                    })
+                ),
+                opts=ResourceOptions(parent=sfn_role),
+            )
+
         # ============================================================
         # CloudWatch Log Group
         # ============================================================
@@ -975,29 +1047,42 @@ class LabelEvaluatorStepFunction(ComponentResource):
             )
         )
 
+        # Build Output.all with optional EMR parameters
+        base_outputs = [
+            list_merchants_lambda.arn,
+            list_receipts_lambda.arn,
+            list_all_receipts_lambda.arn,
+            fetch_receipt_data_lambda.arn,
+            compute_patterns_lambda.arn,
+            evaluate_labels_lambda.arn,
+            evaluate_currency_lambda.arn,
+            evaluate_metadata_lambda.arn,
+            evaluate_financial_lambda.arn,
+            close_trace_lambda.arn,
+            aggregate_results_lambda.arn,
+            final_aggregate_lambda.arn,
+            discover_patterns_lambda.arn,
+            llm_review_lambda.arn,
+            self.batch_bucket.bucket,
+        ]
+
+        # Add EMR outputs if enabled
+        if self.emr_enabled:
+            base_outputs.extend([
+                self.emr_application_id,
+                self.emr_job_execution_role_arn,
+                self.langsmith_export_bucket,
+                self.analytics_output_bucket,
+                self.spark_artifacts_bucket,
+            ])
+
         self.state_machine = StateMachine(
             f"{name}-sf",
             name=f"{name}-sf",
             role_arn=sfn_role.arn,
             type="STANDARD",
             tags={"environment": stack},
-            definition=Output.all(
-                list_merchants_lambda.arn,
-                list_receipts_lambda.arn,
-                list_all_receipts_lambda.arn,
-                fetch_receipt_data_lambda.arn,
-                compute_patterns_lambda.arn,
-                evaluate_labels_lambda.arn,
-                evaluate_currency_lambda.arn,
-                evaluate_metadata_lambda.arn,
-                evaluate_financial_lambda.arn,
-                close_trace_lambda.arn,
-                aggregate_results_lambda.arn,
-                final_aggregate_lambda.arn,
-                discover_patterns_lambda.arn,
-                llm_review_lambda.arn,
-                self.batch_bucket.bucket,
-            ).apply(
+            definition=Output.all(*base_outputs).apply(
                 lambda args: self._create_step_function_definition(
                     list_merchants_arn=args[0],
                     list_receipts_arn=args[1],
@@ -1016,6 +1101,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     batch_bucket=args[14],
                     max_concurrency=self.max_concurrency,
                     batch_size=self.batch_size,
+                    # EMR parameters (None if not enabled)
+                    emr_application_id=args[15] if self.emr_enabled else None,
+                    emr_job_execution_role_arn=args[16] if self.emr_enabled else None,
+                    langsmith_export_bucket=args[17] if self.emr_enabled else None,
+                    analytics_output_bucket=args[18] if self.emr_enabled else None,
+                    spark_artifacts_bucket=args[19] if self.emr_enabled else None,
                 )
             ),
             logging_configuration=logging_config,
@@ -1066,6 +1157,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
         batch_bucket: str,
         max_concurrency: int,
         batch_size: int,
+        # EMR Serverless Analytics parameters (optional)
+        emr_application_id: Optional[str] = None,
+        emr_job_execution_role_arn: Optional[str] = None,
+        langsmith_export_bucket: Optional[str] = None,
+        analytics_output_bucket: Optional[str] = None,
+        spark_artifacts_bucket: Optional[str] = None,
     ) -> str:
         """Create Step Function definition with two-phase flattened architecture.
 
@@ -1126,6 +1223,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "enable_tracing": True,
                         "limit": None,
                         "langchain_project": None,
+                        "run_analytics": True,  # Run EMR Spark analytics by default
                     },
                     "ResultPath": "$.defaults",
                     "Next": "MergeInputWithDefaults",
@@ -1164,6 +1262,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "force_rediscovery.$": "$.config.merged.force_rediscovery",
                         "enable_tracing.$": "$.config.merged.enable_tracing",
                         "langchain_project.$": "$.config.merged.langchain_project",
+                        "run_analytics.$": "$.config.merged.run_analytics",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
                         "limit.$": "$.config.merged.limit",
@@ -1185,6 +1284,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "force_rediscovery.$": "$.config.merged.force_rediscovery",
                         "enable_tracing.$": "$.config.merged.enable_tracing",
                         "langchain_project.$": "$.config.merged.langchain_project",
+                        "run_analytics.$": "$.config.merged.run_analytics",
                         "max_training_receipts": 50,
                         "min_receipts": 5,
                         "limit.$": "$.config.merged.limit",
@@ -1689,9 +1789,148 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "total_merchants.$": "$.all_data.total_merchants",
                         "total_receipts.$": "$.all_data.total_receipts",
                     },
+                    "ResultPath": "$.summary_result",
+                    "Next": "CheckRunAnalytics",
+                },
+                # ============================================================
+                # Phase 3: EMR Serverless Spark Analytics (optional)
+                # ============================================================
+                # Check if analytics should run (default: true)
+                "CheckRunAnalytics": {
+                    "Type": "Choice",
+                    "Choices": [
+                        {
+                            "Variable": "$.init.run_analytics",
+                            "BooleanEquals": False,
+                            "Next": "SkipAnalytics",
+                        }
+                    ],
+                    "Default": "CheckEMREnabled" if emr_application_id else "SkipAnalytics",
+                },
+                # Check if EMR is configured
+                "CheckEMREnabled": {
+                    "Type": "Choice",
+                    "Choices": [
+                        {
+                            "Variable": "$.summary_result.status",
+                            "StringEquals": "completed",
+                            "Next": "RunSparkAnalytics" if emr_application_id else "SkipAnalytics",
+                        }
+                    ],
+                    "Default": "SkipAnalytics",
+                },
+                # Skip analytics - return summary result
+                "SkipAnalytics": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "status.$": "$.summary_result.status",
+                        "execution_id.$": "$.summary_result.execution_id",
+                        "total_merchants.$": "$.summary_result.total_merchants",
+                        "total_receipts.$": "$.summary_result.total_receipts",
+                        "total_issues.$": "$.summary_result.total_issues",
+                        "analytics_status": "skipped",
+                    },
                     "End": True,
                 },
+                **self._create_emr_states(
+                    emr_application_id=emr_application_id,
+                    emr_job_execution_role_arn=emr_job_execution_role_arn,
+                    langsmith_export_bucket=langsmith_export_bucket,
+                    analytics_output_bucket=analytics_output_bucket,
+                    spark_artifacts_bucket=spark_artifacts_bucket,
+                ),
             },
         }
 
         return json.dumps(definition)
+
+    def _create_emr_states(
+        self,
+        emr_application_id: Optional[str],
+        emr_job_execution_role_arn: Optional[str],
+        langsmith_export_bucket: Optional[str],
+        analytics_output_bucket: Optional[str],
+        spark_artifacts_bucket: Optional[str],
+    ) -> dict:
+        """Create EMR Serverless analytics states if EMR is configured."""
+        if not emr_application_id:
+            return {}
+
+        return {
+            # Run EMR Serverless Spark job
+            "RunSparkAnalytics": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::emr-serverless:startJobRun.sync",
+                "Parameters": {
+                    "ApplicationId": emr_application_id,
+                    "ExecutionRoleArn": emr_job_execution_role_arn,
+                    "Name.$": "States.Format('analytics-{}', $.summary_result.execution_id)",
+                    "JobDriver": {
+                        "SparkSubmit": {
+                            "EntryPoint": f"s3://{spark_artifacts_bucket}/spark/emr_job.py",
+                            "EntryPointArguments": [
+                                "--input", f"s3://{langsmith_export_bucket}/traces/",
+                                "--output.$", "States.Format('s3://" + analytics_output_bucket + "/analytics/{}', $.summary_result.execution_id)",
+                                "--job-type", "all",
+                                "--partition-by-merchant",
+                            ],
+                            "SparkSubmitParameters": f"--conf spark.archives=s3://{spark_artifacts_bucket}/spark/spark_env.tar.gz#environment --conf spark.emr-serverless.driverEnv.PYSPARK_DRIVER_PYTHON=./environment/bin/python --conf spark.emr-serverless.driverEnv.PYSPARK_PYTHON=./environment/bin/python --conf spark.executorEnv.PYSPARK_PYTHON=./environment/bin/python --conf spark.executor.cores=2 --conf spark.executor.memory=4g --conf spark.driver.cores=2 --conf spark.driver.memory=4g",
+                        }
+                    },
+                    "ConfigurationOverrides": {
+                        "MonitoringConfiguration": {
+                            "S3MonitoringConfiguration": {
+                                "LogUri": f"s3://{analytics_output_bucket}/logs/",
+                            }
+                        }
+                    },
+                },
+                "ResultPath": "$.spark_result",
+                "TimeoutSeconds": 1800,  # 30 minutes
+                "Retry": [
+                    {
+                        "ErrorEquals": ["States.TaskFailed"],
+                        "IntervalSeconds": 30,
+                        "MaxAttempts": 2,
+                        "BackoffRate": 2.0,
+                    }
+                ],
+                "Catch": [
+                    {
+                        "ErrorEquals": ["States.ALL"],
+                        "ResultPath": "$.spark_error",
+                        "Next": "AnalyticsFailed",
+                    }
+                ],
+                "Next": "AnalyticsComplete",
+            },
+            # Analytics completed successfully
+            "AnalyticsComplete": {
+                "Type": "Pass",
+                "Parameters": {
+                    "status.$": "$.summary_result.status",
+                    "execution_id.$": "$.summary_result.execution_id",
+                    "total_merchants.$": "$.summary_result.total_merchants",
+                    "total_receipts.$": "$.summary_result.total_receipts",
+                    "total_issues.$": "$.summary_result.total_issues",
+                    "analytics_status": "completed",
+                    "analytics_job_id.$": "$.spark_result.JobRunId",
+                    "analytics_output": f"s3://{analytics_output_bucket}/analytics/",
+                },
+                "End": True,
+            },
+            # Analytics failed - still return summary (non-blocking)
+            "AnalyticsFailed": {
+                "Type": "Pass",
+                "Parameters": {
+                    "status.$": "$.summary_result.status",
+                    "execution_id.$": "$.summary_result.execution_id",
+                    "total_merchants.$": "$.summary_result.total_merchants",
+                    "total_receipts.$": "$.summary_result.total_receipts",
+                    "total_issues.$": "$.summary_result.total_issues",
+                    "analytics_status": "failed",
+                    "analytics_error.$": "$.spark_error.Error",
+                },
+                "End": True,
+            },
+        }
