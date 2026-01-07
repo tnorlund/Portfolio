@@ -488,8 +488,6 @@
   }
 
   .matrixCell {
-    min-width: 28px;
-    min-height: 28px;
     font-size: 0.45rem;
   }
 

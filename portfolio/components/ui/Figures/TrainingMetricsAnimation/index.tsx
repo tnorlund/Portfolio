@@ -314,15 +314,27 @@ interface ConfusionMatrixProps {
 }
 
 const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => {
+  // Track window width for responsive cell sizing
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 600);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
   // Calculate row sums for row-normalized coloring
   const rowSums = useMemo(() => {
     return matrix.map((row) => row.reduce((sum, val) => sum + val, 0) || 1);
   }, [matrix]);
 
-  // Grid template: first column for Y labels, then fixed-size columns for cells
-  const cellSize = "34px";
-  const gridTemplateColumns = `42px repeat(${labels.length}, ${cellSize})`;
-  const gridTemplateRows = `32px repeat(${labels.length}, ${cellSize})`;
+  // Grid template: responsive cell sizes for mobile
+  const cellSize = isMobile ? "28px" : "34px";
+  const labelColWidth = isMobile ? "36px" : "42px";
+  const headerRowHeight = isMobile ? "28px" : "32px";
+  const gridTemplateColumns = `${labelColWidth} repeat(${labels.length}, ${cellSize})`;
+  const gridTemplateRows = `${headerRowHeight} repeat(${labels.length}, ${cellSize})`;
 
   return (
     <div className={styles.matrixContainer}>
