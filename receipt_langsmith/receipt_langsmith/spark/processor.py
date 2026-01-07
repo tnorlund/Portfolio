@@ -61,14 +61,80 @@ class LangSmithSparkProcessor:
     def read_parquet(self, path: str) -> DataFrame:
         """Read Parquet files from S3 or local path.
 
+        Uses PyArrow to handle nanosecond timestamps that Spark doesn't support.
+
         Args:
             path: S3 URI or local path to Parquet files.
 
         Returns:
             DataFrame with raw trace data.
         """
+        import pyarrow.parquet as pq
+        import pyarrow.fs as pafs
+
         logger.info("Reading Parquet from: %s", path)
-        return self.spark.read.schema(LANGSMITH_PARQUET_SCHEMA).parquet(path)
+
+        # Columns we need for analytics
+        needed_columns = [
+            "id", "trace_id", "name", "run_type", "status",
+            "start_time", "end_time", "extra", "outputs",
+            "total_tokens", "prompt_tokens", "completion_tokens",
+        ]
+
+        # Parse S3 path
+        if path.startswith("s3://"):
+            bucket_and_key = path[5:]
+            bucket = bucket_and_key.split("/")[0]
+            key = "/".join(bucket_and_key.split("/")[1:])
+            fs = pafs.S3FileSystem(region="us-east-1")
+            table = pq.read_table(
+                f"{bucket}/{key}",
+                filesystem=fs,
+                columns=needed_columns,
+            )
+        else:
+            table = pq.read_table(path, columns=needed_columns)
+
+        # Convert nanosecond timestamps to microseconds (Spark-compatible)
+        import pyarrow as pa
+
+        new_schema_fields = []
+        for field in table.schema:
+            if pa.types.is_timestamp(field.type):
+                # Convert to microsecond precision
+                new_schema_fields.append(
+                    pa.field(field.name, pa.timestamp("us", tz=None))
+                )
+            else:
+                new_schema_fields.append(field)
+
+        new_schema = pa.schema(new_schema_fields)
+        table = table.cast(new_schema)
+
+        # Convert to Pandas then to Spark with explicit schema
+        pdf = table.to_pandas()
+
+        # Define Spark schema for known columns
+        from pyspark.sql.types import (
+            StructType, StructField, StringType, LongType, TimestampType
+        )
+
+        spark_schema = StructType([
+            StructField("id", StringType(), True),
+            StructField("trace_id", StringType(), True),
+            StructField("name", StringType(), True),
+            StructField("run_type", StringType(), True),
+            StructField("status", StringType(), True),
+            StructField("start_time", TimestampType(), True),
+            StructField("end_time", TimestampType(), True),
+            StructField("extra", StringType(), True),
+            StructField("outputs", StringType(), True),
+            StructField("total_tokens", LongType(), True),
+            StructField("prompt_tokens", LongType(), True),
+            StructField("completion_tokens", LongType(), True),
+        ])
+
+        return self.spark.createDataFrame(pdf, schema=spark_schema)
 
     def parse_json_fields(self, df: DataFrame) -> DataFrame:
         """Parse JSON string columns and extract metadata.
