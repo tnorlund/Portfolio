@@ -279,6 +279,11 @@
   flex-direction: column;
   gap: 0.5rem;
   width: fit-content;
+
+  /* Responsive sizing via CSS custom properties (avoids SSR hydration issues) */
+  --matrix-cell-size: 34px;
+  --matrix-label-col: 42px;
+  --matrix-header-row: 32px;
 }
 
 .matrixGrid {
@@ -485,6 +490,9 @@
 
   .matrixContainer {
     margin: 0 auto;
+    --matrix-cell-size: 28px;
+    --matrix-label-col: 36px;
+    --matrix-header-row: 28px;
   }
 
   .matrixCell {
