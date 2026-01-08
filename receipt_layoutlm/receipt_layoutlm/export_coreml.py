@@ -207,7 +207,7 @@ def export_coreml(
         shutil.copy(vocab_src, vocab_dst)
         print(f"Copied vocab.txt to {vocab_dst}")
     else:
-        # Try to save vocab from tokenizer
+        # Try to save vocab from tokenizer (may create additional files like added_tokens.json)
         tokenizer.save_vocabulary(str(output_path))
         print(f"Saved vocabulary to {output_path}")
 
@@ -382,11 +382,26 @@ if __name__ == "__main__":
         default=None,
         help="Quantization mode for smaller model size",
     )
+    parser.add_argument(
+        "--max-seq-length",
+        type=int,
+        default=512,
+        help="Maximum sequence length for model (default: 512)",
+    )
+    parser.add_argument(
+        "--min-seq-length",
+        type=int,
+        default=1,
+        help="Minimum sequence length for model (default: 1)",
+    )
 
     args = parser.parse_args()
 
     if not args.checkpoint_dir and not args.s3_uri:
         parser.error("Either --checkpoint-dir or --s3-uri is required")
+
+    if args.min_seq_length > args.max_seq_length:
+        parser.error("--min-seq-length cannot be greater than --max-seq-length")
 
     if args.s3_uri:
         export_from_s3(
@@ -395,6 +410,8 @@ if __name__ == "__main__":
             model_name=args.model_name,
             local_cache=args.local_cache,
             quantize=args.quantize,
+            max_seq_length=args.max_seq_length,
+            min_seq_length=args.min_seq_length,
         )
     else:
         export_coreml(
@@ -402,4 +419,6 @@ if __name__ == "__main__":
             output_dir=args.output_dir,
             model_name=args.model_name,
             quantize=args.quantize,
+            max_seq_length=args.max_seq_length,
+            min_seq_length=args.min_seq_length,
         )
