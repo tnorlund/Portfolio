@@ -355,7 +355,7 @@
 @media (max-width: 600px) {
   .container {
     grid-template-columns: 1fr;
-    max-width: 100%;
+    max-width: 400px;
     padding: 1rem;
     gap: 1rem;
   }
@@ -375,13 +375,17 @@
   }
 
   .timelineArrow {
-    background: transparent;
-    border: 1px solid rgba(var(--text-color-rgb), 0.3);
+    background: var(--text-color);
+    border: none;
     border-radius: 50%;
     width: 32px;
     height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    aspect-ratio: 1;
+    flex-shrink: 0;
     font-size: 1.25rem;
-    color: var(--text-color);
+    color: var(--background-color);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -390,8 +394,7 @@
   }
 
   .timelineArrow:hover:not(:disabled) {
-    background: rgba(var(--text-color-rgb), 0.1);
-    border-color: var(--text-color);
+    opacity: 0.8;
   }
 
   .timelineArrow:focus-visible {
@@ -400,7 +403,7 @@
   }
 
   .timelineArrow:disabled {
-    opacity: 0.3;
+    opacity: 0.25;
     cursor: not-allowed;
   }
 
@@ -454,10 +457,6 @@
     flex: 0 0 auto;
   }
 
-  .gaugeValue {
-    font-size: 1.5rem;
-  }
-
   .gaugeBar {
     max-width: 80px;
   }
@@ -475,7 +474,7 @@
 
   .labelName {
     width: 55px;
-    font-size: 0.5rem;
+    font-size: 0.6rem;
   }
 
   .labelBarSegmented {
@@ -484,7 +483,7 @@
   }
 
   .labelBarValue {
-    font-size: 0.55rem;
+    font-size: 0.65rem;
     min-width: 28px;
   }
 
@@ -501,10 +500,10 @@
   }
 
   .matrixCell {
-    font-size: 0.45rem;
+    font-size: 0.5rem;
   }
 
   .matrixAxisLabel {
-    font-size: 0.45rem;
+    font-size: 0.5rem;
   }
 }
