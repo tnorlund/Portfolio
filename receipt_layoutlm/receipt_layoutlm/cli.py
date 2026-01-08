@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from .config import DataConfig, TrainingConfig, MERGE_PRESETS
 from .trainer import ReceiptLayoutLMTrainer
 from .inference import LayoutLMInference
+from .export_coreml import export_coreml, export_from_s3
 
 
 def _build_label_merges(args: argparse.Namespace) -> Optional[Dict[str, List[str]]]:
@@ -221,6 +222,33 @@ def main() -> None:
         ),
     )
 
+    # Export to CoreML subcommand
+    export_p = sub.add_parser(
+        "export-coreml", help="Export trained model to CoreML format"
+    )
+    export_p.add_argument(
+        "--checkpoint-dir",
+        help="Local directory containing model checkpoint",
+    )
+    export_p.add_argument(
+        "--s3-uri",
+        help="S3 URI to model checkpoint (s3://bucket/prefix/)",
+    )
+    export_p.add_argument(
+        "--output-dir",
+        required=True,
+        help="Directory to write CoreML bundle",
+    )
+    export_p.add_argument(
+        "--model-name",
+        default="LayoutLM",
+        help="Name for the .mlpackage file (default: LayoutLM)",
+    )
+    export_p.add_argument(
+        "--local-cache",
+        help="Local directory to cache S3 downloads",
+    )
+
     args = parser.parse_args()
 
     if args.cmd == "train":
@@ -307,6 +335,26 @@ def main() -> None:
                 }
             )
         )
+    elif args.cmd == "export-coreml":
+        if not args.checkpoint_dir and not args.s3_uri:
+            raise SystemExit(
+                "Either --checkpoint-dir or --s3-uri is required"
+            )
+
+        if args.s3_uri:
+            bundle_path = export_from_s3(
+                s3_uri=args.s3_uri,
+                output_dir=args.output_dir,
+                model_name=args.model_name,
+                local_cache=args.local_cache,
+            )
+        else:
+            bundle_path = export_coreml(
+                checkpoint_dir=args.checkpoint_dir,
+                output_dir=args.output_dir,
+                model_name=args.model_name,
+            )
+        print(f"CoreML bundle created: {bundle_path}")
 
 
 if __name__ == "__main__":

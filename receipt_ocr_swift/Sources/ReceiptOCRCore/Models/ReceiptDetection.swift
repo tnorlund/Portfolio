@@ -115,6 +115,9 @@ public struct ReceiptOutput: Codable {
     /// OCR results from the warped receipt image (REFINEMENT)
     public let lines: [Line]?
 
+    /// LayoutLM predictions for each line (optional, set after inference)
+    public var layoutlmPredictions: [LinePrediction]?
+
     public init(
         clusterId: Int,
         bounds: ReceiptBounds,
@@ -122,7 +125,8 @@ public struct ReceiptOutput: Codable {
         warpedHeight: Int,
         s3Key: String? = nil,
         lineIndices: [Int],
-        lines: [Line]? = nil
+        lines: [Line]? = nil,
+        layoutlmPredictions: [LinePrediction]? = nil
     ) {
         self.clusterId = clusterId
         self.bounds = bounds
@@ -131,10 +135,11 @@ public struct ReceiptOutput: Codable {
         self.s3Key = s3Key
         self.lineIndices = lineIndices
         self.lines = lines
+        self.layoutlmPredictions = layoutlmPredictions
     }
 
     /// Create from a ProcessedReceipt
-    public init(from processed: ProcessedReceipt, s3Key: String? = nil, lines: [Line]? = nil) {
+    public init(from processed: ProcessedReceipt, s3Key: String? = nil, lines: [Line]? = nil, layoutlmPredictions: [LinePrediction]? = nil) {
         self.clusterId = processed.clusterId
         self.bounds = processed.bounds
         self.warpedWidth = processed.warpedWidth
@@ -142,6 +147,7 @@ public struct ReceiptOutput: Codable {
         self.s3Key = s3Key
         self.lineIndices = processed.lineIndices
         self.lines = lines
+        self.layoutlmPredictions = layoutlmPredictions
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -152,6 +158,7 @@ public struct ReceiptOutput: Codable {
         case s3Key = "s3_key"
         case lineIndices = "line_indices"
         case lines
+        case layoutlmPredictions = "layoutlm_predictions"
     }
 }
 
