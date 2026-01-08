@@ -202,6 +202,9 @@ def export_coreml(
         tokenizer.save_vocabulary(str(output_path))
         print(f"Saved vocabulary to {output_path}")
 
+    # Sort label IDs for consistent ordering in JSON output
+    sorted_ids = sorted(id2label.keys())
+
     # Copy config.json
     config_src = checkpoint_path / "config.json"
     config_dst = output_path / "config.json"
@@ -209,11 +212,11 @@ def export_coreml(
         shutil.copy(config_src, config_dst)
         print(f"Copied config.json to {config_dst}")
     else:
-        # Save config manually
+        # Save config manually with sorted id2label
         with open(config_dst, "w") as f:
             json.dump(
                 {
-                    "id2label": {str(k): v for k, v in id2label.items()},
+                    "id2label": {str(k): id2label[k] for k in sorted_ids},
                     "label2id": label2id,
                     "num_labels": num_labels,
                     "max_position_embeddings": config.max_position_embeddings,
@@ -229,9 +232,9 @@ def export_coreml(
     with open(label_map_path, "w") as f:
         json.dump(
             {
-                "id2label": {str(k): v for k, v in id2label.items()},
+                "id2label": {str(k): id2label[k] for k in sorted_ids},
                 "label2id": label2id,
-                "labels": list(id2label.values()),
+                "labels": [id2label[k] for k in sorted_ids],
             },
             f,
             indent=2,
@@ -245,7 +248,7 @@ def export_coreml(
         shutil.copy(tokenizer_config_src, tokenizer_config_dst)
 
     print(f"\nCoreML bundle created at: {output_path}")
-    print(f"Contents:")
+    print("Contents:")
     for item in output_path.iterdir():
         if item.is_dir():
             print(f"  {item.name}/")
@@ -289,39 +292,46 @@ def export_from_s3(
     bucket = parsed.netloc
     prefix = parsed.path.lstrip("/")
 
-    # Use provided cache dir or create temp dir
+    # Use provided cache dir or create temp dir that auto-cleans up
+    temp_dir_obj = None
     if local_cache:
         cache_dir = Path(local_cache)
         cache_dir.mkdir(parents=True, exist_ok=True)
     else:
-        cache_dir = Path(tempfile.mkdtemp(prefix="layoutlm_"))
+        temp_dir_obj = tempfile.TemporaryDirectory(prefix="layoutlm_")
+        cache_dir = Path(temp_dir_obj.name)
 
-    print(f"Downloading model from {s3_uri} to {cache_dir}...")
+    try:
+        print(f"Downloading model from {s3_uri} to {cache_dir}...")
 
-    # Download all files from S3 prefix
-    s3 = boto3.client("s3")
-    paginator = s3.get_paginator("list_objects_v2")
+        # Download all files from S3 prefix
+        s3 = boto3.client("s3")
+        paginator = s3.get_paginator("list_objects_v2")
 
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            rel_path = key[len(prefix) :].lstrip("/")
-            if not rel_path:
-                continue
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                rel_path = key[len(prefix) :].lstrip("/")
+                if not rel_path:
+                    continue
 
-            local_path = cache_dir / rel_path
-            local_path.parent.mkdir(parents=True, exist_ok=True)
+                local_path = cache_dir / rel_path
+                local_path.parent.mkdir(parents=True, exist_ok=True)
 
-            print(f"  Downloading {rel_path}...")
-            s3.download_file(bucket, key, str(local_path))
+                print(f"  Downloading {rel_path}...")
+                s3.download_file(bucket, key, str(local_path))
 
-    # Export from downloaded checkpoint
-    return export_coreml(
-        checkpoint_dir=str(cache_dir),
-        output_dir=output_dir,
-        model_name=model_name,
-        quantize=quantize,
-    )
+        # Export from downloaded checkpoint
+        return export_coreml(
+            checkpoint_dir=str(cache_dir),
+            output_dir=output_dir,
+            model_name=model_name,
+            quantize=quantize,
+        )
+    finally:
+        # Clean up temp directory if we created one
+        if temp_dir_obj is not None:
+            temp_dir_obj.cleanup()
 
 
 if __name__ == "__main__":

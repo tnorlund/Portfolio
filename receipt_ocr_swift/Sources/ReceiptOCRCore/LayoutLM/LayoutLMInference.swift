@@ -2,7 +2,6 @@ import Foundation
 
 #if os(macOS)
 import CoreML
-import Accelerate
 
 /// Result of LayoutLM inference for a single line.
 public struct LinePrediction: Codable {
@@ -61,8 +60,11 @@ public class LayoutLMInference {
             throw LayoutLMError.modelNotFound(path: modelURL.path)
         }
 
+        // Compile model (creates temp file) and load it
         let compiledURL = try MLModel.compileModel(at: modelURL)
         self.model = try MLModel(contentsOf: compiledURL)
+        // Clean up temp compiled model after loading
+        try? FileManager.default.removeItem(at: compiledURL)
 
         // Load tokenizer
         let vocabURL = bundlePath.appendingPathComponent("vocab.txt")
