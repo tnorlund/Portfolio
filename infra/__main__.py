@@ -1170,6 +1170,28 @@ pulumi.export(
     metadata_harmonizer_sf.batch_bucket_name,
 )
 
+# LangSmith Bulk Export infrastructure (for Parquet exports)
+from components.langsmith_bulk_export import LangSmithBulkExport
+
+langsmith_bulk_export = LangSmithBulkExport(
+    f"langsmith-export-{stack}",
+    project_name=f"label-evaluator-{stack}",
+)
+pulumi.export("langsmith_export_bucket", langsmith_bulk_export.export_bucket.id)
+pulumi.export("langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name)
+pulumi.export("langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name)
+
+# EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
+from components.emr_serverless_analytics import create_emr_serverless_analytics
+
+emr_analytics = create_emr_serverless_analytics(
+    langsmith_export_bucket_name=langsmith_bulk_export.export_bucket.id,
+    langsmith_export_bucket_arn=langsmith_bulk_export.export_bucket.arn,
+)
+pulumi.export("emr_application_id", emr_analytics.emr_application.id)
+pulumi.export("emr_analytics_bucket", emr_analytics.analytics_bucket.id)
+pulumi.export("emr_artifacts_bucket", emr_analytics.artifacts_bucket.id)
+
 # Label Evaluator Step Function (with LangSmith observability)
 label_evaluator_sf = LabelEvaluatorStepFunction(
     f"label-evaluator-{stack}",
