@@ -8,6 +8,7 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -123,29 +124,29 @@ def export_coreml(
         default=sample_seq_len,
     )
 
-    # Convert to CoreML
+    # Convert to CoreML with explicit int32 dtype to match Swift MLMultiArray
     mlmodel = ct.convert(
         traced_model,
         inputs=[
             ct.TensorType(
                 name="input_ids",
                 shape=(1, seq_dim),
-                dtype=int,
+                dtype=np.int32,
             ),
             ct.TensorType(
                 name="attention_mask",
                 shape=(1, seq_dim),
-                dtype=int,
+                dtype=np.int32,
             ),
             ct.TensorType(
                 name="bbox",
                 shape=(1, seq_dim, 4),
-                dtype=int,
+                dtype=np.int32,
             ),
             ct.TensorType(
                 name="token_type_ids",
                 shape=(1, seq_dim),
-                dtype=int,
+                dtype=np.int32,
             ),
         ],
         outputs=[

@@ -48,16 +48,19 @@ public class LayoutLMInference {
     /// Initialize from a model bundle directory.
     ///
     /// The bundle should contain:
-    /// - LayoutLM.mlpackage/ (CoreML model)
+    /// - *.mlpackage/ (CoreML model - any name)
     /// - vocab.txt (tokenizer vocabulary)
     /// - config.json (model configuration with labels)
     ///
     /// - Parameter bundlePath: URL to the model bundle directory
     public init(bundlePath: URL) throws {
-        // Find and load CoreML model
-        let modelURL = bundlePath.appendingPathComponent("LayoutLM.mlpackage")
-        guard FileManager.default.fileExists(atPath: modelURL.path) else {
-            throw LayoutLMError.modelNotFound(path: modelURL.path)
+        // Find CoreML model by scanning for .mlpackage in bundle
+        let contents = try FileManager.default.contentsOfDirectory(
+            at: bundlePath,
+            includingPropertiesForKeys: nil
+        )
+        guard let modelURL = contents.first(where: { $0.pathExtension == "mlpackage" }) else {
+            throw LayoutLMError.modelNotFound(path: bundlePath.path)
         }
 
         // Compile model (creates temp file) and load it
