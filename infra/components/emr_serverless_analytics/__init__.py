@@ -63,8 +63,7 @@ class EMRServerlessAnalytics(ComponentResource):
         region = aws.get_region().name
         account_id = aws.get_caller_identity().account_id
 
-        # Convert inputs to Outputs
-        langsmith_bucket_name = Output.from_input(langsmith_export_bucket_name)
+        # Convert input to Output
         langsmith_bucket_arn = Output.from_input(langsmith_export_bucket_arn)
 
         # ============================================================

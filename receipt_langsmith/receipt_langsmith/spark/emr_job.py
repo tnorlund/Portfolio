@@ -27,7 +27,6 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from datetime import datetime
 
 from pyspark.sql import SparkSession
 

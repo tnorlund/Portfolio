@@ -99,7 +99,6 @@ def find_receipts_with_anomalies(
     receipts_with_anomalies = []
 
     for trace in traces:
-        outputs = trace.outputs or {}
         metadata = trace.metadata or {}
 
         # Get issues from the EvaluateLabels child trace
@@ -172,7 +171,6 @@ def find_receipts_with_llm_decisions(
     interesting_receipts = []
 
     for trace in traces:
-        outputs = trace.outputs or {}
         metadata = trace.metadata or {}
 
         # Get child traces for this receipt

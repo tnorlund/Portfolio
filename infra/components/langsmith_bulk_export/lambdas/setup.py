@@ -57,7 +57,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     api_key = event.get("api_key") or os.environ["LANGCHAIN_API_KEY"]
     tenant_id = event.get("tenant_id") or os.environ.get("LANGSMITH_TENANT_ID")
     bucket_name = event.get("bucket_name") or os.environ["EXPORT_BUCKET"]
-    project_name = event.get("project_name") or os.environ.get("LANGSMITH_PROJECT", "")
     stack = os.environ.get("STACK", "dev")
     prefix = event.get("prefix", "traces/")
     skip_ssm = event.get("skip_ssm", False)

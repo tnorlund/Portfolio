@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Iterator, Optional, Union
 
 import boto3
+import pyarrow
 import pyarrow.parquet as pq
 
 from receipt_langsmith.entities.base import LangSmithRun
@@ -163,7 +164,7 @@ class ParquetReader:
         """
         return list(self.read_parsed_traces(key))
 
-    def _read_parquet_table(self, key: str) -> "pq.ParquetFile":
+    def _read_parquet_table(self, key: str) -> pyarrow.Table:
         """Read a Parquet table from S3 or local path."""
         if self.local_path or not self._s3:
             # Local file

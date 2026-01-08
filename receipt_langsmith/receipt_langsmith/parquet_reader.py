@@ -7,6 +7,7 @@ rate limit issues.
 
 import json
 import logging
+import os
 from datetime import datetime
 from io import BytesIO
 from typing import Any
@@ -329,17 +330,6 @@ def _load_s3_result(
         return None
 
 
-def _get_trace_key(trace: dict) -> tuple[str, int] | None:
-    """Extract (image_id, receipt_id) from trace metadata."""
-    extra = trace.get("extra", {}) or {}
-    metadata = extra.get("metadata", {}) or {}
-    image_id = metadata.get("image_id")
-    receipt_id = metadata.get("receipt_id")
-    if image_id and receipt_id is not None:
-        return (image_id, int(receipt_id))
-    return None
-
-
 def find_visualization_receipts_from_parquet(
     bucket: str,
     prefix: str = "traces/",
@@ -375,15 +365,16 @@ def find_visualization_receipts_from_parquet(
     """
     # Default batch bucket for Step Function results
     if not batch_bucket:
-        batch_bucket = "label-evaluator-dev-batch-bucket-0c95650"
+        batch_bucket = os.environ.get("BATCH_BUCKET", "")
+        if not batch_bucket:
+            raise ValueError("batch_bucket required (via parameter or BATCH_BUCKET env var)")
     traces = read_traces_from_parquet(bucket, prefix)
 
     if not traces:
         logger.warning("No traces found in Parquet export")
         return []
 
-    # Index traces by (image_id, receipt_id) and name for cross-Lambda matching
-    traces_by_key_and_name: dict[tuple[str, int], dict[str, dict]] = {}
+    # Build parent-child mapping
     children_by_parent: dict[str, list[dict]] = {}
 
     for trace in traces:
@@ -392,16 +383,6 @@ def find_visualization_receipts_from_parquet(
             if parent_id not in children_by_parent:
                 children_by_parent[parent_id] = []
             children_by_parent[parent_id].append(trace)
-
-        # Index by (image_id, receipt_id) for cross-Lambda matching
-        key = _get_trace_key(trace)
-        if key:
-            if key not in traces_by_key_and_name:
-                traces_by_key_and_name[key] = {}
-            name = trace.get("name")
-            if name:
-                # Keep the most recent trace if duplicates exist
-                traces_by_key_and_name[key][name] = trace
 
     # Find ReceiptEvaluation traces as the base
     parents = [t for t in traces if t.get("name") == "ReceiptEvaluation"]
@@ -415,7 +396,6 @@ def find_visualization_receipts_from_parquet(
         parent_id = parent.get("id")
         extra = parent.get("extra", {}) or {}
         metadata = extra.get("metadata", {}) or {}
-        receipt_key = _get_trace_key(parent)
 
         # Get children of ReceiptEvaluation for geometric evaluation
         children = children_by_parent.get(parent_id, [])
@@ -424,9 +404,6 @@ def find_visualization_receipts_from_parquet(
             name = c.get("name")
             if name:
                 children_by_name[name] = c
-
-        # Get traces matching this receipt from other Lambdas
-        receipt_traces = traces_by_key_and_name.get(receipt_key, {}) if receipt_key else {}
 
         # Extract geometric issues from EvaluateLabels (child of ReceiptEvaluation)
         evaluate_labels = children_by_name.get("EvaluateLabels", {})
