@@ -124,6 +124,11 @@ def export_coreml(
         default=sample_seq_len,
     )
 
+    # Determine compute precision - float16 must be applied at conversion time
+    compute_precision = ct.precision.FLOAT16 if quantize == "float16" else ct.precision.FLOAT32
+    if quantize == "float16":
+        print("Applying float16 precision at conversion time...")
+
     # Convert to CoreML with explicit int32 dtype to match Swift MLMultiArray
     mlmodel = ct.convert(
         traced_model,
@@ -154,6 +159,7 @@ def export_coreml(
         ],
         minimum_deployment_target=ct.target.macOS13,
         convert_to="mlprogram",
+        compute_precision=compute_precision,
     )
 
     # Set model metadata
@@ -163,17 +169,10 @@ def export_coreml(
     )
     mlmodel.version = "1.0"
 
-    # Apply quantization if requested
-    if quantize:
+    # Apply post-conversion quantization if requested (int8/int4 only, float16 handled above)
+    if quantize and quantize != "float16":
         print(f"Applying {quantize} quantization...")
-        if quantize == "float16":
-            # Use coremltools.optimize.coreml for float16 (legacy API incompatible with mlprogram)
-            op_config = ct.optimize.coreml.OpLinearQuantizerConfig(
-                mode="linear_symmetric", dtype="float16"
-            )
-            config = ct.optimize.coreml.OptimizationConfig(global_config=op_config)
-            mlmodel = ct.optimize.coreml.linear_quantize_weights(mlmodel, config)
-        elif quantize == "int8":
+        if quantize == "int8":
             # Use linear quantization for INT8
             op_config = ct.optimize.coreml.OpLinearQuantizerConfig(
                 mode="linear_symmetric", dtype="int8"
