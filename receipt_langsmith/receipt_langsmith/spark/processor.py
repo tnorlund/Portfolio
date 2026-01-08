@@ -11,9 +11,6 @@ from typing import TYPE_CHECKING, Optional
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.window import Window
-
-from receipt_langsmith.spark.schemas import LANGSMITH_PARQUET_SCHEMA
 
 if TYPE_CHECKING:
     pass
@@ -61,7 +58,9 @@ class LangSmithSparkProcessor:
     def read_parquet(self, path: str) -> DataFrame:
         """Read Parquet files from S3 or local path.
 
-        Uses PyArrow to handle nanosecond timestamps that Spark doesn't support.
+        Uses native Spark distributed reading for scalability.
+        Requires spark.sql.legacy.parquet.nanosAsLong=true for nanosecond
+        timestamp handling.
 
         Args:
             path: S3 URI or local path to Parquet files.
@@ -69,10 +68,10 @@ class LangSmithSparkProcessor:
         Returns:
             DataFrame with raw trace data.
         """
-        import pyarrow.parquet as pq
-        import pyarrow.fs as pafs
-
         logger.info("Reading Parquet from: %s", path)
+
+        # Convert s3:// to s3a:// for Spark's Hadoop S3A connector
+        spark_path = path.replace("s3://", "s3a://") if path.startswith("s3://") else path
 
         # Columns we need for analytics
         needed_columns = [
@@ -81,60 +80,26 @@ class LangSmithSparkProcessor:
             "total_tokens", "prompt_tokens", "completion_tokens",
         ]
 
-        # Parse S3 path
-        if path.startswith("s3://"):
-            bucket_and_key = path[5:]
-            bucket = bucket_and_key.split("/")[0]
-            key = "/".join(bucket_and_key.split("/")[1:])
-            fs = pafs.S3FileSystem(region="us-east-1")
-            table = pq.read_table(
-                f"{bucket}/{key}",
-                filesystem=fs,
-                columns=needed_columns,
+        # Read with native Spark - requires spark.sql.legacy.parquet.nanosAsLong=true
+        # to handle nanosecond timestamps (converts to Long, then we cast to timestamp)
+        df = self.spark.read.parquet(spark_path).select(*needed_columns)
+
+        # If timestamps are read as Long (nanoseconds), convert to timestamp
+        # Check if start_time is LongType and convert if needed
+        from pyspark.sql.types import LongType
+
+        if isinstance(df.schema["start_time"].dataType, LongType):
+            # Nanoseconds to timestamp conversion
+            df = df.withColumn(
+                "start_time",
+                (F.col("start_time") / 1_000_000_000).cast("timestamp")
+            ).withColumn(
+                "end_time",
+                (F.col("end_time") / 1_000_000_000).cast("timestamp")
             )
-        else:
-            table = pq.read_table(path, columns=needed_columns)
 
-        # Convert nanosecond timestamps to microseconds (Spark-compatible)
-        import pyarrow as pa
-
-        new_schema_fields = []
-        for field in table.schema:
-            if pa.types.is_timestamp(field.type):
-                # Convert to microsecond precision
-                new_schema_fields.append(
-                    pa.field(field.name, pa.timestamp("us", tz=None))
-                )
-            else:
-                new_schema_fields.append(field)
-
-        new_schema = pa.schema(new_schema_fields)
-        table = table.cast(new_schema)
-
-        # Convert to Pandas then to Spark with explicit schema
-        pdf = table.to_pandas()
-
-        # Define Spark schema for known columns
-        from pyspark.sql.types import (
-            StructType, StructField, StringType, LongType, TimestampType
-        )
-
-        spark_schema = StructType([
-            StructField("id", StringType(), True),
-            StructField("trace_id", StringType(), True),
-            StructField("name", StringType(), True),
-            StructField("run_type", StringType(), True),
-            StructField("status", StringType(), True),
-            StructField("start_time", TimestampType(), True),
-            StructField("end_time", TimestampType(), True),
-            StructField("extra", StringType(), True),
-            StructField("outputs", StringType(), True),
-            StructField("total_tokens", LongType(), True),
-            StructField("prompt_tokens", LongType(), True),
-            StructField("completion_tokens", LongType(), True),
-        ])
-
-        return self.spark.createDataFrame(pdf, schema=spark_schema)
+        logger.info("Read Parquet with %d partitions", df.rdd.getNumPartitions())
+        return df
 
     def parse_json_fields(self, df: DataFrame) -> DataFrame:
         """Parse JSON string columns and extract metadata.
