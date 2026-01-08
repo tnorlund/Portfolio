@@ -167,9 +167,12 @@ def export_coreml(
     if quantize:
         print(f"Applying {quantize} quantization...")
         if quantize == "float16":
-            mlmodel = ct.models.neural_network.quantization_utils.quantize_weights(
-                mlmodel, nbits=16
+            # Use coremltools.optimize.coreml for float16 (legacy API incompatible with mlprogram)
+            op_config = ct.optimize.coreml.OpLinearQuantizerConfig(
+                mode="linear_symmetric", dtype="float16"
             )
+            config = ct.optimize.coreml.OptimizationConfig(global_config=op_config)
+            mlmodel = ct.optimize.coreml.linear_quantize_weights(mlmodel, config)
         elif quantize == "int8":
             # Use linear quantization for INT8
             op_config = ct.optimize.coreml.OpLinearQuantizerConfig(
@@ -363,6 +366,12 @@ if __name__ == "__main__":
         "--local-cache",
         help="Local directory to cache S3 downloads",
     )
+    parser.add_argument(
+        "--quantize",
+        choices=["float16", "int8", "int4"],
+        default=None,
+        help="Quantization mode for smaller model size",
+    )
 
     args = parser.parse_args()
 
@@ -375,10 +384,12 @@ if __name__ == "__main__":
             output_dir=args.output_dir,
             model_name=args.model_name,
             local_cache=args.local_cache,
+            quantize=args.quantize,
         )
     else:
         export_coreml(
             checkpoint_dir=args.checkpoint_dir,
             output_dir=args.output_dir,
             model_name=args.model_name,
+            quantize=args.quantize,
         )

@@ -413,21 +413,7 @@ def main() -> None:
         if args.output_json:
             import json as _json
             with open(args.output_json, "w") as f:
-                _json.dump({
-                    "total_tokens": result.total_tokens,
-                    "matching_labels": result.matching_labels,
-                    "label_agreement_rate": result.label_agreement_rate,
-                    "per_label_agreement": {
-                        k: {"matches": v[0], "total": v[1], "rate": v[2]}
-                        for k, v in result.per_label_agreement.items()
-                    },
-                    "avg_confidence_diff": result.avg_confidence_diff,
-                    "max_confidence_diff": result.max_confidence_diff,
-                    "avg_logit_rmse": result.avg_logit_rmse,
-                    "max_logit_rmse": result.max_logit_rmse,
-                    "num_mismatches": len(result.mismatches),
-                    "mismatches": result.mismatches[:100],
-                }, f, indent=2)
+                _json.dump(result.to_dict(), f, indent=2)
             print(f"\nDetailed results saved to {args.output_json}")
 
 

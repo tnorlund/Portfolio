@@ -71,6 +71,24 @@ class ValidationResult:
         lines.append("=" * 60)
         return "\n".join(lines)
 
+    def to_dict(self, max_mismatches: int = 100) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "total_tokens": self.total_tokens,
+            "matching_labels": self.matching_labels,
+            "label_agreement_rate": self.label_agreement_rate,
+            "per_label_agreement": {
+                k: {"matches": v[0], "total": v[1], "rate": v[2]}
+                for k, v in self.per_label_agreement.items()
+            },
+            "avg_confidence_diff": self.avg_confidence_diff,
+            "max_confidence_diff": self.max_confidence_diff,
+            "avg_logit_rmse": self.avg_logit_rmse,
+            "max_logit_rmse": self.max_logit_rmse,
+            "num_mismatches": len(self.mismatches),
+            "mismatches": self.mismatches[:max_mismatches],
+        }
+
 
 def validate_coreml(
     checkpoint_dir: str,
@@ -108,9 +126,7 @@ def validate_coreml(
 
     # Get test samples
     if test_samples is None:
-        test_samples = _load_test_samples(
-            checkpoint_dir, dynamo_table, region, num_samples
-        )
+        test_samples = _load_test_samples(dynamo_table, region, num_samples)
 
     print(f"Validating on {len(test_samples)} samples...")
 
@@ -203,8 +219,8 @@ def _load_coreml_model(bundle_dir: str):
     """Load CoreML model from bundle."""
     try:
         import coremltools as ct
-    except ImportError:
-        raise ImportError("coremltools required: pip install coremltools")
+    except ImportError as e:
+        raise ImportError("coremltools required: pip install coremltools") from e
 
     bundle_path = Path(bundle_dir)
     mlpackage_path = bundle_path / "LayoutLM.mlpackage"
@@ -364,7 +380,6 @@ def _softmax(x):
 
 
 def _load_test_samples(
-    checkpoint_dir: str,
     dynamo_table: Optional[str],
     region: str,
     num_samples: int,
@@ -510,19 +525,5 @@ if __name__ == "__main__":
 
     if args.output_json:
         with open(args.output_json, "w") as f:
-            json.dump({
-                "total_tokens": result.total_tokens,
-                "matching_labels": result.matching_labels,
-                "label_agreement_rate": result.label_agreement_rate,
-                "per_label_agreement": {
-                    k: {"matches": v[0], "total": v[1], "rate": v[2]}
-                    for k, v in result.per_label_agreement.items()
-                },
-                "avg_confidence_diff": result.avg_confidence_diff,
-                "max_confidence_diff": result.max_confidence_diff,
-                "avg_logit_rmse": result.avg_logit_rmse,
-                "max_logit_rmse": result.max_logit_rmse,
-                "num_mismatches": len(result.mismatches),
-                "mismatches": result.mismatches[:100],
-            }, f, indent=2)
+            json.dump(result.to_dict(), f, indent=2)
         print(f"\nDetailed results saved to {args.output_json}")
