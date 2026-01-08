@@ -215,8 +215,8 @@ def find_latest_export_prefix(s3_client: Any, bucket: str, preferred_export_id: 
         logger.warning("No exports with data found")
         return None
 
-    except Exception as e:
-        logger.error("Failed to find latest export: %s", e)
+    except Exception:
+        logger.exception("Failed to find latest export")
         return None
 
 
@@ -242,8 +242,8 @@ def find_latest_execution_id(s3_client: Any, bucket: str) -> str | None:
         logger.info("Found latest execution ID: %s", latest)
         return latest
 
-    except Exception as e:
-        logger.error("Failed to find execution ID: %s", e)
+    except Exception:
+        logger.exception("Failed to find execution ID")
         return None
 
 

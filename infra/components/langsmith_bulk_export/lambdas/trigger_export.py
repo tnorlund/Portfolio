@@ -74,8 +74,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         try:
             response = ssm.get_parameter(Name=param_name)
             destination_id = response["Parameter"]["Value"]
-        except Exception as e:
-            logger.error(f"Destination not found in SSM: {param_name} - {e}")
+        except Exception:
+            logger.exception(f"Destination not found in SSM: {param_name}")
             return {
                 "statusCode": 400,
                 "message": "destination_id required (via event or SSM parameter). Run setup Lambda first.",
@@ -84,7 +84,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     logger.info(f"Using destination_id: {destination_id}")
 
     # If project_id not provided, we need to look it up by name
-    http = urllib3.PoolManager()
+    # Use timeout to prevent indefinite hangs in Lambda environment
+    http = urllib3.PoolManager(timeout=urllib3.Timeout(connect=5.0, read=30.0))
 
     if not project_id:
         # List projects to find the ID by name

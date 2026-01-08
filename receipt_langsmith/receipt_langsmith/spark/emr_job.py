@@ -159,6 +159,10 @@ def main() -> int:
             )
             logger.info("Token usage complete")
 
+        # Release cached data to free memory
+        if args.job_type == "all":
+            parsed.unpersist()
+
         logger.info("All analytics complete!")
         return 0
 

@@ -91,8 +91,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     except ssm.exceptions.ParameterNotFound:
         logger.info("No existing destination found, creating new one")
 
-    # Create HTTP client
-    http = urllib3.PoolManager()
+    # Create HTTP client with timeout to prevent indefinite hangs
+    http = urllib3.PoolManager(timeout=urllib3.Timeout(connect=5.0, read=30.0))
 
     # Get AWS region for the bucket
     s3 = boto3.client("s3")
@@ -125,7 +125,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info(f"ListObjectsV2 for {prefix} succeeded")
         logger.info("All local credential tests passed")
     except Exception as e:
-        logger.error(f"Local credential test failed: {e}")
+        logger.exception("Local credential test failed")
         return {
             "statusCode": 500,
             "message": f"Credentials don't work locally: {str(e)}",
