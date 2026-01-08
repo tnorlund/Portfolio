@@ -7,6 +7,7 @@ from .config import DataConfig, TrainingConfig, MERGE_PRESETS
 from .trainer import ReceiptLayoutLMTrainer
 from .inference import LayoutLMInference
 from .export_coreml import export_coreml, export_from_s3
+from .validate_coreml import validate_coreml
 
 
 def _build_label_merges(args: argparse.Namespace) -> Optional[Dict[str, List[str]]]:
@@ -248,6 +249,47 @@ def main() -> None:
         "--local-cache",
         help="Local directory to cache S3 downloads",
     )
+    export_p.add_argument(
+        "--quantize",
+        choices=["float16", "int8", "int4"],
+        default=None,
+        help="Quantization mode for smaller model size",
+    )
+
+    # Validate CoreML subcommand
+    validate_p = sub.add_parser(
+        "validate-coreml", help="Validate CoreML model against PyTorch"
+    )
+    validate_p.add_argument(
+        "--checkpoint-dir",
+        required=True,
+        help="Path to PyTorch checkpoint",
+    )
+    validate_p.add_argument(
+        "--coreml-bundle",
+        required=True,
+        help="Path to CoreML bundle directory",
+    )
+    validate_p.add_argument(
+        "--dynamo-table",
+        default=os.getenv("DYNAMO_TABLE_NAME"),
+        help="DynamoDB table for test data",
+    )
+    validate_p.add_argument(
+        "--region",
+        default="us-east-1",
+        help="AWS region",
+    )
+    validate_p.add_argument(
+        "--num-samples",
+        type=int,
+        default=100,
+        help="Number of samples to test",
+    )
+    validate_p.add_argument(
+        "--output-json",
+        help="Save detailed results to JSON file",
+    )
 
     args = parser.parse_args()
 
@@ -347,14 +389,46 @@ def main() -> None:
                 output_dir=args.output_dir,
                 model_name=args.model_name,
                 local_cache=args.local_cache,
+                quantize=args.quantize,
             )
         else:
             bundle_path = export_coreml(
                 checkpoint_dir=args.checkpoint_dir,
                 output_dir=args.output_dir,
                 model_name=args.model_name,
+                quantize=args.quantize,
             )
         print(f"CoreML bundle created: {bundle_path}")
+
+    elif args.cmd == "validate-coreml":
+        result = validate_coreml(
+            checkpoint_dir=args.checkpoint_dir,
+            coreml_bundle_dir=args.coreml_bundle,
+            dynamo_table=args.dynamo_table,
+            region=args.region,
+            num_samples=args.num_samples,
+        )
+        print(result)
+
+        if args.output_json:
+            import json as _json
+            with open(args.output_json, "w") as f:
+                _json.dump({
+                    "total_tokens": result.total_tokens,
+                    "matching_labels": result.matching_labels,
+                    "label_agreement_rate": result.label_agreement_rate,
+                    "per_label_agreement": {
+                        k: {"matches": v[0], "total": v[1], "rate": v[2]}
+                        for k, v in result.per_label_agreement.items()
+                    },
+                    "avg_confidence_diff": result.avg_confidence_diff,
+                    "max_confidence_diff": result.max_confidence_diff,
+                    "avg_logit_rmse": result.avg_logit_rmse,
+                    "max_logit_rmse": result.max_logit_rmse,
+                    "num_mismatches": len(result.mismatches),
+                    "mismatches": result.mismatches[:100],
+                }, f, indent=2)
+            print(f"\nDetailed results saved to {args.output_json}")
 
 
 if __name__ == "__main__":

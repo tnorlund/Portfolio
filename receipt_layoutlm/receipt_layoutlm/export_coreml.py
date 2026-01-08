@@ -41,6 +41,7 @@ def export_coreml(
     model_name: str = "LayoutLM",
     max_seq_length: int = 512,
     min_seq_length: int = 1,
+    quantize: Optional[str] = None,
 ) -> str:
     """Export a trained LayoutLM checkpoint to CoreML format.
 
@@ -50,6 +51,7 @@ def export_coreml(
         model_name: Name for the .mlpackage file.
         max_seq_length: Maximum sequence length for model.
         min_seq_length: Minimum sequence length for model.
+        quantize: Quantization mode: None, "float16", "int8", or "int4".
 
     Returns:
         Path to the created model bundle directory.
@@ -160,6 +162,30 @@ def export_coreml(
     )
     mlmodel.version = "1.0"
 
+    # Apply quantization if requested
+    if quantize:
+        print(f"Applying {quantize} quantization...")
+        if quantize == "float16":
+            mlmodel = ct.models.neural_network.quantization_utils.quantize_weights(
+                mlmodel, nbits=16
+            )
+        elif quantize == "int8":
+            # Use linear quantization for INT8
+            op_config = ct.optimize.coreml.OpLinearQuantizerConfig(
+                mode="linear_symmetric", dtype="int8"
+            )
+            config = ct.optimize.coreml.OptimizationConfig(global_config=op_config)
+            mlmodel = ct.optimize.coreml.linear_quantize_weights(mlmodel, config)
+        elif quantize == "int4":
+            # Use palettization for INT4-like compression
+            op_config = ct.optimize.coreml.OpPalettizerConfig(
+                mode="kmeans", nbits=4
+            )
+            config = ct.optimize.coreml.OptimizationConfig(global_config=op_config)
+            mlmodel = ct.optimize.coreml.palettize_weights(mlmodel, config)
+        else:
+            print(f"Warning: Unknown quantization mode '{quantize}', skipping")
+
     # Save CoreML model
     mlpackage_path = output_path / f"{model_name}.mlpackage"
     print(f"Saving CoreML model to {mlpackage_path}...")
@@ -234,6 +260,7 @@ def export_from_s3(
     output_dir: str,
     model_name: str = "LayoutLM",
     local_cache: Optional[str] = None,
+    quantize: Optional[str] = None,
 ) -> str:
     """Export a model from S3 to CoreML format.
 
@@ -242,6 +269,7 @@ def export_from_s3(
         output_dir: Directory to write CoreML bundle.
         model_name: Name for the .mlpackage file.
         local_cache: Local directory to cache downloaded model.
+        quantize: Quantization mode: None, "float16", "int8", or "int4".
 
     Returns:
         Path to the created model bundle directory.
@@ -292,6 +320,7 @@ def export_from_s3(
         checkpoint_dir=str(cache_dir),
         output_dir=output_dir,
         model_name=model_name,
+        quantize=quantize,
     )
 
 
