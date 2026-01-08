@@ -358,6 +358,8 @@
     max-width: 400px;
     padding: 1rem;
     gap: 1rem;
+    margin-left: auto;
+    margin-right: auto;
   }
 
   /* Hide desktop timeline, show mobile */
@@ -380,11 +382,11 @@
     border-radius: 50%;
     width: 32px;
     height: 32px;
-    min-width: 32px;
-    min-height: 32px;
-    aspect-ratio: 1;
-    flex-shrink: 0;
+    flex: 0 0 32px; /* Prevent grow AND shrink, fixed basis */
+    aspect-ratio: 1 / 1;
+    box-sizing: border-box;
     font-size: 1.25rem;
+    line-height: 1;
     color: var(--background-color);
     cursor: pointer;
     display: flex;
@@ -411,8 +413,11 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: 0.25rem;
     min-width: 60px;
+    flex: 1 1 auto; /* Allow center to take remaining space */
+    text-align: center;
   }
 
   .timelineMobileText {
@@ -464,6 +469,8 @@
   /* Smaller per-label bars */
   .perLabelContainer {
     width: 100%;
+    max-width: 340px;
+    margin: 0 auto;
     gap: 0.35rem;
   }
 
