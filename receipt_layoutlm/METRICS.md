@@ -22,10 +22,35 @@ Recorded as `JobMetric` entities after each evaluation epoch.
 | `eval_loss` | ✅ Implemented | HF Trainer | loss | Validation loss (lower is better) |
 | `train_loss` | ✅ Implemented | HF Trainer `log_history` | loss | Training loss curve |
 | `learning_rate` | ✅ Implemented | HF Trainer `log_history` | rate | LR scheduler tracking |
+| `entropy_mean` | ✅ Implemented | `compute_metrics` | nats | Mean prediction entropy (model confidence) |
+| `entropy_std` | ✅ Implemented | `compute_metrics` | nats | Std dev of prediction entropy |
+| `entropy_p10` | ✅ Implemented | `compute_metrics` | nats | 10th percentile entropy (most confident) |
+| `entropy_p90` | ✅ Implemented | `compute_metrics` | nats | 90th percentile entropy (least confident) |
 
 **Implementation:** `receipt_layoutlm/trainer.py` → `_MetricLoggerCallback.on_evaluate()`
 
-**Batch Write:** All 6 metrics written in single `add_job_metrics()` call per epoch.
+**Batch Write:** All metrics written in single `add_job_metrics()` call per epoch.
+
+## Entropy Metrics
+
+Entropy measures model confidence in its predictions. Computed from softmax probabilities:
+`H = -Σ(p × log(p))` for each token prediction.
+
+| Entropy Value | Interpretation |
+|---------------|----------------|
+| Low (~0.1-0.5) | Model is confident (good if correct, bad if wrong) |
+| High (~1.5-2.5) | Model is uncertain |
+
+**Use case:** If `entropy_mean` drops over epochs but `val_f1` plateaus, the model may be becoming overconfident on incorrect predictions (overfitting signal).
+
+**Query example:**
+```python
+# Compare entropy trends across training
+metrics, _ = dynamo.list_job_metrics(job_id)
+entropy_metrics = [m for m in metrics if m.metric_name == "entropy_mean"]
+for m in sorted(entropy_metrics, key=lambda x: x.epoch or 0):
+    print(f"Epoch {m.epoch}: entropy={m.value:.3f}")
+```
 
 ## Per-Label Metrics
 
