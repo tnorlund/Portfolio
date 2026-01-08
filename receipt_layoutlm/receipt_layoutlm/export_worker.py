@@ -1,35 +1,17 @@
-#!/usr/bin/env python3
-"""
-CoreML Export Worker
+"""CoreML Export Worker for processing export jobs from SQS.
 
-Polls the CoreML export job queue and processes export requests on macOS.
-This worker must run on macOS since coremltools only works on Apple platforms.
+This module polls the CoreML export job queue and processes export requests
+on macOS. It must run on macOS since coremltools only works on Apple platforms.
 
-Usage:
-    # Run continuously
-    python scripts/coreml_export_worker.py
-
-    # Process a single batch then exit
-    python scripts/coreml_export_worker.py --once
-
-    # Use custom queue URLs
-    python scripts/coreml_export_worker.py \
-        --job-queue-url https://sqs.us-east-1.amazonaws.com/... \
-        --results-queue-url https://sqs.us-east-1.amazonaws.com/...
-
-Environment variables:
-    COREML_EXPORT_JOB_QUEUE_URL: URL of the job queue
-    COREML_EXPORT_RESULTS_QUEUE_URL: URL of the results queue
-    DYNAMO_TABLE_NAME: DynamoDB table name for status updates
-    AWS_REGION: AWS region (default: us-east-1)
+Usage via CLI:
+    python -m receipt_layoutlm.cli export-worker --continuous
+    python -m receipt_layoutlm.cli export-worker --once
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
-import shutil
 import sys
 import tempfile
 import time
@@ -39,6 +21,8 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 import boto3
+
+from .export_coreml import export_coreml
 
 
 def download_from_s3(s3_uri: str, local_dir: str) -> str:
@@ -153,9 +137,6 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
     start_time = time.time()
 
     try:
-        # Import here to fail fast if not on macOS
-        from receipt_layoutlm.export_coreml import export_coreml
-
         with tempfile.TemporaryDirectory(prefix="coreml_export_") as tmpdir:
             # Download model checkpoint from S3
             model_dir = os.path.join(tmpdir, "model")
@@ -163,7 +144,7 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
 
             # Run CoreML export
             output_dir = os.path.join(tmpdir, "output")
-            print(f"\nRunning CoreML export...")
+            print("\nRunning CoreML export...")
 
             bundle_path = export_coreml(
                 checkpoint_dir=model_dir,
@@ -274,7 +255,7 @@ def run_worker(
         except Exception as e:
             print(f"Warning: Could not connect to DynamoDB: {e}")
 
-    print(f"Starting CoreML export worker...")
+    print("Starting CoreML export worker...")
     print(f"  Job queue: {job_queue_url}")
     print(f"  Results queue: {results_queue_url}")
     print(f"  Mode: {'single batch' if run_once else 'continuous'}")
@@ -325,14 +306,14 @@ def run_worker(
                     )
 
                 # Send result to results queue
-                print(f"Sending result to results queue...")
+                print("Sending result to results queue...")
                 sqs.send_message(
                     QueueUrl=results_queue_url,
                     MessageBody=json.dumps(result),
                 )
 
                 # Delete message from job queue
-                print(f"Deleting message from job queue...")
+                print("Deleting message from job queue...")
                 sqs.delete_message(
                     QueueUrl=job_queue_url,
                     ReceiptHandle=receipt_handle,
@@ -355,59 +336,8 @@ def run_worker(
             time.sleep(5)
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="CoreML Export Worker - polls SQS queue and exports models"
-    )
-    parser.add_argument(
-        "--job-queue-url",
-        default=os.getenv("COREML_EXPORT_JOB_QUEUE_URL"),
-        help="SQS URL for job queue",
-    )
-    parser.add_argument(
-        "--results-queue-url",
-        default=os.getenv("COREML_EXPORT_RESULTS_QUEUE_URL"),
-        help="SQS URL for results queue",
-    )
-    parser.add_argument(
-        "--dynamo-table",
-        default=os.getenv("DYNAMO_TABLE_NAME"),
-        help="DynamoDB table name for status updates",
-    )
-    parser.add_argument(
-        "--region",
-        default=os.getenv("AWS_REGION", "us-east-1"),
-        help="AWS region",
-    )
-    parser.add_argument(
-        "--once",
-        action="store_true",
-        help="Process one batch then exit",
-    )
-
-    args = parser.parse_args()
-
-    if not args.job_queue_url:
-        print("Error: --job-queue-url or COREML_EXPORT_JOB_QUEUE_URL required")
-        sys.exit(1)
-
-    if not args.results_queue_url:
-        print("Error: --results-queue-url or COREML_EXPORT_RESULTS_QUEUE_URL required")
-        sys.exit(1)
-
-    # Verify we're on macOS
+def check_macos() -> None:
+    """Verify we're running on macOS."""
     if sys.platform != "darwin":
         print("Error: This worker must run on macOS (coremltools requirement)")
         sys.exit(1)
-
-    run_worker(
-        job_queue_url=args.job_queue_url,
-        results_queue_url=args.results_queue_url,
-        dynamo_table=args.dynamo_table,
-        region=args.region,
-        run_once=args.once,
-    )
-
-
-if __name__ == "__main__":
-    main()

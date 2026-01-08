@@ -305,6 +305,42 @@ def main() -> None:
         help="Save detailed results to JSON file",
     )
 
+    # Export worker subcommand (macOS only)
+    worker_p = sub.add_parser(
+        "export-worker",
+        help="Run CoreML export worker (macOS only)",
+    )
+    worker_p.add_argument(
+        "--job-queue-url",
+        default=os.getenv("COREML_EXPORT_JOB_QUEUE_URL"),
+        help="SQS URL for job queue (or COREML_EXPORT_JOB_QUEUE_URL env)",
+    )
+    worker_p.add_argument(
+        "--results-queue-url",
+        default=os.getenv("COREML_EXPORT_RESULTS_QUEUE_URL"),
+        help="SQS URL for results queue (or COREML_EXPORT_RESULTS_QUEUE_URL env)",
+    )
+    worker_p.add_argument(
+        "--dynamo-table",
+        default=os.getenv("DYNAMO_TABLE_NAME"),
+        help="DynamoDB table name for status updates",
+    )
+    worker_p.add_argument(
+        "--region",
+        default=os.getenv("AWS_REGION", "us-east-1"),
+        help="AWS region",
+    )
+    worker_p.add_argument(
+        "--once",
+        action="store_true",
+        help="Process one batch then exit (default: run continuously)",
+    )
+    worker_p.add_argument(
+        "--continuous",
+        action="store_true",
+        help="Run continuously until interrupted (default behavior)",
+    )
+
     args = parser.parse_args()
 
     if args.cmd == "train":
@@ -431,6 +467,29 @@ def main() -> None:
             with open(args.output_json, "w") as f:
                 _json.dump(result.to_dict(), f, indent=2)
             print(f"\nDetailed results saved to {args.output_json}")
+
+    elif args.cmd == "export-worker":
+        from .export_worker import check_macos, run_worker
+
+        # Verify macOS
+        check_macos()
+
+        if not args.job_queue_url:
+            raise SystemExit(
+                "--job-queue-url or COREML_EXPORT_JOB_QUEUE_URL env is required"
+            )
+        if not args.results_queue_url:
+            raise SystemExit(
+                "--results-queue-url or COREML_EXPORT_RESULTS_QUEUE_URL env is required"
+            )
+
+        run_worker(
+            job_queue_url=args.job_queue_url,
+            results_queue_url=args.results_queue_url,
+            dynamo_table=args.dynamo_table,
+            region=args.region,
+            run_once=args.once,
+        )
 
 
 if __name__ == "__main__":
