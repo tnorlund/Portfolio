@@ -43,6 +43,9 @@ public class LayoutLMInference {
     /// Maximum sequence length
     public let maxSeqLength: Int
 
+    /// URL to the compiled model (cleaned up in deinit)
+    private let compiledModelURL: URL
+
     // MARK: - Initialization
 
     /// Initialize from a model bundle directory.
@@ -64,10 +67,10 @@ public class LayoutLMInference {
         }
 
         // Compile model (creates temp file) and load it
+        // Store compiledURL for cleanup in deinit - MLModel may reference on-disk artifacts
         let compiledURL = try MLModel.compileModel(at: modelURL)
+        self.compiledModelURL = compiledURL
         self.model = try MLModel(contentsOf: compiledURL)
-        // Clean up temp compiled model after loading
-        try? FileManager.default.removeItem(at: compiledURL)
 
         // Load tokenizer
         let vocabURL = bundlePath.appendingPathComponent("vocab.txt")
@@ -84,6 +87,11 @@ public class LayoutLMInference {
         self.config = try LayoutLMConfig.load(from: configURL)
 
         self.maxSeqLength = config.maxPositionEmbeddings ?? 512
+    }
+
+    deinit {
+        // Clean up compiled model temp file
+        try? FileManager.default.removeItem(at: compiledModelURL)
     }
 
     // MARK: - Prediction
@@ -271,6 +279,12 @@ public class LayoutLMInference {
 
     /// Create MLMultiArray from Int array.
     private func createMultiArray(from array: [Int], shape: [Int]) throws -> MLMultiArray {
+        let expectedCount = shape.reduce(1, *)
+        guard expectedCount == array.count else {
+            throw LayoutLMError.predictionFailed(
+                "Shape \(shape) expects \(expectedCount) elements, got \(array.count)"
+            )
+        }
         let mlArray = try MLMultiArray(shape: shape.map { NSNumber(value: $0) }, dataType: .int32)
         for (idx, value) in array.enumerated() {
             mlArray[idx] = NSNumber(value: Int32(value))
@@ -280,8 +294,18 @@ public class LayoutLMInference {
 
     /// Create MLMultiArray for bbox tensor.
     private func createBboxMultiArray(from bboxes: [[Int32]], shape: [Int]) throws -> MLMultiArray {
+        guard shape.count == 3, shape[0] == 1, shape[1] == bboxes.count, shape[2] == 4 else {
+            throw LayoutLMError.predictionFailed(
+                "Invalid bbox shape: \(shape) for \(bboxes.count) bboxes"
+            )
+        }
         let mlArray = try MLMultiArray(shape: shape.map { NSNumber(value: $0) }, dataType: .int32)
         for (seqIdx, bbox) in bboxes.enumerated() {
+            guard bbox.count == 4 else {
+                throw LayoutLMError.predictionFailed(
+                    "Bbox must have 4 coordinates, got \(bbox.count)"
+                )
+            }
             for (coordIdx, value) in bbox.enumerated() {
                 let index = seqIdx * 4 + coordIdx
                 mlArray[index] = NSNumber(value: value)
