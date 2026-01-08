@@ -845,6 +845,33 @@ class ReceiptLayoutLMTrainer:
                 except Exception as e:
                     print(f"Warning: Failed to compute confusion matrix: {e}")
 
+                # Compute prediction entropy (measures model confidence)
+                # Low entropy = overconfident, high entropy = uncertain
+                try:
+                    import numpy as _np
+                    from scipy.special import softmax as scipy_softmax
+
+                    # Compute softmax probabilities from logits
+                    probs = scipy_softmax(logits, axis=-1)
+
+                    # Compute entropy for each token: H = -sum(p * log(p))
+                    # Add small epsilon to avoid log(0)
+                    log_probs = _np.log(probs + 1e-10)
+                    token_entropy = -_np.sum(probs * log_probs, axis=-1)
+
+                    # Mask out padding tokens (where label == -100)
+                    mask = labels != -100
+                    valid_entropy = token_entropy[mask]
+
+                    if len(valid_entropy) > 0:
+                        metrics["entropy_mean"] = float(_np.mean(valid_entropy))
+                        metrics["entropy_std"] = float(_np.std(valid_entropy))
+                        # Also track entropy percentiles for distribution insight
+                        metrics["entropy_p10"] = float(_np.percentile(valid_entropy, 10))
+                        metrics["entropy_p90"] = float(_np.percentile(valid_entropy, 90))
+                except Exception as e:
+                    print(f"Warning: Failed to compute entropy metrics: {e}")
+
                 # Note: F1 metric is now stored in _MetricLoggerCallback.on_evaluate()
                 # with epoch information, so we don't need to store it here
             else:
