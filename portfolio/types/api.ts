@@ -358,3 +358,106 @@ export interface LayoutLMBatchInferenceResponse {
   fetched_at: string;
   legacy_mode?: boolean;
 }
+
+// Label Evaluator Visualization Types
+
+export interface LabelEvaluatorWord {
+  text: string;
+  label: string | null;
+  line_id: number;
+  word_id: number;
+  bbox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+export interface LabelEvaluatorIssue {
+  type: string;
+  word_text: string;
+  word_id: number;
+  line_id: number;
+  current_label: string | null;
+  suggested_label: string;
+  suggested_status: string;
+  reasoning: string;
+}
+
+export interface LabelEvaluatorDecision {
+  image_id: string;
+  receipt_id: number;
+  issue: {
+    line_id: number;
+    word_id: number;
+    current_label: string;
+    word_text: string;
+  };
+  llm_review: {
+    decision: "VALID" | "INVALID" | "NEEDS_REVIEW";
+    reasoning: string;
+    suggested_label: string | null;
+    confidence: "high" | "medium" | "low";
+  };
+}
+
+export interface LabelEvaluatorEvaluation {
+  image_id: string;
+  receipt_id: number;
+  merchant_name: string;
+  duration_seconds: number;
+  decisions: {
+    VALID: number;
+    INVALID: number;
+    NEEDS_REVIEW: number;
+  };
+  all_decisions: LabelEvaluatorDecision[];
+}
+
+export interface LabelEvaluatorGeometric {
+  image_id: string;
+  receipt_id: number;
+  issues_found: number;
+  issues: LabelEvaluatorIssue[];
+  error: string | null;
+  merchant_receipts_analyzed: number;
+  label_types_found: number;
+  duration_seconds?: number;
+}
+
+export interface LabelEvaluatorReceipt {
+  image_id: string;
+  receipt_id: number;
+  merchant_name?: string;
+  issues_found: number;
+  words: LabelEvaluatorWord[];
+  geometric: LabelEvaluatorGeometric;
+  currency: LabelEvaluatorEvaluation;
+  metadata: LabelEvaluatorEvaluation;
+  financial: LabelEvaluatorEvaluation;
+  // Review runs after Geometric if issues were found - produces V/I/R decisions
+  review?: LabelEvaluatorEvaluation;
+  // Line item structure discovery duration (seconds)
+  line_item_duration_seconds?: number | null;
+  // CDN image keys
+  cdn_s3_key: string;
+  cdn_webp_s3_key?: string;
+  cdn_avif_s3_key?: string;
+  cdn_medium_s3_key?: string;
+  cdn_medium_webp_s3_key?: string;
+  cdn_medium_avif_s3_key?: string;
+  width: number;
+  height: number;
+}
+
+export interface LabelEvaluatorResponse {
+  execution_id: string;
+  receipts: LabelEvaluatorReceipt[];
+  summary: {
+    total_receipts: number;
+    receipts_with_issues: number;
+  };
+  cached_at?: string;
+  fetched_at?: string;
+}

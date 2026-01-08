@@ -12,6 +12,7 @@ import {
   ClientReceiptCounts,
   CodeBuildDiagram,
   ImageStack,
+  LabelEvaluatorVisualization,
   LabelValidationTimeline,
   LayoutLMBatchVisualization,
   LockingSwimlane,
@@ -580,6 +581,33 @@ export default function ReceiptPage({
         entity types, while the agent provides comprehensive labeling including
         line items and quantities.
       </p>
+
+      <h2>Evaluating Label Quality</h2>
+
+      <p>
+        Even after labels are assigned, errors can creep in. OCR mistakes,
+        unusual receipt formats, and edge cases all contribute to mislabeled
+        words. I use a two-tier evaluation system to catch these issues.
+      </p>
+
+      <p>
+        The first tier is fast and deterministic. By analyzing thousands of
+        receipts, the system learns spatial patterns: where labels typically
+        appear, how they relate to each other geometrically, and what
+        combinations are normal. When a label appears in an unexpected position,
+        it gets flagged for review.
+      </p>
+
+      <p>
+        Flagged issues then go through specialized LLM evaluators that understand
+        context. Three subagents work in parallel: one validates currency
+        formats and line item structure, another verifies metadata against
+        Google Places data, and a third checks that the math adds up.
+      </p>
+
+      <ClientOnly>
+        <LabelEvaluatorVisualization />
+      </ClientOnly>
 
       <h1>What I Learned</h1>
 
