@@ -13,6 +13,14 @@ import torch
 import torch.nn as nn
 
 
+class CoreMLExportError(Exception):
+    """Base exception for CoreML export errors."""
+
+
+class MissingDependencyError(CoreMLExportError):
+    """Raised when required dependencies are not installed."""
+
+
 class LayoutLMWrapper(nn.Module):
     """Wrapper to trace LayoutLM with explicit input order."""
 
@@ -64,10 +72,8 @@ def export_coreml(
             LayoutLMTokenizerFast,
         )
     except ImportError as e:
-        raise ImportError(
-            "coremltools and transformers are required for CoreML export. "
-            "Install with: pip install coremltools transformers"
-        ) from e
+        msg = "coremltools and transformers required: pip install coremltools transformers"
+        raise MissingDependencyError(msg) from e
 
     checkpoint_path = Path(checkpoint_dir)
     output_path = Path(output_dir)
@@ -267,6 +273,8 @@ def export_from_s3(
     model_name: str = "LayoutLM",
     local_cache: Optional[str] = None,
     quantize: Optional[str] = None,
+    max_seq_length: int = 512,
+    min_seq_length: int = 1,
 ) -> str:
     """Export a model from S3 to CoreML format.
 
@@ -276,6 +284,8 @@ def export_from_s3(
         model_name: Name for the .mlpackage file.
         local_cache: Local directory to cache downloaded model.
         quantize: Quantization mode: None, "float16", "int8", or "int4".
+        max_seq_length: Maximum sequence length for model.
+        min_seq_length: Minimum sequence length for model.
 
     Returns:
         Path to the created model bundle directory.
@@ -286,9 +296,8 @@ def export_from_s3(
     try:
         import boto3
     except ImportError as e:
-        raise ImportError(
-            "boto3 is required for S3 download. Install with: pip install boto3"
-        ) from e
+        msg = "boto3 required for S3 download: pip install boto3"
+        raise MissingDependencyError(msg) from e
 
     # Parse S3 URI
     parsed = urlparse(s3_uri)
@@ -330,6 +339,8 @@ def export_from_s3(
             output_dir=output_dir,
             model_name=model_name,
             quantize=quantize,
+            max_seq_length=max_seq_length,
+            min_seq_length=min_seq_length,
         )
     finally:
         # Clean up temp directory if we created one
