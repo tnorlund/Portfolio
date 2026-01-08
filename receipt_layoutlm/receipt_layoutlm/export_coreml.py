@@ -64,7 +64,17 @@ def export_coreml(
 
     Returns:
         Path to the created model bundle directory.
+
+    Raises:
+        ValueError: If min_seq_length > max_seq_length.
+        MissingDependencyError: If coremltools or transformers not installed.
     """
+    if min_seq_length > max_seq_length:
+        raise ValueError(
+            f"min_seq_length ({min_seq_length}) cannot be greater than "
+            f"max_seq_length ({max_seq_length})"
+        )
+
     try:
         import coremltools as ct
         from transformers import (
@@ -99,10 +109,11 @@ def export_coreml(
     wrapper.eval()
 
     # Create sample inputs for tracing
-    # Use a typical sequence length for tracing
+    # Use a typical sequence length for tracing (128 is a good middle ground between min and max)
     sample_seq_len = 128
     sample_input_ids = torch.randint(0, tokenizer.vocab_size, (1, sample_seq_len))
     sample_attention_mask = torch.ones(1, sample_seq_len, dtype=torch.long)
+    # LayoutLM uses normalized coordinates in [0, 1000] range for bboxes
     sample_bbox = torch.randint(0, 1001, (1, sample_seq_len, 4))
     sample_token_type_ids = torch.zeros(1, sample_seq_len, dtype=torch.long)
 
