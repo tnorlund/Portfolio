@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Tuple
 
 from receipt_agent.agents.label_evaluator.state import (
     ConstellationGeometry,
+    DrillDownWord,
     EvaluationIssue,
     LabelPairGeometry,
     MerchantPatterns,
@@ -133,8 +134,8 @@ def check_unexpected_label_pair(
         # times)
         if label == other_label:
             # If this label type never appears multiple times in training data,
-            # flag it
-            if label not in patterns.labels_with_same_line_multiplicity:
+            # flag it. Use receipt-wide multiplicity (not same-line).
+            if label not in patterns.labels_with_receipt_multiplicity:
                 # Only flag if we have good training data
                 if patterns.receipt_count >= 5:
                     return EvaluationIssue(
@@ -659,6 +660,48 @@ def check_constellation_anomaly(
         z_score = deviation / expected.std_deviation
         if z_score > threshold_std:
             constellation_str = " + ".join(constellation)
+
+            # Compute drill-down for all words with the flagged label
+            # This identifies which specific word(s) are likely culprits
+            drill_down_words: List[DrillDownWord] = []
+            culprit_threshold = threshold_std * expected.std_deviation
+
+            for other_ctx in all_contexts:
+                if (
+                    other_ctx.current_label is None
+                    or other_ctx.current_label.label != label
+                ):
+                    continue
+
+                # Get this word's actual offset from constellation centroid
+                word_centroid = other_ctx.word.calculate_centroid()
+                word_offset = (
+                    word_centroid[0] - actual_centroid[0],
+                    word_centroid[1] - actual_centroid[1],
+                )
+
+                # Calculate deviation from expected position
+                word_deviation = math.sqrt(
+                    (word_offset[0] - expected.mean_dx) ** 2
+                    + (word_offset[1] - expected.mean_dy) ** 2
+                )
+
+                drill_down_words.append(
+                    DrillDownWord(
+                        word_id=other_ctx.word.word_id,
+                        line_id=other_ctx.word.line_id,
+                        text=other_ctx.word.text,
+                        position=(other_ctx.normalized_x, other_ctx.normalized_y),
+                        expected_offset=(expected.mean_dx, expected.mean_dy),
+                        actual_offset=word_offset,
+                        deviation=word_deviation,
+                        is_culprit=word_deviation > culprit_threshold,
+                    )
+                )
+
+            # Sort by deviation descending (highest deviation first)
+            drill_down_words.sort(key=lambda w: w.deviation, reverse=True)
+
             return EvaluationIssue(
                 issue_type="constellation_anomaly",
                 word=ctx.word,
@@ -676,6 +719,7 @@ def check_constellation_anomaly(
                     "group."
                 ),
                 word_context=ctx,
+                drill_down=drill_down_words,
             )
 
     return None
@@ -1164,30 +1208,14 @@ def evaluate_word_contexts(
     for ctx in word_contexts:
         if ctx.current_label:
             # Check labeled words
-            issue = check_position_anomaly(ctx, patterns)
-            if issue:
-                issues.append(issue)
-                continue  # One issue per word
+            # NOTE: Removed noisy checks with high false positive rates:
+            # - check_position_anomaly (position_anomaly)
+            # - check_unexpected_label_pair (unexpected_label_pair: 100% FP)
+            # - check_geometric_anomaly (geometric_anomaly: 89% FP)
+            # - check_constellation_anomaly (constellation_anomaly: 89% FP)
+            # - check_unexpected_label_multiplicity (89% FP, inside check_unexpected_label_pair)
 
-            # Check for unexpected label pair combinations first
-            issue = check_unexpected_label_pair(ctx, word_contexts, patterns)
-            if issue:
-                issues.append(issue)
-                continue
-
-            # Use geometric anomaly detection instead of simple same-line
-            # conflict
-            issue = check_geometric_anomaly(ctx, word_contexts, patterns)
-            if issue:
-                issues.append(issue)
-                continue
-
-            # Check constellation anomaly (holistic n-tuple relationships)
-            issue = check_constellation_anomaly(ctx, word_contexts, patterns)
-            if issue:
-                issues.append(issue)
-                continue
-
+            # Keep text-label conflict check (catches same text with different labels)
             issue = check_text_label_conflict(ctx, word_contexts, patterns)
             if issue:
                 issues.append(issue)
@@ -1195,6 +1223,7 @@ def evaluate_word_contexts(
         else:
             # Check unlabeled words
             # First check same-line cluster heuristic (requires visual_lines)
+            # This has the best signal: 46% true positive rate
             if visual_lines:
                 issue = check_missing_label_in_cluster(ctx, visual_lines)
                 if issue:
@@ -1202,10 +1231,38 @@ def evaluate_word_contexts(
                     continue
 
             # Then check constellation-based missing label detection
+            # This has 22% true positive rate - decent signal
             issue = check_missing_constellation_member(
                 ctx, word_contexts, patterns
             )
             if issue:
                 issues.append(issue)
+
+    # Cap issues per type to prevent runaway processing on abnormal receipts
+    # (e.g., 200 geometric_anomaly issues all for the same systematic reason)
+    MAX_ISSUES_PER_TYPE = 20
+
+    from collections import Counter
+
+    type_counts = Counter(issue.issue_type for issue in issues)
+    if any(count > MAX_ISSUES_PER_TYPE for count in type_counts.values()):
+        capped_issues: List[EvaluationIssue] = []
+        type_seen: dict[str, int] = {}
+
+        for issue in issues:
+            issue_type = issue.issue_type
+            type_seen[issue_type] = type_seen.get(issue_type, 0) + 1
+
+            if type_seen[issue_type] <= MAX_ISSUES_PER_TYPE:
+                capped_issues.append(issue)
+
+        logger.info(
+            "Capped issues from %d to %d (max %d per type). Original counts: %s",
+            len(issues),
+            len(capped_issues),
+            MAX_ISSUES_PER_TYPE,
+            dict(type_counts),
+        )
+        return capped_issues
 
     return issues

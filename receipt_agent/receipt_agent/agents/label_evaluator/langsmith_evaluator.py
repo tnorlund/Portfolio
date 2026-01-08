@@ -96,6 +96,7 @@ class EvaluationQualityMetrics:
     total_issues: int = 0
     issues_by_type: dict[str, int] = field(default_factory=dict)
     total_words: int = 0
+    constellation_culprits: int = 0  # Count of drill-down culprits identified
 
     @property
     def issue_rate(self) -> float:
@@ -192,15 +193,22 @@ def _evaluate_prediction_quality(
     # Run evaluation (same checks as Step Function)
     issues = evaluate_word_contexts(word_contexts, patterns, visual_lines)
 
-    # Aggregate by type
+    # Aggregate by type and count drill-down culprits
     issues_by_type: dict[str, int] = defaultdict(int)
+    constellation_culprits = 0
     for issue in issues:
         issues_by_type[issue.issue_type] += 1
+        # Count culprits from drill-down (constellation anomalies)
+        if issue.drill_down:
+            constellation_culprits += sum(
+                1 for w in issue.drill_down if w.is_culprit
+            )
 
     return EvaluationQualityMetrics(
         total_issues=len(issues),
         issues_by_type=dict(issues_by_type),
         total_words=len(word_contexts),
+        constellation_culprits=constellation_culprits,
     )
 
 
@@ -311,6 +319,7 @@ def label_quality_evaluator(
             "constellation_anomaly_rate": quality.get_issue_rate(
                 "constellation_anomaly"
             ),
+            "constellation_culprits": quality.constellation_culprits,
         },
     }
 

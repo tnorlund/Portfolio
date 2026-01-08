@@ -1,14 +1,18 @@
 """Evaluate labels with per-receipt tracing.
 
-This handler creates a ROOT trace for each receipt, not a child of an
-execution-level trace. Each receipt gets its own complete trace in LangSmith
-with metadata including image_id, receipt_id, and merchant_name.
+This handler creates a ROOT trace for each receipt. Each receipt gets its own
+complete trace in LangSmith that shows the full pipeline:
 
-The trace includes reference spans for:
-- DiscoverPatterns: Line item structure patterns discovered for this merchant
-- ComputePatterns: Merchant-level spatial patterns computed from training data
+ReceiptEvaluation
+├── DiscoverPatterns (historical span from Phase 1 batch computation)
+├── ComputePatterns (historical span from Phase 1 batch computation)
+├── EvaluateLabels (actual geometric anomaly detection)
+└── LLMReview (via separate Lambda, if issues found)
 
-The LLMReview Lambda will join this receipt's trace as a child.
+The pattern computation happens once per merchant in Phase 1 (batch optimization),
+but appears in each receipt's trace with the actual timing from that computation.
+This makes traces look like production (full pipeline per receipt) while still
+benefiting from shared pattern computation in the Step Function.
 """
 
 # pylint: disable=import-outside-toplevel,wrong-import-position
@@ -28,12 +32,14 @@ try:
     # Container environment: tracing.py is in same directory
     from tracing import (
         TRACING_VERSION,
+        TraceContext,
         child_trace,
+        create_historical_span,
         create_receipt_trace,
         flush_langsmith_traces,
     )
 
-    from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+    from utils.s3_helpers import get_merchant_hash, load_json_from_s3, upload_json_to_s3
 
     _tracing_import_source = "container"
 except ImportError:
@@ -48,7 +54,9 @@ except ImportError:
     )
     from tracing import (
         TRACING_VERSION,
+        TraceContext,
         child_trace,
+        create_historical_span,
         create_receipt_trace,
         flush_langsmith_traces,
     )
@@ -60,7 +68,7 @@ except ImportError:
             "lambdas",
         ),
     )
-    from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+    from utils.s3_helpers import get_merchant_hash, load_json_from_s3, upload_json_to_s3
 
     _tracing_import_source = "local"
 
@@ -126,12 +134,28 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         logger.info("LangSmith project set to: %s", langchain_project)
 
     data_s3_key = event.get("data_s3_key")
-    patterns_s3_key = event.get("patterns_s3_key")
-    line_item_patterns_s3_key = event.get("line_item_patterns_s3_key")
     execution_id = event.get("execution_id", "unknown")
     execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     merchant_name = event.get("merchant_name", "unknown")
+
+    # Compute S3 keys from merchant_name if not provided
+    # This enables the two-phase architecture where receipts are processed
+    # independently after all patterns have been computed
+    patterns_s3_key = event.get("patterns_s3_key")
+    line_item_patterns_s3_key = event.get("line_item_patterns_s3_key")
+
+    if merchant_name and merchant_name != "unknown":
+        merchant_hash = get_merchant_hash(merchant_name)
+        if not patterns_s3_key:
+            patterns_s3_key = f"patterns/{execution_id}/{merchant_hash}.json"
+            logger.info("Computed patterns_s3_key from merchant_name: %s", patterns_s3_key)
+        if not line_item_patterns_s3_key:
+            line_item_patterns_s3_key = f"line_item_patterns/{merchant_hash}.json"
+            logger.info(
+                "Computed line_item_patterns_s3_key from merchant_name: %s",
+                line_item_patterns_s3_key,
+            )
 
     # Check if tracing is enabled
     enable_tracing = event.get("enable_tracing", True)
@@ -199,13 +223,16 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             merchant_name=merchant_name,
             name="ReceiptEvaluation",
             inputs={
-                "data_s3_key": data_s3_key,
-                "patterns_s3_key": patterns_s3_key,
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "merchant_name": merchant_name,
                 "word_count": len(words),
                 "label_count": len(labels),
             },
             metadata={
                 "execution_id": execution_id,
+                "data_s3_key": data_s3_key,
+                "patterns_s3_key": patterns_s3_key,
             },
             enable_tracing=enable_tracing,
         )
@@ -225,8 +252,6 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             )
 
         # Create a TraceContext for child_trace compatibility
-        from tracing import TraceContext
-
         trace_ctx = TraceContext(
             run_tree=receipt_trace.run_tree,
             headers=(
@@ -238,43 +263,117 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             root_run_id=receipt_trace.root_run_id,
         )
 
-        # 3. Add reference span for DiscoverPatterns (line item structure)
-        if line_item_patterns_s3_key and trace_ctx.run_tree:
-            with child_trace(
-                "DiscoverPatterns",
-                trace_ctx,
-                metadata={
-                    "patterns_s3_key": line_item_patterns_s3_key,
-                    "merchant_name": merchant_name,
-                    "note": "Line item structure patterns discovered for merchant",
-                },
-            ):
-                logger.info(
-                    "Added DiscoverPatterns reference: %s",
-                    line_item_patterns_s3_key,
-                )
+        # 3. Load line item patterns (from Phase 1 DiscoverPatterns) and create historical span
+        # The _trace_metadata contains timing from when patterns were discovered
+        line_item_patterns_data = None
+        if line_item_patterns_s3_key:
+            logger.info(
+                "Loading line item patterns from s3://%s/%s",
+                batch_bucket,
+                line_item_patterns_s3_key,
+            )
+            line_item_patterns_data = load_json_from_s3(
+                s3, batch_bucket, line_item_patterns_s3_key, logger=logger, allow_missing=True
+            )
 
-        # 4. Load pre-computed merchant patterns from S3
+            if line_item_patterns_data:
+                # Create historical DiscoverPatterns span using stored timing
+                discovery_metadata = line_item_patterns_data.get("_trace_metadata", {})
+                if discovery_metadata.get("discovery_start_time"):
+                    # Extract discovered patterns for rich output
+                    discovered_patterns = line_item_patterns_data.get("patterns", {})
+                    pattern_categories = list(discovered_patterns.keys()) if discovered_patterns else []
+                    line_item_labels = line_item_patterns_data.get("line_item_labels", [])
+
+                    create_historical_span(
+                        parent_ctx=trace_ctx,
+                        name="DiscoverPatterns",
+                        start_time_iso=discovery_metadata["discovery_start_time"],
+                        end_time_iso=discovery_metadata["discovery_end_time"],
+                        duration_seconds=discovery_metadata.get("discovery_duration_seconds", 0),
+                        run_type="llm",
+                        inputs={
+                            "merchant_name": merchant_name,
+                            "sample_receipt_count": discovery_metadata.get("sample_receipt_count", 0),
+                            "llm_model": discovery_metadata.get("llm_model", "unknown"),
+                        },
+                        outputs={
+                            "status": discovery_metadata.get("discovery_status", "unknown"),
+                            "pattern_categories": pattern_categories,
+                            "line_item_labels": line_item_labels,
+                            "patterns_discovered": len(pattern_categories),
+                        },
+                        metadata={
+                            "llm_call_duration_seconds": discovery_metadata.get("llm_call_duration_seconds", 0),
+                            "load_receipts_duration_seconds": discovery_metadata.get("load_receipts_duration_seconds", 0),
+                            "build_prompt_duration_seconds": discovery_metadata.get("build_prompt_duration_seconds", 0),
+                            "batch_computed": True,
+                        },
+                    )
+                    logger.info(
+                        "Added DiscoverPatterns historical span (%.2fs, %d categories)",
+                        discovery_metadata.get("discovery_duration_seconds", 0),
+                        len(pattern_categories),
+                    )
+
+        # 4. Load geometric patterns (from Phase 1 ComputePatterns) and create historical span
+        # Patterns were computed in Phase 1 (ComputeAllPatterns) - we just load them here.
         merchant_patterns = None
+        patterns_data = None
         if patterns_s3_key:
-            with child_trace(
-                "ComputePatterns",
-                trace_ctx,
-                metadata={
-                    "patterns_s3_key": patterns_s3_key,
-                    "merchant_name": merchant_name,
-                },
-            ):
-                logger.info(
-                    "Loading patterns from s3://%s/%s",
-                    batch_bucket,
-                    patterns_s3_key,
-                )
-                patterns_data = load_json_from_s3(
-                    s3, batch_bucket, patterns_s3_key, logger=logger
-                )
-                merchant_patterns = deserialize_patterns(patterns_data)
+            logger.info(
+                "Loading patterns from s3://%s/%s",
+                batch_bucket,
+                patterns_s3_key,
+            )
+            # Use allow_missing=True for graceful fallback when patterns don't exist
+            patterns_data = load_json_from_s3(
+                s3, batch_bucket, patterns_s3_key, logger=logger, allow_missing=True
+            )
 
+            if patterns_data:
+                # Create historical ComputePatterns span using stored timing
+                computation_metadata = patterns_data.get("_trace_metadata", {})
+                if computation_metadata.get("computation_start_time"):
+                    # Extract constellation/geometry pattern info for rich output
+                    label_pair_geometry = patterns_data.get("label_pair_geometry", {})
+                    label_geometry = patterns_data.get("label_geometry", {})
+                    constellation_names = list(label_pair_geometry.keys()) if label_pair_geometry else []
+                    individual_labels = list(label_geometry.keys()) if label_geometry else []
+
+                    create_historical_span(
+                        parent_ctx=trace_ctx,
+                        name="ComputePatterns",
+                        start_time_iso=computation_metadata["computation_start_time"],
+                        end_time_iso=computation_metadata["computation_end_time"],
+                        duration_seconds=computation_metadata.get("computation_duration_seconds", 0),
+                        run_type="chain",
+                        inputs={
+                            "merchant_name": merchant_name,
+                            "training_receipt_count": computation_metadata.get("training_receipt_count", 0),
+                        },
+                        outputs={
+                            "status": computation_metadata.get("computation_status", "unknown"),
+                            "constellation_patterns": constellation_names,
+                            "constellation_count": len(constellation_names),
+                            "individual_label_patterns": individual_labels,
+                            "individual_label_count": len(individual_labels),
+                        },
+                        metadata={
+                            "load_data_duration_seconds": computation_metadata.get("load_data_duration_seconds", 0),
+                            "compute_patterns_duration_seconds": computation_metadata.get("compute_patterns_duration_seconds", 0),
+                            "batch_computed": True,
+                        },
+                    )
+                    logger.info(
+                        "Added ComputePatterns historical span (%.2fs, %d constellations, %d labels)",
+                        computation_metadata.get("computation_duration_seconds", 0),
+                        len(constellation_names),
+                        len(individual_labels),
+                    )
+
+                # Deserialize patterns for evaluation
+                merchant_patterns = deserialize_patterns(patterns_data)
                 if merchant_patterns:
                     logger.info(
                         "Loaded patterns for %s (%s receipts)",
@@ -282,7 +381,13 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                         merchant_patterns.receipt_count,
                     )
                 else:
-                    logger.info("No patterns available for merchant")
+                    logger.info("Patterns file exists but no patterns available")
+            else:
+                logger.warning(
+                    "No patterns found at s3://%s/%s - proceeding without patterns",
+                    batch_bucket,
+                    patterns_s3_key,
+                )
 
         # 5. Create pre-loaded EvaluatorState with patterns
         from receipt_agent.agents.label_evaluator.state import EvaluatorState
@@ -299,16 +404,23 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         )
 
         # 6. Run compute-only graph with child trace
+        pattern_count = merchant_patterns.receipt_count if merchant_patterns else 0
         with child_trace(
             "EvaluateLabels",
             trace_ctx,
-            metadata={
+            inputs={
                 "image_id": image_id,
                 "receipt_id": receipt_id,
+                "merchant_name": merchant_name,
                 "word_count": len(words),
                 "label_count": len(labels),
+                "pattern_receipt_count": pattern_count,
             },
-        ):
+            metadata={
+                "data_s3_key": data_s3_key,
+                "patterns_s3_key": patterns_s3_key,
+            },
+        ) as eval_ctx:
             logger.info("Running compute-only graph...")
             compute_start = time.time()
 
@@ -326,6 +438,37 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 compute_time,
                 result.get("issues_found", 0),
             )
+
+            # Add compute_time_seconds to result for S3 storage
+            result["compute_time_seconds"] = round(compute_time, 3)
+
+            # Set rich outputs for visualization
+            eval_ctx.set_outputs({
+                "issues_found": result.get("issues_found", 0),
+                "compute_time_seconds": round(compute_time, 3),
+                "flagged_words": result.get("flagged_words", []),
+                "issues": result.get("issues", []),
+                # Receipt context for visualization
+                "receipt_summary": {
+                    "word_count": len(words),
+                    "label_count": len(labels),
+                    "merchant_name": merchant_name,
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                },
+                # Pattern info used for analysis
+                "patterns_used": {
+                    "label_pair_count": (
+                        len(patterns_data.get("label_pair_geometry", {}))
+                        if patterns_data else 0
+                    ),
+                    "constellation_count": (
+                        len(patterns_data.get("constellation_geometry", {}))
+                        if patterns_data else 0
+                    ),
+                    "pattern_receipt_count": pattern_count,
+                },
+            })
 
         # 7. Upload results to S3
         results_s3_key = f"results/{execution_id}/{image_id}_{receipt_id}.json"
@@ -390,6 +533,14 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         return output
 
     except Exception as e:
+        # Re-raise rate limit errors for Step Function retry
+        from receipt_agent.utils.llm_factory import AllProvidersFailedError
+        from receipt_agent.utils.ollama_rate_limit import OllamaRateLimitError
+
+        if isinstance(e, (OllamaRateLimitError, AllProvidersFailedError)):
+            logger.error("Rate limit error, propagating for Step Function retry: %s", e)
+            raise OllamaRateLimitError(f"Rate limit error: {e}") from e
+
         logger.error("Error evaluating labels: %s", e, exc_info=True)
 
         # Log failure metrics

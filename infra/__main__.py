@@ -1209,15 +1209,21 @@ pulumi.export("emr_application_id", emr_analytics.emr_application.id)
 pulumi.export("emr_analytics_bucket", emr_analytics.analytics_bucket.id)
 pulumi.export("emr_artifacts_bucket", emr_analytics.artifacts_bucket.id)
 
-# Label Evaluator Step Function (with LangSmith observability)
+# Label Evaluator Step Function (with LangSmith observability + EMR analytics)
 label_evaluator_sf = LabelEvaluatorStepFunction(
     f"label-evaluator-{stack}",
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-    max_concurrency=3,  # Limited to 3 to avoid Ollama rate limits
+    max_concurrency=8,  # Increased from 3 - OpenRouter fallback handles rate limits
     batch_size=25,  # 25 receipts per batch
+    # EMR Serverless Analytics integration
+    emr_application_id=emr_analytics.emr_application.id,
+    emr_job_execution_role_arn=emr_analytics.emr_job_role.arn,
+    langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
+    analytics_output_bucket=emr_analytics.analytics_bucket.id,
+    spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
 )
 
 pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
@@ -1283,3 +1289,55 @@ pulumi.export(
     "label_validation_timeline_cache_generator_lambda",
     timeline_cache_generator_lambda.name,
 )
+
+# Label Evaluator Visualization Cache (EMR Serverless + Step Functions)
+from routes.label_evaluator_viz_cache.infra import (
+    create_label_evaluator_viz_cache,
+)
+
+# Note: langsmith_bulk_export is created earlier (before label_evaluator_sf)
+# to support EMR Serverless analytics integration
+
+# Create API Gateway route for label evaluator visualization
+if hasattr(api_gateway, "api"):
+    # Import layers for viz cache generator
+    from infra.components.lambda_layer import dynamo_layer, langsmith_layer
+
+    # Create label evaluator visualization cache (reads from LangSmith exports + DynamoDB)
+    label_evaluator_viz_cache = create_label_evaluator_viz_cache(
+        langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
+        langsmith_export_prefix="traces//export_id=2dfc1459-1ae5-4d73-85a6-613d8eac8f87/",
+        batch_bucket=label_evaluator_sf.batch_bucket_name,
+        dynamodb_table_name=dynamodb_table.name,
+        dynamodb_table_arn=dynamodb_table.arn,
+        receipt_dynamo_layer_arn=dynamo_layer.arn,
+        receipt_langsmith_layer_arn=langsmith_layer.arn,
+    )
+    pulumi.export("label_evaluator_viz_cache_bucket", label_evaluator_viz_cache.cache_bucket.id)
+
+    # Label evaluator visualization endpoint
+    integration_viz = aws.apigatewayv2.Integration(
+        "label_evaluator_viz_cache_integration",
+        api_id=api_gateway.api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=label_evaluator_viz_cache.api_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    route_viz = aws.apigatewayv2.Route(
+        "label_evaluator_viz_cache_route",
+        api_id=api_gateway.api.id,
+        route_key="GET /label_evaluator/visualization",
+        target=integration_viz.id.apply(lambda id: f"integrations/{id}"),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+    aws.lambda_.Permission(
+        "label_evaluator_viz_lambda_permission",
+        action="lambda:InvokeFunction",
+        function=label_evaluator_viz_cache.api_lambda.name,
+        principal="apigateway.amazonaws.com",
+        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+    )

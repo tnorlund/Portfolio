@@ -92,9 +92,11 @@ from receipt_agent.agents.label_evaluator.llm_review import (
     assemble_receipt_text,
 )
 from receipt_agent.prompts.label_evaluator import (
+    LLMResponseParseError,
     build_receipt_context_prompt,
     parse_batched_llm_response,
 )
+from receipt_agent.prompts.structured_outputs import BatchedReviewResponse
 from receipt_agent.utils.chroma_helpers import (
     compute_label_distribution,
     compute_merchant_breakdown,
@@ -162,7 +164,18 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     batch_index = event.get("batch_index", 0)
     llm_batch_index = event.get("llm_batch_index", 0)
     dry_run = event.get("dry_run", False)
+
+    # Compute line_item_patterns_s3_key from merchant_name if not provided
+    # This enables the two-phase architecture where receipts are processed
+    # independently after all patterns have been computed
     line_item_patterns_s3_key = event.get("line_item_patterns_s3_key")
+    if not line_item_patterns_s3_key and merchant_name and merchant_name != "Unknown":
+        merchant_hash = get_merchant_hash(merchant_name)
+        line_item_patterns_s3_key = f"line_item_patterns/{merchant_hash}.json"
+        logger.info(
+            "Computed line_item_patterns_s3_key from merchant_name: %s",
+            line_item_patterns_s3_key,
+        )
 
     # Receipt identification (one batch per receipt)
     image_id = event.get("image_id")
@@ -522,23 +535,90 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                             line_item_patterns=line_item_patterns,
                         )
 
-                        # LLM call with native LangChain tracing
-                        response = llm_invoker.invoke(
-                            [HumanMessage(content=prompt)],
-                            config={
-                                "run_name": f"llm_review:{len(issues_with_context)}_issues",
-                                "metadata": {
-                                    "issue_count": len(issues_with_context),
-                                    "prompt_length": len(prompt),
-                                },
-                            },
-                        )
-                        llm_call_count += 1
+                        # LLM call with structured output (preferred) or text parsing fallback
+                        max_retries = 3
+                        chunk_reviews = None
+                        use_structured = hasattr(llm_invoker, "with_structured_output")
 
-                        chunk_reviews = parse_batched_llm_response(
-                            response.content.strip(),
-                            expected_count=len(issues_with_context),
-                        )
+                        for attempt in range(max_retries):
+                            llm_call_count += 1
+
+                            if use_structured:
+                                # Try structured output first (API-level schema enforcement)
+                                try:
+                                    structured_invoker = llm_invoker.with_structured_output(
+                                        BatchedReviewResponse
+                                    )
+                                    response: BatchedReviewResponse = structured_invoker.invoke(
+                                        [HumanMessage(content=prompt)],
+                                        config={
+                                            "run_name": f"llm_review_structured:{len(issues_with_context)}_issues",
+                                            "metadata": {
+                                                "issue_count": len(issues_with_context),
+                                                "prompt_length": len(prompt),
+                                                "attempt": attempt + 1,
+                                                "structured": True,
+                                            },
+                                        },
+                                    )
+                                    chunk_reviews = response.to_ordered_list(
+                                        len(issues_with_context)
+                                    )
+                                    logger.debug(
+                                        "Structured output succeeded with %d reviews",
+                                        len(chunk_reviews),
+                                    )
+                                    break  # Success - exit retry loop
+                                except Exception as struct_err:
+                                    logger.warning(
+                                        "Structured output failed (attempt %d/%d), "
+                                        "falling back to text parsing: %s",
+                                        attempt + 1,
+                                        max_retries,
+                                        struct_err,
+                                    )
+                                    # Fall through to text parsing
+
+                            # Text parsing fallback
+                            response = llm_invoker.invoke(
+                                [HumanMessage(content=prompt)],
+                                config={
+                                    "run_name": f"llm_review:{len(issues_with_context)}_issues",
+                                    "metadata": {
+                                        "issue_count": len(issues_with_context),
+                                        "prompt_length": len(prompt),
+                                        "attempt": attempt + 1,
+                                        "structured": False,
+                                    },
+                                },
+                            )
+
+                            try:
+                                chunk_reviews = parse_batched_llm_response(
+                                    response.content.strip(),
+                                    expected_count=len(issues_with_context),
+                                    raise_on_parse_error=True,
+                                )
+                                break  # Success - exit retry loop
+                            except LLMResponseParseError as parse_err:
+                                if attempt < max_retries - 1:
+                                    logger.warning(
+                                        "JSON parse failed (attempt %d/%d), retrying: %s",
+                                        attempt + 1,
+                                        max_retries,
+                                        parse_err,
+                                    )
+                                else:
+                                    logger.warning(
+                                        "JSON parse failed after %d attempts, using fallback",
+                                        max_retries,
+                                    )
+                                    # Final attempt failed - use fallback
+                                    chunk_reviews = parse_batched_llm_response(
+                                        response.content.strip(),
+                                        expected_count=len(issues_with_context),
+                                        raise_on_parse_error=False,
+                                    )
 
                         # Store results
                         for i, review_result in enumerate(chunk_reviews):
@@ -614,6 +694,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
 
                 rate_limit_stats = llm_invoker.get_stats()
 
+                # Calculate duration for visualization
+                review_duration_seconds = round(time.time() - start_time, 3)
+
                 reviewed_data = {
                     "execution_id": execution_id,
                     "merchant_name": merchant_name,
@@ -624,6 +707,7 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                     "decisions": dict(decisions),
                     "issues": reviewed_issues,
                     "rate_limit_stats": rate_limit_stats,
+                    "duration_seconds": review_duration_seconds,
                 }
 
                 upload_json_to_s3(
@@ -691,6 +775,8 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                 "reviewed_issues_s3_key": reviewed_s3_key,
                 "rate_limit_stats": rate_limit_stats,
                 "dry_run": dry_run,
+                # Full reviewed issues for visualization
+                "reviewed_issues": reviewed_issues,
             }
             if apply_stats:
                 result["apply_stats"] = apply_stats
@@ -698,6 +784,13 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             trace_ctx.set_outputs(result)
 
         except Exception as e:
+            # Re-raise rate limit errors for Step Function retry
+            from receipt_agent.utils.llm_factory import AllProvidersFailedError
+
+            if isinstance(e, (OllamaRateLimitError, AllProvidersFailedError)):
+                logger.error("Rate limit error, propagating for Step Function retry: %s", e)
+                raise OllamaRateLimitError(f"Rate limit error: {e}") from e
+
             logger.error("Error in LLM review batch: %s", e, exc_info=True)
 
             from utils.emf_metrics import emf_metrics

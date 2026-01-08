@@ -655,6 +655,87 @@ def log_trace_event(
         logger.warning("Failed to log trace event: %s", e)
 
 
+def create_historical_span(
+    parent_ctx: TraceContext,
+    name: str,
+    start_time_iso: str,
+    end_time_iso: str,
+    duration_seconds: float,
+    run_type: str = "chain",
+    inputs: Optional[dict] = None,
+    outputs: Optional[dict] = None,
+    metadata: Optional[dict] = None,
+) -> None:
+    """Create a completed child span with historical timing.
+
+    Use this to add spans to a trace that represent work done in a previous
+    step (e.g., pattern computation done in Phase 1, added to receipt traces
+    in Phase 2). The span appears in the trace with the actual timing from
+    when the work was originally done.
+
+    Args:
+        parent_ctx: Parent TraceContext to attach the span to
+        name: Name for the span (e.g., "DiscoverPatterns")
+        start_time_iso: ISO timestamp when work started (from stored metadata)
+        end_time_iso: ISO timestamp when work ended (from stored metadata)
+        duration_seconds: Duration in seconds (for metadata)
+        run_type: Type of run ("chain", "llm", "tool", etc.)
+        inputs: Optional inputs to capture
+        outputs: Optional outputs to capture
+        metadata: Optional metadata to attach
+    """
+    if not HAS_LANGSMITH or parent_ctx.run_tree is None:
+        logger.debug("Skipping historical span '%s' - no tracing available", name)
+        return
+
+    if not hasattr(parent_ctx.run_tree, "create_child"):
+        logger.warning("Parent run_tree has no create_child method for historical span")
+        return
+
+    try:
+        # Parse ISO timestamps
+        start_dt = datetime.fromisoformat(start_time_iso.replace("Z", "+00:00"))
+        end_dt = datetime.fromisoformat(end_time_iso.replace("Z", "+00:00"))
+
+        # Build metadata with timing info
+        span_metadata = {
+            "duration_seconds": duration_seconds,
+            "historical_span": True,
+            "original_start_time": start_time_iso,
+            "original_end_time": end_time_iso,
+            **(metadata or {}),
+        }
+
+        # Create the child span with historical timing
+        child = parent_ctx.run_tree.create_child(
+            name=name,
+            run_type=run_type,
+            inputs=inputs or {},
+            extra={"metadata": span_metadata},
+            start_time=start_dt,
+        )
+
+        # Set outputs and end time
+        if outputs:
+            child.outputs = outputs
+        child.end_time = end_dt
+
+        # Post the completed span
+        child.post()
+        child.patch()
+
+        logger.info(
+            "[historical_span] Created '%s' (duration=%.2fs, from %s to %s)",
+            name,
+            duration_seconds,
+            start_time_iso[:19],
+            end_time_iso[:19],
+        )
+
+    except Exception as e:
+        logger.warning("Failed to create historical span '%s': %s", name, e)
+
+
 # =============================================================================
 # NEW: Deterministic trace management for Step Functions
 # =============================================================================
@@ -993,6 +1074,174 @@ def end_receipt_trace_by_id(
         logger.warning(
             "Failed to end receipt trace by ID: %s", e, exc_info=True
         )
+
+
+# =============================================================================
+# Per-Merchant Trace Management (Phase 1 - Pattern Computation)
+# =============================================================================
+
+
+def generate_merchant_trace_id(execution_arn: str, merchant_name: str) -> str:
+    """Generate a deterministic trace ID for a merchant's pattern computation.
+
+    Creates a unique trace ID per merchant within an execution, ensuring:
+    - One trace per merchant (not per execution or per receipt)
+    - Safe retries (same ID regenerated)
+    - Proper isolation between merchants
+
+    Args:
+        execution_arn: Step Function execution ARN
+        merchant_name: Name of the merchant
+
+    Returns:
+        Deterministic UUID string for this merchant's trace
+    """
+    parts = [execution_arn, "merchant", merchant_name]
+    return str(uuid.uuid5(TRACE_NAMESPACE, ":".join(parts)))
+
+
+@dataclass
+class MerchantTraceInfo:
+    """Information about a per-merchant trace (Phase 1 pattern computation)."""
+
+    trace_id: str
+    root_run_id: str
+    root_dotted_order: Optional[str] = None
+    run_tree: Optional[Any] = None
+    merchant_name: str = ""
+
+    def to_dict(self) -> dict:
+        """Return trace info for passing through Step Function."""
+        result = {
+            TRACE_ID_KEY: self.trace_id,
+            ROOT_RUN_ID_KEY: self.root_run_id,
+            "merchant_name": self.merchant_name,
+        }
+        if self.root_dotted_order:
+            result[ROOT_DOTTED_ORDER_KEY] = self.root_dotted_order
+        return result
+
+
+def create_merchant_trace(
+    execution_arn: str,
+    merchant_name: str,
+    name: str = "PatternComputation",
+    inputs: Optional[dict] = None,
+    metadata: Optional[dict] = None,
+    tags: Optional[list[str]] = None,
+    enable_tracing: bool = True,
+) -> MerchantTraceInfo:
+    """Create the root trace for a merchant's pattern computation (Phase 1).
+
+    Each merchant gets its own trace for pattern computation, separate from
+    the per-receipt traces in Phase 2. This allows:
+    - Clear visibility into pattern learning time per merchant
+    - Separation of concerns: pattern computation vs receipt evaluation
+    - Easy filtering by merchant_name in LangSmith
+
+    Call this in DiscoverPatterns Lambda to create the merchant's root trace.
+
+    Args:
+        execution_arn: Step Function execution ARN (from $$.Execution.Id)
+        merchant_name: Name of the merchant
+        name: Name for the root trace (default: "PatternComputation")
+        inputs: Optional inputs to capture
+        metadata: Optional additional metadata
+        tags: Optional tags
+        enable_tracing: If False, skip trace creation (default: True)
+
+    Returns:
+        MerchantTraceInfo with trace_id, root_run_id, and run_tree
+    """
+    trace_id = generate_merchant_trace_id(execution_arn, merchant_name)
+    root_run_id = trace_id  # Root run ID must equal trace_id for LangSmith
+
+    # Build base trace info (returned even if tracing disabled)
+    base_info = MerchantTraceInfo(
+        trace_id=trace_id,
+        root_run_id=root_run_id,
+        merchant_name=merchant_name,
+    )
+
+    if not enable_tracing:
+        logger.info("Tracing disabled, skipping merchant trace creation")
+        return base_info
+
+    if not HAS_LANGSMITH or _RunTree is None:
+        logger.info("LangSmith not available, returning empty merchant trace info")
+        return base_info
+
+    # Build metadata with merchant identification
+    trace_metadata = {
+        "merchant_name": merchant_name,
+        "execution_arn": execution_arn,
+        "phase": "pattern_computation",
+        **(metadata or {}),
+    }
+
+    trace_tags = list(tags) if tags else []
+    trace_tags.extend(["step-function", "label-evaluator", "phase-1", "per-merchant"])
+
+    logger.info(
+        "Creating merchant trace: %s (merchant=%s, trace_id=%s)",
+        name,
+        merchant_name,
+        trace_id[:8],
+    )
+
+    try:
+        run_tree = _RunTree(
+            id=root_run_id,
+            trace_id=trace_id,
+            name=name,
+            run_type="chain",
+            inputs=inputs or {},
+            extra={"metadata": trace_metadata},
+            tags=trace_tags,
+        )
+        run_tree.post()
+
+        root_dotted_order = getattr(run_tree, "dotted_order", None)
+        logger.info(
+            "Merchant trace created with dotted_order=%s",
+            root_dotted_order[:30] if root_dotted_order else "None",
+        )
+
+        return MerchantTraceInfo(
+            trace_id=trace_id,
+            root_run_id=root_run_id,
+            root_dotted_order=root_dotted_order,
+            run_tree=run_tree,
+            merchant_name=merchant_name,
+        )
+
+    except Exception as e:
+        logger.warning("Failed to create merchant trace: %s", e, exc_info=True)
+        return base_info
+
+
+def end_merchant_trace(
+    trace_info: MerchantTraceInfo,
+    outputs: Optional[dict] = None,
+) -> None:
+    """End the merchant trace.
+
+    Call this after all pattern computation is complete for the merchant.
+    """
+    if trace_info.run_tree is None:
+        return
+
+    try:
+        if outputs:
+            trace_info.run_tree.outputs = outputs
+        trace_info.run_tree.end()
+        trace_info.run_tree.patch()
+        logger.info(
+            "Merchant trace ended (merchant=%s)",
+            trace_info.merchant_name,
+        )
+    except Exception as e:
+        logger.warning("Failed to end merchant trace: %s", e)
 
 
 @contextmanager

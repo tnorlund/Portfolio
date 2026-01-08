@@ -560,15 +560,83 @@ def evaluate_financial_math(
         merchant_name=merchant_name,
     )
 
-    try:
-        response = llm.invoke(prompt)
-        response_text = (
-            response.content if hasattr(response, "content") else str(response)
-        )
+    # Try structured output first, fall back to text parsing
+    max_retries = 3
+    num_issues = len(math_issues)
+    use_structured = hasattr(llm, "with_structured_output")
 
-        # Step 3: Parse response
+    try:
+        decisions = None
+
+        for attempt in range(max_retries):
+            try:
+                if use_structured:
+                    try:
+                        structured_llm = llm.with_structured_output(
+                            FinancialEvaluationResponse
+                        )
+                        response: FinancialEvaluationResponse = structured_llm.invoke(
+                            prompt
+                        )
+                        decisions = response.to_ordered_list(num_issues)
+                        logger.debug(
+                            "Structured output succeeded with %d evaluations",
+                            len(decisions),
+                        )
+                        break  # Success
+                    except Exception as struct_err:
+                        logger.warning(
+                            "Structured output failed (attempt %d), "
+                            "falling back to text: %s",
+                            attempt + 1,
+                            struct_err,
+                        )
+                        # Fall through to text parsing
+
+                # Text parsing fallback
+                response = llm.invoke(prompt)
+                response_text = (
+                    response.content if hasattr(response, "content") else str(response)
+                )
+                decisions = parse_financial_evaluation_response(
+                    response_text, num_issues
+                )
+
+                # Check if all decisions failed to parse
+                parse_failures = sum(
+                    1
+                    for d in decisions
+                    if "Failed to parse" in d.get("reasoning", "")
+                )
+                if parse_failures == 0:
+                    break
+                elif parse_failures < len(decisions):
+                    logger.info(
+                        "Partial parse success: %d/%d parsed",
+                        len(decisions) - parse_failures,
+                        len(decisions),
+                    )
+                    break
+                else:
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            "All decisions failed to parse, retrying (attempt %d)",
+                            attempt + 1,
+                        )
+                    else:
+                        logger.warning(
+                            "All decisions failed after %d attempts", max_retries
+                        )
+
+            except Exception as inner_err:
+                if attempt == max_retries - 1:
+                    raise inner_err
+                logger.warning(
+                    "LLM invocation failed (attempt %d): %s", attempt + 1, inner_err
+                )
+
+        # Step 3: Use decisions (either from structured or text parsing)
         # Note: LLM returns one decision per issue, but each issue has multiple values
-        decisions = parse_financial_evaluation_response(response_text, len(math_issues))
 
         # Step 4: Format output - create one result per involved value
         results = []
@@ -585,6 +653,11 @@ def evaluate_financial_math(
                             "current_label": fv.label,
                             "word_text": fv.word_text,
                             "issue_type": issue.issue_type,
+                            # Equation breakdown for visualization
+                            "expected_value": issue.expected_value,
+                            "actual_value": issue.actual_value,
+                            "difference": issue.difference,
+                            "description": issue.description,
                         },
                         "llm_review": {
                             "decision": decision.get("decision", "NEEDS_REVIEW"),
@@ -633,6 +706,11 @@ def evaluate_financial_math(
                             "current_label": fv.label,
                             "word_text": fv.word_text,
                             "issue_type": issue.issue_type,
+                            # Equation breakdown for visualization
+                            "expected_value": issue.expected_value,
+                            "actual_value": issue.actual_value,
+                            "difference": issue.difference,
+                            "description": issue.description,
                         },
                         "llm_review": {
                             "decision": "NEEDS_REVIEW",

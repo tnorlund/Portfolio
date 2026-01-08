@@ -1108,6 +1108,15 @@ def compute_merchant_patterns(
                 patterns.label_positions[label.label].append(y)
                 patterns.label_texts[label.label].add(word.text)
 
+        # Track receipt-wide label multiplicity (labels appearing more than once)
+        receipt_label_counts: dict[str, int] = defaultdict(int)
+        for _key, label in current_labels.items():
+            receipt_label_counts[label.label] += 1
+
+        for lbl_name, count in receipt_label_counts.items():
+            if count > 1:
+                patterns.labels_with_receipt_multiplicity.add(lbl_name)
+
         # Record same-line pairs using line_id as proxy
         labels_by_line: dict[int, list[str]] = defaultdict(list)
         for key, label in current_labels.items():
