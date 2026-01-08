@@ -68,3 +68,6 @@ class TrainingConfig:
     label_smoothing: float = 0.0
     early_stopping_patience: int = 2
     output_s3_path: Optional[str] = None
+    # CoreML export configuration
+    auto_export_coreml: bool = False
+    coreml_quantize: Optional[str] = "float16"

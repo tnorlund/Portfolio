@@ -1258,6 +1258,30 @@ pulumi.export(
     "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
 )
 
+# CoreML Export Queue Infrastructure (for exporting LayoutLM models to CoreML on macOS)
+# Only create if SageMaker training is enabled (we need the training bucket)
+if enable_sagemaker and layoutlm_training_bucket_name is not None:
+    from infra.components.lambda_layer import dynamo_layer
+    from infra.coreml_export import CoreMLExportComponent
+
+    coreml_export = CoreMLExportComponent(
+        f"coreml-export-{stack}",
+        dynamodb_table_name=dynamodb_table.name,
+        dynamodb_table_arn=dynamodb_table.arn,
+        layoutlm_bucket_name=layoutlm_training_bucket_name,
+        layoutlm_bucket_arn=sagemaker_training.output_bucket.arn,
+        lambda_layer_arn=dynamo_layer.arn,
+    )
+
+    pulumi.export("coreml_export_job_queue_url", coreml_export.job_queue_url)
+    pulumi.export(
+        "coreml_export_results_queue_url", coreml_export.results_queue_url
+    )
+    pulumi.export(
+        "coreml_export_process_results_lambda_arn",
+        coreml_export.process_results_lambda.arn,
+    )
+
 from routes.label_validation_timeline.infra import (
     create_label_validation_timeline_lambda,
 )

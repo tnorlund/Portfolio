@@ -1,7 +1,9 @@
 from dataclasses import asdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import json
 import inspect
+import uuid
+from datetime import datetime
 from functools import partial
 from urllib.parse import urlparse
 
@@ -14,6 +16,8 @@ from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_metric import JobMetric
 from receipt_dynamo.entities.job_log import JobLog
+from receipt_dynamo.entities.coreml_export_job import CoreMLExportJob
+from receipt_dynamo.constants import CoreMLExportStatus
 
 from .config import DataConfig, TrainingConfig
 from .data_loader import load_datasets, MergeInfo
@@ -1057,6 +1061,10 @@ class ReceiptLayoutLMTrainer:
             self.dynamo.update_job(job)
             print(f"Job {job.job_id} completed with status: {job.status}, best_f1: {job.results.get('best_f1')}")
 
+            # Queue CoreML export if auto-export is enabled
+            if self.training_config.auto_export_coreml:
+                self._queue_coreml_export(job, quantize=self.training_config.coreml_quantize)
+
         except (
             DynamoDBError,
             EntityError,
@@ -1267,3 +1275,82 @@ class ReceiptLayoutLMTrainer:
             # Don't fail training if S3 sync fails
             print(f"⚠️  Failed to sync model to S3: {e}")
             print(f"   You can manually sync with: aws s3 sync {output_dir} s3://{bucket}/{run_prefix}")
+
+    def _queue_coreml_export(
+        self,
+        job: Job,
+        quantize: Optional[str] = "float16",
+    ) -> Optional[str]:
+        """Queue a CoreML export job after training completes.
+
+        This sends a message to the CoreML export job queue, which will be
+        processed by a macOS worker (since coremltools only runs on macOS).
+
+        Args:
+            job: The completed training Job
+            quantize: Quantization mode ("float16", "int8", "int4", or None)
+
+        Returns:
+            The export_id if queued successfully, None otherwise
+        """
+        # Get the model S3 URI from the job
+        model_s3_uri = job.best_dir_uri()
+        if not model_s3_uri:
+            print("⚠️  No best checkpoint S3 path found, skipping CoreML export")
+            return None
+
+        # Get queue URL from environment
+        queue_url = os.environ.get("COREML_EXPORT_JOB_QUEUE_URL")
+        if not queue_url:
+            print("⚠️  COREML_EXPORT_JOB_QUEUE_URL not set, skipping CoreML export")
+            return None
+
+        # Generate export ID
+        export_id = str(uuid.uuid4())
+
+        # Build output S3 prefix
+        bucket = job.storage_bucket()
+        if bucket:
+            output_s3_prefix = f"s3://{bucket}/coreml/{job.name}/"
+        else:
+            print("⚠️  No S3 bucket configured, skipping CoreML export")
+            return None
+
+        try:
+            import boto3
+
+            # Create export job record in DynamoDB
+            export_job = CoreMLExportJob(
+                export_id=export_id,
+                job_id=job.job_id,
+                model_s3_uri=model_s3_uri,
+                created_at=datetime.utcnow(),
+                status=CoreMLExportStatus.PENDING.value,
+                quantize=quantize,
+                output_s3_prefix=output_s3_prefix,
+            )
+            self.dynamo.add_coreml_export_job(export_job)
+
+            # Send message to queue
+            sqs = boto3.client("sqs", region_name=self.data_config.aws_region)
+            message = {
+                "export_id": export_id,
+                "job_id": job.job_id,
+                "model_s3_uri": model_s3_uri,
+                "quantize": quantize,
+                "output_s3_prefix": output_s3_prefix,
+            }
+            sqs.send_message(
+                QueueUrl=queue_url,
+                MessageBody=json.dumps(message),
+            )
+
+            print(f"✅ CoreML export queued: {export_id}")
+            print(f"   Model: {model_s3_uri}")
+            print(f"   Output: {output_s3_prefix}")
+            return export_id
+
+        except Exception as e:
+            # Don't fail training if export queueing fails
+            print(f"⚠️  Failed to queue CoreML export: {e}")
+            return None

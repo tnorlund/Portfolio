@@ -195,6 +195,20 @@ def main() -> None:
             "Defaults to LAYOUTLM_TRAINING_BUCKET env var."
         ),
     )
+    train_p.add_argument(
+        "--export-coreml",
+        action="store_true",
+        help=(
+            "Automatically queue CoreML export after training completes. "
+            "Requires COREML_EXPORT_JOB_QUEUE_URL env var to be set."
+        ),
+    )
+    train_p.add_argument(
+        "--coreml-quantize",
+        choices=["float16", "int8", "int4"],
+        default="float16",
+        help="Quantization mode for CoreML export (default: float16).",
+    )
 
     infer_p = sub.add_parser("infer", help="Run LayoutLM inference")
     infer_p.add_argument(
@@ -338,6 +352,8 @@ def main() -> None:
         data_cfg.dataset_snapshot_load = args.dataset_snapshot_load
         data_cfg.dataset_snapshot_save = args.dataset_snapshot_save
         train_cfg.output_s3_path = args.output_s3_path
+        train_cfg.auto_export_coreml = args.export_coreml
+        train_cfg.coreml_quantize = args.coreml_quantize
         trainer = ReceiptLayoutLMTrainer(data_cfg, train_cfg)
         job_id = trainer.train(job_name=args.job_name)
         print(job_id)

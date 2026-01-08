@@ -7,6 +7,7 @@ from receipt_dynamo.data._batch_summary import _BatchSummary
 from receipt_dynamo.data._compaction_lock import _CompactionLock
 from receipt_dynamo.data._compaction_run import _CompactionRun
 from receipt_dynamo.data._completion_batch_result import _CompletionBatchResult
+from receipt_dynamo.data._coreml_export_job import _CoreMLExportJob
 from receipt_dynamo.data._embedding_batch_result import _EmbeddingBatchResult
 from receipt_dynamo.data._image import _Image
 from receipt_dynamo.data._instance import _Instance
@@ -102,6 +103,7 @@ class DynamoClient(
     _AIUsageMetric,
     _CompactionLock,
     _CompactionRun,
+    _CoreMLExportJob,
 ):
     """A class used to represent a DynamoDB client."""
 

@@ -22,6 +22,10 @@ from receipt_dynamo.entities.completion_batch_result import (  # noqa: F401
     CompletionBatchResult,
     item_to_completion_batch_result,
 )
+from receipt_dynamo.entities.coreml_export_job import (  # noqa: F401
+    CoreMLExportJob,
+    item_to_coreml_export_job,
+)
 from receipt_dynamo.entities.embedding_batch_result import (  # noqa: F401
     EmbeddingBatchResult,
     item_to_embedding_batch_result,
@@ -154,6 +158,7 @@ __all__ = [
     "CompactionLock",
     "CompactionRun",
     "CompletionBatchResult",
+    "CoreMLExportJob",
     "EmbeddingBatchResult",
     "Image",
     "ImageDetails",
@@ -203,6 +208,7 @@ __all__ = [
     "item_to_compaction_lock",
     "item_to_completion_batch_result",
     "item_to_compaction_run",
+    "item_to_coreml_export_job",
     "item_to_embedding_batch_result",
     "item_to_image",
     "item_to_instance",
