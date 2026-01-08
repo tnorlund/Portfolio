@@ -7,13 +7,10 @@ on LangSmith trace exports using PySpark on EMR Serverless.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +193,7 @@ class LangSmithSparkProcessor:
             .dropDuplicates(["image_id", "receipt_id", "execution_id"])
         )
 
-        logger.info("Computed receipt analytics: %d rows", result.count())
+        logger.info("Computed receipt analytics")
         return result
 
     def compute_step_timing(self, df: DataFrame) -> DataFrame:
@@ -235,7 +232,7 @@ class LangSmithSparkProcessor:
 
         result = result.withColumnRenamed("name", "step_name")
 
-        logger.info("Computed step timing: %d steps", result.count())
+        logger.info("Computed step timing")
         return result
 
     def compute_decision_analysis(self, df: DataFrame) -> DataFrame:
@@ -352,7 +349,7 @@ class LangSmithSparkProcessor:
             .filter(F.col("count") > 0)
         )
 
-        logger.info("Computed decision analysis: %d rows", final.count())
+        logger.info("Computed decision analysis")
         return final
 
     def compute_token_usage(self, df: DataFrame) -> DataFrame:
@@ -385,7 +382,7 @@ class LangSmithSparkProcessor:
             .withColumnRenamed("metadata_merchant_name", "merchant_name")
         )
 
-        logger.info("Computed token usage: %d rows", result.count())
+        logger.info("Computed token usage")
         return result
 
     def write_analytics(
@@ -405,11 +402,18 @@ class LangSmithSparkProcessor:
         """
         logger.info("Writing analytics to: %s", output_path)
 
+        # Convert s3:// to s3a:// for Spark's Hadoop S3A connector
+        spark_path = (
+            output_path.replace("s3://", "s3a://")
+            if output_path.startswith("s3://")
+            else output_path
+        )
+
         writer = df.write.mode(mode)
 
         if partition_by:
             writer = writer.partitionBy(*partition_by)
 
-        writer.parquet(output_path)
+        writer.parquet(spark_path)
 
         logger.info("Analytics written successfully")
