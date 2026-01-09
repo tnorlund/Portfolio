@@ -1354,7 +1354,10 @@ const LabelEvaluatorVisualization: React.FC = () => {
   }, []);
 
   // Load remaining receipts in background (like ReceiptStack pattern)
+  // Batches all pages into a single setState to avoid repeated re-renders
   useEffect(() => {
+    let cancelled = false;
+
     const loadRemainingReceipts = async () => {
       if (!loadingRemaining || !hasMore || seed === null || isLoadingRemainingRef.current) return;
 
@@ -1362,38 +1365,62 @@ const LabelEvaluatorVisualization: React.FC = () => {
       let currentOffset = nextOffset;
       let morePages = true;
       const batchSize = 20;
+      const accumulated: LabelEvaluatorReceipt[] = [];
 
       try {
-        while (morePages) {
+        while (morePages && !cancelled) {
           const response = await api.fetchLabelEvaluatorVisualization(batchSize, seed, currentOffset);
+
+          // Check cancellation after async operation
+          if (cancelled) break;
+
           if (!response || !response.receipts || response.receipts.length === 0) {
             break;
           }
 
-          // Append new receipts
-          setReceipts(prev => [...prev, ...response.receipts]);
+          // Accumulate receipts locally instead of calling setState per page
+          accumulated.push(...response.receipts);
 
           morePages = response.has_more;
           if (!morePages) {
-            setHasMore(false);
             break;
           }
 
           currentOffset = response.offset + response.receipts.length;
         }
+
+        // Batch update: append all accumulated receipts in a single setState
+        if (!cancelled && accumulated.length > 0) {
+          setReceipts(prev => [...prev, ...accumulated]);
+        }
+
+        if (!cancelled) {
+          setHasMore(false);
+        }
       } catch (err) {
-        console.error("Error loading remaining receipts:", err);
+        if (!cancelled) {
+          console.error("Error loading remaining receipts:", err);
+        }
       } finally {
-        setLoadingRemaining(false);
-        isLoadingRemainingRef.current = false;
+        if (!cancelled) {
+          setLoadingRemaining(false);
+          isLoadingRemainingRef.current = false;
+        }
       }
     };
 
     if (loadingRemaining && hasMore && seed !== null && !isLoadingRemainingRef.current) {
       // Delay loading remaining receipts until after initial render
       const timer = setTimeout(loadRemainingReceipts, 100);
-      return () => clearTimeout(timer);
+      return () => {
+        cancelled = true;
+        clearTimeout(timer);
+      };
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [loadingRemaining, hasMore, seed, nextOffset]);
 
   const currentReceipt = receipts[currentIndex];
