@@ -137,7 +137,7 @@ class EMRServerlessAnalytics(ComponentResource):
         self.emr_application = aws.emrserverless.Application(
             f"{name}-app",
             name=f"langsmith-analytics-{stack}",
-            release_label="emr-7.0.0",
+            release_label="emr-spark-8.0-preview",  # Native Python 3.12 support
             type="SPARK",
             initial_capacities=[
                 aws.emrserverless.ApplicationInitialCapacityArgs(
@@ -192,9 +192,7 @@ class EMRServerlessAnalytics(ComponentResource):
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "emr-serverless.amazonaws.com"
-                            },
+                            "Principal": {"Service": "emr-serverless.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -277,9 +275,7 @@ class EMRServerlessAnalytics(ComponentResource):
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codebuild.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -356,7 +352,7 @@ phases:
     commands:
       - echo "Uploading artifacts to S3..."
       - aws s3 cp spark_env.tar.gz s3://${ARTIFACTS_BUCKET}/spark/spark_env.tar.gz
-      - aws s3 cp receipt_langsmith/spark/emr_job.py s3://${ARTIFACTS_BUCKET}/spark/emr_job.py
+      - aws s3 cp receipt_langsmith/receipt_langsmith/spark/emr_job.py s3://${ARTIFACTS_BUCKET}/spark/emr_job.py
       - echo "Done!"
 
 artifacts:
@@ -371,7 +367,7 @@ artifacts:
             service_role=self.codebuild_role.arn,
             environment=aws.codebuild.ProjectEnvironmentArgs(
                 compute_type="BUILD_GENERAL1_MEDIUM",
-                image="aws/codebuild/amazonlinux2-x86_64-standard:5.0",
+                image="aws/codebuild/amazonlinux-x86_64-standard:5.0",  # AL2023 for EMR 8.x
                 type="LINUX_CONTAINER",
                 environment_variables=[
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
@@ -414,9 +410,7 @@ artifacts:
             key="source/source.zip",
             source=AssetArchive(
                 {
-                    "receipt_langsmith": FileArchive(
-                        str(receipt_langsmith_path)
-                    ),
+                    "receipt_langsmith": FileArchive(str(receipt_langsmith_path)),
                 }
             ),
             opts=ResourceOptions(parent=self.artifacts_bucket),
