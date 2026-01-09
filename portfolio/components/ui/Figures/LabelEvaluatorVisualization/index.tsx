@@ -850,6 +850,21 @@ const getPieSlicePath = (progress: number, cx: number, cy: number, r: number): s
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
 };
 
+// Tally layout constants
+const TALLY_ICON_SIZE = 16; // 14px icon + 2px gap
+const TALLY_CONTAINER_WIDTH = 200; // approx width for icons
+const TALLY_ROW_HEIGHT = 20; // icon height + vertical padding
+const TALLY_MAX_ROWS = 3; // cap at 3 rows to prevent layout shift
+const TALLY_ICONS_PER_ROW = Math.floor(TALLY_CONTAINER_WIDTH / TALLY_ICON_SIZE);
+const TALLY_MAX_VISIBLE = TALLY_ICONS_PER_ROW * TALLY_MAX_ROWS;
+
+// Calculate tally container height based on number of icons (capped at 3 rows)
+const calculateTallyHeight = (numIcons: number): number => {
+  if (numIcons === 0) return 0;
+  const numRows = Math.min(Math.ceil(numIcons / TALLY_ICONS_PER_ROW), TALLY_MAX_ROWS);
+  return numRows * TALLY_ROW_HEIGHT + 4; // +4 for container padding
+};
+
 const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
   name,
   color,
@@ -868,6 +883,19 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
   const hasDecisions = totalDecisions > 0;
   const hasNextDecisions = nextTotalDecisions > 0;
   const hasVisibleContent = showPlaceholders ? hasDecisions : decisions.length > 0;
+
+  // Calculate heights for animation
+  const currentIconCount = showPlaceholders ? totalDecisions : decisions.length;
+  const nextIconCount = nextTotalDecisions;
+  const currentHeight = calculateTallyHeight(currentIconCount);
+  const nextHeight = calculateTallyHeight(nextIconCount);
+
+  // Animate tally container height during transition
+  const tallySpring = useSpring({
+    height: isTransitioning ? nextHeight : currentHeight,
+    opacity: 1,
+    config: { tension: 200, friction: 22 },
+  });
 
   return (
     <div className={`${styles.legendItem} ${isActive ? styles.active : ""} ${isComplete ? styles.complete : ""} ${isSkipped ? styles.skipped : ""}`}>
@@ -950,87 +978,127 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
         ) : null}
       </div>
       {/* Decision tally row - shows filled icons + empty placeholders (if enabled) */}
-      {/* During transition: current row fades out, next row overlays and fades in */}
+      {/* During transition: height animates, current fades out, next fades in */}
       {(hasVisibleContent || (isTransitioning && hasNextDecisions)) && (
-        <div className={styles.legendTally}>
+        <animated.div
+          className={styles.legendTally}
+          style={{ height: tallySpring.height, overflow: 'hidden' }}
+        >
           {/* Current receipt's tally - filled icons + optional empty placeholders */}
-          {/* Stays in normal flow to maintain container height, fades out during transition */}
+          {/* Fades out during transition */}
           <div className={`${styles.tallyRow} ${isTransitioning ? styles.tallyFadeOut : ''}`}>
-            {/* Filled icons for revealed decisions */}
-            {decisions.map((d) => {
-              const bgColor = DECISION_COLORS[d.decision];
+            {(() => {
+              // Calculate overflow for current tally
+              const hasOverflow = totalDecisions > TALLY_MAX_VISIBLE;
+              const overflowCount = hasOverflow ? totalDecisions - TALLY_MAX_VISIBLE + 1 : 0;
+              // Reserve one slot for overflow indicator if needed
+              const maxIconsToShow = hasOverflow ? TALLY_MAX_VISIBLE - 1 : TALLY_MAX_VISIBLE;
+              const filledToShow = Math.min(decisions.length, maxIconsToShow);
+              const emptyToShow = showPlaceholders
+                ? Math.min(totalDecisions - decisions.length, maxIconsToShow - filledToShow)
+                : 0;
+
               return (
-                <span
-                  key={d.key}
-                  className={styles.tallyIcon}
-                  title={`${d.wordText}: ${d.decision}`}
-                >
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <circle cx="7" cy="7" r="6" fill={bgColor} />
-                    {d.decision === 'VALID' && (
-                      <path
-                        d="M4 7 L6 9.5 L10 5"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    )}
-                    {d.decision === 'INVALID' && (
-                      <g>
-                        <line x1="4.5" y1="4.5" x2="9.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-                        <line x1="9.5" y1="4.5" x2="4.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-                      </g>
-                    )}
-                    {d.decision === 'NEEDS_REVIEW' && (
-                      <g>
-                        <circle cx="7" cy="5" r="1.8" fill="white" />
-                        <path d="M3.5 11.5 Q3.5 8 7 8 Q10.5 8 10.5 11.5" fill="white" />
-                      </g>
-                    )}
-                  </svg>
-                </span>
+                <>
+                  {/* Filled icons for revealed decisions (capped) */}
+                  {decisions.slice(0, filledToShow).map((d) => {
+                    const bgColor = DECISION_COLORS[d.decision];
+                    return (
+                      <span
+                        key={d.key}
+                        className={styles.tallyIcon}
+                        title={`${d.wordText}: ${d.decision}`}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                          <circle cx="7" cy="7" r="6" fill={bgColor} />
+                          {d.decision === 'VALID' && (
+                            <path
+                              d="M4 7 L6 9.5 L10 5"
+                              fill="none"
+                              stroke="white"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          )}
+                          {d.decision === 'INVALID' && (
+                            <g>
+                              <line x1="4.5" y1="4.5" x2="9.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                              <line x1="9.5" y1="4.5" x2="4.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                            </g>
+                          )}
+                          {d.decision === 'NEEDS_REVIEW' && (
+                            <g>
+                              <circle cx="7" cy="5" r="1.8" fill="white" />
+                              <path d="M3.5 11.5 Q3.5 8 7 8 Q10.5 8 10.5 11.5" fill="white" />
+                            </g>
+                          )}
+                        </svg>
+                      </span>
+                    );
+                  })}
+                  {/* Empty placeholders for unrevealed decisions (capped) */}
+                  {Array.from({ length: emptyToShow }).map((_, idx) => (
+                    <span key={`empty-${idx}`} className={styles.tallyIcon}>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                        <circle
+                          cx="7"
+                          cy="7"
+                          r="5.5"
+                          fill="none"
+                          stroke="var(--text-color)"
+                          strokeWidth="1"
+                          opacity="0.3"
+                        />
+                      </svg>
+                    </span>
+                  ))}
+                  {/* Overflow indicator */}
+                  {hasOverflow && (
+                    <span className={styles.tallyOverflow} title={`${overflowCount} more`}>
+                      +{overflowCount}
+                    </span>
+                  )}
+                </>
               );
-            })}
-            {/* Empty placeholders for unrevealed decisions (only if showPlaceholders is true) */}
-            {showPlaceholders && Array.from({ length: Math.max(0, totalDecisions - decisions.length) }).map((_, idx) => (
-              <span key={`empty-${idx}`} className={styles.tallyIcon}>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <circle
-                    cx="7"
-                    cy="7"
-                    r="5.5"
-                    fill="none"
-                    stroke="var(--text-color)"
-                    strokeWidth="1"
-                    opacity="0.3"
-                  />
-                </svg>
-              </span>
-            ))}
+            })()}
           </div>
           {/* Next receipt's empty placeholders - absolutely positioned overlay, fades in */}
           {isTransitioning && hasNextDecisions && showPlaceholders && (
             <div className={`${styles.tallyRow} ${styles.tallyRowOverlay} ${styles.tallyFadeIn}`}>
-              {Array.from({ length: nextTotalDecisions }).map((_, idx) => (
-                <span key={`next-${idx}`} className={styles.tallyIcon}>
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <circle
-                      cx="7"
-                      cy="7"
-                      r="5.5"
-                      fill="none"
-                      stroke="var(--text-color)"
-                      strokeWidth="1"
-                      opacity="0.3"
-                    />
-                  </svg>
-                </span>
-              ))}
+              {(() => {
+                const nextHasOverflow = nextTotalDecisions > TALLY_MAX_VISIBLE;
+                const nextOverflowCount = nextHasOverflow ? nextTotalDecisions - TALLY_MAX_VISIBLE + 1 : 0;
+                const nextMaxToShow = nextHasOverflow ? TALLY_MAX_VISIBLE - 1 : nextTotalDecisions;
+
+                return (
+                  <>
+                    {Array.from({ length: nextMaxToShow }).map((_, idx) => (
+                      <span key={`next-${idx}`} className={styles.tallyIcon}>
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                          <circle
+                            cx="7"
+                            cy="7"
+                            r="5.5"
+                            fill="none"
+                            stroke="var(--text-color)"
+                            strokeWidth="1"
+                            opacity="0.3"
+                          />
+                        </svg>
+                      </span>
+                    ))}
+                    {nextHasOverflow && (
+                      <span className={styles.tallyOverflow} title={`${nextOverflowCount} more`}>
+                        +{nextOverflowCount}
+                      </span>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
-        </div>
+        </animated.div>
       )}
     </div>
   );
@@ -1189,11 +1257,12 @@ const LabelEvaluatorVisualization: React.FC = () => {
     detectImageFormatSupport().then(setFormatSupport);
   }, []);
 
-  // Fetch visualization data
+  // Fetch visualization data - load enough receipts for smooth animation
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await api.fetchLabelEvaluatorVisualization();
+        // Fetch 50 receipts (max batch size) for cycling animation
+        const response = await api.fetchLabelEvaluatorVisualization(50);
         if (response && response.receipts) {
           setReceipts(response.receipts);
         }

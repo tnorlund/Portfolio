@@ -451,13 +451,18 @@ export interface LabelEvaluatorReceipt {
   height: number;
 }
 
+export interface LabelEvaluatorAggregateStats {
+  total_receipts_in_pool: number;
+  batch_size: number;
+  avg_issues: number;
+  max_issues: number;
+  receipts_with_issues: number;
+}
+
 export interface LabelEvaluatorResponse {
-  execution_id: string;
   receipts: LabelEvaluatorReceipt[];
-  summary: {
-    total_receipts: number;
-    receipts_with_issues: number;
-  };
+  aggregate_stats: LabelEvaluatorAggregateStats;
+  execution_id?: string;
   cached_at?: string;
   fetched_at?: string;
 }

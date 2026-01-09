@@ -236,10 +236,15 @@ const baseApi = {
     return response.json();
   },
 
-  async fetchLabelEvaluatorVisualization(): Promise<LabelEvaluatorResponse> {
+  async fetchLabelEvaluatorVisualization(
+    batchSize: number = 10
+  ): Promise<LabelEvaluatorResponse> {
     const apiUrl = getAPIUrl();
+    const params = new URLSearchParams();
+    params.set("batch_size", batchSize.toString());
+
     const response = await fetch(
-      `${apiUrl}/label_evaluator/visualization`,
+      `${apiUrl}/label_evaluator/visualization?${params.toString()}`,
       fetchConfig
     );
     if (!response.ok) {

@@ -1211,6 +1211,8 @@ from components.emr_serverless_docker_image import (
 emr_docker_image = create_emr_serverless_docker_image(
     name="emr-spark",
     emr_release="emr-7.5.0",  # Using 7.5.0 base with Python 3.12 installed
+    # CodeBuild will stop and update the EMR Application after building the image
+    emr_application_name=f"langsmith-analytics-{stack}",
 )
 pulumi.export("emr_docker_image_uri", emr_docker_image.image_uri)
 

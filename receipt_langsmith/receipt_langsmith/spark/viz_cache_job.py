@@ -102,11 +102,14 @@ def parse_args() -> argparse.Namespace:
 
 def load_receipts_from_s3(
     s3_client: Any, receipts_json_path: str
-) -> dict[tuple[str, int], str]:
+) -> dict[tuple[str, int], dict[str, Any]]:
     """Load receipt lookup from S3 JSON file.
 
     Returns:
-        dict mapping (image_id, receipt_id) -> cdn_key
+        dict mapping (image_id, receipt_id) -> receipt data dict containing:
+            - cdn_s3_key, cdn_webp_s3_key, cdn_avif_s3_key
+            - cdn_medium_s3_key, cdn_medium_webp_s3_key, cdn_medium_avif_s3_key
+            - width, height
     """
     logger.info("Loading receipts from %s", receipts_json_path)
 
@@ -122,13 +125,24 @@ def load_receipts_from_s3(
     raw_lookup = json.loads(response["Body"].read().decode("utf-8"))
 
     # Convert "{image_id}_{receipt_id}" -> (image_id, receipt_id)
-    lookup: dict[tuple[str, int], str] = {}
-    for composite_key, cdn_key in raw_lookup.items():
+    lookup: dict[tuple[str, int], dict[str, Any]] = {}
+    for composite_key, receipt_data in raw_lookup.items():
         parts = composite_key.rsplit("_", 1)
         if len(parts) == 2:
             image_id, receipt_id_str = parts
             try:
-                lookup[(image_id, int(receipt_id_str))] = cdn_key
+                # Handle both old format (string) and new format (dict)
+                if isinstance(receipt_data, str):
+                    # Legacy format: just cdn_s3_key
+                    lookup[(image_id, int(receipt_id_str))] = {
+                        "cdn_s3_key": receipt_data,
+                        "cdn_webp_s3_key": None,
+                        "cdn_medium_s3_key": None,
+                        "width": 800,
+                        "height": 2400,
+                    }
+                else:
+                    lookup[(image_id, int(receipt_id_str))] = receipt_data
             except ValueError:
                 continue
 
@@ -501,7 +515,7 @@ def _build_labels_lookup(
 def _build_viz_receipts(
     s3_client: Any,
     parquet_data: list[dict[str, Any]],
-    receipt_lookup: dict[tuple[str, int], str],
+    receipt_lookup: dict[tuple[str, int], dict[str, Any]],
     batch_bucket: str,
     execution_id: str,
 ) -> list[dict[str, Any]]:
@@ -552,14 +566,14 @@ def _generate_cdn_keys(base_cdn_key: str) -> dict[str, str | None]:
 def _build_single_viz_receipt(
     s3_client: Any,
     parquet_data: dict[str, Any],
-    receipt_lookup: dict[tuple[str, int], str],
+    receipt_lookup: dict[tuple[str, int], dict[str, Any]],
     batch_bucket: str,
     execution_id: str,
 ) -> dict[str, Any] | None:
     """Build a single VizCacheReceipt from parquet data."""
     image_id, receipt_id = parquet_data["image_id"], parquet_data["receipt_id"]
-    cdn_key = receipt_lookup.get((image_id, receipt_id))
-    if not cdn_key:
+    receipt_data = receipt_lookup.get((image_id, receipt_id))
+    if not receipt_data:
         return None
 
     # Load and build results
@@ -569,8 +583,23 @@ def _build_single_viz_receipt(
     if results is None:
         return None
 
-    # Generate all CDN format keys from base JPEG key
-    cdn_keys = _generate_cdn_keys(cdn_key)
+    # Get CDN keys from lookup (fallback to generating from base key if not present)
+    cdn_s3_key = receipt_data.get("cdn_s3_key")
+    if not cdn_s3_key:
+        return None
+
+    cdn_webp_s3_key = receipt_data.get("cdn_webp_s3_key")
+    cdn_medium_s3_key = receipt_data.get("cdn_medium_s3_key")
+
+    # Generate missing CDN keys from base if needed
+    if not cdn_webp_s3_key or not cdn_medium_s3_key:
+        generated = _generate_cdn_keys(cdn_s3_key)
+        cdn_webp_s3_key = cdn_webp_s3_key or generated["cdn_webp_s3_key"]
+        cdn_medium_s3_key = cdn_medium_s3_key or generated["cdn_medium_s3_key"]
+
+    # Get dimensions from lookup (with fallback for legacy format)
+    width = receipt_data.get("width", 800)
+    height = receipt_data.get("height", 2400)
 
     return VizCacheReceipt(
         image_id=image_id,
@@ -588,12 +617,11 @@ def _build_single_viz_receipt(
         currency=results["currency"],
         metadata=results["metadata"],
         financial=results["financial"],
-        cdn_s3_key=cdn_keys["cdn_s3_key"],
-        cdn_webp_s3_key=cdn_keys["cdn_webp_s3_key"],
-        cdn_medium_s3_key=cdn_keys["cdn_medium_s3_key"],
-        # Default dimensions - actual dimensions could be fetched from DynamoDB
-        width=800,
-        height=2400,
+        cdn_s3_key=cdn_s3_key,
+        cdn_webp_s3_key=cdn_webp_s3_key,
+        cdn_medium_s3_key=cdn_medium_s3_key,
+        width=width,
+        height=height,
     ).model_dump()
 
 
@@ -735,41 +763,63 @@ def _write_cache(
     execution_id: str,
     parquet_prefix: str,
 ) -> None:
-    """Write cache files to S3."""
+    """Write individual receipt files + metadata to S3.
+
+    Storage pattern (like LayoutLM):
+    - receipts/receipt-{image_id}-{receipt_id}.json (one per receipt)
+    - metadata.json (pool stats)
+    - latest.json (version pointer for compatibility)
+    """
     timestamp = datetime.now(timezone.utc)
     cache_version = timestamp.strftime("%Y%m%d-%H%M%S")
+    receipts_prefix = "receipts/"
 
-    cache = {
+    # Write each receipt as individual file
+    logger.info(
+        "Writing %d individual receipt files to s3://%s/%s",
+        len(receipts),
+        bucket,
+        receipts_prefix,
+    )
+    for receipt in receipts:
+        image_id = receipt.get("image_id", "unknown")
+        receipt_id = receipt.get("receipt_id", 0)
+        key = f"{receipts_prefix}receipt-{image_id}-{receipt_id}.json"
+
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=json.dumps(receipt, default=str),
+            ContentType="application/json",
+        )
+
+    # Write metadata.json with pool stats
+    metadata = {
         "version": cache_version,
         "execution_id": execution_id,
         "parquet_prefix": parquet_prefix,
-        "receipts": receipts,
-        "summary": {
-            "total_receipts": len(receipts),
-            "receipts_with_issues": len(
-                [r for r in receipts if r["issues_found"] > 0]
-            ),
-        },
+        "total_receipts": len(receipts),
+        "receipts_with_issues": len(
+            [r for r in receipts if r["issues_found"] > 0]
+        ),
         "cached_at": timestamp.isoformat(),
     }
-
-    # Write versioned cache file
-    versioned_key = f"viz-cache-{cache_version}.json"
-    logger.info("Writing versioned cache to s3://%s/%s", bucket, versioned_key)
+    logger.info("Writing metadata.json to s3://%s/metadata.json", bucket)
     s3_client.put_object(
         Bucket=bucket,
-        Key=versioned_key,
-        Body=json.dumps(cache, indent=2, default=str),
+        Key="metadata.json",
+        Body=json.dumps(metadata, indent=2),
         ContentType="application/json",
     )
 
-    # Write latest.json pointer
+    # Write latest.json pointer (for compatibility/rollback)
     latest_pointer = {
         "version": cache_version,
-        "cache_key": versioned_key,
+        "receipts_prefix": receipts_prefix,
+        "metadata_key": "metadata.json",
         "updated_at": timestamp.isoformat(),
     }
-    logger.info("Updating latest.json pointer to %s", versioned_key)
+    logger.info("Updating latest.json pointer")
     s3_client.put_object(
         Bucket=bucket,
         Key="latest.json",
@@ -779,6 +829,8 @@ def _write_cache(
 
     logger.info("Cache generation complete!")
     logger.info("  Version: %s", cache_version)
+    logger.info("  Total receipts: %d", len(receipts))
+    logger.info("  Receipts with issues: %d", metadata["receipts_with_issues"])
     for r in receipts[:5]:
         logger.info(
             "  %s: %d issues, %d words",

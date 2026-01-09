@@ -203,7 +203,12 @@ class EMRServerlessAnalytics(ComponentResource):
         self.emr_application = aws.emrserverless.Application(
             f"{name}-app",
             **emr_app_args,
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(
+                parent=self,
+                # CodeBuild updates imageConfiguration directly after build,
+                # so we tell Pulumi to ignore changes to avoid conflicts
+                ignore_changes=["imageConfiguration"] if self.custom_image_uri else [],
+            ),
         )
 
         # ============================================================
@@ -316,21 +321,32 @@ class EMRServerlessAnalytics(ComponentResource):
             REPO_ROOT / "receipt_langsmith" / "receipt_langsmith" / "spark"
         )
 
-        # Upload emr_job.py
+        # Compute content hashes to detect file changes
+        import hashlib
+
+        def file_hash(path: Path) -> str:
+            return hashlib.md5(path.read_bytes()).hexdigest()[:12]
+
+        emr_job_path = spark_scripts_dir / "emr_job.py"
+        viz_cache_path = spark_scripts_dir / "viz_cache_job.py"
+
+        # Upload emr_job.py (source_hash forces update on content change)
         self.emr_job_script = aws.s3.BucketObjectv2(
             f"{name}-emr-job-script",
             bucket=self.artifacts_bucket.id,
             key="spark/emr_job.py",
-            source=FileAsset(str(spark_scripts_dir / "emr_job.py")),
+            source=FileAsset(str(emr_job_path)),
+            source_hash=file_hash(emr_job_path),
             opts=ResourceOptions(parent=self.artifacts_bucket),
         )
 
-        # Upload viz_cache_job.py
+        # Upload viz_cache_job.py (source_hash forces update on content change)
         self.viz_cache_job_script = aws.s3.BucketObjectv2(
             f"{name}-viz-cache-job-script",
             bucket=self.artifacts_bucket.id,
             key="spark/viz_cache_job.py",
-            source=FileAsset(str(spark_scripts_dir / "viz_cache_job.py")),
+            source=FileAsset(str(viz_cache_path)),
+            source_hash=file_hash(viz_cache_path),
             opts=ResourceOptions(parent=self.artifacts_bucket),
         )
 
