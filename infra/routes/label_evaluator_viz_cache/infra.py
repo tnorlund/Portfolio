@@ -238,6 +238,7 @@ import logging
 import os
 
 import boto3
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -252,42 +253,90 @@ def handler(event, context):
 
     # Import receipt_dynamo (from layer)
     from receipt_dynamo import DynamoClient
+    from receipt_dynamo.data.shared_exceptions import (
+        DynamoDBError,
+        DynamoRetryableException,
+        DynamoCriticalErrorException,
+    )
 
-    client = DynamoClient(table_name)
+    # Initialize DynamoDB client
+    try:
+        client = DynamoClient(table_name)
+    except DynamoDBError:
+        logger.exception("Failed to initialize DynamoClient for table: %s", table_name)
+        raise
+    except Exception:
+        logger.exception("Unexpected error initializing DynamoClient for table: %s", table_name)
+        raise
 
     logger.info("Querying receipts from DynamoDB table: %s", table_name)
 
     # Build receipt lookup: {image_id}_{receipt_id} -> cdn_s3_key
     receipt_lookup = {}
-    receipts, last_key = client.list_receipts(limit=1000)
+    page_count = 0
+    last_key = None
 
-    for r in receipts:
-        key = f"{r.image_id}_{r.receipt_id}"
-        receipt_lookup[key] = r.cdn_s3_key
+    try:
+        # First page
+        receipts, last_key = client.list_receipts(limit=1000)
+        page_count += 1
 
-    # Paginate through all receipts
-    while last_key:
-        receipts, last_key = client.list_receipts(limit=1000, last_evaluated_key=last_key)
         for r in receipts:
             key = f"{r.image_id}_{r.receipt_id}"
             receipt_lookup[key] = r.cdn_s3_key
 
-    logger.info("Found %d receipts", len(receipt_lookup))
+        # Paginate through remaining receipts
+        while last_key:
+            receipts, last_key = client.list_receipts(limit=1000, last_evaluated_key=last_key)
+            page_count += 1
+            for r in receipts:
+                key = f"{r.image_id}_{r.receipt_id}"
+                receipt_lookup[key] = r.cdn_s3_key
+            logger.info("Processed page %d, total receipts so far: %d", page_count, len(receipt_lookup))
+
+    except DynamoRetryableException:
+        logger.exception(
+            "Retryable DynamoDB error during pagination (table=%s, page=%d, receipts_so_far=%d, last_key=%s)",
+            table_name, page_count, len(receipt_lookup), last_key
+        )
+        raise
+    except DynamoCriticalErrorException:
+        logger.exception(
+            "Critical DynamoDB error during pagination (table=%s, page=%d, receipts_so_far=%d)",
+            table_name, page_count, len(receipt_lookup)
+        )
+        raise
+    except DynamoDBError:
+        logger.exception(
+            "DynamoDB error during pagination (table=%s, page=%d, receipts_so_far=%d)",
+            table_name, page_count, len(receipt_lookup)
+        )
+        raise
+
+    logger.info("Found %d receipts across %d pages", len(receipt_lookup), page_count)
 
     # Write to S3
     s3 = boto3.client("s3")
-    s3.put_object(
-        Bucket=cache_bucket,
-        Key="receipts-lookup.json",
-        Body=json.dumps(receipt_lookup),
-        ContentType="application/json",
-    )
+    s3_key = "receipts-lookup.json"
+    try:
+        s3.put_object(
+            Bucket=cache_bucket,
+            Key=s3_key,
+            Body=json.dumps(receipt_lookup),
+            ContentType="application/json",
+        )
+    except ClientError:
+        logger.exception(
+            "Failed to write receipts lookup to S3 (bucket=%s, key=%s, receipt_count=%d)",
+            cache_bucket, s3_key, len(receipt_lookup)
+        )
+        raise
 
-    logger.info("Wrote receipts-lookup.json to s3://%s/receipts-lookup.json", cache_bucket)
+    logger.info("Wrote %s to s3://%s/%s", s3_key, cache_bucket, s3_key)
 
     return {
         "receipt_count": len(receipt_lookup),
-        "receipts_s3_path": f"s3://{cache_bucket}/receipts-lookup.json",
+        "receipts_s3_path": f"s3://{cache_bucket}/{s3_key}",
     }
 '''
 
