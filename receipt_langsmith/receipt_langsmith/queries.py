@@ -103,7 +103,7 @@ def find_receipts_with_anomalies(
 
         # Get issues from the EvaluateLabels child trace
         children = get_child_traces(client, str(trace.id))
-        evaluate_labels_outputs = children.get("EvaluateLabels", {}) or {}
+        evaluate_labels_outputs = children.get("EvaluateLabels", {})
 
         issues = evaluate_labels_outputs.get("issues", [])
         flagged_words = evaluate_labels_outputs.get("flagged_words", [])
@@ -156,7 +156,7 @@ def find_receipts_with_llm_decisions(
     """Find receipts that have LLM evaluation decisions.
 
     Queries child traces (Currency, Metadata, Financial, LLMReview) for
-    receipts with INVALID decisions.
+    receipts with any LLM decisions (VALID, INVALID, or NEEDS_REVIEW).
 
     Args:
         project_name: LangSmith project name
@@ -177,10 +177,10 @@ def find_receipts_with_llm_decisions(
         children = get_child_traces(client, str(trace.id))
 
         # Get decisions from each evaluator child trace
-        currency_outputs = children.get("EvaluateCurrencyLabels", {}) or {}
-        metadata_outputs = children.get("EvaluateMetadataLabels", {}) or {}
-        financial_outputs = children.get("ValidateFinancialMath", {}) or {}
-        llm_review_outputs = children.get("LLMReview", {}) or {}
+        currency_outputs = children.get("EvaluateCurrencyLabels", {})
+        metadata_outputs = children.get("EvaluateMetadataLabels", {})
+        financial_outputs = children.get("ValidateFinancialMath", {})
+        llm_review_outputs = children.get("LLMReview", {})
 
         currency_decisions = currency_outputs.get("all_decisions", [])
         metadata_decisions = metadata_outputs.get("all_decisions", [])

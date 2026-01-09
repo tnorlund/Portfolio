@@ -198,9 +198,9 @@ class ParquetReader:
                 (raw.end_time - raw.start_time).total_seconds() * 1000
             )
 
-        # Handle missing timestamps
-        start_time = raw.start_time or datetime.min
-        end_time = raw.end_time or datetime.min
+        # Pass through timestamps (None if missing)
+        start_time = raw.start_time
+        end_time = raw.end_time
 
         return LangSmithRun(
             id=raw.id,

@@ -49,7 +49,6 @@ class EMRServerlessAnalytics(ComponentResource):
         self,
         name: str,
         *,
-        langsmith_export_bucket_name: Input[str],
         langsmith_export_bucket_arn: Input[str],
         opts: Optional[ResourceOptions] = None,
     ):
@@ -337,7 +336,7 @@ phases:
     commands:
       - echo "Uploading artifacts to S3..."
       - aws s3 cp spark_env.tar.gz s3://${ARTIFACTS_BUCKET}/spark/spark_env.tar.gz
-      - aws s3 cp receipt_langsmith/receipt_langsmith/spark/emr_job.py s3://${ARTIFACTS_BUCKET}/spark/emr_job.py
+      - aws s3 cp receipt_langsmith/spark/emr_job.py s3://${ARTIFACTS_BUCKET}/spark/emr_job.py
       - echo "Done!"
 
 artifacts:
@@ -363,7 +362,7 @@ artifacts:
             ),
             source=aws.codebuild.ProjectSourceArgs(
                 type="S3",
-                location=self.artifacts_bucket.bucket.apply(
+                location=self.artifacts_bucket.id.apply(
                     lambda b: f"{b}/source/source.zip"
                 ),
                 buildspec=buildspec,
@@ -415,14 +414,12 @@ artifacts:
 
 
 def create_emr_serverless_analytics(
-    langsmith_export_bucket_name: Input[str],
     langsmith_export_bucket_arn: Input[str],
     opts: Optional[ResourceOptions] = None,
 ) -> EMRServerlessAnalytics:
     """Factory function to create EMR Serverless analytics infrastructure."""
     return EMRServerlessAnalytics(
         f"emr-analytics-{stack}",
-        langsmith_export_bucket_name=langsmith_export_bucket_name,
         langsmith_export_bucket_arn=langsmith_export_bucket_arn,
         opts=opts,
     )

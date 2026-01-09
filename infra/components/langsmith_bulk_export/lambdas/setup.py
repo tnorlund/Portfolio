@@ -13,6 +13,7 @@ import os
 from typing import Any
 
 import boto3
+from botocore.exceptions import ClientError
 import urllib3
 
 logger = logging.getLogger()
@@ -95,8 +96,22 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     # Get AWS region for the bucket
     s3 = boto3.client("s3")
-    bucket_location = s3.get_bucket_location(Bucket=bucket_name)
-    region = bucket_location.get("LocationConstraint") or "us-east-1"
+    try:
+        bucket_location = s3.get_bucket_location(Bucket=bucket_name)
+        region = bucket_location.get("LocationConstraint") or "us-east-1"
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        if error_code == "NoSuchBucket":
+            logger.error("Bucket does not exist: %s", bucket_name)
+            return {
+                "statusCode": 404,
+                "message": f"Bucket does not exist: {bucket_name}",
+            }
+        logger.exception("Failed to get bucket location for: %s", bucket_name)
+        return {
+            "statusCode": 500,
+            "message": f"Failed to get bucket location for: {bucket_name}",
+        }
     logger.info(f"Bucket region: {region}")
 
     # Test that credentials work before sending to LangSmith

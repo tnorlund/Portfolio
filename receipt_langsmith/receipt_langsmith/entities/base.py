@@ -100,11 +100,11 @@ class LangSmithRun(BaseModel):
     status: str
     """Execution status: 'success', 'error', etc."""
 
-    start_time: datetime
-    """When the run started."""
+    start_time: Optional[datetime] = None
+    """When the run started (None if missing from trace data)."""
 
-    end_time: datetime
-    """When the run completed."""
+    end_time: Optional[datetime] = None
+    """When the run completed (None if missing from trace data)."""
 
     duration_ms: int = 0
     """Duration in milliseconds (computed from start_time/end_time)."""

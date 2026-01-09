@@ -108,59 +108,61 @@ def main() -> int:
         parsed = processor.parse_json_fields(df)
 
         # Cache for reuse if running multiple analytics
-        if args.job_type == "all":
+        cached = args.job_type == "all"
+        if cached:
             parsed.cache()
 
-        # Run requested analytics
-        if args.job_type in ("receipt-analytics", "all"):
-            logger.info("Computing receipt analytics...")
-            analytics = processor.compute_receipt_analytics(parsed)
+        try:
+            # Run requested analytics
+            if args.job_type in ("receipt-analytics", "all"):
+                logger.info("Computing receipt analytics...")
+                analytics = processor.compute_receipt_analytics(parsed)
 
-            partition_by = ["merchant_name"] if args.partition_by_merchant else None
-            processor.write_analytics(
-                analytics,
-                f"{args.output}/receipt_analytics/",
-                partition_by=partition_by,
-            )
-            logger.info("Receipt analytics complete")
+                partition_by = ["merchant_name"] if args.partition_by_merchant else None
+                processor.write_analytics(
+                    analytics,
+                    f"{args.output}/receipt_analytics/",
+                    partition_by=partition_by,
+                )
+                logger.info("Receipt analytics complete")
 
-        if args.job_type in ("step-timing", "all"):
-            logger.info("Computing step timing...")
-            timing = processor.compute_step_timing(parsed)
+            if args.job_type in ("step-timing", "all"):
+                logger.info("Computing step timing...")
+                timing = processor.compute_step_timing(parsed)
 
-            processor.write_analytics(
-                timing,
-                f"{args.output}/step_timing/",
-            )
-            logger.info("Step timing complete")
+                processor.write_analytics(
+                    timing,
+                    f"{args.output}/step_timing/",
+                )
+                logger.info("Step timing complete")
 
-        if args.job_type in ("decision-analysis", "all"):
-            logger.info("Computing decision analysis...")
-            decisions = processor.compute_decision_analysis(parsed)
+            if args.job_type in ("decision-analysis", "all"):
+                logger.info("Computing decision analysis...")
+                decisions = processor.compute_decision_analysis(parsed)
 
-            partition_by = ["merchant_name"] if args.partition_by_merchant else None
-            processor.write_analytics(
-                decisions,
-                f"{args.output}/decision_analysis/",
-                partition_by=partition_by,
-            )
-            logger.info("Decision analysis complete")
+                partition_by = ["merchant_name"] if args.partition_by_merchant else None
+                processor.write_analytics(
+                    decisions,
+                    f"{args.output}/decision_analysis/",
+                    partition_by=partition_by,
+                )
+                logger.info("Decision analysis complete")
 
-        if args.job_type in ("token-usage", "all"):
-            logger.info("Computing token usage...")
-            tokens = processor.compute_token_usage(parsed)
+            if args.job_type in ("token-usage", "all"):
+                logger.info("Computing token usage...")
+                tokens = processor.compute_token_usage(parsed)
 
-            partition_by = ["date"] if args.partition_by_date else None
-            processor.write_analytics(
-                tokens,
-                f"{args.output}/token_usage/",
-                partition_by=partition_by,
-            )
-            logger.info("Token usage complete")
-
-        # Release cached data to free memory
-        if args.job_type == "all":
-            parsed.unpersist()
+                partition_by = ["date"] if args.partition_by_date else None
+                processor.write_analytics(
+                    tokens,
+                    f"{args.output}/token_usage/",
+                    partition_by=partition_by,
+                )
+                logger.info("Token usage complete")
+        finally:
+            # Release cached data to free memory
+            if cached:
+                parsed.unpersist()
 
     except Exception:
         logger.exception("Analytics job failed")

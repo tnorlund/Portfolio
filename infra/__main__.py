@@ -1185,7 +1185,6 @@ pulumi.export("langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.n
 from components.emr_serverless_analytics import create_emr_serverless_analytics
 
 emr_analytics = create_emr_serverless_analytics(
-    langsmith_export_bucket_name=langsmith_bulk_export.export_bucket.id,
     langsmith_export_bucket_arn=langsmith_bulk_export.export_bucket.arn,
 )
 pulumi.export("emr_application_id", emr_analytics.emr_application.id)
