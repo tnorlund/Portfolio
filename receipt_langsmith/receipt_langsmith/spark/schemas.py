@@ -97,8 +97,6 @@ DECISION_ANALYSIS_SCHEMA = StructType(
         StructField("label_type", StringType(), True),
         StructField("decision", StringType(), True),
         StructField("count", LongType(), True),
-        StructField("example_word_text", StringType(), True),
-        StructField("example_reasoning", StringType(), True),
     ]
 )
 

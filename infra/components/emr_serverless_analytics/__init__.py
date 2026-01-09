@@ -192,9 +192,7 @@ class EMRServerlessAnalytics(ComponentResource):
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "emr-serverless.amazonaws.com"
-                            },
+                            "Principal": {"Service": "emr-serverless.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -277,9 +275,7 @@ class EMRServerlessAnalytics(ComponentResource):
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
+                            "Principal": {"Service": "codebuild.amazonaws.com"},
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -356,7 +352,7 @@ phases:
     commands:
       - echo "Uploading artifacts to S3..."
       - aws s3 cp spark_env.tar.gz s3://${ARTIFACTS_BUCKET}/spark/spark_env.tar.gz
-      - aws s3 cp receipt_langsmith/spark/emr_job.py s3://${ARTIFACTS_BUCKET}/spark/emr_job.py
+      - aws s3 cp receipt_langsmith/receipt_langsmith/spark/emr_job.py s3://${ARTIFACTS_BUCKET}/spark/emr_job.py
       - echo "Done!"
 
 artifacts:
@@ -414,9 +410,7 @@ artifacts:
             key="source/source.zip",
             source=AssetArchive(
                 {
-                    "receipt_langsmith": FileArchive(
-                        str(receipt_langsmith_path)
-                    ),
+                    "receipt_langsmith": FileArchive(str(receipt_langsmith_path)),
                 }
             ),
             opts=ResourceOptions(parent=self.artifacts_bucket),

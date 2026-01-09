@@ -13,14 +13,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import httpx
+from receipt_langsmith.client.models import Project
 from tenacity import (
     retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
-
-from receipt_langsmith.client.models import Project
 
 logger = logging.getLogger(__name__)
 
@@ -146,9 +145,7 @@ class LangSmithClient:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type(
-            (httpx.HTTPError, httpx.TimeoutException)
-        ),
+        retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
     )
     async def _arequest(
         self,
@@ -225,7 +222,9 @@ class LangSmithClient:
         if run_type:
             params["run_type"] = run_type
         if name_filter:
-            params["filter"] = f'eq(name, "{name_filter}")'
+            # Sanitize name_filter to prevent filter injection
+            sanitized = name_filter.replace('"', '\\"').replace("\\", "\\\\")
+            params["filter"] = f'eq(name, "{sanitized}")'
         if start_time:
             params["start_time"] = start_time.isoformat()
         if parent_run_id:
@@ -265,9 +264,7 @@ class LangSmithClient:
         # Filter to only runs with outputs
         return [run for run in runs if run.get("outputs")]
 
-    async def aget_child_traces(
-        self, parent_run_id: str
-    ) -> dict[str, dict[str, Any]]:
+    async def aget_child_traces(self, parent_run_id: str) -> dict[str, dict[str, Any]]:
         """Get child traces for a parent run.
 
         Args:
@@ -276,9 +273,7 @@ class LangSmithClient:
         Returns:
             Dict mapping child trace name to its outputs.
         """
-        children = await self.alist_runs(
-            parent_run_id=parent_run_id, limit=100
-        )
+        children = await self.alist_runs(parent_run_id=parent_run_id, limit=100)
         return {
             run["name"]: run.get("outputs", {})
             for run in children
@@ -287,24 +282,37 @@ class LangSmithClient:
 
     # Sync API methods (wrappers around async methods)
 
+    def _run_sync(self, coro: Any) -> Any:
+        """Run async coroutine synchronously with proper cleanup.
+
+        Ensures the async client is closed after each sync call to prevent
+        leaking connections across event loops.
+        """
+
+        async def wrapper() -> Any:
+            try:
+                return await coro
+            finally:
+                await self.aclose()
+
+        return asyncio.run(wrapper())
+
     def list_projects(self) -> list[Project]:
         """List all projects (sync wrapper)."""
-        return asyncio.run(self.alist_projects())
+        return self._run_sync(self.alist_projects())
 
     def get_project(self, project_name: str) -> Optional[Project]:
         """Get a project by name (sync wrapper)."""
-        return asyncio.run(self.aget_project(project_name))
+        return self._run_sync(self.aget_project(project_name))
 
     def list_runs(self, **kwargs: Any) -> list[dict[str, Any]]:
         """List runs with filters (sync wrapper)."""
-        return asyncio.run(self.alist_runs(**kwargs))
+        return self._run_sync(self.alist_runs(**kwargs))
 
     def list_recent_traces(self, **kwargs: Any) -> list[dict[str, Any]]:
         """List recent traces (sync wrapper)."""
-        return asyncio.run(self.alist_recent_traces(**kwargs))
+        return self._run_sync(self.alist_recent_traces(**kwargs))
 
-    def get_child_traces(
-        self, parent_run_id: str
-    ) -> dict[str, dict[str, Any]]:
+    def get_child_traces(self, parent_run_id: str) -> dict[str, dict[str, Any]]:
         """Get child traces (sync wrapper)."""
-        return asyncio.run(self.aget_child_traces(parent_run_id))
+        return self._run_sync(self.aget_child_traces(parent_run_id))

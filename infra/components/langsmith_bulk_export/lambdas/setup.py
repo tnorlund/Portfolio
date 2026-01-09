@@ -97,7 +97,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "message": "Destination already registered",
             "destination_id": destination_id,
         }
-    except ssm.exceptions.ParameterNotFound:
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") != "ParameterNotFound":
+            raise
         logger.info("No existing destination found, creating new one")
 
     # Create HTTP client with timeout to prevent indefinite hangs
@@ -193,9 +195,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         if response.status not in (200, 201):
             error_msg = response.data.decode("utf-8")
-            logger.error(
-                f"LangSmith API error: {response.status} - {error_msg}"
-            )
+            logger.error(f"LangSmith API error: {response.status} - {error_msg}")
             return {
                 "statusCode": response.status,
                 "message": f"Failed to register destination: {error_msg}",
