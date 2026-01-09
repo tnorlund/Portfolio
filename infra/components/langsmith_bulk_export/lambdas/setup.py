@@ -30,7 +30,7 @@ def _get_s3_credentials() -> dict[str, str]:
     secretsmanager = boto3.client("secretsmanager")
     try:
         response = secretsmanager.get_secret_value(SecretId=secret_arn)
-        return json.loads(response["SecretString"])
+        credentials = json.loads(response["SecretString"])
     except secretsmanager.exceptions.ResourceNotFoundException:
         logger.exception("Secret not found: %s", secret_arn)
         raise
@@ -40,6 +40,15 @@ def _get_s3_credentials() -> dict[str, str]:
     except Exception:
         logger.exception("Error retrieving credentials from %s", secret_arn)
         raise
+
+    # Validate required keys exist and are non-empty
+    required_keys = ("access_key_id", "secret_access_key")
+    for key in required_keys:
+        if not credentials.get(key):
+            logger.error("Missing or empty required key '%s' in secret: %s", key, secret_arn)
+            raise ValueError(f"Secret missing required key: {key}")
+
+    return credentials
 
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
@@ -64,17 +73,29 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         Dict with destination_id and status
     """
     # Get config from event or fall back to environment variables
-    api_key = event.get("api_key") or os.environ["LANGCHAIN_API_KEY"]
+    api_key = event.get("api_key") or os.environ.get("LANGCHAIN_API_KEY")
     tenant_id = event.get("tenant_id") or os.environ.get("LANGSMITH_TENANT_ID")
-    bucket_name = event.get("bucket_name") or os.environ["EXPORT_BUCKET"]
+    bucket_name = event.get("bucket_name") or os.environ.get("EXPORT_BUCKET")
     stack = os.environ.get("STACK", "dev")
     prefix = event.get("prefix", "traces/")
     skip_ssm = event.get("skip_ssm", False)
+
+    if not api_key:
+        return {
+            "statusCode": 400,
+            "message": "api_key required (via event or LANGCHAIN_API_KEY env var)",
+        }
 
     if not tenant_id:
         return {
             "statusCode": 400,
             "message": "tenant_id required (via event or LANGSMITH_TENANT_ID env var)",
+        }
+
+    if not bucket_name:
+        return {
+            "statusCode": 400,
+            "message": "bucket_name required (via event or EXPORT_BUCKET env var)",
         }
 
     logger.info(f"Registering bulk export destination for tenant: {tenant_id}")
@@ -157,22 +178,34 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         }
 
     # Register destination with LangSmith
-    # Note: endpoint_url is required for LangSmith to properly access the S3 bucket
     display_name = event.get("display_name", f"portfolio-traces-{stack}")
+
+    # Build credentials dict, including session_token if present
+    credentials = {
+        "access_key_id": s3_credentials["access_key_id"],
+        "secret_access_key": s3_credentials["secret_access_key"],
+    }
+    if s3_credentials.get("session_token"):
+        credentials["session_token"] = s3_credentials["session_token"]
+
+    # Build config - endpoint_url not needed for AWS S3
+    config = {
+        "bucket_name": bucket_name,
+        "prefix": prefix,
+        "region": region,
+        "include_bucket_in_prefix": True,
+    }
+
+    # Only include endpoint_url for non-AWS S3 backends
+    endpoint_url = event.get("endpoint_url")
+    if endpoint_url:
+        config["endpoint_url"] = endpoint_url
+
     request_body = {
         "destination_type": "s3",
         "display_name": display_name,
-        "config": {
-            "bucket_name": bucket_name,
-            "prefix": prefix,
-            "region": region,
-            "endpoint_url": f"https://s3.{region}.amazonaws.com",
-            "include_bucket_in_prefix": True,
-        },
-        "credentials": {
-            "access_key_id": s3_credentials["access_key_id"],
-            "secret_access_key": s3_credentials["secret_access_key"],
-        },
+        "config": config,
+        "credentials": credentials,
     }
     logger.info(
         f"Registering with bucket={bucket_name}, region={region}, prefix={prefix}"

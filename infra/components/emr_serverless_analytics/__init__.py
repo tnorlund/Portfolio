@@ -367,7 +367,7 @@ artifacts:
             service_role=self.codebuild_role.arn,
             environment=aws.codebuild.ProjectEnvironmentArgs(
                 compute_type="BUILD_GENERAL1_MEDIUM",
-                image="aws/codebuild/amazonlinux2-x86_64-standard:5.0",
+                image="aws/codebuild/amazonlinux-x86_64-standard:5.0",  # AL2023 for EMR 8.x
                 type="LINUX_CONTAINER",
                 environment_variables=[
                     aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(

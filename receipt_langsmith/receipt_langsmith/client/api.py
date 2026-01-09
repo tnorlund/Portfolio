@@ -223,7 +223,8 @@ class LangSmithClient:
             params["run_type"] = run_type
         if name_filter:
             # Sanitize name_filter to prevent filter injection
-            sanitized = name_filter.replace('"', '\\"').replace("\\", "\\\\")
+            # Escape backslashes first, then quotes (order matters)
+            sanitized = name_filter.replace("\\", "\\\\").replace('"', '\\"')
             params["filter"] = f'eq(name, "{sanitized}")'
         if start_time:
             params["start_time"] = start_time.isoformat()
