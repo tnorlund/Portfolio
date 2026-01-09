@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useInView } from "react-intersection-observer";
-import { animated, useTransition, useSpring, to } from "@react-spring/web";
+import { animated, useTransition, useSpring, to, SpringValue } from "@react-spring/web";
 import { api } from "../../../../services/api";
 import {
   LabelEvaluatorReceipt,
@@ -412,9 +412,19 @@ const DecisionTally: React.FC<DecisionTallyProps> = ({
   );
 };
 
+// Animated rect component for scan lines
+const AnimatedRect = animated('rect');
+
 interface ReceiptViewerProps {
   receipt: LabelEvaluatorReceipt;
-  scannerState: ScannerState;
+  scannerSpring: {
+    lineItem: SpringValue<number>;
+    metadata: SpringValue<number>;
+    geometric: SpringValue<number>;
+    financial: SpringValue<number>;
+    currency: SpringValue<number>;
+    review: SpringValue<number>;
+  };
   phase: Phase;
   revealedDecisions: RevealedDecision[];
   formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
@@ -423,7 +433,7 @@ interface ReceiptViewerProps {
 
 const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   receipt,
-  scannerState,
+  scannerSpring,
   phase,
   revealedDecisions,
   formatSupport,
@@ -450,13 +460,23 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
     return <div className={styles.receiptLoading}>Loading...</div>;
   }
 
-  // Calculate scan line Y positions based on each scanner's progress
-  const lineItemY = (scannerState.lineItem / 100) * height;
-  const metadataY = (scannerState.metadata / 100) * height;
-  const geometricY = (scannerState.geometric / 100) * height;
-  const financialY = (scannerState.financial / 100) * height;
-  const currencyY = (scannerState.currency / 100) * height;
-  const reviewY = (scannerState.review / 100) * height;
+  // Interpolate scan line Y positions from animated spring values
+  const lineItemY = to(scannerSpring.lineItem, (v) => (v / 100) * height);
+  const metadataY = to(scannerSpring.metadata, (v) => (v / 100) * height);
+  const geometricY = to(scannerSpring.geometric, (v) => (v / 100) * height);
+  const financialY = to(scannerSpring.financial, (v) => (v / 100) * height);
+  const currencyY = to(scannerSpring.currency, (v) => (v / 100) * height);
+  const reviewY = to(scannerSpring.review, (v) => (v / 100) * height);
+
+  // Interpolate visibility (show only when 0 < progress < 100)
+  const lineItemVisible = to(scannerSpring.lineItem, (v) => v > 0 && v < 100 ? 1 : 0);
+  const metadataVisible = to(scannerSpring.metadata, (v) => v > 0 && v < 100 ? 1 : 0);
+  const geometricVisible = to(scannerSpring.geometric, (v) => v > 0 && v < 100 ? 1 : 0);
+  const financialVisible = to(scannerSpring.financial, (v) => v > 0 && v < 100 ? 1 : 0);
+  const currencyVisible = to(scannerSpring.currency, (v) => v > 0 && v < 100 ? 1 : 0);
+  const reviewVisible = to(scannerSpring.review, (v) => v > 0 && v < 100 ? 1 : 0);
+
+  const scanLineHeight = Math.max(height * 0.004, 2);
 
   return (
     <div className={styles.receiptViewer}>
@@ -576,79 +596,72 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
               );
             })}
 
-            {/* Each scanner has its own scan line that moves independently */}
+            {/* Animated scan lines - use react-spring animated values */}
+            {/* Line Item Structure (purple) */}
+            <AnimatedRect
+              x="0"
+              y={lineItemY}
+              width={width}
+              height={scanLineHeight}
+              fill={SCANNER_COLORS.lineItem}
+              filter="url(#scanLineGlow)"
+              opacity={lineItemVisible}
+            />
 
-            {/* Line Item Structure (deep orange) - active while in progress */}
-            {scannerState.lineItem > 0 && scannerState.lineItem < 100 && (
-              <rect
-                x="0"
-                y={lineItemY}
-                width={width}
-                height={Math.max(height * 0.004, 2)}
-                fill={SCANNER_COLORS.lineItem}
-                filter="url(#scanLineGlow)"
-              />
-            )}
+            {/* Metadata (blue) */}
+            <AnimatedRect
+              x="0"
+              y={metadataY}
+              width={width}
+              height={scanLineHeight}
+              fill={SCANNER_COLORS.metadata}
+              filter="url(#scanLineGlow)"
+              opacity={metadataVisible}
+            />
 
-            {/* Metadata (blue) - active while in progress */}
-            {scannerState.metadata > 0 && scannerState.metadata < 100 && (
-              <rect
-                x="0"
-                y={metadataY}
-                width={width}
-                height={Math.max(height * 0.004, 2)}
-                fill={SCANNER_COLORS.metadata}
-                filter="url(#scanLineGlow)"
-              />
-            )}
+            {/* Geometric (orange) */}
+            <AnimatedRect
+              x="0"
+              y={geometricY}
+              width={width}
+              height={scanLineHeight}
+              fill={SCANNER_COLORS.geometric}
+              filter="url(#scanLineGlow)"
+              opacity={geometricVisible}
+            />
 
-            {/* Geometric (purple) - active while in progress */}
-            {scannerState.geometric > 0 && scannerState.geometric < 100 && (
-              <rect
-                x="0"
-                y={geometricY}
-                width={width}
-                height={Math.max(height * 0.004, 2)}
-                fill={SCANNER_COLORS.geometric}
-                filter="url(#scanLineGlow)"
-              />
-            )}
+            {/* Financial (purple) */}
+            <AnimatedRect
+              x="0"
+              y={financialY}
+              width={width}
+              height={scanLineHeight}
+              fill={SCANNER_COLORS.financial}
+              filter="url(#scanLineGlow)"
+              opacity={financialVisible}
+            />
 
-            {/* Financial (orange) - active while in progress */}
-            {scannerState.financial > 0 && scannerState.financial < 100 && (
-              <rect
-                x="0"
-                y={financialY}
-                width={width}
-                height={Math.max(height * 0.004, 2)}
-                fill={SCANNER_COLORS.financial}
-                filter="url(#scanLineGlow)"
-              />
-            )}
+            {/* Currency (purple) */}
+            <AnimatedRect
+              x="0"
+              y={currencyY}
+              width={width}
+              height={scanLineHeight}
+              fill={SCANNER_COLORS.currency}
+              filter="url(#scanLineGlow)"
+              opacity={currencyVisible}
+            />
 
-            {/* Currency (green) - starts after Line Item completes */}
-            {scannerState.currency > 0 && scannerState.currency < 100 && (
-              <rect
-                x="0"
-                y={currencyY}
-                width={width}
-                height={Math.max(height * 0.004, 2)}
-                fill={SCANNER_COLORS.currency}
-                filter="url(#scanLineGlow)"
-              />
-            )}
-
-            {/* Review (pink) - conditional, after all others */}
-            {scannerState.review > 0 && scannerState.review < 100 && (
-              <rect
-                x="0"
-                y={reviewY}
-                width={width}
-                height={Math.max(height * 0.004, 2)}
-                fill={SCANNER_COLORS.review}
-                filter="url(#scanLineGlow)"
-              />
-            )}
+            {/* Review (orange) */}
+            <AnimatedRect
+              x="0"
+              y={reviewY}
+              width={width}
+              height={scanLineHeight}
+              fill={SCANNER_COLORS.review}
+              filter="url(#scanLineGlow)"
+              opacity={reviewVisible}
+            />
           </svg>
         </div>
       </div>
@@ -1107,7 +1120,7 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
 // Scanner legend - shows all scanners with their status
 interface ScannerLegendProps {
   receipt: LabelEvaluatorReceipt;
-  scannerState: ScannerState;
+  scannerValuesRef: React.RefObject<ScannerState>;
   revealedDecisions: RevealedDecision[];
   isTransitioning: boolean;
   nextReceipt: LabelEvaluatorReceipt | null;
@@ -1115,12 +1128,34 @@ interface ScannerLegendProps {
 
 const ScannerLegend: React.FC<ScannerLegendProps> = ({
   receipt,
-  scannerState,
+  scannerValuesRef,
   revealedDecisions,
   isTransitioning,
   nextReceipt,
 }) => {
   const { currency, metadata, geometric, financial } = receipt;
+
+  // Use state that updates at a throttled rate for the legend
+  // This avoids re-renders on every frame while still showing progress
+  const [scannerState, setScannerState] = useState<ScannerState>({
+    lineItem: 0,
+    metadata: 0,
+    geometric: 0,
+    financial: 0,
+    currency: 0,
+    review: 0,
+  });
+
+  // Poll scanner values at 10fps for legend updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (scannerValuesRef.current) {
+        setScannerState({ ...scannerValuesRef.current });
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [scannerValuesRef]);
+
   const hasGeometricIssues = geometric.issues_found > 0;
 
   // Determine waiting states based on dependencies
@@ -1231,14 +1266,6 @@ const LabelEvaluatorVisualization: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
-  const [scannerState, setScannerState] = useState<ScannerState>({
-    lineItem: 0,
-    metadata: 0,
-    geometric: 0,
-    financial: 0,
-    currency: 0,
-    review: 0,
-  });
   const [revealedDecisions, setRevealedDecisions] = useState<RevealedDecision[]>([]);
   const [formatSupport, setFormatSupport] = useState<{
     supportsWebP: boolean;
@@ -1253,11 +1280,46 @@ const LabelEvaluatorVisualization: React.FC = () => {
   const [nextOffset, setNextOffset] = useState(0);
   const [loadingRemaining, setLoadingRemaining] = useState(false);
 
+  // Use react-spring for scanner progress - imperative updates avoid React re-renders
+  const [scannerSpring, scannerApi] = useSpring(() => ({
+    lineItem: 0,
+    metadata: 0,
+    geometric: 0,
+    financial: 0,
+    currency: 0,
+    review: 0,
+    config: { duration: 16 }, // Immediate updates (1 frame)
+  }));
+
+  // Track current scanner values for decision calculation (updated via ref to avoid re-renders)
+  const scannerValuesRef = useRef<ScannerState>({
+    lineItem: 0,
+    metadata: 0,
+    geometric: 0,
+    financial: 0,
+    currency: 0,
+    review: 0,
+  });
+
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
   const isLoadingRemainingRef = useRef(false);
   const receiptsRef = useRef(receipts);
   receiptsRef.current = receipts;
+
+  // Track phase/transition state in refs for animation loop (avoid stale closures)
+  const phaseRef = useRef<Phase>("idle");
+  const isTransitioningRef = useRef(false);
+
+  // Static zero spring for next receipt (no animation needed)
+  const [zeroScannerSpring] = useSpring(() => ({
+    lineItem: 0,
+    metadata: 0,
+    geometric: 0,
+    financial: 0,
+    currency: 0,
+    review: 0,
+  }));
 
   // Detect image format support
   useEffect(() => {
@@ -1337,83 +1399,31 @@ const LabelEvaluatorVisualization: React.FC = () => {
   const currentReceipt = receipts[currentIndex];
 
   // Calculate revealed decisions based on each scanner's progress
+  // Uses scannerValuesRef which is updated imperatively, so we poll with an interval
   useEffect(() => {
     if (!currentReceipt) return;
 
-    const { words, currency, metadata, financial, review } = currentReceipt;
-    const decisions: RevealedDecision[] = [];
+    const updateDecisions = () => {
+      const { words, currency, metadata, financial, review } = currentReceipt;
+      const scannerState = scannerValuesRef.current;
+      const decisions: RevealedDecision[] = [];
 
-    // Helper to check if a word's top edge has been passed by a scanner
-    const isWordScanned = (lineId: number, wordId: number, progress: number) => {
-      const word = words.find(w => w.line_id === lineId && w.word_id === wordId);
-      if (!word) return false;
-      const wordTopY = 1 - word.bbox.y - word.bbox.height;
-      return wordTopY <= (progress / 100);
-    };
+      // Helper to check if a word's top edge has been passed by a scanner
+      const isWordScanned = (lineId: number, wordId: number, progress: number) => {
+        const word = words.find(w => w.line_id === lineId && w.word_id === wordId);
+        if (!word) return false;
+        const wordTopY = 1 - word.bbox.y - word.bbox.height;
+        return wordTopY <= (progress / 100);
+      };
 
-    // Metadata decisions - track ALL decisions (V/I/R)
-    metadata.all_decisions.forEach((d) => {
-      if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.metadata)) {
-        const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
-        if (word) {
-          decisions.push({
-            key: `metadata_${d.issue.line_id}_${d.issue.word_id}`,
-            type: 'metadata',
-            decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
-            wordText: d.issue.word_text,
-            lineId: d.issue.line_id,
-            wordId: d.issue.word_id,
-            bbox: word.bbox,
-          });
-        }
-      }
-    });
-
-    // Currency decisions - track ALL decisions (V/I/R)
-    currency.all_decisions.forEach((d) => {
-      if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.currency)) {
-        const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
-        if (word) {
-          decisions.push({
-            key: `currency_${d.issue.line_id}_${d.issue.word_id}`,
-            type: 'currency',
-            decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
-            wordText: d.issue.word_text,
-            lineId: d.issue.line_id,
-            wordId: d.issue.word_id,
-            bbox: word.bbox,
-          });
-        }
-      }
-    });
-
-    // Financial decisions - track ALL decisions (V/I/R)
-    financial.all_decisions.forEach((d) => {
-      if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.financial)) {
-        const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
-        if (word) {
-          decisions.push({
-            key: `financial_${d.issue.line_id}_${d.issue.word_id}`,
-            type: 'financial',
-            decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
-            wordText: d.issue.word_text,
-            lineId: d.issue.line_id,
-            wordId: d.issue.word_id,
-            bbox: word.bbox,
-          });
-        }
-      }
-    });
-
-    // Review decisions - LLM decisions on geometrically-flagged words
-    if (review) {
-      review.all_decisions.forEach((d) => {
-        if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.review)) {
+      // Metadata decisions - track ALL decisions (V/I/R)
+      metadata.all_decisions.forEach((d) => {
+        if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.metadata)) {
           const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
           if (word) {
             decisions.push({
-              key: `review_${d.issue.line_id}_${d.issue.word_id}`,
-              type: 'review',
+              key: `metadata_${d.issue.line_id}_${d.issue.word_id}`,
+              type: 'metadata',
               decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
               wordText: d.issue.word_text,
               lineId: d.issue.line_id,
@@ -1423,12 +1433,89 @@ const LabelEvaluatorVisualization: React.FC = () => {
           }
         }
       });
-    }
 
-    setRevealedDecisions(decisions);
-  }, [currentReceipt, scannerState]);
+      // Currency decisions - track ALL decisions (V/I/R)
+      currency.all_decisions.forEach((d) => {
+        if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.currency)) {
+          const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
+          if (word) {
+            decisions.push({
+              key: `currency_${d.issue.line_id}_${d.issue.word_id}`,
+              type: 'currency',
+              decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
+              wordText: d.issue.word_text,
+              lineId: d.issue.line_id,
+              wordId: d.issue.word_id,
+              bbox: word.bbox,
+            });
+          }
+        }
+      });
+
+      // Financial decisions - track ALL decisions (V/I/R)
+      financial.all_decisions.forEach((d) => {
+        if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.financial)) {
+          const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
+          if (word) {
+            decisions.push({
+              key: `financial_${d.issue.line_id}_${d.issue.word_id}`,
+              type: 'financial',
+              decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
+              wordText: d.issue.word_text,
+              lineId: d.issue.line_id,
+              wordId: d.issue.word_id,
+              bbox: word.bbox,
+            });
+          }
+        }
+      });
+
+      // Review decisions - LLM decisions on geometrically-flagged words
+      if (review) {
+        review.all_decisions.forEach((d) => {
+          if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.review)) {
+            const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
+            if (word) {
+              decisions.push({
+                key: `review_${d.issue.line_id}_${d.issue.word_id}`,
+                type: 'review',
+                decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
+                wordText: d.issue.word_text,
+                lineId: d.issue.line_id,
+                wordId: d.issue.word_id,
+                bbox: word.bbox,
+              });
+            }
+          }
+        });
+      }
+
+      setRevealedDecisions(decisions);
+    };
+
+    // Poll at 10fps for decision updates (less frequent than animation)
+    const interval = setInterval(updateDecisions, 100);
+    updateDecisions(); // Initial call
+
+    return () => clearInterval(interval);
+  }, [currentReceipt]);
+
+  // Memoized function to update scanner spring values imperatively (no React re-renders)
+  const updateScannerValues = useCallback((values: ScannerState) => {
+    scannerValuesRef.current = values;
+    scannerApi.start({
+      lineItem: values.lineItem,
+      metadata: values.metadata,
+      geometric: values.geometric,
+      financial: values.financial,
+      currency: values.currency,
+      review: values.review,
+      immediate: true, // No animation, just set the value
+    });
+  }, [scannerApi]);
 
   // Animation loop - each scanner progresses independently based on actual durations
+  // Uses imperative spring updates to avoid React re-renders on every frame
   useEffect(() => {
     if (!inView || receipts.length === 0) {
       return;
@@ -1440,7 +1527,6 @@ const LabelEvaluatorVisualization: React.FC = () => {
     isAnimatingRef.current = true;
 
     const receipt = receipts[currentIndex];
-    const hasGeometricIssues = receipt.geometric.issues_found > 0;
 
     // Get actual durations from the receipt data (in seconds)
     // Use line item duration from the merchant's pattern file, fallback to 2s estimate
@@ -1492,9 +1578,12 @@ const LabelEvaluatorVisualization: React.FC = () => {
     let receiptIdx = currentIndex;
     let startTime = performance.now();
 
+    // Initialize state (these are the only React state updates at animation start)
+    phaseRef.current = "scanning";
+    isTransitioningRef.current = false;
     setPhase("scanning");
     setIsTransitioning(false);
-    setScannerState({
+    updateScannerValues({
       lineItem: 0,
       metadata: 0,
       geometric: 0,
@@ -1502,8 +1591,6 @@ const LabelEvaluatorVisualization: React.FC = () => {
       currency: 0,
       review: 0,
     });
-
-    let isInTransition = false;
 
     const animate = (time: number) => {
       const currentReceipts = receiptsRef.current;
@@ -1543,9 +1630,18 @@ const LabelEvaluatorVisualization: React.FC = () => {
           reviewProgress = Math.min((reviewElapsed / reviewDuration) * 100, 100);
         }
 
-        setPhase("scanning");
-        setIsTransitioning(false);
-        setScannerState({
+        // Update phase only when it changes (avoid unnecessary re-renders)
+        if (phaseRef.current !== "scanning") {
+          phaseRef.current = "scanning";
+          setPhase("scanning");
+        }
+        if (isTransitioningRef.current !== false) {
+          isTransitioningRef.current = false;
+          setIsTransitioning(false);
+        }
+
+        // Imperative spring update - no React re-render
+        updateScannerValues({
           lineItem: lineItemProgress,
           metadata: metadataProgress,
           geometric: geometricProgress,
@@ -1555,9 +1651,17 @@ const LabelEvaluatorVisualization: React.FC = () => {
         });
       } else if (elapsed < holdEnd) {
         // Hold phase - show complete state
-        setPhase("complete");
-        setIsTransitioning(false);
-        setScannerState({
+        if (phaseRef.current !== "complete") {
+          phaseRef.current = "complete";
+          setPhase("complete");
+        }
+        if (isTransitioningRef.current !== false) {
+          isTransitioningRef.current = false;
+          setIsTransitioning(false);
+        }
+
+        // Imperative spring update - no React re-render
+        updateScannerValues({
           lineItem: 100,
           metadata: 100,
           geometric: 100,
@@ -1567,20 +1671,21 @@ const LabelEvaluatorVisualization: React.FC = () => {
         });
       } else if (elapsed < totalCycle) {
         // Transition phase - animate receipt flying from queue to center
-        if (!isInTransition) {
-          isInTransition = true;
+        if (!isTransitioningRef.current) {
+          isTransitioningRef.current = true;
           setIsTransitioning(true);
         }
       } else {
         // Move to next receipt (loop back to start)
         receiptIdx = (receiptIdx + 1) % currentReceipts.length;
-        isInTransition = false;
+        isTransitioningRef.current = false;
+        phaseRef.current = "scanning";
         setCurrentIndex(receiptIdx);
 
-        // Reset for new receipt
+        // Reset for new receipt (React state updates only at receipt transition)
         setPhase("scanning");
         setIsTransitioning(false);
-        setScannerState({
+        updateScannerValues({
           lineItem: 0,
           metadata: 0,
           geometric: 0,
@@ -1603,7 +1708,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
       }
       isAnimatingRef.current = false;
     };
-  }, [inView, receipts.length, currentIndex]);
+  }, [inView, receipts.length, currentIndex, updateScannerValues]);
 
   if (loading) {
     return (
@@ -1648,7 +1753,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
           <div className={`${styles.receiptContainer} ${isTransitioning ? styles.fadeOut : ''}`}>
             <ReceiptViewer
               receipt={currentReceipt}
-              scannerState={scannerState}
+              scannerSpring={scannerSpring}
               phase={phase}
               revealedDecisions={revealedDecisions}
               formatSupport={formatSupport}
@@ -1674,7 +1779,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
             <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles.fadeIn}`}>
               <ReceiptViewer
                 receipt={nextReceipt}
-                scannerState={{ lineItem: 0, metadata: 0, geometric: 0, financial: 0, currency: 0, review: 0 }}
+                scannerSpring={zeroScannerSpring}
                 phase="idle"
                 revealedDecisions={[]}
                 formatSupport={formatSupport}
@@ -1685,7 +1790,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
 
         <ScannerLegend
           receipt={currentReceipt}
-          scannerState={scannerState}
+          scannerValuesRef={scannerValuesRef}
           revealedDecisions={revealedDecisions}
           isTransitioning={isTransitioning}
           nextReceipt={nextReceipt}
