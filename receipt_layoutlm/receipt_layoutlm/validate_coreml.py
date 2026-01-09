@@ -10,7 +10,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -233,9 +233,11 @@ def validate_coreml(
         matching_labels=matches,
         label_agreement_rate=matches / total if total > 0 else 0.0,
         per_label_agreement=per_label,
-        avg_confidence_diff=np.mean(conf_diffs) if conf_diffs else 0.0,
+        avg_confidence_diff=float(np.mean(conf_diffs)) if conf_diffs else 0.0,
         max_confidence_diff=max(conf_diffs) if conf_diffs else 0.0,
-        avg_logit_rmse=np.mean(all_logit_rmses) if all_logit_rmses else 0.0,
+        avg_logit_rmse=(
+            float(np.mean(all_logit_rmses)) if all_logit_rmses else 0.0
+        ),
         max_logit_rmse=max(all_logit_rmses) if all_logit_rmses else 0.0,
         mismatches=mismatches,
     )
@@ -300,7 +302,7 @@ def _pytorch_inference(
     id2label = model.config.id2label
 
     # Aggregate per word (same as inference.py)
-    word_to_tokens = {}
+    word_to_tokens: Dict[int, List[int]] = {}
     for i, wid in enumerate(word_ids):
         if wid is not None:
             word_to_tokens.setdefault(wid, []).append(i)
@@ -380,14 +382,14 @@ def _coreml_inference(
     logits = prediction["logits"][0]  # [seq_len, num_labels]
 
     # Aggregate per word
-    word_to_tokens = {}
+    word_to_tokens: Dict[int, List[int]] = {}
     for i, wid in enumerate(word_ids):
         if wid is not None:
             word_to_tokens.setdefault(wid, []).append(i)
 
-    labels = []
-    confs = []
-    word_logits = []
+    labels: List[str] = []
+    confs: List[float] = []
+    word_logits: List[Any] = []
 
     for wid in range(len(tokens)):
         token_idxs = word_to_tokens.get(wid, [])
@@ -425,6 +427,7 @@ def _load_test_samples(
     if dynamo_table:
         try:
             from receipt_dynamo import DynamoClient
+            from receipt_dynamo.constants import ValidationStatus
 
             from .data_loader import (
                 _box_from_word,
@@ -434,13 +437,15 @@ def _load_test_samples(
             dyn = DynamoClient(table_name=dynamo_table, region=region)
 
             # Get some receipts with labels
-            labels, _ = dyn.list_labels_by_status("VALID")
+            labels, _ = dyn.list_receipt_word_labels_with_status(
+                ValidationStatus.VALID
+            )
             if not labels:
                 print("No VALID labels found, using synthetic data")
                 return _generate_synthetic_samples(num_samples)
 
             # Group by receipt
-            receipts = {}
+            receipts: Dict[tuple, int] = {}
             for label in labels[:500]:  # Limit search
                 key = (label.image_id, label.receipt_id)
                 receipts[key] = receipts.get(key, 0) + 1

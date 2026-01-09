@@ -113,7 +113,7 @@ class ReceiptLayoutLMTrainer:
             )
 
         # Compute dataset counts prior to tokenization for run logging
-        def _count_labels(dataset) -> Dict[str, int]:
+        def _count_labels(dataset) -> Dict[str, Any]:
             counts: Dict[str, int] = {}
             num_lines = 0
             num_tokens = 0
@@ -153,7 +153,7 @@ class ReceiptLayoutLMTrainer:
                 "label_counts": {k: counts[k] for k, _ in non_o_sorted},
             }
 
-        dataset_counts: Dict[str, Dict[str, int]] = {}
+        dataset_counts: Dict[str, Any] = {}
         for split in ("train", "validation"):
             if split in datasets:
                 dataset_counts[split] = _count_labels(datasets[split])

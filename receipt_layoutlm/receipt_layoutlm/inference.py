@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import List, Optional, Dict, Any, Tuple, Set
+import importlib
 import json
 import os
-import importlib
-
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 # Reuse normalization helpers to match training exactly
-from .data_loader import _normalize_box_from_extents, _box_from_word
+from .data_loader import _box_from_word, _normalize_box_from_extents
 
 
 @dataclass
@@ -82,7 +81,9 @@ class LayoutLMInference:
         self._model.to(self._device)
 
         # Load label configuration from run.json if available
-        self._label_list: List[str] = list(self._model.config.id2label.values())
+        self._label_list: List[str] = list(
+            self._model.config.id2label.values()
+        )
         self._label_merges: Dict[str, List[str]] = {}
         self._reverse_label_map: Dict[str, str] = {}
         self._load_run_config(model_s3_uri)
@@ -118,7 +119,9 @@ class LayoutLMInference:
         if prefix.endswith("/"):
             prefix = prefix[:-1]
         parent_prefix = prefix.rsplit("/", 1)[0] if "/" in prefix else ""
-        run_json_key = f"{parent_prefix}/run.json" if parent_prefix else "run.json"
+        run_json_key = (
+            f"{parent_prefix}/run.json" if parent_prefix else "run.json"
+        )
 
         s3 = boto3.client("s3")
         try:
@@ -128,6 +131,7 @@ class LayoutLMInference:
         except Exception as e:
             # run.json not found or other error - continue without it
             import logging
+
             logging.getLogger(__name__).debug(
                 "Could not load run.json from S3: %s", e
             )
@@ -211,7 +215,9 @@ class LayoutLMInference:
 
         # Prefer best/ if present
         try:
-            from botocore.exceptions import ClientError as _S3ClientError  # type: ignore
+            from botocore.exceptions import (
+                ClientError as _S3ClientError,  # type: ignore
+            )
         except (
             ModuleNotFoundError
         ):  # pragma: no cover - when botocore not installed
@@ -394,7 +400,7 @@ class LayoutLMInference:
             max_x = max(max_x, x1)
             max_y = max(max_y, y1)
             by_line.setdefault(w.line_id, []).append(
-                (w.word_id, w.text, [x0, y0, x1, y1])
+                (w.word_id, w.text, [int(x0), int(y0), int(x1), int(y1)])
             )
 
         tokens_per_line: List[List[str]] = []
