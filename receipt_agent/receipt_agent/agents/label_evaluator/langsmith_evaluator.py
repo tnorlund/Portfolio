@@ -33,19 +33,15 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Optional
 
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
-
+from receipt_agent.agents.label_evaluator.issue_detection import (
+    evaluate_word_contexts,
+)
+from receipt_agent.agents.label_evaluator.state import MerchantPatterns
 from receipt_agent.agents.label_evaluator.word_context import (
     assemble_visual_lines,
     build_word_contexts,
 )
-from receipt_agent.agents.label_evaluator.issue_detection import (
-    evaluate_word_contexts,
-)
-from receipt_agent.agents.label_evaluator.state import (
-    EvaluationIssue,
-    MerchantPatterns,
-)
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 
 @dataclass
@@ -63,14 +59,18 @@ class LabelComparisonMetrics:
         """Precision = TP / (TP + FP)."""
         if self.true_positives + self.false_positives == 0:
             return 0.0
-        return self.true_positives / (self.true_positives + self.false_positives)
+        return self.true_positives / (
+            self.true_positives + self.false_positives
+        )
 
     @property
     def recall(self) -> float:
         """Recall = TP / (TP + FN)."""
         if self.true_positives + self.false_negatives == 0:
             return 0.0
-        return self.true_positives / (self.true_positives + self.false_negatives)
+        return self.true_positives / (
+            self.true_positives + self.false_negatives
+        )
 
     @property
     def f1_score(self) -> float:
@@ -96,6 +96,7 @@ class EvaluationQualityMetrics:
     total_issues: int = 0
     issues_by_type: dict[str, int] = field(default_factory=dict)
     total_words: int = 0
+    constellation_culprits: int = 0  # Count of drill-down culprits identified
 
     @property
     def issue_rate(self) -> float:
@@ -192,15 +193,22 @@ def _evaluate_prediction_quality(
     # Run evaluation (same checks as Step Function)
     issues = evaluate_word_contexts(word_contexts, patterns, visual_lines)
 
-    # Aggregate by type
+    # Aggregate by type and count drill-down culprits
     issues_by_type: dict[str, int] = defaultdict(int)
+    constellation_culprits = 0
     for issue in issues:
         issues_by_type[issue.issue_type] += 1
+        # Count culprits from drill-down (constellation anomalies)
+        if issue.drill_down:
+            constellation_culprits += sum(
+                1 for w in issue.drill_down if w.is_culprit
+            )
 
     return EvaluationQualityMetrics(
         total_issues=len(issues),
         issues_by_type=dict(issues_by_type),
         total_words=len(word_contexts),
+        constellation_culprits=constellation_culprits,
     )
 
 
@@ -306,11 +314,16 @@ def label_quality_evaluator(
             "total_issues": quality.total_issues,
             "issues_by_type": quality.issues_by_type,
             "issue_rate": quality.issue_rate,
-            "position_anomaly_rate": quality.get_issue_rate("position_anomaly"),
-            "geometric_anomaly_rate": quality.get_issue_rate("geometric_anomaly"),
+            "position_anomaly_rate": quality.get_issue_rate(
+                "position_anomaly"
+            ),
+            "geometric_anomaly_rate": quality.get_issue_rate(
+                "geometric_anomaly"
+            ),
             "constellation_anomaly_rate": quality.get_issue_rate(
                 "constellation_anomaly"
             ),
+            "constellation_culprits": quality.constellation_culprits,
         },
     }
 

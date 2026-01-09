@@ -177,7 +177,9 @@ def check_merchant_match(word_text: str, merchant_name: str) -> bool:
     return len(word_norm) >= 3 and word_norm in merchant_norm
 
 
-def check_address_match(word_text: str, address: str, components: dict) -> bool:
+def check_address_match(
+    word_text: str, address: str, components: dict
+) -> bool:
     """Check if word could be part of address."""
     if not address and not components:
         return False
@@ -196,7 +198,9 @@ def check_address_match(word_text: str, address: str, components: dict) -> bool:
             "administrative_area_level_1",
             "postal_code",
         ]:
-            if key in components and word_norm in normalize_text(str(components[key])):
+            if key in components and word_norm in normalize_text(
+                str(components[key])
+            ):
                 return True
     return False
 
@@ -229,7 +233,9 @@ def check_website_match(word_text: str, website: str) -> bool:
         .replace("https://", "")
     )
     # Check domain match
-    return word_norm in site_norm or site_norm.startswith(word_norm.split(".")[0])
+    return word_norm in site_norm or site_norm.startswith(
+        word_norm.split(".")[0]
+    )
 
 
 def detect_pattern_type(text: str) -> str | None:
@@ -272,14 +278,18 @@ def collect_metadata_words(
     # Extract place data if available
     merchant_name = getattr(place, "merchant_name", "") if place else ""
     address = getattr(place, "formatted_address", "") if place else ""
-    address_components = getattr(place, "address_components", {}) if place else {}
+    address_components = (
+        getattr(place, "address_components", {}) if place else {}
+    )
     phone = getattr(place, "phone_number", "") if place else ""
     phone_intl = getattr(place, "phone_intl", "") if place else ""
     website = getattr(place, "website", "") if place else ""
 
     for line in visual_lines:
         for wc in line.words:
-            current_label = wc.current_label.label if wc.current_label else None
+            current_label = (
+                wc.current_label.label if wc.current_label else None
+            )
             text = wc.word.text
 
             # Check if word has a metadata label
@@ -287,7 +297,9 @@ def collect_metadata_words(
 
             # Pre-filter: Skip obvious non-metadata tokens for unlabeled words
             # Words with metadata labels are always evaluated (to catch mislabeling)
-            if not has_metadata_label and should_skip_for_metadata_evaluation(text):
+            if not has_metadata_label and should_skip_for_metadata_evaluation(
+                text
+            ):
                 prefiltered_count += 1
                 continue
 
@@ -345,7 +357,9 @@ def build_metadata_evaluation_prompt(
         for wc in line.words:
             label = wc.current_label.label if wc.current_label else "unlabeled"
             line_text.append(f"{wc.word.text}[{label}]")
-        receipt_lines.append(f"  Line {line.line_index}: " + " | ".join(line_text))
+        receipt_lines.append(
+            f"  Line {line.line_index}: " + " | ".join(line_text)
+        )
 
     receipt_text = "\n".join(receipt_lines)
     if len(visual_lines) > MAX_RECEIPT_LINES_FOR_PROMPT:
@@ -474,7 +488,9 @@ def parse_metadata_evaluation_response(
         structured_response = MetadataEvaluationResponse.model_validate(parsed)
         return structured_response.to_ordered_list(num_words)
     except (json.JSONDecodeError, ValidationError) as e:
-        logger.debug("Structured parsing failed, falling back to manual parsing: %s", e)
+        logger.debug(
+            "Structured parsing failed, falling back to manual parsing: %s", e
+        )
 
     # Fallback to manual parsing for backwards compatibility
     try:
@@ -484,13 +500,17 @@ def parse_metadata_evaluation_response(
 
         # Ensure decisions is a list before iterating
         if not isinstance(decisions, list):
-            logger.warning("Decisions is not a list: %s", type(decisions).__name__)
+            logger.warning(
+                "Decisions is not a list: %s", type(decisions).__name__
+            )
             return [fallback.copy() for _ in range(num_words)]
 
         # Validate and normalize
         result = []
         for i in range(num_words):
-            decision = next((d for d in decisions if d.get("index") == i), None)
+            decision = next(
+                (d for d in decisions if d.get("index") == i), None
+            )
             if decision:
                 result.append(
                     {
@@ -547,7 +567,9 @@ def evaluate_metadata_labels(
         List of decisions ready for apply_llm_decisions()
     """
     # Step 1: Collect metadata words to evaluate (with pre-filtering)
-    metadata_words, prefiltered_count = collect_metadata_words(visual_lines, place)
+    metadata_words, prefiltered_count = collect_metadata_words(
+        visual_lines, place
+    )
 
     # Log pre-filtering results
     if prefiltered_count > 0:
@@ -567,79 +589,170 @@ def evaluate_metadata_labels(
         merchant_name=merchant_name,
     )
 
-    try:
-        response = llm.invoke(prompt)
-        response_text = (
-            response.content if hasattr(response, "content") else str(response)
-        )
+    # Try structured output first, fall back to text parsing
+    max_retries = 3
+    last_decisions = None
+    num_words = len(metadata_words)
 
-        # Step 3: Parse response
-        decisions = parse_metadata_evaluation_response(
-            response_text, len(metadata_words)
-        )
+    # Check if LLM supports structured output
+    use_structured = hasattr(llm, "with_structured_output")
 
-        # Step 4: Format output for apply_llm_decisions
-        results = []
-        for mw, decision in zip(metadata_words, decisions, strict=True):
-            wc = mw.word_context
-            results.append(
-                {
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": {
-                        "line_id": wc.word.line_id,
-                        "word_id": wc.word.word_id,
-                        "current_label": mw.current_label,
-                        "word_text": wc.word.text,
-                    },
-                    "llm_review": decision,
-                }
-            )
-
-        # Log summary
-        decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
-        for r in results:
-            decision = r.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
-            if decision in decision_counts:
-                decision_counts[decision] += 1
+    for attempt in range(max_retries):
+        try:
+            if use_structured:
+                try:
+                    structured_llm = llm.with_structured_output(
+                        MetadataEvaluationResponse
+                    )
+                    response: MetadataEvaluationResponse = (
+                        structured_llm.invoke(prompt)
+                    )
+                    decisions = response.to_ordered_list(num_words)
+                    logger.debug(
+                        "Structured output succeeded with %d evaluations",
+                        len(decisions),
+                    )
+                except Exception as struct_err:
+                    # Structured output failed, fall back to text parsing
+                    logger.warning(
+                        "Structured output failed (attempt %d), falling back to text: %s",
+                        attempt + 1,
+                        struct_err,
+                    )
+                    response = llm.invoke(prompt)
+                    response_text = (
+                        response.content
+                        if hasattr(response, "content")
+                        else str(response)
+                    )
+                    decisions = parse_metadata_evaluation_response(
+                        response_text, num_words
+                    )
             else:
-                decision_counts["NEEDS_REVIEW"] += 1
-        logger.info("Metadata evaluation results: %s", decision_counts)
+                response = llm.invoke(prompt)
+                response_text = (
+                    response.content
+                    if hasattr(response, "content")
+                    else str(response)
+                )
+                decisions = parse_metadata_evaluation_response(
+                    response_text, num_words
+                )
 
-        return results
+            last_decisions = decisions
 
-    except Exception as e:
-        # Check if this is a rate limit error that should trigger Step Function retry
-        from receipt_agent.utils import (
-            BothProvidersFailedError,
-            OllamaRateLimitError,
+            # Check if all decisions failed to parse (indicates malformed response)
+            parse_failures = sum(
+                1
+                for d in decisions
+                if "Failed to parse" in d.get("reasoning", "")
+            )
+
+            if parse_failures == 0:
+                # Success - no parse failures
+                break
+            elif parse_failures < len(decisions):
+                # Partial success - some parsed, use what we have
+                logger.info(
+                    "Partial parse success: %d/%d parsed on attempt %d",
+                    len(decisions) - parse_failures,
+                    len(decisions),
+                    attempt + 1,
+                )
+                break
+            else:
+                # All failed to parse - retry if we have attempts left
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        "All %d decisions failed to parse on attempt %d, retrying...",
+                        len(decisions),
+                        attempt + 1,
+                    )
+                else:
+                    logger.warning(
+                        "All %d decisions failed to parse after %d attempts",
+                        len(decisions),
+                        max_retries,
+                    )
+
+        except Exception as e:
+            # Check if this is a rate limit error that should trigger Step Function retry
+            from receipt_agent.utils import (
+                BothProvidersFailedError,
+                OllamaRateLimitError,
+            )
+
+            if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+                logger.error(
+                    "Metadata LLM rate limited, propagating for retry: %s", e
+                )
+                raise  # Let Step Function retry handle this
+
+            logger.error(
+                "Metadata LLM call failed on attempt %d: %s", attempt + 1, e
+            )
+            if attempt == max_retries - 1:
+                # Final attempt failed - return NEEDS_REVIEW for all
+                results = []
+                for mw in metadata_words:
+                    wc = mw.word_context
+                    results.append(
+                        {
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                            "issue": {
+                                "line_id": wc.word.line_id,
+                                "word_id": wc.word.word_id,
+                                "current_label": mw.current_label,
+                                "word_text": wc.word.text,
+                            },
+                            "llm_review": {
+                                "decision": "NEEDS_REVIEW",
+                                "reasoning": f"LLM call failed after {max_retries} attempts: {e}",
+                                "suggested_label": None,
+                                "confidence": "low",
+                            },
+                        }
+                    )
+                return results
+
+    # Use the last decisions we got (best effort)
+    decisions = last_decisions or [
+        {
+            "decision": "NEEDS_REVIEW",
+            "reasoning": "No response received",
+            "suggested_label": None,
+            "confidence": "low",
+        }
+        for _ in metadata_words
+    ]
+
+    # Step 4: Format output for apply_llm_decisions
+    results = []
+    for mw, decision in zip(metadata_words, decisions, strict=True):
+        wc = mw.word_context
+        results.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "issue": {
+                    "line_id": wc.word.line_id,
+                    "word_id": wc.word.word_id,
+                    "current_label": mw.current_label,
+                    "word_text": wc.word.text,
+                },
+                "llm_review": decision,
+            }
         )
 
-        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
-            logger.error("Metadata LLM rate limited, propagating for retry: %s", e)
-            raise  # Let Step Function retry handle this
+    # Log summary
+    decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+    for r in results:
+        decision = r.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
+        if decision in decision_counts:
+            decision_counts[decision] += 1
+        else:
+            decision_counts["NEEDS_REVIEW"] += 1
+    logger.info("Metadata evaluation results: %s", decision_counts)
 
-        logger.error("Metadata LLM call failed: %s", e)
-        # Return NEEDS_REVIEW for all words (non-rate-limit errors only)
-        results = []
-        for mw in metadata_words:
-            wc = mw.word_context
-            results.append(
-                {
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": {
-                        "line_id": wc.word.line_id,
-                        "word_id": wc.word.word_id,
-                        "current_label": mw.current_label,
-                        "word_text": wc.word.text,
-                    },
-                    "llm_review": {
-                        "decision": "NEEDS_REVIEW",
-                        "reasoning": f"LLM call failed: {e}",
-                        "suggested_label": None,
-                        "confidence": "low",
-                    },
-                }
-            )
-        return results
+    return results

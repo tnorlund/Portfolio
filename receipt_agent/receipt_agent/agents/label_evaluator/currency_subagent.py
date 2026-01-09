@@ -143,7 +143,9 @@ def get_non_currency_pattern(text: str) -> Optional[str]:
 
 def identify_line_item_rows(
     visual_lines: list[VisualLine],
-    patterns: Optional[dict] = None,  # Reserved for future pattern-based detection
+    patterns: Optional[
+        dict
+    ] = None,  # Reserved for future pattern-based detection
 ) -> list[LineItemRow]:
     """
     Identify which visual lines are line item rows based on patterns.
@@ -159,7 +161,9 @@ def identify_line_item_rows(
     rows = []
     for line in visual_lines:
         line_labels = {
-            wc.current_label.label for wc in line.words if wc.current_label is not None
+            wc.current_label.label
+            for wc in line.words
+            if wc.current_label is not None
         }
 
         # A line is a line item row if it contains any line item labels
@@ -200,7 +204,9 @@ def collect_currency_words(
 
     for line in visual_lines:
         for wc in line.words:
-            current_label = wc.current_label.label if wc.current_label else None
+            current_label = (
+                wc.current_label.label if wc.current_label else None
+            )
 
             # Check if word has a currency label (LINE_TOTAL, UNIT_PRICE, etc.)
             has_eval_label = current_label in CURRENCY_LABELS
@@ -222,7 +228,9 @@ def collect_currency_words(
                         word_context=wc,
                         current_label=current_label,
                         line_index=line.line_index,
-                        position_zone=get_position_zone(wc.normalized_x, x_zones),
+                        position_zone=get_position_zone(
+                            wc.normalized_x, x_zones
+                        ),
                         looks_like_currency=is_currency_like,
                         non_currency_pattern=non_currency,
                     )
@@ -254,7 +262,9 @@ def build_currency_evaluation_prompt(
         for wc in line.words:
             label = wc.current_label.label if wc.current_label else "unlabeled"
             line_text.append(f"{wc.word.text}[{label}]")
-        receipt_lines.append(f"  Line {line.line_index}: " + " | ".join(line_text))
+        receipt_lines.append(
+            f"  Line {line.line_index}: " + " | ".join(line_text)
+        )
 
     receipt_text = "\n".join(receipt_lines[:50])  # Limit to 50 lines
     if len(visual_lines) > 50:
@@ -365,7 +375,9 @@ def parse_currency_evaluation_response(
         structured_response = CurrencyEvaluationResponse.model_validate(parsed)
         return structured_response.to_ordered_list(num_words)
     except (json.JSONDecodeError, ValidationError) as e:
-        logger.debug("Structured parsing failed, falling back to manual parsing: %s", e)
+        logger.debug(
+            "Structured parsing failed, falling back to manual parsing: %s", e
+        )
 
     # Fallback to manual parsing for backwards compatibility
     try:
@@ -375,14 +387,18 @@ def parse_currency_evaluation_response(
 
         # Ensure decisions is a list before iterating
         if not isinstance(decisions, list):
-            logger.warning("Decisions is not a list: %s", type(decisions).__name__)
+            logger.warning(
+                "Decisions is not a list: %s", type(decisions).__name__
+            )
             return [fallback.copy() for _ in range(num_words)]
 
         # Validate and normalize
         result = []
         for i in range(num_words):
             # Find decision for this index
-            decision = next((d for d in decisions if d.get("index") == i), None)
+            decision = next(
+                (d for d in decisions if d.get("index") == i), None
+            )
             if decision:
                 result.append(
                     {
@@ -461,7 +477,9 @@ def evaluate_currency_labels(
         return []
 
     # Step 2: Collect currency words to evaluate
-    currency_words = collect_currency_words(visual_lines, line_item_rows, patterns)
+    currency_words = collect_currency_words(
+        visual_lines, line_item_rows, patterns
+    )
     logger.info("Found %s currency words to evaluate", len(currency_words))
 
     if not currency_words:
@@ -476,78 +494,190 @@ def evaluate_currency_labels(
         merchant_name=merchant_name,
     )
 
-    try:
-        response = llm.invoke(prompt)
-        response_text = (
-            response.content if hasattr(response, "content") else str(response)
-        )
+    # Try structured output first, fall back to text parsing
+    max_retries = 3
+    last_decisions = None
+    num_words = len(currency_words)
 
-        # Step 4: Parse response
-        decisions = parse_currency_evaluation_response(
-            response_text, len(currency_words)
-        )
+    # Check if LLM supports structured output
+    use_structured = hasattr(llm, "with_structured_output")
 
-        # Step 5: Format output for apply_llm_decisions
-        results = []
-        for cw, decision in zip(currency_words, decisions, strict=True):
-            wc = cw.word_context
-            results.append(
-                {
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": {
-                        "line_id": wc.word.line_id,
-                        "word_id": wc.word.word_id,
-                        "current_label": cw.current_label,
-                        "word_text": wc.word.text,
-                    },
-                    "llm_review": decision,
-                }
+    for attempt in range(max_retries):
+        try:
+            if use_structured:
+                try:
+                    structured_llm = llm.with_structured_output(
+                        CurrencyEvaluationResponse
+                    )
+                    response: CurrencyEvaluationResponse = (
+                        structured_llm.invoke(prompt)
+                    )
+                    decisions = response.to_ordered_list(num_words)
+                    logger.debug(
+                        "Structured output succeeded with %d evaluations",
+                        len(decisions),
+                    )
+                except Exception as struct_err:
+                    # Structured output failed, fall back to text parsing
+                    logger.warning(
+                        "Structured output failed (attempt %d), falling back to text: %s",
+                        attempt + 1,
+                        struct_err,
+                    )
+                    response = llm.invoke(prompt)
+                    response_text = (
+                        response.content
+                        if hasattr(response, "content")
+                        else str(response)
+                    )
+                    decisions = parse_currency_evaluation_response(
+                        response_text, num_words
+                    )
+            else:
+                response = llm.invoke(prompt)
+                response_text = (
+                    response.content
+                    if hasattr(response, "content")
+                    else str(response)
+                )
+                decisions = parse_currency_evaluation_response(
+                    response_text, num_words
+                )
+
+            last_decisions = decisions
+
+            # Check if all decisions failed to parse (indicates malformed response)
+            parse_failures = sum(
+                1
+                for d in decisions
+                if "Failed to parse" in d.get("reasoning", "")
             )
 
-        # Log summary
-        decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
-        for r in results:
-            decision_counts[r["llm_review"]["decision"]] += 1
-        logger.info("Currency evaluation results: %s", decision_counts)
+            if parse_failures == 0:
+                # Success - no parse failures
+                break
+            elif parse_failures < len(decisions):
+                # Partial success - some parsed, use what we have
+                logger.info(
+                    "Partial parse success: %d/%d parsed on attempt %d",
+                    len(decisions) - parse_failures,
+                    len(decisions),
+                    attempt + 1,
+                )
+                break
+            else:
+                # All failed to parse - retry if we have attempts left
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        "All %d decisions failed to parse on attempt %d, retrying...",
+                        len(decisions),
+                        attempt + 1,
+                    )
+                else:
+                    logger.warning(
+                        "All %d decisions failed to parse after %d attempts",
+                        len(decisions),
+                        max_retries,
+                    )
 
-        return results
+        except Exception as e:
+            # Check if this is a rate limit error that should trigger Step Function retry
+            from receipt_agent.utils import (
+                BothProvidersFailedError,
+                OllamaRateLimitError,
+            )
 
-    except Exception as e:
-        # Check if this is a rate limit error that should trigger Step Function retry
-        from receipt_agent.utils import (
-            BothProvidersFailedError,
-            OllamaRateLimitError,
+            if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+                logger.error(
+                    "Currency LLM rate limited, propagating for retry: %s", e
+                )
+                raise  # Let Step Function retry handle this
+
+            logger.error(
+                "Currency LLM call failed on attempt %d: %s", attempt + 1, e
+            )
+            if attempt == max_retries - 1:
+                # Final attempt failed - return NEEDS_REVIEW for all
+                results = []
+                for cw in currency_words:
+                    wc = cw.word_context
+                    results.append(
+                        {
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                            "issue": {
+                                "line_id": wc.word.line_id,
+                                "word_id": wc.word.word_id,
+                                "current_label": cw.current_label,
+                                "word_text": wc.word.text,
+                            },
+                            "llm_review": {
+                                "decision": "NEEDS_REVIEW",
+                                "reasoning": f"LLM call failed after {max_retries} attempts: {e}",
+                                "suggested_label": None,
+                                "confidence": "low",
+                            },
+                        }
+                    )
+                return results
+
+    # Use the last decisions we got (best effort)
+    decisions = last_decisions or [
+        {
+            "decision": "NEEDS_REVIEW",
+            "reasoning": "No response received",
+            "suggested_label": None,
+            "confidence": "low",
+        }
+        for _ in currency_words
+    ]
+
+    # Step 5: Format output for apply_llm_decisions
+    # Handle length mismatches by padding with NEEDS_REVIEW fallback
+    results = []
+    num_words = len(currency_words)
+    num_decisions = len(decisions)
+    if num_decisions != num_words:
+        logger.warning(
+            "Decision count mismatch: %d words, %d decisions",
+            num_words,
+            num_decisions,
         )
-
-        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
-            logger.error("Currency LLM rate limited, propagating for retry: %s", e)
-            raise  # Let Step Function retry handle this
-
-        logger.error("Currency LLM call failed: %s", e)
-        # Return NEEDS_REVIEW for all words (non-rate-limit errors only)
-        results = []
-        for cw in currency_words:
-            wc = cw.word_context
-            results.append(
+        # Pad decisions if too few, or truncate if too many
+        while len(decisions) < num_words:
+            decisions.append(
                 {
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": {
-                        "line_id": wc.word.line_id,
-                        "word_id": wc.word.word_id,
-                        "current_label": cw.current_label,
-                        "word_text": wc.word.text,
-                    },
-                    "llm_review": {
-                        "decision": "NEEDS_REVIEW",
-                        "reasoning": f"LLM call failed: {e}",
-                        "suggested_label": None,
-                        "confidence": "low",
-                    },
+                    "decision": "NEEDS_REVIEW",
+                    "reasoning": "No decision from LLM (count mismatch)",
+                    "suggested_label": None,
+                    "confidence": "low",
                 }
             )
-        return results
+        decisions = decisions[:num_words]
+
+    for cw, decision in zip(currency_words, decisions, strict=False):
+        wc = cw.word_context
+        results.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "issue": {
+                    "line_id": wc.word.line_id,
+                    "word_id": wc.word.word_id,
+                    "current_label": cw.current_label,
+                    "word_text": wc.word.text,
+                },
+                "llm_review": decision,
+            }
+        )
+
+    # Log summary
+    decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+    for r in results:
+        decision_counts[r["llm_review"]["decision"]] += 1
+    logger.info("Currency evaluation results: %s", decision_counts)
+
+    return results
 
 
 # =============================================================================

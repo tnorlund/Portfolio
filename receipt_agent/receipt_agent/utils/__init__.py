@@ -18,6 +18,7 @@ from .chroma_helpers import (
 )
 from .llm_factory import (
     BothProvidersFailedError,
+    EmptyResponseError,
     LLMProvider,
     ResilientLLM,
     create_llm,
@@ -54,6 +55,7 @@ __all__ = [
     "query_similar_words",
     # LLM Factory
     "BothProvidersFailedError",
+    "EmptyResponseError",
     "LLMProvider",
     "ResilientLLM",
     "create_llm",

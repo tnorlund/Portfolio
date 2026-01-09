@@ -19,8 +19,7 @@ Usage:
         --parquet-bucket langsmith-export-bucket \\
         --batch-bucket label-evaluator-batch-bucket \\
         --cache-bucket viz-cache-bucket \\
-        --receipts-json s3://cache-bucket/receipts-lookup.json \\
-        --max-receipts 10
+        --receipts-json s3://cache-bucket/receipts-lookup.json
 
 Note: If --parquet-prefix is not provided, the latest export is auto-detected.
 """
@@ -88,12 +87,6 @@ def parse_args() -> argparse.Namespace:
         "--receipts-json",
         required=True,
         help="S3 path to receipts-lookup.json",
-    )
-    parser.add_argument(
-        "--max-receipts",
-        type=int,
-        default=10,
-        help="Maximum number of receipts to include (default: 10)",
     )
     parser.add_argument(
         "--execution-id",
@@ -171,7 +164,9 @@ def find_latest_export_prefix(
             if _prefix_has_data(s3_client, bucket, check_prefix):
                 logger.info("Using preferred export: %s", preferred_export_id)
                 return check_prefix
-            logger.warning("Preferred export %s has no data", preferred_export_id)
+            logger.warning(
+                "Preferred export %s has no data", preferred_export_id
+            )
 
         # Find most recent export
         return _find_most_recent_export(s3_client, bucket, export_ids)
@@ -195,7 +190,9 @@ def _extract_export_ids(prefixes: list[dict[str, Any]]) -> list[str]:
 
 def _prefix_has_data(s3_client: Any, bucket: str, prefix: str) -> bool:
     """Check if an S3 prefix has any objects."""
-    response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix, MaxKeys=1)
+    response = s3_client.list_objects_v2(
+        Bucket=bucket, Prefix=prefix, MaxKeys=1
+    )
     return bool(response.get("Contents"))
 
 
@@ -219,7 +216,9 @@ def _find_most_recent_export(
 
     if latest_export:
         prefix = f"traces/export_id={latest_export}/"
-        logger.info("Found latest export: %s (modified: %s)", prefix, latest_time)
+        logger.info(
+            "Found latest export: %s (modified: %s)", prefix, latest_time
+        )
         return prefix
 
     logger.warning("No exports with data found")
@@ -265,7 +264,9 @@ def parse_label_string(label_str: str) -> dict[str, Any]:
         match = re.search(pattern, label_str)
         if match:
             val = match.group(1)
-            result[field] = int(val) if field in ("line_id", "word_id") else val
+            result[field] = (
+                int(val) if field in ("line_id", "word_id") else val
+            )
     return result
 
 
@@ -298,7 +299,9 @@ def main() -> int:
 
     try:
         # Extract receipts from Parquet
-        parquet_data = _extract_parquet_receipts(spark, s3_client, args, parquet_prefix)
+        parquet_data = _extract_parquet_receipts(
+            spark, s3_client, args, parquet_prefix
+        )
         if not parquet_data:
             logger.error("No receipts extracted from Parquet")
             return 1
@@ -310,7 +313,6 @@ def main() -> int:
             receipt_lookup,
             args.batch_bucket,
             execution_id,
-            args.max_receipts,
         )
 
         # Write cache files
@@ -339,10 +341,11 @@ def _log_startup(args: argparse.Namespace) -> None:
     logger.info("Batch bucket: s3://%s", args.batch_bucket)
     logger.info("Cache bucket: s3://%s", args.cache_bucket)
     logger.info("Receipts JSON: %s", args.receipts_json)
-    logger.info("Max receipts: %d", args.max_receipts)
 
 
-def _resolve_parquet_prefix(s3_client: Any, args: argparse.Namespace) -> str | None:
+def _resolve_parquet_prefix(
+    s3_client: Any, args: argparse.Namespace
+) -> str | None:
     """Resolve and validate parquet prefix."""
     preferred_export_id = None
     parquet_prefix = args.parquet_prefix
@@ -352,7 +355,9 @@ def _resolve_parquet_prefix(s3_client: Any, args: argparse.Namespace) -> str | N
         match = re.search(r"export_id=([^/]+)", parquet_prefix)
         if match:
             preferred_export_id = match.group(1)
-            logger.info("Preferred export ID from args: %s", preferred_export_id)
+            logger.info(
+                "Preferred export ID from args: %s", preferred_export_id
+            )
 
     logger.info("Checking parquet prefix: %s", parquet_prefix)
 
@@ -385,7 +390,9 @@ def _resolve_parquet_prefix(s3_client: Any, args: argparse.Namespace) -> str | N
     return parquet_prefix
 
 
-def _resolve_execution_id(s3_client: Any, args: argparse.Namespace) -> str | None:
+def _resolve_execution_id(
+    s3_client: Any, args: argparse.Namespace
+) -> str | None:
     """Resolve execution ID from args or bucket."""
     execution_id = args.execution_id
     if not execution_id:
@@ -406,7 +413,9 @@ def _extract_parquet_receipts(
 ) -> list[dict[str, Any]]:
     """Extract receipt data from Parquet files."""
     # List all parquet files
-    parquet_files = _list_parquet_files(s3_client, args.parquet_bucket, parquet_prefix)
+    parquet_files = _list_parquet_files(
+        s3_client, args.parquet_bucket, parquet_prefix
+    )
     if not parquet_files:
         logger.error("No parquet files found in %s", parquet_prefix)
         return []
@@ -417,10 +426,9 @@ def _extract_parquet_receipts(
     df = spark.read.parquet(*parquet_files)
     langgraph_df = df.filter(col("name") == "LangGraph")
 
-    # Extract data
-    collect_limit = args.max_receipts * 100
-    logger.info("Extracting up to %d receipt candidates...", collect_limit)
-    langgraph_data = langgraph_df.select("outputs").limit(collect_limit).collect()
+    # Extract all receipt data
+    logger.info("Extracting all receipt candidates...")
+    langgraph_data = langgraph_df.select("outputs").collect()
 
     receipts = []
     for row in langgraph_data:
@@ -450,7 +458,11 @@ def _list_parquet_files(s3_client: Any, bucket: str, prefix: str) -> list[str]:
 
 def _parse_langgraph_row(row: Any) -> dict[str, Any] | None:
     """Parse a LangGraph row into receipt data."""
-    outputs = json.loads(row.outputs) if isinstance(row.outputs, str) else row.outputs
+    outputs = (
+        json.loads(row.outputs)
+        if isinstance(row.outputs, str)
+        else row.outputs
+    )
     if not outputs:
         return None
 
@@ -480,7 +492,9 @@ def _build_labels_lookup(
         if isinstance(label_str, str):
             parsed = parse_label_string(label_str)
             if "line_id" in parsed and "word_id" in parsed:
-                lookup[(parsed["line_id"], parsed["word_id"])] = parsed.get("label")
+                lookup[(parsed["line_id"], parsed["word_id"])] = parsed.get(
+                    "label"
+                )
     return lookup
 
 
@@ -490,10 +504,11 @@ def _build_viz_receipts(
     receipt_lookup: dict[tuple[str, int], str],
     batch_bucket: str,
     execution_id: str,
-    max_receipts: int,
 ) -> list[dict[str, Any]]:
     """Build visualization receipts from parquet and S3 data."""
-    logger.info("Building visualization data...")
+    logger.info(
+        "Building visualization data for %d receipts...", len(parquet_data)
+    )
     viz_receipts = []
 
     for data in parquet_data:
@@ -503,16 +518,11 @@ def _build_viz_receipts(
         if receipt:
             viz_receipts.append(receipt)
 
-    # Sort by issues and select top N
+    # Sort by issues (most issues first)
     viz_receipts.sort(key=lambda r: -r["issues_found"])
-    selected = viz_receipts[:max_receipts]
 
-    logger.info(
-        "Built %d total receipts, selected top %d",
-        len(viz_receipts),
-        len(selected),
-    )
-    return selected
+    logger.info("Built %d visualization receipts", len(viz_receipts))
+    return viz_receipts
 
 
 def _build_single_viz_receipt(
@@ -704,7 +714,9 @@ def _write_cache(
         "receipts": receipts,
         "summary": {
             "total_receipts": len(receipts),
-            "receipts_with_issues": len([r for r in receipts if r["issues_found"] > 0]),
+            "receipts_with_issues": len(
+                [r for r in receipts if r["issues_found"] > 0]
+            ),
         },
         "cached_at": timestamp.isoformat(),
     }
