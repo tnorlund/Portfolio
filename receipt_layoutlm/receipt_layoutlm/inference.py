@@ -392,7 +392,8 @@ class LayoutLMInference:
         words = details.words
 
         # Group words by line and compute extents
-        by_line: Dict[int, List[Tuple[int, str, List[int]]]] = {}
+        # Store raw float coordinates; normalization handles rounding
+        by_line: Dict[int, List[Tuple[int, str, List[float]]]] = {}
         max_x = 0.0
         max_y = 0.0
         for w in words:
@@ -400,7 +401,7 @@ class LayoutLMInference:
             max_x = max(max_x, x1)
             max_y = max(max_y, y1)
             by_line.setdefault(w.line_id, []).append(
-                (w.word_id, w.text, [int(x0), int(y0), int(x1), int(y1)])
+                (w.word_id, w.text, [x0, y0, x1, y1])
             )
 
         tokens_per_line: List[List[str]] = []
