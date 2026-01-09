@@ -865,7 +865,7 @@ def handler(event, context):
                         "JobDriver": {
                             "SparkSubmit": {
                                 "EntryPoint": f"s3://{args[5]}/spark/viz_cache_job.py",
-                                "EntryPointArguments.$": f"States.Array('--parquet-bucket', '{args[6]}', '--parquet-prefix', 'traces/', '--batch-bucket', '{args[7]}', '--cache-bucket', '{args[8]}', '--receipts-json', $.dynamo_result.receipts_s3_path, '--max-receipts', '10')",
+                                "EntryPointArguments.$": f"States.Array('--parquet-bucket', '{args[6]}', '--parquet-prefix', 'traces/', '--batch-bucket', '{args[7]}', '--cache-bucket', '{args[8]}', '--receipts-json', $.dynamo_result.receipts_s3_path)",
                                 "SparkSubmitParameters": "--conf spark.sql.legacy.parquet.nanosAsLong=true --conf spark.executor.cores=2 --conf spark.executor.memory=4g --conf spark.executor.instances=2 --conf spark.driver.cores=2 --conf spark.driver.memory=4g",
                             }
                         },

@@ -19,8 +19,7 @@ Usage:
         --parquet-bucket langsmith-export-bucket \\
         --batch-bucket label-evaluator-batch-bucket \\
         --cache-bucket viz-cache-bucket \\
-        --receipts-json s3://cache-bucket/receipts-lookup.json \\
-        --max-receipts 10
+        --receipts-json s3://cache-bucket/receipts-lookup.json
 
 Note: If --parquet-prefix is not provided, the latest export is auto-detected.
 """
@@ -88,12 +87,6 @@ def parse_args() -> argparse.Namespace:
         "--receipts-json",
         required=True,
         help="S3 path to receipts-lookup.json",
-    )
-    parser.add_argument(
-        "--max-receipts",
-        type=int,
-        default=10,
-        help="Maximum number of receipts to include (default: 10)",
     )
     parser.add_argument(
         "--execution-id",
@@ -310,7 +303,6 @@ def main() -> int:
             receipt_lookup,
             args.batch_bucket,
             execution_id,
-            args.max_receipts,
         )
 
         # Write cache files
@@ -339,7 +331,6 @@ def _log_startup(args: argparse.Namespace) -> None:
     logger.info("Batch bucket: s3://%s", args.batch_bucket)
     logger.info("Cache bucket: s3://%s", args.cache_bucket)
     logger.info("Receipts JSON: %s", args.receipts_json)
-    logger.info("Max receipts: %d", args.max_receipts)
 
 
 def _resolve_parquet_prefix(s3_client: Any, args: argparse.Namespace) -> str | None:
@@ -417,10 +408,9 @@ def _extract_parquet_receipts(
     df = spark.read.parquet(*parquet_files)
     langgraph_df = df.filter(col("name") == "LangGraph")
 
-    # Extract data
-    collect_limit = args.max_receipts * 100
-    logger.info("Extracting up to %d receipt candidates...", collect_limit)
-    langgraph_data = langgraph_df.select("outputs").limit(collect_limit).collect()
+    # Extract all receipt data
+    logger.info("Extracting all receipt candidates...")
+    langgraph_data = langgraph_df.select("outputs").collect()
 
     receipts = []
     for row in langgraph_data:
@@ -490,10 +480,9 @@ def _build_viz_receipts(
     receipt_lookup: dict[tuple[str, int], str],
     batch_bucket: str,
     execution_id: str,
-    max_receipts: int,
 ) -> list[dict[str, Any]]:
     """Build visualization receipts from parquet and S3 data."""
-    logger.info("Building visualization data...")
+    logger.info("Building visualization data for %d receipts...", len(parquet_data))
     viz_receipts = []
 
     for data in parquet_data:
@@ -503,16 +492,11 @@ def _build_viz_receipts(
         if receipt:
             viz_receipts.append(receipt)
 
-    # Sort by issues and select top N
+    # Sort by issues (most issues first)
     viz_receipts.sort(key=lambda r: -r["issues_found"])
-    selected = viz_receipts[:max_receipts]
 
-    logger.info(
-        "Built %d total receipts, selected top %d",
-        len(viz_receipts),
-        len(selected),
-    )
-    return selected
+    logger.info("Built %d visualization receipts", len(viz_receipts))
+    return viz_receipts
 
 
 def _build_single_viz_receipt(
