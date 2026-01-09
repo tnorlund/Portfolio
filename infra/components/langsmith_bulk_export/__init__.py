@@ -280,12 +280,12 @@ class LangSmithBulkExport(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Get LangSmith Service API key and tenant ID from Pulumi config
+        # Get LangSmith Service API key and optional tenant ID from Pulumi config
         # Service API keys have permissions for bulk export operations
-        # Tenant ID is required for org-scoped service keys
+        # Tenant ID is optional - if not set, uses default workspace
         config = pulumi.Config("portfolio")
         langsmith_api_key = config.require_secret("LANGSMITH_SERVICE_API_KEY")
-        langsmith_tenant_id = config.require("LANGSMITH_TENANT_ID")
+        langsmith_tenant_id = config.get("LANGSMITH_TENANT_ID") or ""
 
         # ============================================================
         # Setup Lambda (One-time destination registration)

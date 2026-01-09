@@ -47,6 +47,8 @@ class LabelEvaluatorVizCache(ComponentResource):
         emr_job_role_arn: Input[str],
         spark_artifacts_bucket: Input[str],
         label_evaluator_sf_arn: Input[str],
+        setup_lambda_name: Input[str],
+        setup_lambda_arn: Input[str],
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -70,6 +72,8 @@ class LabelEvaluatorVizCache(ComponentResource):
         emr_job_role_arn_output = Output.from_input(emr_job_role_arn)
         spark_artifacts_bucket_output = Output.from_input(spark_artifacts_bucket)
         label_evaluator_sf_arn_output = Output.from_input(label_evaluator_sf_arn)
+        setup_lambda_name_output = Output.from_input(setup_lambda_name)
+        setup_lambda_arn_output = Output.from_input(setup_lambda_arn)
 
         # ============================================================
         # S3 Cache Bucket
@@ -339,7 +343,7 @@ def handler(event, context):
             opts=ResourceOptions(parent=self.trigger_export_role),
         )
 
-        # SSM access for LangSmith destination_id
+        # SSM access for LangSmith destination_id (read and delete stale)
         aws.iam.RolePolicy(
             f"{name}-trigger-export-ssm-policy",
             role=self.trigger_export_role.id,
@@ -347,10 +351,25 @@ def handler(event, context):
                 "Version": "2012-10-17",
                 "Statement": [{
                     "Effect": "Allow",
-                    "Action": ["ssm:GetParameter"],
+                    "Action": ["ssm:GetParameter", "ssm:DeleteParameter"],
                     "Resource": f"arn:aws:ssm:{region}:{account_id}:parameter/langsmith/{stack}/*",
                 }],
             }),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Permission to invoke setup lambda for destination creation
+        aws.iam.RolePolicy(
+            f"{name}-trigger-export-invoke-setup-policy",
+            role=self.trigger_export_role.id,
+            policy=setup_lambda_arn_output.apply(lambda arn: json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Action": ["lambda:InvokeFunction"],
+                    "Resource": arn,
+                }],
+            })),
             opts=ResourceOptions(parent=self),
         )
 
@@ -367,31 +386,90 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 LANGSMITH_API_URL = "https://api.smith.langchain.com"
+SETUP_LAMBDA_NAME = "{name}-setup-lambda"
+
+
+def _ensure_destination_exists(ssm, http, headers, stack, setup_lambda_name):
+    """Ensure destination exists in LangSmith, create if needed."""
+    param_name = f"/langsmith/{{stack}}/destination_id"
+    lambda_client = boto3.client("lambda")
+
+    # Try to get existing destination_id from SSM
+    destination_id = None
+    try:
+        response = ssm.get_parameter(Name=param_name)
+        destination_id = response["Parameter"]["Value"]
+        logger.info("Found destination_id in SSM: %s", destination_id)
+    except ssm.exceptions.ParameterNotFound:
+        logger.info("No destination_id in SSM, will create new one")
+
+    # If we have a destination_id, verify it exists in LangSmith
+    if destination_id:
+        response = http.request(
+            "GET",
+            f"{{LANGSMITH_API_URL}}/api/v1/bulk-export-destinations/{{destination_id}}",
+            headers=headers,
+        )
+        if response.status == 200:
+            logger.info("Destination verified in LangSmith: %s", destination_id)
+            return destination_id
+        else:
+            logger.warning("Destination %s not found in LangSmith (status %s), will recreate",
+                          destination_id, response.status)
+            # Delete stale SSM parameter
+            try:
+                ssm.delete_parameter(Name=param_name)
+            except Exception:
+                pass
+
+    # Create new destination by invoking setup lambda
+    logger.info("Invoking setup lambda to create destination: %s", setup_lambda_name)
+    response = lambda_client.invoke(
+        FunctionName=setup_lambda_name,
+        InvocationType="RequestResponse",
+        Payload=json.dumps({{"prefix": "traces"}}),
+    )
+
+    result = json.loads(response["Payload"].read().decode())
+    if result.get("statusCode") != 200:
+        raise Exception(f"Setup lambda failed: {{result.get('message', result)}}")
+
+    destination_id = result.get("destination_id")
+    if not destination_id:
+        raise Exception(f"Setup lambda did not return destination_id: {{result}}")
+
+    logger.info("Created new destination: %s", destination_id)
+    return destination_id
 
 
 def handler(event, context):
     """Trigger LangSmith bulk export and return export_id."""
     logger.info("Received event: %s", json.dumps(event))
 
-    langchain_project = event.get("langchain_project", "label-evaluator")
+    langchain_project = event.get("langchain_project", "label-evaluator-viz")
     api_key = os.environ["LANGCHAIN_API_KEY"]
-    tenant_id = os.environ["LANGSMITH_TENANT_ID"]
+    tenant_id = os.environ.get("LANGSMITH_TENANT_ID")
     stack = os.environ.get("STACK", "dev")
+    setup_lambda_name = os.environ.get("SETUP_LAMBDA_NAME", SETUP_LAMBDA_NAME)
 
     ssm = boto3.client("ssm")
     http = urllib3.PoolManager()
 
-    # Get destination_id from SSM
-    param_name = f"/langsmith/{{stack}}/destination_id"
-    response = ssm.get_parameter(Name=param_name)
-    destination_id = response["Parameter"]["Value"]
+    # Build headers - include tenant_id if provided
+    headers = {{"x-api-key": api_key}}
+    if tenant_id:
+        headers["x-tenant-id"] = tenant_id
+        logger.info("Using tenant_id: %s", tenant_id)
+
+    # Ensure destination exists (verify or create)
+    destination_id = _ensure_destination_exists(ssm, http, headers, stack, setup_lambda_name)
     logger.info("Using destination_id: %s", destination_id)
 
     # Get project_id from LangSmith
     response = http.request(
         "GET",
         f"{{LANGSMITH_API_URL}}/api/v1/sessions",
-        headers={{"x-api-key": api_key, "X-Tenant-Id": tenant_id}},
+        headers=headers,
     )
     if response.status != 200:
         raise Exception(f"Failed to list projects: {{response.data.decode()}}")
@@ -419,14 +497,13 @@ def handler(event, context):
         "end_time": end_time.isoformat(),
     }}
 
+    post_headers = dict(headers)
+    post_headers["Content-Type"] = "application/json"
+
     response = http.request(
         "POST",
         f"{{LANGSMITH_API_URL}}/api/v1/bulk-exports",
-        headers={{
-            "x-api-key": api_key,
-            "X-Tenant-Id": tenant_id,
-            "Content-Type": "application/json",
-        }},
+        headers=post_headers,
         body=json.dumps(export_body),
     )
 
@@ -456,6 +533,7 @@ def handler(event, context):
                 variables={
                     "LANGCHAIN_API_KEY": langsmith_api_key_output,
                     "LANGSMITH_TENANT_ID": langsmith_tenant_id_output,
+                    "SETUP_LAMBDA_NAME": setup_lambda_name_output,
                     "STACK": stack,
                 }
             ),
@@ -517,14 +595,13 @@ def handler(event, context):
         raise ValueError("export_id is required")
 
     api_key = os.environ["LANGCHAIN_API_KEY"]
-    tenant_id = os.environ["LANGSMITH_TENANT_ID"]
 
     http = urllib3.PoolManager()
 
     response = http.request(
         "GET",
         f"{LANGSMITH_API_URL}/api/v1/bulk-exports/{export_id}",
-        headers={"x-api-key": api_key, "X-Tenant-Id": tenant_id},
+        headers={"x-api-key": api_key},
     )
 
     if response.status != 200:
@@ -562,7 +639,6 @@ def handler(event, context):
             environment=aws.lambda_.FunctionEnvironmentArgs(
                 variables={
                     "LANGCHAIN_API_KEY": langsmith_api_key_output,
-                    "LANGSMITH_TENANT_ID": langsmith_tenant_id_output,
                 }
             ),
             memory_size=128,
@@ -668,6 +744,43 @@ def handler(event, context):
             opts=ResourceOptions(parent=self),
         )
 
+        # Grant EMR job role access to batch and cache buckets
+        aws.iam.RolePolicy(
+            f"{name}-emr-bucket-policy",
+            role=emr_job_role_arn_output.apply(lambda arn: arn.split("/")[-1]),
+            policy=Output.all(
+                batch_bucket_output,
+                cache_bucket_output,
+            ).apply(lambda args: json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [
+                    # Read from batch bucket (label evaluation results)
+                    {
+                        "Effect": "Allow",
+                        "Action": ["s3:GetObject", "s3:ListBucket"],
+                        "Resource": [
+                            f"arn:aws:s3:::{args[0]}",
+                            f"arn:aws:s3:::{args[0]}/*",
+                        ],
+                    },
+                    # Read/write to cache bucket (viz cache output + receipts lookup)
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:GetObject",
+                            "s3:PutObject",
+                            "s3:ListBucket",
+                        ],
+                        "Resource": [
+                            f"arn:aws:s3:::{args[1]}",
+                            f"arn:aws:s3:::{args[1]}/*",
+                        ],
+                    },
+                ],
+            })),
+            opts=ResourceOptions(parent=self),
+        )
+
         # ============================================================
         # Step Function Definition (with native EMR Serverless integration)
         # ============================================================
@@ -693,12 +806,10 @@ def handler(event, context):
                     "Next": "TriggerLangSmithExport",
                 },
                 # Step 2: Trigger LangSmith bulk export
+                # Note: Lambda uses default "label-evaluator" if langchain_project not provided
                 "TriggerLangSmithExport": {
                     "Type": "Task",
                     "Resource": args[1],
-                    "Parameters": {
-                        "langchain_project.$": "$.langchain_project",
-                    },
                     "ResultPath": "$.export_result",
                     "Next": "WaitForExport",
                 },
@@ -743,13 +854,14 @@ def handler(event, context):
                 },
                 # Step 6: Start EMR job using native Step Functions integration
                 # Uses .sync to wait for job completion
+                # Note: Container image has receipt_langsmith pre-installed, no archives needed
                 "StartEMRJob": {
                     "Type": "Task",
                     "Resource": "arn:aws:states:::emr-serverless:startJobRun.sync",
                     "Parameters": {
                         "ApplicationId": args[3],
                         "ExecutionRoleArn": args[4],
-                        "Name.$": "States.Format('viz-cache-{}', $.execution_name)",
+                        "Name.$": "States.Format('viz-cache-{}', $$.Execution.Name)",
                         "JobDriver": {
                             "SparkSubmit": {
                                 "EntryPoint": f"s3://{args[5]}/spark/viz_cache_job.py",
@@ -847,12 +959,11 @@ def handler(event, context):
         logger.info("Skipping - execution did not succeed")
         return {"statusCode": 200, "body": "Skipped"}
 
-    # Get langchain_project from SF output
+    # Get langchain_project from SF output (now at top level)
     output_str = detail.get("output", "{}")
     try:
         sf_output = json.loads(output_str)
-        summary = sf_output.get("summary_result", {})
-        langchain_project = summary.get("langchain_project") or "label-evaluator"
+        langchain_project = sf_output.get("langchain_project") or "label-evaluator"
     except json.JSONDecodeError:
         langchain_project = "label-evaluator"
 
@@ -962,6 +1073,8 @@ def create_label_evaluator_viz_cache(
     emr_job_role_arn: Input[str],
     spark_artifacts_bucket: Input[str],
     label_evaluator_sf_arn: Input[str],
+    setup_lambda_name: Input[str],
+    setup_lambda_arn: Input[str],
     opts: Optional[ResourceOptions] = None,
 ) -> LabelEvaluatorVizCache:
     """Factory function to create label evaluator viz cache infrastructure."""
@@ -977,5 +1090,7 @@ def create_label_evaluator_viz_cache(
         emr_job_role_arn=emr_job_role_arn,
         spark_artifacts_bucket=spark_artifacts_bucket,
         label_evaluator_sf_arn=label_evaluator_sf_arn,
+        setup_lambda_name=setup_lambda_name,
+        setup_lambda_arn=setup_lambda_arn,
         opts=opts,
     )

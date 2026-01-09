@@ -75,7 +75,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
     # Get config from event or fall back to environment variables
     api_key = event.get("api_key") or os.environ.get("LANGCHAIN_API_KEY")
-    tenant_id = event.get("tenant_id") or os.environ.get("LANGSMITH_TENANT_ID")
+    # Use default workspace if explicitly requested, otherwise fall back to env var
+    use_default_workspace = event.get("use_default_workspace", False)
+    if use_default_workspace:
+        tenant_id = None
+    else:
+        tenant_id = event.get("tenant_id") or os.environ.get("LANGSMITH_TENANT_ID")
     bucket_name = event.get("bucket_name") or os.environ.get("EXPORT_BUCKET")
     stack = os.environ.get("STACK", "dev")
     prefix = event.get("prefix", "traces/")
@@ -87,12 +92,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "message": "api_key required (via event or LANGCHAIN_API_KEY env var)",
         }
 
-    if not tenant_id:
-        return {
-            "statusCode": 400,
-            "message": "tenant_id required (via event or LANGSMITH_TENANT_ID env var)",
-        }
-
+    # tenant_id is optional - if not provided, uses default workspace
     if not bucket_name:
         return {
             "statusCode": 400,
@@ -100,7 +100,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         }
 
 
-    logger.info(f"Registering bulk export destination for tenant: {tenant_id}")
+    workspace_info = f"tenant: {tenant_id}" if tenant_id else "default workspace"
+    logger.info(f"Registering bulk export destination for {workspace_info}")
     logger.info(f"Export bucket: {bucket_name}")
 
     # Get S3 credentials from Secrets Manager
@@ -217,14 +218,18 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     )
 
     try:
+        headers = {
+            "x-api-key": api_key,
+            "Content-Type": "application/json",
+        }
+        # Only include tenant_id if explicitly provided
+        if tenant_id:
+            headers["X-Tenant-Id"] = tenant_id
+
         response = http.request(
             "POST",
             f"{LANGSMITH_API_URL}/api/v1/bulk-exports/destinations",
-            headers={
-                "x-api-key": api_key,
-                "X-Tenant-Id": tenant_id,
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             body=json.dumps(request_body),
         )
 
@@ -251,11 +256,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         # Store destination_id in SSM Parameter Store (unless skip_ssm is True)
         if not skip_ssm:
+            description = f"LangSmith bulk export destination ID for {workspace_info}"
             ssm.put_parameter(
                 Name=param_name,
                 Value=destination_id,
                 Type="String",
-                Description=f"LangSmith bulk export destination ID for {tenant_id}",
+                Description=description,
                 Overwrite=True,
             )
             logger.info(f"Stored destination_id in SSM: {param_name}")

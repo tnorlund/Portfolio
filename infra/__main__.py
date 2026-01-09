@@ -1199,11 +1199,21 @@ pulumi.export(
     "langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name
 )
 
+# EMR Serverless Docker Image (for custom Spark image with receipt_langsmith)
+from components.emr_serverless_docker_image import create_emr_serverless_docker_image
+
+emr_docker_image = create_emr_serverless_docker_image(
+    name="emr-spark",
+    emr_release="emr-7.5.0",  # Using 7.5.0 base with Python 3.12 installed
+)
+pulumi.export("emr_docker_image_uri", emr_docker_image.image_uri)
+
 # EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
 from components.emr_serverless_analytics import create_emr_serverless_analytics
 
 emr_analytics = create_emr_serverless_analytics(
     langsmith_export_bucket_arn=langsmith_bulk_export.export_bucket.arn,
+    custom_image_uri=emr_docker_image.image_uri,
 )
 pulumi.export("emr_application_id", emr_analytics.emr_application.id)
 pulumi.export("emr_analytics_bucket", emr_analytics.analytics_bucket.id)
@@ -1312,6 +1322,8 @@ if hasattr(api_gateway, "api"):
         emr_job_role_arn=emr_analytics.emr_job_role.arn,
         spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
         label_evaluator_sf_arn=label_evaluator_sf.state_machine_arn,
+        setup_lambda_name=langsmith_bulk_export.setup_lambda.name,
+        setup_lambda_arn=langsmith_bulk_export.setup_lambda.arn,
     )
     pulumi.export("label_evaluator_viz_cache_bucket", label_evaluator_viz_cache.cache_bucket.id)
 
