@@ -1,22 +1,25 @@
-from dataclasses import asdict
-from typing import Any, Dict, List
-import json
-import inspect
-from functools import partial
-from urllib.parse import urlparse
-
 import importlib
+import inspect
+import json
 import os
 import subprocess
+import uuid
+from dataclasses import asdict
+from datetime import datetime, timezone
+from functools import partial
 from glob import glob
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import CoreMLExportStatus
+from receipt_dynamo.entities.coreml_export_job import CoreMLExportJob
 from receipt_dynamo.entities.job import Job
-from receipt_dynamo.entities.job_metric import JobMetric
 from receipt_dynamo.entities.job_log import JobLog
+from receipt_dynamo.entities.job_metric import JobMetric
 
 from .config import DataConfig, TrainingConfig
-from .data_loader import load_datasets, MergeInfo
+from .data_loader import MergeInfo, load_datasets
 
 
 class ReceiptLayoutLMTrainer:
@@ -110,7 +113,7 @@ class ReceiptLayoutLMTrainer:
             )
 
         # Compute dataset counts prior to tokenization for run logging
-        def _count_labels(dataset) -> Dict[str, int]:
+        def _count_labels(dataset) -> Dict[str, Any]:
             counts: Dict[str, int] = {}
             num_lines = 0
             num_tokens = 0
@@ -150,7 +153,7 @@ class ReceiptLayoutLMTrainer:
                 "label_counts": {k: counts[k] for k, _ in non_o_sorted},
             }
 
-        dataset_counts: Dict[str, Dict[str, int]] = {}
+        dataset_counts: Dict[str, Any] = {}
         for split in ("train", "validation"):
             if split in datasets:
                 dataset_counts[split] = _count_labels(datasets[split])
@@ -341,16 +344,17 @@ class ReceiptLayoutLMTrainer:
             "label_list": label_list,
             "num_labels": len(label_list),
             "dataset_counts": dataset_counts,
-            "split_metadata": asdict(split_metadata) if split_metadata else None,
+            "split_metadata": (
+                asdict(split_metadata) if split_metadata else None
+            ),
             "label_merges": merge_info.label_merges if merge_info else None,
-            "resulting_labels": merge_info.resulting_labels if merge_info else [],
+            "resulting_labels": (
+                merge_info.resulting_labels if merge_info else []
+            ),
             "epoch_metrics": [],
         }
         with open(run_json_path, "w", encoding="utf-8") as f:
             json.dump(run_payload, f, indent=2)
-
-        import uuid
-        from datetime import datetime
 
         # Build job_config with explicit merge info for experiment tracking
         job_config_dict = {
@@ -359,13 +363,15 @@ class ReceiptLayoutLMTrainer:
             **asdict(self.data_config),
             # Explicit merge info for reproducibility and comparison
             "label_merges": merge_info.label_merges if merge_info else None,
-            "resulting_label_set": merge_info.resulting_labels if merge_info else [],
+            "resulting_label_set": (
+                merge_info.resulting_labels if merge_info else []
+            ),
         }
         job = Job(
             job_id=str(uuid.uuid4()),
             name=job_name,
             description="LayoutLM receipt token classification",
-            created_at=datetime.now().isoformat(),
+            created_at=datetime.now(timezone.utc).isoformat(),
             created_by=created_by,
             status="pending",
             priority="medium",
@@ -382,13 +388,15 @@ class ReceiptLayoutLMTrainer:
                     job_id=job.job_id,
                     metric_name="label_merge_config",
                     value=merge_info.label_merges,
-                    timestamp=datetime.now().isoformat(),
+                    timestamp=datetime.now(timezone.utc).isoformat(),
                     unit="config",
                     epoch=None,
                 )
                 self.dynamo.add_job_metric(merge_metric)
             except Exception as e:
-                print(f"Warning: Failed to write label merge config metric: {e}")
+                print(
+                    f"Warning: Failed to write label merge config metric: {e}"
+                )
 
         # Update status to running
         job.status = "running"
@@ -442,18 +450,26 @@ class ReceiptLayoutLMTrainer:
                     }
 
                     # Set up metric recording (used for both eval metrics and training metrics)
-                    epoch_val = int(current_epoch) if current_epoch is not None else None
+                    epoch_val = (
+                        int(current_epoch)
+                        if current_epoch is not None
+                        else None
+                    )
                     step_val = int(getattr(state, "global_step", 0))
                     metrics_to_write: list = []
 
-                    def _add_metric(name: str, value: float, unit: str = "ratio"):
+                    def _add_metric(
+                        name: str, value: float, unit: str = "ratio"
+                    ):
                         """Add a metric to the batch for writing."""
                         metrics_to_write.append(
                             JobMetric(
                                 job_id=self.job_id,
                                 metric_name=name,
                                 value=float(value),
-                                timestamp=datetime.now().isoformat(),
+                                timestamp=datetime.now(
+                                    timezone.utc
+                                ).isoformat(),
                                 unit=unit,
                                 epoch=epoch_val,
                                 step=step_val,
@@ -473,15 +489,29 @@ class ReceiptLayoutLMTrainer:
                         # Save per-label metrics to DynamoDB
                         # Keys are like eval_label_MERCHANT_NAME_f1, eval_label_DATE_precision, etc.
                         for key, value in metrics.items():
-                            if key.startswith("eval_label_") and isinstance(value, (int, float)):
+                            if key.startswith("eval_label_") and isinstance(
+                                value, (int, float)
+                            ):
                                 # Extract metric type (f1, precision, recall, support)
                                 # Key format: eval_label_{LABEL}_{metric_type}
                                 parts = key.split("_")
                                 if len(parts) >= 4:
-                                    metric_type = parts[-1]  # f1, precision, recall, support
-                                    label_name = "_".join(parts[2:-1])  # Handle labels with underscores
-                                    unit = "count" if metric_type == "support" else "ratio"
-                                    _add_metric(f"label_{label_name}_{metric_type}", float(value), unit)
+                                    metric_type = parts[
+                                        -1
+                                    ]  # f1, precision, recall, support
+                                    label_name = "_".join(
+                                        parts[2:-1]
+                                    )  # Handle labels with underscores
+                                    unit = (
+                                        "count"
+                                        if metric_type == "support"
+                                        else "ratio"
+                                    )
+                                    _add_metric(
+                                        f"label_{label_name}_{metric_type}",
+                                        float(value),
+                                        unit,
+                                    )
 
                         # Collect training metrics for batch write
                         # F1 score
@@ -490,12 +520,16 @@ class ReceiptLayoutLMTrainer:
                             _add_metric("val_f1", f1_value, "ratio")
 
                         # Precision
-                        prec_value = metrics.get("eval_precision") or metrics.get("precision")
+                        prec_value = metrics.get(
+                            "eval_precision"
+                        ) or metrics.get("precision")
                         if prec_value is not None:
                             _add_metric("val_precision", prec_value, "ratio")
 
                         # Recall
-                        recall_value = metrics.get("eval_recall") or metrics.get("recall")
+                        recall_value = metrics.get(
+                            "eval_recall"
+                        ) or metrics.get("recall")
                         if recall_value is not None:
                             _add_metric("val_recall", recall_value, "ratio")
 
@@ -505,14 +539,18 @@ class ReceiptLayoutLMTrainer:
                             _add_metric("eval_loss", eval_loss, "loss")
 
                         # Confusion matrix (stored as dict, not scalar)
-                        cm_data = metrics.get("eval_confusion_matrix") or metrics.get("confusion_matrix")
+                        cm_data = metrics.get(
+                            "eval_confusion_matrix"
+                        ) or metrics.get("confusion_matrix")
                         if cm_data and isinstance(cm_data, dict):
                             metrics_to_write.append(
                                 JobMetric(
                                     job_id=self.job_id,
                                     metric_name="confusion_matrix",
                                     value=cm_data,
-                                    timestamp=datetime.now().isoformat(),
+                                    timestamp=datetime.now(
+                                        timezone.utc
+                                    ).isoformat(),
                                     unit="matrix",
                                     epoch=epoch_val,
                                     step=step_val,
@@ -520,17 +558,35 @@ class ReceiptLayoutLMTrainer:
                             )
 
                     # Add training loss from log_history if available
-                    if state and hasattr(state, "log_history") and state.log_history:
+                    if (
+                        state
+                        and hasattr(state, "log_history")
+                        and state.log_history
+                    ):
                         # Get the most recent training step log entry
-                        train_logs = [log for log in state.log_history if "loss" in log and "eval_loss" not in log]
+                        train_logs = [
+                            log
+                            for log in state.log_history
+                            if "loss" in log and "eval_loss" not in log
+                        ]
                         if train_logs:
                             latest_train = train_logs[-1]
                             if "loss" in latest_train:
-                                entry["train_loss"] = float(latest_train["loss"])
-                                _add_metric("train_loss", latest_train["loss"], "loss")
+                                entry["train_loss"] = float(
+                                    latest_train["loss"]
+                                )
+                                _add_metric(
+                                    "train_loss", latest_train["loss"], "loss"
+                                )
                             if "learning_rate" in latest_train:
-                                entry["learning_rate"] = float(latest_train["learning_rate"])
-                                _add_metric("learning_rate", latest_train["learning_rate"], "rate")
+                                entry["learning_rate"] = float(
+                                    latest_train["learning_rate"]
+                                )
+                                _add_metric(
+                                    "learning_rate",
+                                    latest_train["learning_rate"],
+                                    "rate",
+                                )
 
                     # Write metrics to DynamoDB (one at a time since batch method doesn't exist)
                     if metrics_to_write:
@@ -539,7 +595,9 @@ class ReceiptLayoutLMTrainer:
                                 self.dynamo.add_job_metric(metric)
                             except Exception as e:
                                 # Log but don't fail training on metric write errors
-                                print(f"Warning: Failed to write metric {metric.metric_name}: {e}")
+                                print(
+                                    f"Warning: Failed to write metric {metric.metric_name}: {e}"
+                                )
 
                     epoch_metrics.append(entry)
                     data["epoch_metrics"] = epoch_metrics
@@ -553,7 +611,9 @@ class ReceiptLayoutLMTrainer:
                         return
 
                     # Get the checkpoint that was just saved
-                    checkpoint_dir = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
+                    checkpoint_dir = os.path.join(
+                        args.output_dir, f"checkpoint-{state.global_step}"
+                    )
                     if not os.path.exists(checkpoint_dir):
                         return
 
@@ -567,15 +627,23 @@ class ReceiptLayoutLMTrainer:
 
                         # Sync checkpoint to S3
                         checkpoint_name = f"checkpoint-{state.global_step}"
-                        s3_checkpoint_prefix = f"{self.s3_prefix}checkpoints/{checkpoint_name}/"
+                        s3_checkpoint_prefix = (
+                            f"{self.s3_prefix}checkpoints/{checkpoint_name}/"
+                        )
 
-                        print(f"📤 Syncing {checkpoint_name} to s3://{self.s3_bucket}/{s3_checkpoint_prefix}")
+                        print(
+                            f"📤 Syncing {checkpoint_name} to s3://{self.s3_bucket}/{s3_checkpoint_prefix}"
+                        )
                         for root, _dirs, files in os.walk(checkpoint_dir):
                             for file in files:
                                 local_path = os.path.join(root, file)
-                                rel_path = os.path.relpath(local_path, checkpoint_dir)
+                                rel_path = os.path.relpath(
+                                    local_path, checkpoint_dir
+                                )
                                 s3_key = f"{s3_checkpoint_prefix}{rel_path}"
-                                s3_client.upload_file(local_path, self.s3_bucket, s3_key)
+                                s3_client.upload_file(
+                                    local_path, self.s3_bucket, s3_key
+                                )
 
                         self._synced_checkpoints.add(checkpoint_dir)
                         print(f"✅ Checkpoint {checkpoint_name} synced to S3")
@@ -583,12 +651,20 @@ class ReceiptLayoutLMTrainer:
                         # Also sync run.json so we can track progress
                         if self.run_path and os.path.exists(self.run_path):
                             run_json_key = f"{self.s3_prefix}run.json"
-                            s3_client.upload_file(self.run_path, self.s3_bucket, run_json_key)
+                            s3_client.upload_file(
+                                self.run_path, self.s3_bucket, run_json_key
+                            )
 
                     except ModuleNotFoundError:
                         # Fallback to AWS CLI
                         result = subprocess.run(
-                            ["aws", "s3", "sync", checkpoint_dir, f"s3://{self.s3_bucket}/{self.s3_prefix}checkpoints/checkpoint-{state.global_step}/"],
+                            [
+                                "aws",
+                                "s3",
+                                "sync",
+                                checkpoint_dir,
+                                f"s3://{self.s3_bucket}/{self.s3_prefix}checkpoints/checkpoint-{state.global_step}/",
+                            ],
                             capture_output=True,
                             text=True,
                         )
@@ -596,7 +672,9 @@ class ReceiptLayoutLMTrainer:
                             self._synced_checkpoints.add(checkpoint_dir)
                             print("✅ Checkpoint synced to S3")
                         else:
-                            print(f"⚠️  Failed to sync checkpoint: {result.stderr}")
+                            print(
+                                f"⚠️  Failed to sync checkpoint: {result.stderr}"
+                            )
                     except Exception as e:
                         print(f"⚠️  Failed to sync checkpoint to S3: {e}")
 
@@ -639,7 +717,7 @@ class ReceiptLayoutLMTrainer:
 
             cfg_log = JobLog(
                 job_id=job.job_id,
-                timestamp=datetime.now().isoformat(),
+                timestamp=datetime.now(timezone.utc).isoformat(),
                 log_level="INFO",
                 message=json.dumps(
                     {"type": "run_config", "data": run_payload}
@@ -650,7 +728,7 @@ class ReceiptLayoutLMTrainer:
 
             # Write dataset quality metrics as individual JobMetric records
             dataset_metrics: List[JobMetric] = []
-            ts = datetime.now().isoformat()
+            ts = datetime.now(timezone.utc).isoformat()
 
             # Training set metrics
             if "train" in dataset_counts:
@@ -704,63 +782,67 @@ class ReceiptLayoutLMTrainer:
 
             # Add split metadata metrics if available
             if split_metadata:
-                dataset_metrics.extend([
-                    JobMetric(
-                        job_id=job.job_id,
-                        metric_name="random_seed",
-                        value=split_metadata.random_seed,
-                        timestamp=ts,
-                        unit="seed",
-                        epoch=None,
-                    ),
-                    JobMetric(
-                        job_id=job.job_id,
-                        metric_name="num_train_receipts",
-                        value=split_metadata.num_train_receipts,
-                        timestamp=ts,
-                        unit="count",
-                        epoch=None,
-                    ),
-                    JobMetric(
-                        job_id=job.job_id,
-                        metric_name="num_val_receipts",
-                        value=split_metadata.num_val_receipts,
-                        timestamp=ts,
-                        unit="count",
-                        epoch=None,
-                    ),
-                    JobMetric(
-                        job_id=job.job_id,
-                        metric_name="o_entity_ratio_before_downsample",
-                        value=split_metadata.o_entity_ratio_before_downsample,
-                        timestamp=ts,
-                        unit="ratio",
-                        epoch=None,
-                    ),
-                    JobMetric(
-                        job_id=job.job_id,
-                        metric_name="o_only_lines_dropped",
-                        value=split_metadata.o_only_lines_dropped,
-                        timestamp=ts,
-                        unit="count",
-                        epoch=None,
-                    ),
-                    JobMetric(
-                        job_id=job.job_id,
-                        metric_name="target_o_entity_ratio",
-                        value=split_metadata.target_o_entity_ratio,
-                        timestamp=ts,
-                        unit="ratio",
-                        epoch=None,
-                    ),
-                ])
+                dataset_metrics.extend(
+                    [
+                        JobMetric(
+                            job_id=job.job_id,
+                            metric_name="random_seed",
+                            value=split_metadata.random_seed,
+                            timestamp=ts,
+                            unit="seed",
+                            epoch=None,
+                        ),
+                        JobMetric(
+                            job_id=job.job_id,
+                            metric_name="num_train_receipts",
+                            value=split_metadata.num_train_receipts,
+                            timestamp=ts,
+                            unit="count",
+                            epoch=None,
+                        ),
+                        JobMetric(
+                            job_id=job.job_id,
+                            metric_name="num_val_receipts",
+                            value=split_metadata.num_val_receipts,
+                            timestamp=ts,
+                            unit="count",
+                            epoch=None,
+                        ),
+                        JobMetric(
+                            job_id=job.job_id,
+                            metric_name="o_entity_ratio_before_downsample",
+                            value=split_metadata.o_entity_ratio_before_downsample,
+                            timestamp=ts,
+                            unit="ratio",
+                            epoch=None,
+                        ),
+                        JobMetric(
+                            job_id=job.job_id,
+                            metric_name="o_only_lines_dropped",
+                            value=split_metadata.o_only_lines_dropped,
+                            timestamp=ts,
+                            unit="count",
+                            epoch=None,
+                        ),
+                        JobMetric(
+                            job_id=job.job_id,
+                            metric_name="target_o_entity_ratio",
+                            value=split_metadata.target_o_entity_ratio,
+                            timestamp=ts,
+                            unit="ratio",
+                            epoch=None,
+                        ),
+                    ]
+                )
 
             # Write metrics one at a time (batch method doesn't exist)
             for metric in dataset_metrics:
                 try:
                     self.dynamo.add_job_metric(metric)
                 except Exception as e:
-                    print(f"Warning: Failed to write metric {metric.metric_name}: {e}")
+                    print(
+                        f"Warning: Failed to write metric {metric.metric_name}: {e}"
+                    )
 
         except (DynamoDBError, EntityError, OperationError, ValueError) as e:
             print(f"Warning: Failed to write dataset metrics: {e}")
@@ -772,7 +854,9 @@ class ReceiptLayoutLMTrainer:
                 f1_fn = getattr(seqeval, "f1_score")
                 precision_fn = getattr(seqeval, "precision_score")
                 recall_fn = getattr(seqeval, "recall_score")
-                classification_report_fn = getattr(seqeval, "classification_report", None)
+                classification_report_fn = getattr(
+                    seqeval, "classification_report", None
+                )
             except ModuleNotFoundError:
                 # Fallback to token accuracy if seqeval unavailable
                 seqeval = None
@@ -816,15 +900,27 @@ class ReceiptLayoutLMTrainer:
                         # Skip aggregate keys (micro avg, macro avg, weighted avg)
                         skip_keys = {"micro avg", "macro avg", "weighted avg"}
                         for label, label_metrics in report.items():
-                            if label not in skip_keys and isinstance(label_metrics, dict):
+                            if label not in skip_keys and isinstance(
+                                label_metrics, dict
+                            ):
                                 # Use flattened keys like label_MERCHANT_NAME_f1
-                                metrics[f"label_{label}_f1"] = float(label_metrics.get("f1-score", 0.0))
-                                metrics[f"label_{label}_precision"] = float(label_metrics.get("precision", 0.0))
-                                metrics[f"label_{label}_recall"] = float(label_metrics.get("recall", 0.0))
-                                metrics[f"label_{label}_support"] = int(label_metrics.get("support", 0))
+                                metrics[f"label_{label}_f1"] = float(
+                                    label_metrics.get("f1-score", 0.0)
+                                )
+                                metrics[f"label_{label}_precision"] = float(
+                                    label_metrics.get("precision", 0.0)
+                                )
+                                metrics[f"label_{label}_recall"] = float(
+                                    label_metrics.get("recall", 0.0)
+                                )
+                                metrics[f"label_{label}_support"] = int(
+                                    label_metrics.get("support", 0)
+                                )
                     except Exception as e:
                         # If classification_report fails, continue without per-label metrics
-                        print(f"Warning: Failed to compute per-label metrics: {e}")
+                        print(
+                            f"Warning: Failed to compute per-label metrics: {e}"
+                        )
 
                 # Compute confusion matrix at token level
                 try:
@@ -837,7 +933,9 @@ class ReceiptLayoutLMTrainer:
                     # Get unique labels (sorted for consistent ordering)
                     unique_labels = sorted(set(y_true_flat) | set(y_pred_flat))
 
-                    cm = sklearn_cm(y_true_flat, y_pred_flat, labels=unique_labels)
+                    cm = sklearn_cm(
+                        y_true_flat, y_pred_flat, labels=unique_labels
+                    )
                     metrics["confusion_matrix"] = {
                         "labels": unique_labels,
                         "matrix": cm.tolist(),
@@ -864,11 +962,17 @@ class ReceiptLayoutLMTrainer:
                     valid_entropy = token_entropy[mask]
 
                     if len(valid_entropy) > 0:
-                        metrics["entropy_mean"] = float(_np.mean(valid_entropy))
+                        metrics["entropy_mean"] = float(
+                            _np.mean(valid_entropy)
+                        )
                         metrics["entropy_std"] = float(_np.std(valid_entropy))
                         # Also track entropy percentiles for distribution insight
-                        metrics["entropy_p10"] = float(_np.percentile(valid_entropy, 10))
-                        metrics["entropy_p90"] = float(_np.percentile(valid_entropy, 90))
+                        metrics["entropy_p10"] = float(
+                            _np.percentile(valid_entropy, 10)
+                        )
+                        metrics["entropy_p90"] = float(
+                            _np.percentile(valid_entropy, 90)
+                        )
                 except Exception as e:
                     print(f"Warning: Failed to compute entropy metrics: {e}")
 
@@ -935,28 +1039,42 @@ class ReceiptLayoutLMTrainer:
             early_stopping_triggered = False
 
             # Find best F1 score
-            f1_metrics = [m for m in epoch_metrics if "eval_f1" in m or "f1" in m]
+            f1_metrics = [
+                m for m in epoch_metrics if "eval_f1" in m or "f1" in m
+            ]
             if f1_metrics:
                 # Get F1 value (try eval_f1 first, then f1)
                 f1_with_epochs = [
                     (m.get("epoch"), m.get("eval_f1") or m.get("f1"))
                     for m in f1_metrics
-                    if m.get("epoch") is not None and (m.get("eval_f1") is not None or m.get("f1") is not None)
+                    if m.get("epoch") is not None
+                    and (
+                        m.get("eval_f1") is not None or m.get("f1") is not None
+                    )
                 ]
                 if f1_with_epochs:
-                    best_epoch, best_f1 = max(f1_with_epochs, key=lambda x: x[1] if x[1] is not None else -1)
+                    best_epoch, best_f1 = max(
+                        f1_with_epochs,
+                        key=lambda x: x[1] if x[1] is not None else -1,
+                    )
 
                     # Check if early stopping triggered
                     # If best epoch is not the last epoch, early stopping likely triggered
                     if epoch_metrics:
                         last_epoch = max(
-                            (m.get("epoch") for m in epoch_metrics if m.get("epoch") is not None),
-                            default=None
+                            (
+                                m.get("epoch")
+                                for m in epoch_metrics
+                                if m.get("epoch") is not None
+                            ),
+                            default=None,
                         )
                         if last_epoch is not None and best_epoch is not None:
                             # Check if we stopped before max epochs
                             max_epochs = self.training_config.epochs
-                            patience = self.training_config.early_stopping_patience
+                            patience = (
+                                self.training_config.early_stopping_patience
+                            )
                             if last_epoch < max_epochs - 1:
                                 # Check if best epoch was more than patience epochs ago
                                 epochs_since_best = last_epoch - best_epoch
@@ -971,15 +1089,27 @@ class ReceiptLayoutLMTrainer:
             # Add early stopping information if available
             if best_epoch is not None:
                 summary_payload["best_epoch"] = float(best_epoch)
-                summary_payload["best_f1"] = float(best_f1) if best_f1 is not None else None
-                summary_payload["early_stopping_triggered"] = early_stopping_triggered
+                summary_payload["best_f1"] = (
+                    float(best_f1) if best_f1 is not None else None
+                )
+                summary_payload["early_stopping_triggered"] = (
+                    early_stopping_triggered
+                )
                 if epoch_metrics:
                     last_epoch = max(
-                        (m.get("epoch") for m in epoch_metrics if m.get("epoch") is not None),
-                        default=None
+                        (
+                            m.get("epoch")
+                            for m in epoch_metrics
+                            if m.get("epoch") is not None
+                        ),
+                        default=None,
                     )
                     if last_epoch is not None:
-                        summary_payload["epochs_since_best"] = int(last_epoch - best_epoch) if best_epoch is not None else None
+                        summary_payload["epochs_since_best"] = (
+                            int(last_epoch - best_epoch)
+                            if best_epoch is not None
+                            else None
+                        )
 
             # Extract checkpoint and training time information from trainer_state.json
             trainer_state_path = os.path.join(output_dir, "trainer_state.json")
@@ -989,7 +1119,9 @@ class ReceiptLayoutLMTrainer:
                         trainer_state = json.load(f)
 
                     # Best checkpoint path
-                    best_checkpoint = trainer_state.get("best_model_checkpoint")
+                    best_checkpoint = trainer_state.get(
+                        "best_model_checkpoint"
+                    )
                     if best_checkpoint:
                         # Convert to S3 path if output_s3_path is configured
                         if self.training_config.output_s3_path:
@@ -1006,31 +1138,41 @@ class ReceiptLayoutLMTrainer:
                                 run_prefix = f"runs/{job_name}/"
 
                             # Best checkpoint is synced to best/ subdirectory
-                            summary_payload["best_checkpoint_s3_path"] = f"s3://{bucket}/{run_prefix}best/"
+                            summary_payload["best_checkpoint_s3_path"] = (
+                                f"s3://{bucket}/{run_prefix}best/"
+                            )
                         else:
                             # Just store local path
-                            summary_payload["best_checkpoint_path"] = best_checkpoint
+                            summary_payload["best_checkpoint_path"] = (
+                                best_checkpoint
+                            )
 
                     # Training time metrics
                     train_runtime = trainer_state.get("train_runtime")
                     if train_runtime is not None:
-                        summary_payload["train_runtime_seconds"] = float(train_runtime)
+                        summary_payload["train_runtime_seconds"] = float(
+                            train_runtime
+                        )
 
                     total_flos = trainer_state.get("total_flos")
                     if total_flos is not None:
                         summary_payload["total_flos"] = int(total_flos)
 
                     # Number of checkpoints saved (count checkpoint directories)
-                    checkpoint_dirs = glob(os.path.join(output_dir, "checkpoint-*/"))
+                    checkpoint_dirs = glob(
+                        os.path.join(output_dir, "checkpoint-*/")
+                    )
                     if checkpoint_dirs:
-                        summary_payload["num_checkpoints"] = len(checkpoint_dirs)
+                        summary_payload["num_checkpoints"] = len(
+                            checkpoint_dirs
+                        )
                 except (json.JSONDecodeError, KeyError, ValueError):
                     # Best-effort; ignore errors
                     pass
 
             summary_log = JobLog(
                 job_id=job.job_id,
-                timestamp=datetime.now().isoformat(),
+                timestamp=datetime.now(timezone.utc).isoformat(),
                 log_level="INFO",
                 message=json.dumps(summary_payload),
                 source="receipt_layoutlm.trainer",
@@ -1041,21 +1183,37 @@ class ReceiptLayoutLMTrainer:
             job.status = "succeeded"
             job.results = {
                 "best_f1": float(best_f1) if best_f1 is not None else None,
-                "best_epoch": int(best_epoch) if best_epoch is not None else None,
+                "best_epoch": (
+                    int(best_epoch) if best_epoch is not None else None
+                ),
                 "early_stopping_triggered": early_stopping_triggered,
             }
             # Add training time metrics if available
             if "train_runtime_seconds" in summary_payload:
-                job.results["train_runtime"] = summary_payload["train_runtime_seconds"]
+                job.results["train_runtime"] = summary_payload[
+                    "train_runtime_seconds"
+                ]
             if "total_flos" in summary_payload:
                 job.results["total_flos"] = summary_payload["total_flos"]
             if "best_checkpoint_s3_path" in summary_payload:
-                job.results["best_checkpoint_s3_path"] = summary_payload["best_checkpoint_s3_path"]
+                job.results["best_checkpoint_s3_path"] = summary_payload[
+                    "best_checkpoint_s3_path"
+                ]
             elif "best_checkpoint_path" in summary_payload:
-                job.results["best_checkpoint_path"] = summary_payload["best_checkpoint_path"]
+                job.results["best_checkpoint_path"] = summary_payload[
+                    "best_checkpoint_path"
+                ]
 
             self.dynamo.update_job(job)
-            print(f"Job {job.job_id} completed with status: {job.status}, best_f1: {job.results.get('best_f1')}")
+            print(
+                f"Job {job.job_id} completed with status: {job.status}, best_f1: {job.results.get('best_f1')}"
+            )
+
+            # Queue CoreML export if auto-export is enabled
+            if self.training_config.auto_export_coreml:
+                self._queue_coreml_export(
+                    job, quantize=self.training_config.coreml_quantize
+                )
 
         except (
             DynamoDBError,
@@ -1086,8 +1244,16 @@ class ReceiptLayoutLMTrainer:
         # Define label-to-category mapping (matching UI grouping)
         # Handle merged labels: ADDRESS (from ADDRESS_LINE+PHONE_NUMBER), DATE (from DATE+TIME)
         LABEL_CATEGORIES = {
-            "merchant": ["MERCHANT_NAME", "PHONE_NUMBER", "ADDRESS_LINE", "ADDRESS"],
-            "transaction": ["DATE", "TIME"],  # DATE may be merged from DATE+TIME
+            "merchant": [
+                "MERCHANT_NAME",
+                "PHONE_NUMBER",
+                "ADDRESS_LINE",
+                "ADDRESS",
+            ],
+            "transaction": [
+                "DATE",
+                "TIME",
+            ],  # DATE may be merged from DATE+TIME
             "lineItems": ["PRODUCT_NAME"],
             "totals": ["AMOUNT"],
         }
@@ -1100,18 +1266,25 @@ class ReceiptLayoutLMTrainer:
 
         # Get label embeddings from the classifier layer
         # The classifier is typically a linear layer: classifier.weight is [num_labels, hidden_size]
-        if not hasattr(model, "classifier") or not hasattr(model.classifier, "weight"):
-            print("⚠️  Model doesn't have classifier.weight, skipping category-aware initialization")
+        if not hasattr(model, "classifier") or not hasattr(
+            model.classifier, "weight"
+        ):
+            print(
+                "⚠️  Model doesn't have classifier.weight, skipping category-aware initialization"
+            )
             return
 
-        label_embeddings = model.classifier.weight.data  # Shape: [num_labels, hidden_size]
+        label_embeddings = (
+            model.classifier.weight.data
+        )  # Shape: [num_labels, hidden_size]
 
         # Only process labels that exist in our label2id mapping
         available_labels = set(label2id.keys())
         category_labels: Dict[str, List[str]] = {}
         for category, labels in LABEL_CATEGORIES.items():
             category_labels[category] = [
-                label for label in labels
+                label
+                for label in labels
                 if label in available_labels and label != "O"
             ]
 
@@ -1130,7 +1303,9 @@ class ReceiptLayoutLMTrainer:
 
             if len(category_embs) > 0:
                 # Calculate centroid (mean of embeddings)
-                category_centroids[category] = self._torch.stack(category_embs).mean(dim=0)
+                category_centroids[category] = self._torch.stack(
+                    category_embs
+                ).mean(dim=0)
 
         # Adjust label embeddings to be closer to their category centroids
         # Use a weighted average: 70% original embedding, 30% category centroid
@@ -1194,8 +1369,10 @@ class ReceiptLayoutLMTrainer:
                 s3_client = boto3.client("s3")
 
                 # Sync full run directory
-                print(f"📤 Syncing run directory to s3://{bucket}/{run_prefix}")
-                for root, dirs, files in os.walk(output_dir):
+                print(
+                    f"📤 Syncing run directory to s3://{bucket}/{run_prefix}"
+                )
+                for root, _dirs, files in os.walk(output_dir):
                     for file in files:
                         local_path = os.path.join(root, file)
                         # Get relative path from output_dir
@@ -1204,37 +1381,65 @@ class ReceiptLayoutLMTrainer:
                         s3_client.upload_file(local_path, bucket, s3_key)
 
                 # Find and sync best checkpoint
-                trainer_state_path = os.path.join(output_dir, "trainer_state.json")
+                trainer_state_path = os.path.join(
+                    output_dir, "trainer_state.json"
+                )
                 if os.path.exists(trainer_state_path):
                     with open(trainer_state_path, "r") as f:
                         trainer_state = json.load(f)
-                    best_checkpoint = trainer_state.get("best_model_checkpoint")
+                    best_checkpoint = trainer_state.get(
+                        "best_model_checkpoint"
+                    )
                     if best_checkpoint:
                         # Handle relative paths (relative to output_dir)
                         if not os.path.isabs(best_checkpoint):
-                            best_checkpoint = os.path.join(output_dir, best_checkpoint)
+                            best_checkpoint = os.path.join(
+                                output_dir, best_checkpoint
+                            )
                         if os.path.exists(best_checkpoint):
-                            print(f"📤 Syncing best checkpoint to s3://{bucket}/{run_prefix}best/")
+                            print(
+                                f"📤 Syncing best checkpoint to s3://{bucket}/{run_prefix}best/"
+                            )
                             best_prefix = f"{run_prefix}best/"
-                            for root, dirs, files in os.walk(best_checkpoint):
+                            for root, _dirs, files in os.walk(best_checkpoint):
                                 for file in files:
                                     local_path = os.path.join(root, file)
-                                    rel_path = os.path.relpath(local_path, best_checkpoint)
+                                    rel_path = os.path.relpath(
+                                        local_path, best_checkpoint
+                                    )
                                     s3_key = f"{best_prefix}{rel_path}"
-                                    s3_client.upload_file(local_path, bucket, s3_key)
-                            print(f"✅ Model synced to s3://{bucket}/{run_prefix}")
+                                    s3_client.upload_file(
+                                        local_path, bucket, s3_key
+                                    )
+                            print(
+                                f"✅ Model synced to s3://{bucket}/{run_prefix}"
+                            )
                         else:
-                            print(f"⚠️  Best checkpoint path not found: {best_checkpoint}")
+                            print(
+                                f"⚠️  Best checkpoint path not found: {best_checkpoint}"
+                            )
                     else:
-                        print(f"⚠️  No best checkpoint recorded in trainer_state.json")
+                        print(
+                            f"⚠️  No best checkpoint recorded in trainer_state.json"
+                        )
                 else:
-                    print(f"⚠️  trainer_state.json not found, synced full run directory only")
+                    print(
+                        f"⚠️  trainer_state.json not found, synced full run directory only"
+                    )
 
             except ModuleNotFoundError:
                 # Fallback to AWS CLI
-                print(f"📤 Syncing run directory to s3://{bucket}/{run_prefix} (using AWS CLI)")
+                print(
+                    f"📤 Syncing run directory to s3://{bucket}/{run_prefix} (using AWS CLI)"
+                )
                 result = subprocess.run(
-                    ["aws", "s3", "sync", output_dir, f"s3://{bucket}/{run_prefix}"],
+                    [
+                        "aws",
+                        "s3",
+                        "sync",
+                        output_dir,
+                        f"s3://{bucket}/{run_prefix}",
+                    ],
                     capture_output=True,
                     text=True,
                 )
@@ -1243,27 +1448,132 @@ class ReceiptLayoutLMTrainer:
                     return
 
                 # Find and sync best checkpoint
-                trainer_state_path = os.path.join(output_dir, "trainer_state.json")
+                trainer_state_path = os.path.join(
+                    output_dir, "trainer_state.json"
+                )
                 if os.path.exists(trainer_state_path):
                     with open(trainer_state_path, "r") as f:
                         trainer_state = json.load(f)
-                    best_checkpoint = trainer_state.get("best_model_checkpoint")
+                    best_checkpoint = trainer_state.get(
+                        "best_model_checkpoint"
+                    )
                     if best_checkpoint:
                         # Handle relative paths (relative to output_dir)
                         if not os.path.isabs(best_checkpoint):
-                            best_checkpoint = os.path.join(output_dir, best_checkpoint)
+                            best_checkpoint = os.path.join(
+                                output_dir, best_checkpoint
+                            )
                         if os.path.exists(best_checkpoint):
-                            print(f"📤 Syncing best checkpoint to s3://{bucket}/{run_prefix}best/")
+                            print(
+                                f"📤 Syncing best checkpoint to s3://{bucket}/{run_prefix}best/"
+                            )
                             subprocess.run(
-                                ["aws", "s3", "sync", best_checkpoint, f"s3://{bucket}/{run_prefix}best/"],
+                                [
+                                    "aws",
+                                    "s3",
+                                    "sync",
+                                    best_checkpoint,
+                                    f"s3://{bucket}/{run_prefix}best/",
+                                ],
                                 capture_output=True,
                             )
-                            print(f"✅ Model synced to s3://{bucket}/{run_prefix}")
+                            print(
+                                f"✅ Model synced to s3://{bucket}/{run_prefix}"
+                            )
                         else:
-                            print(f"⚠️  Best checkpoint path not found: {best_checkpoint}")
+                            print(
+                                f"⚠️  Best checkpoint path not found: {best_checkpoint}"
+                            )
                     else:
-                        print(f"⚠️  No best checkpoint recorded in trainer_state.json")
+                        print(
+                            f"⚠️  No best checkpoint recorded in trainer_state.json"
+                        )
         except Exception as e:
             # Don't fail training if S3 sync fails
             print(f"⚠️  Failed to sync model to S3: {e}")
-            print(f"   You can manually sync with: aws s3 sync {output_dir} s3://{bucket}/{run_prefix}")
+            print(
+                f"   You can manually sync with: aws s3 sync {output_dir} s3://{bucket}/{run_prefix}"
+            )
+
+    def _queue_coreml_export(
+        self,
+        job: Job,
+        quantize: Optional[str] = "float16",
+    ) -> Optional[str]:
+        """Queue a CoreML export job after training completes.
+
+        This sends a message to the CoreML export job queue, which will be
+        processed by a macOS worker (since coremltools only runs on macOS).
+
+        Args:
+            job: The completed training Job
+            quantize: Quantization mode ("float16", "int8", "int4", or None)
+
+        Returns:
+            The export_id if queued successfully, None otherwise
+        """
+        # Get the model S3 URI from the job
+        model_s3_uri = job.best_dir_uri()
+        if not model_s3_uri:
+            print(
+                "⚠️  No best checkpoint S3 path found, skipping CoreML export"
+            )
+            return None
+
+        # Get queue URL from environment
+        queue_url = os.environ.get("COREML_EXPORT_JOB_QUEUE_URL")
+        if not queue_url:
+            print(
+                "⚠️  COREML_EXPORT_JOB_QUEUE_URL not set, skipping CoreML export"
+            )
+            return None
+
+        # Generate export ID
+        export_id = str(uuid.uuid4())
+
+        # Build output S3 prefix
+        bucket = job.storage_bucket()
+        if bucket:
+            output_s3_prefix = f"s3://{bucket}/coreml/{job.name}/"
+        else:
+            print("⚠️  No S3 bucket configured, skipping CoreML export")
+            return None
+
+        try:
+            import boto3
+
+            # Create export job record in DynamoDB
+            export_job = CoreMLExportJob(
+                export_id=export_id,
+                job_id=job.job_id,
+                model_s3_uri=model_s3_uri,
+                created_at=datetime.now(timezone.utc),
+                status=CoreMLExportStatus.PENDING.value,
+                quantize=quantize,
+                output_s3_prefix=output_s3_prefix,
+            )
+            self.dynamo.add_coreml_export_job(export_job)
+
+            # Send message to queue
+            sqs = boto3.client("sqs", region_name=self.data_config.aws_region)
+            message = {
+                "export_id": export_id,
+                "job_id": job.job_id,
+                "model_s3_uri": model_s3_uri,
+                "quantize": quantize,
+                "output_s3_prefix": output_s3_prefix,
+            }
+            sqs.send_message(
+                QueueUrl=queue_url,
+                MessageBody=json.dumps(message),
+            )
+
+            print(f"✅ CoreML export queued: {export_id}")
+            print(f"   Model: {model_s3_uri}")
+            print(f"   Output: {output_s3_prefix}")
+            return export_id
+
+        except Exception as e:
+            # Don't fail training if export queueing fails
+            print(f"⚠️  Failed to queue CoreML export: {e}")
+            return None

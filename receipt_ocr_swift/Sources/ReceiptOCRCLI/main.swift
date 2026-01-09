@@ -15,6 +15,7 @@ struct ReceiptOCR: AsyncParsableCommand {
     @Option(name: .long, help: "Process a local image file instead of AWS flow") var processLocalImage: String?
     @Option(name: .long, help: "Output directory for local processing JSON") var outputDir: String?
     @Flag(name: .long, help: "Run continuously until queue is empty") var continuous: Bool = false
+    @Option(name: .long, help: "Path to CoreML LayoutLM model bundle for token classification") var layoutlmModel: String?
 
     mutating func run() async throws {
         let config = try Config.load(
@@ -46,7 +47,8 @@ struct ReceiptOCR: AsyncParsableCommand {
             let imageURL = URL(fileURLWithPath: imagePath)
             let outURL = URL(fileURLWithPath: outputDir, isDirectory: true)
             #if os(macOS)
-            let engine: OCREngineProtocol = stubOCR ? StubOCREngine() : VisionOCREngine()
+            let layoutlmBundlePath = layoutlmModel.map { URL(fileURLWithPath: $0) }
+            let engine: OCREngineProtocol = stubOCR ? StubOCREngine() : VisionOCREngine(layoutLMBundlePath: layoutlmBundlePath)
             #else
             let engine: OCREngineProtocol = StubOCREngine()
             #endif

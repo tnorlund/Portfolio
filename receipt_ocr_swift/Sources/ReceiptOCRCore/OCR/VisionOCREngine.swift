@@ -375,7 +375,21 @@ public struct VisionOCREngine: OCREngineProtocol {
     /// Whether to include classification and clustering in output
     public var includeClassification: Bool = true
 
+    /// Optional LayoutLM inference engine for token classification
+    public var layoutLMInference: LayoutLMInference?
+
     public init() {}
+
+    /// Initialize with optional LayoutLM model for inference
+    public init(layoutLMBundlePath: URL?) {
+        if let bundlePath = layoutLMBundlePath {
+            do {
+                self.layoutLMInference = try LayoutLMInference(bundlePath: bundlePath)
+            } catch {
+                print("Warning: Failed to load LayoutLM model: \(error)")
+            }
+        }
+    }
 
     public func process(images: [URL], outputDirectory: URL) throws -> [URL] {
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
@@ -470,10 +484,21 @@ public struct VisionOCREngine: OCREngineProtocol {
                                 }
                                 performNLExtraction(on: receiptAggregatedText, mutableLines: &receiptLines, wordMappings: receiptWordMappings)
 
+                                // Run LayoutLM inference if available
+                                var layoutlmPredictions: [LinePrediction]?
+                                if let inference = layoutLMInference, !receiptLines.isEmpty {
+                                    do {
+                                        layoutlmPredictions = try inference.predict(lines: receiptLines)
+                                    } catch {
+                                        print("Warning: LayoutLM inference failed for receipt \(receipt.clusterId): \(error)")
+                                    }
+                                }
+
                                 let output = ReceiptOutput(
                                     from: receipt,
                                     s3Key: receiptFileName,
-                                    lines: receiptLines
+                                    lines: receiptLines,
+                                    layoutlmPredictions: layoutlmPredictions
                                 )
                                 outputs.append(output)
                             } catch {
