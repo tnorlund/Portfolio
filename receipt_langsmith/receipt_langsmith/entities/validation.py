@@ -111,10 +111,14 @@ class ValidationResultTrace(BaseModel):
     validated_merchant: Optional[MerchantCandidateTrace] = None
     """Validated merchant information."""
 
-    verification_steps: list[VerificationStepTrace] = Field(default_factory=list)
+    verification_steps: list[VerificationStepTrace] = Field(
+        default_factory=list
+    )
     """Steps taken during verification."""
 
-    evidence_summary: list[VerificationEvidenceTrace] = Field(default_factory=list)
+    evidence_summary: list[VerificationEvidenceTrace] = Field(
+        default_factory=list
+    )
     """Summary of all evidence collected."""
 
     reasoning: str = ""
@@ -149,10 +153,14 @@ class ValidationAgentOutputs(BaseModel):
     result: Optional[ValidationResultTrace] = None
     """Final validation result."""
 
-    merchant_candidates: list[MerchantCandidateTrace] = Field(default_factory=list)
+    merchant_candidates: list[MerchantCandidateTrace] = Field(
+        default_factory=list
+    )
     """Candidate merchants found during validation."""
 
-    verification_steps: list[VerificationStepTrace] = Field(default_factory=list)
+    verification_steps: list[VerificationStepTrace] = Field(
+        default_factory=list
+    )
     """Verification steps completed."""
 
     errors: list[str] = Field(default_factory=list)

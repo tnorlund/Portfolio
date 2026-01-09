@@ -68,13 +68,26 @@ class LangSmithSparkProcessor:
         logger.info("Reading Parquet from: %s", path)
 
         # Convert s3:// to s3a:// for Spark's Hadoop S3A connector
-        spark_path = path.replace("s3://", "s3a://") if path.startswith("s3://") else path
+        spark_path = (
+            path.replace("s3://", "s3a://")
+            if path.startswith("s3://")
+            else path
+        )
 
         # Columns we need for analytics
         needed_columns = [
-            "id", "trace_id", "name", "run_type", "status",
-            "start_time", "end_time", "extra", "outputs",
-            "total_tokens", "prompt_tokens", "completion_tokens",
+            "id",
+            "trace_id",
+            "name",
+            "run_type",
+            "status",
+            "start_time",
+            "end_time",
+            "extra",
+            "outputs",
+            "total_tokens",
+            "prompt_tokens",
+            "completion_tokens",
         ]
 
         # Read with native Spark - requires spark.sql.legacy.parquet.nanosAsLong=true
@@ -89,13 +102,15 @@ class LangSmithSparkProcessor:
             # Nanoseconds to timestamp conversion
             df = df.withColumn(
                 "start_time",
-                (F.col("start_time") / 1_000_000_000).cast("timestamp")
+                (F.col("start_time") / 1_000_000_000).cast("timestamp"),
             ).withColumn(
                 "end_time",
-                (F.col("end_time") / 1_000_000_000).cast("timestamp")
+                (F.col("end_time") / 1_000_000_000).cast("timestamp"),
             )
 
-        logger.info("Read Parquet with %d partitions", df.rdd.getNumPartitions())
+        logger.info(
+            "Read Parquet with %d partitions", df.rdd.getNumPartitions()
+        )
         return df
 
     def parse_json_fields(self, df: DataFrame) -> DataFrame:
@@ -128,15 +143,18 @@ class LangSmithSparkProcessor:
             )
             .withColumn(
                 "metadata_receipt_id",
-                F.get_json_object(F.col("extra"), "$.metadata.receipt_id").cast(
-                    "int"
-                ),
+                F.get_json_object(
+                    F.col("extra"), "$.metadata.receipt_id"
+                ).cast("int"),
             )
             .withColumn(
                 "duration_ms",
                 # Use timestamp arithmetic as doubles to preserve millisecond precision
                 # (unix_timestamp loses sub-second precision)
-                (F.col("end_time").cast("double") - F.col("start_time").cast("double"))
+                (
+                    F.col("end_time").cast("double")
+                    - F.col("start_time").cast("double")
+                )
                 * 1000,
             )
         )
@@ -159,18 +177,15 @@ class LangSmithSparkProcessor:
         receipts = df.filter(F.col("name") == "ReceiptEvaluation")
 
         # Get all runs in each trace for aggregation
-        trace_stats = (
-            df.groupBy("trace_id")
-            .agg(
-                F.sum("duration_ms").alias("total_duration_ms"),
-                F.sum("total_tokens").alias("total_tokens"),
-                F.sum("prompt_tokens").alias("prompt_tokens"),
-                F.sum("completion_tokens").alias("completion_tokens"),
-                F.count("*").alias("run_count"),
-                F.sum(F.when(F.col("run_type") == "llm", 1).otherwise(0)).alias(
-                    "llm_run_count"
-                ),
-            )
+        trace_stats = df.groupBy("trace_id").agg(
+            F.sum("duration_ms").alias("total_duration_ms"),
+            F.sum("total_tokens").alias("total_tokens"),
+            F.sum("prompt_tokens").alias("prompt_tokens"),
+            F.sum("completion_tokens").alias("completion_tokens"),
+            F.count("*").alias("run_count"),
+            F.sum(F.when(F.col("run_type") == "llm", 1).otherwise(0)).alias(
+                "llm_run_count"
+            ),
         )
 
         # Join with receipt metadata
@@ -220,9 +235,15 @@ class LangSmithSparkProcessor:
 
         result = steps.groupBy("name").agg(
             F.avg("duration_ms").alias("avg_duration_ms"),
-            F.expr("percentile_approx(duration_ms, 0.5)").alias("p50_duration_ms"),
-            F.expr("percentile_approx(duration_ms, 0.95)").alias("p95_duration_ms"),
-            F.expr("percentile_approx(duration_ms, 0.99)").alias("p99_duration_ms"),
+            F.expr("percentile_approx(duration_ms, 0.5)").alias(
+                "p50_duration_ms"
+            ),
+            F.expr("percentile_approx(duration_ms, 0.95)").alias(
+                "p95_duration_ms"
+            ),
+            F.expr("percentile_approx(duration_ms, 0.99)").alias(
+                "p99_duration_ms"
+            ),
             F.min("duration_ms").alias("min_duration_ms"),
             F.max("duration_ms").alias("max_duration_ms"),
             F.count("*").alias("total_runs"),
@@ -270,18 +291,18 @@ class LangSmithSparkProcessor:
             with_decisions.withColumn(
                 "valid_count",
                 F.coalesce(
-                    F.get_json_object(F.col("decisions_count"), "$.VALID").cast(
-                        "int"
-                    ),
+                    F.get_json_object(
+                        F.col("decisions_count"), "$.VALID"
+                    ).cast("int"),
                     F.lit(0),
                 ),
             )
             .withColumn(
                 "invalid_count",
                 F.coalesce(
-                    F.get_json_object(F.col("decisions_count"), "$.INVALID").cast(
-                        "int"
-                    ),
+                    F.get_json_object(
+                        F.col("decisions_count"), "$.INVALID"
+                    ).cast("int"),
                     F.lit(0),
                 ),
             )
@@ -306,7 +327,9 @@ class LangSmithSparkProcessor:
         )
 
         # Aggregate by merchant and label type
-        aggregated = result.groupBy("metadata_merchant_name", "label_type").agg(
+        aggregated = result.groupBy(
+            "metadata_merchant_name", "label_type"
+        ).agg(
             F.sum("valid_count").alias("valid_total"),
             F.sum("invalid_count").alias("invalid_total"),
             F.sum("needs_review_count").alias("needs_review_total"),

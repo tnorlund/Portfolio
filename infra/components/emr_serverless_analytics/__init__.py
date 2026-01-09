@@ -186,14 +186,20 @@ class EMRServerlessAnalytics(ComponentResource):
         # ============================================================
         self.emr_job_role = aws.iam.Role(
             f"{name}-emr-job-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "emr-serverless.amazonaws.com"},
-                    "Action": "sts:AssumeRole",
-                }],
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "emr-serverless.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             tags={
                 "Name": f"{name}-emr-job-role",
                 "Environment": stack,
@@ -210,49 +216,53 @@ class EMRServerlessAnalytics(ComponentResource):
                 langsmith_bucket_arn,
                 self.artifacts_bucket.arn,
                 self.analytics_bucket.arn,
-            ).apply(lambda args: json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    # Read LangSmith Parquet exports
+            ).apply(
+                lambda args: json.dumps(
                     {
-                        "Effect": "Allow",
-                        "Action": ["s3:GetObject", "s3:ListBucket"],
-                        "Resource": [args[0], f"{args[0]}/*"],
-                    },
-                    # Read Spark job artifacts
-                    {
-                        "Effect": "Allow",
-                        "Action": ["s3:GetObject", "s3:ListBucket"],
-                        "Resource": [args[1], f"{args[1]}/*"],
-                    },
-                    # Write analytics output
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:GetObject",
-                            "s3:PutObject",
-                            "s3:DeleteObject",
-                            "s3:ListBucket",
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            # Read LangSmith Parquet exports
+                            {
+                                "Effect": "Allow",
+                                "Action": ["s3:GetObject", "s3:ListBucket"],
+                                "Resource": [args[0], f"{args[0]}/*"],
+                            },
+                            # Read Spark job artifacts
+                            {
+                                "Effect": "Allow",
+                                "Action": ["s3:GetObject", "s3:ListBucket"],
+                                "Resource": [args[1], f"{args[1]}/*"],
+                            },
+                            # Write analytics output
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:DeleteObject",
+                                    "s3:ListBucket",
+                                ],
+                                "Resource": [args[2], f"{args[2]}/*"],
+                            },
+                            # CloudWatch Logs
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "logs:CreateLogGroup",
+                                    "logs:CreateLogStream",
+                                    "logs:PutLogEvents",
+                                    "logs:DescribeLogGroups",
+                                    "logs:DescribeLogStreams",
+                                ],
+                                "Resource": [
+                                    f"arn:aws:logs:{region}:{account_id}:log-group:/aws/emr-serverless/*",
+                                    f"arn:aws:logs:{region}:{account_id}:log-group:/aws/emr-serverless/*:*",
+                                ],
+                            },
                         ],
-                        "Resource": [args[2], f"{args[2]}/*"],
-                    },
-                    # CloudWatch Logs
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "logs:CreateLogGroup",
-                            "logs:CreateLogStream",
-                            "logs:PutLogEvents",
-                            "logs:DescribeLogGroups",
-                            "logs:DescribeLogStreams",
-                        ],
-                        "Resource": [
-                            f"arn:aws:logs:{region}:{account_id}:log-group:/aws/emr-serverless/*",
-                            f"arn:aws:logs:{region}:{account_id}:log-group:/aws/emr-serverless/*:*",
-                        ],
-                    },
-                ],
-            })),
+                    }
+                )
+            ),
             opts=ResourceOptions(parent=self.emr_job_role),
         )
 
@@ -261,14 +271,20 @@ class EMRServerlessAnalytics(ComponentResource):
         # ============================================================
         self.codebuild_role = aws.iam.Role(
             f"{name}-codebuild-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "codebuild.amazonaws.com"},
-                    "Action": "sts:AssumeRole",
-                }],
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "codebuild.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             tags={
                 "Name": f"{name}-codebuild-role",
                 "Environment": stack,
@@ -281,31 +297,35 @@ class EMRServerlessAnalytics(ComponentResource):
         aws.iam.RolePolicy(
             f"{name}-codebuild-policy",
             role=self.codebuild_role.id,
-            policy=self.artifacts_bucket.arn.apply(lambda arn: json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    # CloudWatch Logs
+            policy=self.artifacts_bucket.arn.apply(
+                lambda arn: json.dumps(
                     {
-                        "Effect": "Allow",
-                        "Action": [
-                            "logs:CreateLogGroup",
-                            "logs:CreateLogStream",
-                            "logs:PutLogEvents",
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            # CloudWatch Logs
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "logs:CreateLogGroup",
+                                    "logs:CreateLogStream",
+                                    "logs:PutLogEvents",
+                                ],
+                                "Resource": f"arn:aws:logs:{region}:{account_id}:log-group:/aws/codebuild/*",
+                            },
+                            # S3 access for source and artifacts
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:ListBucket",
+                                ],
+                                "Resource": [arn, f"{arn}/*"],
+                            },
                         ],
-                        "Resource": f"arn:aws:logs:{region}:{account_id}:log-group:/aws/codebuild/*",
-                    },
-                    # S3 access for source and artifacts
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:GetObject",
-                            "s3:PutObject",
-                            "s3:ListBucket",
-                        ],
-                        "Resource": [arn, f"{arn}/*"],
-                    },
-                ],
-            })),
+                    }
+                )
+            ),
             opts=ResourceOptions(parent=self.codebuild_role),
         )
 
@@ -392,25 +412,31 @@ artifacts:
             f"{name}-source-object",
             bucket=self.artifacts_bucket.id,
             key="source/source.zip",
-            source=AssetArchive({
-                "receipt_langsmith": FileArchive(str(receipt_langsmith_path)),
-            }),
+            source=AssetArchive(
+                {
+                    "receipt_langsmith": FileArchive(
+                        str(receipt_langsmith_path)
+                    ),
+                }
+            ),
             opts=ResourceOptions(parent=self.artifacts_bucket),
         )
 
         # ============================================================
         # Exports
         # ============================================================
-        self.register_outputs({
-            "emr_application_id": self.emr_application.id,
-            "emr_application_arn": self.emr_application.arn,
-            "emr_job_role_arn": self.emr_job_role.arn,
-            "artifacts_bucket_name": self.artifacts_bucket.id,
-            "artifacts_bucket_arn": self.artifacts_bucket.arn,
-            "analytics_bucket_name": self.analytics_bucket.id,
-            "analytics_bucket_arn": self.analytics_bucket.arn,
-            "codebuild_project_name": self.codebuild_project.name,
-        })
+        self.register_outputs(
+            {
+                "emr_application_id": self.emr_application.id,
+                "emr_application_arn": self.emr_application.arn,
+                "emr_job_role_arn": self.emr_job_role.arn,
+                "artifacts_bucket_name": self.artifacts_bucket.id,
+                "artifacts_bucket_arn": self.artifacts_bucket.arn,
+                "analytics_bucket_name": self.analytics_bucket.id,
+                "analytics_bucket_arn": self.analytics_bucket.arn,
+                "codebuild_project_name": self.codebuild_project.name,
+            }
+        )
 
 
 def create_emr_serverless_analytics(

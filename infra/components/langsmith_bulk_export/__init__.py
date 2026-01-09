@@ -14,7 +14,13 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import AssetArchive, ComponentResource, FileArchive, Output, ResourceOptions
+from pulumi import (
+    AssetArchive,
+    ComponentResource,
+    FileArchive,
+    Output,
+    ResourceOptions,
+)
 
 # Get stack configuration
 stack = pulumi.get_stack()
@@ -97,37 +103,39 @@ class LangSmithBulkExport(ComponentResource):
             f"{name}-langsmith-s3-policy",
             user=self.langsmith_user.name,
             policy=self.export_bucket.arn.apply(
-                lambda arn: json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Action": [
-                                "s3:PutObject",
-                                "s3:GetObject",
-                                "s3:DeleteObject",
-                                "s3:HeadObject",
-                                "s3:GetObjectAcl",
-                                "s3:PutObjectAcl",
-                                "s3:AbortMultipartUpload",
-                                "s3:ListMultipartUploadParts",
-                            ],
-                            "Resource": f"{arn}/*",
-                        },
-                        {
-                            "Effect": "Allow",
-                            "Action": [
-                                "s3:ListBucket",
-                                "s3:HeadBucket",
-                                "s3:GetBucketLocation",
-                                "s3:GetBucketAcl",
-                                "s3:GetBucketVersioning",
-                                "s3:ListBucketMultipartUploads",
-                            ],
-                            "Resource": arn,
-                        },
-                    ],
-                })
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:PutObject",
+                                    "s3:GetObject",
+                                    "s3:DeleteObject",
+                                    "s3:HeadObject",
+                                    "s3:GetObjectAcl",
+                                    "s3:PutObjectAcl",
+                                    "s3:AbortMultipartUpload",
+                                    "s3:ListMultipartUploadParts",
+                                ],
+                                "Resource": f"{arn}/*",
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:ListBucket",
+                                    "s3:HeadBucket",
+                                    "s3:GetBucketLocation",
+                                    "s3:GetBucketAcl",
+                                    "s3:GetBucketVersioning",
+                                    "s3:ListBucketMultipartUploads",
+                                ],
+                                "Resource": arn,
+                            },
+                        ],
+                    }
+                )
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -156,13 +164,14 @@ class LangSmithBulkExport(ComponentResource):
             f"{name}-langsmith-credentials-version",
             secret_id=self.langsmith_credentials_secret.id,
             secret_string=Output.all(
-                self.langsmith_access_key.id,
-                self.langsmith_access_key.secret
+                self.langsmith_access_key.id, self.langsmith_access_key.secret
             ).apply(
-                lambda args: json.dumps({
-                    "access_key_id": args[0],
-                    "secret_access_key": args[1],
-                })
+                lambda args: json.dumps(
+                    {
+                        "access_key_id": args[0],
+                        "secret_access_key": args[1],
+                    }
+                )
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -172,14 +181,18 @@ class LangSmithBulkExport(ComponentResource):
         # ============================================================
         self.lambda_role = aws.iam.Role(
             f"{name}-lambda-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "lambda.amazonaws.com"},
-                    "Action": "sts:AssumeRole"
-                }]
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             tags={
                 "Name": f"{name}-lambda-role",
                 "Environment": stack,
@@ -200,18 +213,22 @@ class LangSmithBulkExport(ComponentResource):
         aws.iam.RolePolicy(
             f"{name}-ssm-policy",
             role=self.lambda_role.id,
-            policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Action": [
-                        "ssm:GetParameter",
-                        "ssm:PutParameter",
-                        "ssm:DeleteParameter",
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "ssm:GetParameter",
+                                "ssm:PutParameter",
+                                "ssm:DeleteParameter",
+                            ],
+                            "Resource": f"arn:aws:ssm:*:*:parameter/langsmith/{stack}/*",
+                        }
                     ],
-                    "Resource": f"arn:aws:ssm:*:*:parameter/langsmith/{stack}/*",
-                }],
-            }),
+                }
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -220,16 +237,20 @@ class LangSmithBulkExport(ComponentResource):
             f"{name}-secrets-policy",
             role=self.lambda_role.id,
             policy=self.langsmith_credentials_secret.arn.apply(
-                lambda arn: json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Action": [
-                            "secretsmanager:GetSecretValue",
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "secretsmanager:GetSecretValue",
+                                ],
+                                "Resource": arn,
+                            }
                         ],
-                        "Resource": arn,
-                    }],
-                })
+                    }
+                )
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -239,18 +260,22 @@ class LangSmithBulkExport(ComponentResource):
             f"{name}-export-bucket-read-policy",
             role=self.lambda_role.id,
             policy=self.export_bucket.arn.apply(
-                lambda arn: json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:GetObject",
-                            "s3:ListBucket",
-                            "s3:GetBucketLocation",
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:ListBucket",
+                                    "s3:GetBucketLocation",
+                                ],
+                                "Resource": [arn, f"{arn}/*"],
+                            }
                         ],
-                        "Resource": [arn, f"{arn}/*"],
-                    }],
-                })
+                    }
+                )
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -331,16 +356,18 @@ class LangSmithBulkExport(ComponentResource):
         # ============================================================
         # Exports
         # ============================================================
-        self.register_outputs({
-            "export_bucket_name": self.export_bucket.id,
-            "export_bucket_arn": self.export_bucket.arn,
-            "langsmith_user_arn": self.langsmith_user.arn,
-            "credentials_secret_arn": self.langsmith_credentials_secret.arn,
-            "setup_lambda_arn": self.setup_lambda.arn,
-            "setup_lambda_name": self.setup_lambda.name,
-            "trigger_lambda_arn": self.trigger_lambda.arn,
-            "trigger_lambda_name": self.trigger_lambda.name,
-        })
+        self.register_outputs(
+            {
+                "export_bucket_name": self.export_bucket.id,
+                "export_bucket_arn": self.export_bucket.arn,
+                "langsmith_user_arn": self.langsmith_user.arn,
+                "credentials_secret_arn": self.langsmith_credentials_secret.arn,
+                "setup_lambda_arn": self.setup_lambda.arn,
+                "setup_lambda_name": self.setup_lambda.name,
+                "trigger_lambda_arn": self.trigger_lambda.arn,
+                "trigger_lambda_name": self.trigger_lambda.name,
+            }
+        )
 
 
 def create_langsmith_bulk_export(

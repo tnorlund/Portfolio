@@ -5,12 +5,10 @@ LangSmith Parquet export format.
 """
 
 from pyspark.sql.types import (
-    ArrayType,
     BooleanType,
     DoubleType,
     IntegerType,
     LongType,
-    MapType,
     StringType,
     StructField,
     StructType,

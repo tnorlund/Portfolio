@@ -49,55 +49,6 @@ Example:
 
 __version__ = "0.2.0"
 
-# Core entities (always available)
-from receipt_langsmith.entities import (
-    # Base
-    LangSmithRun,
-    LangSmithRunRaw,
-    RuntimeInfo,
-    TraceMetadata,
-    # Validation agent
-    EvidenceType,
-    MerchantCandidateTrace,
-    ValidationAgentInputs,
-    ValidationAgentOutputs,
-    ValidationResultTrace,
-    ValidationStatus,
-    VerificationEvidenceTrace,
-    VerificationStepTrace,
-    # Label evaluator
-    CurrencyEvaluatorInputs,
-    CurrencyEvaluatorOutputs,
-    DrillDownWordTrace,
-    EvaluateLabelsInputs,
-    EvaluateLabelsOutputs,
-    EvaluationIssueTrace,
-    FinancialEvaluatorInputs,
-    FinancialEvaluatorOutputs,
-    FlaggedWordTrace,
-    LabelEvaluatorInputs,
-    LabelEvaluatorOutputs,
-    LLMReviewOutputs,
-    LLMReviewTrace,
-    MetadataEvaluatorInputs,
-    MetadataEvaluatorOutputs,
-    ReviewDecisionTrace,
-    # Other agents
-    AgenticValidationInputs,
-    AgenticValidationOutputs,
-    GroupingInputs,
-    GroupingOutputs,
-    GroupingProposal,
-    HarmonizedField,
-    HarmonizerInputs,
-    HarmonizerOutputs,
-    PlaceIdFinderInputs,
-    PlaceIdFinderOutputs,
-    ReceiptBoundary,
-    ReceiptMetadataSummary,
-    ToolCallTrace,
-)
-
 # Client (always available)
 from receipt_langsmith.client import (
     BulkExportDestination,
@@ -108,6 +59,57 @@ from receipt_langsmith.client import (
     ExportStatus,
     LangSmithClient,
     Project,
+)
+
+# Core entities (always available)
+from receipt_langsmith.entities import (  # Base; Validation agent; Label evaluator; Other agents
+    AgenticValidationInputs,
+    AgenticValidationOutputs,
+    CurrencyEvaluatorInputs,
+    CurrencyEvaluatorOutputs,
+    DrillDownWordTrace,
+    EvaluateLabelsInputs,
+    EvaluateLabelsOutputs,
+    EvaluationIssueTrace,
+    EvidenceType,
+    FinancialEvaluatorInputs,
+    FinancialEvaluatorOutputs,
+    FlaggedWordTrace,
+    GroupingInputs,
+    GroupingOutputs,
+    GroupingProposal,
+    HarmonizedField,
+    HarmonizerInputs,
+    HarmonizerOutputs,
+    LabelEvaluatorInputs,
+    LabelEvaluatorOutputs,
+    LangSmithRun,
+    LangSmithRunRaw,
+    LLMReviewOutputs,
+    LLMReviewTrace,
+    MerchantCandidateTrace,
+    MetadataEvaluatorInputs,
+    MetadataEvaluatorOutputs,
+    PlaceIdFinderInputs,
+    PlaceIdFinderOutputs,
+    ReceiptBoundary,
+    ReceiptMetadataSummary,
+    ReviewDecisionTrace,
+    RuntimeInfo,
+    ToolCallTrace,
+    TraceMetadata,
+    ValidationAgentInputs,
+    ValidationAgentOutputs,
+    ValidationResultTrace,
+    ValidationStatus,
+    VerificationEvidenceTrace,
+    VerificationStepTrace,
+)
+from receipt_langsmith.parquet_reader import (
+    find_receipts_with_anomalies_from_parquet,
+    find_receipts_with_decisions_from_parquet,
+    find_visualization_receipts_from_parquet,
+    read_traces_from_parquet,
 )
 
 # Parsers (always available)
@@ -127,13 +129,6 @@ from receipt_langsmith.queries import (
     query_recent_receipt_traces,
 )
 
-from receipt_langsmith.parquet_reader import (
-    find_receipts_with_anomalies_from_parquet,
-    find_receipts_with_decisions_from_parquet,
-    find_visualization_receipts_from_parquet,
-    read_traces_from_parquet,
-)
-
 
 # Lazy imports for optional dependencies
 def __getattr__(name: str):
@@ -141,7 +136,9 @@ def __getattr__(name: str):
     # PySpark dependencies
     if name == "LangSmithSparkProcessor":
         try:
-            from receipt_langsmith.spark.processor import LangSmithSparkProcessor
+            from receipt_langsmith.spark.processor import (
+                LangSmithSparkProcessor,
+            )
 
             return LangSmithSparkProcessor
         except ImportError as e:
@@ -152,7 +149,9 @@ def __getattr__(name: str):
 
     if name == "LANGSMITH_PARQUET_SCHEMA":
         try:
-            from receipt_langsmith.spark.schemas import LANGSMITH_PARQUET_SCHEMA
+            from receipt_langsmith.spark.schemas import (
+                LANGSMITH_PARQUET_SCHEMA,
+            )
 
             return LANGSMITH_PARQUET_SCHEMA
         except ImportError as e:
@@ -236,7 +235,4 @@ __all__ = [
     "find_receipts_with_decisions_from_parquet",
     "find_receipts_with_anomalies_from_parquet",
     "find_visualization_receipts_from_parquet",
-    # PySpark (lazy import)
-    "LangSmithSparkProcessor",
-    "LANGSMITH_PARQUET_SCHEMA",
 ]

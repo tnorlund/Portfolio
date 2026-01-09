@@ -146,7 +146,9 @@ class LangSmithClient:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
+        retry=retry_if_exception_type(
+            (httpx.HTTPError, httpx.TimeoutException)
+        ),
     )
     async def _arequest(
         self,
@@ -263,7 +265,9 @@ class LangSmithClient:
         # Filter to only runs with outputs
         return [run for run in runs if run.get("outputs")]
 
-    async def aget_child_traces(self, parent_run_id: str) -> dict[str, dict[str, Any]]:
+    async def aget_child_traces(
+        self, parent_run_id: str
+    ) -> dict[str, dict[str, Any]]:
         """Get child traces for a parent run.
 
         Args:
@@ -272,8 +276,14 @@ class LangSmithClient:
         Returns:
             Dict mapping child trace name to its outputs.
         """
-        children = await self.alist_runs(parent_run_id=parent_run_id, limit=100)
-        return {run["name"]: run.get("outputs", {}) for run in children if run.get("outputs")}
+        children = await self.alist_runs(
+            parent_run_id=parent_run_id, limit=100
+        )
+        return {
+            run["name"]: run.get("outputs", {})
+            for run in children
+            if run.get("outputs")
+        }
 
     # Sync API methods (wrappers around async methods)
 
@@ -293,6 +303,8 @@ class LangSmithClient:
         """List recent traces (sync wrapper)."""
         return asyncio.run(self.alist_recent_traces(**kwargs))
 
-    def get_child_traces(self, parent_run_id: str) -> dict[str, dict[str, Any]]:
+    def get_child_traces(
+        self, parent_run_id: str
+    ) -> dict[str, dict[str, Any]]:
         """Get child traces (sync wrapper)."""
         return asyncio.run(self.aget_child_traces(parent_run_id))

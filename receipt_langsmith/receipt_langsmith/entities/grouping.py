@@ -8,7 +8,6 @@ receipt groupings within images.
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
-
 from receipt_langsmith.entities.place_id_finder import ToolCallTrace
 
 
@@ -69,7 +68,9 @@ class GroupingOutputs(BaseModel):
     reasoning: str = ""
     """Agent's reasoning for the grouping."""
 
-    alternatives_considered: list[GroupingProposal] = Field(default_factory=list)
+    alternatives_considered: list[GroupingProposal] = Field(
+        default_factory=list
+    )
     """Alternative groupings that were considered."""
 
     submission: Optional[dict[str, Any]] = None

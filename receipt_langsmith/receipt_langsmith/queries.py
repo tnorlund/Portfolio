@@ -130,16 +130,18 @@ def find_receipts_with_anomalies(
                 # Fallback: use run_id as execution_id
                 execution_id = str(trace.id)[:8]
 
-            receipts_with_anomalies.append({
-                "run_id": str(trace.id),
-                "image_id": metadata.get("image_id"),
-                "receipt_id": metadata.get("receipt_id"),
-                "merchant_name": metadata.get("merchant_name", "Unknown"),
-                "issues": geometric_issues,
-                "all_issues": issues,
-                "flagged_words": flagged_words,
-                "execution_id": execution_id,
-            })
+            receipts_with_anomalies.append(
+                {
+                    "run_id": str(trace.id),
+                    "image_id": metadata.get("image_id"),
+                    "receipt_id": metadata.get("receipt_id"),
+                    "merchant_name": metadata.get("merchant_name", "Unknown"),
+                    "issues": geometric_issues,
+                    "all_issues": issues,
+                    "flagged_words": flagged_words,
+                    "execution_id": execution_id,
+                }
+            )
 
     logger.info(
         "Found %d receipts with anomalies from %d traces",
@@ -207,18 +209,20 @@ def find_receipts_with_llm_decisions(
         if has_invalid or has_decisions:
             execution_id = metadata.get("execution_id", str(trace.id)[:8])
 
-            interesting_receipts.append({
-                "run_id": str(trace.id),
-                "image_id": metadata.get("image_id"),
-                "receipt_id": metadata.get("receipt_id"),
-                "merchant_name": metadata.get("merchant_name", "Unknown"),
-                "execution_id": execution_id,
-                "currency_decisions": currency_decisions,
-                "metadata_decisions": metadata_decisions,
-                "financial_decisions": financial_decisions,
-                "reviewed_issues": reviewed_issues,
-                "has_invalid": has_invalid,
-            })
+            interesting_receipts.append(
+                {
+                    "run_id": str(trace.id),
+                    "image_id": metadata.get("image_id"),
+                    "receipt_id": metadata.get("receipt_id"),
+                    "merchant_name": metadata.get("merchant_name", "Unknown"),
+                    "execution_id": execution_id,
+                    "currency_decisions": currency_decisions,
+                    "metadata_decisions": metadata_decisions,
+                    "financial_decisions": financial_decisions,
+                    "reviewed_issues": reviewed_issues,
+                    "has_invalid": has_invalid,
+                }
+            )
 
     logger.info(
         "Found %d receipts with LLM decisions from %d traces",

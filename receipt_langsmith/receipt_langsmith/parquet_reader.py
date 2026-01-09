@@ -32,7 +32,9 @@ def _parse_json_field(value: Any) -> Any:
     return {}
 
 
-def read_traces_from_parquet(bucket: str, prefix: str = "traces/") -> list[dict]:
+def read_traces_from_parquet(
+    bucket: str, prefix: str = "traces/"
+) -> list[dict]:
     """Read all traces from exported Parquet files in S3.
 
     Args:
@@ -62,8 +64,12 @@ def read_traces_from_parquet(bucket: str, prefix: str = "traces/") -> list[dict]
 
                     # Parse JSON string fields (outputs, inputs, extra)
                     for trace in raw_traces:
-                        trace["outputs"] = _parse_json_field(trace.get("outputs"))
-                        trace["inputs"] = _parse_json_field(trace.get("inputs"))
+                        trace["outputs"] = _parse_json_field(
+                            trace.get("outputs")
+                        )
+                        trace["inputs"] = _parse_json_field(
+                            trace.get("inputs")
+                        )
                         trace["extra"] = _parse_json_field(trace.get("extra"))
 
                     traces.extend(raw_traces)
@@ -144,7 +150,7 @@ def find_receipts_with_decisions_from_parquet(
     # Process each parent with its children
     results = []
     for parent in parents:
-        parent_id = parent.get("id")
+        parent_id = parent.get("id", "")
         # Metadata is in extra.metadata for LangSmith exports
         extra = parent.get("extra", {}) or {}
         metadata = extra.get("metadata", {}) or {}
@@ -173,7 +179,7 @@ def find_receipts_with_decisions_from_parquet(
                     duration_ms = (end - start).total_seconds() * 1000
 
                     # Calculate relative start (ms from parent start)
-                    start_ms = 0
+                    start_ms: float = 0
                     if parent_start and start:
                         start_ms = max(
                             0, (start - parent_start).total_seconds() * 1000
@@ -206,19 +212,21 @@ def find_receipts_with_decisions_from_parquet(
         )
 
         if has_decisions or timing:
-            results.append({
-                "run_id": parent_id,
-                "image_id": metadata.get("image_id"),
-                "receipt_id": metadata.get("receipt_id"),
-                "merchant_name": metadata.get("merchant_name", "Unknown"),
-                "execution_id": metadata.get(
-                    "execution_id", str(parent_id)[:8] if parent_id else ""
-                ),
-                "timing": timing,
-                "currency_decisions": currency_decisions,
-                "metadata_decisions": metadata_decisions,
-                "financial_decisions": financial_decisions,
-            })
+            results.append(
+                {
+                    "run_id": parent_id,
+                    "image_id": metadata.get("image_id"),
+                    "receipt_id": metadata.get("receipt_id"),
+                    "merchant_name": metadata.get("merchant_name", "Unknown"),
+                    "execution_id": metadata.get(
+                        "execution_id", str(parent_id)[:8] if parent_id else ""
+                    ),
+                    "timing": timing,
+                    "currency_decisions": currency_decisions,
+                    "metadata_decisions": metadata_decisions,
+                    "financial_decisions": financial_decisions,
+                }
+            )
 
     logger.info(f"Found {len(results)} receipts with decisions/timing")
     return results
@@ -264,7 +272,7 @@ def find_receipts_with_anomalies_from_parquet(
 
     results = []
     for parent in parents:
-        parent_id = parent.get("id")
+        parent_id = parent.get("id", "")
         # Metadata is in extra.metadata for LangSmith exports
         extra = parent.get("extra", {}) or {}
         metadata = extra.get("metadata", {}) or {}
@@ -285,18 +293,23 @@ def find_receipts_with_anomalies_from_parquet(
             ]
 
             if geometric_issues:
-                results.append({
-                    "run_id": parent_id,
-                    "image_id": metadata.get("image_id"),
-                    "receipt_id": metadata.get("receipt_id"),
-                    "merchant_name": metadata.get("merchant_name", "Unknown"),
-                    "issues": geometric_issues,
-                    "all_issues": issues,
-                    "flagged_words": flagged_words,
-                    "execution_id": metadata.get(
-                        "execution_id", str(parent_id)[:8] if parent_id else ""
-                    ),
-                })
+                results.append(
+                    {
+                        "run_id": parent_id,
+                        "image_id": metadata.get("image_id"),
+                        "receipt_id": metadata.get("receipt_id"),
+                        "merchant_name": metadata.get(
+                            "merchant_name", "Unknown"
+                        ),
+                        "issues": geometric_issues,
+                        "all_issues": issues,
+                        "flagged_words": flagged_words,
+                        "execution_id": metadata.get(
+                            "execution_id",
+                            str(parent_id)[:8] if parent_id else "",
+                        ),
+                    }
+                )
 
     logger.info(f"Found {len(results)} receipts with anomalies")
     return results
@@ -367,7 +380,9 @@ def find_visualization_receipts_from_parquet(
     if not batch_bucket:
         batch_bucket = os.environ.get("BATCH_BUCKET", "")
         if not batch_bucket:
-            raise ValueError("batch_bucket required (via parameter or BATCH_BUCKET env var)")
+            raise ValueError(
+                "batch_bucket required (via parameter or BATCH_BUCKET env var)"
+            )
     traces = read_traces_from_parquet(bucket, prefix)
 
     if not traces:
@@ -393,7 +408,7 @@ def find_visualization_receipts_from_parquet(
     without_review = []
 
     for parent in parents:
-        parent_id = parent.get("id")
+        parent_id = parent.get("id", "")
         extra = parent.get("extra", {}) or {}
         metadata = extra.get("metadata", {}) or {}
 
@@ -452,7 +467,9 @@ def find_visualization_receipts_from_parquet(
             )
             if financial_result:
                 financial_decisions = financial_result.get("all_decisions", [])
-                financial_duration = financial_result.get("duration_seconds", 0)
+                financial_duration = financial_result.get(
+                    "duration_seconds", 0
+                )
 
             # Review results (LLM review of geometric issues)
             review_result = _load_s3_result(
@@ -491,7 +508,9 @@ def find_visualization_receipts_from_parquet(
         currency_counts = count_decisions(currency_decisions)
         metadata_counts = count_decisions(metadata_decisions)
 
-        if currency_decisions and currency_counts["NEEDS_REVIEW"] == len(currency_decisions):
+        if currency_decisions and currency_counts["NEEDS_REVIEW"] == len(
+            currency_decisions
+        ):
             logger.debug(
                 "Skipping %s_%s: all currency decisions are NEEDS_REVIEW",
                 metadata.get("image_id"),
@@ -499,7 +518,9 @@ def find_visualization_receipts_from_parquet(
             )
             continue
 
-        if metadata_decisions and metadata_counts["NEEDS_REVIEW"] == len(metadata_decisions):
+        if metadata_decisions and metadata_counts["NEEDS_REVIEW"] == len(
+            metadata_decisions
+        ):
             logger.debug(
                 "Skipping %s_%s: all metadata decisions are NEEDS_REVIEW",
                 metadata.get("image_id"),
@@ -535,11 +556,15 @@ def find_visualization_receipts_from_parquet(
                 "all_decisions": financial_decisions,
                 "duration_seconds": financial_duration or 0,
             },
-            "review": {
-                "decisions": count_decisions(review_decisions),
-                "all_decisions": review_decisions,
-                "duration_seconds": review_duration or 0,
-            } if review_decisions else None,
+            "review": (
+                {
+                    "decisions": count_decisions(review_decisions),
+                    "all_decisions": review_decisions,
+                    "duration_seconds": review_duration or 0,
+                }
+                if review_decisions
+                else None
+            ),
             "line_item_duration_seconds": line_item_duration,
         }
 

@@ -7,7 +7,6 @@ converting raw rows into LangSmithRun objects with parsed JSON fields.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Iterator, Optional, Union
@@ -15,7 +14,6 @@ from typing import Iterator, Optional, Union
 import boto3
 import pyarrow
 import pyarrow.parquet as pq
-
 from receipt_langsmith.entities.base import LangSmithRun
 from receipt_langsmith.entities.parquet_schema import LangSmithRunRaw
 from receipt_langsmith.parsers.json_fields import (

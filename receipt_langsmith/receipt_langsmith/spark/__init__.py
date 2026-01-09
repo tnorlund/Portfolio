@@ -20,7 +20,9 @@ def __getattr__(name: str):
     """Lazy import for PySpark dependencies."""
     if name == "LangSmithSparkProcessor":
         try:
-            from receipt_langsmith.spark.processor import LangSmithSparkProcessor
+            from receipt_langsmith.spark.processor import (
+                LangSmithSparkProcessor,
+            )
 
             return LangSmithSparkProcessor
         except ImportError as e:
@@ -31,7 +33,9 @@ def __getattr__(name: str):
 
     if name == "LANGSMITH_PARQUET_SCHEMA":
         try:
-            from receipt_langsmith.spark.schemas import LANGSMITH_PARQUET_SCHEMA
+            from receipt_langsmith.spark.schemas import (
+                LANGSMITH_PARQUET_SCHEMA,
+            )
 
             return LANGSMITH_PARQUET_SCHEMA
         except ImportError as e:

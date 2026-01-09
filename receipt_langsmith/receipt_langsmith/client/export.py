@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from receipt_langsmith.client.api import LangSmithClient
@@ -152,11 +152,19 @@ class BulkExportManager:
             bulk_export_destination_id=data["bulk_export_destination_id"],
             session_id=data.get("session_id"),
             status=ExportStatus(data["status"]),
-            start_time=datetime.fromisoformat(data["start_time"].replace("Z", "+00:00")),
-            end_time=datetime.fromisoformat(data["end_time"].replace("Z", "+00:00")),
-            created_at=datetime.fromisoformat(data["created_at"].replace("Z", "+00:00")),
+            start_time=datetime.fromisoformat(
+                data["start_time"].replace("Z", "+00:00")
+            ),
+            end_time=datetime.fromisoformat(
+                data["end_time"].replace("Z", "+00:00")
+            ),
+            created_at=datetime.fromisoformat(
+                data["created_at"].replace("Z", "+00:00")
+            ),
             completed_at=(
-                datetime.fromisoformat(data["completed_at"].replace("Z", "+00:00"))
+                datetime.fromisoformat(
+                    data["completed_at"].replace("Z", "+00:00")
+                )
                 if data.get("completed_at")
                 else None
             ),
@@ -190,11 +198,19 @@ class BulkExportManager:
             bulk_export_destination_id=data["bulk_export_destination_id"],
             session_id=data.get("session_id"),
             status=ExportStatus(data["status"]),
-            start_time=datetime.fromisoformat(data["start_time"].replace("Z", "+00:00")),
-            end_time=datetime.fromisoformat(data["end_time"].replace("Z", "+00:00")),
-            created_at=datetime.fromisoformat(data["created_at"].replace("Z", "+00:00")),
+            start_time=datetime.fromisoformat(
+                data["start_time"].replace("Z", "+00:00")
+            ),
+            end_time=datetime.fromisoformat(
+                data["end_time"].replace("Z", "+00:00")
+            ),
+            created_at=datetime.fromisoformat(
+                data["created_at"].replace("Z", "+00:00")
+            ),
             completed_at=(
-                datetime.fromisoformat(data["completed_at"].replace("Z", "+00:00"))
+                datetime.fromisoformat(
+                    data["completed_at"].replace("Z", "+00:00")
+                )
                 if data.get("completed_at")
                 else None
             ),
@@ -234,7 +250,9 @@ class BulkExportManager:
                 return job
 
             if job.status == ExportStatus.FAILED:
-                logger.error("Export failed: %s - %s", job.id, job.error_message)
+                logger.error(
+                    "Export failed: %s - %s", job.id, job.error_message
+                )
                 return job
 
             logger.debug(
@@ -246,7 +264,9 @@ class BulkExportManager:
             await asyncio.sleep(poll_interval)
             elapsed += poll_interval
 
-        raise TimeoutError(f"Export {export_id} did not complete within {timeout}s")
+        raise TimeoutError(
+            f"Export {export_id} did not complete within {timeout}s"
+        )
 
     async def alist_exports(self, limit: int = 20) -> list[ExportJob]:
         """List recent bulk exports.
@@ -273,7 +293,9 @@ class BulkExportManager:
             jobs.append(
                 ExportJob(
                     id=data["id"],
-                    bulk_export_destination_id=data["bulk_export_destination_id"],
+                    bulk_export_destination_id=data[
+                        "bulk_export_destination_id"
+                    ],
                     session_id=data.get("session_id"),
                     status=ExportStatus(data["status"]),
                     start_time=datetime.fromisoformat(

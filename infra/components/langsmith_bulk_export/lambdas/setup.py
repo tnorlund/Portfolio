@@ -13,8 +13,8 @@ import os
 from typing import Any
 
 import boto3
-from botocore.exceptions import ClientError
 import urllib3
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -172,8 +172,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "secret_access_key": s3_credentials["secret_access_key"],
         },
     }
-    logger.info(f"Registering with bucket={bucket_name}, region={region}, prefix={prefix}")
-    logger.info(f"Request body: {json.dumps({k: v if k != 'credentials' else '***' for k, v in request_body.items()})}")
+    logger.info(
+        f"Registering with bucket={bucket_name}, region={region}, prefix={prefix}"
+    )
+    logger.info(
+        f"Request body: {json.dumps({k: v if k != 'credentials' else '***' for k, v in request_body.items()})}"
+    )
 
     try:
         response = http.request(
@@ -189,7 +193,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         if response.status not in (200, 201):
             error_msg = response.data.decode("utf-8")
-            logger.error(f"LangSmith API error: {response.status} - {error_msg}")
+            logger.error(
+                f"LangSmith API error: {response.status} - {error_msg}"
+            )
             return {
                 "statusCode": response.status,
                 "message": f"Failed to register destination: {error_msg}",

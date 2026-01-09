@@ -92,7 +92,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_receipts_from_s3(s3_client: Any, receipts_json_path: str) -> dict[tuple[str, int], str]:
+def load_receipts_from_s3(
+    s3_client: Any, receipts_json_path: str
+) -> dict[tuple[str, int], str]:
     """Load receipt lookup from S3 JSON file.
 
     The JSON file is a dict mapping "{image_id}_{receipt_id}" -> cdn_key,
@@ -137,7 +139,9 @@ def load_receipts_from_s3(s3_client: Any, receipts_json_path: str) -> dict[tuple
     return lookup
 
 
-def find_latest_export_prefix(s3_client: Any, bucket: str, preferred_export_id: str | None = None) -> str | None:
+def find_latest_export_prefix(
+    s3_client: Any, bucket: str, preferred_export_id: str | None = None
+) -> str | None:
     """Find the latest LangSmith export prefix in the bucket.
 
     LangSmith exports are stored with paths like:
@@ -194,7 +198,7 @@ def find_latest_export_prefix(s3_client: Any, bucket: str, preferred_export_id: 
 
             logger.warning(
                 "Preferred export %s has no data, falling back to latest",
-                preferred_export_id
+                preferred_export_id,
             )
 
         # Find the most recent export by checking modification times
@@ -217,7 +221,9 @@ def find_latest_export_prefix(s3_client: Any, bucket: str, preferred_export_id: 
 
         if latest_export:
             prefix = f"traces/export_id={latest_export}/"
-            logger.info("Found latest export: %s (modified: %s)", prefix, latest_time)
+            logger.info(
+                "Found latest export: %s (modified: %s)", prefix, latest_time
+            )
             return prefix
 
         logger.warning("No exports with data found")
@@ -256,7 +262,12 @@ def find_latest_execution_id(s3_client: Any, bucket: str) -> str | None:
 
 
 def load_s3_result(
-    s3_client: Any, bucket: str, result_type: str, execution_id: str, image_id: str, receipt_id: int
+    s3_client: Any,
+    bucket: str,
+    result_type: str,
+    execution_id: str,
+    image_id: str,
+    receipt_id: int,
 ) -> dict | None:
     """Load result JSON from S3 batch bucket."""
     key = f"{result_type}/{execution_id}/{image_id}_{receipt_id}.json"
@@ -283,7 +294,9 @@ def parse_label_string(label_str: str) -> dict:
         match = re.search(pattern, label_str)
         if match:
             val = match.group(1)
-            result[field] = int(val) if field in ("line_id", "word_id") else val
+            result[field] = (
+                int(val) if field in ("line_id", "word_id") else val
+            )
     return result
 
 
@@ -310,7 +323,9 @@ def main() -> int:
         match = re.search(r"export_id=([^/]+)", parquet_prefix)
         if match:
             preferred_export_id = match.group(1)
-            logger.info("Preferred export ID from args: %s", preferred_export_id)
+            logger.info(
+                "Preferred export ID from args: %s", preferred_export_id
+            )
 
     # Always verify the parquet prefix has data, with fallback to latest
     # This handles: default prefix, specified export with no data, or any other case
@@ -329,7 +344,9 @@ def main() -> int:
             if prefix_has_data:
                 logger.info("Prefix has data, using as-is")
             else:
-                logger.warning("Prefix %s has no data, will find fallback", parquet_prefix)
+                logger.warning(
+                    "Prefix %s has no data, will find fallback", parquet_prefix
+                )
         except Exception:
             logger.warning("Error checking prefix", exc_info=True)
 
@@ -384,7 +401,9 @@ def main() -> int:
                     # Use s3:// protocol (EMRFS) for EMR Serverless
                     parquet_files.append(f"s3://{args.parquet_bucket}/{key}")
                     if len(parquet_files) <= 3:
-                        logger.info("  File: s3://%s/%s", args.parquet_bucket, key)
+                        logger.info(
+                            "  File: s3://%s/%s", args.parquet_bucket, key
+                        )
 
         if not parquet_files:
             logger.error("No parquet files found in %s", parquet_prefix)
@@ -405,12 +424,16 @@ def main() -> int:
         # having enough candidates after filtering (many may lack CDN keys or results)
         collect_limit = args.max_receipts * 100
         logger.info("Extracting up to %d receipt candidates...", collect_limit)
-        langgraph_data = langgraph_df.select("outputs").limit(collect_limit).collect()
+        langgraph_data = (
+            langgraph_df.select("outputs").limit(collect_limit).collect()
+        )
 
         receipts_from_parquet = []
         for row in langgraph_data:
             outputs = (
-                json.loads(row.outputs) if isinstance(row.outputs, str) else row.outputs
+                json.loads(row.outputs)
+                if isinstance(row.outputs, str)
+                else row.outputs
             )
             if not outputs:
                 continue
@@ -427,9 +450,9 @@ def main() -> int:
                 if isinstance(label_str, str):
                     parsed = parse_label_string(label_str)
                     if "line_id" in parsed and "word_id" in parsed:
-                        labels_lookup[(parsed["line_id"], parsed["word_id"])] = parsed.get(
-                            "label"
-                        )
+                        labels_lookup[
+                            (parsed["line_id"], parsed["word_id"])
+                        ] = parsed.get("label")
 
             receipts_from_parquet.append(
                 {
@@ -440,7 +463,9 @@ def main() -> int:
                 }
             )
 
-        logger.info("Extracted %d receipts from Parquet", len(receipts_from_parquet))
+        logger.info(
+            "Extracted %d receipts from Parquet", len(receipts_from_parquet)
+        )
 
         # Build visualization data
         logger.info("Building visualization data...")
@@ -457,16 +482,36 @@ def main() -> int:
 
             # Load S3 results
             currency = load_s3_result(
-                s3_client, args.batch_bucket, "currency", execution_id, image_id, receipt_id
+                s3_client,
+                args.batch_bucket,
+                "currency",
+                execution_id,
+                image_id,
+                receipt_id,
             )
             metadata = load_s3_result(
-                s3_client, args.batch_bucket, "metadata", execution_id, image_id, receipt_id
+                s3_client,
+                args.batch_bucket,
+                "metadata",
+                execution_id,
+                image_id,
+                receipt_id,
             )
             financial = load_s3_result(
-                s3_client, args.batch_bucket, "financial", execution_id, image_id, receipt_id
+                s3_client,
+                args.batch_bucket,
+                "financial",
+                execution_id,
+                image_id,
+                receipt_id,
             )
             geometric = load_s3_result(
-                s3_client, args.batch_bucket, "results", execution_id, image_id, receipt_id
+                s3_client,
+                args.batch_bucket,
+                "results",
+                execution_id,
+                image_id,
+                receipt_id,
             )
 
             if not currency:
@@ -515,24 +560,40 @@ def main() -> int:
                     "issues_found": issues_found,
                     "words": words,
                     "geometric": {
-                        "issues_found": (geometric or {}).get("issues_found", 0),
+                        "issues_found": (geometric or {}).get(
+                            "issues_found", 0
+                        ),
                         "issues": (geometric or {}).get("issues", []),
-                        "duration_seconds": (geometric or {}).get("duration_seconds", 0),
+                        "duration_seconds": (geometric or {}).get(
+                            "duration_seconds", 0
+                        ),
                     },
                     "currency": {
                         "decisions": (currency or {}).get("decisions", {}),
-                        "all_decisions": (currency or {}).get("all_decisions", []),
-                        "duration_seconds": (currency or {}).get("duration_seconds", 0),
+                        "all_decisions": (currency or {}).get(
+                            "all_decisions", []
+                        ),
+                        "duration_seconds": (currency or {}).get(
+                            "duration_seconds", 0
+                        ),
                     },
                     "metadata": {
                         "decisions": (metadata or {}).get("decisions", {}),
-                        "all_decisions": (metadata or {}).get("all_decisions", []),
-                        "duration_seconds": (metadata or {}).get("duration_seconds", 0),
+                        "all_decisions": (metadata or {}).get(
+                            "all_decisions", []
+                        ),
+                        "duration_seconds": (metadata or {}).get(
+                            "duration_seconds", 0
+                        ),
                     },
                     "financial": {
                         "decisions": (financial or {}).get("decisions", {}),
-                        "all_decisions": (financial or {}).get("all_decisions", []),
-                        "duration_seconds": (financial or {}).get("duration_seconds", 0),
+                        "all_decisions": (financial or {}).get(
+                            "all_decisions", []
+                        ),
+                        "duration_seconds": (financial or {}).get(
+                            "duration_seconds", 0
+                        ),
                     },
                     "cdn_key": cdn_key,
                 }
@@ -542,7 +603,11 @@ def main() -> int:
         viz_receipts.sort(key=lambda r: -r["issues_found"])
         selected = viz_receipts[: args.max_receipts]
 
-        logger.info("Built %d total receipts, selected top %d", len(viz_receipts), len(selected))
+        logger.info(
+            "Built %d total receipts, selected top %d",
+            len(viz_receipts),
+            len(selected),
+        )
 
         # Build cache structure
         timestamp = datetime.now(timezone.utc)
@@ -555,14 +620,20 @@ def main() -> int:
             "receipts": selected,
             "summary": {
                 "total_receipts": len(selected),
-                "receipts_with_issues": len([r for r in selected if r["issues_found"] > 0]),
+                "receipts_with_issues": len(
+                    [r for r in selected if r["issues_found"] > 0]
+                ),
             },
             "cached_at": timestamp.isoformat(),
         }
 
         # Write versioned cache file
         versioned_key = f"viz-cache-{cache_version}.json"
-        logger.info("Writing versioned cache to s3://%s/%s", args.cache_bucket, versioned_key)
+        logger.info(
+            "Writing versioned cache to s3://%s/%s",
+            args.cache_bucket,
+            versioned_key,
+        )
         s3_client.put_object(
             Bucket=args.cache_bucket,
             Key=versioned_key,
@@ -587,7 +658,12 @@ def main() -> int:
         logger.info("Cache generation complete!")
         logger.info("  Version: %s", cache_version)
         for r in selected[:5]:
-            logger.info("  %s: %d issues, %d words", r["merchant_name"], r["issues_found"], len(r["words"]))
+            logger.info(
+                "  %s: %d issues, %d words",
+                r["merchant_name"],
+                r["issues_found"],
+                len(r["words"]),
+            )
 
     except Exception:
         logger.exception("Cache generation failed")

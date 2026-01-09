@@ -89,10 +89,9 @@ def main() -> int:
     logger.info("Job type: %s", args.job_type)
 
     # Initialize Spark
-    spark = (
-        SparkSession.builder.appName(f"LangSmithAnalytics-{args.job_type}")
-        .getOrCreate()
-    )
+    spark = SparkSession.builder.appName(
+        f"LangSmithAnalytics-{args.job_type}"
+    ).getOrCreate()
 
     try:
         # Import processor (requires pyspark)
@@ -118,7 +117,9 @@ def main() -> int:
                 logger.info("Computing receipt analytics...")
                 analytics = processor.compute_receipt_analytics(parsed)
 
-                partition_by = ["merchant_name"] if args.partition_by_merchant else None
+                partition_by = (
+                    ["merchant_name"] if args.partition_by_merchant else None
+                )
                 processor.write_analytics(
                     analytics,
                     f"{args.output}/receipt_analytics/",
@@ -140,7 +141,9 @@ def main() -> int:
                 logger.info("Computing decision analysis...")
                 decisions = processor.compute_decision_analysis(parsed)
 
-                partition_by = ["merchant_name"] if args.partition_by_merchant else None
+                partition_by = (
+                    ["merchant_name"] if args.partition_by_merchant else None
+                )
                 processor.write_analytics(
                     decisions,
                     f"{args.output}/decision_analysis/",

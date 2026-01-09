@@ -31,7 +31,9 @@ def parse_json(value: Optional[str]) -> Optional[dict[str, Any] | list[Any]]:
         return None
 
 
-def parse_extra(extra_json: Optional[str]) -> tuple[TraceMetadata, RuntimeInfo]:
+def parse_extra(
+    extra_json: Optional[str],
+) -> tuple[TraceMetadata, RuntimeInfo]:
     """Parse the 'extra' JSON field into metadata and runtime info.
 
     The 'extra' field typically has this structure:
