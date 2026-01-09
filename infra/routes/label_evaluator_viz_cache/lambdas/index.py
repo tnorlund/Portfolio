@@ -243,14 +243,19 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         )
 
         # Fetch selected receipts in parallel for better latency
-        receipts: list[dict[str, Any]] = []
+        # Use dict to map results back to original key order (as_completed returns in completion order)
         max_workers = min(len(selected_keys), 10)
+        key_to_receipt: dict[str, dict[str, Any] | None] = {}
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(_fetch_receipt, key): key for key in selected_keys}
             for future in as_completed(futures):
-                receipt = future.result()
-                if receipt:
-                    receipts.append(receipt)
+                key = futures[future]
+                key_to_receipt[key] = future.result()
+
+        # Rebuild list in original selected_keys order to preserve seed-based deterministic ordering
+        receipts: list[dict[str, Any]] = [
+            key_to_receipt[key] for key in selected_keys if key_to_receipt.get(key)
+        ]
 
         # Get metadata and build response
         metadata = _fetch_metadata()

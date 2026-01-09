@@ -234,6 +234,12 @@ class VizCacheReceipt(ReceiptIdentifier):
     financial: EvaluatorResult = Field(default_factory=EvaluatorResult)
     """Financial evaluation results."""
 
+    review: EvaluatorResult | None = None
+    """LLM review results (None if not reviewed)."""
+
+    line_item_duration_seconds: float | None = None
+    """Duration of DiscoverPatterns span for line item animation timing."""
+
     # CDN keys for different image formats (matches ImageFormats interface)
     cdn_s3_key: str = ""
     """CloudFront CDN key for JPEG image."""

@@ -802,14 +802,32 @@ def _write_cache(
         return key
 
     # Parallel upload with progress logging
+    # Map futures to receipts for error reporting
     uploaded_count = 0
+    failed_count = 0
     with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = [executor.submit(upload_receipt, r) for r in receipts]
-        for future in as_completed(futures):
-            future.result()  # Raises if upload failed
-            uploaded_count += 1
-            if uploaded_count % 50 == 0:
-                logger.info("Uploaded %d/%d receipts", uploaded_count, len(receipts))
+        future_to_receipt = {executor.submit(upload_receipt, r): r for r in receipts}
+        for future in as_completed(future_to_receipt):
+            receipt = future_to_receipt[future]
+            try:
+                future.result()
+                uploaded_count += 1
+                if uploaded_count % 50 == 0:
+                    logger.info("Uploaded %d/%d receipts", uploaded_count, len(receipts))
+            except Exception:
+                failed_count += 1
+                logger.exception(
+                    "Failed to upload receipt %s_%d",
+                    receipt.get("image_id", "unknown"),
+                    receipt.get("receipt_id", 0),
+                )
+                # Continue uploading remaining receipts rather than aborting
+                # The job is idempotent so partial uploads are okay
+
+    if failed_count > 0:
+        logger.warning(
+            "Completed with %d failures out of %d receipts", failed_count, len(receipts)
+        )
 
     # Write metadata.json with pool stats
     metadata = {

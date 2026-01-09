@@ -39,3 +39,6 @@ config:
   ml-training:enable-sagemaker: "true"
   portfolio:OPENROUTER_API_KEY:
     secure: AAABAO7+SJCT6LDKboMx7/VKP85FJcr+oO6qhoUVkLsMXsuV+9KlnSV1EP6xXDS+2+kU6qSiTOIQVkkS/Mej8F0Joqg615isPExbCJeEkauGxHgpNxSueMVwEAk4dMXkjX+mCC+9I2Sv
+  portfolio:LANGSMITH_SERVICE_API_KEY:
+    secure: AAABAE/vEZFs0Yo9hsM30Di3PAZUENpGkevmRx+he24laSy8gX2ThyzNOCrC4/RVy+xJxaGzLXIqj5O9DnmnAv7uTL5NC72RHPEh78iiuhClZrg=
+  portfolio:LANGSMITH_TENANT_ID: 2586637a-4a13-4ad7-8bc1-2f8221e32c1b
