@@ -411,9 +411,15 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             from receipt_agent.utils.llm_factory import AllProvidersFailedError
             from receipt_agent.utils.ollama_rate_limit import OllamaRateLimitError
 
-            if isinstance(e, (OllamaRateLimitError, AllProvidersFailedError)):
+            if isinstance(e, AllProvidersFailedError):
+                logger.error("All providers failed, propagating for Step Function retry: %s", e)
+                flush_langsmith_traces()
+                raise
+
+            if isinstance(e, OllamaRateLimitError):
                 logger.error("Rate limit error, propagating for Step Function retry: %s", e)
-                raise OllamaRateLimitError(f"Rate limit error: {e}") from e
+                flush_langsmith_traces()
+                raise
 
             logger.exception("Currency evaluation failed")
             result = {

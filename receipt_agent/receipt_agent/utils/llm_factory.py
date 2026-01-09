@@ -452,16 +452,23 @@ def _is_empty_response(response: Any) -> bool:
     if isinstance(content, list) and len(content) == 0:
         return True
 
-    # List with only empty/whitespace strings
+    # List with only empty/whitespace content (handles both strings and dicts)
     if isinstance(content, list):
-        all_empty = all(
-            isinstance(item, str) and not item.strip()
-            for item in content
-            if isinstance(item, str)
-        )
-        # If all string items are empty and there are no non-string items
-        has_non_string = any(not isinstance(item, str) for item in content)
-        if all_empty and not has_non_string:
+        def _is_empty_item(item: Any) -> bool:
+            """Check if a content block item is empty."""
+            if isinstance(item, str):
+                return not item.strip()
+            if isinstance(item, dict):
+                # Multimodal dict blocks may have "text" or "content" keys
+                text = item.get("text") or item.get("content") or ""
+                if isinstance(text, str):
+                    return not text.strip()
+                # Recursively check nested content
+                return _is_empty_item(text)
+            return False
+
+        all_empty = all(_is_empty_item(item) for item in content)
+        if all_empty:
             return True
 
     return False

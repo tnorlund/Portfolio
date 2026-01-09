@@ -604,8 +604,27 @@ def evaluate_currency_labels(
     ]
 
     # Step 5: Format output for apply_llm_decisions
+    # Handle length mismatches by padding with NEEDS_REVIEW fallback
     results = []
-    for cw, decision in zip(currency_words, decisions, strict=True):
+    num_words = len(currency_words)
+    num_decisions = len(decisions)
+    if num_decisions != num_words:
+        logger.warning(
+            "Decision count mismatch: %d words, %d decisions",
+            num_words,
+            num_decisions,
+        )
+        # Pad decisions if too few, or truncate if too many
+        while len(decisions) < num_words:
+            decisions.append({
+                "decision": "NEEDS_REVIEW",
+                "reasoning": "No decision from LLM (count mismatch)",
+                "suggested_label": None,
+                "confidence": "low",
+            })
+        decisions = decisions[:num_words]
+
+    for cw, decision in zip(currency_words, decisions, strict=False):
         wc = cw.word_context
         results.append(
             {

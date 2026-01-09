@@ -279,7 +279,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             if line_item_patterns_data:
                 # Create historical DiscoverPatterns span using stored timing
                 discovery_metadata = line_item_patterns_data.get("_trace_metadata", {})
-                if discovery_metadata.get("discovery_start_time"):
+                discovery_start = discovery_metadata.get("discovery_start_time")
+                discovery_end = discovery_metadata.get("discovery_end_time")
+                if discovery_start and discovery_end:
                     # Extract discovered patterns for rich output
                     discovered_patterns = line_item_patterns_data.get("patterns", {})
                     pattern_categories = list(discovered_patterns.keys()) if discovered_patterns else []
@@ -288,8 +290,8 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                     create_historical_span(
                         parent_ctx=trace_ctx,
                         name="DiscoverPatterns",
-                        start_time_iso=discovery_metadata["discovery_start_time"],
-                        end_time_iso=discovery_metadata["discovery_end_time"],
+                        start_time_iso=discovery_start,
+                        end_time_iso=discovery_end,
                         duration_seconds=discovery_metadata.get("discovery_duration_seconds", 0),
                         run_type="llm",
                         inputs={
@@ -334,18 +336,20 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             if patterns_data:
                 # Create historical ComputePatterns span using stored timing
                 computation_metadata = patterns_data.get("_trace_metadata", {})
-                if computation_metadata.get("computation_start_time"):
+                computation_start = computation_metadata.get("computation_start_time")
+                computation_end = computation_metadata.get("computation_end_time")
+                if computation_start and computation_end:
                     # Extract constellation/geometry pattern info for rich output
                     label_pair_geometry = patterns_data.get("label_pair_geometry", {})
-                    label_geometry = patterns_data.get("label_geometry", {})
+                    constellation_geometry = patterns_data.get("constellation_geometry", {})
                     constellation_names = list(label_pair_geometry.keys()) if label_pair_geometry else []
-                    individual_labels = list(label_geometry.keys()) if label_geometry else []
+                    individual_labels = list(constellation_geometry.keys()) if constellation_geometry else []
 
                     create_historical_span(
                         parent_ctx=trace_ctx,
                         name="ComputePatterns",
-                        start_time_iso=computation_metadata["computation_start_time"],
-                        end_time_iso=computation_metadata["computation_end_time"],
+                        start_time_iso=computation_start,
+                        end_time_iso=computation_end,
                         duration_seconds=computation_metadata.get("computation_duration_seconds", 0),
                         run_type="chain",
                         inputs={
@@ -537,9 +541,15 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         from receipt_agent.utils.llm_factory import AllProvidersFailedError
         from receipt_agent.utils.ollama_rate_limit import OllamaRateLimitError
 
-        if isinstance(e, (OllamaRateLimitError, AllProvidersFailedError)):
+        if isinstance(e, AllProvidersFailedError):
+            logger.error("All providers failed, propagating for Step Function retry: %s", e)
+            flush_langsmith_traces()
+            raise
+
+        if isinstance(e, OllamaRateLimitError):
             logger.error("Rate limit error, propagating for Step Function retry: %s", e)
-            raise OllamaRateLimitError(f"Rate limit error: {e}") from e
+            flush_langsmith_traces()
+            raise
 
         logger.error("Error evaluating labels: %s", e, exc_info=True)
 

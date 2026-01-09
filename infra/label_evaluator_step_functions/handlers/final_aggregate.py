@@ -67,14 +67,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     issue_type_counter: Counter = Counter()
     status_counter: Counter = Counter()
     merchant_stats: dict[str, dict] = {}
-    pattern_results = event.get("pattern_results", [])
 
     # Use input totals from ListAllReceipts if available (two-phase format)
     input_total_merchants = event.get("total_merchants", 0)
     input_total_receipts = event.get("total_receipts", 0)
 
-    # Handle two-phase format (all_batch_results)
-    if all_batch_results:
+    # Handle two-phase format (all_batch_results) - use key-presence check
+    if "all_batch_results" in event:
         logger.info(
             "Final aggregation (two-phase) for execution %s with %s batches",
             execution_id,

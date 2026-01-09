@@ -358,8 +358,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "issue_types": list(issue_types),
                 "results_s3_key": results_s3_key,
                 "applied_stats": applied_stats,
-                # Full evaluations for visualization (includes equation breakdown)
-                "all_decisions": decisions,
+                # Note: all_decisions stored in S3 only (results_s3_key)
             }
 
             trace_ctx.set_outputs(result)

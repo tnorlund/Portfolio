@@ -4,7 +4,7 @@ This component generates cached visualization data for the portfolio website's L
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────┐
 │  LangSmith Export   │     │   S3 Batch Bucket   │     │    DynamoDB     │
 │  (Parquet files)    │     │  (Step Fn results)  │     │                 │
@@ -62,7 +62,7 @@ This component generates cached visualization data for the portfolio website's L
 ## Components
 
 ### API Lambda (`index.py`)
-- **Endpoint**: `GET /label_evaluator/viz_cache`
+- **Endpoint**: `GET /label_evaluator/visualization`
 - **Purpose**: Serves the cached `viz-sample-data.json` to the frontend
 - **Memory**: 256 MB
 - **Timeout**: 30 seconds
@@ -143,7 +143,7 @@ The generated `viz-sample-data.json` contains:
 ## Usage
 
 ### Manually Trigger Cache Generation
-```bash
+```shell
 aws lambda invoke \
   --function-name "label-evaluator-viz-cache-dev-generator-lambda-xxxxx" \
   --invocation-type Event \
@@ -152,6 +152,6 @@ aws lambda invoke \
 ```
 
 ### Check Cache Contents
-```bash
+```shell
 aws s3 cp s3://{cache-bucket}/viz-sample-data.json - | jq '.summary'
 ```

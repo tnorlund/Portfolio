@@ -750,22 +750,34 @@ def build_receipt_context_prompt(
                 f"\n**Drill-Down Analysis** ({len(drill_down)} words with this label):"
             ]
 
+            def _get_y_position(pos: Any) -> float:
+                """Extract y coordinate from various position formats."""
+                if pos is None:
+                    return 0.0
+                if isinstance(pos, (int, float)):
+                    return float(pos)
+                if isinstance(pos, (list, tuple)) and len(pos) >= 2:
+                    return float(pos[1])
+                if isinstance(pos, dict):
+                    return float(pos.get("y", 0))
+                return 0.0
+
             if culprits:
                 drill_down_lines.append("Likely culprits (deviation > 2σ):")
                 for w in culprits[:3]:  # Top 3 culprits
-                    pos = w.get("position", (0, 0))
+                    y_pos = _get_y_position(w.get("position"))
                     drill_down_lines.append(
                         f'  - "{w.get("text")}" (dev={w.get("deviation", 0):.2f}) '
-                        f"at y={pos[1]:.3f}"
+                        f"at y={y_pos:.3f}"
                     )
 
             if non_culprits:
                 drill_down_lines.append("Correctly positioned (for comparison):")
                 for w in non_culprits[:3]:  # Top 3 non-culprits
-                    pos = w.get("position", (0, 0))
+                    y_pos = _get_y_position(w.get("position"))
                     drill_down_lines.append(
                         f'  - "{w.get("text")}" (dev={w.get("deviation", 0):.2f}) '
-                        f"at y={pos[1]:.3f}"
+                        f"at y={y_pos:.3f}"
                     )
 
             drill_down_text = "\n".join(drill_down_lines)

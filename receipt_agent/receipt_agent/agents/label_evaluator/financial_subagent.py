@@ -638,9 +638,29 @@ def evaluate_financial_math(
         # Step 3: Use decisions (either from structured or text parsing)
         # Note: LLM returns one decision per issue, but each issue has multiple values
 
+        # Handle length mismatches by padding with NEEDS_REVIEW fallback
+        num_issues = len(math_issues)
+        num_decisions = len(decisions) if decisions else 0
+        if num_decisions != num_issues:
+            logger.warning(
+                "Decision count mismatch: %d issues, %d decisions",
+                num_issues,
+                num_decisions,
+            )
+            decisions = decisions or []
+            while len(decisions) < num_issues:
+                decisions.append({
+                    "decision": "NEEDS_REVIEW",
+                    "reasoning": "No decision from LLM (count mismatch)",
+                    "suggested_label": None,
+                    "confidence": "low",
+                    "issue_type": "UNKNOWN",
+                })
+            decisions = decisions[:num_issues]
+
         # Step 4: Format output - create one result per involved value
         results = []
-        for issue, decision in zip(math_issues, decisions, strict=True):
+        for issue, decision in zip(math_issues, decisions, strict=False):
             for fv in issue.involved_values:
                 wc = fv.word_context
                 results.append(

@@ -140,7 +140,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     try:
         # Fetch cached data
-        logger.info("Fetching cache from s3://%s/%s", S3_CACHE_BUCKET, CACHE_KEY)
+        logger.info("Fetching cache from s3://%s/%s", S3_CACHE_BUCKET, LATEST_POINTER_KEY)
         cache_data = _fetch_cache()
 
         # Add fetch timestamp
@@ -164,7 +164,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code", "Unknown")
         if error_code == "NoSuchKey":
-            logger.warning("Cache file not found: %s", CACHE_KEY)
+            logger.warning("Cache file not found: %s", LATEST_POINTER_KEY)
             return {
                 "statusCode": 404,
                 "body": json.dumps({
