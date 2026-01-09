@@ -1247,8 +1247,15 @@ const LabelEvaluatorVisualization: React.FC = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [measuredContainerWidth, setMeasuredContainerWidth] = useState<number | null>(null);
 
+  // Pagination state
+  const [seed, setSeed] = useState<number | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextOffset, setNextOffset] = useState(0);
+  const [loadingRemaining, setLoadingRemaining] = useState(false);
+
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
+  const isLoadingRemainingRef = useRef(false);
   const receiptsRef = useRef(receipts);
   receiptsRef.current = receipts;
 
@@ -1257,14 +1264,21 @@ const LabelEvaluatorVisualization: React.FC = () => {
     detectImageFormatSupport().then(setFormatSupport);
   }, []);
 
-  // Fetch visualization data - load enough receipts for smooth animation
+  // Initial fetch - get first batch and seed for pagination
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchInitial = async () => {
       try {
-        // Fetch 50 receipts (max batch size) for cycling animation
-        const response = await api.fetchLabelEvaluatorVisualization(50);
+        // Fetch initial 20 receipts (no seed = server generates one)
+        const response = await api.fetchLabelEvaluatorVisualization(20);
         if (response && response.receipts) {
           setReceipts(response.receipts);
+          setSeed(response.seed);
+          setHasMore(response.has_more);
+          setNextOffset(response.offset + response.receipts.length);
+          // Trigger loading remaining if more pages exist
+          if (response.has_more) {
+            setLoadingRemaining(true);
+          }
         }
       } catch (err) {
         console.error("Failed to fetch label evaluator data:", err);
@@ -1274,8 +1288,51 @@ const LabelEvaluatorVisualization: React.FC = () => {
       }
     };
 
-    fetchData();
+    fetchInitial();
   }, []);
+
+  // Load remaining receipts in background (like ReceiptStack pattern)
+  useEffect(() => {
+    const loadRemainingReceipts = async () => {
+      if (!loadingRemaining || !hasMore || seed === null || isLoadingRemainingRef.current) return;
+
+      isLoadingRemainingRef.current = true;
+      let currentOffset = nextOffset;
+      let morePages = true;
+      const batchSize = 20;
+
+      try {
+        while (morePages) {
+          const response = await api.fetchLabelEvaluatorVisualization(batchSize, seed, currentOffset);
+          if (!response || !response.receipts || response.receipts.length === 0) {
+            break;
+          }
+
+          // Append new receipts
+          setReceipts(prev => [...prev, ...response.receipts]);
+
+          morePages = response.has_more;
+          if (!morePages) {
+            setHasMore(false);
+            break;
+          }
+
+          currentOffset = response.offset + response.receipts.length;
+        }
+      } catch (err) {
+        console.error("Error loading remaining receipts:", err);
+      } finally {
+        setLoadingRemaining(false);
+        isLoadingRemainingRef.current = false;
+      }
+    };
+
+    if (loadingRemaining && hasMore && seed !== null && !isLoadingRemainingRef.current) {
+      // Delay loading remaining receipts until after initial render
+      const timer = setTimeout(loadRemainingReceipts, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [loadingRemaining, hasMore, seed, nextOffset]);
 
   const currentReceipt = receipts[currentIndex];
 

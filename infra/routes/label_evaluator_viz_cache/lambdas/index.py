@@ -1,10 +1,12 @@
 """Lambda handler for serving label evaluator visualization cache.
 
-Uses random batch sampling from individual receipt files (like LayoutLM pattern).
-Each request returns a random sample of receipts from the cache pool.
+Uses seed-based deterministic pagination for consistent random ordering.
+Client generates a seed on mount, then paginates through shuffled results.
 
 Query Parameters:
-- batch_size: Number of receipts to return (default: 10, max: 50)
+- batch_size: Number of receipts to return (default: 20, max: 50)
+- seed: Random seed for deterministic shuffle (default: random)
+- offset: Starting position in shuffled list (default: 0)
 """
 
 import json
@@ -23,7 +25,7 @@ logger.setLevel(logging.INFO)
 # Environment variables
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET")
 RECEIPTS_PREFIX = "receipts/"
-DEFAULT_BATCH_SIZE = 10
+DEFAULT_BATCH_SIZE = 20
 MAX_BATCH_SIZE = 50
 
 if not S3_CACHE_BUCKET:
@@ -114,21 +116,22 @@ def _calculate_aggregate_stats(
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """Handle API Gateway requests for label evaluator visualization cache.
 
-    Returns a random batch of cached receipts with their evaluation results.
+    Uses seed-based deterministic pagination. Client generates a seed on mount,
+    then paginates through the shuffled results with consistent ordering.
 
     Query Parameters:
-        batch_size: Number of receipts to return (default: 10, max: 50)
+        batch_size: Number of receipts to return (default: 20, max: 50)
+        seed: Random seed for deterministic shuffle (default: server generates one)
+        offset: Starting position in shuffled list (default: 0)
 
     Response structure:
     {
-        "receipts": [...],  # Random batch
-        "aggregate_stats": {
-            "total_receipts_in_pool": int,
-            "batch_size": int,
-            "avg_issues": float,
-            "max_issues": int,
-            "receipts_with_issues": int
-        },
+        "receipts": [...],
+        "total_count": int,      # Total receipts in cache
+        "offset": int,           # Current offset
+        "has_more": bool,        # Whether more pages exist
+        "seed": int,             # Seed used (return to client for pagination)
+        "aggregate_stats": {...},
         "execution_id": str | null,
         "cached_at": str | null,
         "fetched_at": str
@@ -174,15 +177,30 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         }
 
     try:
-        # Parse batch_size from query params
+        # Parse query params
         query_params = event.get("queryStringParameters") or {}
+
+        # batch_size: number of receipts per page
         try:
             batch_size = int(query_params.get("batch_size", DEFAULT_BATCH_SIZE))
-            batch_size = max(1, min(batch_size, MAX_BATCH_SIZE))  # Clamp to [1, MAX]
+            batch_size = max(1, min(batch_size, MAX_BATCH_SIZE))
         except (ValueError, TypeError):
             batch_size = DEFAULT_BATCH_SIZE
 
-        logger.info("Requested batch_size: %d", batch_size)
+        # seed: for deterministic shuffle (client sends same seed for pagination)
+        try:
+            seed = int(query_params.get("seed", random.randint(0, 2**31 - 1)))
+        except (ValueError, TypeError):
+            seed = random.randint(0, 2**31 - 1)
+
+        # offset: starting position in shuffled list
+        try:
+            offset = int(query_params.get("offset", 0))
+            offset = max(0, offset)
+        except (ValueError, TypeError):
+            offset = 0
+
+        logger.info("batch_size=%d, seed=%d, offset=%d", batch_size, seed, offset)
 
         # List all cached receipts
         cached_keys = _list_cached_receipts()
@@ -202,13 +220,25 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 },
             }
 
-        # Random sample from the pool
-        pool_size = len(cached_keys)
-        sample_size = min(batch_size, pool_size)
-        selected_keys = random.sample(cached_keys, sample_size)
+        # Sort keys first for consistency, then shuffle with seed
+        total_count = len(cached_keys)
+        sorted_keys = sorted(cached_keys)
+
+        # Deterministic shuffle using the provided seed
+        rng = random.Random(seed)
+        rng.shuffle(sorted_keys)
+
+        # Slice based on offset
+        end_offset = min(offset + batch_size, total_count)
+        selected_keys = sorted_keys[offset:end_offset]
+        has_more = end_offset < total_count
 
         logger.info(
-            "Sampling %d receipts from pool of %d", sample_size, pool_size
+            "Returning receipts [%d:%d] of %d (has_more=%s)",
+            offset,
+            end_offset,
+            total_count,
+            has_more,
         )
 
         # Fetch selected receipts
@@ -220,10 +250,14 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         # Get metadata and build response
         metadata = _fetch_metadata()
-        aggregate_stats = _calculate_aggregate_stats(receipts, pool_size)
+        aggregate_stats = _calculate_aggregate_stats(receipts, total_count)
 
         response_data = {
             "receipts": receipts,
+            "total_count": total_count,
+            "offset": offset,
+            "has_more": has_more,
+            "seed": seed,
             "aggregate_stats": aggregate_stats,
             "execution_id": metadata.get("execution_id"),
             "cached_at": metadata.get("cached_at"),
@@ -231,9 +265,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         }
 
         logger.info(
-            "Returning %d receipts (requested %d) from execution %s",
+            "Returning %d receipts from execution %s",
             len(receipts),
-            batch_size,
             metadata.get("execution_id", "unknown"),
         )
 

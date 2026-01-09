@@ -461,6 +461,10 @@ export interface LabelEvaluatorAggregateStats {
 
 export interface LabelEvaluatorResponse {
   receipts: LabelEvaluatorReceipt[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
   aggregate_stats: LabelEvaluatorAggregateStats;
   execution_id?: string;
   cached_at?: string;
