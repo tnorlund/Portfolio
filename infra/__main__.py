@@ -1300,18 +1300,18 @@ from routes.label_evaluator_viz_cache.infra import (
 
 # Create API Gateway route for label evaluator visualization
 if hasattr(api_gateway, "api"):
-    # Import layers for viz cache generator
-    from infra.components.lambda_layer import dynamo_layer, langsmith_layer
-
     # Create label evaluator visualization cache (reads from LangSmith exports + DynamoDB)
     label_evaluator_viz_cache = create_label_evaluator_viz_cache(
         langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
-        langsmith_export_prefix="traces//export_id=2dfc1459-1ae5-4d73-85a6-613d8eac8f87/",
+        langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
+        langsmith_tenant_id=config.require("LANGSMITH_TENANT_ID"),
         batch_bucket=label_evaluator_sf.batch_bucket_name,
         dynamodb_table_name=dynamodb_table.name,
         dynamodb_table_arn=dynamodb_table.arn,
-        receipt_dynamo_layer_arn=dynamo_layer.arn,
-        receipt_langsmith_layer_arn=langsmith_layer.arn,
+        emr_application_id=emr_analytics.emr_application.id,
+        emr_job_role_arn=emr_analytics.emr_job_role.arn,
+        spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
+        label_evaluator_sf_arn=label_evaluator_sf.state_machine_arn,
     )
     pulumi.export("label_evaluator_viz_cache_bucket", label_evaluator_viz_cache.cache_bucket.id)
 

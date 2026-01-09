@@ -353,6 +353,7 @@ phases:
       - echo "Uploading artifacts to S3..."
       - aws s3 cp spark_env.tar.gz s3://${ARTIFACTS_BUCKET}/spark/spark_env.tar.gz
       - aws s3 cp receipt_langsmith/receipt_langsmith/spark/emr_job.py s3://${ARTIFACTS_BUCKET}/spark/emr_job.py
+      - aws s3 cp receipt_langsmith/receipt_langsmith/spark/viz_cache_job.py s3://${ARTIFACTS_BUCKET}/spark/viz_cache_job.py
       - echo "Done!"
 
 artifacts:

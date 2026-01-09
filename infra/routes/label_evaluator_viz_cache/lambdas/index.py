@@ -19,7 +19,7 @@ logger.setLevel(logging.INFO)
 
 # Environment variables
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET")
-CACHE_KEY = "viz-sample-data.json"
+LATEST_POINTER_KEY = "latest.json"
 
 if not S3_CACHE_BUCKET:
     logger.error("S3_CACHE_BUCKET environment variable not set")
@@ -29,8 +29,27 @@ s3_client = boto3.client("s3")
 
 
 def _fetch_cache() -> dict[str, Any]:
-    """Fetch the visualization cache from S3."""
-    response = s3_client.get_object(Bucket=S3_CACHE_BUCKET, Key=CACHE_KEY)
+    """Fetch the visualization cache from S3.
+
+    Reads the latest.json pointer to find the current versioned cache file,
+    then fetches and returns that cache.
+    """
+    # First, get the latest.json pointer to find the versioned cache file
+    try:
+        pointer_response = s3_client.get_object(
+            Bucket=S3_CACHE_BUCKET, Key=LATEST_POINTER_KEY
+        )
+        pointer = json.loads(pointer_response["Body"].read().decode("utf-8"))
+        cache_key = pointer.get("cache_key")
+        if not cache_key:
+            raise ValueError("latest.json missing 'cache_key' field")
+        logger.info("Fetching cache from %s", cache_key)
+    except s3_client.exceptions.NoSuchKey:
+        logger.error("No latest.json pointer found in bucket %s", S3_CACHE_BUCKET)
+        raise
+
+    # Fetch the versioned cache file
+    response = s3_client.get_object(Bucket=S3_CACHE_BUCKET, Key=cache_key)
     return json.loads(response["Body"].read().decode("utf-8"))
 
 
