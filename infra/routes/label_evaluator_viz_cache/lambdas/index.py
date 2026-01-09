@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any
 
@@ -241,12 +242,15 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             has_more,
         )
 
-        # Fetch selected receipts
+        # Fetch selected receipts in parallel for better latency
         receipts: list[dict[str, Any]] = []
-        for key in selected_keys:
-            receipt = _fetch_receipt(key)
-            if receipt:
-                receipts.append(receipt)
+        max_workers = min(len(selected_keys), 10)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_fetch_receipt, key): key for key in selected_keys}
+            for future in as_completed(futures):
+                receipt = future.result()
+                if receipt:
+                    receipts.append(receipt)
 
         # Get metadata and build response
         metadata = _fetch_metadata()

@@ -31,6 +31,7 @@ import json
 import logging
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any
 
@@ -548,14 +549,19 @@ def _generate_cdn_keys(base_cdn_key: str) -> dict[str, str | None]:
     Returns:
         Dict with cdn_s3_key, cdn_webp_s3_key, cdn_medium_s3_key
     """
-    if not base_cdn_key.endswith(".jpg"):
+    # Handle common JPEG extensions (case-insensitive)
+    lower_key = base_cdn_key.lower()
+    if lower_key.endswith(".jpeg"):
+        base = base_cdn_key[:-5]  # Remove .jpeg
+    elif lower_key.endswith(".jpg"):
+        base = base_cdn_key[:-4]  # Remove .jpg
+    else:
         return {
             "cdn_s3_key": base_cdn_key,
             "cdn_webp_s3_key": None,
             "cdn_medium_s3_key": None,
         }
 
-    base = base_cdn_key[:-4]  # Remove .jpg
     return {
         "cdn_s3_key": base_cdn_key,
         "cdn_webp_s3_key": f"{base}.webp",
@@ -774,24 +780,36 @@ def _write_cache(
     cache_version = timestamp.strftime("%Y%m%d-%H%M%S")
     receipts_prefix = "receipts/"
 
-    # Write each receipt as individual file
+    # Write each receipt as individual file (parallel for better performance)
     logger.info(
         "Writing %d individual receipt files to s3://%s/%s",
         len(receipts),
         bucket,
         receipts_prefix,
     )
-    for receipt in receipts:
+
+    def upload_receipt(receipt: dict[str, Any]) -> str:
+        """Upload a single receipt and return its key."""
         image_id = receipt.get("image_id", "unknown")
         receipt_id = receipt.get("receipt_id", 0)
         key = f"{receipts_prefix}receipt-{image_id}-{receipt_id}.json"
-
         s3_client.put_object(
             Bucket=bucket,
             Key=key,
             Body=json.dumps(receipt, default=str),
             ContentType="application/json",
         )
+        return key
+
+    # Parallel upload with progress logging
+    uploaded_count = 0
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(upload_receipt, r) for r in receipts]
+        for future in as_completed(futures):
+            future.result()  # Raises if upload failed
+            uploaded_count += 1
+            if uploaded_count % 50 == 0:
+                logger.info("Uploaded %d/%d receipts", uploaded_count, len(receipts))
 
     # Write metadata.json with pool stats
     metadata = {

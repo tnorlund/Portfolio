@@ -393,9 +393,6 @@ echo "Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
 
     def _setup_pipeline(self, content_hash: str) -> None:
         """Setup S3, CodeBuild, and CodePipeline for Docker builds."""
-        region = config.region
-        account_id = get_caller_identity().account_id
-
         # Artifact bucket
         build_bucket, bucket_versioning, encryption = make_artifact_bucket(
             f"{self.name}-emr", parent=self

@@ -11,6 +11,7 @@ Creates:
 - IAM role for EMR job execution
 """
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Optional
@@ -322,10 +323,9 @@ class EMRServerlessAnalytics(ComponentResource):
         )
 
         # Compute content hashes to detect file changes
-        import hashlib
-
         def file_hash(path: Path) -> str:
-            return hashlib.md5(path.read_bytes()).hexdigest()[:12]
+            """Compute truncated MD5 hash for content change detection."""
+            return hashlib.md5(path.read_bytes()).hexdigest()[:12]  # noqa: S324
 
         emr_job_path = spark_scripts_dir / "emr_job.py"
         viz_cache_path = spark_scripts_dir / "viz_cache_job.py"
