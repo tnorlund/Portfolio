@@ -734,7 +734,7 @@ def _write_cache(
     # Write latest.json pointer
     latest_pointer = {
         "version": cache_version,
-        "cache_file": versioned_key,
+        "cache_key": versioned_key,
         "updated_at": timestamp.isoformat(),
     }
     logger.info("Updating latest.json pointer to %s", versioned_key)
