@@ -162,12 +162,13 @@ def main() -> int:
         if args.job_type == "all":
             parsed.unpersist()
 
-        logger.info("All analytics complete!")
-        return 0
-
     except Exception:
         logger.exception("Analytics job failed")
         return 1
+
+    else:
+        logger.info("All analytics complete!")
+        return 0
 
     finally:
         spark.stop()
