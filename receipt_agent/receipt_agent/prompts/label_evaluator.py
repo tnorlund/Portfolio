@@ -7,7 +7,6 @@ Moved from infra/label_evaluator_step_functions/lambdas/llm_review.py.
 
 import json
 import logging
-import re
 from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage

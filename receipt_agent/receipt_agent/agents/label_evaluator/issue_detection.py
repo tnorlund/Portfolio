@@ -23,7 +23,6 @@ from receipt_agent.agents.label_evaluator.geometry import (
     convert_polar_to_cartesian,
 )
 from receipt_agent.agents.label_evaluator.state import (
-    ConstellationGeometry,
     DrillDownWord,
     EvaluationIssue,
     LabelPairGeometry,

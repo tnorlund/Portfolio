@@ -48,14 +48,8 @@ except ImportError:
 
     _tracing_import_source = "local"
 
-from receipt_agent import (
-    OllamaCircuitBreaker,
-    OllamaRateLimitError,
-    RateLimitedLLMInvoker,
-)
+from receipt_agent import OllamaRateLimitError
 from receipt_agent.agents.label_evaluator import apply_llm_decisions
-from receipt_agent.constants import CORE_LABELS, CORE_LABELS_SET
-from receipt_agent.utils.chroma_helpers import build_word_chroma_id
 
 if TYPE_CHECKING:
     from handlers.evaluator_types import (
@@ -90,9 +84,6 @@ from receipt_agent.prompts.label_evaluator import (
 )
 from receipt_agent.prompts.structured_outputs import BatchedReviewResponse
 from receipt_agent.utils.chroma_helpers import (
-    compute_label_distribution,
-    compute_merchant_breakdown,
-    compute_similarity_distribution,
     enrich_evidence_with_dynamo_reasoning,
     query_similar_words,
 )

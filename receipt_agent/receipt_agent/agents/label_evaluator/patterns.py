@@ -9,12 +9,11 @@ classification for quality-based pattern learning.
 import logging
 import math
 import statistics
-from collections import Counter, defaultdict
+from collections import defaultdict
 from itertools import combinations
 from typing import Any, Optional
 
 from receipt_agent.agents.label_evaluator.geometry import (
-    angle_difference,
     calculate_angle_degrees,
     calculate_distance,
     convert_polar_to_cartesian,

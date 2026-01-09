@@ -63,11 +63,10 @@ from upload_images import UploadImages
 
 # Import other necessary components
 try:
-    from infra.components import lambda_layer  # side effects
+    from infra.components import lambda_layer  # noqa: F401 (side effects)
     from lambda_functions.label_count_cache_updater.infra import (
         label_count_cache_updater_lambda,
     )
-    from routes.health_check.infra import health_check_lambda
 
     print("✓ Successfully imported label_count_cache_updater_lambda")
 except ImportError as e:
@@ -239,7 +238,8 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     chromadb_buckets=shared_chromadb_buckets,
     vpc_id=public_vpc.vpc_id,
     subnet_ids=compaction_lambda_subnets,  # Private subnets only for Lambda
-    efs_subnet_ids=unique_efs_subnets,  # EFS requires unique AZs (public + first private)
+    # EFS requires unique AZs (public + first private)
+    efs_subnet_ids=unique_efs_subnets,
     lambda_security_group_id=security.sg_lambda_id,
     use_efs=compaction_use_efs,
     storage_mode=compaction_storage_mode,
@@ -257,7 +257,8 @@ embedding_infrastructure = EmbeddingInfrastructure(
     f"embedding-infra-{pulumi.get_stack()}",
     chromadb_queues=chromadb_infrastructure.chromadb_queues,
     chromadb_buckets=shared_chromadb_buckets,
-    vpc_subnet_ids=compaction_lambda_subnets,  # Use same subnets as compaction Lambda
+    # Use same subnets as compaction Lambda
+    vpc_subnet_ids=compaction_lambda_subnets,
     lambda_security_group_id=security.sg_lambda_id,
     efs_access_point_arn=(
         chromadb_infrastructure.efs.access_point_arn
@@ -307,7 +308,8 @@ logs_interface_endpoint = aws.ec2.VpcEndpoint(
     vpc_id=public_vpc.vpc_id,
     service_name=f"com.amazonaws.{aws.config.region}.logs",
     vpc_endpoint_type="Interface",
-    subnet_ids=logs_endpoint_subnets,  # Conditional: single AZ for dev, multi-AZ for prod
+    # Conditional: single AZ for dev, multi-AZ for prod
+    subnet_ids=logs_endpoint_subnets,
     security_group_ids=[security.sg_vpce_id],
     private_dns_enabled=True,
 )
@@ -326,7 +328,8 @@ sqs_interface_endpoint = aws.ec2.VpcEndpoint(
     vpc_id=public_vpc.vpc_id,
     service_name=f"com.amazonaws.{aws.config.region}.sqs",
     vpc_endpoint_type="Interface",
-    subnet_ids=sqs_endpoint_subnets,  # Conditional: single AZ for dev, multi-AZ for prod
+    # Conditional: single AZ for dev, multi-AZ for prod
+    subnet_ids=sqs_endpoint_subnets,
     security_group_ids=[security.sg_vpce_id],
     private_dns_enabled=True,
 )
@@ -530,7 +533,8 @@ if layoutlm_training_bucket_name is not None:
 
 # Use stack-specific existing key pair from AWS console
 # (stack variable already defined earlier for VPC endpoint configuration)
-key_pair_name = f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
+# Use existing key pairs created in AWS console
+key_pair_name = f"portfolio-receipt-{stack}"
 
 # Create EC2 Instance Profile for ML training instances
 ml_training_role = aws.iam.Role(
@@ -1228,7 +1232,8 @@ label_evaluator_sf = LabelEvaluatorStepFunction(
     dynamodb_table_arn=dynamodb_table.arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-    max_concurrency=8,  # Increased from 3 - OpenRouter fallback handles rate limits
+    # Increased from 3 - OpenRouter fallback handles rate limits
+    max_concurrency=8,
     batch_size=25,  # 25 receipts per batch
     # EMR Serverless Analytics integration
     emr_application_id=emr_analytics.emr_application.id,
