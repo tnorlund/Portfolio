@@ -811,6 +811,13 @@ def handler(event, context):
                     "Type": "Task",
                     "Resource": args[1],
                     "ResultPath": "$.export_result",
+                    "Next": "InitializePollCount",
+                },
+                # Step 2b: Initialize poll counter to 0
+                "InitializePollCount": {
+                    "Type": "Pass",
+                    "Result": 0,
+                    "ResultPath": "$.poll_count",
                     "Next": "WaitForExport",
                 },
                 # Step 3: Wait 60 seconds (FREE - no compute)
@@ -827,9 +834,26 @@ def handler(event, context):
                         "export_id.$": "$.export_result.export_id",
                     },
                     "ResultPath": "$.check_result",
+                    "Next": "IncrementPollCount",
+                },
+                # Step 4b: Increment poll counter
+                "IncrementPollCount": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "value.$": "States.MathAdd($.poll_count, 1)",
+                    },
+                    "ResultPath": "$.poll_count_obj",
+                    "Next": "UpdatePollCount",
+                },
+                # Step 4c: Extract poll count value
+                "UpdatePollCount": {
+                    "Type": "Pass",
+                    "InputPath": "$.poll_count_obj.value",
+                    "ResultPath": "$.poll_count",
                     "Next": "IsExportComplete",
                 },
-                # Step 5: Choice - loop or continue
+                # Step 5: Choice - loop, continue, or fail on max retries
+                # Max 30 iterations = 30 minutes (60s wait * 30)
                 "IsExportComplete": {
                     "Type": "Choice",
                     "Choices": [
@@ -843,6 +867,11 @@ def handler(event, context):
                             "StringEquals": "failed",
                             "Next": "ExportFailed",
                         },
+                        {
+                            "Variable": "$.poll_count",
+                            "NumericGreaterThanEquals": 30,
+                            "Next": "MaxRetriesExceeded",
+                        },
                     ],
                     "Default": "WaitForExport",
                 },
@@ -851,6 +880,12 @@ def handler(event, context):
                     "Type": "Fail",
                     "Error": "ExportFailed",
                     "Cause": "LangSmith export failed or was cancelled",
+                },
+                # Max retries exceeded state
+                "MaxRetriesExceeded": {
+                    "Type": "Fail",
+                    "Error": "MaxRetriesExceeded",
+                    "Cause": "Export status check exceeded 30 iterations (30 minutes)",
                 },
                 # Step 6: Start EMR job using native Step Functions integration
                 # Uses .sync to wait for job completion
