@@ -398,6 +398,10 @@ def main() -> int:
         logger.info("Extracting receipt data from traces...")
         langgraph_data = langgraph_df.select("outputs").collect()
 
+        # Release DataFrames to free EMR memory now that data is collected
+        langgraph_df.unpersist()
+        df.unpersist()
+
         receipts_from_parquet = []
         for row in langgraph_data:
             outputs = (
