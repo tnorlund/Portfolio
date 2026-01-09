@@ -114,7 +114,13 @@ def export_coreml(
     sample_input_ids = torch.randint(0, tokenizer.vocab_size, (1, sample_seq_len))
     sample_attention_mask = torch.ones(1, sample_seq_len, dtype=torch.long)
     # LayoutLM uses normalized coordinates in [0, 1000] range for bboxes
-    sample_bbox = torch.randint(0, 1001, (1, sample_seq_len, 4))
+    # Format is [x1, y1, x2, y2] where x2 >= x1 and y2 >= y1
+    # Generate valid bboxes with proper coordinate ordering
+    x1 = torch.randint(0, 500, (1, sample_seq_len))
+    y1 = torch.randint(0, 500, (1, sample_seq_len))
+    x2 = x1 + torch.randint(1, 500, (1, sample_seq_len))  # x2 > x1
+    y2 = y1 + torch.randint(1, 500, (1, sample_seq_len))  # y2 > y1
+    sample_bbox = torch.stack([x1, y1, x2, y2], dim=-1)
     sample_token_type_ids = torch.zeros(1, sample_seq_len, dtype=torch.long)
 
     print("Tracing model with TorchScript...")
