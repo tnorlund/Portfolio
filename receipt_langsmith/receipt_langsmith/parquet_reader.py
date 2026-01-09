@@ -8,14 +8,54 @@ rate limit issues.
 import json
 import logging
 import os
-from datetime import datetime
 from io import BytesIO
 from typing import Any
 
 import boto3
 import pyarrow.parquet as pq
 
+from receipt_langsmith.entities.visualization import (
+    EvaluatorResult,
+    EvaluatorTiming,
+    GeometricResult,
+    ReceiptWithAnomalies,
+    ReceiptWithDecisions,
+    VisualizationReceipt,
+)
+from receipt_langsmith.parsers.trace_helpers import (
+    TraceIndex,
+    build_evaluator_result,
+    build_geometric_from_trace,
+    build_receipt_identifier,
+    extract_metadata,
+    get_decisions_from_trace,
+    get_duration_seconds,
+    get_relative_timing,
+    is_all_needs_review,
+    load_s3_result,
+    parse_datetime,
+)
+
 logger = logging.getLogger(__name__)
+
+
+# --- Constants ---
+
+EVALUATOR_NAMES = [
+    "EvaluateCurrencyLabels",
+    "EvaluateMetadataLabels",
+    "ValidateFinancialMath",
+    "EvaluateLabels",
+]
+
+ANOMALY_TYPES = {
+    "geometric_anomaly",
+    "position_anomaly",
+    "constellation_anomaly",
+}
+
+
+# --- Core Reading ---
 
 
 def _parse_json_field(value: Any) -> Any:
@@ -34,7 +74,7 @@ def _parse_json_field(value: Any) -> Any:
 
 def read_traces_from_parquet(
     bucket: str, prefix: str = "traces/"
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Read all traces from exported Parquet files in S3.
 
     Args:
@@ -45,7 +85,7 @@ def read_traces_from_parquet(
         List of trace dicts with id, name, outputs, metadata, etc.
     """
     s3 = boto3.client("s3")
-    traces = []
+    traces: list[dict[str, Any]] = []
 
     try:
         paginator = s3.get_paginator("list_objects_v2")
@@ -55,7 +95,7 @@ def read_traces_from_parquet(
                 if not key.endswith(".parquet"):
                     continue
 
-                logger.debug(f"Reading Parquet file: s3://{bucket}/{key}")
+                logger.debug("Reading Parquet file: s3://%s/%s", bucket, key)
 
                 try:
                     response = s3.get_object(Bucket=bucket, Key=key)
@@ -74,30 +114,20 @@ def read_traces_from_parquet(
 
                     traces.extend(raw_traces)
                 except Exception:
-                    logger.exception(f"Error reading Parquet file: {key}")
+                    logger.exception("Error reading Parquet file: %s", key)
                     continue
 
-        logger.info(f"Read {len(traces)} traces from {bucket}/{prefix}")
+        logger.info("Read %d traces from %s/%s", len(traces), bucket, prefix)
         return traces
 
     except Exception:
-        logger.exception(f"Error listing Parquet files in {bucket}/{prefix}")
+        logger.exception(
+            "Error listing Parquet files in %s/%s", bucket, prefix
+        )
         return []
 
 
-def _parse_datetime(value: Any) -> datetime | None:
-    """Parse datetime from various formats."""
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        try:
-            # Handle ISO format with or without timezone
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    return None
+# --- Receipt Extraction Functions ---
 
 
 def find_receipts_with_decisions_from_parquet(
@@ -126,110 +156,88 @@ def find_receipts_with_decisions_from_parquet(
         - financial_decisions: List of financial validation decisions
     """
     traces = read_traces_from_parquet(bucket, prefix)
-
     if not traces:
         logger.warning("No traces found in Parquet export")
         return []
 
-    # Separate parents and children
-    parents = []
-    children_by_parent: dict[str, list[dict]] = {}
+    index = TraceIndex(traces)
+    logger.info("Found %d ReceiptEvaluation traces", len(index.parents))
 
-    for trace in traces:
-        parent_id = trace.get("parent_run_id")
-        if parent_id:
-            # This is a child trace
-            if parent_id not in children_by_parent:
-                children_by_parent[parent_id] = []
-            children_by_parent[parent_id].append(trace)
-        elif trace.get("name") == "ReceiptEvaluation":
-            parents.append(trace)
-
-    logger.info(f"Found {len(parents)} ReceiptEvaluation traces")
-
-    # Process each parent with its children
     results = []
-    for parent in parents:
-        parent_id = parent.get("id", "")
-        # Metadata is in extra.metadata for LangSmith exports
-        extra = parent.get("extra", {}) or {}
-        metadata = extra.get("metadata", {}) or {}
-        children = children_by_parent.get(parent_id, [])
+    for parent in index.parents:
+        receipt = _process_decisions_receipt(parent, index)
+        if receipt:
+            results.append(receipt.model_dump())
 
-        # Build children lookup by name
-        children_by_name = {c.get("name"): c for c in children}
-
-        # Parse parent start time for relative timing
-        parent_start = _parse_datetime(parent.get("start_time"))
-
-        # Get timing from each evaluator
-        timing = {}
-        for name in [
-            "EvaluateCurrencyLabels",
-            "EvaluateMetadataLabels",
-            "ValidateFinancialMath",
-            "EvaluateLabels",
-        ]:
-            child = children_by_name.get(name)
-            if child:
-                start = _parse_datetime(child.get("start_time"))
-                end = _parse_datetime(child.get("end_time"))
-
-                if start and end:
-                    duration_ms = (end - start).total_seconds() * 1000
-
-                    # Calculate relative start (ms from parent start)
-                    start_ms: float = 0
-                    if parent_start and start:
-                        start_ms = max(
-                            0, (start - parent_start).total_seconds() * 1000
-                        )
-
-                    timing[name] = {
-                        "start_ms": int(start_ms),
-                        "duration_ms": int(duration_ms),
-                    }
-
-        # Get decisions from outputs
-        currency_child = children_by_name.get("EvaluateCurrencyLabels", {})
-        currency_outputs = currency_child.get("outputs", {}) or {}
-
-        metadata_child = children_by_name.get("EvaluateMetadataLabels", {})
-        metadata_outputs = metadata_child.get("outputs", {}) or {}
-
-        financial_child = children_by_name.get("ValidateFinancialMath", {})
-        financial_outputs = financial_child.get("outputs", {}) or {}
-
-        currency_decisions = currency_outputs.get("all_decisions", [])
-        metadata_decisions = metadata_outputs.get("all_decisions", [])
-        financial_decisions = financial_outputs.get("all_decisions", [])
-
-        # Only include receipts with some decisions
-        has_decisions = (
-            len(currency_decisions) > 0
-            or len(metadata_decisions) > 0
-            or len(financial_decisions) > 0
-        )
-
-        if has_decisions or timing:
-            results.append(
-                {
-                    "run_id": parent_id,
-                    "image_id": metadata.get("image_id"),
-                    "receipt_id": metadata.get("receipt_id"),
-                    "merchant_name": metadata.get("merchant_name", "Unknown"),
-                    "execution_id": metadata.get(
-                        "execution_id", str(parent_id)[:8] if parent_id else ""
-                    ),
-                    "timing": timing,
-                    "currency_decisions": currency_decisions,
-                    "metadata_decisions": metadata_decisions,
-                    "financial_decisions": financial_decisions,
-                }
-            )
-
-    logger.info(f"Found {len(results)} receipts with decisions/timing")
+    logger.info("Found %d receipts with decisions/timing", len(results))
     return results
+
+
+def _process_decisions_receipt(
+    parent: dict[str, Any],
+    index: TraceIndex,
+) -> ReceiptWithDecisions | None:
+    """Process a parent trace into ReceiptWithDecisions."""
+    parent_id = parent.get("id", "")
+    metadata = extract_metadata(parent)
+    children_by_name = index.get_children_by_name(parent_id)
+    parent_start = parse_datetime(parent.get("start_time"))
+
+    # Build timing dict
+    timing = _build_evaluator_timings(children_by_name, parent_start)
+
+    # Get decisions from outputs
+    currency_decisions = get_decisions_from_trace(
+        children_by_name, "EvaluateCurrencyLabels"
+    )
+    metadata_decisions = get_decisions_from_trace(
+        children_by_name, "EvaluateMetadataLabels"
+    )
+    financial_decisions = get_decisions_from_trace(
+        children_by_name, "ValidateFinancialMath"
+    )
+
+    # Only include receipts with some decisions or timing
+    has_data = (
+        currency_decisions
+        or metadata_decisions
+        or financial_decisions
+        or timing
+    )
+    if not has_data:
+        return None
+
+    identifier = build_receipt_identifier(metadata, parent_id)
+    return ReceiptWithDecisions(
+        run_id=parent_id,
+        image_id=identifier.image_id,
+        receipt_id=identifier.receipt_id,
+        merchant_name=identifier.merchant_name,
+        execution_id=identifier.execution_id,
+        timing=timing,
+        currency_decisions=currency_decisions,
+        metadata_decisions=metadata_decisions,
+        financial_decisions=financial_decisions,
+    )
+
+
+def _build_evaluator_timings(
+    children_by_name: dict[str, dict[str, Any]],
+    parent_start: Any,
+) -> dict[str, EvaluatorTiming]:
+    """Build timing dict for evaluator traces."""
+    timing: dict[str, EvaluatorTiming] = {}
+
+    for name in EVALUATOR_NAMES:
+        child = children_by_name.get(name)
+        if child:
+            start_ms, duration_ms = get_relative_timing(child, parent_start)
+            if duration_ms > 0:
+                timing[name] = EvaluatorTiming(
+                    start_ms=start_ms, duration_ms=duration_ms
+                )
+
+    return timing
 
 
 def find_receipts_with_anomalies_from_parquet(
@@ -246,101 +254,58 @@ def find_receipts_with_anomalies_from_parquet(
         List of receipt info dicts with anomaly data
     """
     traces = read_traces_from_parquet(bucket, prefix)
-
     if not traces:
         return []
 
-    # Build parent-child mapping
-    parents = []
-    children_by_parent: dict[str, list[dict]] = {}
-
-    for trace in traces:
-        parent_id = trace.get("parent_run_id")
-        if parent_id:
-            if parent_id not in children_by_parent:
-                children_by_parent[parent_id] = []
-            children_by_parent[parent_id].append(trace)
-        elif trace.get("name") == "ReceiptEvaluation":
-            parents.append(trace)
-
-    # Anomaly types to look for
-    anomaly_types = {
-        "geometric_anomaly",
-        "position_anomaly",
-        "constellation_anomaly",
-    }
+    index = TraceIndex(traces)
 
     results = []
-    for parent in parents:
-        parent_id = parent.get("id", "")
-        # Metadata is in extra.metadata for LangSmith exports
-        extra = parent.get("extra", {}) or {}
-        metadata = extra.get("metadata", {}) or {}
-        children = children_by_parent.get(parent_id, [])
+    for parent in index.parents:
+        receipt = _process_anomalies_receipt(parent, index)
+        if receipt:
+            results.append(receipt.model_dump())
 
-        # Find EvaluateLabels child
-        for child in children:
-            if child.get("name") != "EvaluateLabels":
-                continue
-
-            outputs = child.get("outputs", {}) or {}
-            issues = outputs.get("issues", [])
-            flagged_words = outputs.get("flagged_words", [])
-
-            # Filter for geometric anomaly types
-            geometric_issues = [
-                i for i in issues if i.get("type") in anomaly_types
-            ]
-
-            if geometric_issues:
-                results.append(
-                    {
-                        "run_id": parent_id,
-                        "image_id": metadata.get("image_id"),
-                        "receipt_id": metadata.get("receipt_id"),
-                        "merchant_name": metadata.get(
-                            "merchant_name", "Unknown"
-                        ),
-                        "issues": geometric_issues,
-                        "all_issues": issues,
-                        "flagged_words": flagged_words,
-                        "execution_id": metadata.get(
-                            "execution_id",
-                            str(parent_id)[:8] if parent_id else "",
-                        ),
-                    }
-                )
-
-    logger.info(f"Found {len(results)} receipts with anomalies")
+    logger.info("Found %d receipts with anomalies", len(results))
     return results
 
 
-def _load_s3_result(
-    batch_bucket: str,
-    execution_id: str,
-    result_type: str,
-    s3_key_base: str,
-) -> dict | None:
-    """Load a result file from S3.
+def _process_anomalies_receipt(
+    parent: dict[str, Any],
+    index: TraceIndex,
+) -> ReceiptWithAnomalies | None:
+    """Process a parent trace into ReceiptWithAnomalies."""
+    parent_id = parent.get("id", "")
+    metadata = extract_metadata(parent)
+    children = index.get_children(parent_id)
 
-    Args:
-        batch_bucket: S3 bucket containing Step Function results
-        execution_id: Step Function execution ID
-        result_type: Type of result (currency, metadata, financial, reviewed)
-        s3_key_base: Base key like "image_id_receipt_id.json"
+    # Find EvaluateLabels child
+    for child in children:
+        if child.get("name") != "EvaluateLabels":
+            continue
 
-    Returns:
-        Parsed JSON dict or None if not found
-    """
-    s3 = boto3.client("s3")
-    s3_key = f"{result_type}/{execution_id}/{s3_key_base}"
+        outputs = child.get("outputs", {}) or {}
+        issues = outputs.get("issues", [])
+        flagged_words = outputs.get("flagged_words", [])
 
-    try:
-        response = s3.get_object(Bucket=batch_bucket, Key=s3_key)
-        return json.loads(response["Body"].read().decode("utf-8"))
-    except Exception:
-        # File doesn't exist or error reading
-        return None
+        # Filter for geometric anomaly types
+        geometric_issues = [
+            i for i in issues if i.get("type") in ANOMALY_TYPES
+        ]
+
+        if geometric_issues:
+            identifier = build_receipt_identifier(metadata, parent_id)
+            return ReceiptWithAnomalies(
+                run_id=parent_id,
+                image_id=identifier.image_id,
+                receipt_id=identifier.receipt_id,
+                merchant_name=identifier.merchant_name,
+                execution_id=identifier.execution_id,
+                issues=geometric_issues,
+                all_issues=issues,
+                flagged_words=flagged_words,
+            )
+
+    return None
 
 
 def find_visualization_receipts_from_parquet(
@@ -349,7 +314,7 @@ def find_visualization_receipts_from_parquet(
     max_receipts: int = 20,
     batch_bucket: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Extract receipt data for scanner visualization from LangSmith Parquet exports.
+    """Extract receipt data for scanner visualization from Parquet exports.
 
     This function extracts all data needed for the LabelEvaluatorVisualization
     component, including evaluator decisions, timing, geometric issues, and
@@ -357,243 +322,202 @@ def find_visualization_receipts_from_parquet(
 
     Note: Evaluation results (currency, metadata, financial) are loaded from S3
     rather than LangSmith traces because the trace hierarchy is incomplete.
-    Traces from different Step Function Lambdas are matched by image_id/receipt_id.
 
     Args:
         bucket: S3 bucket name containing Parquet exports
         prefix: S3 prefix for Parquet files
-        max_receipts: Maximum number of receipts to return (prioritizes those with review data)
-        batch_bucket: S3 bucket containing Step Function results (currency, metadata, etc.)
-                     If not provided, defaults to label-evaluator-dev-batch-bucket
+        max_receipts: Maximum number of receipts to return
+        batch_bucket: S3 bucket containing Step Function results
 
     Returns:
-        List of receipt visualization dicts with:
-        - image_id, receipt_id, merchant_name, execution_id
-        - geometric: {issues_found, issues[], duration_seconds}
-        - currency: {decisions{}, all_decisions[], duration_seconds}
-        - metadata: {decisions{}, all_decisions[], duration_seconds}
-        - financial: {decisions{}, all_decisions[], duration_seconds}
-        - review: {decisions{}, all_decisions[], duration_seconds} or None
-        - line_item_duration_seconds (from DiscoverPatterns span)
+        List of receipt visualization dicts
     """
-    # Default batch bucket for Step Function results
-    if not batch_bucket:
-        batch_bucket = os.environ.get("BATCH_BUCKET", "")
-        if not batch_bucket:
-            raise ValueError(
-                "batch_bucket required (via parameter or BATCH_BUCKET env var)"
-            )
+    batch_bucket = _resolve_batch_bucket(batch_bucket)
     traces = read_traces_from_parquet(bucket, prefix)
-
     if not traces:
         logger.warning("No traces found in Parquet export")
         return []
 
-    # Build parent-child mapping
-    children_by_parent: dict[str, list[dict]] = {}
+    index = TraceIndex(traces)
+    logger.info("Found %d ReceiptEvaluation traces", len(index.parents))
 
-    for trace in traces:
-        parent_id = trace.get("parent_run_id")
-        if parent_id:
-            if parent_id not in children_by_parent:
-                children_by_parent[parent_id] = []
-            children_by_parent[parent_id].append(trace)
+    s3 = boto3.client("s3")
+    with_review: list[dict[str, Any]] = []
+    without_review: list[dict[str, Any]] = []
 
-    # Find ReceiptEvaluation traces as the base
-    parents = [t for t in traces if t.get("name") == "ReceiptEvaluation"]
-    logger.info(f"Found {len(parents)} ReceiptEvaluation traces")
-
-    # Process each receipt
-    with_review = []
-    without_review = []
-
-    for parent in parents:
-        parent_id = parent.get("id", "")
-        extra = parent.get("extra", {}) or {}
-        metadata = extra.get("metadata", {}) or {}
-
-        # Get children of ReceiptEvaluation for geometric evaluation
-        children = children_by_parent.get(parent_id, [])
-        children_by_name: dict[str, dict] = {}
-        for c in children:
-            name = c.get("name")
-            if name:
-                children_by_name[name] = c
-
-        # Extract geometric issues from EvaluateLabels (child of ReceiptEvaluation)
-        evaluate_labels = children_by_name.get("EvaluateLabels", {})
-        evaluate_labels_outputs = evaluate_labels.get("outputs", {}) or {}
-        geometric_issues = evaluate_labels_outputs.get("issues", [])
-        geometric_duration = _get_duration_seconds(evaluate_labels)
-
-        # Get execution_id and batch_bucket from metadata to fetch S3 results
-        execution_id = metadata.get("execution_id", "")
-        image_id = metadata.get("image_id")
-        receipt_id = metadata.get("receipt_id")
-
-        # Try to get decisions from S3 results if available
-        # The Step Function stores detailed results in S3 rather than LangSmith traces
-        currency_decisions = []
-        currency_duration = 0
-        metadata_decisions = []
-        metadata_duration = 0
-        financial_decisions = []
-        financial_duration = 0
-        review_decisions = []
-        review_duration = 0
-
-        if execution_id and image_id and receipt_id is not None:
-            s3_key_base = f"{image_id}_{receipt_id}.json"
-
-            # Currency results
-            currency_result = _load_s3_result(
-                batch_bucket, execution_id, "currency", s3_key_base
-            )
-            if currency_result:
-                currency_decisions = currency_result.get("all_decisions", [])
-                currency_duration = currency_result.get("duration_seconds", 0)
-
-            # Metadata results
-            metadata_result = _load_s3_result(
-                batch_bucket, execution_id, "metadata", s3_key_base
-            )
-            if metadata_result:
-                metadata_decisions = metadata_result.get("all_decisions", [])
-                metadata_duration = metadata_result.get("duration_seconds", 0)
-
-            # Financial results
-            financial_result = _load_s3_result(
-                batch_bucket, execution_id, "financial", s3_key_base
-            )
-            if financial_result:
-                financial_decisions = financial_result.get("all_decisions", [])
-                financial_duration = financial_result.get(
-                    "duration_seconds", 0
-                )
-
-            # Review results (LLM review of geometric issues)
-            review_result = _load_s3_result(
-                batch_bucket, execution_id, "reviewed", s3_key_base
-            )
-            if review_result:
-                review_decisions = review_result.get("reviewed_issues", [])
-                review_duration = review_result.get("duration_seconds", 0)
-
-        # Extract line item duration from DiscoverPatterns span (child of ReceiptEvaluation)
-        discover_patterns = children_by_name.get("DiscoverPatterns", {})
-        line_item_duration = _get_duration_seconds(discover_patterns)
-
-        # Build decision counts
-        def count_decisions(decisions: list) -> dict[str, int]:
-            counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
-            for d in decisions:
-                llm_review = d.get("llm_review", {}) or {}
-                decision = llm_review.get("decision", d.get("decision", ""))
-                if decision in counts:
-                    counts[decision] += 1
-            return counts
-
-        # Skip receipts with no evaluation data
-        has_data = (
-            len(currency_decisions) > 0
-            or len(metadata_decisions) > 0
-            or len(financial_decisions) > 0
-            or len(geometric_issues) > 0
+    for parent in index.parents:
+        receipt = _process_visualization_receipt(
+            parent, index, s3, batch_bucket
         )
-
-        if not has_data:
+        if receipt is None:
             continue
 
-        # Skip receipts where all decisions are NEEDS_REVIEW (parsing failures)
-        currency_counts = count_decisions(currency_decisions)
-        metadata_counts = count_decisions(metadata_decisions)
-
-        if currency_decisions and currency_counts["NEEDS_REVIEW"] == len(
-            currency_decisions
-        ):
-            logger.debug(
-                "Skipping %s_%s: all currency decisions are NEEDS_REVIEW",
-                metadata.get("image_id"),
-                metadata.get("receipt_id"),
-            )
-            continue
-
-        if metadata_decisions and metadata_counts["NEEDS_REVIEW"] == len(
-            metadata_decisions
-        ):
-            logger.debug(
-                "Skipping %s_%s: all metadata decisions are NEEDS_REVIEW",
-                metadata.get("image_id"),
-                metadata.get("receipt_id"),
-            )
-            continue
-
-        # Build the visualization receipt object
-        receipt = {
-            "image_id": metadata.get("image_id"),
-            "receipt_id": metadata.get("receipt_id"),
-            "merchant_name": metadata.get("merchant_name", "Unknown"),
-            "execution_id": metadata.get(
-                "execution_id", str(parent_id)[:8] if parent_id else ""
-            ),
-            "geometric": {
-                "issues_found": len(geometric_issues),
-                "issues": geometric_issues,
-                "duration_seconds": geometric_duration or 0.1,
-            },
-            "currency": {
-                "decisions": currency_counts,
-                "all_decisions": currency_decisions,
-                "duration_seconds": currency_duration or 0,
-            },
-            "metadata": {
-                "decisions": metadata_counts,
-                "all_decisions": metadata_decisions,
-                "duration_seconds": metadata_duration or 0,
-            },
-            "financial": {
-                "decisions": count_decisions(financial_decisions),
-                "all_decisions": financial_decisions,
-                "duration_seconds": financial_duration or 0,
-            },
-            "review": (
-                {
-                    "decisions": count_decisions(review_decisions),
-                    "all_decisions": review_decisions,
-                    "duration_seconds": review_duration or 0,
-                }
-                if review_decisions
-                else None
-            ),
-            "line_item_duration_seconds": line_item_duration,
-        }
-
-        # Prioritize receipts with review data
-        if review_decisions:
-            with_review.append(receipt)
+        receipt_dict = receipt.model_dump()
+        if receipt.review:
+            with_review.append(receipt_dict)
         else:
-            without_review.append(receipt)
+            without_review.append(receipt_dict)
 
-    # Combine with priority: review data first
     results = with_review + without_review
-
     logger.info(
-        f"Found {len(results)} visualization receipts "
-        f"({len(with_review)} with review, {len(without_review)} without)"
+        "Found %d visualization receipts (%d with review, %d without)",
+        len(results),
+        len(with_review),
+        len(without_review),
     )
 
     return results[:max_receipts]
 
 
-def _get_duration_seconds(trace: dict) -> float | None:
-    """Extract duration in seconds from a trace's start/end times."""
-    if not trace:
+def _resolve_batch_bucket(batch_bucket: str | None) -> str:
+    """Resolve batch bucket from parameter or environment."""
+    if batch_bucket:
+        return batch_bucket
+    batch_bucket = os.environ.get("BATCH_BUCKET", "")
+    if not batch_bucket:
+        raise ValueError(
+            "batch_bucket required (via parameter or BATCH_BUCKET env var)"
+        )
+    return batch_bucket
+
+
+def _process_visualization_receipt(
+    parent: dict[str, Any],
+    index: TraceIndex,
+    s3: Any,
+    batch_bucket: str,
+) -> VisualizationReceipt | None:
+    """Process a single parent trace into VisualizationReceipt."""
+    metadata = extract_metadata(parent)
+    execution_id = metadata.get("execution_id", "")
+    image_id = metadata.get("image_id")
+    receipt_id = metadata.get("receipt_id")
+
+    if not (execution_id and image_id and receipt_id is not None):
         return None
 
-    start = _parse_datetime(trace.get("start_time"))
-    end = _parse_datetime(trace.get("end_time"))
+    children = index.get_children_by_name(parent.get("id", ""))
+    geometric = build_geometric_from_trace(children.get("EvaluateLabels", {}))
 
-    if start and end:
-        return (end - start).total_seconds()
+    # Load all S3 results
+    results = _load_all_evaluator_results(
+        s3, batch_bucket, execution_id, image_id, receipt_id
+    )
 
-    return None
+    # Check for meaningful data
+    if not _has_visualization_data(geometric, results):
+        return None
+
+    # Skip parsing failures
+    if _should_skip_receipt(image_id, receipt_id, results):
+        return None
+
+    identifier = build_receipt_identifier(metadata, parent.get("id", ""))
+    return VisualizationReceipt(
+        image_id=identifier.image_id,
+        receipt_id=identifier.receipt_id,
+        merchant_name=identifier.merchant_name,
+        execution_id=identifier.execution_id,
+        geometric=geometric,
+        currency=results["currency"],
+        metadata=results["metadata"],
+        financial=results["financial"],
+        review=results["review"] if results["review"].all_decisions else None,
+        line_item_duration_seconds=get_duration_seconds(
+            children.get("DiscoverPatterns", {})
+        ),
+    )
+
+
+def _load_all_evaluator_results(
+    s3: Any,
+    bucket: str,
+    execution_id: str,
+    image_id: str,
+    receipt_id: int,
+) -> dict[str, EvaluatorResult]:
+    """Load all evaluator results from S3."""
+    return {
+        "currency": _load_evaluator_from_s3(
+            s3, bucket, execution_id, image_id, receipt_id, "currency"
+        ),
+        "metadata": _load_evaluator_from_s3(
+            s3, bucket, execution_id, image_id, receipt_id, "metadata"
+        ),
+        "financial": _load_evaluator_from_s3(
+            s3, bucket, execution_id, image_id, receipt_id, "financial"
+        ),
+        "review": _load_review_from_s3(
+            s3, bucket, execution_id, image_id, receipt_id
+        )
+        or EvaluatorResult(),
+    }
+
+
+def _has_visualization_data(
+    geometric: GeometricResult,
+    results: dict[str, EvaluatorResult],
+) -> bool:
+    """Check if receipt has any visualization data."""
+    return bool(
+        results["currency"].all_decisions
+        or results["metadata"].all_decisions
+        or results["financial"].all_decisions
+        or geometric.issues
+    )
+
+
+def _should_skip_receipt(
+    image_id: str | None,
+    receipt_id: int | None,
+    results: dict[str, EvaluatorResult],
+) -> bool:
+    """Check if receipt should be skipped (all NEEDS_REVIEW)."""
+    if is_all_needs_review(results["currency"].all_decisions):
+        logger.debug(
+            "Skipping %s_%s: all currency decisions are NEEDS_REVIEW",
+            image_id,
+            receipt_id,
+        )
+        return True
+
+    if is_all_needs_review(results["metadata"].all_decisions):
+        logger.debug(
+            "Skipping %s_%s: all metadata decisions are NEEDS_REVIEW",
+            image_id,
+            receipt_id,
+        )
+        return True
+
+    return False
+
+
+def _load_evaluator_from_s3(
+    s3: Any,
+    bucket: str,
+    execution_id: str,
+    image_id: str,
+    receipt_id: int,
+    result_type: str,
+) -> EvaluatorResult:
+    """Load and build EvaluatorResult from S3."""
+    result = load_s3_result(
+        s3, bucket, result_type, execution_id, image_id, receipt_id
+    )
+    return build_evaluator_result(result)
+
+
+def _load_review_from_s3(
+    s3: Any,
+    bucket: str,
+    execution_id: str,
+    image_id: str,
+    receipt_id: int,
+) -> EvaluatorResult | None:
+    """Load review results from S3."""
+    result = load_s3_result(
+        s3, bucket, "reviewed", execution_id, image_id, receipt_id
+    )
+    if not result:
+        return None
+    return build_evaluator_result(result, decisions_key="reviewed_issues")
