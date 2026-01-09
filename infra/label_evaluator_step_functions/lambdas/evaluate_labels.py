@@ -572,12 +572,12 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         from receipt_agent.utils.ollama_rate_limit import OllamaRateLimitError
 
         if isinstance(e, AllProvidersFailedError):
-            logger.exception("All providers failed, propagating for Step Function retry: %s", e)
+            logger.exception("All providers failed, propagating for Step Function retry")
             flush_langsmith_traces()
             raise
 
         if isinstance(e, OllamaRateLimitError):
-            logger.exception("Rate limit error, propagating for Step Function retry: %s", e)
+            logger.exception("Rate limit error, propagating for Step Function retry")
             flush_langsmith_traces()
             raise
 
