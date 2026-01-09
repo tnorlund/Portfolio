@@ -216,6 +216,16 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         # 2. Create ROOT trace for this receipt
         # The trace_id is deterministic, so parallel evaluators (Currency, Metadata)
         # can join this trace using the same receipt_trace_id from FetchReceiptData.
+        # Only include full S3 keys when tracing is enabled (avoid sensitive data in traces)
+        trace_metadata = {"execution_id": execution_id}
+        if enable_tracing:
+            trace_metadata["data_s3_key"] = data_s3_key
+            trace_metadata["patterns_s3_key"] = patterns_s3_key
+        else:
+            # Include only basenames for debugging without exposing full paths
+            trace_metadata["data_s3_key"] = os.path.basename(data_s3_key) if data_s3_key else None
+            trace_metadata["patterns_s3_key"] = os.path.basename(patterns_s3_key) if patterns_s3_key else None
+
         receipt_trace = create_receipt_trace(
             execution_arn=execution_arn,
             image_id=image_id,
@@ -229,11 +239,7 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 "word_count": len(words),
                 "label_count": len(labels),
             },
-            metadata={
-                "execution_id": execution_id,
-                "data_s3_key": data_s3_key,
-                "patterns_s3_key": patterns_s3_key,
-            },
+            metadata=trace_metadata,
             enable_tracing=enable_tracing,
         )
 
@@ -277,45 +283,52 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             )
 
             if line_item_patterns_data:
-                # Create historical DiscoverPatterns span using stored timing
-                discovery_metadata = line_item_patterns_data.get("_trace_metadata", {})
-                discovery_start = discovery_metadata.get("discovery_start_time")
-                discovery_end = discovery_metadata.get("discovery_end_time")
-                if discovery_start and discovery_end:
-                    # Extract discovered patterns for rich output
-                    discovered_patterns = line_item_patterns_data.get("patterns", {})
-                    pattern_categories = list(discovered_patterns.keys()) if discovered_patterns else []
-                    line_item_labels = line_item_patterns_data.get("line_item_labels", [])
+                # Create historical DiscoverPatterns span using stored timing (best-effort)
+                try:
+                    discovery_metadata = line_item_patterns_data.get("_trace_metadata", {})
+                    discovery_start = discovery_metadata.get("discovery_start_time")
+                    discovery_end = discovery_metadata.get("discovery_end_time")
+                    if discovery_start and discovery_end:
+                        # Extract discovered patterns for rich output
+                        discovered_patterns = line_item_patterns_data.get("patterns", {})
+                        pattern_categories = list(discovered_patterns.keys()) if discovered_patterns else []
+                        line_item_labels = line_item_patterns_data.get("line_item_labels", [])
 
-                    create_historical_span(
-                        parent_ctx=trace_ctx,
-                        name="DiscoverPatterns",
-                        start_time_iso=discovery_start,
-                        end_time_iso=discovery_end,
-                        duration_seconds=discovery_metadata.get("discovery_duration_seconds", 0),
-                        run_type="llm",
-                        inputs={
-                            "merchant_name": merchant_name,
-                            "sample_receipt_count": discovery_metadata.get("sample_receipt_count", 0),
-                            "llm_model": discovery_metadata.get("llm_model", "unknown"),
-                        },
-                        outputs={
-                            "status": discovery_metadata.get("discovery_status", "unknown"),
-                            "pattern_categories": pattern_categories,
-                            "line_item_labels": line_item_labels,
-                            "patterns_discovered": len(pattern_categories),
-                        },
-                        metadata={
-                            "llm_call_duration_seconds": discovery_metadata.get("llm_call_duration_seconds", 0),
-                            "load_receipts_duration_seconds": discovery_metadata.get("load_receipts_duration_seconds", 0),
-                            "build_prompt_duration_seconds": discovery_metadata.get("build_prompt_duration_seconds", 0),
-                            "batch_computed": True,
-                        },
-                    )
-                    logger.info(
-                        "Added DiscoverPatterns historical span (%.2fs, %d categories)",
-                        discovery_metadata.get("discovery_duration_seconds", 0),
-                        len(pattern_categories),
+                        create_historical_span(
+                            parent_ctx=trace_ctx,
+                            name="DiscoverPatterns",
+                            start_time_iso=discovery_start,
+                            end_time_iso=discovery_end,
+                            duration_seconds=discovery_metadata.get("discovery_duration_seconds", 0),
+                            run_type="llm",
+                            inputs={
+                                "merchant_name": merchant_name,
+                                "sample_receipt_count": discovery_metadata.get("sample_receipt_count", 0),
+                                "llm_model": discovery_metadata.get("llm_model", "unknown"),
+                            },
+                            outputs={
+                                "status": discovery_metadata.get("discovery_status", "unknown"),
+                                "pattern_categories": pattern_categories,
+                                "line_item_labels": line_item_labels,
+                                "patterns_discovered": len(pattern_categories),
+                            },
+                            metadata={
+                                "llm_call_duration_seconds": discovery_metadata.get("llm_call_duration_seconds", 0),
+                                "load_receipts_duration_seconds": discovery_metadata.get("load_receipts_duration_seconds", 0),
+                                "build_prompt_duration_seconds": discovery_metadata.get("build_prompt_duration_seconds", 0),
+                                "batch_computed": True,
+                            },
+                        )
+                        logger.info(
+                            "Added DiscoverPatterns historical span (%.2fs, %d categories)",
+                            discovery_metadata.get("discovery_duration_seconds", 0),
+                            len(pattern_categories),
+                        )
+                except Exception as span_err:
+                    logger.warning(
+                        "Failed to create DiscoverPatterns historical span: %s",
+                        span_err,
+                        exc_info=True,
                     )
 
         # 4. Load geometric patterns (from Phase 1 ComputePatterns) and create historical span
@@ -334,58 +347,75 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             )
 
             if patterns_data:
-                # Create historical ComputePatterns span using stored timing
-                computation_metadata = patterns_data.get("_trace_metadata", {})
-                computation_start = computation_metadata.get("computation_start_time")
-                computation_end = computation_metadata.get("computation_end_time")
-                if computation_start and computation_end:
-                    # Extract constellation/geometry pattern info for rich output
-                    label_pair_geometry = patterns_data.get("label_pair_geometry", {})
-                    constellation_geometry = patterns_data.get("constellation_geometry", {})
-                    constellation_names = list(label_pair_geometry.keys()) if label_pair_geometry else []
-                    individual_labels = list(constellation_geometry.keys()) if constellation_geometry else []
+                # Create historical ComputePatterns span using stored timing (best-effort)
+                try:
+                    computation_metadata = patterns_data.get("_trace_metadata", {})
+                    computation_start = computation_metadata.get("computation_start_time")
+                    computation_end = computation_metadata.get("computation_end_time")
+                    if computation_start and computation_end:
+                        # Extract constellation/geometry pattern info for rich output
+                        # constellation_geometry contains multi-label constellations
+                        # label_pair_geometry contains individual label pairs
+                        label_pair_geometry = patterns_data.get("label_pair_geometry", {})
+                        constellation_geometry = patterns_data.get("constellation_geometry", {})
+                        constellation_names = list(constellation_geometry.keys()) if constellation_geometry else []
+                        label_pair_names = list(label_pair_geometry.keys()) if label_pair_geometry else []
 
-                    create_historical_span(
-                        parent_ctx=trace_ctx,
-                        name="ComputePatterns",
-                        start_time_iso=computation_start,
-                        end_time_iso=computation_end,
-                        duration_seconds=computation_metadata.get("computation_duration_seconds", 0),
-                        run_type="chain",
-                        inputs={
-                            "merchant_name": merchant_name,
-                            "training_receipt_count": computation_metadata.get("training_receipt_count", 0),
-                        },
-                        outputs={
-                            "status": computation_metadata.get("computation_status", "unknown"),
-                            "constellation_patterns": constellation_names,
-                            "constellation_count": len(constellation_names),
-                            "individual_label_patterns": individual_labels,
-                            "individual_label_count": len(individual_labels),
-                        },
-                        metadata={
-                            "load_data_duration_seconds": computation_metadata.get("load_data_duration_seconds", 0),
-                            "compute_patterns_duration_seconds": computation_metadata.get("compute_patterns_duration_seconds", 0),
-                            "batch_computed": True,
-                        },
-                    )
-                    logger.info(
-                        "Added ComputePatterns historical span (%.2fs, %d constellations, %d labels)",
-                        computation_metadata.get("computation_duration_seconds", 0),
-                        len(constellation_names),
-                        len(individual_labels),
+                        create_historical_span(
+                            parent_ctx=trace_ctx,
+                            name="ComputePatterns",
+                            start_time_iso=computation_start,
+                            end_time_iso=computation_end,
+                            duration_seconds=computation_metadata.get("computation_duration_seconds", 0),
+                            run_type="chain",
+                            inputs={
+                                "merchant_name": merchant_name,
+                                "training_receipt_count": computation_metadata.get("training_receipt_count", 0),
+                            },
+                            outputs={
+                                "status": computation_metadata.get("computation_status", "unknown"),
+                                "constellation_patterns": constellation_names,
+                                "constellation_count": len(constellation_names),
+                                "label_pair_patterns": label_pair_names,
+                                "label_pair_count": len(label_pair_names),
+                            },
+                            metadata={
+                                "load_data_duration_seconds": computation_metadata.get("load_data_duration_seconds", 0),
+                                "compute_patterns_duration_seconds": computation_metadata.get("compute_patterns_duration_seconds", 0),
+                                "batch_computed": True,
+                            },
+                        )
+                        logger.info(
+                            "Added ComputePatterns historical span (%.2fs, %d constellations, %d label pairs)",
+                            computation_metadata.get("computation_duration_seconds", 0),
+                            len(constellation_names),
+                            len(label_pair_names),
+                        )
+                except Exception as span_err:
+                    logger.warning(
+                        "Failed to create ComputePatterns historical span: %s",
+                        span_err,
+                        exc_info=True,
                     )
 
-                # Deserialize patterns for evaluation
-                merchant_patterns = deserialize_patterns(patterns_data)
-                if merchant_patterns:
-                    logger.info(
-                        "Loaded patterns for %s (%s receipts)",
-                        merchant_patterns.merchant_name,
-                        merchant_patterns.receipt_count,
+                # Deserialize patterns for evaluation (best-effort)
+                try:
+                    merchant_patterns = deserialize_patterns(patterns_data)
+                    if merchant_patterns:
+                        logger.info(
+                            "Loaded patterns for %s (%s receipts)",
+                            merchant_patterns.merchant_name,
+                            merchant_patterns.receipt_count,
+                        )
+                    else:
+                        logger.info("Patterns file exists but no patterns available")
+                except Exception as deser_err:
+                    logger.warning(
+                        "Failed to deserialize patterns, proceeding without: %s",
+                        deser_err,
+                        exc_info=True,
                     )
-                else:
-                    logger.info("Patterns file exists but no patterns available")
+                    merchant_patterns = None
             else:
                 logger.warning(
                     "No patterns found at s3://%s/%s - proceeding without patterns",
@@ -542,12 +572,12 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         from receipt_agent.utils.ollama_rate_limit import OllamaRateLimitError
 
         if isinstance(e, AllProvidersFailedError):
-            logger.error("All providers failed, propagating for Step Function retry: %s", e)
+            logger.exception("All providers failed, propagating for Step Function retry: %s", e)
             flush_langsmith_traces()
             raise
 
         if isinstance(e, OllamaRateLimitError):
-            logger.error("Rate limit error, propagating for Step Function retry: %s", e)
+            logger.exception("Rate limit error, propagating for Step Function retry: %s", e)
             flush_langsmith_traces()
             raise
 

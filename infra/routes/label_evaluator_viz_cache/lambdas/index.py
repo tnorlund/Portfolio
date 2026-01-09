@@ -45,7 +45,7 @@ def _fetch_cache() -> dict[str, Any]:
             raise ValueError("latest.json missing 'cache_key' field")
         logger.info("Fetching cache from %s", cache_key)
     except s3_client.exceptions.NoSuchKey:
-        logger.error("No latest.json pointer found in bucket %s", S3_CACHE_BUCKET)
+        logger.exception("No latest.json pointer found in bucket %s", S3_CACHE_BUCKET)
         raise
 
     # Fetch the versioned cache file
@@ -107,7 +107,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     try:
         http_method = event["requestContext"]["http"]["method"].upper()
     except (KeyError, TypeError) as e:
-        logger.error("Invalid event structure: %s", e)
+        logger.exception("Invalid event structure: %s", e)
         return {
             "statusCode": 400,
             "body": json.dumps({"error": "Invalid event structure"}),
@@ -176,17 +176,17 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "Access-Control-Allow-Origin": "*",
                 },
             }
-        logger.error("S3 error: %s", e)
+        logger.exception("S3 error: %s", e)
         return {
             "statusCode": 500,
-            "body": json.dumps({"error": f"S3 error: {str(e)}"}),
+            "body": json.dumps({"error": f"S3 error: {e!s}"}),
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
             },
         }
     except Exception as e:
-        logger.error("Unexpected error: %s", e, exc_info=True)
+        logger.exception("Unexpected error: %s", e)
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e)}),
