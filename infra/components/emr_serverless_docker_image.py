@@ -508,6 +508,8 @@ echo "Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                                     "ecr:InitiateLayerUpload",
                                     "ecr:UploadLayerPart",
                                     "ecr:CompleteLayerUpload",
+                                    # Required for EMR UpdateApplication to validate image
+                                    "ecr:DescribeImages",
                                 ],
                                 "Resource": "*",
                             },
