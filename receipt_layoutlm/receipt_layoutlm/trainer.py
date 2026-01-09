@@ -5,7 +5,7 @@ import os
 import subprocess
 import uuid
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import partial
 from glob import glob
 from typing import Any, Dict, List, Optional
@@ -356,9 +356,6 @@ class ReceiptLayoutLMTrainer:
         with open(run_json_path, "w", encoding="utf-8") as f:
             json.dump(run_payload, f, indent=2)
 
-        import uuid
-        from datetime import datetime
-
         # Build job_config with explicit merge info for experiment tracking
         job_config_dict = {
             "model": "layoutlm",
@@ -374,7 +371,7 @@ class ReceiptLayoutLMTrainer:
             job_id=str(uuid.uuid4()),
             name=job_name,
             description="LayoutLM receipt token classification",
-            created_at=datetime.now().isoformat(),
+            created_at=datetime.now(timezone.utc).isoformat(),
             created_by=created_by,
             status="pending",
             priority="medium",
@@ -391,7 +388,7 @@ class ReceiptLayoutLMTrainer:
                     job_id=job.job_id,
                     metric_name="label_merge_config",
                     value=merge_info.label_merges,
-                    timestamp=datetime.now().isoformat(),
+                    timestamp=datetime.now(timezone.utc).isoformat(),
                     unit="config",
                     epoch=None,
                 )
@@ -470,7 +467,9 @@ class ReceiptLayoutLMTrainer:
                                 job_id=self.job_id,
                                 metric_name=name,
                                 value=float(value),
-                                timestamp=datetime.now().isoformat(),
+                                timestamp=datetime.now(
+                                    timezone.utc
+                                ).isoformat(),
                                 unit=unit,
                                 epoch=epoch_val,
                                 step=step_val,
@@ -549,7 +548,9 @@ class ReceiptLayoutLMTrainer:
                                     job_id=self.job_id,
                                     metric_name="confusion_matrix",
                                     value=cm_data,
-                                    timestamp=datetime.now().isoformat(),
+                                    timestamp=datetime.now(
+                                        timezone.utc
+                                    ).isoformat(),
                                     unit="matrix",
                                     epoch=epoch_val,
                                     step=step_val,
@@ -716,7 +717,7 @@ class ReceiptLayoutLMTrainer:
 
             cfg_log = JobLog(
                 job_id=job.job_id,
-                timestamp=datetime.now().isoformat(),
+                timestamp=datetime.now(timezone.utc).isoformat(),
                 log_level="INFO",
                 message=json.dumps(
                     {"type": "run_config", "data": run_payload}
@@ -727,7 +728,7 @@ class ReceiptLayoutLMTrainer:
 
             # Write dataset quality metrics as individual JobMetric records
             dataset_metrics: List[JobMetric] = []
-            ts = datetime.now().isoformat()
+            ts = datetime.now(timezone.utc).isoformat()
 
             # Training set metrics
             if "train" in dataset_counts:
@@ -1171,7 +1172,7 @@ class ReceiptLayoutLMTrainer:
 
             summary_log = JobLog(
                 job_id=job.job_id,
-                timestamp=datetime.now().isoformat(),
+                timestamp=datetime.now(timezone.utc).isoformat(),
                 log_level="INFO",
                 message=json.dumps(summary_payload),
                 source="receipt_layoutlm.trainer",
@@ -1371,7 +1372,7 @@ class ReceiptLayoutLMTrainer:
                 print(
                     f"📤 Syncing run directory to s3://{bucket}/{run_prefix}"
                 )
-                for root, dirs, files in os.walk(output_dir):
+                for root, _dirs, files in os.walk(output_dir):
                     for file in files:
                         local_path = os.path.join(root, file)
                         # Get relative path from output_dir
@@ -1400,7 +1401,7 @@ class ReceiptLayoutLMTrainer:
                                 f"📤 Syncing best checkpoint to s3://{bucket}/{run_prefix}best/"
                             )
                             best_prefix = f"{run_prefix}best/"
-                            for root, dirs, files in os.walk(best_checkpoint):
+                            for root, _dirs, files in os.walk(best_checkpoint):
                                 for file in files:
                                     local_path = os.path.join(root, file)
                                     rel_path = os.path.relpath(
@@ -1546,7 +1547,7 @@ class ReceiptLayoutLMTrainer:
                 export_id=export_id,
                 job_id=job.job_id,
                 model_s3_uri=model_s3_uri,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
                 status=CoreMLExportStatus.PENDING.value,
                 quantize=quantize,
                 output_s3_prefix=output_s3_prefix,

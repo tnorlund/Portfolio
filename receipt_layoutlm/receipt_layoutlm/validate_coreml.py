@@ -23,8 +23,8 @@ class ValidationResult:
     matching_labels: int
     label_agreement_rate: float
 
-    # Per-label breakdown
-    per_label_agreement: dict  # {label: (matches, total, rate)}
+    # Per-label breakdown: {label: (matches, total, rate)}
+    per_label_agreement: Dict[str, Tuple[int, int, float]]
 
     # Confidence comparison
     avg_confidence_diff: float
@@ -34,8 +34,8 @@ class ValidationResult:
     avg_logit_rmse: float
     max_logit_rmse: float
 
-    # Mismatches for analysis
-    mismatches: List[dict]  # [{token, pytorch_label, coreml_label, ...}]
+    # Mismatches for analysis: [{token, pytorch_label, coreml_label, ...}]
+    mismatches: List[Dict[str, Any]]
 
     def __str__(self) -> str:
         lines = [
@@ -168,14 +168,12 @@ def validate_coreml(
         )
 
         # Compare
-        for i, (tok, pt_lbl, cm_lbl, pt_conf, cm_conf) in enumerate(
-            zip(
-                tokens,
-                pytorch_labels,
-                coreml_labels,
-                pytorch_confs,
-                coreml_confs,
-            )
+        for tok, pt_lbl, cm_lbl, pt_conf, cm_conf in zip(
+            tokens,
+            pytorch_labels,
+            coreml_labels,
+            pytorch_confs,
+            coreml_confs,
         ):
             all_tokens.append(tok)
             all_pytorch_labels.append(pt_lbl)

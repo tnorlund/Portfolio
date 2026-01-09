@@ -15,7 +15,7 @@ import os
 import sys
 import tempfile
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
@@ -209,13 +209,13 @@ def update_export_status(
     try:
         export_job = dynamo_client.get_coreml_export_job(export_id)
         export_job.status = status
-        export_job.updated_at = datetime.utcnow()
+        export_job.updated_at = datetime.now(timezone.utc)
 
         if status in (
             CoreMLExportStatus.SUCCEEDED.value,
             CoreMLExportStatus.FAILED.value,
         ):
-            export_job.completed_at = datetime.utcnow()
+            export_job.completed_at = datetime.now(timezone.utc)
 
         if error_message:
             export_job.error_message = error_message
