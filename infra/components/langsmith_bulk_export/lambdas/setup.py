@@ -32,10 +32,10 @@ def _get_s3_credentials() -> dict[str, str]:
         response = secretsmanager.get_secret_value(SecretId=secret_arn)
         return json.loads(response["SecretString"])
     except secretsmanager.exceptions.ResourceNotFoundException:
-        logger.error("Secret not found: %s", secret_arn)
+        logger.exception("Secret not found: %s", secret_arn)
         raise
     except json.JSONDecodeError:
-        logger.error("Invalid JSON in secret: %s", secret_arn)
+        logger.exception("Invalid JSON in secret: %s", secret_arn)
         raise
     except Exception:
         logger.exception("Error retrieving credentials from %s", secret_arn)
@@ -113,7 +113,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code", "Unknown")
         if error_code == "NoSuchBucket":
-            logger.error("Bucket does not exist: %s", bucket_name)
+            logger.exception("Bucket does not exist: %s", bucket_name)
             return {
                 "statusCode": 404,
                 "message": f"Bucket does not exist: {bucket_name}",

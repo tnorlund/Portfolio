@@ -46,11 +46,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         Dict with export_id and status
     """
     # Get config from event or fall back to environment variables
-    api_key = event.get("api_key") or os.environ["LANGCHAIN_API_KEY"]
+    api_key = event.get("api_key") or os.environ.get("LANGCHAIN_API_KEY")
     tenant_id = event.get("tenant_id") or os.environ.get("LANGSMITH_TENANT_ID")
-    project_name = event.get("project_name") or os.environ.get(
-        "LANGSMITH_PROJECT"
-    )
+    project_name = event.get("project_name") or os.environ.get("LANGSMITH_PROJECT")
     stack = os.environ.get("STACK", "dev")
 
     # Get parameters from event or use defaults
@@ -58,15 +56,19 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     project_id = event.get("project_id")
     destination_id = event.get("destination_id")
 
+    if not api_key:
+        return {
+            "statusCode": 400,
+            "message": "api_key required (via event or LANGCHAIN_API_KEY env var)",
+        }
+
     if not tenant_id:
         return {
             "statusCode": 400,
             "message": "tenant_id required (via event or LANGSMITH_TENANT_ID env var)",
         }
 
-    logger.info(
-        f"Triggering bulk export for project: {project_name or project_id}"
-    )
+    logger.info(f"Triggering bulk export for project: {project_name or project_id}")
     logger.info(f"Tenant ID: {tenant_id}")
     logger.info(f"Days back: {days_back}")
 
@@ -146,9 +148,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(days=days_back)
 
-    logger.info(
-        f"Export range: {start_time.isoformat()} to {end_time.isoformat()}"
-    )
+    logger.info(f"Export range: {start_time.isoformat()} to {end_time.isoformat()}")
 
     # Default export fields for visualization
     default_export_fields = [
@@ -191,9 +191,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         if response.status not in (200, 201, 202):
             error_msg = response.data.decode("utf-8")
-            logger.error(
-                f"Failed to trigger export: {response.status} - {error_msg}"
-            )
+            logger.error(f"Failed to trigger export: {response.status} - {error_msg}")
             return {
                 "statusCode": response.status,
                 "message": f"Failed to trigger export: {error_msg}",

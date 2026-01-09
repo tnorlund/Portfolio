@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
@@ -95,6 +96,29 @@ class BulkExportManager:
         self.client = client
         self.destination_id = destination_id
 
+    def _parse_export_job(self, data: dict[str, Any]) -> ExportJob:
+        """Parse API response into ExportJob."""
+        return ExportJob(
+            id=data["id"],
+            bulk_export_destination_id=data["bulk_export_destination_id"],
+            session_id=data.get("session_id"),
+            status=ExportStatus(data["status"]),
+            start_time=datetime.fromisoformat(
+                data["start_time"].replace("Z", "+00:00")
+            ),
+            end_time=datetime.fromisoformat(data["end_time"].replace("Z", "+00:00")),
+            created_at=datetime.fromisoformat(
+                data["created_at"].replace("Z", "+00:00")
+            ),
+            completed_at=(
+                datetime.fromisoformat(data["completed_at"].replace("Z", "+00:00"))
+                if data.get("completed_at")
+                else None
+            ),
+            error_message=data.get("error_message"),
+            runs_exported=data.get("runs_exported"),
+        )
+
     async def atrigger_export(
         self,
         project_id: Optional[str] = None,
@@ -147,30 +171,7 @@ class BulkExportManager:
             raise LangSmithAPIError(response.status_code, response.text)
 
         data = response.json()
-        job = ExportJob(
-            id=data["id"],
-            bulk_export_destination_id=data["bulk_export_destination_id"],
-            session_id=data.get("session_id"),
-            status=ExportStatus(data["status"]),
-            start_time=datetime.fromisoformat(
-                data["start_time"].replace("Z", "+00:00")
-            ),
-            end_time=datetime.fromisoformat(
-                data["end_time"].replace("Z", "+00:00")
-            ),
-            created_at=datetime.fromisoformat(
-                data["created_at"].replace("Z", "+00:00")
-            ),
-            completed_at=(
-                datetime.fromisoformat(
-                    data["completed_at"].replace("Z", "+00:00")
-                )
-                if data.get("completed_at")
-                else None
-            ),
-            error_message=data.get("error_message"),
-            runs_exported=data.get("runs_exported"),
-        )
+        job = self._parse_export_job(data)
 
         logger.info("Export job created: %s (status=%s)", job.id, job.status)
         return job
@@ -193,30 +194,7 @@ class BulkExportManager:
             raise LangSmithAPIError(response.status_code, response.text)
 
         data = response.json()
-        return ExportJob(
-            id=data["id"],
-            bulk_export_destination_id=data["bulk_export_destination_id"],
-            session_id=data.get("session_id"),
-            status=ExportStatus(data["status"]),
-            start_time=datetime.fromisoformat(
-                data["start_time"].replace("Z", "+00:00")
-            ),
-            end_time=datetime.fromisoformat(
-                data["end_time"].replace("Z", "+00:00")
-            ),
-            created_at=datetime.fromisoformat(
-                data["created_at"].replace("Z", "+00:00")
-            ),
-            completed_at=(
-                datetime.fromisoformat(
-                    data["completed_at"].replace("Z", "+00:00")
-                )
-                if data.get("completed_at")
-                else None
-            ),
-            error_message=data.get("error_message"),
-            runs_exported=data.get("runs_exported"),
-        )
+        return self._parse_export_job(data)
 
     async def await_completion(
         self,
@@ -237,8 +215,8 @@ class BulkExportManager:
         Raises:
             TimeoutError: If export doesn't complete within timeout.
         """
-        elapsed = 0
-        while elapsed < timeout:
+        start = time.monotonic()
+        while (time.monotonic() - start) < timeout:
             job = await self.aget_export_status(export_id)
 
             if job.status == ExportStatus.COMPLETED:
@@ -250,11 +228,10 @@ class BulkExportManager:
                 return job
 
             if job.status == ExportStatus.FAILED:
-                logger.error(
-                    "Export failed: %s - %s", job.id, job.error_message
-                )
+                logger.error("Export failed: %s - %s", job.id, job.error_message)
                 return job
 
+            elapsed = int(time.monotonic() - start)
             logger.debug(
                 "Export %s status: %s (elapsed=%ds)",
                 job.id,
@@ -262,11 +239,8 @@ class BulkExportManager:
                 elapsed,
             )
             await asyncio.sleep(poll_interval)
-            elapsed += poll_interval
 
-        raise TimeoutError(
-            f"Export {export_id} did not complete within {timeout}s"
-        )
+        raise TimeoutError(f"Export {export_id} did not complete within {timeout}s")
 
     async def alist_exports(self, limit: int = 20) -> list[ExportJob]:
         """List recent bulk exports.
@@ -288,38 +262,7 @@ class BulkExportManager:
 
             raise LangSmithAPIError(response.status_code, response.text)
 
-        jobs = []
-        for data in response.json():
-            jobs.append(
-                ExportJob(
-                    id=data["id"],
-                    bulk_export_destination_id=data[
-                        "bulk_export_destination_id"
-                    ],
-                    session_id=data.get("session_id"),
-                    status=ExportStatus(data["status"]),
-                    start_time=datetime.fromisoformat(
-                        data["start_time"].replace("Z", "+00:00")
-                    ),
-                    end_time=datetime.fromisoformat(
-                        data["end_time"].replace("Z", "+00:00")
-                    ),
-                    created_at=datetime.fromisoformat(
-                        data["created_at"].replace("Z", "+00:00")
-                    ),
-                    completed_at=(
-                        datetime.fromisoformat(
-                            data["completed_at"].replace("Z", "+00:00")
-                        )
-                        if data.get("completed_at")
-                        else None
-                    ),
-                    error_message=data.get("error_message"),
-                    runs_exported=data.get("runs_exported"),
-                )
-            )
-
-        return jobs
+        return [self._parse_export_job(data) for data in response.json()]
 
     # Sync wrappers
 
@@ -338,9 +281,7 @@ class BulkExportManager:
         timeout: int = 3600,
     ) -> ExportJob:
         """Wait for export completion (sync wrapper)."""
-        return asyncio.run(
-            self.await_completion(export_id, poll_interval, timeout)
-        )
+        return asyncio.run(self.await_completion(export_id, poll_interval, timeout))
 
     def list_exports(self, limit: int = 20) -> list[ExportJob]:
         """List recent exports (sync wrapper)."""

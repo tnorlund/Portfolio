@@ -70,9 +70,7 @@ class TraceIndex:
         """
         return self.children_by_parent.get(parent_id, [])
 
-    def get_children_by_name(
-        self, parent_id: str
-    ) -> dict[str, dict[str, Any]]:
+    def get_children_by_name(self, parent_id: str) -> dict[str, dict[str, Any]]:
         """Get children mapped by name for O(1) lookup.
 
         Args:
@@ -82,9 +80,7 @@ class TraceIndex:
             Dict mapping trace name to trace dict.
         """
         children = self.get_children(parent_id)
-        return {
-            name: c for c in children if (name := c.get("name")) is not None
-        }
+        return {name: c for c in children if (name := c.get("name")) is not None}
 
 
 def extract_metadata(trace: dict[str, Any]) -> dict[str, Any]:
@@ -264,7 +260,10 @@ def load_s3_result(
     try:
         response = s3_client.get_object(Bucket=bucket, Key=key)
         return json.loads(response["Body"].read().decode("utf-8"))
+    except s3_client.exceptions.NoSuchKey:
+        return None
     except Exception:
+        logger.debug("Failed to load s3://%s/%s", bucket, key, exc_info=True)
         return None
 
 
