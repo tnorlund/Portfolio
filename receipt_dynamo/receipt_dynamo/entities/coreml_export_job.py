@@ -69,7 +69,9 @@ class CoreMLExportJob:
             if self.quantize not in valid_quantize:
                 raise ValueError(f"quantize must be one of {valid_quantize}")
 
-        if self.updated_at is not None and not isinstance(self.updated_at, datetime):
+        if self.updated_at is not None and not isinstance(
+            self.updated_at, datetime
+        ):
             raise ValueError("updated_at must be a datetime or None")
 
         if self.completed_at is not None and not isinstance(
@@ -85,7 +87,9 @@ class CoreMLExportJob:
         if self.export_duration_seconds is not None and not isinstance(
             self.export_duration_seconds, (int, float)
         ):
-            raise ValueError("export_duration_seconds must be a number or None")
+            raise ValueError(
+                "export_duration_seconds must be a number or None"
+            )
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -158,7 +162,9 @@ class CoreMLExportJob:
             item["model_size_bytes"] = {"NULL": True}
 
         if self.export_duration_seconds is not None:
-            item["export_duration_seconds"] = {"N": str(self.export_duration_seconds)}
+            item["export_duration_seconds"] = {
+                "N": str(self.export_duration_seconds)
+            }
         else:
             item["export_duration_seconds"] = {"NULL": True}
 
@@ -353,4 +359,6 @@ def item_to_coreml_export_job(item: Dict[str, Any]) -> CoreMLExportJob:
             error_message=error_message,
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to CoreMLExportJob: {e}") from e
+        raise ValueError(
+            f"Error converting item to CoreMLExportJob: {e}"
+        ) from e

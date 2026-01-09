@@ -55,12 +55,16 @@ class ValidationResult:
             "",
             "Per-label agreement:",
         ]
-        for label, (matches, total, rate) in sorted(self.per_label_agreement.items()):
+        for label, (matches, total, rate) in sorted(
+            self.per_label_agreement.items()
+        ):
             lines.append(f"  {label:20s}: {rate:.4f} ({matches}/{total})")
 
         if self.mismatches:
             lines.append("")
-            lines.append(f"Sample mismatches (showing first 10 of {len(self.mismatches)}):")
+            lines.append(
+                f"Sample mismatches (showing first 10 of {len(self.mismatches)}):"
+            )
             for m in self.mismatches[:10]:
                 lines.append(
                     f"  '{m['token']}': PyTorch={m['pytorch_label']} "
@@ -112,11 +116,16 @@ def validate_coreml(
         ValidationResult with comparison metrics.
     """
     import torch
-    from transformers import LayoutLMForTokenClassification, LayoutLMTokenizerFast
+    from transformers import (
+        LayoutLMForTokenClassification,
+        LayoutLMTokenizerFast,
+    )
 
     # Load PyTorch model
     print(f"Loading PyTorch model from {checkpoint_dir}...")
-    pytorch_model = LayoutLMForTokenClassification.from_pretrained(checkpoint_dir)
+    pytorch_model = LayoutLMForTokenClassification.from_pretrained(
+        checkpoint_dir
+    )
     pytorch_model.eval()
     tokenizer = LayoutLMTokenizerFast.from_pretrained(checkpoint_dir)
 
@@ -160,7 +169,13 @@ def validate_coreml(
 
         # Compare
         for i, (tok, pt_lbl, cm_lbl, pt_conf, cm_conf) in enumerate(
-            zip(tokens, pytorch_labels, coreml_labels, pytorch_confs, coreml_confs)
+            zip(
+                tokens,
+                pytorch_labels,
+                coreml_labels,
+                pytorch_confs,
+                coreml_confs,
+            )
         ):
             all_tokens.append(tok)
             all_pytorch_labels.append(pt_lbl)
@@ -169,30 +184,39 @@ def validate_coreml(
             all_coreml_confs.append(cm_conf)
 
             if pt_lbl != cm_lbl:
-                mismatches.append({
-                    "token": tok,
-                    "pytorch_label": pt_lbl,
-                    "coreml_label": cm_lbl,
-                    "pytorch_conf": pt_conf,
-                    "coreml_conf": cm_conf,
-                })
+                mismatches.append(
+                    {
+                        "token": tok,
+                        "pytorch_label": pt_lbl,
+                        "coreml_label": cm_lbl,
+                        "pytorch_conf": pt_conf,
+                        "coreml_conf": cm_conf,
+                    }
+                )
 
         # Logit RMSE (compare raw logits before softmax)
         if pytorch_logits is not None and coreml_logits is not None:
             min_len = min(len(pytorch_logits), len(coreml_logits))
-            for pt_log, cm_log in zip(pytorch_logits[:min_len], coreml_logits[:min_len]):
-                rmse = np.sqrt(np.mean((np.array(pt_log) - np.array(cm_log)) ** 2))
+            for pt_log, cm_log in zip(
+                pytorch_logits[:min_len], coreml_logits[:min_len]
+            ):
+                rmse = np.sqrt(
+                    np.mean((np.array(pt_log) - np.array(cm_log)) ** 2)
+                )
                 all_logit_rmses.append(rmse)
 
     # Compute metrics
     total = len(all_pytorch_labels)
-    matches = sum(1 for p, c in zip(all_pytorch_labels, all_coreml_labels) if p == c)
+    matches = sum(
+        1 for p, c in zip(all_pytorch_labels, all_coreml_labels) if p == c
+    )
 
     # Per-label breakdown
     per_label = {}
     for label in set(all_pytorch_labels):
         label_matches = sum(
-            1 for p, c in zip(all_pytorch_labels, all_coreml_labels)
+            1
+            for p, c in zip(all_pytorch_labels, all_coreml_labels)
             if p == label and p == c
         )
         label_total = sum(1 for p in all_pytorch_labels if p == label)
@@ -200,7 +224,9 @@ def validate_coreml(
         per_label[label] = (label_matches, label_total, rate)
 
     # Confidence diffs
-    conf_diffs = [abs(p - c) for p, c in zip(all_pytorch_confs, all_coreml_confs)]
+    conf_diffs = [
+        abs(p - c) for p, c in zip(all_pytorch_confs, all_coreml_confs)
+    ]
 
     return ValidationResult(
         total_tokens=total,
@@ -220,7 +246,9 @@ def _load_coreml_model(bundle_dir: str):
     try:
         import coremltools as ct
     except ImportError as e:
-        raise ImportError("coremltools required: pip install coremltools") from e
+        raise ImportError(
+            "coremltools required: pip install coremltools"
+        ) from e
 
     bundle_path = Path(bundle_dir)
     mlpackage_path = bundle_path / "LayoutLM.mlpackage"
@@ -302,7 +330,11 @@ def _pytorch_inference(
 
 
 def _coreml_inference(
-    model, tokenizer, tokens: List[str], bboxes: List[List[int]], id2label: dict
+    model,
+    tokenizer,
+    tokens: List[str],
+    bboxes: List[List[int]],
+    id2label: dict,
 ) -> Tuple[List[str], List[float], List[List[float]]]:
     """Run CoreML inference and return labels, confidences, and logits."""
     import numpy as np
@@ -328,17 +360,21 @@ def _coreml_inference(
 
     # Prepare inputs for CoreML
     input_ids = np.array(enc["input_ids"], dtype=np.int32).reshape(1, seq_len)
-    attention_mask = np.array(enc["attention_mask"], dtype=np.int32).reshape(1, seq_len)
+    attention_mask = np.array(enc["attention_mask"], dtype=np.int32).reshape(
+        1, seq_len
+    )
     bbox_array = np.array(bbox_aligned, dtype=np.int32).reshape(1, seq_len, 4)
     token_type_ids = np.zeros((1, seq_len), dtype=np.int32)
 
     # Run CoreML
-    prediction = model.predict({
-        "input_ids": input_ids,
-        "attention_mask": attention_mask,
-        "bbox": bbox_array,
-        "token_type_ids": token_type_ids,
-    })
+    prediction = model.predict(
+        {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "bbox": bbox_array,
+            "token_type_ids": token_type_ids,
+        }
+    )
 
     # Get logits
     logits = prediction["logits"][0]  # [seq_len, num_labels]
@@ -389,7 +425,11 @@ def _load_test_samples(
     if dynamo_table:
         try:
             from receipt_dynamo import DynamoClient
-            from .data_loader import _box_from_word, _normalize_box_from_extents
+
+            from .data_loader import (
+                _box_from_word,
+                _normalize_box_from_extents,
+            )
 
             dyn = DynamoClient(table_name=dynamo_table, region=region)
 
@@ -406,7 +446,9 @@ def _load_test_samples(
                 receipts[key] = receipts.get(key, 0) + 1
 
             samples = []
-            for (image_id, receipt_id), _ in list(receipts.items())[:num_samples]:
+            for (image_id, receipt_id), _ in list(receipts.items())[
+                :num_samples
+            ]:
                 try:
                     details = dyn.get_receipt_details(image_id, receipt_id)
                     words = details.words
@@ -423,7 +465,9 @@ def _load_test_samples(
                     # Normalize
                     tokens = [w.text for w in words]
                     bboxes = [
-                        _normalize_box_from_extents(x0, y0, x1, y1, max_x, max_y)
+                        _normalize_box_from_extents(
+                            x0, y0, x1, y1, max_x, max_y
+                        )
                         for x0, y0, x1, y1 in raw_boxes
                     ]
 
@@ -447,9 +491,23 @@ def _generate_synthetic_samples(num_samples: int) -> List[dict]:
 
     samples = []
     receipt_words = [
-        "WALMART", "STORE", "#123", "123", "MAIN", "ST",
-        "ITEM", "1", "$", "5.99", "SUBTOTAL", "TAX", "TOTAL",
-        "VISA", "****1234", "THANK", "YOU",
+        "WALMART",
+        "STORE",
+        "#123",
+        "123",
+        "MAIN",
+        "ST",
+        "ITEM",
+        "1",
+        "$",
+        "5.99",
+        "SUBTOTAL",
+        "TAX",
+        "TOTAL",
+        "VISA",
+        "****1234",
+        "THANK",
+        "YOU",
     ]
 
     for _ in range(num_samples):

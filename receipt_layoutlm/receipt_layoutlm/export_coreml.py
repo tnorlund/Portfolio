@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 class CoreMLExportError(Exception):
@@ -111,7 +110,9 @@ def export_coreml(
     # Create sample inputs for tracing
     # Use a typical sequence length for tracing (128 is a good middle ground between min and max)
     sample_seq_len = 128
-    sample_input_ids = torch.randint(0, tokenizer.vocab_size, (1, sample_seq_len))
+    sample_input_ids = torch.randint(
+        0, tokenizer.vocab_size, (1, sample_seq_len)
+    )
     sample_attention_mask = torch.ones(1, sample_seq_len, dtype=torch.long)
     # LayoutLM uses normalized coordinates in [0, 1000] range for bboxes
     # Format is [x1, y1, x2, y2] where x2 >= x1 and y2 >= y1
@@ -148,7 +149,9 @@ def export_coreml(
     )
 
     # Determine compute precision - float16 must be applied at conversion time
-    compute_precision = ct.precision.FLOAT16 if quantize == "float16" else ct.precision.FLOAT32
+    compute_precision = (
+        ct.precision.FLOAT16 if quantize == "float16" else ct.precision.FLOAT32
+    )
     if quantize == "float16":
         print("Applying float16 precision at conversion time...")
 
@@ -200,14 +203,20 @@ def export_coreml(
             op_config = ct.optimize.coreml.OpLinearQuantizerConfig(
                 mode="linear_symmetric", dtype="int8"
             )
-            config = ct.optimize.coreml.OptimizationConfig(global_config=op_config)
-            mlmodel = ct.optimize.coreml.linear_quantize_weights(mlmodel, config)
+            config = ct.optimize.coreml.OptimizationConfig(
+                global_config=op_config
+            )
+            mlmodel = ct.optimize.coreml.linear_quantize_weights(
+                mlmodel, config
+            )
         elif quantize == "int4":
             # Use palettization for INT4-like compression
             op_config = ct.optimize.coreml.OpPalettizerConfig(
                 mode="kmeans", nbits=4
             )
-            config = ct.optimize.coreml.OptimizationConfig(global_config=op_config)
+            config = ct.optimize.coreml.OptimizationConfig(
+                global_config=op_config
+            )
             mlmodel = ct.optimize.coreml.palettize_weights(mlmodel, config)
         else:
             print(f"Warning: Unknown quantization mode '{quantize}', skipping")
@@ -239,7 +248,7 @@ def export_coreml(
         print(f"Copied config.json to {config_dst}")
     else:
         # Save config manually with sorted id2label
-        with open(config_dst, "w") as f:
+        with open(config_dst, "w", encoding="utf-8") as f:
             json.dump(
                 {
                     "id2label": {str(k): id2label[k] for k in sorted_ids},
@@ -255,7 +264,7 @@ def export_coreml(
 
     # Create label_map.json for easy label lookup
     label_map_path = output_path / "label_map.json"
-    with open(label_map_path, "w") as f:
+    with open(label_map_path, "w", encoding="utf-8") as f:
         json.dump(
             {
                 "id2label": {str(k): id2label[k] for k in sorted_ids},
@@ -418,7 +427,9 @@ if __name__ == "__main__":
         parser.error("Either --checkpoint-dir or --s3-uri is required")
 
     if args.min_seq_length > args.max_seq_length:
-        parser.error("--min-seq-length cannot be greater than --max-seq-length")
+        parser.error(
+            "--min-seq-length cannot be greater than --max-seq-length"
+        )
 
     if args.s3_uri:
         export_from_s3(

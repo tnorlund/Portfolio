@@ -3,14 +3,16 @@ import json
 import os
 from typing import Dict, List, Optional
 
-from .config import DataConfig, TrainingConfig, MERGE_PRESETS
-from .trainer import ReceiptLayoutLMTrainer
-from .inference import LayoutLMInference
+from .config import MERGE_PRESETS, DataConfig, TrainingConfig
 from .export_coreml import export_coreml, export_from_s3
+from .inference import LayoutLMInference
+from .trainer import ReceiptLayoutLMTrainer
 from .validate_coreml import validate_coreml
 
 
-def _build_label_merges(args: argparse.Namespace) -> Optional[Dict[str, List[str]]]:
+def _build_label_merges(
+    args: argparse.Namespace,
+) -> Optional[Dict[str, List[str]]]:
     """Build label_merges dict from CLI arguments.
 
     Priority order:
@@ -40,7 +42,7 @@ def _build_label_merges(args: argparse.Namespace) -> Optional[Dict[str, List[str
             if not isinstance(explicit_merges, dict):
                 raise SystemExit(
                     "--label-merges must be a JSON object, e.g., "
-                    "'{\"AMOUNT\": [\"LINE_TOTAL\", \"SUBTOTAL\"]}'"
+                    '\'{"AMOUNT": ["LINE_TOTAL", "SUBTOTAL"]}\''
                 )
             result.update(explicit_merges)
         except json.JSONDecodeError as e:
@@ -153,7 +155,7 @@ def main() -> None:
         default=None,
         help=(
             "JSON string of label merges. E.g., "
-            "'{\"AMOUNT\": [\"LINE_TOTAL\", \"SUBTOTAL\", \"TAX\", \"GRAND_TOTAL\"]}'. "
+            '\'{"AMOUNT": ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"]}\'. '
             "Overrides legacy merge flags. Can be combined with --merge-preset."
         ),
     )
@@ -431,9 +433,7 @@ def main() -> None:
         )
     elif args.cmd == "export-coreml":
         if not args.checkpoint_dir and not args.s3_uri:
-            raise SystemExit(
-                "Either --checkpoint-dir or --s3-uri is required"
-            )
+            raise SystemExit("Either --checkpoint-dir or --s3-uri is required")
 
         if args.s3_uri:
             bundle_path = export_from_s3(
@@ -464,6 +464,7 @@ def main() -> None:
 
         if args.output_json:
             import json as _json
+
             with open(args.output_json, "w") as f:
                 _json.dump(result.to_dict(), f, indent=2)
             print(f"\nDetailed results saved to {args.output_json}")

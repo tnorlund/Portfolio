@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING
 
 import boto3
-
 from receipt_dynamo.data._ai_usage_metric import _AIUsageMetric
 from receipt_dynamo.data._batch_summary import _BatchSummary
 from receipt_dynamo.data._compaction_lock import _CompactionLock

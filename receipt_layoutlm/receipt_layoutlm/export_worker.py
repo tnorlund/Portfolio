@@ -91,16 +91,16 @@ def upload_to_s3(local_path: str, s3_prefix: str) -> str:
         print(f"  Uploading {local.name}...")
         s3.upload_file(str(local), bucket, key)
         return f"s3://{bucket}/{key}"
-    else:
-        # Upload directory recursively
-        for file_path in local.rglob("*"):
-            if file_path.is_file():
-                rel_path = file_path.relative_to(local)
-                key = prefix + str(rel_path)
-                print(f"  Uploading {rel_path}...")
-                s3.upload_file(str(file_path), bucket, key)
 
-        return f"s3://{bucket}/{prefix}"
+    # Upload directory recursively
+    for file_path in local.rglob("*"):
+        if file_path.is_file():
+            rel_path = file_path.relative_to(local)
+            key = prefix + str(rel_path)
+            print(f"  Uploading {rel_path}...")
+            s3.upload_file(str(file_path), bucket, key)
+
+    return f"s3://{bucket}/{prefix}"
 
 
 def get_directory_size(path: str) -> int:
@@ -250,7 +250,9 @@ def run_worker(
         try:
             from receipt_dynamo import DynamoClient
 
-            dynamo_client = DynamoClient(table_name=dynamo_table, region=region)
+            dynamo_client = DynamoClient(
+                table_name=dynamo_table, region=region
+            )
             print(f"Connected to DynamoDB table: {dynamo_table}")
         except Exception as e:
             print(f"Warning: Could not connect to DynamoDB: {e}")
@@ -319,7 +321,9 @@ def run_worker(
                     ReceiptHandle=receipt_handle,
                 )
 
-                print(f"Job {export_id} completed with status: {result['status']}")
+                print(
+                    f"Job {export_id} completed with status: {result['status']}"
+                )
 
             if run_once:
                 print("Exiting (--once mode)")

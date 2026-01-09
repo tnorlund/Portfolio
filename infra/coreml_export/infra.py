@@ -8,7 +8,6 @@ Since coremltools only runs on macOS, we use a two-queue pattern:
 
 import json
 import os
-from typing import cast
 
 import pulumi
 import pulumi_aws as aws

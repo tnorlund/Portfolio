@@ -62,7 +62,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     return result
 
 
-def process_export_result(dynamo: DynamoClient, message: Dict[str, Any]) -> None:
+def process_export_result(
+    dynamo: DynamoClient, message: Dict[str, Any]
+) -> None:
     """Process a single export result message.
 
     Args:
@@ -73,7 +75,9 @@ def process_export_result(dynamo: DynamoClient, message: Dict[str, Any]) -> None
     job_id = message["job_id"]
     status = message["status"]
 
-    print(f"Processing export result: {export_id} for job {job_id}, status={status}")
+    print(
+        f"Processing export result: {export_id} for job {job_id}, status={status}"
+    )
 
     # Get and update the export job record
     try:
@@ -91,7 +95,9 @@ def process_export_result(dynamo: DynamoClient, message: Dict[str, Any]) -> None
         export_job.model_size_bytes = message.get("model_size_bytes")
     else:
         export_job.status = CoreMLExportStatus.FAILED.value
-        export_job.error_message = message.get("error_message", "Unknown error")
+        export_job.error_message = message.get(
+            "error_message", "Unknown error"
+        )
 
     export_job.export_duration_seconds = message.get("export_duration_seconds")
     export_job.updated_at = datetime.utcnow()
@@ -107,7 +113,9 @@ def process_export_result(dynamo: DynamoClient, message: Dict[str, Any]) -> None
             if job.results is None:
                 job.results = {}
             job.results["coreml_bundle_s3_uri"] = export_job.bundle_s3_uri
-            job.results["coreml_mlpackage_s3_uri"] = export_job.mlpackage_s3_uri
+            job.results["coreml_mlpackage_s3_uri"] = (
+                export_job.mlpackage_s3_uri
+            )
             dynamo.update_job(job)
             print(f"Updated job {job_id} with CoreML bundle path")
         except Exception as e:

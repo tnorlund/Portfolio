@@ -1,6 +1,5 @@
-from dataclasses import dataclass, field
-from typing import Optional, List, Dict
-
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
 # Predefined merge presets for common label grouping scenarios
 MERGE_PRESETS: Dict[str, Dict[str, List[str]]] = {

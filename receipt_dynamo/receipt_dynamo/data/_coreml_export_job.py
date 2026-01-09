@@ -46,7 +46,9 @@ class _CoreMLExportJob(
         )
 
     @handle_dynamodb_errors("add_coreml_export_jobs")
-    def add_coreml_export_jobs(self, export_jobs: list[CoreMLExportJob]) -> None:
+    def add_coreml_export_jobs(
+        self, export_jobs: list[CoreMLExportJob]
+    ) -> None:
         """Adds a list of CoreML export jobs to the database.
 
         Args:
@@ -57,7 +59,9 @@ class _CoreMLExportJob(
         """
         self._validate_entity_list(export_jobs, CoreMLExportJob, "export_jobs")
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=job.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=job.to_item())
+            )
             for job in export_jobs
         ]
         self._batch_write_with_retry(request_items)
@@ -76,7 +80,9 @@ class _CoreMLExportJob(
         self._validate_entity(export_job, CoreMLExportJob, "export_job")
         self._update_entity(
             export_job,
-            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("get_coreml_export_job")
@@ -120,7 +126,9 @@ class _CoreMLExportJob(
             EntityValidationError: If export_job parameters are invalid.
         """
         self._validate_entity(export_job, CoreMLExportJob, "export_job")
-        self._delete_entity(export_job, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            export_job, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("list_coreml_export_jobs")
     def list_coreml_export_jobs(
@@ -139,7 +147,9 @@ class _CoreMLExportJob(
         """
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
 
         return self._query_by_type(
             entity_type="COREML_EXPORT",
@@ -168,10 +178,14 @@ class _CoreMLExportJob(
         if status is None:
             raise EntityValidationError("status cannot be None")
         if not isinstance(status, CoreMLExportStatus):
-            raise EntityValidationError("Status must be a CoreMLExportStatus instance.")
+            raise EntityValidationError(
+                "Status must be a CoreMLExportStatus instance."
+            )
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
 
         return self._query_entities(
             index_name="GSI2",
@@ -206,7 +220,9 @@ class _CoreMLExportJob(
 
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
 
         return self._query_entities(
             index_name="GSI1",
