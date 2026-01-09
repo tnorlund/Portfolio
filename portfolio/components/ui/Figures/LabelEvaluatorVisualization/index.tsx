@@ -584,7 +584,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                 x="0"
                 y={lineItemY}
                 width={width}
-                height={Math.max(height * 0.004, 2)}
+                height={Math.max(height * 0.006, 3)}
                 fill={SCANNER_COLORS.lineItem}
                 filter="url(#scanLineGlow)"
               />
@@ -596,7 +596,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                 x="0"
                 y={metadataY}
                 width={width}
-                height={Math.max(height * 0.004, 2)}
+                height={Math.max(height * 0.006, 3)}
                 fill={SCANNER_COLORS.metadata}
                 filter="url(#scanLineGlow)"
               />
@@ -608,7 +608,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                 x="0"
                 y={geometricY}
                 width={width}
-                height={Math.max(height * 0.004, 2)}
+                height={Math.max(height * 0.006, 3)}
                 fill={SCANNER_COLORS.geometric}
                 filter="url(#scanLineGlow)"
               />
@@ -620,7 +620,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                 x="0"
                 y={financialY}
                 width={width}
-                height={Math.max(height * 0.004, 2)}
+                height={Math.max(height * 0.006, 3)}
                 fill={SCANNER_COLORS.financial}
                 filter="url(#scanLineGlow)"
               />
@@ -632,7 +632,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                 x="0"
                 y={currencyY}
                 width={width}
-                height={Math.max(height * 0.004, 2)}
+                height={Math.max(height * 0.006, 3)}
                 fill={SCANNER_COLORS.currency}
                 filter="url(#scanLineGlow)"
               />
@@ -644,7 +644,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                 x="0"
                 y={reviewY}
                 width={width}
-                height={Math.max(height * 0.004, 2)}
+                height={Math.max(height * 0.006, 3)}
                 fill={SCANNER_COLORS.review}
                 filter="url(#scanLineGlow)"
               />
