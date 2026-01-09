@@ -1014,7 +1014,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                 {
                                     "Effect": "Allow",
                                     "Action": ["emr-serverless:StartJobRun"],
-                                    "Resource": f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}",
+                                    "Resource": (
+                                        f"arn:aws:emr-serverless:{region}:{account_id}"
+                                        f":/applications/{args[0]}"
+                                    ),
                                 },
                                 {
                                     "Effect": "Allow",
@@ -1022,7 +1025,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                         "emr-serverless:GetJobRun",
                                         "emr-serverless:CancelJobRun",
                                     ],
-                                    "Resource": f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}/jobruns/*",
+                                    "Resource": (
+                                        f"arn:aws:emr-serverless:{region}:{account_id}"
+                                        f":/applications/{args[0]}/jobruns/*"
+                                    ),
                                 },
                                 # Pass role to EMR Serverless
                                 {
@@ -1031,11 +1037,13 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                     "Resource": args[1],
                                     "Condition": {
                                         "StringEquals": {
-                                            "iam:PassedToService": "emr-serverless.amazonaws.com",
+                                            "iam:PassedToService": (
+                                                "emr-serverless.amazonaws.com"
+                                            ),
                                         }
                                     },
                                 },
-                                # EventBridge rules for .sync waiter pattern
+                                # EventBridge for .sync waiter pattern
                                 {
                                     "Effect": "Allow",
                                     "Action": [
@@ -1043,7 +1051,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                         "events:PutRule",
                                         "events:DescribeRule",
                                     ],
-                                    "Resource": f"arn:aws:events:{region}:{account_id}:rule/StepFunctionsGetEventsForEMRServerlessJobRule",
+                                    "Resource": (
+                                        f"arn:aws:events:{region}:{account_id}:rule/"
+                                        "StepFunctionsGetEventsForEMRServerlessJobRule"
+                                    ),
                                 },
                             ],
                         }
@@ -1237,7 +1248,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
         phase2_concurrency = 16
 
         definition = {
-            "Comment": f"Label Evaluator Two-Phase (Phase1={phase1_concurrency}, Phase2={phase2_concurrency})",
+            "Comment": (
+                f"Label Evaluator Two-Phase "
+                f"(Phase1={phase1_concurrency}, Phase2={phase2_concurrency})"
+            ),
             "StartAt": "NormalizeInput",
             "States": {
                 # Capture original input
@@ -1956,7 +1970,20 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                 "all",
                                 "--partition-by-merchant",
                             ],
-                            "SparkSubmitParameters": f"--conf spark.archives=s3://{spark_artifacts_bucket}/spark/spark_env.tar.gz#environment --conf spark.emr-serverless.driverEnv.PYSPARK_DRIVER_PYTHON=./environment/bin/python --conf spark.emr-serverless.driverEnv.PYSPARK_PYTHON=./environment/bin/python --conf spark.executorEnv.PYSPARK_PYTHON=./environment/bin/python --conf spark.executor.cores=2 --conf spark.executor.memory=4g --conf spark.driver.cores=2 --conf spark.driver.memory=4g",
+                            "SparkSubmitParameters": (
+                                f"--conf spark.archives="
+                                f"s3://{spark_artifacts_bucket}/spark/spark_env.tar.gz#environment "
+                                "--conf spark.emr-serverless.driverEnv.PYSPARK_DRIVER_PYTHON="
+                                "./environment/bin/python "
+                                "--conf spark.emr-serverless.driverEnv.PYSPARK_PYTHON="
+                                "./environment/bin/python "
+                                "--conf spark.executorEnv.PYSPARK_PYTHON="
+                                "./environment/bin/python "
+                                "--conf spark.executor.cores=2 "
+                                "--conf spark.executor.memory=4g "
+                                "--conf spark.driver.cores=2 "
+                                "--conf spark.driver.memory=4g"
+                            ),
                         }
                     },
                     "ConfigurationOverrides": {

@@ -107,8 +107,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     workspace_info = (
         f"tenant: {tenant_id}" if tenant_id else "default workspace"
     )
-    logger.info(f"Registering bulk export destination for {workspace_info}")
-    logger.info(f"Export bucket: {bucket_name}")
+    logger.info("Registering bulk export destination for %s", workspace_info)
+    logger.info("Export bucket: %s", bucket_name)
 
     # Get S3 credentials from Secrets Manager
     s3_credentials = _get_s3_credentials()
@@ -121,7 +121,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     try:
         existing = ssm.get_parameter(Name=param_name)
         destination_id = existing["Parameter"]["Value"]
-        logger.info(f"Destination already registered: {destination_id}")
+        logger.info("Destination already registered: %s", destination_id)
         return {
             "statusCode": 200,
             "message": "Destination already registered",
@@ -153,7 +153,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "statusCode": 500,
             "message": f"Failed to get bucket location for: {bucket_name}",
         }
-    logger.info(f"Bucket region: {region}")
+    logger.info("Bucket region: %s", region)
 
     # Test that credentials work before sending to LangSmith
     # Test with the same prefix we'll use for exports
@@ -167,17 +167,17 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         # Test various operations LangSmith might use during validation
         test_key = f"{prefix}_validation_test"
         test_s3.put_object(Bucket=bucket_name, Key=test_key, Body=b"test")
-        logger.info(f"PutObject to {test_key} succeeded")
+        logger.info("PutObject to %s succeeded", test_key)
         test_s3.head_object(Bucket=bucket_name, Key=test_key)
-        logger.info(f"HeadObject for {test_key} succeeded")
+        logger.info("HeadObject for %s succeeded", test_key)
         test_s3.get_object(Bucket=bucket_name, Key=test_key)
-        logger.info(f"GetObject for {test_key} succeeded")
+        logger.info("GetObject for %s succeeded", test_key)
         test_s3.delete_object(Bucket=bucket_name, Key=test_key)
-        logger.info(f"DeleteObject for {test_key} succeeded")
+        logger.info("DeleteObject for %s succeeded", test_key)
         test_s3.head_bucket(Bucket=bucket_name)
-        logger.info(f"HeadBucket for {bucket_name} succeeded")
+        logger.info("HeadBucket for %s succeeded", bucket_name)
         test_s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix, MaxKeys=1)
-        logger.info(f"ListObjectsV2 for {prefix} succeeded")
+        logger.info("ListObjectsV2 for %s succeeded", prefix)
         logger.info("All local credential tests passed")
     except Exception as e:
         logger.exception("Local credential test failed")
@@ -217,11 +217,15 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "credentials": credentials,
     }
     logger.info(
-        f"Registering with bucket={bucket_name}, region={region}, prefix={prefix}"
+        "Registering with bucket=%s, region=%s, prefix=%s",
+        bucket_name,
+        region,
+        prefix,
     )
-    logger.info(
-        f"Request body: {json.dumps({k: v if k != 'credentials' else '***' for k, v in request_body.items()})}"
-    )
+    sanitized_body = {
+        k: v if k != "credentials" else "***" for k, v in request_body.items()
+    }
+    logger.info("Request body: %s", json.dumps(sanitized_body))
 
     try:
         headers = {
@@ -242,7 +246,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         if response.status not in (200, 201):
             error_msg = response.data.decode("utf-8")
             logger.error(
-                f"LangSmith API error: {response.status} - {error_msg}"
+                "LangSmith API error: %s - %s", response.status, error_msg
             )
             return {
                 "statusCode": response.status,
@@ -253,14 +257,14 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         destination_id = result.get("id")
 
         if not destination_id:
-            logger.error(f"No destination_id in response: {result}")
+            logger.error("No destination_id in response: %s", result)
             return {
                 "statusCode": 500,
                 "message": "No destination_id in LangSmith response",
                 "response": result,
             }
 
-        logger.info(f"Destination registered: {destination_id}")
+        logger.info("Destination registered: %s", destination_id)
 
         # Store destination_id in SSM Parameter Store (unless skip_ssm is True)
         if not skip_ssm:
@@ -274,7 +278,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 Description=description,
                 Overwrite=True,
             )
-            logger.info(f"Stored destination_id in SSM: {param_name}")
+            logger.info("Stored destination_id in SSM: %s", param_name)
         else:
             logger.info("Skipping SSM storage (skip_ssm=True)")
 

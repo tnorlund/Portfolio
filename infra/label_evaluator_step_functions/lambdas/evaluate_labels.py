@@ -471,7 +471,8 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                             },
                         )
                         logger.info(
-                            "Added ComputePatterns historical span (%.2fs, %d constellations, %d label pairs)",
+                            "Added ComputePatterns historical span "
+                            "(%.2fs, %d constellations, %d label pairs)",
                             computation_metadata.get(
                                 "computation_duration_seconds", 0
                             ),

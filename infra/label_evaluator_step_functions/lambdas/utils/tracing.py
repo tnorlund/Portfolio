@@ -553,7 +553,9 @@ def child_trace(
         TraceContext for the child span
 
     Example:
-        with child_trace("llm_call", trace_ctx, run_type="llm", inputs={"prompt": prompt}) as child_ctx:
+        with child_trace(
+            "llm_call", trace_ctx, run_type="llm", inputs={"prompt": prompt}
+        ) as child_ctx:
             response = llm.invoke(prompt)
             child_ctx.set_outputs({"response": response})
     """
@@ -1321,11 +1323,13 @@ def receipt_state_trace(
             root_dotted_order, state_run_id
         )
     else:
-        # No root_dotted_order provided - but for receipt traces where trace_id == root_run_id,
-        # we can generate a synthetic parent dotted_order. The root dotted_order format is
-        # {timestamp}{trace_id}. We use a synthetic timestamp since the parent may not exist yet.
+        # No root_dotted_order provided - but for receipt traces where
+        # trace_id == root_run_id, we can generate a synthetic parent
+        # dotted_order. The root dotted_order format is {timestamp}{trace_id}.
+        # We use a synthetic timestamp since the parent may not exist yet.
         logger.info(
-            "[receipt_state_trace] No root_dotted_order provided for %s - generating synthetic dotted_order",
+            "[receipt_state_trace] No root_dotted_order provided for %s "
+            "- generating synthetic dotted_order",
             state_name,
         )
         # Generate a synthetic parent dotted_order (pretend the root was created just before us)
@@ -1428,7 +1432,9 @@ def _generate_child_dotted_order(
     - Timestamp: YYYYMMDDTHHMMSSffffffZ (22 chars: 8+1+6+6+1)
     - Run ID: UUID with dashes (36 chars)
 
-    Example: 20251224T174151682753Z3fec4059-46c3-48e7-9abb-18a3de8277ca.20251224T175029523772Z019b517b-d893-7051-af16-c083cae44a11
+    Example:
+        20251224T174151682753Z3fec4059-46c3-48e7-9abb-18a3de8277ca.
+        20251224T175029523772Z019b517b-d893-7051-af16-c083cae44a11
     """
     now = datetime.now(timezone.utc)
     # Format: 20251224T072227945197Z (22 chars)
@@ -1485,7 +1491,8 @@ def state_trace(
     )
 
     logger.info(
-        "[state_trace v%s] Starting trace for '%s' (has_langsmith=%s, has_RunTree=%s, has_tracing_context=%s)",
+        "[state_trace v%s] Starting trace for '%s' "
+        "(has_langsmith=%s, has_RunTree=%s, has_tracing_context=%s)",
         TRACING_VERSION,
         state_name,
         HAS_LANGSMITH,

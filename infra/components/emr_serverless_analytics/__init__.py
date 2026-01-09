@@ -144,22 +144,32 @@ class EMRServerlessAnalytics(ComponentResource):
             "initial_capacities": [
                 aws.emrserverless.ApplicationInitialCapacityArgs(
                     initial_capacity_type="Driver",
-                    initial_capacity_config=aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigArgs(
-                        worker_count=1,
-                        worker_configuration=aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigWorkerConfigurationArgs(
-                            cpu="2 vCPU",
-                            memory="4 GB",
-                        ),
+                    initial_capacity_config=(
+                        aws.emrserverless
+                        .ApplicationInitialCapacityInitialCapacityConfigArgs(
+                            worker_count=1,
+                            worker_configuration=(
+                                aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigWorkerConfigurationArgs(  # pylint: disable=line-too-long
+                                    cpu="2 vCPU",
+                                    memory="4 GB",
+                                )
+                            ),
+                        )
                     ),
                 ),
                 aws.emrserverless.ApplicationInitialCapacityArgs(
                     initial_capacity_type="Executor",
-                    initial_capacity_config=aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigArgs(
-                        worker_count=4,
-                        worker_configuration=aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigWorkerConfigurationArgs(
-                            cpu="2 vCPU",
-                            memory="4 GB",
-                        ),
+                    initial_capacity_config=(
+                        aws.emrserverless
+                        .ApplicationInitialCapacityInitialCapacityConfigArgs(
+                            worker_count=4,
+                            worker_configuration=(
+                                aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigWorkerConfigurationArgs(  # pylint: disable=line-too-long
+                                    cpu="2 vCPU",
+                                    memory="4 GB",
+                                )
+                            ),
+                        )
                     ),
                 ),
             ],
@@ -274,8 +284,10 @@ class EMRServerlessAnalytics(ComponentResource):
                                     "logs:DescribeLogStreams",
                                 ],
                                 "Resource": [
-                                    f"arn:aws:logs:{region}:{account_id}:log-group:/aws/emr-serverless/*",
-                                    f"arn:aws:logs:{region}:{account_id}:log-group:/aws/emr-serverless/*:*",
+                                    f"arn:aws:logs:{region}:{account_id}"
+                                    ":log-group:/aws/emr-serverless/*",
+                                    f"arn:aws:logs:{region}:{account_id}"
+                                    ":log-group:/aws/emr-serverless/*:*",
                                 ],
                             },
                             # ECR access for custom images

@@ -169,7 +169,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
             if not patterns:
                 logger.warning(
-                    f"LLM pattern discovery failed for {merchant_name}"
+                    "LLM pattern discovery failed for %s", merchant_name
                 )
                 default_patterns = get_default_patterns(
                     merchant_name, reason="llm_discovery_failed"

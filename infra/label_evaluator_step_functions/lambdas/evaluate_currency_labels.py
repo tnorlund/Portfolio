@@ -376,7 +376,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                             logger.info("Applied decisions: %s", applied_stats)
                         else:
                             logger.warning(
-                                "DYNAMODB_TABLE_NAME not configured, skipping apply of %s invalid decisions",
+                                "DYNAMODB_TABLE_NAME not configured, "
+                                "skipping apply of %s invalid decisions",
                                 len(invalid_decisions),
                             )
 

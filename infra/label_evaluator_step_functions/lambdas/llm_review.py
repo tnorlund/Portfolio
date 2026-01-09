@@ -557,11 +557,12 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                                             BatchedReviewResponse
                                         )
                                     )
+                                    issue_count = len(issues_with_context)
                                     response: BatchedReviewResponse = (
                                         structured_invoker.invoke(
                                             [HumanMessage(content=prompt)],
                                             config={
-                                                "run_name": f"llm_review_structured:{len(issues_with_context)}_issues",
+                                                "run_name": f"llm_review_structured:{issue_count}_issues",
                                                 "metadata": {
                                                     "issue_count": len(
                                                         issues_with_context

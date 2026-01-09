@@ -448,7 +448,10 @@ def handler(event, context):
                                 "ssm:GetParameter",
                                 "ssm:DeleteParameter",
                             ],
-                            "Resource": f"arn:aws:ssm:{region}:{account_id}:parameter/langsmith/{stack}/*",
+                            "Resource": (
+                                f"arn:aws:ssm:{region}:{account_id}"
+                                f":parameter/langsmith/{stack}/*"
+                            ),
                         }
                     ],
                 }
@@ -840,8 +843,10 @@ def handler(event, context):
                                     "emr-serverless:CancelJobRun",
                                 ],
                                 "Resource": [
-                                    f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}",
-                                    f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}/jobruns/*",
+                                    f"arn:aws:emr-serverless:{region}:{account_id}"
+                                    f":/applications/{args[0]}",
+                                    f"arn:aws:emr-serverless:{region}:{account_id}"
+                                    f":/applications/{args[0]}/jobruns/*",
                                 ],
                             },
                             {
@@ -942,7 +947,8 @@ def handler(event, context):
                             "Next": "TriggerLangSmithExport",
                         },
                         # Step 2: Trigger LangSmith bulk export
-                        # Note: Lambda uses default "label-evaluator" if langchain_project not provided
+                        # Note: Lambda uses default "label-evaluator" if
+                        # langchain_project not provided
                         "TriggerLangSmithExport": {
                             "Type": "Task",
                             "Resource": args[1],
@@ -1023,9 +1029,9 @@ def handler(event, context):
                             "Error": "MaxRetriesExceeded",
                             "Cause": "Export status check exceeded 30 iterations (30 minutes)",
                         },
-                        # Step 6: Start EMR job using native Step Functions integration
-                        # Uses .sync to wait for job completion
-                        # Note: Container image has receipt_langsmith pre-installed, no archives needed
+                        # Step 6: Start EMR job using native Step Functions
+                        # integration. Uses .sync to wait for job completion.
+                        # Container image has receipt_langsmith pre-installed.
                         "StartEMRJob": {
                             "Type": "Task",
                             "Resource": "arn:aws:states:::emr-serverless:startJobRun.sync",
@@ -1036,8 +1042,23 @@ def handler(event, context):
                                 "JobDriver": {
                                     "SparkSubmit": {
                                         "EntryPoint": f"s3://{args[5]}/spark/viz_cache_job.py",
-                                        "EntryPointArguments.$": f"States.Array('--parquet-bucket', '{args[6]}', '--parquet-prefix', 'traces/', '--batch-bucket', '{args[7]}', '--cache-bucket', '{args[8]}', '--receipts-json', $.dynamo_result.receipts_s3_path)",
-                                        "SparkSubmitParameters": "--conf spark.sql.legacy.parquet.nanosAsLong=true --conf spark.executor.cores=2 --conf spark.executor.memory=4g --conf spark.executor.instances=2 --conf spark.driver.cores=2 --conf spark.driver.memory=4g",
+                                        "EntryPointArguments.$": (
+                                            f"States.Array("
+                                            f"'--parquet-bucket', '{args[6]}', "
+                                            f"'--parquet-prefix', 'traces/', "
+                                            f"'--batch-bucket', '{args[7]}', "
+                                            f"'--cache-bucket', '{args[8]}', "
+                                            f"'--receipts-json', "
+                                            f"$.dynamo_result.receipts_s3_path)"
+                                        ),
+                                        "SparkSubmitParameters": (
+                                            "--conf spark.sql.legacy.parquet.nanosAsLong=true "
+                                            "--conf spark.executor.cores=2 "
+                                            "--conf spark.executor.memory=4g "
+                                            "--conf spark.executor.instances=2 "
+                                            "--conf spark.driver.cores=2 "
+                                            "--conf spark.driver.memory=4g"
+                                        ),
                                     }
                                 },
                                 "ConfigurationOverrides": {
