@@ -279,7 +279,11 @@ class EMRServerlessDockerImage(ComponentResource):
                 "**/pyproject.toml",
                 "**/requirements.txt",
             ],
-            extra_strings={"emr_release": self.emr_release},
+            extra_strings={
+                "emr_release": self.emr_release,
+                # Include Dockerfile content so changes to generation logic trigger rebuilds
+                "dockerfile": self._generate_dockerfile(),
+            },
         )
 
     def _generate_dockerfile(self) -> str:

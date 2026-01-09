@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useInView } from "react-intersection-observer";
-import { animated, useTransition, useSpring, to, SpringValue } from "@react-spring/web";
+import { animated, useTransition, useSpring, to } from "@react-spring/web";
 import { api } from "../../../../services/api";
 import {
   LabelEvaluatorReceipt,
@@ -412,19 +412,9 @@ const DecisionTally: React.FC<DecisionTallyProps> = ({
   );
 };
 
-// Animated rect component for scan lines
-const AnimatedRect = animated('rect');
-
 interface ReceiptViewerProps {
   receipt: LabelEvaluatorReceipt;
-  scannerSpring: {
-    lineItem: SpringValue<number>;
-    metadata: SpringValue<number>;
-    geometric: SpringValue<number>;
-    financial: SpringValue<number>;
-    currency: SpringValue<number>;
-    review: SpringValue<number>;
-  };
+  scannerState: ScannerState;
   phase: Phase;
   revealedDecisions: RevealedDecision[];
   formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
@@ -433,7 +423,7 @@ interface ReceiptViewerProps {
 
 const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   receipt,
-  scannerSpring,
+  scannerState,
   phase,
   revealedDecisions,
   formatSupport,
@@ -460,23 +450,13 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
     return <div className={styles.receiptLoading}>Loading...</div>;
   }
 
-  // Interpolate scan line Y positions from animated spring values
-  const lineItemY = to(scannerSpring.lineItem, (v) => (v / 100) * height);
-  const metadataY = to(scannerSpring.metadata, (v) => (v / 100) * height);
-  const geometricY = to(scannerSpring.geometric, (v) => (v / 100) * height);
-  const financialY = to(scannerSpring.financial, (v) => (v / 100) * height);
-  const currencyY = to(scannerSpring.currency, (v) => (v / 100) * height);
-  const reviewY = to(scannerSpring.review, (v) => (v / 100) * height);
-
-  // Interpolate visibility (show only when 0 < progress < 100)
-  const lineItemVisible = to(scannerSpring.lineItem, (v) => v > 0 && v < 100 ? 1 : 0);
-  const metadataVisible = to(scannerSpring.metadata, (v) => v > 0 && v < 100 ? 1 : 0);
-  const geometricVisible = to(scannerSpring.geometric, (v) => v > 0 && v < 100 ? 1 : 0);
-  const financialVisible = to(scannerSpring.financial, (v) => v > 0 && v < 100 ? 1 : 0);
-  const currencyVisible = to(scannerSpring.currency, (v) => v > 0 && v < 100 ? 1 : 0);
-  const reviewVisible = to(scannerSpring.review, (v) => v > 0 && v < 100 ? 1 : 0);
-
-  const scanLineHeight = Math.max(height * 0.004, 2);
+  // Calculate scan line Y positions based on each scanner's progress
+  const lineItemY = (scannerState.lineItem / 100) * height;
+  const metadataY = (scannerState.metadata / 100) * height;
+  const geometricY = (scannerState.geometric / 100) * height;
+  const financialY = (scannerState.financial / 100) * height;
+  const currencyY = (scannerState.currency / 100) * height;
+  const reviewY = (scannerState.review / 100) * height;
 
   return (
     <div className={styles.receiptViewer}>
@@ -596,72 +576,79 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
               );
             })}
 
-            {/* Animated scan lines - use react-spring animated values */}
-            {/* Line Item Structure (purple) */}
-            <AnimatedRect
-              x="0"
-              y={lineItemY}
-              width={width}
-              height={scanLineHeight}
-              fill={SCANNER_COLORS.lineItem}
-              filter="url(#scanLineGlow)"
-              opacity={lineItemVisible}
-            />
+            {/* Each scanner has its own scan line that moves independently */}
 
-            {/* Metadata (blue) */}
-            <AnimatedRect
-              x="0"
-              y={metadataY}
-              width={width}
-              height={scanLineHeight}
-              fill={SCANNER_COLORS.metadata}
-              filter="url(#scanLineGlow)"
-              opacity={metadataVisible}
-            />
+            {/* Line Item Structure (deep orange) - active while in progress */}
+            {scannerState.lineItem > 0 && scannerState.lineItem < 100 && (
+              <rect
+                x="0"
+                y={lineItemY}
+                width={width}
+                height={Math.max(height * 0.004, 2)}
+                fill={SCANNER_COLORS.lineItem}
+                filter="url(#scanLineGlow)"
+              />
+            )}
 
-            {/* Geometric (orange) */}
-            <AnimatedRect
-              x="0"
-              y={geometricY}
-              width={width}
-              height={scanLineHeight}
-              fill={SCANNER_COLORS.geometric}
-              filter="url(#scanLineGlow)"
-              opacity={geometricVisible}
-            />
+            {/* Metadata (blue) - active while in progress */}
+            {scannerState.metadata > 0 && scannerState.metadata < 100 && (
+              <rect
+                x="0"
+                y={metadataY}
+                width={width}
+                height={Math.max(height * 0.004, 2)}
+                fill={SCANNER_COLORS.metadata}
+                filter="url(#scanLineGlow)"
+              />
+            )}
 
-            {/* Financial (purple) */}
-            <AnimatedRect
-              x="0"
-              y={financialY}
-              width={width}
-              height={scanLineHeight}
-              fill={SCANNER_COLORS.financial}
-              filter="url(#scanLineGlow)"
-              opacity={financialVisible}
-            />
+            {/* Geometric (purple) - active while in progress */}
+            {scannerState.geometric > 0 && scannerState.geometric < 100 && (
+              <rect
+                x="0"
+                y={geometricY}
+                width={width}
+                height={Math.max(height * 0.004, 2)}
+                fill={SCANNER_COLORS.geometric}
+                filter="url(#scanLineGlow)"
+              />
+            )}
 
-            {/* Currency (purple) */}
-            <AnimatedRect
-              x="0"
-              y={currencyY}
-              width={width}
-              height={scanLineHeight}
-              fill={SCANNER_COLORS.currency}
-              filter="url(#scanLineGlow)"
-              opacity={currencyVisible}
-            />
+            {/* Financial (orange) - active while in progress */}
+            {scannerState.financial > 0 && scannerState.financial < 100 && (
+              <rect
+                x="0"
+                y={financialY}
+                width={width}
+                height={Math.max(height * 0.004, 2)}
+                fill={SCANNER_COLORS.financial}
+                filter="url(#scanLineGlow)"
+              />
+            )}
 
-            {/* Review (orange) */}
-            <AnimatedRect
-              x="0"
-              y={reviewY}
-              width={width}
-              height={scanLineHeight}
-              fill={SCANNER_COLORS.review}
-              filter="url(#scanLineGlow)"
-              opacity={reviewVisible}
-            />
+            {/* Currency (green) - starts after Line Item completes */}
+            {scannerState.currency > 0 && scannerState.currency < 100 && (
+              <rect
+                x="0"
+                y={currencyY}
+                width={width}
+                height={Math.max(height * 0.004, 2)}
+                fill={SCANNER_COLORS.currency}
+                filter="url(#scanLineGlow)"
+              />
+            )}
+
+            {/* Review (pink) - conditional, after all others */}
+            {scannerState.review > 0 && scannerState.review < 100 && (
+              <rect
+                x="0"
+                y={reviewY}
+                width={width}
+                height={Math.max(height * 0.004, 2)}
+                fill={SCANNER_COLORS.review}
+                filter="url(#scanLineGlow)"
+              />
+            )}
           </svg>
         </div>
       </div>
@@ -863,21 +850,6 @@ const getPieSlicePath = (progress: number, cx: number, cy: number, r: number): s
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
 };
 
-// Tally layout constants
-const TALLY_ICON_SIZE = 16; // 14px icon + 2px gap
-const TALLY_CONTAINER_WIDTH = 200; // approx width for icons
-const TALLY_ROW_HEIGHT = 20; // icon height + vertical padding
-const TALLY_MAX_ROWS = 3; // cap at 3 rows to prevent layout shift
-const TALLY_ICONS_PER_ROW = Math.floor(TALLY_CONTAINER_WIDTH / TALLY_ICON_SIZE);
-const TALLY_MAX_VISIBLE = TALLY_ICONS_PER_ROW * TALLY_MAX_ROWS;
-
-// Calculate tally container height based on number of icons (capped at 3 rows)
-const calculateTallyHeight = (numIcons: number): number => {
-  if (numIcons === 0) return 0;
-  const numRows = Math.min(Math.ceil(numIcons / TALLY_ICONS_PER_ROW), TALLY_MAX_ROWS);
-  return numRows * TALLY_ROW_HEIGHT + 4; // +4 for container padding
-};
-
 const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
   name,
   color,
@@ -896,19 +868,6 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
   const hasDecisions = totalDecisions > 0;
   const hasNextDecisions = nextTotalDecisions > 0;
   const hasVisibleContent = showPlaceholders ? hasDecisions : decisions.length > 0;
-
-  // Calculate heights for animation
-  const currentIconCount = showPlaceholders ? totalDecisions : decisions.length;
-  const nextIconCount = nextTotalDecisions;
-  const currentHeight = calculateTallyHeight(currentIconCount);
-  const nextHeight = calculateTallyHeight(nextIconCount);
-
-  // Animate tally container height during transition
-  const tallySpring = useSpring({
-    height: isTransitioning ? nextHeight : currentHeight,
-    opacity: 1,
-    config: { tension: 200, friction: 22 },
-  });
 
   return (
     <div className={`${styles.legendItem} ${isActive ? styles.active : ""} ${isComplete ? styles.complete : ""} ${isSkipped ? styles.skipped : ""}`}>
@@ -991,127 +950,87 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
         ) : null}
       </div>
       {/* Decision tally row - shows filled icons + empty placeholders (if enabled) */}
-      {/* During transition: height animates, current fades out, next fades in */}
+      {/* During transition: current row fades out, next row overlays and fades in */}
       {(hasVisibleContent || (isTransitioning && hasNextDecisions)) && (
-        <animated.div
-          className={styles.legendTally}
-          style={{ height: tallySpring.height, overflow: 'hidden' }}
-        >
+        <div className={styles.legendTally}>
           {/* Current receipt's tally - filled icons + optional empty placeholders */}
-          {/* Fades out during transition */}
+          {/* Stays in normal flow to maintain container height, fades out during transition */}
           <div className={`${styles.tallyRow} ${isTransitioning ? styles.tallyFadeOut : ''}`}>
-            {(() => {
-              // Calculate overflow for current tally
-              const hasOverflow = totalDecisions > TALLY_MAX_VISIBLE;
-              const overflowCount = hasOverflow ? totalDecisions - TALLY_MAX_VISIBLE + 1 : 0;
-              // Reserve one slot for overflow indicator if needed
-              const maxIconsToShow = hasOverflow ? TALLY_MAX_VISIBLE - 1 : TALLY_MAX_VISIBLE;
-              const filledToShow = Math.min(decisions.length, maxIconsToShow);
-              const emptyToShow = showPlaceholders
-                ? Math.min(totalDecisions - decisions.length, maxIconsToShow - filledToShow)
-                : 0;
-
+            {/* Filled icons for revealed decisions */}
+            {decisions.map((d) => {
+              const bgColor = DECISION_COLORS[d.decision];
               return (
-                <>
-                  {/* Filled icons for revealed decisions (capped) */}
-                  {decisions.slice(0, filledToShow).map((d) => {
-                    const bgColor = DECISION_COLORS[d.decision];
-                    return (
-                      <span
-                        key={d.key}
-                        className={styles.tallyIcon}
-                        title={`${d.wordText}: ${d.decision}`}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                          <circle cx="7" cy="7" r="6" fill={bgColor} />
-                          {d.decision === 'VALID' && (
-                            <path
-                              d="M4 7 L6 9.5 L10 5"
-                              fill="none"
-                              stroke="white"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          )}
-                          {d.decision === 'INVALID' && (
-                            <g>
-                              <line x1="4.5" y1="4.5" x2="9.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-                              <line x1="9.5" y1="4.5" x2="4.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-                            </g>
-                          )}
-                          {d.decision === 'NEEDS_REVIEW' && (
-                            <g>
-                              <circle cx="7" cy="5" r="1.8" fill="white" />
-                              <path d="M3.5 11.5 Q3.5 8 7 8 Q10.5 8 10.5 11.5" fill="white" />
-                            </g>
-                          )}
-                        </svg>
-                      </span>
-                    );
-                  })}
-                  {/* Empty placeholders for unrevealed decisions (capped) */}
-                  {Array.from({ length: emptyToShow }).map((_, idx) => (
-                    <span key={`empty-${idx}`} className={styles.tallyIcon}>
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <circle
-                          cx="7"
-                          cy="7"
-                          r="5.5"
-                          fill="none"
-                          stroke="var(--text-color)"
-                          strokeWidth="1"
-                          opacity="0.3"
-                        />
-                      </svg>
-                    </span>
-                  ))}
-                  {/* Overflow indicator */}
-                  {hasOverflow && (
-                    <span className={styles.tallyOverflow} title={`${overflowCount} more`}>
-                      +{overflowCount}
-                    </span>
-                  )}
-                </>
+                <span
+                  key={d.key}
+                  className={styles.tallyIcon}
+                  title={`${d.wordText}: ${d.decision}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <circle cx="7" cy="7" r="6" fill={bgColor} />
+                    {d.decision === 'VALID' && (
+                      <path
+                        d="M4 7 L6 9.5 L10 5"
+                        fill="none"
+                        stroke="white"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    )}
+                    {d.decision === 'INVALID' && (
+                      <g>
+                        <line x1="4.5" y1="4.5" x2="9.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                        <line x1="9.5" y1="4.5" x2="4.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                      </g>
+                    )}
+                    {d.decision === 'NEEDS_REVIEW' && (
+                      <g>
+                        <circle cx="7" cy="5" r="1.8" fill="white" />
+                        <path d="M3.5 11.5 Q3.5 8 7 8 Q10.5 8 10.5 11.5" fill="white" />
+                      </g>
+                    )}
+                  </svg>
+                </span>
               );
-            })()}
+            })}
+            {/* Empty placeholders for unrevealed decisions (only if showPlaceholders is true) */}
+            {showPlaceholders && Array.from({ length: Math.max(0, totalDecisions - decisions.length) }).map((_, idx) => (
+              <span key={`empty-${idx}`} className={styles.tallyIcon}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <circle
+                    cx="7"
+                    cy="7"
+                    r="5.5"
+                    fill="none"
+                    stroke="var(--text-color)"
+                    strokeWidth="1"
+                    opacity="0.3"
+                  />
+                </svg>
+              </span>
+            ))}
           </div>
           {/* Next receipt's empty placeholders - absolutely positioned overlay, fades in */}
           {isTransitioning && hasNextDecisions && showPlaceholders && (
             <div className={`${styles.tallyRow} ${styles.tallyRowOverlay} ${styles.tallyFadeIn}`}>
-              {(() => {
-                const nextHasOverflow = nextTotalDecisions > TALLY_MAX_VISIBLE;
-                const nextOverflowCount = nextHasOverflow ? nextTotalDecisions - TALLY_MAX_VISIBLE + 1 : 0;
-                const nextMaxToShow = nextHasOverflow ? TALLY_MAX_VISIBLE - 1 : nextTotalDecisions;
-
-                return (
-                  <>
-                    {Array.from({ length: nextMaxToShow }).map((_, idx) => (
-                      <span key={`next-${idx}`} className={styles.tallyIcon}>
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                          <circle
-                            cx="7"
-                            cy="7"
-                            r="5.5"
-                            fill="none"
-                            stroke="var(--text-color)"
-                            strokeWidth="1"
-                            opacity="0.3"
-                          />
-                        </svg>
-                      </span>
-                    ))}
-                    {nextHasOverflow && (
-                      <span className={styles.tallyOverflow} title={`${nextOverflowCount} more`}>
-                        +{nextOverflowCount}
-                      </span>
-                    )}
-                  </>
-                );
-              })()}
+              {Array.from({ length: nextTotalDecisions }).map((_, idx) => (
+                <span key={`next-${idx}`} className={styles.tallyIcon}>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <circle
+                      cx="7"
+                      cy="7"
+                      r="5.5"
+                      fill="none"
+                      stroke="var(--text-color)"
+                      strokeWidth="1"
+                      opacity="0.3"
+                    />
+                  </svg>
+                </span>
+              ))}
             </div>
           )}
-        </animated.div>
+        </div>
       )}
     </div>
   );
@@ -1120,7 +1039,7 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
 // Scanner legend - shows all scanners with their status
 interface ScannerLegendProps {
   receipt: LabelEvaluatorReceipt;
-  scannerValuesRef: React.RefObject<ScannerState>;
+  scannerState: ScannerState;
   revealedDecisions: RevealedDecision[];
   isTransitioning: boolean;
   nextReceipt: LabelEvaluatorReceipt | null;
@@ -1128,34 +1047,12 @@ interface ScannerLegendProps {
 
 const ScannerLegend: React.FC<ScannerLegendProps> = ({
   receipt,
-  scannerValuesRef,
+  scannerState,
   revealedDecisions,
   isTransitioning,
   nextReceipt,
 }) => {
   const { currency, metadata, geometric, financial } = receipt;
-
-  // Use state that updates at a throttled rate for the legend
-  // This avoids re-renders on every frame while still showing progress
-  const [scannerState, setScannerState] = useState<ScannerState>({
-    lineItem: 0,
-    metadata: 0,
-    geometric: 0,
-    financial: 0,
-    currency: 0,
-    review: 0,
-  });
-
-  // Poll scanner values at 10fps for legend updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (scannerValuesRef.current) {
-        setScannerState({ ...scannerValuesRef.current });
-      }
-    }, 100);
-    return () => clearInterval(interval);
-  }, [scannerValuesRef]);
-
   const hasGeometricIssues = geometric.issues_found > 0;
 
   // Determine waiting states based on dependencies
@@ -1266,6 +1163,14 @@ const LabelEvaluatorVisualization: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
+  const [scannerState, setScannerState] = useState<ScannerState>({
+    lineItem: 0,
+    metadata: 0,
+    geometric: 0,
+    financial: 0,
+    currency: 0,
+    review: 0,
+  });
   const [revealedDecisions, setRevealedDecisions] = useState<RevealedDecision[]>([]);
   const [formatSupport, setFormatSupport] = useState<{
     supportsWebP: boolean;
@@ -1274,73 +1179,23 @@ const LabelEvaluatorVisualization: React.FC = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [measuredContainerWidth, setMeasuredContainerWidth] = useState<number | null>(null);
 
-  // Pagination state
-  const [seed, setSeed] = useState<number | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [nextOffset, setNextOffset] = useState(0);
-  const [loadingRemaining, setLoadingRemaining] = useState(false);
-
-  // Use react-spring for scanner progress - imperative updates avoid React re-renders
-  const [scannerSpring, scannerApi] = useSpring(() => ({
-    lineItem: 0,
-    metadata: 0,
-    geometric: 0,
-    financial: 0,
-    currency: 0,
-    review: 0,
-    config: { duration: 16 }, // Immediate updates (1 frame)
-  }));
-
-  // Track current scanner values for decision calculation (updated via ref to avoid re-renders)
-  const scannerValuesRef = useRef<ScannerState>({
-    lineItem: 0,
-    metadata: 0,
-    geometric: 0,
-    financial: 0,
-    currency: 0,
-    review: 0,
-  });
-
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
-  const isLoadingRemainingRef = useRef(false);
   const receiptsRef = useRef(receipts);
   receiptsRef.current = receipts;
-
-  // Track phase/transition state in refs for animation loop (avoid stale closures)
-  const phaseRef = useRef<Phase>("idle");
-  const isTransitioningRef = useRef(false);
-
-  // Static zero spring for next receipt (no animation needed)
-  const [zeroScannerSpring] = useSpring(() => ({
-    lineItem: 0,
-    metadata: 0,
-    geometric: 0,
-    financial: 0,
-    currency: 0,
-    review: 0,
-  }));
 
   // Detect image format support
   useEffect(() => {
     detectImageFormatSupport().then(setFormatSupport);
   }, []);
 
-  // Initial fetch - get first batch and seed for pagination
+  // Fetch visualization data
   useEffect(() => {
-    const fetchInitial = async () => {
+    const fetchData = async () => {
       try {
-        // Fetch initial 20 receipts (no seed = server generates one)
-        const response = await api.fetchLabelEvaluatorVisualization(20);
+        const response = await api.fetchLabelEvaluatorVisualization();
         if (response && response.receipts) {
           setReceipts(response.receipts);
-          setSeed(response.seed);
-          setHasMore(response.has_more);
-          setNextOffset(response.offset + response.receipts.length);
-          // Trigger loading remaining if more pages exist
-          if (response.has_more) {
-            setLoadingRemaining(true);
-          }
         }
       } catch (err) {
         console.error("Failed to fetch label evaluator data:", err);
@@ -1350,199 +1205,104 @@ const LabelEvaluatorVisualization: React.FC = () => {
       }
     };
 
-    fetchInitial();
+    fetchData();
   }, []);
-
-  // Load remaining receipts in background (like ReceiptStack pattern)
-  // Batches all pages into a single setState to avoid repeated re-renders
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadRemainingReceipts = async () => {
-      if (!loadingRemaining || !hasMore || seed === null || isLoadingRemainingRef.current) return;
-
-      isLoadingRemainingRef.current = true;
-      let currentOffset = nextOffset;
-      let morePages = true;
-      const batchSize = 20;
-      const accumulated: LabelEvaluatorReceipt[] = [];
-
-      try {
-        while (morePages && !cancelled) {
-          const response = await api.fetchLabelEvaluatorVisualization(batchSize, seed, currentOffset);
-
-          // Check cancellation after async operation
-          if (cancelled) break;
-
-          if (!response || !response.receipts || response.receipts.length === 0) {
-            break;
-          }
-
-          // Accumulate receipts locally instead of calling setState per page
-          accumulated.push(...response.receipts);
-
-          morePages = response.has_more;
-          if (!morePages) {
-            break;
-          }
-
-          currentOffset = response.offset + response.receipts.length;
-        }
-
-        // Batch update: append all accumulated receipts in a single setState
-        if (!cancelled && accumulated.length > 0) {
-          setReceipts(prev => [...prev, ...accumulated]);
-        }
-
-        if (!cancelled) {
-          setHasMore(false);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          console.error("Error loading remaining receipts:", err);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingRemaining(false);
-          isLoadingRemainingRef.current = false;
-        }
-      }
-    };
-
-    if (loadingRemaining && hasMore && seed !== null && !isLoadingRemainingRef.current) {
-      // Delay loading remaining receipts until after initial render
-      const timer = setTimeout(loadRemainingReceipts, 100);
-      return () => {
-        cancelled = true;
-        clearTimeout(timer);
-      };
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [loadingRemaining, hasMore, seed, nextOffset]);
 
   const currentReceipt = receipts[currentIndex];
 
   // Calculate revealed decisions based on each scanner's progress
-  // Uses scannerValuesRef which is updated imperatively, so we poll with an interval
   useEffect(() => {
     if (!currentReceipt) return;
 
-    const updateDecisions = () => {
-      const { words, currency, metadata, financial, review } = currentReceipt;
-      const scannerState = scannerValuesRef.current;
-      const decisions: RevealedDecision[] = [];
+    const { words, currency, metadata, financial, review } = currentReceipt;
+    const decisions: RevealedDecision[] = [];
 
-      // Helper to check if a word's top edge has been passed by a scanner
-      const isWordScanned = (lineId: number, wordId: number, progress: number) => {
-        const word = words.find(w => w.line_id === lineId && w.word_id === wordId);
-        if (!word) return false;
-        const wordTopY = 1 - word.bbox.y - word.bbox.height;
-        return wordTopY <= (progress / 100);
-      };
-
-      // Metadata decisions - track ALL decisions (V/I/R)
-      metadata.all_decisions.forEach((d) => {
-        if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.metadata)) {
-          const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
-          if (word) {
-            decisions.push({
-              key: `metadata_${d.issue.line_id}_${d.issue.word_id}`,
-              type: 'metadata',
-              decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
-              wordText: d.issue.word_text,
-              lineId: d.issue.line_id,
-              wordId: d.issue.word_id,
-              bbox: word.bbox,
-            });
-          }
-        }
-      });
-
-      // Currency decisions - track ALL decisions (V/I/R)
-      currency.all_decisions.forEach((d) => {
-        if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.currency)) {
-          const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
-          if (word) {
-            decisions.push({
-              key: `currency_${d.issue.line_id}_${d.issue.word_id}`,
-              type: 'currency',
-              decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
-              wordText: d.issue.word_text,
-              lineId: d.issue.line_id,
-              wordId: d.issue.word_id,
-              bbox: word.bbox,
-            });
-          }
-        }
-      });
-
-      // Financial decisions - track ALL decisions (V/I/R)
-      financial.all_decisions.forEach((d) => {
-        if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.financial)) {
-          const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
-          if (word) {
-            decisions.push({
-              key: `financial_${d.issue.line_id}_${d.issue.word_id}`,
-              type: 'financial',
-              decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
-              wordText: d.issue.word_text,
-              lineId: d.issue.line_id,
-              wordId: d.issue.word_id,
-              bbox: word.bbox,
-            });
-          }
-        }
-      });
-
-      // Review decisions - LLM decisions on geometrically-flagged words
-      if (review) {
-        review.all_decisions.forEach((d) => {
-          if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.review)) {
-            const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
-            if (word) {
-              decisions.push({
-                key: `review_${d.issue.line_id}_${d.issue.word_id}`,
-                type: 'review',
-                decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
-                wordText: d.issue.word_text,
-                lineId: d.issue.line_id,
-                wordId: d.issue.word_id,
-                bbox: word.bbox,
-              });
-            }
-          }
-        });
-      }
-
-      setRevealedDecisions(decisions);
+    // Helper to check if a word's top edge has been passed by a scanner
+    const isWordScanned = (lineId: number, wordId: number, progress: number) => {
+      const word = words.find(w => w.line_id === lineId && w.word_id === wordId);
+      if (!word) return false;
+      const wordTopY = 1 - word.bbox.y - word.bbox.height;
+      return wordTopY <= (progress / 100);
     };
 
-    // Poll at 10fps for decision updates (less frequent than animation)
-    const interval = setInterval(updateDecisions, 100);
-    updateDecisions(); // Initial call
-
-    return () => clearInterval(interval);
-  }, [currentReceipt]);
-
-  // Memoized function to update scanner spring values imperatively (no React re-renders)
-  const updateScannerValues = useCallback((values: ScannerState) => {
-    scannerValuesRef.current = values;
-    scannerApi.start({
-      lineItem: values.lineItem,
-      metadata: values.metadata,
-      geometric: values.geometric,
-      financial: values.financial,
-      currency: values.currency,
-      review: values.review,
-      immediate: true, // No animation, just set the value
+    // Metadata decisions - track ALL decisions (V/I/R)
+    metadata.all_decisions.forEach((d) => {
+      if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.metadata)) {
+        const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
+        if (word) {
+          decisions.push({
+            key: `metadata_${d.issue.line_id}_${d.issue.word_id}`,
+            type: 'metadata',
+            decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
+            wordText: d.issue.word_text,
+            lineId: d.issue.line_id,
+            wordId: d.issue.word_id,
+            bbox: word.bbox,
+          });
+        }
+      }
     });
-  }, [scannerApi]);
+
+    // Currency decisions - track ALL decisions (V/I/R)
+    currency.all_decisions.forEach((d) => {
+      if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.currency)) {
+        const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
+        if (word) {
+          decisions.push({
+            key: `currency_${d.issue.line_id}_${d.issue.word_id}`,
+            type: 'currency',
+            decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
+            wordText: d.issue.word_text,
+            lineId: d.issue.line_id,
+            wordId: d.issue.word_id,
+            bbox: word.bbox,
+          });
+        }
+      }
+    });
+
+    // Financial decisions - track ALL decisions (V/I/R)
+    financial.all_decisions.forEach((d) => {
+      if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.financial)) {
+        const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
+        if (word) {
+          decisions.push({
+            key: `financial_${d.issue.line_id}_${d.issue.word_id}`,
+            type: 'financial',
+            decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
+            wordText: d.issue.word_text,
+            lineId: d.issue.line_id,
+            wordId: d.issue.word_id,
+            bbox: word.bbox,
+          });
+        }
+      }
+    });
+
+    // Review decisions - LLM decisions on geometrically-flagged words
+    if (review) {
+      review.all_decisions.forEach((d) => {
+        if (isWordScanned(d.issue.line_id, d.issue.word_id, scannerState.review)) {
+          const word = words.find(w => w.line_id === d.issue.line_id && w.word_id === d.issue.word_id);
+          if (word) {
+            decisions.push({
+              key: `review_${d.issue.line_id}_${d.issue.word_id}`,
+              type: 'review',
+              decision: d.llm_review.decision as "VALID" | "INVALID" | "NEEDS_REVIEW",
+              wordText: d.issue.word_text,
+              lineId: d.issue.line_id,
+              wordId: d.issue.word_id,
+              bbox: word.bbox,
+            });
+          }
+        }
+      });
+    }
+
+    setRevealedDecisions(decisions);
+  }, [currentReceipt, scannerState]);
 
   // Animation loop - each scanner progresses independently based on actual durations
-  // Uses imperative spring updates to avoid React re-renders on every frame
   useEffect(() => {
     if (!inView || receipts.length === 0) {
       return;
@@ -1554,6 +1314,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
     isAnimatingRef.current = true;
 
     const receipt = receipts[currentIndex];
+    const hasGeometricIssues = receipt.geometric.issues_found > 0;
 
     // Get actual durations from the receipt data (in seconds)
     // Use line item duration from the merchant's pattern file, fallback to 2s estimate
@@ -1605,12 +1366,9 @@ const LabelEvaluatorVisualization: React.FC = () => {
     let receiptIdx = currentIndex;
     let startTime = performance.now();
 
-    // Initialize state (these are the only React state updates at animation start)
-    phaseRef.current = "scanning";
-    isTransitioningRef.current = false;
     setPhase("scanning");
     setIsTransitioning(false);
-    updateScannerValues({
+    setScannerState({
       lineItem: 0,
       metadata: 0,
       geometric: 0,
@@ -1618,6 +1376,8 @@ const LabelEvaluatorVisualization: React.FC = () => {
       currency: 0,
       review: 0,
     });
+
+    let isInTransition = false;
 
     const animate = (time: number) => {
       const currentReceipts = receiptsRef.current;
@@ -1657,18 +1417,9 @@ const LabelEvaluatorVisualization: React.FC = () => {
           reviewProgress = Math.min((reviewElapsed / reviewDuration) * 100, 100);
         }
 
-        // Update phase only when it changes (avoid unnecessary re-renders)
-        if (phaseRef.current !== "scanning") {
-          phaseRef.current = "scanning";
-          setPhase("scanning");
-        }
-        if (isTransitioningRef.current !== false) {
-          isTransitioningRef.current = false;
-          setIsTransitioning(false);
-        }
-
-        // Imperative spring update - no React re-render
-        updateScannerValues({
+        setPhase("scanning");
+        setIsTransitioning(false);
+        setScannerState({
           lineItem: lineItemProgress,
           metadata: metadataProgress,
           geometric: geometricProgress,
@@ -1678,17 +1429,9 @@ const LabelEvaluatorVisualization: React.FC = () => {
         });
       } else if (elapsed < holdEnd) {
         // Hold phase - show complete state
-        if (phaseRef.current !== "complete") {
-          phaseRef.current = "complete";
-          setPhase("complete");
-        }
-        if (isTransitioningRef.current !== false) {
-          isTransitioningRef.current = false;
-          setIsTransitioning(false);
-        }
-
-        // Imperative spring update - no React re-render
-        updateScannerValues({
+        setPhase("complete");
+        setIsTransitioning(false);
+        setScannerState({
           lineItem: 100,
           metadata: 100,
           geometric: 100,
@@ -1698,21 +1441,20 @@ const LabelEvaluatorVisualization: React.FC = () => {
         });
       } else if (elapsed < totalCycle) {
         // Transition phase - animate receipt flying from queue to center
-        if (!isTransitioningRef.current) {
-          isTransitioningRef.current = true;
+        if (!isInTransition) {
+          isInTransition = true;
           setIsTransitioning(true);
         }
       } else {
         // Move to next receipt (loop back to start)
         receiptIdx = (receiptIdx + 1) % currentReceipts.length;
-        isTransitioningRef.current = false;
-        phaseRef.current = "scanning";
+        isInTransition = false;
         setCurrentIndex(receiptIdx);
 
-        // Reset for new receipt (React state updates only at receipt transition)
+        // Reset for new receipt
         setPhase("scanning");
         setIsTransitioning(false);
-        updateScannerValues({
+        setScannerState({
           lineItem: 0,
           metadata: 0,
           geometric: 0,
@@ -1735,7 +1477,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
       }
       isAnimatingRef.current = false;
     };
-  }, [inView, receipts.length, currentIndex, updateScannerValues]);
+  }, [inView, receipts.length > 0, currentIndex]);
 
   if (loading) {
     return (
@@ -1780,7 +1522,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
           <div className={`${styles.receiptContainer} ${isTransitioning ? styles.fadeOut : ''}`}>
             <ReceiptViewer
               receipt={currentReceipt}
-              scannerSpring={scannerSpring}
+              scannerState={scannerState}
               phase={phase}
               revealedDecisions={revealedDecisions}
               formatSupport={formatSupport}
@@ -1806,7 +1548,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
             <div className={`${styles.receiptContainer} ${styles.nextReceipt} ${styles.fadeIn}`}>
               <ReceiptViewer
                 receipt={nextReceipt}
-                scannerSpring={zeroScannerSpring}
+                scannerState={{ lineItem: 0, metadata: 0, geometric: 0, financial: 0, currency: 0, review: 0 }}
                 phase="idle"
                 revealedDecisions={[]}
                 formatSupport={formatSupport}
@@ -1817,7 +1559,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
 
         <ScannerLegend
           receipt={currentReceipt}
-          scannerValuesRef={scannerValuesRef}
+          scannerState={scannerState}
           revealedDecisions={revealedDecisions}
           isTransitioning={isTransitioning}
           nextReceipt={nextReceipt}
