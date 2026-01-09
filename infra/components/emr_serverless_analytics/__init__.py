@@ -137,7 +137,7 @@ class EMRServerlessAnalytics(ComponentResource):
         self.emr_application = aws.emrserverless.Application(
             f"{name}-app",
             name=f"langsmith-analytics-{stack}",
-            release_label="emr-7.0.0",
+            release_label="emr-spark-8.0-preview",  # Native Python 3.12 support
             type="SPARK",
             initial_capacities=[
                 aws.emrserverless.ApplicationInitialCapacityArgs(
