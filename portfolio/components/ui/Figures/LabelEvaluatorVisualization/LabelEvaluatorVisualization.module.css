@@ -278,14 +278,6 @@
   right: 0;
 }
 
-.tallyIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-}
-
 .tallyIcon svg {
   flex-shrink: 0;
 }
