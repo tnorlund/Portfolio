@@ -547,7 +547,8 @@ def _generate_cdn_keys(base_cdn_key: str) -> dict[str, str | None]:
         base_cdn_key: Base JPEG key like 'assets/uuid_RECEIPT_00001.jpg'
 
     Returns:
-        Dict with cdn_s3_key, cdn_webp_s3_key, cdn_medium_s3_key
+        Dict with all CDN variants: cdn_s3_key, cdn_webp_s3_key, cdn_avif_s3_key,
+        cdn_medium_s3_key, cdn_medium_webp_s3_key, cdn_medium_avif_s3_key
     """
     # Handle common JPEG extensions (case-insensitive)
     lower_key = base_cdn_key.lower()
@@ -559,13 +560,19 @@ def _generate_cdn_keys(base_cdn_key: str) -> dict[str, str | None]:
         return {
             "cdn_s3_key": base_cdn_key,
             "cdn_webp_s3_key": None,
+            "cdn_avif_s3_key": None,
             "cdn_medium_s3_key": None,
+            "cdn_medium_webp_s3_key": None,
+            "cdn_medium_avif_s3_key": None,
         }
 
     return {
         "cdn_s3_key": base_cdn_key,
         "cdn_webp_s3_key": f"{base}.webp",
+        "cdn_avif_s3_key": f"{base}.avif",
         "cdn_medium_s3_key": f"{base}_medium.jpg",
+        "cdn_medium_webp_s3_key": f"{base}_medium.webp",
+        "cdn_medium_avif_s3_key": f"{base}_medium.avif",
     }
 
 
@@ -594,14 +601,20 @@ def _build_single_viz_receipt(
     if not cdn_s3_key:
         return None
 
+    # Get CDN keys from receipt data (populated from DynamoDB)
     cdn_webp_s3_key = receipt_data.get("cdn_webp_s3_key")
+    cdn_avif_s3_key = receipt_data.get("cdn_avif_s3_key")
     cdn_medium_s3_key = receipt_data.get("cdn_medium_s3_key")
+    cdn_medium_webp_s3_key = receipt_data.get("cdn_medium_webp_s3_key")
+    cdn_medium_avif_s3_key = receipt_data.get("cdn_medium_avif_s3_key")
 
     # Generate missing CDN keys from base if needed
-    if not cdn_webp_s3_key or not cdn_medium_s3_key:
-        generated = _generate_cdn_keys(cdn_s3_key)
-        cdn_webp_s3_key = cdn_webp_s3_key or generated["cdn_webp_s3_key"]
-        cdn_medium_s3_key = cdn_medium_s3_key or generated["cdn_medium_s3_key"]
+    generated = _generate_cdn_keys(cdn_s3_key)
+    cdn_webp_s3_key = cdn_webp_s3_key or generated["cdn_webp_s3_key"]
+    cdn_avif_s3_key = cdn_avif_s3_key or generated["cdn_avif_s3_key"]
+    cdn_medium_s3_key = cdn_medium_s3_key or generated["cdn_medium_s3_key"]
+    cdn_medium_webp_s3_key = cdn_medium_webp_s3_key or generated["cdn_medium_webp_s3_key"]
+    cdn_medium_avif_s3_key = cdn_medium_avif_s3_key or generated["cdn_medium_avif_s3_key"]
 
     # Get dimensions from lookup (with fallback for legacy format)
     width = receipt_data.get("width", 800)
@@ -625,7 +638,10 @@ def _build_single_viz_receipt(
         financial=results["financial"],
         cdn_s3_key=cdn_s3_key,
         cdn_webp_s3_key=cdn_webp_s3_key,
+        cdn_avif_s3_key=cdn_avif_s3_key,
         cdn_medium_s3_key=cdn_medium_s3_key,
+        cdn_medium_webp_s3_key=cdn_medium_webp_s3_key,
+        cdn_medium_avif_s3_key=cdn_medium_avif_s3_key,
         width=width,
         height=height,
     ).model_dump()

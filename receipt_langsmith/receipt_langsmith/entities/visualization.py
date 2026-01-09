@@ -247,8 +247,17 @@ class VizCacheReceipt(ReceiptIdentifier):
     cdn_webp_s3_key: str | None = None
     """CloudFront CDN key for WebP image."""
 
+    cdn_avif_s3_key: str | None = None
+    """CloudFront CDN key for AVIF image."""
+
     cdn_medium_s3_key: str | None = None
     """CloudFront CDN key for medium-size JPEG."""
+
+    cdn_medium_webp_s3_key: str | None = None
+    """CloudFront CDN key for medium-size WebP."""
+
+    cdn_medium_avif_s3_key: str | None = None
+    """CloudFront CDN key for medium-size AVIF."""
 
     # Image dimensions for aspect ratio calculations
     width: int = 0
