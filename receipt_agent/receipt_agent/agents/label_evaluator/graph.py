@@ -47,8 +47,6 @@ except ImportError:
     HAS_OLLAMA = False
     ChatOllama = None  # type: ignore
 
-from receipt_dynamo.entities import ReceiptWordLabel
-
 from receipt_agent.agents.label_evaluator.currency_subagent import (
     convert_to_evaluation_issues,
     evaluate_currency_labels_sync,
@@ -79,6 +77,7 @@ from receipt_agent.agents.label_evaluator.word_context import (
     build_word_contexts,
 )
 from receipt_agent.constants import CORE_LABELS
+from receipt_dynamo.entities import ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 

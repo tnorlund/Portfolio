@@ -9,14 +9,11 @@ classification for quality-based pattern learning.
 import logging
 import math
 import statistics
-from collections import Counter, defaultdict
+from collections import defaultdict
 from itertools import combinations
 from typing import Any, Optional
 
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
-
 from receipt_agent.agents.label_evaluator.geometry import (
-    angle_difference,
     calculate_angle_degrees,
     calculate_distance,
     convert_polar_to_cartesian,
@@ -35,6 +32,7 @@ from receipt_agent.constants import (
     LABEL_TO_GROUP,
     WITHIN_GROUP_PRIORITY_PAIRS,
 )
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
@@ -538,9 +536,7 @@ def _compute_patterns_for_subset(
                         if pair not in geometry_dict:
                             geometry_dict[pair] = LabelPairGeometry()
 
-                        angle = calculate_angle_degrees(
-                            centroid_a, centroid_b
-                        )
+                        angle = calculate_angle_degrees(centroid_a, centroid_b)
                         distance = calculate_distance(centroid_a, centroid_b)
 
                         geometry_dict[pair].observations.append(

@@ -32,6 +32,7 @@ try:
         flush_langsmith_traces,
         receipt_state_trace,
     )
+
     from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
 
     _tracing_import_source = "container"
@@ -174,16 +175,22 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 )
 
                 if target_data is None:
-                    raise ValueError(f"Receipt data not found at {data_s3_key}")
+                    raise ValueError(
+                        f"Receipt data not found at {data_s3_key}"
+                    )
 
                 image_id = target_data.get("image_id")
                 receipt_id = target_data.get("receipt_id")
 
                 if not image_id or receipt_id is None:
-                    raise ValueError("image_id and receipt_id are required in data")
+                    raise ValueError(
+                        "image_id and receipt_id are required in data"
+                    )
 
                 # Deserialize words
-                words = [deserialize_word(w) for w in target_data.get("words", [])]
+                words = [
+                    deserialize_word(w) for w in target_data.get("words", [])
+                ]
 
                 logger.info(
                     "Loaded %s words for %s#%s",
@@ -197,9 +204,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             with child_trace("fetch_labels_from_dynamo", trace_ctx):
                 from receipt_dynamo import DynamoClient
 
-                dynamo_table = os.environ.get("DYNAMODB_TABLE_NAME") or os.environ.get(
-                    "RECEIPT_AGENT_DYNAMO_TABLE_NAME"
-                )
+                dynamo_table = os.environ.get(
+                    "DYNAMODB_TABLE_NAME"
+                ) or os.environ.get("RECEIPT_AGENT_DYNAMO_TABLE_NAME")
 
                 if not dynamo_table:
                     raise ValueError("DYNAMODB_TABLE_NAME not configured")
@@ -213,10 +220,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 )
                 labels.extend(page or [])
                 while lek:
-                    page, lek = dynamo_client.list_receipt_word_labels_for_receipt(
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                        last_evaluated_key=lek,
+                    page, lek = (
+                        dynamo_client.list_receipt_word_labels_for_receipt(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            last_evaluated_key=lek,
+                        )
                     )
                     labels.extend(page or [])
 
@@ -270,13 +279,16 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 )
 
                 logger.info(
-                    "Evaluated financial math, %s values involved", len(decisions)
+                    "Evaluated financial math, %s values involved",
+                    len(decisions),
                 )
 
             # Count decisions
             decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
             for d in decisions:
-                decision = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
+                decision = d.get("llm_review", {}).get(
+                    "decision", "NEEDS_REVIEW"
+                )
                 if decision in decision_counts:
                     decision_counts[decision] += 1
                 else:
@@ -340,7 +352,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     "duration_seconds": time.time() - start_time,
                 }
 
-                upload_json_to_s3(s3, batch_bucket, results_s3_key, results_data)
+                upload_json_to_s3(
+                    s3, batch_bucket, results_s3_key, results_data
+                )
                 logger.info(
                     "Uploaded results to s3://%s/%s",
                     batch_bucket,
@@ -358,8 +372,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "issue_types": list(issue_types),
                 "results_s3_key": results_s3_key,
                 "applied_stats": applied_stats,
-                # Full evaluations for visualization (includes equation breakdown)
-                "all_decisions": decisions,
+                # Note: all_decisions stored in S3 only (results_s3_key)
             }
 
             trace_ctx.set_outputs(result)

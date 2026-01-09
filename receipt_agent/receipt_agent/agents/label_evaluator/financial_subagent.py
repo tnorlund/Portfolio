@@ -41,7 +41,6 @@ from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
 from pydantic import ValidationError
-
 from receipt_agent.constants import FINANCIAL_MATH_LABELS
 from receipt_agent.prompts.structured_outputs import (
     FinancialEvaluationResponse,
@@ -371,7 +370,9 @@ def build_financial_validation_prompt(
         for wc in line.words:
             label = wc.current_label.label if wc.current_label else "unlabeled"
             line_text.append(f"{wc.word.text}[{label}]")
-        receipt_lines.append(f"  Line {line.line_index}: " + " | ".join(line_text))
+        receipt_lines.append(
+            f"  Line {line.line_index}: " + " | ".join(line_text)
+        )
 
     receipt_text = "\n".join(receipt_lines[:50])
     if len(visual_lines) > 50:
@@ -476,10 +477,14 @@ def parse_financial_evaluation_response(
     try:
         if isinstance(parsed, list):
             parsed = {"evaluations": parsed}
-        structured_response = FinancialEvaluationResponse.model_validate(parsed)
+        structured_response = FinancialEvaluationResponse.model_validate(
+            parsed
+        )
         return structured_response.to_ordered_list(num_issues)
     except ValidationError as e:
-        logger.debug("Structured parsing failed, falling back to manual parsing: %s", e)
+        logger.debug(
+            "Structured parsing failed, falling back to manual parsing: %s", e
+        )
 
     # Fallback to manual parsing (reuse already-parsed JSON)
     try:
@@ -488,12 +493,16 @@ def parse_financial_evaluation_response(
             decisions = decisions.get("evaluations", [])
 
         if not isinstance(decisions, list):
-            logger.warning("Decisions is not a list: %s", type(decisions).__name__)
+            logger.warning(
+                "Decisions is not a list: %s", type(decisions).__name__
+            )
             return [fallback.copy() for _ in range(num_issues)]
 
         result = []
         for i in range(num_issues):
-            decision = next((d for d in decisions if d.get("index") == i), None)
+            decision = next(
+                (d for d in decisions if d.get("index") == i), None
+            )
             if decision:
                 result.append(
                     {
@@ -575,8 +584,8 @@ def evaluate_financial_math(
                         structured_llm = llm.with_structured_output(
                             FinancialEvaluationResponse
                         )
-                        response: FinancialEvaluationResponse = structured_llm.invoke(
-                            prompt
+                        response: FinancialEvaluationResponse = (
+                            structured_llm.invoke(prompt)
                         )
                         decisions = response.to_ordered_list(num_issues)
                         logger.debug(
@@ -596,7 +605,9 @@ def evaluate_financial_math(
                 # Text parsing fallback
                 response = llm.invoke(prompt)
                 response_text = (
-                    response.content if hasattr(response, "content") else str(response)
+                    response.content
+                    if hasattr(response, "content")
+                    else str(response)
                 )
                 decisions = parse_financial_evaluation_response(
                     response_text, num_issues
@@ -625,22 +636,47 @@ def evaluate_financial_math(
                         )
                     else:
                         logger.warning(
-                            "All decisions failed after %d attempts", max_retries
+                            "All decisions failed after %d attempts",
+                            max_retries,
                         )
 
             except Exception as inner_err:
                 if attempt == max_retries - 1:
                     raise inner_err
                 logger.warning(
-                    "LLM invocation failed (attempt %d): %s", attempt + 1, inner_err
+                    "LLM invocation failed (attempt %d): %s",
+                    attempt + 1,
+                    inner_err,
                 )
 
         # Step 3: Use decisions (either from structured or text parsing)
         # Note: LLM returns one decision per issue, but each issue has multiple values
 
+        # Handle length mismatches by padding with NEEDS_REVIEW fallback
+        num_issues = len(math_issues)
+        num_decisions = len(decisions) if decisions else 0
+        if num_decisions != num_issues:
+            logger.warning(
+                "Decision count mismatch: %d issues, %d decisions",
+                num_issues,
+                num_decisions,
+            )
+            decisions = decisions or []
+            while len(decisions) < num_issues:
+                decisions.append(
+                    {
+                        "decision": "NEEDS_REVIEW",
+                        "reasoning": "No decision from LLM (count mismatch)",
+                        "suggested_label": None,
+                        "confidence": "low",
+                        "issue_type": "UNKNOWN",
+                    }
+                )
+            decisions = decisions[:num_issues]
+
         # Step 4: Format output - create one result per involved value
         results = []
-        for issue, decision in zip(math_issues, decisions, strict=True):
+        for issue, decision in zip(math_issues, decisions, strict=False):
             for fv in issue.involved_values:
                 wc = fv.word_context
                 results.append(
@@ -660,7 +696,9 @@ def evaluate_financial_math(
                             "description": issue.description,
                         },
                         "llm_review": {
-                            "decision": decision.get("decision", "NEEDS_REVIEW"),
+                            "decision": decision.get(
+                                "decision", "NEEDS_REVIEW"
+                            ),
                             "reasoning": decision.get("reasoning", ""),
                             "suggested_label": decision.get("suggested_label"),
                             "confidence": decision.get("confidence", "medium"),
@@ -686,7 +724,9 @@ def evaluate_financial_math(
         )
 
         if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
-            logger.error("Financial LLM rate limited, propagating for retry: %s", e)
+            logger.error(
+                "Financial LLM rate limited, propagating for retry: %s", e
+            )
             raise
 
         logger.error("Financial LLM call failed: %s", e)

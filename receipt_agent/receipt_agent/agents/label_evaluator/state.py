@@ -137,7 +137,9 @@ class DrillDownWord:
     line_id: int
     text: str
     position: tuple[float, float]  # (x, y) normalized coordinates
-    expected_offset: tuple[float, float]  # (dx, dy) expected offset from centroid
+    expected_offset: tuple[
+        float, float
+    ]  # (dx, dy) expected offset from centroid
     actual_offset: tuple[float, float]  # (dx, dy) actual offset from centroid
     deviation: float  # Euclidean distance from expected position
     is_culprit: bool  # True if deviation > 2σ threshold

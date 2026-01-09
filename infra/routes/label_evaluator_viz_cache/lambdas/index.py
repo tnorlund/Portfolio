@@ -19,7 +19,7 @@ logger.setLevel(logging.INFO)
 
 # Environment variables
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET")
-CACHE_KEY = "viz-sample-data.json"
+LATEST_POINTER_KEY = "latest.json"
 
 if not S3_CACHE_BUCKET:
     logger.error("S3_CACHE_BUCKET environment variable not set")
@@ -28,9 +28,49 @@ if not S3_CACHE_BUCKET:
 s3_client = boto3.client("s3")
 
 
-def _fetch_cache() -> dict[str, Any]:
-    """Fetch the visualization cache from S3."""
-    response = s3_client.get_object(Bucket=S3_CACHE_BUCKET, Key=CACHE_KEY)
+class CacheNotFoundError(Exception):
+    """Raised when the cache file or pointer is not found in S3."""
+
+
+def _fetch_cache(bucket: str) -> dict[str, Any]:
+    """Fetch the visualization cache from S3.
+
+    Reads the latest.json pointer to find the current versioned cache file,
+    then fetches and returns that cache.
+
+    Raises:
+        CacheNotFoundError: If the pointer or cache file is missing.
+        ClientError: For other S3 errors.
+    """
+    # First, get the latest.json pointer to find the versioned cache file
+    try:
+        pointer_response = s3_client.get_object(
+            Bucket=bucket, Key=LATEST_POINTER_KEY
+        )
+        pointer = json.loads(pointer_response["Body"].read().decode("utf-8"))
+        cache_key = pointer.get("cache_key")
+        if not cache_key:
+            raise CacheNotFoundError("latest.json missing 'cache_key' field")
+        logger.info("Fetching cache from %s", cache_key)
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code")
+        if error_code == "NoSuchKey":
+            raise CacheNotFoundError(
+                f"Pointer not found: {LATEST_POINTER_KEY}"
+            ) from e
+        raise
+
+    # Fetch the versioned cache file
+    try:
+        response = s3_client.get_object(Bucket=bucket, Key=cache_key)
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code")
+        if error_code == "NoSuchKey":
+            raise CacheNotFoundError(
+                f"Cache file not found: {cache_key}"
+            ) from e
+        raise
+
     return json.loads(response["Body"].read().decode("utf-8"))
 
 
@@ -87,8 +127,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     # Handle API Gateway v2 event format
     try:
         http_method = event["requestContext"]["http"]["method"].upper()
-    except (KeyError, TypeError) as e:
-        logger.error("Invalid event structure: %s", e)
+    except (KeyError, TypeError):
+        logger.exception("Invalid event structure")
         return {
             "statusCode": 400,
             "body": json.dumps({"error": "Invalid event structure"}),
@@ -112,7 +152,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         logger.error("S3_CACHE_BUCKET environment variable not set")
         return {
             "statusCode": 500,
-            "body": json.dumps({"error": "Configuration error: S3_CACHE_BUCKET not set"}),
+            "body": json.dumps(
+                {"error": "Configuration error: S3_CACHE_BUCKET not set"}
+            ),
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
@@ -121,8 +163,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     try:
         # Fetch cached data
-        logger.info("Fetching cache from s3://%s/%s", S3_CACHE_BUCKET, CACHE_KEY)
-        cache_data = _fetch_cache()
+        logger.info(
+            "Fetching cache from s3://%s/%s",
+            S3_CACHE_BUCKET,
+            LATEST_POINTER_KEY,
+        )
+        cache_data = _fetch_cache(S3_CACHE_BUCKET)
 
         # Add fetch timestamp
         cache_data["fetched_at"] = datetime.now(timezone.utc).isoformat()
@@ -142,35 +188,36 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             },
         }
 
-    except ClientError as e:
-        error_code = e.response.get("Error", {}).get("Code", "Unknown")
-        if error_code == "NoSuchKey":
-            logger.warning("Cache file not found: %s", CACHE_KEY)
-            return {
-                "statusCode": 404,
-                "body": json.dumps({
+    except CacheNotFoundError as e:
+        logger.warning("Cache not found: %s", e)
+        return {
+            "statusCode": 404,
+            "body": json.dumps(
+                {
                     "error": "Cache not found",
                     "message": "No cached visualization data found. Run the cache generator first.",
-                }),
-                "headers": {
-                    "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": "*",
-                },
-            }
-        logger.error("S3 error: %s", e)
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": f"S3 error: {str(e)}"}),
+                }
+            ),
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
             },
         }
-    except Exception as e:
-        logger.error("Unexpected error: %s", e, exc_info=True)
+    except ClientError:
+        logger.exception("S3 error")
         return {
             "statusCode": 500,
-            "body": json.dumps({"error": str(e)}),
+            "body": json.dumps({"error": "S3 error occurred"}),
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+        }
+    except Exception:
+        logger.exception("Unexpected error")
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": "Internal server error"}),
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",

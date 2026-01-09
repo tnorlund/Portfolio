@@ -7,7 +7,6 @@ Moved from infra/label_evaluator_step_functions/lambdas/llm_review.py.
 
 import json
 import logging
-import re
 from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage
@@ -79,7 +78,9 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
             "receipt_type": patterns.get("receipt_type"),
             "receipt_type_reason": patterns.get("receipt_type_reason"),
             "auto_generated": patterns.get("auto_generated", False),
-            "discovered_from_receipts": patterns.get("discovered_from_receipts"),
+            "discovered_from_receipts": patterns.get(
+                "discovered_from_receipts"
+            ),
             **nested,
         }
 
@@ -136,11 +137,19 @@ def format_line_item_patterns(patterns: Optional[dict]) -> str:
         lines.append(f"**Barcode Pattern**: `{patterns['barcode_pattern']}`")
 
     special_markers = patterns.get("special_markers")
-    if special_markers and isinstance(special_markers, list) and special_markers:
+    if (
+        special_markers
+        and isinstance(special_markers, list)
+        and special_markers
+    ):
         lines.append(f"**Special Markers**: {', '.join(special_markers)}")
 
     product_patterns = patterns.get("product_name_patterns")
-    if product_patterns and isinstance(product_patterns, list) and product_patterns:
+    if (
+        product_patterns
+        and isinstance(product_patterns, list)
+        and product_patterns
+    ):
         lines.append("**Product Name Patterns**:")
         for p in product_patterns[:3]:  # Limit to 3 for prompt size
             lines.append(f"  - {p}")
@@ -205,7 +214,9 @@ def compute_currency_math_hints(currency_items: list[dict]) -> str:
             label_desc.append(f"{len(line_totals)} LINE_TOTAL")
         if unit_prices:
             label_desc.append(f"{len(unit_prices)} UNIT_PRICE")
-        hints.append(f"- Item amounts ({', '.join(label_desc)}): sum to ${total:.2f}")
+        hints.append(
+            f"- Item amounts ({', '.join(label_desc)}): sum to ${total:.2f}"
+        )
 
     # Check for GRAND_TOTAL match against item amounts
     grand_totals = by_label.get("GRAND_TOTAL", [])
@@ -281,7 +292,9 @@ def build_review_prompt(
     other_merchant_examples = []
 
     for e in similar_evidence[:30]:  # Show top 30
-        line = f"- \"{e['word_text']}\" (similarity: {e['similarity_score']:.0%})"
+        line = (
+            f"- \"{e['word_text']}\" (similarity: {e['similarity_score']:.0%})"
+        )
         line += f"\n  Context: `{e['left_neighbor']}` | **{e['word_text']}** "
         line += f"| `{e['right_neighbor']}`"
         line += f"\n  Position: {e['position_description']}"
@@ -289,7 +302,9 @@ def build_review_prompt(
         if e["validated_as"]:
             for v in e["validated_as"][:2]:
                 reasoning = v.get("reasoning") or "no reasoning recorded"
-                line += f"\n  VALIDATED as **{v['label']}**: \"{reasoning[:100]}\""
+                line += (
+                    f"\n  VALIDATED as **{v['label']}**: \"{reasoning[:100]}\""
+                )
 
         if e["invalidated_as"]:
             for v in e["invalidated_as"][:2]:
@@ -314,7 +329,9 @@ def build_review_prompt(
 
     # Build label distribution
     label_summary_lines = []
-    for label, stats in sorted(label_dist.items(), key=lambda x: -x[1]["count"])[:10]:
+    for label, stats in sorted(
+        label_dist.items(), key=lambda x: -x[1]["count"]
+    )[:10]:
         examples = ", ".join(stats["example_words"][:3])
         label_summary_lines.append(
             f"- **{label}**: {stats['count']} occurrences "
@@ -506,9 +523,9 @@ def build_batched_review_prompt(
 
         # Condensed label distribution
         label_lines = []
-        for label, stats in sorted(label_dist.items(), key=lambda x: -x[1]["count"])[
-            :5
-        ]:
+        for label, stats in sorted(
+            label_dist.items(), key=lambda x: -x[1]["count"]
+        )[:5]:
             label_lines.append(
                 f"{label}: {stats['count']} ({stats['valid_count']} valid)"
             )
@@ -690,7 +707,9 @@ def build_receipt_context_prompt(
             validated_info = []
             validated_as = e.get("validated_as")
             if validated_as is None:
-                logger.debug("Issue %d: evidence[%d] validated_as is None", idx, e_idx)
+                logger.debug(
+                    "Issue %d: evidence[%d] validated_as is None", idx, e_idx
+                )
             elif not isinstance(validated_as, list):
                 logger.warning(
                     "Issue %d: evidence[%d] validated_as is %s, not list",
@@ -736,7 +755,9 @@ def build_receipt_context_prompt(
             similar_lines.append(line)
 
         similar_text = (
-            "\n".join(similar_lines) if similar_lines else "No similar words found"
+            "\n".join(similar_lines)
+            if similar_lines
+            else "No similar words found"
         )
 
         # Build drill-down section for constellation anomalies
@@ -750,22 +771,36 @@ def build_receipt_context_prompt(
                 f"\n**Drill-Down Analysis** ({len(drill_down)} words with this label):"
             ]
 
+            def _get_y_position(pos: Any) -> float:
+                """Extract y coordinate from various position formats."""
+                if pos is None:
+                    return 0.0
+                if isinstance(pos, (int, float)):
+                    return float(pos)
+                if isinstance(pos, (list, tuple)) and len(pos) >= 2:
+                    return float(pos[1])
+                if isinstance(pos, dict):
+                    return float(pos.get("y", 0))
+                return 0.0
+
             if culprits:
                 drill_down_lines.append("Likely culprits (deviation > 2σ):")
                 for w in culprits[:3]:  # Top 3 culprits
-                    pos = w.get("position", (0, 0))
+                    y_pos = _get_y_position(w.get("position"))
                     drill_down_lines.append(
                         f'  - "{w.get("text")}" (dev={w.get("deviation", 0):.2f}) '
-                        f"at y={pos[1]:.3f}"
+                        f"at y={y_pos:.3f}"
                     )
 
             if non_culprits:
-                drill_down_lines.append("Correctly positioned (for comparison):")
+                drill_down_lines.append(
+                    "Correctly positioned (for comparison):"
+                )
                 for w in non_culprits[:3]:  # Top 3 non-culprits
-                    pos = w.get("position", (0, 0))
+                    y_pos = _get_y_position(w.get("position"))
                     drill_down_lines.append(
                         f'  - "{w.get("text")}" (dev={w.get("deviation", 0):.2f}) '
-                        f"at y={pos[1]:.3f}"
+                        f"at y={y_pos:.3f}"
                     )
 
             drill_down_text = "\n".join(drill_down_lines)

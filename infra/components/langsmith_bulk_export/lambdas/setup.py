@@ -30,16 +30,29 @@ def _get_s3_credentials() -> dict[str, str]:
     secretsmanager = boto3.client("secretsmanager")
     try:
         response = secretsmanager.get_secret_value(SecretId=secret_arn)
-        return json.loads(response["SecretString"])
+        credentials = json.loads(response["SecretString"])
     except secretsmanager.exceptions.ResourceNotFoundException:
-        logger.error("Secret not found: %s", secret_arn)
+        logger.exception("Secret not found: %s", secret_arn)
         raise
     except json.JSONDecodeError:
-        logger.error("Invalid JSON in secret: %s", secret_arn)
+        logger.exception("Invalid JSON in secret: %s", secret_arn)
         raise
     except Exception:
         logger.exception("Error retrieving credentials from %s", secret_arn)
         raise
+
+    # Validate required keys exist and are non-empty
+    required_keys = ("access_key_id", "secret_access_key")
+    for key in required_keys:
+        if not credentials.get(key):
+            logger.error(
+                "Missing or empty required key '%s' in secret: %s",
+                key,
+                secret_arn,
+            )
+            raise ValueError(f"Secret missing required key: {key}")
+
+    return credentials
 
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
@@ -64,21 +77,38 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         Dict with destination_id and status
     """
     # Get config from event or fall back to environment variables
-    api_key = event.get("api_key") or os.environ["LANGCHAIN_API_KEY"]
-    tenant_id = event.get("tenant_id") or os.environ.get("LANGSMITH_TENANT_ID")
-    bucket_name = event.get("bucket_name") or os.environ["EXPORT_BUCKET"]
+    api_key = event.get("api_key") or os.environ.get("LANGCHAIN_API_KEY")
+    # Use default workspace if explicitly requested, otherwise fall back to env var
+    use_default_workspace = event.get("use_default_workspace", False)
+    if use_default_workspace:
+        tenant_id = None
+    else:
+        tenant_id = event.get("tenant_id") or os.environ.get(
+            "LANGSMITH_TENANT_ID"
+        )
+    bucket_name = event.get("bucket_name") or os.environ.get("EXPORT_BUCKET")
     stack = os.environ.get("STACK", "dev")
     prefix = event.get("prefix", "traces/")
     skip_ssm = event.get("skip_ssm", False)
 
-    if not tenant_id:
+    if not api_key:
         return {
             "statusCode": 400,
-            "message": "tenant_id required (via event or LANGSMITH_TENANT_ID env var)",
+            "message": "api_key required (via event or LANGCHAIN_API_KEY env var)",
         }
 
-    logger.info(f"Registering bulk export destination for tenant: {tenant_id}")
-    logger.info(f"Export bucket: {bucket_name}")
+    # tenant_id is optional - if not provided, uses default workspace
+    if not bucket_name:
+        return {
+            "statusCode": 400,
+            "message": "bucket_name required (via event or EXPORT_BUCKET env var)",
+        }
+
+    workspace_info = (
+        f"tenant: {tenant_id}" if tenant_id else "default workspace"
+    )
+    logger.info("Registering bulk export destination for %s", workspace_info)
+    logger.info("Export bucket: %s", bucket_name)
 
     # Get S3 credentials from Secrets Manager
     s3_credentials = _get_s3_credentials()
@@ -91,13 +121,15 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     try:
         existing = ssm.get_parameter(Name=param_name)
         destination_id = existing["Parameter"]["Value"]
-        logger.info(f"Destination already registered: {destination_id}")
+        logger.info("Destination already registered: %s", destination_id)
         return {
             "statusCode": 200,
             "message": "Destination already registered",
             "destination_id": destination_id,
         }
-    except ssm.exceptions.ParameterNotFound:
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") != "ParameterNotFound":
+            raise
         logger.info("No existing destination found, creating new one")
 
     # Create HTTP client with timeout to prevent indefinite hangs
@@ -111,7 +143,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code", "Unknown")
         if error_code == "NoSuchBucket":
-            logger.error("Bucket does not exist: %s", bucket_name)
+            logger.exception("Bucket does not exist: %s", bucket_name)
             return {
                 "statusCode": 404,
                 "message": f"Bucket does not exist: {bucket_name}",
@@ -121,7 +153,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "statusCode": 500,
             "message": f"Failed to get bucket location for: {bucket_name}",
         }
-    logger.info(f"Bucket region: {region}")
+    logger.info("Bucket region: %s", region)
 
     # Test that credentials work before sending to LangSmith
     # Test with the same prefix we'll use for exports
@@ -135,17 +167,17 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         # Test various operations LangSmith might use during validation
         test_key = f"{prefix}_validation_test"
         test_s3.put_object(Bucket=bucket_name, Key=test_key, Body=b"test")
-        logger.info(f"PutObject to {test_key} succeeded")
+        logger.info("PutObject to %s succeeded", test_key)
         test_s3.head_object(Bucket=bucket_name, Key=test_key)
-        logger.info(f"HeadObject for {test_key} succeeded")
+        logger.info("HeadObject for %s succeeded", test_key)
         test_s3.get_object(Bucket=bucket_name, Key=test_key)
-        logger.info(f"GetObject for {test_key} succeeded")
+        logger.info("GetObject for %s succeeded", test_key)
         test_s3.delete_object(Bucket=bucket_name, Key=test_key)
-        logger.info(f"DeleteObject for {test_key} succeeded")
+        logger.info("DeleteObject for %s succeeded", test_key)
         test_s3.head_bucket(Bucket=bucket_name)
-        logger.info(f"HeadBucket for {bucket_name} succeeded")
+        logger.info("HeadBucket for %s succeeded", bucket_name)
         test_s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix, MaxKeys=1)
-        logger.info(f"ListObjectsV2 for {prefix} succeeded")
+        logger.info("ListObjectsV2 for %s succeeded", prefix)
         logger.info("All local credential tests passed")
     except Exception as e:
         logger.exception("Local credential test failed")
@@ -155,46 +187,66 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         }
 
     # Register destination with LangSmith
-    # Note: endpoint_url is required for LangSmith to properly access the S3 bucket
     display_name = event.get("display_name", f"portfolio-traces-{stack}")
+
+    # Build credentials dict, including session_token if present
+    credentials = {
+        "access_key_id": s3_credentials["access_key_id"],
+        "secret_access_key": s3_credentials["secret_access_key"],
+    }
+    if s3_credentials.get("session_token"):
+        credentials["session_token"] = s3_credentials["session_token"]
+
+    # Build config - endpoint_url not needed for AWS S3
+    config = {
+        "bucket_name": bucket_name,
+        "prefix": prefix,
+        "region": region,
+        "include_bucket_in_prefix": True,
+    }
+
+    # Only include endpoint_url for non-AWS S3 backends
+    endpoint_url = event.get("endpoint_url")
+    if endpoint_url:
+        config["endpoint_url"] = endpoint_url
+
     request_body = {
         "destination_type": "s3",
         "display_name": display_name,
-        "config": {
-            "bucket_name": bucket_name,
-            "prefix": prefix,
-            "region": region,
-            "endpoint_url": f"https://s3.{region}.amazonaws.com",
-            "include_bucket_in_prefix": True,
-        },
-        "credentials": {
-            "access_key_id": s3_credentials["access_key_id"],
-            "secret_access_key": s3_credentials["secret_access_key"],
-        },
+        "config": config,
+        "credentials": credentials,
     }
     logger.info(
-        f"Registering with bucket={bucket_name}, region={region}, prefix={prefix}"
+        "Registering with bucket=%s, region=%s, prefix=%s",
+        bucket_name,
+        region,
+        prefix,
     )
-    logger.info(
-        f"Request body: {json.dumps({k: v if k != 'credentials' else '***' for k, v in request_body.items()})}"
-    )
+    sanitized_body = {
+        k: v if k != "credentials" else "***" for k, v in request_body.items()
+    }
+    logger.info("Request body: %s", json.dumps(sanitized_body))
 
     try:
+        headers = {
+            "x-api-key": api_key,
+            "Content-Type": "application/json",
+        }
+        # Only include tenant_id if explicitly provided
+        if tenant_id:
+            headers["X-Tenant-Id"] = tenant_id
+
         response = http.request(
             "POST",
             f"{LANGSMITH_API_URL}/api/v1/bulk-exports/destinations",
-            headers={
-                "x-api-key": api_key,
-                "X-Tenant-Id": tenant_id,
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             body=json.dumps(request_body),
         )
 
         if response.status not in (200, 201):
             error_msg = response.data.decode("utf-8")
             logger.error(
-                f"LangSmith API error: {response.status} - {error_msg}"
+                "LangSmith API error: %s - %s", response.status, error_msg
             )
             return {
                 "statusCode": response.status,
@@ -205,25 +257,28 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         destination_id = result.get("id")
 
         if not destination_id:
-            logger.error(f"No destination_id in response: {result}")
+            logger.error("No destination_id in response: %s", result)
             return {
                 "statusCode": 500,
                 "message": "No destination_id in LangSmith response",
                 "response": result,
             }
 
-        logger.info(f"Destination registered: {destination_id}")
+        logger.info("Destination registered: %s", destination_id)
 
         # Store destination_id in SSM Parameter Store (unless skip_ssm is True)
         if not skip_ssm:
+            description = (
+                f"LangSmith bulk export destination ID for {workspace_info}"
+            )
             ssm.put_parameter(
                 Name=param_name,
                 Value=destination_id,
                 Type="String",
-                Description=f"LangSmith bulk export destination ID for {tenant_id}",
+                Description=description,
                 Overwrite=True,
             )
-            logger.info(f"Stored destination_id in SSM: {param_name}")
+            logger.info("Stored destination_id in SSM: %s", param_name)
         else:
             logger.info("Skipping SSM storage (skip_ssm=True)")
 

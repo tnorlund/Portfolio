@@ -174,6 +174,7 @@ def deserialize_patterns(
         std_deviation = geom_data.get("std_deviation")
         if std_deviation is None and std_dx is not None and std_dy is not None:
             import math
+
             # Use Euclidean norm of (std_dx, std_dy) as combined deviation
             std_deviation = math.sqrt(std_dx**2 + std_dy**2)
         geom = LabelPairGeometry(
@@ -202,6 +203,7 @@ def deserialize_patterns(
             std_deviation = rel_data.get("std_deviation")
             if std_deviation is None:
                 import math
+
                 std_deviation = math.sqrt(std_dx**2 + std_dy**2)
             relative_positions[label] = LabelRelativePosition(
                 mean_dx=rel_data.get("mean_dx", 0.0),

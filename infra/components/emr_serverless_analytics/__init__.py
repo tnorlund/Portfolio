@@ -5,24 +5,21 @@ This component creates infrastructure for running Spark analytics on LangSmith
 trace exports using EMR Serverless, integrated with Step Functions.
 
 Creates:
-- EMR Serverless Application (Spark)
-- S3 bucket for Spark job artifacts (venv tarball, entry point)
+- EMR Serverless Application (Spark) with custom Docker image
+- S3 bucket for Spark job artifacts (entry point scripts)
 - S3 bucket for analytics output (Parquet)
 - IAM role for EMR job execution
-- CodeBuild project to package receipt_langsmith[pyspark]
 """
 
 import json
-import os
 from pathlib import Path
 from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
 from pulumi import (
-    AssetArchive,
     ComponentResource,
-    FileArchive,
+    FileAsset,
     Input,
     Output,
     ResourceOptions,
@@ -39,10 +36,9 @@ class EMRServerlessAnalytics(ComponentResource):
     """EMR Serverless infrastructure for LangSmith Spark analytics.
 
     This component provides:
-    - EMR Serverless Application (auto-start, auto-stop)
+    - EMR Serverless Application (auto-start, auto-stop) with custom image
     - S3 buckets for job artifacts and analytics output
     - IAM roles with appropriate permissions
-    - CodeBuild project for packaging Python dependencies
     """
 
     def __init__(
@@ -50,6 +46,7 @@ class EMRServerlessAnalytics(ComponentResource):
         name: str,
         *,
         langsmith_export_bucket_arn: Input[str],
+        custom_image_uri: Optional[Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -62,8 +59,11 @@ class EMRServerlessAnalytics(ComponentResource):
         region = aws.get_region().name
         account_id = aws.get_caller_identity().account_id
 
-        # Convert input to Output
+        # Convert inputs to Output
         langsmith_bucket_arn = Output.from_input(langsmith_export_bucket_arn)
+        self.custom_image_uri = (
+            Output.from_input(custom_image_uri) if custom_image_uri else None
+        )
 
         # ============================================================
         # S3 Buckets
@@ -134,50 +134,75 @@ class EMRServerlessAnalytics(ComponentResource):
         # ============================================================
         # EMR Serverless Application
         # ============================================================
-        self.emr_application = aws.emrserverless.Application(
-            f"{name}-app",
-            name=f"langsmith-analytics-{stack}",
-            release_label="emr-7.0.0",
-            type="SPARK",
-            initial_capacities=[
+        # Build application args
+        # Use EMR 7.5.0 with custom image that has Python 3.12 installed
+        # (EMR 8.0 preview doesn't have public Docker base images for custom images yet)
+        emr_app_args = {
+            "name": f"langsmith-analytics-{stack}",
+            "release_label": "emr-7.5.0",
+            "type": "SPARK",
+            "initial_capacities": [
                 aws.emrserverless.ApplicationInitialCapacityArgs(
                     initial_capacity_type="Driver",
-                    initial_capacity_config=aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigArgs(
-                        worker_count=1,
-                        worker_configuration=aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigWorkerConfigurationArgs(
-                            cpu="2 vCPU",
-                            memory="4 GB",
-                        ),
+                    initial_capacity_config=(
+                        aws.emrserverless
+                        .ApplicationInitialCapacityInitialCapacityConfigArgs(
+                            worker_count=1,
+                            worker_configuration=(
+                                aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigWorkerConfigurationArgs(  # pylint: disable=line-too-long
+                                    cpu="2 vCPU",
+                                    memory="4 GB",
+                                )
+                            ),
+                        )
                     ),
                 ),
                 aws.emrserverless.ApplicationInitialCapacityArgs(
                     initial_capacity_type="Executor",
-                    initial_capacity_config=aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigArgs(
-                        worker_count=4,
-                        worker_configuration=aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigWorkerConfigurationArgs(
-                            cpu="2 vCPU",
-                            memory="4 GB",
-                        ),
+                    initial_capacity_config=(
+                        aws.emrserverless
+                        .ApplicationInitialCapacityInitialCapacityConfigArgs(
+                            worker_count=4,
+                            worker_configuration=(
+                                aws.emrserverless.ApplicationInitialCapacityInitialCapacityConfigWorkerConfigurationArgs(  # pylint: disable=line-too-long
+                                    cpu="2 vCPU",
+                                    memory="4 GB",
+                                )
+                            ),
+                        )
                     ),
                 ),
             ],
-            maximum_capacity=aws.emrserverless.ApplicationMaximumCapacityArgs(
+            "maximum_capacity": aws.emrserverless.ApplicationMaximumCapacityArgs(
                 cpu="16 vCPU",
                 memory="64 GB",
             ),
-            auto_start_configuration=aws.emrserverless.ApplicationAutoStartConfigurationArgs(
+            "auto_start_configuration": aws.emrserverless.ApplicationAutoStartConfigurationArgs(
                 enabled=True,
             ),
-            auto_stop_configuration=aws.emrserverless.ApplicationAutoStopConfigurationArgs(
+            "auto_stop_configuration": aws.emrserverless.ApplicationAutoStopConfigurationArgs(
                 enabled=True,
                 idle_timeout_minutes=15,
             ),
-            tags={
+            "tags": {
                 "Name": f"{name}-app",
                 "Purpose": "LangSmith analytics",
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
+        }
+
+        # Add custom image configuration if provided
+        if self.custom_image_uri:
+            emr_app_args["image_configuration"] = (
+                aws.emrserverless.ApplicationImageConfigurationArgs(
+                    image_uri=self.custom_image_uri,
+                )
+            )
+
+        self.emr_application = aws.emrserverless.Application(
+            f"{name}-app",
+            **emr_app_args,
             opts=ResourceOptions(parent=self),
         )
 
@@ -227,10 +252,14 @@ class EMRServerlessAnalytics(ComponentResource):
                                 "Action": ["s3:GetObject", "s3:ListBucket"],
                                 "Resource": [args[0], f"{args[0]}/*"],
                             },
-                            # Read Spark job artifacts
+                            # Read Spark job artifacts and write logs
                             {
                                 "Effect": "Allow",
-                                "Action": ["s3:GetObject", "s3:ListBucket"],
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:ListBucket",
+                                ],
                                 "Resource": [args[1], f"{args[1]}/*"],
                             },
                             # Write analytics output
@@ -255,9 +284,22 @@ class EMRServerlessAnalytics(ComponentResource):
                                     "logs:DescribeLogStreams",
                                 ],
                                 "Resource": [
-                                    f"arn:aws:logs:{region}:{account_id}:log-group:/aws/emr-serverless/*",
-                                    f"arn:aws:logs:{region}:{account_id}:log-group:/aws/emr-serverless/*:*",
+                                    f"arn:aws:logs:{region}:{account_id}"
+                                    ":log-group:/aws/emr-serverless/*",
+                                    f"arn:aws:logs:{region}:{account_id}"
+                                    ":log-group:/aws/emr-serverless/*:*",
                                 ],
+                            },
+                            # ECR access for custom images
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "ecr:GetAuthorizationToken",
+                                    "ecr:BatchCheckLayerAvailability",
+                                    "ecr:GetDownloadUrlForLayer",
+                                    "ecr:BatchGetImage",
+                                ],
+                                "Resource": "*",
                             },
                         ],
                     }
@@ -267,158 +309,28 @@ class EMRServerlessAnalytics(ComponentResource):
         )
 
         # ============================================================
-        # CodeBuild Role for Packaging
+        # Upload Entry Point Scripts
         # ============================================================
-        self.codebuild_role = aws.iam.Role(
-            f"{name}-codebuild-role",
-            assume_role_policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {
-                                "Service": "codebuild.amazonaws.com"
-                            },
-                            "Action": "sts:AssumeRole",
-                        }
-                    ],
-                }
-            ),
-            tags={
-                "Name": f"{name}-codebuild-role",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(parent=self),
+        # Upload Spark job entry point scripts to S3
+        spark_scripts_dir = (
+            REPO_ROOT / "receipt_langsmith" / "receipt_langsmith" / "spark"
         )
 
-        # CodeBuild policy
-        aws.iam.RolePolicy(
-            f"{name}-codebuild-policy",
-            role=self.codebuild_role.id,
-            policy=self.artifacts_bucket.arn.apply(
-                lambda arn: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            # CloudWatch Logs
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "logs:CreateLogGroup",
-                                    "logs:CreateLogStream",
-                                    "logs:PutLogEvents",
-                                ],
-                                "Resource": f"arn:aws:logs:{region}:{account_id}:log-group:/aws/codebuild/*",
-                            },
-                            # S3 access for source and artifacts
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:PutObject",
-                                    "s3:ListBucket",
-                                ],
-                                "Resource": [arn, f"{arn}/*"],
-                            },
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self.codebuild_role),
-        )
-
-        # ============================================================
-        # CodeBuild Project for Packaging
-        # ============================================================
-        buildspec = """
-version: 0.2
-
-phases:
-  install:
-    runtime-versions:
-      python: 3.12
-    commands:
-      - pip install virtualenv venv-pack
-
-  build:
-    commands:
-      - echo "Creating virtual environment..."
-      - python -m venv spark_env
-      - source spark_env/bin/activate
-      - echo "Installing receipt_langsmith[pyspark]..."
-      - pip install ./receipt_langsmith[pyspark]
-      - echo "Packaging environment..."
-      - venv-pack -o spark_env.tar.gz
-
-  post_build:
-    commands:
-      - echo "Uploading artifacts to S3..."
-      - aws s3 cp spark_env.tar.gz s3://${ARTIFACTS_BUCKET}/spark/spark_env.tar.gz
-      - aws s3 cp receipt_langsmith/spark/emr_job.py s3://${ARTIFACTS_BUCKET}/spark/emr_job.py
-      - echo "Done!"
-
-artifacts:
-  files:
-    - spark_env.tar.gz
-"""
-
-        self.codebuild_project = aws.codebuild.Project(
-            f"{name}-packager",
-            description="Packages receipt_langsmith[pyspark] for EMR Serverless",
-            build_timeout=30,
-            service_role=self.codebuild_role.arn,
-            environment=aws.codebuild.ProjectEnvironmentArgs(
-                compute_type="BUILD_GENERAL1_MEDIUM",
-                image="aws/codebuild/amazonlinux2-x86_64-standard:5.0",
-                type="LINUX_CONTAINER",
-                environment_variables=[
-                    aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
-                        name="ARTIFACTS_BUCKET",
-                        value=self.artifacts_bucket.id,
-                    ),
-                ],
-            ),
-            source=aws.codebuild.ProjectSourceArgs(
-                type="S3",
-                location=self.artifacts_bucket.id.apply(
-                    lambda b: f"{b}/source/source.zip"
-                ),
-                buildspec=buildspec,
-            ),
-            artifacts=aws.codebuild.ProjectArtifactsArgs(type="NO_ARTIFACTS"),
-            logs_config=aws.codebuild.ProjectLogsConfigArgs(
-                cloudwatch_logs=aws.codebuild.ProjectLogsConfigCloudwatchLogsArgs(
-                    group_name=f"/aws/codebuild/{name}-packager",
-                    status="ENABLED",
-                ),
-            ),
-            tags={
-                "Name": f"{name}-packager",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(parent=self),
-        )
-
-        # ============================================================
-        # Upload Source Archive
-        # ============================================================
-        # Create source archive with receipt_langsmith package
-        receipt_langsmith_path = REPO_ROOT / "receipt_langsmith"
-
-        self.source_object = aws.s3.BucketObjectv2(
-            f"{name}-source-object",
+        # Upload emr_job.py
+        self.emr_job_script = aws.s3.BucketObjectv2(
+            f"{name}-emr-job-script",
             bucket=self.artifacts_bucket.id,
-            key="source/source.zip",
-            source=AssetArchive(
-                {
-                    "receipt_langsmith": FileArchive(
-                        str(receipt_langsmith_path)
-                    ),
-                }
-            ),
+            key="spark/emr_job.py",
+            source=FileAsset(str(spark_scripts_dir / "emr_job.py")),
+            opts=ResourceOptions(parent=self.artifacts_bucket),
+        )
+
+        # Upload viz_cache_job.py
+        self.viz_cache_job_script = aws.s3.BucketObjectv2(
+            f"{name}-viz-cache-job-script",
+            bucket=self.artifacts_bucket.id,
+            key="spark/viz_cache_job.py",
+            source=FileAsset(str(spark_scripts_dir / "viz_cache_job.py")),
             opts=ResourceOptions(parent=self.artifacts_bucket),
         )
 
@@ -434,18 +346,25 @@ artifacts:
                 "artifacts_bucket_arn": self.artifacts_bucket.arn,
                 "analytics_bucket_name": self.analytics_bucket.id,
                 "analytics_bucket_arn": self.analytics_bucket.arn,
-                "codebuild_project_name": self.codebuild_project.name,
             }
         )
 
 
 def create_emr_serverless_analytics(
     langsmith_export_bucket_arn: Input[str],
+    custom_image_uri: Optional[Input[str]] = None,
     opts: Optional[ResourceOptions] = None,
 ) -> EMRServerlessAnalytics:
-    """Factory function to create EMR Serverless analytics infrastructure."""
+    """Factory function to create EMR Serverless analytics infrastructure.
+
+    Args:
+        langsmith_export_bucket_arn: ARN of the LangSmith export bucket
+        custom_image_uri: Optional custom Docker image URI for EMR Serverless
+        opts: Pulumi resource options
+    """
     return EMRServerlessAnalytics(
         f"emr-analytics-{stack}",
         langsmith_export_bucket_arn=langsmith_export_bucket_arn,
+        custom_image_uri=custom_image_uri,
         opts=opts,
     )

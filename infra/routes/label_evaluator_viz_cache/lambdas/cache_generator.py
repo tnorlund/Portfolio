@@ -46,7 +46,9 @@ def _get_dynamo_client() -> DynamoClient:
     return _dynamo_client
 
 
-def _get_receipt_from_dynamodb(image_id: str, receipt_id: int) -> dict[str, Any] | None:
+def _get_receipt_from_dynamodb(
+    image_id: str, receipt_id: int
+) -> dict[str, Any] | None:
     """Fetch receipt info including CDN keys from DynamoDB."""
     try:
         client = _get_dynamo_client()
@@ -67,7 +69,9 @@ def _get_receipt_from_dynamodb(image_id: str, receipt_id: int) -> dict[str, Any]
     return None
 
 
-def _get_words_from_dynamodb(image_id: str, receipt_id: int) -> list[dict[str, Any]]:
+def _get_words_from_dynamodb(
+    image_id: str, receipt_id: int
+) -> list[dict[str, Any]]:
     """Fetch word bounding boxes from DynamoDB."""
     try:
         client = _get_dynamo_client()
@@ -87,25 +91,40 @@ def _get_words_from_dynamodb(image_id: str, receipt_id: int) -> list[dict[str, A
             for w in words
         ]
     except Exception as e:
-        logger.warning("Failed to fetch words from DynamoDB for %s_%d: %s", image_id, receipt_id, e)
+        logger.warning(
+            "Failed to fetch words from DynamoDB for %s_%d: %s",
+            image_id,
+            receipt_id,
+            e,
+        )
     return []
 
 
-def _get_labels_from_dynamodb(image_id: str, receipt_id: int) -> dict[tuple[int, int], str]:
+def _get_labels_from_dynamodb(
+    image_id: str, receipt_id: int
+) -> dict[tuple[int, int], str]:
     """Fetch word labels from DynamoDB as a lookup dict."""
     try:
         client = _get_dynamo_client()
-        labels, _ = client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+        labels, _ = client.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id
+        )
         return {
-            (label.line_id, label.word_id): label.label
-            for label in labels
+            (label.line_id, label.word_id): label.label for label in labels
         }
     except Exception as e:
-        logger.warning("Failed to fetch labels from DynamoDB for %s_%d: %s", image_id, receipt_id, e)
+        logger.warning(
+            "Failed to fetch labels from DynamoDB for %s_%d: %s",
+            image_id,
+            receipt_id,
+            e,
+        )
     return {}
 
 
-def _build_receipt_visualization(trace_data: dict[str, Any]) -> dict[str, Any] | None:
+def _build_receipt_visualization(
+    trace_data: dict[str, Any],
+) -> dict[str, Any] | None:
     """Build visualization-ready receipt data from trace + DynamoDB data."""
     image_id = trace_data.get("image_id")
     receipt_id = trace_data.get("receipt_id")
@@ -119,13 +138,19 @@ def _build_receipt_visualization(trace_data: dict[str, Any]) -> dict[str, Any] |
     # Get CDN info from DynamoDB
     receipt_info = _get_receipt_from_dynamodb(image_id, receipt_id)
     if not receipt_info:
-        logger.warning("Could not fetch receipt CDN info from DynamoDB for %s_%d", image_id, receipt_id)
+        logger.warning(
+            "Could not fetch receipt CDN info from DynamoDB for %s_%d",
+            image_id,
+            receipt_id,
+        )
         return None
 
     # Get words from DynamoDB
     words = _get_words_from_dynamodb(image_id, receipt_id)
     if not words:
-        logger.warning("No words found in DynamoDB for %s_%d", image_id, receipt_id)
+        logger.warning(
+            "No words found in DynamoDB for %s_%d", image_id, receipt_id
+        )
         return None
 
     # Get labels from DynamoDB
@@ -137,13 +162,15 @@ def _build_receipt_visualization(trace_data: dict[str, Any]) -> dict[str, Any] |
         line_id = word["line_id"]
         word_id = word["word_id"]
         label = labels_lookup.get((line_id, word_id))
-        viz_words.append({
-            "text": word["text"],
-            "label": label,
-            "line_id": line_id,
-            "word_id": word_id,
-            "bbox": word["bbox"],
-        })
+        viz_words.append(
+            {
+                "text": word["text"],
+                "label": label,
+                "line_id": line_id,
+                "word_id": word_id,
+                "bbox": word["bbox"],
+            }
+        )
 
     # Extract evaluation data from trace
     geometric = trace_data.get("geometric", {})
@@ -185,7 +212,9 @@ def _build_receipt_visualization(trace_data: dict[str, Any]) -> dict[str, Any] |
             "receipt_id": receipt_id,
             "merchant_name": merchant_name,
             "duration_seconds": currency.get("duration_seconds", 0),
-            "decisions": currency.get("decisions", {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}),
+            "decisions": currency.get(
+                "decisions", {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+            ),
             "all_decisions": currency.get("all_decisions", []),
         },
         "metadata": {
@@ -193,7 +222,9 @@ def _build_receipt_visualization(trace_data: dict[str, Any]) -> dict[str, Any] |
             "receipt_id": receipt_id,
             "merchant_name": merchant_name,
             "duration_seconds": metadata.get("duration_seconds", 0),
-            "decisions": metadata.get("decisions", {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}),
+            "decisions": metadata.get(
+                "decisions", {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+            ),
             "all_decisions": metadata.get("all_decisions", []),
         },
         "financial": {
@@ -201,17 +232,25 @@ def _build_receipt_visualization(trace_data: dict[str, Any]) -> dict[str, Any] |
             "receipt_id": receipt_id,
             "merchant_name": merchant_name,
             "duration_seconds": financial.get("duration_seconds", 0),
-            "decisions": financial.get("decisions", {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}),
+            "decisions": financial.get(
+                "decisions", {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+            ),
             "all_decisions": financial.get("all_decisions", []),
         },
-        "review": {
-            "image_id": image_id,
-            "receipt_id": receipt_id,
-            "merchant_name": merchant_name,
-            "duration_seconds": review.get("duration_seconds", 0),
-            "decisions": review.get("decisions", {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}),
-            "all_decisions": review.get("all_decisions", []),
-        } if review else None,
+        "review": (
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "merchant_name": merchant_name,
+                "duration_seconds": review.get("duration_seconds", 0),
+                "decisions": review.get(
+                    "decisions", {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+                ),
+                "all_decisions": review.get("all_decisions", []),
+            }
+            if review
+            else None
+        ),
         "line_item_duration_seconds": line_item_duration,
         "cdn_s3_key": receipt_info["cdn_s3_key"],
         "cdn_webp_s3_key": receipt_info.get("cdn_webp_s3_key"),
@@ -233,7 +272,11 @@ def _save_cache(cache_data: dict[str, Any]) -> bool:
             Body=json.dumps(cache_data, default=str),
             ContentType="application/json",
         )
-        logger.info("Saved visualization cache to s3://%s/%s", S3_CACHE_BUCKET, CACHE_KEY)
+        logger.info(
+            "Saved visualization cache to s3://%s/%s",
+            S3_CACHE_BUCKET,
+            CACHE_KEY,
+        )
         return True
     except ClientError:
         logger.exception("Error saving cache")
@@ -266,7 +309,11 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     if not trace_receipts:
         logger.warning("No receipts found in LangSmith export")
-        return {"statusCode": 200, "message": "No receipts found", "receipts_cached": 0}
+        return {
+            "statusCode": 200,
+            "message": "No receipts found",
+            "receipts_cached": 0,
+        }
 
     logger.info("Found %d receipts in LangSmith export", len(trace_receipts))
 
@@ -281,13 +328,19 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     if not all_receipts:
         logger.warning("No receipts could be built from trace data")
-        return {"statusCode": 200, "message": "No receipts built", "receipts_cached": 0}
+        return {
+            "statusCode": 200,
+            "message": "No receipts built",
+            "receipts_cached": 0,
+        }
 
     logger.info("Built %d visualization receipts", len(all_receipts))
 
     # Prioritize receipts with issues and select final set
     receipts_with_issues = [r for r in all_receipts if r["issues_found"] > 0]
-    receipts_without_issues = [r for r in all_receipts if r["issues_found"] == 0]
+    receipts_without_issues = [
+        r for r in all_receipts if r["issues_found"] == 0
+    ]
 
     # Mix: mostly receipts with issues, some without
     if len(receipts_with_issues) >= MAX_RECEIPTS:
@@ -296,13 +349,19 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         selected = receipts_with_issues.copy()
         remaining = MAX_RECEIPTS - len(selected)
         if receipts_without_issues and remaining > 0:
-            selected.extend(random.sample(
-                receipts_without_issues,
-                min(remaining, len(receipts_without_issues))
-            ))
+            selected.extend(
+                random.sample(
+                    receipts_without_issues,
+                    min(remaining, len(receipts_without_issues)),
+                )
+            )
 
     # Get execution_id from first receipt (all should be from same export)
-    execution_id = trace_receipts[0].get("execution_id", "unknown") if trace_receipts else "unknown"
+    execution_id = (
+        trace_receipts[0].get("execution_id", "unknown")
+        if trace_receipts
+        else "unknown"
+    )
 
     # Build cache payload
     cache_data = {
@@ -310,7 +369,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         "receipts": selected,
         "summary": {
             "total_receipts": len(selected),
-            "receipts_with_issues": len([r for r in selected if r["issues_found"] > 0]),
+            "receipts_with_issues": len(
+                [r for r in selected if r["issues_found"] > 0]
+            ),
         },
         "cached_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -322,7 +383,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "statusCode": 200,
             "message": "Cache generation complete",
             "receipts_cached": len(selected),
-            "receipts_with_issues": cache_data["summary"]["receipts_with_issues"],
+            "receipts_with_issues": cache_data["summary"][
+                "receipts_with_issues"
+            ],
             "execution_id": execution_id,
         }
     else:

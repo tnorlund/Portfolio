@@ -61,6 +61,19 @@ from receipt_langsmith.entities.validation import (
     VerificationEvidenceTrace,
     VerificationStepTrace,
 )
+from receipt_langsmith.entities.visualization import (
+    BoundingBox,
+    DecisionCounts,
+    EvaluatorResult,
+    EvaluatorTiming,
+    GeometricResult,
+    ReceiptIdentifier,
+    ReceiptWithAnomalies,
+    ReceiptWithDecisions,
+    VisualizationReceipt,
+    VizCacheReceipt,
+    WordWithLabel,
+)
 
 __all__ = [
     # Base schemas
@@ -111,4 +124,16 @@ __all__ = [
     "GroupingProposal",
     "GroupingInputs",
     "GroupingOutputs",
+    # Visualization
+    "DecisionCounts",
+    "EvaluatorResult",
+    "GeometricResult",
+    "ReceiptIdentifier",
+    "EvaluatorTiming",
+    "ReceiptWithDecisions",
+    "ReceiptWithAnomalies",
+    "VisualizationReceipt",
+    "BoundingBox",
+    "WordWithLabel",
+    "VizCacheReceipt",
 ]
