@@ -134,9 +134,9 @@ class LangSmithSparkProcessor:
             )
             .withColumn(
                 "duration_ms",
-                (
-                    F.unix_timestamp("end_time") - F.unix_timestamp("start_time")
-                )
+                # Use timestamp arithmetic as doubles to preserve millisecond precision
+                # (unix_timestamp loses sub-second precision)
+                (F.col("end_time").cast("double") - F.col("start_time").cast("double"))
                 * 1000,
             )
         )
@@ -159,9 +159,8 @@ class LangSmithSparkProcessor:
         receipts = df.filter(F.col("name") == "ReceiptEvaluation")
 
         # Get all runs in each trace for aggregation
-        all_runs = df.alias("all")
         trace_stats = (
-            all_runs.groupBy("trace_id")
+            df.groupBy("trace_id")
             .agg(
                 F.sum("duration_ms").alias("total_duration_ms"),
                 F.sum("total_tokens").alias("total_tokens"),
@@ -260,12 +259,8 @@ class LangSmithSparkProcessor:
             )
         )
 
-        # Extract decisions from outputs JSON
-        # The structure is: outputs.all_decisions[].llm_review.decision
+        # Extract decision counts from outputs JSON
         with_decisions = evaluators.withColumn(
-            "decisions_json",
-            F.get_json_object(F.col("outputs"), "$.all_decisions"),
-        ).withColumn(
             "decisions_count",
             F.get_json_object(F.col("outputs"), "$.decisions"),
         )
