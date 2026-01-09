@@ -525,6 +525,30 @@ def _build_viz_receipts(
     return viz_receipts
 
 
+def _generate_cdn_keys(base_cdn_key: str) -> dict[str, str | None]:
+    """Generate all CDN format keys from base JPEG key.
+
+    Args:
+        base_cdn_key: Base JPEG key like 'assets/uuid_RECEIPT_00001.jpg'
+
+    Returns:
+        Dict with cdn_s3_key, cdn_webp_s3_key, cdn_medium_s3_key
+    """
+    if not base_cdn_key.endswith(".jpg"):
+        return {
+            "cdn_s3_key": base_cdn_key,
+            "cdn_webp_s3_key": None,
+            "cdn_medium_s3_key": None,
+        }
+
+    base = base_cdn_key[:-4]  # Remove .jpg
+    return {
+        "cdn_s3_key": base_cdn_key,
+        "cdn_webp_s3_key": f"{base}.webp",
+        "cdn_medium_s3_key": f"{base}_medium.jpg",
+    }
+
+
 def _build_single_viz_receipt(
     s3_client: Any,
     parquet_data: dict[str, Any],
@@ -545,6 +569,9 @@ def _build_single_viz_receipt(
     if results is None:
         return None
 
+    # Generate all CDN format keys from base JPEG key
+    cdn_keys = _generate_cdn_keys(cdn_key)
+
     return VizCacheReceipt(
         image_id=image_id,
         receipt_id=receipt_id,
@@ -561,7 +588,12 @@ def _build_single_viz_receipt(
         currency=results["currency"],
         metadata=results["metadata"],
         financial=results["financial"],
-        cdn_key=cdn_key,
+        cdn_s3_key=cdn_keys["cdn_s3_key"],
+        cdn_webp_s3_key=cdn_keys["cdn_webp_s3_key"],
+        cdn_medium_s3_key=cdn_keys["cdn_medium_s3_key"],
+        # Default dimensions - actual dimensions could be fetched from DynamoDB
+        width=800,
+        height=2400,
     ).model_dump()
 
 
