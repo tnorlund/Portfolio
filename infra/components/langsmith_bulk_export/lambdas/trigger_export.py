@@ -24,7 +24,7 @@ logger.setLevel(logging.INFO)
 LANGSMITH_API_URL = "https://api.smith.langchain.com"
 
 
-def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
     Trigger a LangSmith bulk export job.
 
@@ -74,11 +74,17 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         try:
             response = ssm.get_parameter(Name=param_name)
             destination_id = response["Parameter"]["Value"]
-        except Exception:
-            logger.exception(f"Destination not found in SSM: {param_name}")
+        except ssm.exceptions.ParameterNotFound:
+            logger.warning("Destination not found in SSM: %s", param_name)
             return {
                 "statusCode": 400,
                 "message": "destination_id required (via event or SSM parameter). Run setup Lambda first.",
+            }
+        except Exception:
+            logger.exception("Unexpected error retrieving destination from SSM: %s", param_name)
+            return {
+                "statusCode": 500,
+                "message": "Error retrieving destination_id from SSM",
             }
 
     logger.info(f"Using destination_id: {destination_id}")

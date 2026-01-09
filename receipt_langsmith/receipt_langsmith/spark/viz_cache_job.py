@@ -104,11 +104,19 @@ def load_receipts_from_s3(s3_client: Any, receipts_json_path: str) -> dict[tuple
     logger.info("Loading receipts from %s", receipts_json_path)
 
     # Parse S3 path: s3://bucket/key
-    if receipts_json_path.startswith("s3://"):
-        path = receipts_json_path[5:]
-        bucket, key = path.split("/", 1)
-    else:
-        raise ValueError(f"Invalid S3 path: {receipts_json_path}")
+    if not receipts_json_path.startswith("s3://"):
+        raise ValueError(
+            f"Invalid S3 path: {receipts_json_path}. Expected format: s3://bucket/key"
+        )
+
+    path = receipts_json_path[5:]
+    if "/" not in path:
+        raise ValueError(
+            f"Invalid S3 path: {receipts_json_path}. "
+            "Path must include a key after the bucket (e.g., s3://bucket/key)"
+        )
+
+    bucket, key = path.split("/", 1)
 
     response = s3_client.get_object(Bucket=bucket, Key=key)
     raw_lookup = json.loads(response["Body"].read().decode("utf-8"))
@@ -258,8 +266,8 @@ def load_s3_result(
         return json.loads(response["Body"].read().decode("utf-8"))
     except s3_client.exceptions.NoSuchKey:
         return None
-    except Exception as e:
-        logger.debug("Failed to load s3://%s/%s: %s", bucket, key, e)
+    except Exception:
+        logger.warning("Failed to load s3://%s/%s", bucket, key, exc_info=True)
         return None
 
 
@@ -322,8 +330,8 @@ def main() -> int:
                 logger.info("Prefix has data, using as-is")
             else:
                 logger.warning("Prefix %s has no data, will find fallback", parquet_prefix)
-        except Exception as e:
-            logger.warning("Error checking prefix: %s", e)
+        except Exception:
+            logger.warning("Error checking prefix", exc_info=True)
 
     # If prefix doesn't have data or is default, find the latest export
     if not prefix_has_data:
@@ -386,17 +394,18 @@ def main() -> int:
 
         # Read parquet files by explicit paths (avoids path normalization issue)
         df = spark.read.parquet(*parquet_files)
-        total_count = df.count()
-        logger.info("Total traces: %d", total_count)
+        logger.info("Loaded parquet files")
 
         # Filter for LangGraph traces (contain receipt outputs)
         langgraph_df = df.filter(col("name") == "LangGraph")
-        langgraph_count = langgraph_df.count()
-        logger.info("LangGraph traces: %d", langgraph_count)
+        logger.info("Filtered for LangGraph traces")
 
         # Extract receipt data from Parquet
-        logger.info("Extracting receipt data from traces...")
-        langgraph_data = langgraph_df.select("outputs").collect()
+        # Limit to a reasonable multiple of max_receipts to prevent OOM while still
+        # having enough candidates after filtering (many may lack CDN keys or results)
+        collect_limit = args.max_receipts * 100
+        logger.info("Extracting up to %d receipt candidates...", collect_limit)
+        langgraph_data = langgraph_df.select("outputs").limit(collect_limit).collect()
 
         # Release DataFrames to free EMR memory now that data is collected
         langgraph_df.unpersist()

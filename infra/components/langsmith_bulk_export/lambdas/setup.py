@@ -32,7 +32,7 @@ def _get_s3_credentials() -> dict[str, str]:
     return json.loads(response["SecretString"])
 
 
-def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
+def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     """
     Register S3 destination with LangSmith bulk export API.
 
