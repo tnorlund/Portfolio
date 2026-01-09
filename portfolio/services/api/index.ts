@@ -10,6 +10,7 @@ import {
   AddressSimilarityResponse,
   TrainingMetricsResponse,
   LayoutLMBatchInferenceResponse,
+  LabelEvaluatorResponse,
 } from "../../types/api";
 import { withPerformanceTrackingForAPI } from "../../utils/performance/api-wrapper";
 
@@ -225,6 +226,31 @@ const baseApi = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/jobs/featured/training-metrics?collapse_bio=true`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchLabelEvaluatorVisualization(
+    batchSize: number = 20,
+    seed?: number,
+    offset: number = 0
+  ): Promise<LabelEvaluatorResponse> {
+    const apiUrl = getAPIUrl();
+    const params = new URLSearchParams();
+    params.set("batch_size", batchSize.toString());
+    params.set("offset", offset.toString());
+    if (seed !== undefined) {
+      params.set("seed", seed.toString());
+    }
+
+    const response = await fetch(
+      `${apiUrl}/label_evaluator/visualization?${params.toString()}`,
       fetchConfig
     );
     if (!response.ok) {

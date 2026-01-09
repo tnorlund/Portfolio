@@ -234,5 +234,34 @@ class VizCacheReceipt(ReceiptIdentifier):
     financial: EvaluatorResult = Field(default_factory=EvaluatorResult)
     """Financial evaluation results."""
 
-    cdn_key: str = ""
-    """CloudFront CDN key for receipt image."""
+    review: EvaluatorResult | None = None
+    """LLM review results (None if not reviewed)."""
+
+    line_item_duration_seconds: float | None = None
+    """Duration of DiscoverPatterns span for line item animation timing."""
+
+    # CDN keys for different image formats (matches ImageFormats interface)
+    cdn_s3_key: str = ""
+    """CloudFront CDN key for JPEG image."""
+
+    cdn_webp_s3_key: str | None = None
+    """CloudFront CDN key for WebP image."""
+
+    cdn_avif_s3_key: str | None = None
+    """CloudFront CDN key for AVIF image."""
+
+    cdn_medium_s3_key: str | None = None
+    """CloudFront CDN key for medium-size JPEG."""
+
+    cdn_medium_webp_s3_key: str | None = None
+    """CloudFront CDN key for medium-size WebP."""
+
+    cdn_medium_avif_s3_key: str | None = None
+    """CloudFront CDN key for medium-size AVIF."""
+
+    # Image dimensions for aspect ratio calculations
+    width: int = 0
+    """Image width in pixels."""
+
+    height: int = 0
+    """Image height in pixels."""

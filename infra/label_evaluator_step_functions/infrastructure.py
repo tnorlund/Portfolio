@@ -53,7 +53,7 @@ from pulumi_aws.s3 import (
 from pulumi_aws.sfn import StateMachine, StateMachineLoggingConfigurationArgs
 
 # Import Step Function state builders
-from step_function_states import (
+from label_evaluator_step_functions.step_function_states import (
     EmrConfig,
     LambdaArns,
     RuntimeConfig,

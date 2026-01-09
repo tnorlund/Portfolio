@@ -270,6 +270,7 @@ class LabelEvaluatorVizCache(ComponentResource):
 import json
 import logging
 import os
+from dataclasses import asdict
 
 import boto3
 from botocore.exceptions import ClientError
@@ -305,7 +306,7 @@ def handler(event, context):
 
     logger.info("Querying receipts from DynamoDB table: %s", table_name)
 
-    # Build receipt lookup: {image_id}_{receipt_id} -> cdn_s3_key
+    # Build receipt lookup: {image_id}_{receipt_id} -> full receipt data as dict
     receipt_lookup = {}
     page_count = 0
     last_key = None
@@ -317,7 +318,7 @@ def handler(event, context):
 
         for r in receipts:
             key = f"{r.image_id}_{r.receipt_id}"
-            receipt_lookup[key] = r.cdn_s3_key
+            receipt_lookup[key] = asdict(r)
 
         # Paginate through remaining receipts
         while last_key:
@@ -325,7 +326,7 @@ def handler(event, context):
             page_count += 1
             for r in receipts:
                 key = f"{r.image_id}_{r.receipt_id}"
-                receipt_lookup[key] = r.cdn_s3_key
+                receipt_lookup[key] = asdict(r)
             logger.info("Processed page %d, total receipts so far: %d", page_count, len(receipt_lookup))
 
     except DynamoRetryableException:
@@ -1055,7 +1056,7 @@ def handler(event, context):
                                             "--conf spark.sql.legacy.parquet.nanosAsLong=true "
                                             "--conf spark.executor.cores=2 "
                                             "--conf spark.executor.memory=4g "
-                                            "--conf spark.executor.instances=2 "
+                                            "--conf spark.executor.instances=4 "
                                             "--conf spark.driver.cores=2 "
                                             "--conf spark.driver.memory=4g"
                                         ),
