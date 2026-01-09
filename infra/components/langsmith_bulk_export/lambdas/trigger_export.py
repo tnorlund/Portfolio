@@ -130,7 +130,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             logger.exception("Error looking up project")
             return {
                 "statusCode": 500,
-                "message": f"Error looking up project: {str(e)}",
+                "message": f"Error looking up project: {e!s}",
             }
 
     logger.info(f"Using project_id: {project_id}")
@@ -207,5 +207,5 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         logger.exception("Error triggering export")
         return {
             "statusCode": 500,
-            "message": f"Error: {str(e)}",
+            "message": f"Error: {e!s}",
         }

@@ -28,9 +28,18 @@ def _get_s3_credentials() -> dict[str, str]:
     secret_arn = os.environ["S3_CREDENTIALS_SECRET_ARN"]
 
     secretsmanager = boto3.client("secretsmanager")
-    response = secretsmanager.get_secret_value(SecretId=secret_arn)
-
-    return json.loads(response["SecretString"])
+    try:
+        response = secretsmanager.get_secret_value(SecretId=secret_arn)
+        return json.loads(response["SecretString"])
+    except secretsmanager.exceptions.ResourceNotFoundException:
+        logger.error("Secret not found: %s", secret_arn)
+        raise
+    except json.JSONDecodeError:
+        logger.error("Invalid JSON in secret: %s", secret_arn)
+        raise
+    except Exception:
+        logger.exception("Error retrieving credentials from %s", secret_arn)
+        raise
 
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
@@ -142,7 +151,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         logger.exception("Local credential test failed")
         return {
             "statusCode": 500,
-            "message": f"Credentials don't work locally: {str(e)}",
+            "message": f"Credentials don't work locally: {e!s}",
         }
 
     # Register destination with LangSmith
@@ -224,5 +233,5 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         logger.exception("Error registering destination")
         return {
             "statusCode": 500,
-            "message": f"Error: {str(e)}",
+            "message": f"Error: {e!s}",
         }

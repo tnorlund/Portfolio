@@ -407,10 +407,6 @@ def main() -> int:
         logger.info("Extracting up to %d receipt candidates...", collect_limit)
         langgraph_data = langgraph_df.select("outputs").limit(collect_limit).collect()
 
-        # Release DataFrames to free EMR memory now that data is collected
-        langgraph_df.unpersist()
-        df.unpersist()
-
         receipts_from_parquet = []
         for row in langgraph_data:
             outputs = (
@@ -593,11 +589,12 @@ def main() -> int:
         for r in selected[:5]:
             logger.info("  %s: %d issues, %d words", r["merchant_name"], r["issues_found"], len(r["words"]))
 
-        return 0
-
     except Exception:
         logger.exception("Cache generation failed")
         return 1
+
+    else:
+        return 0
 
     finally:
         spark.stop()
