@@ -410,11 +410,23 @@ if enable_sagemaker:
         dynamodb_table_name=dynamodb_table.name,
     )
     layoutlm_training_bucket_name = sagemaker_training.output_bucket.bucket
-    pulumi.export("layoutlm_training_bucket", sagemaker_training.output_bucket.bucket)
-    pulumi.export("layoutlm_sagemaker_ecr_repo", sagemaker_training.ecr_repo.repository_url)
-    pulumi.export("layoutlm_sagemaker_role_arn", sagemaker_training.sagemaker_role.arn)
-    pulumi.export("layoutlm_start_training_lambda", sagemaker_training.start_training_lambda.arn)
-    pulumi.export("layoutlm_codebuild_project", sagemaker_training.codebuild_project.name)
+    pulumi.export(
+        "layoutlm_training_bucket", sagemaker_training.output_bucket.bucket
+    )
+    pulumi.export(
+        "layoutlm_sagemaker_ecr_repo",
+        sagemaker_training.ecr_repo.repository_url,
+    )
+    pulumi.export(
+        "layoutlm_sagemaker_role_arn", sagemaker_training.sagemaker_role.arn
+    )
+    pulumi.export(
+        "layoutlm_start_training_lambda",
+        sagemaker_training.start_training_lambda.arn,
+    )
+    pulumi.export(
+        "layoutlm_codebuild_project", sagemaker_training.codebuild_project.name
+    )
 else:
     # Check if training bucket name is provided as config (for inference-only usage)
     training_bucket_config = ml_cfg.get("training-bucket-name")
@@ -1170,6 +1182,33 @@ pulumi.export(
     metadata_harmonizer_sf.batch_bucket_name,
 )
 
+# LangSmith Bulk Export infrastructure (for Parquet exports)
+from components.langsmith_bulk_export import LangSmithBulkExport
+
+langsmith_bulk_export = LangSmithBulkExport(
+    f"langsmith-export-{stack}",
+    project_name=f"label-evaluator-{stack}",
+)
+pulumi.export(
+    "langsmith_export_bucket", langsmith_bulk_export.export_bucket.id
+)
+pulumi.export(
+    "langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name
+)
+pulumi.export(
+    "langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name
+)
+
+# EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
+from components.emr_serverless_analytics import create_emr_serverless_analytics
+
+emr_analytics = create_emr_serverless_analytics(
+    langsmith_export_bucket_arn=langsmith_bulk_export.export_bucket.arn,
+)
+pulumi.export("emr_application_id", emr_analytics.emr_application.id)
+pulumi.export("emr_analytics_bucket", emr_analytics.analytics_bucket.id)
+pulumi.export("emr_artifacts_bucket", emr_analytics.artifacts_bucket.id)
+
 # Label Evaluator Step Function (with LangSmith observability)
 label_evaluator_sf = LabelEvaluatorStepFunction(
     f"label-evaluator-{stack}",
@@ -1186,12 +1225,13 @@ pulumi.export(
     "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
 )
 
+from routes.label_validation_timeline.infra import (
+    create_label_validation_timeline_lambda,
+)
+
 # Label Validation Timeline API (S3-cached timeline for animated visualization)
 from routes.label_validation_timeline_cache.infra import (
     create_label_validation_timeline_cache,
-)
-from routes.label_validation_timeline.infra import (
-    create_label_validation_timeline_lambda,
 )
 
 # Create cache generator (which creates the cache bucket)
@@ -1236,7 +1276,9 @@ if hasattr(api_gateway, "api"):
         ),
     )
 
-pulumi.export("label_validation_timeline_cache_bucket", timeline_cache_bucket.id)
+pulumi.export(
+    "label_validation_timeline_cache_bucket", timeline_cache_bucket.id
+)
 pulumi.export(
     "label_validation_timeline_cache_generator_lambda",
     timeline_cache_generator_lambda.name,
