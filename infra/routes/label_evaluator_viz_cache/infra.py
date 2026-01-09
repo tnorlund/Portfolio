@@ -19,7 +19,15 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import AssetArchive, ComponentResource, FileArchive, Input, Output, ResourceOptions, StringAsset
+from pulumi import (
+    AssetArchive,
+    ComponentResource,
+    FileArchive,
+    Input,
+    Output,
+    ResourceOptions,
+    StringAsset,
+)
 
 from infra.components.lambda_layer import dynamo_layer
 
@@ -62,7 +70,9 @@ class LabelEvaluatorVizCache(ComponentResource):
         account_id = aws.get_caller_identity().account_id
 
         # Convert to Output for proper resolution
-        langsmith_export_bucket_output = Output.from_input(langsmith_export_bucket)
+        langsmith_export_bucket_output = Output.from_input(
+            langsmith_export_bucket
+        )
         langsmith_api_key_output = Output.from_input(langsmith_api_key)
         langsmith_tenant_id_output = Output.from_input(langsmith_tenant_id)
         batch_bucket_output = Output.from_input(batch_bucket)
@@ -70,8 +80,12 @@ class LabelEvaluatorVizCache(ComponentResource):
         dynamodb_table_arn_output = Output.from_input(dynamodb_table_arn)
         emr_application_id_output = Output.from_input(emr_application_id)
         emr_job_role_arn_output = Output.from_input(emr_job_role_arn)
-        spark_artifacts_bucket_output = Output.from_input(spark_artifacts_bucket)
-        label_evaluator_sf_arn_output = Output.from_input(label_evaluator_sf_arn)
+        spark_artifacts_bucket_output = Output.from_input(
+            spark_artifacts_bucket
+        )
+        label_evaluator_sf_arn_output = Output.from_input(
+            label_evaluator_sf_arn
+        )
         setup_lambda_name_output = Output.from_input(setup_lambda_name)
         setup_lambda_arn_output = Output.from_input(setup_lambda_arn)
 
@@ -95,14 +109,18 @@ class LabelEvaluatorVizCache(ComponentResource):
         # ============================================================
         self.api_lambda_role = aws.iam.Role(
             f"{name}-api-lambda-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "lambda.amazonaws.com"},
-                    "Action": "sts:AssumeRole"
-                }]
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             tags={
                 "Name": f"{name}-api-lambda-role",
                 "Environment": stack,
@@ -122,17 +140,21 @@ class LabelEvaluatorVizCache(ComponentResource):
             f"{name}-api-cache-bucket-policy",
             role=self.api_lambda_role.id,
             policy=cache_bucket_output.apply(
-                lambda bucket: json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Action": ["s3:GetObject", "s3:ListBucket"],
-                        "Resource": [
-                            f"arn:aws:s3:::{bucket}/*",
-                            f"arn:aws:s3:::{bucket}",
+                lambda bucket: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["s3:GetObject", "s3:ListBucket"],
+                                "Resource": [
+                                    f"arn:aws:s3:::{bucket}/*",
+                                    f"arn:aws:s3:::{bucket}",
+                                ],
+                            }
                         ],
-                    }],
-                })
+                    }
+                )
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -170,14 +192,18 @@ class LabelEvaluatorVizCache(ComponentResource):
         # ============================================================
         self.dynamo_query_role = aws.iam.Role(
             f"{name}-dynamo-query-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "lambda.amazonaws.com"},
-                    "Action": "sts:AssumeRole"
-                }]
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             tags={
                 "Name": f"{name}-dynamo-query-role",
                 "Environment": stack,
@@ -198,19 +224,23 @@ class LabelEvaluatorVizCache(ComponentResource):
             f"{name}-dynamo-query-dynamodb-policy",
             role=self.dynamo_query_role.id,
             policy=dynamodb_table_arn_output.apply(
-                lambda arn: json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Action": [
-                            "dynamodb:DescribeTable",
-                            "dynamodb:Scan",
-                            "dynamodb:Query",
-                            "dynamodb:GetItem",
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "dynamodb:DescribeTable",
+                                    "dynamodb:Scan",
+                                    "dynamodb:Query",
+                                    "dynamodb:GetItem",
+                                ],
+                                "Resource": [arn, f"{arn}/index/*"],
+                            }
                         ],
-                        "Resource": [arn, f"{arn}/index/*"],
-                    }],
-                })
+                    }
+                )
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -220,14 +250,18 @@ class LabelEvaluatorVizCache(ComponentResource):
             f"{name}-dynamo-query-s3-policy",
             role=self.dynamo_query_role.id,
             policy=cache_bucket_output.apply(
-                lambda bucket: json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Action": ["s3:PutObject"],
-                        "Resource": f"arn:aws:s3:::{bucket}/*",
-                    }],
-                })
+                lambda bucket: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["s3:PutObject"],
+                                "Resource": f"arn:aws:s3:::{bucket}/*",
+                            }
+                        ],
+                    }
+                )
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -345,9 +379,11 @@ def handler(event, context):
             runtime="python3.12",
             architectures=["arm64"],
             role=self.dynamo_query_role.arn,
-            code=AssetArchive({
-                "index.py": StringAsset(dynamo_query_code),
-            }),
+            code=AssetArchive(
+                {
+                    "index.py": StringAsset(dynamo_query_code),
+                }
+            ),
             handler="index.handler",
             layers=[dynamo_layer.arn],
             environment=aws.lambda_.FunctionEnvironmentArgs(
@@ -364,7 +400,9 @@ def handler(event, context):
 
         aws.cloudwatch.LogGroup(
             f"{name}-dynamo-query-logs",
-            name=self.dynamo_query_lambda.name.apply(lambda n: f"/aws/lambda/{n}"),
+            name=self.dynamo_query_lambda.name.apply(
+                lambda n: f"/aws/lambda/{n}"
+            ),
             retention_in_days=30,
             opts=ResourceOptions(parent=self),
         )
@@ -374,14 +412,18 @@ def handler(event, context):
         # ============================================================
         self.trigger_export_role = aws.iam.Role(
             f"{name}-trigger-export-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "lambda.amazonaws.com"},
-                    "Action": "sts:AssumeRole"
-                }]
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -396,14 +438,21 @@ def handler(event, context):
         aws.iam.RolePolicy(
             f"{name}-trigger-export-ssm-policy",
             role=self.trigger_export_role.id,
-            policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Action": ["ssm:GetParameter", "ssm:DeleteParameter"],
-                    "Resource": f"arn:aws:ssm:{region}:{account_id}:parameter/langsmith/{stack}/*",
-                }],
-            }),
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "ssm:GetParameter",
+                                "ssm:DeleteParameter",
+                            ],
+                            "Resource": f"arn:aws:ssm:{region}:{account_id}:parameter/langsmith/{stack}/*",
+                        }
+                    ],
+                }
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -411,14 +460,20 @@ def handler(event, context):
         aws.iam.RolePolicy(
             f"{name}-trigger-export-invoke-setup-policy",
             role=self.trigger_export_role.id,
-            policy=setup_lambda_arn_output.apply(lambda arn: json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Action": ["lambda:InvokeFunction"],
-                    "Resource": arn,
-                }],
-            })),
+            policy=setup_lambda_arn_output.apply(
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["lambda:InvokeFunction"],
+                                "Resource": arn,
+                            }
+                        ],
+                    }
+                )
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -574,9 +629,11 @@ def handler(event, context):
             runtime="python3.12",
             architectures=["arm64"],
             role=self.trigger_export_role.arn,
-            code=AssetArchive({
-                "index.py": StringAsset(trigger_export_code),
-            }),
+            code=AssetArchive(
+                {
+                    "index.py": StringAsset(trigger_export_code),
+                }
+            ),
             handler="index.handler",
             environment=aws.lambda_.FunctionEnvironmentArgs(
                 variables={
@@ -594,7 +651,9 @@ def handler(event, context):
 
         aws.cloudwatch.LogGroup(
             f"{name}-trigger-export-logs",
-            name=self.trigger_export_lambda.name.apply(lambda n: f"/aws/lambda/{n}"),
+            name=self.trigger_export_lambda.name.apply(
+                lambda n: f"/aws/lambda/{n}"
+            ),
             retention_in_days=30,
             opts=ResourceOptions(parent=self),
         )
@@ -604,14 +663,18 @@ def handler(event, context):
         # ============================================================
         self.check_export_role = aws.iam.Role(
             f"{name}-check-export-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "lambda.amazonaws.com"},
-                    "Action": "sts:AssumeRole"
-                }]
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -681,9 +744,11 @@ def handler(event, context):
             runtime="python3.12",
             architectures=["arm64"],
             role=self.check_export_role.arn,
-            code=AssetArchive({
-                "index.py": StringAsset(check_export_code),
-            }),
+            code=AssetArchive(
+                {
+                    "index.py": StringAsset(check_export_code),
+                }
+            ),
             handler="index.handler",
             environment=aws.lambda_.FunctionEnvironmentArgs(
                 variables={
@@ -698,7 +763,9 @@ def handler(event, context):
 
         aws.cloudwatch.LogGroup(
             f"{name}-check-export-logs",
-            name=self.check_export_lambda.name.apply(lambda n: f"/aws/lambda/{n}"),
+            name=self.check_export_lambda.name.apply(
+                lambda n: f"/aws/lambda/{n}"
+            ),
             retention_in_days=30,
             opts=ResourceOptions(parent=self),
         )
@@ -708,14 +775,18 @@ def handler(event, context):
         # ============================================================
         self.step_function_role = aws.iam.Role(
             f"{name}-sf-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "states.amazonaws.com"},
-                    "Action": "sts:AssumeRole"
-                }]
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "states.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             tags={
                 "Name": f"{name}-sf-role",
                 "Environment": stack,
@@ -732,14 +803,20 @@ def handler(event, context):
                 self.dynamo_query_lambda.arn,
                 self.trigger_export_lambda.arn,
                 self.check_export_lambda.arn,
-            ).apply(lambda args: json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Action": "lambda:InvokeFunction",
-                    "Resource": list(args),
-                }],
-            })),
+            ).apply(
+                lambda args: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": "lambda:InvokeFunction",
+                                "Resource": list(args),
+                            }
+                        ],
+                    }
+                )
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -750,46 +827,50 @@ def handler(event, context):
             policy=Output.all(
                 emr_application_id_output,
                 emr_job_role_arn_output,
-            ).apply(lambda args: json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
+            ).apply(
+                lambda args: json.dumps(
                     {
-                        "Effect": "Allow",
-                        "Action": [
-                            "emr-serverless:StartJobRun",
-                            "emr-serverless:GetJobRun",
-                            "emr-serverless:CancelJobRun",
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "emr-serverless:StartJobRun",
+                                    "emr-serverless:GetJobRun",
+                                    "emr-serverless:CancelJobRun",
+                                ],
+                                "Resource": [
+                                    f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}",
+                                    f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}/jobruns/*",
+                                ],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "iam:PassRole",
+                                "Resource": args[1],
+                                "Condition": {
+                                    "StringEquals": {
+                                        "iam:PassedToService": "emr-serverless.amazonaws.com"
+                                    }
+                                },
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "events:PutTargets",
+                                    "events:PutRule",
+                                    "events:DescribeRule",
+                                    "events:DeleteRule",
+                                    "events:RemoveTargets",
+                                ],
+                                "Resource": [
+                                    f"arn:aws:events:{region}:{account_id}:rule/StepFunctions*",
+                                ],
+                            },
                         ],
-                        "Resource": [
-                            f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}",
-                            f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}/jobruns/*",
-                        ],
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Action": "iam:PassRole",
-                        "Resource": args[1],
-                        "Condition": {
-                            "StringEquals": {
-                                "iam:PassedToService": "emr-serverless.amazonaws.com"
-                            }
-                        },
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "events:PutTargets",
-                            "events:PutRule",
-                            "events:DescribeRule",
-                            "events:DeleteRule",
-                            "events:RemoveTargets",
-                        ],
-                        "Resource": [
-                            f"arn:aws:events:{region}:{account_id}:rule/StepFunctions*",
-                        ],
-                    },
-                ],
-            })),
+                    }
+                )
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -800,33 +881,37 @@ def handler(event, context):
             policy=Output.all(
                 batch_bucket_output,
                 cache_bucket_output,
-            ).apply(lambda args: json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    # Read from batch bucket (label evaluation results)
+            ).apply(
+                lambda args: json.dumps(
                     {
-                        "Effect": "Allow",
-                        "Action": ["s3:GetObject", "s3:ListBucket"],
-                        "Resource": [
-                            f"arn:aws:s3:::{args[0]}",
-                            f"arn:aws:s3:::{args[0]}/*",
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            # Read from batch bucket (label evaluation results)
+                            {
+                                "Effect": "Allow",
+                                "Action": ["s3:GetObject", "s3:ListBucket"],
+                                "Resource": [
+                                    f"arn:aws:s3:::{args[0]}",
+                                    f"arn:aws:s3:::{args[0]}/*",
+                                ],
+                            },
+                            # Read/write to cache bucket (viz cache output + receipts lookup)
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:ListBucket",
+                                ],
+                                "Resource": [
+                                    f"arn:aws:s3:::{args[1]}",
+                                    f"arn:aws:s3:::{args[1]}/*",
+                                ],
+                            },
                         ],
-                    },
-                    # Read/write to cache bucket (viz cache output + receipts lookup)
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:GetObject",
-                            "s3:PutObject",
-                            "s3:ListBucket",
-                        ],
-                        "Resource": [
-                            f"arn:aws:s3:::{args[1]}",
-                            f"arn:aws:s3:::{args[1]}/*",
-                        ],
-                    },
-                ],
-            })),
+                    }
+                )
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -843,129 +928,133 @@ def handler(event, context):
             langsmith_export_bucket_output,
             batch_bucket_output,
             cache_bucket_output,
-        ).apply(lambda args: json.dumps({
-            "Comment": "Viz cache generation with native EMR Serverless integration",
-            "StartAt": "QueryDynamoDB",
-            "States": {
-                # Step 1: Query DynamoDB for receipt CDN keys
-                "QueryDynamoDB": {
-                    "Type": "Task",
-                    "Resource": args[0],
-                    "ResultPath": "$.dynamo_result",
-                    "Next": "TriggerLangSmithExport",
-                },
-                # Step 2: Trigger LangSmith bulk export
-                # Note: Lambda uses default "label-evaluator" if langchain_project not provided
-                "TriggerLangSmithExport": {
-                    "Type": "Task",
-                    "Resource": args[1],
-                    "ResultPath": "$.export_result",
-                    "Next": "InitializePollCount",
-                },
-                # Step 2b: Initialize poll counter to 0
-                "InitializePollCount": {
-                    "Type": "Pass",
-                    "Result": 0,
-                    "ResultPath": "$.poll_count",
-                    "Next": "WaitForExport",
-                },
-                # Step 3: Wait 60 seconds (FREE - no compute)
-                "WaitForExport": {
-                    "Type": "Wait",
-                    "Seconds": 60,
-                    "Next": "CheckExportStatus",
-                },
-                # Step 4: Check export status (~200ms Lambda call)
-                "CheckExportStatus": {
-                    "Type": "Task",
-                    "Resource": args[2],
-                    "Parameters": {
-                        "export_id.$": "$.export_result.export_id",
+        ).apply(
+            lambda args: json.dumps(
+                {
+                    "Comment": "Viz cache generation with native EMR Serverless integration",
+                    "StartAt": "QueryDynamoDB",
+                    "States": {
+                        # Step 1: Query DynamoDB for receipt CDN keys
+                        "QueryDynamoDB": {
+                            "Type": "Task",
+                            "Resource": args[0],
+                            "ResultPath": "$.dynamo_result",
+                            "Next": "TriggerLangSmithExport",
+                        },
+                        # Step 2: Trigger LangSmith bulk export
+                        # Note: Lambda uses default "label-evaluator" if langchain_project not provided
+                        "TriggerLangSmithExport": {
+                            "Type": "Task",
+                            "Resource": args[1],
+                            "ResultPath": "$.export_result",
+                            "Next": "InitializePollCount",
+                        },
+                        # Step 2b: Initialize poll counter to 0
+                        "InitializePollCount": {
+                            "Type": "Pass",
+                            "Result": 0,
+                            "ResultPath": "$.poll_count",
+                            "Next": "WaitForExport",
+                        },
+                        # Step 3: Wait 60 seconds (FREE - no compute)
+                        "WaitForExport": {
+                            "Type": "Wait",
+                            "Seconds": 60,
+                            "Next": "CheckExportStatus",
+                        },
+                        # Step 4: Check export status (~200ms Lambda call)
+                        "CheckExportStatus": {
+                            "Type": "Task",
+                            "Resource": args[2],
+                            "Parameters": {
+                                "export_id.$": "$.export_result.export_id",
+                            },
+                            "ResultPath": "$.check_result",
+                            "Next": "IncrementPollCount",
+                        },
+                        # Step 4b: Increment poll counter
+                        "IncrementPollCount": {
+                            "Type": "Pass",
+                            "Parameters": {
+                                "value.$": "States.MathAdd($.poll_count, 1)",
+                            },
+                            "ResultPath": "$.poll_count_obj",
+                            "Next": "UpdatePollCount",
+                        },
+                        # Step 4c: Extract poll count value
+                        "UpdatePollCount": {
+                            "Type": "Pass",
+                            "InputPath": "$.poll_count_obj.value",
+                            "ResultPath": "$.poll_count",
+                            "Next": "IsExportComplete",
+                        },
+                        # Step 5: Choice - loop, continue, or fail on max retries
+                        # Max 30 iterations = 30 minutes (60s wait * 30)
+                        "IsExportComplete": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.check_result.status",
+                                    "StringEquals": "completed",
+                                    "Next": "StartEMRJob",
+                                },
+                                {
+                                    "Variable": "$.check_result.status",
+                                    "StringEquals": "failed",
+                                    "Next": "ExportFailed",
+                                },
+                                {
+                                    "Variable": "$.poll_count",
+                                    "NumericGreaterThanEquals": 30,
+                                    "Next": "MaxRetriesExceeded",
+                                },
+                            ],
+                            "Default": "WaitForExport",
+                        },
+                        # Export failed state
+                        "ExportFailed": {
+                            "Type": "Fail",
+                            "Error": "ExportFailed",
+                            "Cause": "LangSmith export failed or was cancelled",
+                        },
+                        # Max retries exceeded state
+                        "MaxRetriesExceeded": {
+                            "Type": "Fail",
+                            "Error": "MaxRetriesExceeded",
+                            "Cause": "Export status check exceeded 30 iterations (30 minutes)",
+                        },
+                        # Step 6: Start EMR job using native Step Functions integration
+                        # Uses .sync to wait for job completion
+                        # Note: Container image has receipt_langsmith pre-installed, no archives needed
+                        "StartEMRJob": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::emr-serverless:startJobRun.sync",
+                            "Parameters": {
+                                "ApplicationId": args[3],
+                                "ExecutionRoleArn": args[4],
+                                "Name.$": "States.Format('viz-cache-{}', $$.Execution.Name)",
+                                "JobDriver": {
+                                    "SparkSubmit": {
+                                        "EntryPoint": f"s3://{args[5]}/spark/viz_cache_job.py",
+                                        "EntryPointArguments.$": f"States.Array('--parquet-bucket', '{args[6]}', '--parquet-prefix', 'traces/', '--batch-bucket', '{args[7]}', '--cache-bucket', '{args[8]}', '--receipts-json', $.dynamo_result.receipts_s3_path)",
+                                        "SparkSubmitParameters": "--conf spark.sql.legacy.parquet.nanosAsLong=true --conf spark.executor.cores=2 --conf spark.executor.memory=4g --conf spark.executor.instances=2 --conf spark.driver.cores=2 --conf spark.driver.memory=4g",
+                                    }
+                                },
+                                "ConfigurationOverrides": {
+                                    "MonitoringConfiguration": {
+                                        "S3MonitoringConfiguration": {
+                                            "LogUri": f"s3://{args[5]}/logs/"
+                                        }
+                                    }
+                                },
+                            },
+                            "ResultPath": "$.emr_result",
+                            "End": True,
+                        },
                     },
-                    "ResultPath": "$.check_result",
-                    "Next": "IncrementPollCount",
-                },
-                # Step 4b: Increment poll counter
-                "IncrementPollCount": {
-                    "Type": "Pass",
-                    "Parameters": {
-                        "value.$": "States.MathAdd($.poll_count, 1)",
-                    },
-                    "ResultPath": "$.poll_count_obj",
-                    "Next": "UpdatePollCount",
-                },
-                # Step 4c: Extract poll count value
-                "UpdatePollCount": {
-                    "Type": "Pass",
-                    "InputPath": "$.poll_count_obj.value",
-                    "ResultPath": "$.poll_count",
-                    "Next": "IsExportComplete",
-                },
-                # Step 5: Choice - loop, continue, or fail on max retries
-                # Max 30 iterations = 30 minutes (60s wait * 30)
-                "IsExportComplete": {
-                    "Type": "Choice",
-                    "Choices": [
-                        {
-                            "Variable": "$.check_result.status",
-                            "StringEquals": "completed",
-                            "Next": "StartEMRJob",
-                        },
-                        {
-                            "Variable": "$.check_result.status",
-                            "StringEquals": "failed",
-                            "Next": "ExportFailed",
-                        },
-                        {
-                            "Variable": "$.poll_count",
-                            "NumericGreaterThanEquals": 30,
-                            "Next": "MaxRetriesExceeded",
-                        },
-                    ],
-                    "Default": "WaitForExport",
-                },
-                # Export failed state
-                "ExportFailed": {
-                    "Type": "Fail",
-                    "Error": "ExportFailed",
-                    "Cause": "LangSmith export failed or was cancelled",
-                },
-                # Max retries exceeded state
-                "MaxRetriesExceeded": {
-                    "Type": "Fail",
-                    "Error": "MaxRetriesExceeded",
-                    "Cause": "Export status check exceeded 30 iterations (30 minutes)",
-                },
-                # Step 6: Start EMR job using native Step Functions integration
-                # Uses .sync to wait for job completion
-                # Note: Container image has receipt_langsmith pre-installed, no archives needed
-                "StartEMRJob": {
-                    "Type": "Task",
-                    "Resource": "arn:aws:states:::emr-serverless:startJobRun.sync",
-                    "Parameters": {
-                        "ApplicationId": args[3],
-                        "ExecutionRoleArn": args[4],
-                        "Name.$": "States.Format('viz-cache-{}', $$.Execution.Name)",
-                        "JobDriver": {
-                            "SparkSubmit": {
-                                "EntryPoint": f"s3://{args[5]}/spark/viz_cache_job.py",
-                                "EntryPointArguments.$": f"States.Array('--parquet-bucket', '{args[6]}', '--parquet-prefix', 'traces/', '--batch-bucket', '{args[7]}', '--cache-bucket', '{args[8]}', '--receipts-json', $.dynamo_result.receipts_s3_path)",
-                                "SparkSubmitParameters": "--conf spark.sql.legacy.parquet.nanosAsLong=true --conf spark.executor.cores=2 --conf spark.executor.memory=4g --conf spark.executor.instances=2 --conf spark.driver.cores=2 --conf spark.driver.memory=4g",
-                            }
-                        },
-                        "ConfigurationOverrides": {
-                            "MonitoringConfiguration": {
-                                "S3MonitoringConfiguration": {
-                                    "LogUri": f"s3://{args[5]}/logs/"
-                                }
-                            }
-                        },
-                    },
-                    "ResultPath": "$.emr_result",
-                    "End": True,
-                },
-            },
-        }))
+                }
+            )
+        )
 
         self.step_function = aws.sfn.StateMachine(
             f"{name}-sf",
@@ -984,14 +1073,18 @@ def handler(event, context):
         # ============================================================
         self.eventbridge_trigger_role = aws.iam.Role(
             f"{name}-eb-trigger-role",
-            assume_role_policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "lambda.amazonaws.com"},
-                    "Action": "sts:AssumeRole"
-                }]
-            }),
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -1006,14 +1099,18 @@ def handler(event, context):
             f"{name}-eb-trigger-sf-policy",
             role=self.eventbridge_trigger_role.id,
             policy=self.step_function.arn.apply(
-                lambda arn: json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Action": "states:StartExecution",
-                        "Resource": arn,
-                    }],
-                })
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": "states:StartExecution",
+                                "Resource": arn,
+                            }
+                        ],
+                    }
+                )
             ),
             opts=ResourceOptions(parent=self),
         )
@@ -1071,9 +1168,11 @@ def handler(event, context):
             runtime="python3.12",
             architectures=["arm64"],
             role=self.eventbridge_trigger_role.arn,
-            code=AssetArchive({
-                "index.py": StringAsset(eventbridge_trigger_code),
-            }),
+            code=AssetArchive(
+                {
+                    "index.py": StringAsset(eventbridge_trigger_code),
+                }
+            ),
             handler="index.handler",
             environment=aws.lambda_.FunctionEnvironmentArgs(
                 variables={
@@ -1088,7 +1187,9 @@ def handler(event, context):
 
         aws.cloudwatch.LogGroup(
             f"{name}-eb-trigger-logs",
-            name=self.eventbridge_trigger_lambda.name.apply(lambda n: f"/aws/lambda/{n}"),
+            name=self.eventbridge_trigger_lambda.name.apply(
+                lambda n: f"/aws/lambda/{n}"
+            ),
             retention_in_days=30,
             opts=ResourceOptions(parent=self),
         )
@@ -1100,14 +1201,18 @@ def handler(event, context):
             f"{name}-sfn-complete-rule",
             description="Trigger viz cache generation on Label Evaluator SF completion",
             event_pattern=label_evaluator_sf_arn_output.apply(
-                lambda arn: json.dumps({
-                    "source": ["aws.states"],
-                    "detail-type": ["Step Functions Execution Status Change"],
-                    "detail": {
-                        "stateMachineArn": [arn],
-                        "status": ["SUCCEEDED"],
-                    },
-                })
+                lambda arn: json.dumps(
+                    {
+                        "source": ["aws.states"],
+                        "detail-type": [
+                            "Step Functions Execution Status Change"
+                        ],
+                        "detail": {
+                            "stateMachineArn": [arn],
+                            "status": ["SUCCEEDED"],
+                        },
+                    }
+                )
             ),
             tags={
                 "Name": f"{name}-sfn-complete-rule",
@@ -1136,14 +1241,16 @@ def handler(event, context):
         # ============================================================
         # Exports
         # ============================================================
-        self.register_outputs({
-            "cache_bucket_id": self.cache_bucket.id,
-            "cache_bucket_arn": self.cache_bucket.arn,
-            "api_lambda_arn": self.api_lambda.arn,
-            "api_lambda_name": self.api_lambda.name,
-            "step_function_arn": self.step_function.arn,
-            "eventbridge_rule_arn": self.eventbridge_rule.arn,
-        })
+        self.register_outputs(
+            {
+                "cache_bucket_id": self.cache_bucket.id,
+                "cache_bucket_arn": self.cache_bucket.arn,
+                "api_lambda_arn": self.api_lambda.arn,
+                "api_lambda_name": self.api_lambda.name,
+                "step_function_arn": self.step_function.arn,
+                "eventbridge_rule_arn": self.eventbridge_rule.arn,
+            }
+        )
 
 
 def create_label_evaluator_viz_cache(

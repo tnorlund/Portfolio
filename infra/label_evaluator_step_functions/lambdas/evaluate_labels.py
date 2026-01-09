@@ -39,7 +39,11 @@ try:
         flush_langsmith_traces,
     )
 
-    from utils.s3_helpers import get_merchant_hash, load_json_from_s3, upload_json_to_s3
+    from utils.s3_helpers import (
+        get_merchant_hash,
+        load_json_from_s3,
+        upload_json_to_s3,
+    )
 
     _tracing_import_source = "container"
 except ImportError:
@@ -68,7 +72,11 @@ except ImportError:
             "lambdas",
         ),
     )
-    from utils.s3_helpers import get_merchant_hash, load_json_from_s3, upload_json_to_s3
+    from utils.s3_helpers import (
+        get_merchant_hash,
+        load_json_from_s3,
+        upload_json_to_s3,
+    )
 
     _tracing_import_source = "local"
 
@@ -149,9 +157,14 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         merchant_hash = get_merchant_hash(merchant_name)
         if not patterns_s3_key:
             patterns_s3_key = f"patterns/{execution_id}/{merchant_hash}.json"
-            logger.info("Computed patterns_s3_key from merchant_name: %s", patterns_s3_key)
+            logger.info(
+                "Computed patterns_s3_key from merchant_name: %s",
+                patterns_s3_key,
+            )
         if not line_item_patterns_s3_key:
-            line_item_patterns_s3_key = f"line_item_patterns/{merchant_hash}.json"
+            line_item_patterns_s3_key = (
+                f"line_item_patterns/{merchant_hash}.json"
+            )
             logger.info(
                 "Computed line_item_patterns_s3_key from merchant_name: %s",
                 line_item_patterns_s3_key,
@@ -223,8 +236,12 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             trace_metadata["patterns_s3_key"] = patterns_s3_key
         else:
             # Include only basenames for debugging without exposing full paths
-            trace_metadata["data_s3_key"] = os.path.basename(data_s3_key) if data_s3_key else None
-            trace_metadata["patterns_s3_key"] = os.path.basename(patterns_s3_key) if patterns_s3_key else None
+            trace_metadata["data_s3_key"] = (
+                os.path.basename(data_s3_key) if data_s3_key else None
+            )
+            trace_metadata["patterns_s3_key"] = (
+                os.path.basename(patterns_s3_key) if patterns_s3_key else None
+            )
 
         receipt_trace = create_receipt_trace(
             execution_arn=execution_arn,
@@ -279,49 +296,83 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                 line_item_patterns_s3_key,
             )
             line_item_patterns_data = load_json_from_s3(
-                s3, batch_bucket, line_item_patterns_s3_key, logger=logger, allow_missing=True
+                s3,
+                batch_bucket,
+                line_item_patterns_s3_key,
+                logger=logger,
+                allow_missing=True,
             )
 
             if line_item_patterns_data:
                 # Create historical DiscoverPatterns span using stored timing (best-effort)
                 try:
-                    discovery_metadata = line_item_patterns_data.get("_trace_metadata", {})
-                    discovery_start = discovery_metadata.get("discovery_start_time")
-                    discovery_end = discovery_metadata.get("discovery_end_time")
+                    discovery_metadata = line_item_patterns_data.get(
+                        "_trace_metadata", {}
+                    )
+                    discovery_start = discovery_metadata.get(
+                        "discovery_start_time"
+                    )
+                    discovery_end = discovery_metadata.get(
+                        "discovery_end_time"
+                    )
                     if discovery_start and discovery_end:
                         # Extract discovered patterns for rich output
-                        discovered_patterns = line_item_patterns_data.get("patterns", {})
-                        pattern_categories = list(discovered_patterns.keys()) if discovered_patterns else []
-                        line_item_labels = line_item_patterns_data.get("line_item_labels", [])
+                        discovered_patterns = line_item_patterns_data.get(
+                            "patterns", {}
+                        )
+                        pattern_categories = (
+                            list(discovered_patterns.keys())
+                            if discovered_patterns
+                            else []
+                        )
+                        line_item_labels = line_item_patterns_data.get(
+                            "line_item_labels", []
+                        )
 
                         create_historical_span(
                             parent_ctx=trace_ctx,
                             name="DiscoverPatterns",
                             start_time_iso=discovery_start,
                             end_time_iso=discovery_end,
-                            duration_seconds=discovery_metadata.get("discovery_duration_seconds", 0),
+                            duration_seconds=discovery_metadata.get(
+                                "discovery_duration_seconds", 0
+                            ),
                             run_type="llm",
                             inputs={
                                 "merchant_name": merchant_name,
-                                "sample_receipt_count": discovery_metadata.get("sample_receipt_count", 0),
-                                "llm_model": discovery_metadata.get("llm_model", "unknown"),
+                                "sample_receipt_count": discovery_metadata.get(
+                                    "sample_receipt_count", 0
+                                ),
+                                "llm_model": discovery_metadata.get(
+                                    "llm_model", "unknown"
+                                ),
                             },
                             outputs={
-                                "status": discovery_metadata.get("discovery_status", "unknown"),
+                                "status": discovery_metadata.get(
+                                    "discovery_status", "unknown"
+                                ),
                                 "pattern_categories": pattern_categories,
                                 "line_item_labels": line_item_labels,
                                 "patterns_discovered": len(pattern_categories),
                             },
                             metadata={
-                                "llm_call_duration_seconds": discovery_metadata.get("llm_call_duration_seconds", 0),
-                                "load_receipts_duration_seconds": discovery_metadata.get("load_receipts_duration_seconds", 0),
-                                "build_prompt_duration_seconds": discovery_metadata.get("build_prompt_duration_seconds", 0),
+                                "llm_call_duration_seconds": discovery_metadata.get(
+                                    "llm_call_duration_seconds", 0
+                                ),
+                                "load_receipts_duration_seconds": discovery_metadata.get(
+                                    "load_receipts_duration_seconds", 0
+                                ),
+                                "build_prompt_duration_seconds": discovery_metadata.get(
+                                    "build_prompt_duration_seconds", 0
+                                ),
                                 "batch_computed": True,
                             },
                         )
                         logger.info(
                             "Added DiscoverPatterns historical span (%.2fs, %d categories)",
-                            discovery_metadata.get("discovery_duration_seconds", 0),
+                            discovery_metadata.get(
+                                "discovery_duration_seconds", 0
+                            ),
                             len(pattern_categories),
                         )
                 except Exception as span_err:
@@ -343,51 +394,87 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             )
             # Use allow_missing=True for graceful fallback when patterns don't exist
             patterns_data = load_json_from_s3(
-                s3, batch_bucket, patterns_s3_key, logger=logger, allow_missing=True
+                s3,
+                batch_bucket,
+                patterns_s3_key,
+                logger=logger,
+                allow_missing=True,
             )
 
             if patterns_data:
                 # Create historical ComputePatterns span using stored timing (best-effort)
                 try:
-                    computation_metadata = patterns_data.get("_trace_metadata", {})
-                    computation_start = computation_metadata.get("computation_start_time")
-                    computation_end = computation_metadata.get("computation_end_time")
+                    computation_metadata = patterns_data.get(
+                        "_trace_metadata", {}
+                    )
+                    computation_start = computation_metadata.get(
+                        "computation_start_time"
+                    )
+                    computation_end = computation_metadata.get(
+                        "computation_end_time"
+                    )
                     if computation_start and computation_end:
                         # Extract constellation/geometry pattern info for rich output
                         # constellation_geometry contains multi-label constellations
                         # label_pair_geometry contains individual label pairs
-                        label_pair_geometry = patterns_data.get("label_pair_geometry", {})
-                        constellation_geometry = patterns_data.get("constellation_geometry", {})
-                        constellation_names = list(constellation_geometry.keys()) if constellation_geometry else []
-                        label_pair_names = list(label_pair_geometry.keys()) if label_pair_geometry else []
+                        label_pair_geometry = patterns_data.get(
+                            "label_pair_geometry", {}
+                        )
+                        constellation_geometry = patterns_data.get(
+                            "constellation_geometry", {}
+                        )
+                        constellation_names = (
+                            list(constellation_geometry.keys())
+                            if constellation_geometry
+                            else []
+                        )
+                        label_pair_names = (
+                            list(label_pair_geometry.keys())
+                            if label_pair_geometry
+                            else []
+                        )
 
                         create_historical_span(
                             parent_ctx=trace_ctx,
                             name="ComputePatterns",
                             start_time_iso=computation_start,
                             end_time_iso=computation_end,
-                            duration_seconds=computation_metadata.get("computation_duration_seconds", 0),
+                            duration_seconds=computation_metadata.get(
+                                "computation_duration_seconds", 0
+                            ),
                             run_type="chain",
                             inputs={
                                 "merchant_name": merchant_name,
-                                "training_receipt_count": computation_metadata.get("training_receipt_count", 0),
+                                "training_receipt_count": computation_metadata.get(
+                                    "training_receipt_count", 0
+                                ),
                             },
                             outputs={
-                                "status": computation_metadata.get("computation_status", "unknown"),
+                                "status": computation_metadata.get(
+                                    "computation_status", "unknown"
+                                ),
                                 "constellation_patterns": constellation_names,
-                                "constellation_count": len(constellation_names),
+                                "constellation_count": len(
+                                    constellation_names
+                                ),
                                 "label_pair_patterns": label_pair_names,
                                 "label_pair_count": len(label_pair_names),
                             },
                             metadata={
-                                "load_data_duration_seconds": computation_metadata.get("load_data_duration_seconds", 0),
-                                "compute_patterns_duration_seconds": computation_metadata.get("compute_patterns_duration_seconds", 0),
+                                "load_data_duration_seconds": computation_metadata.get(
+                                    "load_data_duration_seconds", 0
+                                ),
+                                "compute_patterns_duration_seconds": computation_metadata.get(
+                                    "compute_patterns_duration_seconds", 0
+                                ),
                                 "batch_computed": True,
                             },
                         )
                         logger.info(
                             "Added ComputePatterns historical span (%.2fs, %d constellations, %d label pairs)",
-                            computation_metadata.get("computation_duration_seconds", 0),
+                            computation_metadata.get(
+                                "computation_duration_seconds", 0
+                            ),
                             len(constellation_names),
                             len(label_pair_names),
                         )
@@ -408,7 +495,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
                             merchant_patterns.receipt_count,
                         )
                     else:
-                        logger.info("Patterns file exists but no patterns available")
+                        logger.info(
+                            "Patterns file exists but no patterns available"
+                        )
                 except Exception as deser_err:
                     logger.warning(
                         "Failed to deserialize patterns, proceeding without: %s",
@@ -438,7 +527,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         )
 
         # 6. Run compute-only graph with child trace
-        pattern_count = merchant_patterns.receipt_count if merchant_patterns else 0
+        pattern_count = (
+            merchant_patterns.receipt_count if merchant_patterns else 0
+        )
         with child_trace(
             "EvaluateLabels",
             trace_ctx,
@@ -477,32 +568,38 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
             result["compute_time_seconds"] = round(compute_time, 3)
 
             # Set rich outputs for visualization
-            eval_ctx.set_outputs({
-                "issues_found": result.get("issues_found", 0),
-                "compute_time_seconds": round(compute_time, 3),
-                "flagged_words": result.get("flagged_words", []),
-                "issues": result.get("issues", []),
-                # Receipt context for visualization
-                "receipt_summary": {
-                    "word_count": len(words),
-                    "label_count": len(labels),
-                    "merchant_name": merchant_name,
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                },
-                # Pattern info used for analysis
-                "patterns_used": {
-                    "label_pair_count": (
-                        len(patterns_data.get("label_pair_geometry", {}))
-                        if patterns_data else 0
-                    ),
-                    "constellation_count": (
-                        len(patterns_data.get("constellation_geometry", {}))
-                        if patterns_data else 0
-                    ),
-                    "pattern_receipt_count": pattern_count,
-                },
-            })
+            eval_ctx.set_outputs(
+                {
+                    "issues_found": result.get("issues_found", 0),
+                    "compute_time_seconds": round(compute_time, 3),
+                    "flagged_words": result.get("flagged_words", []),
+                    "issues": result.get("issues", []),
+                    # Receipt context for visualization
+                    "receipt_summary": {
+                        "word_count": len(words),
+                        "label_count": len(labels),
+                        "merchant_name": merchant_name,
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                    },
+                    # Pattern info used for analysis
+                    "patterns_used": {
+                        "label_pair_count": (
+                            len(patterns_data.get("label_pair_geometry", {}))
+                            if patterns_data
+                            else 0
+                        ),
+                        "constellation_count": (
+                            len(
+                                patterns_data.get("constellation_geometry", {})
+                            )
+                            if patterns_data
+                            else 0
+                        ),
+                        "pattern_receipt_count": pattern_count,
+                    },
+                }
+            )
 
         # 7. Upload results to S3
         results_s3_key = f"results/{execution_id}/{image_id}_{receipt_id}.json"
@@ -572,12 +669,16 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
         from receipt_agent.utils.ollama_rate_limit import OllamaRateLimitError
 
         if isinstance(e, AllProvidersFailedError):
-            logger.exception("All providers failed, propagating for Step Function retry")
+            logger.exception(
+                "All providers failed, propagating for Step Function retry"
+            )
             flush_langsmith_traces()
             raise
 
         if isinstance(e, OllamaRateLimitError):
-            logger.exception("Rate limit error, propagating for Step Function retry")
+            logger.exception(
+                "Rate limit error, propagating for Step Function retry"
+            )
             flush_langsmith_traces()
             raise
 

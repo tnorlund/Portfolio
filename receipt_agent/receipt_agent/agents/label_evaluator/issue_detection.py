@@ -17,6 +17,11 @@ import statistics
 from collections import Counter, defaultdict
 from typing import Dict, List, Optional, Tuple
 
+from receipt_agent.agents.label_evaluator.geometry import (
+    calculate_angle_degrees,
+    calculate_distance,
+    convert_polar_to_cartesian,
+)
 from receipt_agent.agents.label_evaluator.state import (
     ConstellationGeometry,
     DrillDownWord,
@@ -26,11 +31,8 @@ from receipt_agent.agents.label_evaluator.state import (
     VisualLine,
     WordContext,
 )
-from receipt_agent.agents.label_evaluator.word_context import get_same_line_words
-from receipt_agent.agents.label_evaluator.geometry import (
-    calculate_angle_degrees,
-    calculate_distance,
-    convert_polar_to_cartesian,
+from receipt_agent.agents.label_evaluator.word_context import (
+    get_same_line_words,
 )
 
 logger = logging.getLogger(__name__)
@@ -691,7 +693,10 @@ def check_constellation_anomaly(
                         word_id=other_ctx.word.word_id,
                         line_id=other_ctx.word.line_id,
                         text=other_ctx.word.text,
-                        position=(other_ctx.normalized_x, other_ctx.normalized_y),
+                        position=(
+                            other_ctx.normalized_x,
+                            other_ctx.normalized_y,
+                        ),
                         expected_offset=(expected.mean_dx, expected.mean_dy),
                         actual_offset=word_offset,
                         deviation=word_deviation,

@@ -1200,7 +1200,9 @@ pulumi.export(
 )
 
 # EMR Serverless Docker Image (for custom Spark image with receipt_langsmith)
-from components.emr_serverless_docker_image import create_emr_serverless_docker_image
+from components.emr_serverless_docker_image import (
+    create_emr_serverless_docker_image,
+)
 
 emr_docker_image = create_emr_serverless_docker_image(
     name="emr-spark",
@@ -1325,7 +1327,10 @@ if hasattr(api_gateway, "api"):
         setup_lambda_name=langsmith_bulk_export.setup_lambda.name,
         setup_lambda_arn=langsmith_bulk_export.setup_lambda.arn,
     )
-    pulumi.export("label_evaluator_viz_cache_bucket", label_evaluator_viz_cache.cache_bucket.id)
+    pulumi.export(
+        "label_evaluator_viz_cache_bucket",
+        label_evaluator_viz_cache.cache_bucket.id,
+    )
 
     # Label evaluator visualization endpoint
     integration_viz = aws.apigatewayv2.Integration(
@@ -1351,5 +1356,7 @@ if hasattr(api_gateway, "api"):
         action="lambda:InvokeFunction",
         function=label_evaluator_viz_cache.api_lambda.name,
         principal="apigateway.amazonaws.com",
-        source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+        source_arn=api_gateway.api.execution_arn.apply(
+            lambda arn: f"{arn}/*/*"
+        ),
     )

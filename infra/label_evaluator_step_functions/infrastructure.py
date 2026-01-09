@@ -102,7 +102,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
         spark_artifacts_bucket: Optional[pulumi.Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
-        super().__init__(f"label-evaluator-step-function:{name}", name, None, opts)
+        super().__init__(
+            f"label-evaluator-step-function:{name}", name, None, opts
+        )
         stack = pulumi.get_stack()
 
         self.max_concurrency = max_concurrency or max_concurrency_default
@@ -185,7 +187,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
             f"{name}-lambda-basic-exec",
             role=lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
@@ -256,7 +259,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
             RolePolicy(
                 f"{name}-lambda-s3-policy",
                 role=lambda_role.id,
-                policy=Output.all(self.batch_bucket.arn, chromadb_bucket_arn).apply(
+                policy=Output.all(
+                    self.batch_bucket.arn, chromadb_bucket_arn
+                ).apply(
                     lambda args: json.dumps(
                         {
                             "Version": "2012-10-17",
@@ -320,7 +325,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "LANGCHAIN_API_KEY": langchain_api_key,
             "LANGCHAIN_TRACING_V2": "true",
             "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-            "LANGCHAIN_PROJECT": config.get("langchain_project") or "label-evaluator",
+            "LANGCHAIN_PROJECT": config.get("langchain_project")
+            or "label-evaluator",
         }
 
         # ============================================================
@@ -348,7 +354,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         os.path.join(CURRENT_DIR, "evaluator_types.py")
                     ),
                     # Include tracing utilities
-                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
                 }
             ),
             timeout=300,
@@ -381,7 +389,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "list_receipts.py": FileAsset(
                         os.path.join(HANDLERS_DIR, "list_receipts.py")
                     ),
-                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
                 }
             ),
             timeout=300,
@@ -421,7 +431,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "handlers/evaluator_types.py": FileAsset(
                         os.path.join(CURRENT_DIR, "evaluator_types.py")
                     ),
-                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
                 }
             ),
             timeout=300,
@@ -495,7 +507,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "aggregate_results.py": FileAsset(
                         os.path.join(HANDLERS_DIR, "aggregate_results.py")
                     ),
-                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
                 }
             ),
             timeout=120,
@@ -523,7 +537,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "final_aggregate.py": FileAsset(
                         os.path.join(HANDLERS_DIR, "final_aggregate.py")
                     ),
-                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
                 }
             ),
             timeout=300,
@@ -605,7 +621,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         evaluate_docker_image = CodeBuildDockerImage(
             f"{name}-eval-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.evaluate"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.evaluate"
             ),
             build_context_path=".",
             source_paths=[
@@ -671,7 +688,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
         )
 
-        discover_patterns_lambda = discover_patterns_docker_image.lambda_function
+        discover_patterns_lambda = (
+            discover_patterns_docker_image.lambda_function
+        )
 
         # ============================================================
         # Container Lambda: llm_review (LLM)
@@ -707,7 +726,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         llm_review_docker_image = CodeBuildDockerImage(
             f"{name}-llm-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.llm"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.llm"
             ),
             build_context_path=".",
             source_paths=[
@@ -755,7 +775,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         currency_docker_image = CodeBuildDockerImage(
             f"{name}-currency-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.currency"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.currency"
             ),
             build_context_path=".",
             source_paths=[
@@ -803,7 +824,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         metadata_docker_image = CodeBuildDockerImage(
             f"{name}-metadata-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.metadata"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.metadata"
             ),
             build_context_path=".",
             source_paths=[
@@ -852,7 +874,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         financial_docker_image = CodeBuildDockerImage(
             f"{name}-financial-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.financial"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.financial"
             ),
             build_context_path=".",
             source_paths=[
@@ -888,7 +911,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         close_trace_docker_image = CodeBuildDockerImage(
             f"{name}-close-trace-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.close_trace"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.close_trace"
             ),
             build_context_path=".",
             source_paths=[
@@ -982,46 +1006,48 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     self.emr_application_id,
                     self.emr_job_execution_role_arn,
                 ).apply(
-                    lambda args: json.dumps({
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            # EMR Serverless job management
-                            {
-                                "Effect": "Allow",
-                                "Action": ["emr-serverless:StartJobRun"],
-                                "Resource": f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}",
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "emr-serverless:GetJobRun",
-                                    "emr-serverless:CancelJobRun",
-                                ],
-                                "Resource": f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}/jobruns/*",
-                            },
-                            # Pass role to EMR Serverless
-                            {
-                                "Effect": "Allow",
-                                "Action": "iam:PassRole",
-                                "Resource": args[1],
-                                "Condition": {
-                                    "StringEquals": {
-                                        "iam:PassedToService": "emr-serverless.amazonaws.com",
-                                    }
+                    lambda args: json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                # EMR Serverless job management
+                                {
+                                    "Effect": "Allow",
+                                    "Action": ["emr-serverless:StartJobRun"],
+                                    "Resource": f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}",
                                 },
-                            },
-                            # EventBridge rules for .sync waiter pattern
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "events:PutTargets",
-                                    "events:PutRule",
-                                    "events:DescribeRule",
-                                ],
-                                "Resource": f"arn:aws:events:{region}:{account_id}:rule/StepFunctionsGetEventsForEMRServerlessJobRule",
-                            },
-                        ],
-                    })
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "emr-serverless:GetJobRun",
+                                        "emr-serverless:CancelJobRun",
+                                    ],
+                                    "Resource": f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[0]}/jobruns/*",
+                                },
+                                # Pass role to EMR Serverless
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "iam:PassRole",
+                                    "Resource": args[1],
+                                    "Condition": {
+                                        "StringEquals": {
+                                            "iam:PassedToService": "emr-serverless.amazonaws.com",
+                                        }
+                                    },
+                                },
+                                # EventBridge rules for .sync waiter pattern
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "events:PutTargets",
+                                        "events:PutRule",
+                                        "events:DescribeRule",
+                                    ],
+                                    "Resource": f"arn:aws:events:{region}:{account_id}:rule/StepFunctionsGetEventsForEMRServerlessJobRule",
+                                },
+                            ],
+                        }
+                    )
                 ),
                 opts=ResourceOptions(parent=sfn_role),
             )
@@ -1068,13 +1094,15 @@ class LabelEvaluatorStepFunction(ComponentResource):
 
         # Add EMR outputs if enabled
         if self.emr_enabled:
-            base_outputs.extend([
-                self.emr_application_id,
-                self.emr_job_execution_role_arn,
-                self.langsmith_export_bucket,
-                self.analytics_output_bucket,
-                self.spark_artifacts_bucket,
-            ])
+            base_outputs.extend(
+                [
+                    self.emr_application_id,
+                    self.emr_job_execution_role_arn,
+                    self.langsmith_export_bucket,
+                    self.analytics_output_bucket,
+                    self.spark_artifacts_bucket,
+                ]
+            )
 
         self.state_machine = StateMachine(
             f"{name}-sf",
@@ -1103,10 +1131,18 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     batch_size=self.batch_size,
                     # EMR parameters (None if not enabled)
                     emr_application_id=args[15] if self.emr_enabled else None,
-                    emr_job_execution_role_arn=args[16] if self.emr_enabled else None,
-                    langsmith_export_bucket=args[17] if self.emr_enabled else None,
-                    analytics_output_bucket=args[18] if self.emr_enabled else None,
-                    spark_artifacts_bucket=args[19] if self.emr_enabled else None,
+                    emr_job_execution_role_arn=(
+                        args[16] if self.emr_enabled else None
+                    ),
+                    langsmith_export_bucket=(
+                        args[17] if self.emr_enabled else None
+                    ),
+                    analytics_output_bucket=(
+                        args[18] if self.emr_enabled else None
+                    ),
+                    spark_artifacts_bucket=(
+                        args[19] if self.emr_enabled else None
+                    ),
                 )
             ),
             logging_configuration=logging_config,
@@ -1306,7 +1342,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "max_training_receipts.$": "$.init.max_training_receipts",
                         "limit.$": "$.init.limit",
                         # Filter to single merchant
-                        "merchants": [{"merchant_name.$": "$.init.merchant_name"}],
+                        "merchants": [
+                            {"merchant_name.$": "$.init.merchant_name"}
+                        ],
                     },
                     "ResultPath": "$.all_data",
                     "Retry": [
@@ -1496,7 +1534,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                             "ResultPath": "$.receipt_data",
                                             "Retry": [
                                                 {
-                                                    "ErrorEquals": ["States.TaskFailed"],
+                                                    "ErrorEquals": [
+                                                        "States.TaskFailed"
+                                                    ],
                                                     "IntervalSeconds": 1,
                                                     "MaxAttempts": 2,
                                                     "BackoffRate": 2.0,
@@ -1530,7 +1570,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                             },
                                                             "Retry": [
                                                                 {
-                                                                    "ErrorEquals": ["States.TaskFailed"],
+                                                                    "ErrorEquals": [
+                                                                        "States.TaskFailed"
+                                                                    ],
                                                                     "IntervalSeconds": 2,
                                                                     "MaxAttempts": 2,
                                                                     "BackoffRate": 2.0,
@@ -1560,19 +1602,25 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                             },
                                                             "Retry": [
                                                                 {
-                                                                    "ErrorEquals": ["States.Timeout"],
+                                                                    "ErrorEquals": [
+                                                                        "States.Timeout"
+                                                                    ],
                                                                     "IntervalSeconds": 5,
                                                                     "MaxAttempts": 2,
                                                                     "BackoffRate": 1.0,
                                                                 },
                                                                 {
-                                                                    "ErrorEquals": ["OllamaRateLimitError"],
+                                                                    "ErrorEquals": [
+                                                                        "OllamaRateLimitError"
+                                                                    ],
                                                                     "IntervalSeconds": 30,
                                                                     "MaxAttempts": 5,
                                                                     "BackoffRate": 2.0,
                                                                 },
                                                                 {
-                                                                    "ErrorEquals": ["States.TaskFailed"],
+                                                                    "ErrorEquals": [
+                                                                        "States.TaskFailed"
+                                                                    ],
                                                                     "IntervalSeconds": 2,
                                                                     "MaxAttempts": 2,
                                                                     "BackoffRate": 2.0,
@@ -1602,19 +1650,25 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                                             },
                                                             "Retry": [
                                                                 {
-                                                                    "ErrorEquals": ["States.Timeout"],
+                                                                    "ErrorEquals": [
+                                                                        "States.Timeout"
+                                                                    ],
                                                                     "IntervalSeconds": 5,
                                                                     "MaxAttempts": 2,
                                                                     "BackoffRate": 1.0,
                                                                 },
                                                                 {
-                                                                    "ErrorEquals": ["OllamaRateLimitError"],
+                                                                    "ErrorEquals": [
+                                                                        "OllamaRateLimitError"
+                                                                    ],
                                                                     "IntervalSeconds": 30,
                                                                     "MaxAttempts": 5,
                                                                     "BackoffRate": 2.0,
                                                                 },
                                                                 {
-                                                                    "ErrorEquals": ["States.TaskFailed"],
+                                                                    "ErrorEquals": [
+                                                                        "States.TaskFailed"
+                                                                    ],
                                                                     "IntervalSeconds": 2,
                                                                     "MaxAttempts": 2,
                                                                     "BackoffRate": 2.0,
@@ -1647,19 +1701,25 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                             "ResultPath": "$.financial_result",
                                             "Retry": [
                                                 {
-                                                    "ErrorEquals": ["States.Timeout"],
+                                                    "ErrorEquals": [
+                                                        "States.Timeout"
+                                                    ],
                                                     "IntervalSeconds": 5,
                                                     "MaxAttempts": 2,
                                                     "BackoffRate": 1.0,
                                                 },
                                                 {
-                                                    "ErrorEquals": ["OllamaRateLimitError"],
+                                                    "ErrorEquals": [
+                                                        "OllamaRateLimitError"
+                                                    ],
                                                     "IntervalSeconds": 30,
                                                     "MaxAttempts": 5,
                                                     "BackoffRate": 2.0,
                                                 },
                                                 {
-                                                    "ErrorEquals": ["States.TaskFailed"],
+                                                    "ErrorEquals": [
+                                                        "States.TaskFailed"
+                                                    ],
                                                     "IntervalSeconds": 2,
                                                     "MaxAttempts": 2,
                                                     "BackoffRate": 2.0,
@@ -1703,19 +1763,25 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                             "ResultPath": "$.llm_review_result",
                                             "Retry": [
                                                 {
-                                                    "ErrorEquals": ["States.Timeout"],
+                                                    "ErrorEquals": [
+                                                        "States.Timeout"
+                                                    ],
                                                     "IntervalSeconds": 5,
                                                     "MaxAttempts": 2,
                                                     "BackoffRate": 1.0,
                                                 },
                                                 {
-                                                    "ErrorEquals": ["OllamaRateLimitError"],
+                                                    "ErrorEquals": [
+                                                        "OllamaRateLimitError"
+                                                    ],
                                                     "IntervalSeconds": 30,
                                                     "MaxAttempts": 5,
                                                     "BackoffRate": 2.0,
                                                 },
                                                 {
-                                                    "ErrorEquals": ["States.TaskFailed"],
+                                                    "ErrorEquals": [
+                                                        "States.TaskFailed"
+                                                    ],
                                                     "IntervalSeconds": 5,
                                                     "MaxAttempts": 2,
                                                     "BackoffRate": 2.0,
@@ -1746,7 +1812,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                                             "ResultPath": "$.close_trace_result",
                                             "Retry": [
                                                 {
-                                                    "ErrorEquals": ["States.TaskFailed"],
+                                                    "ErrorEquals": [
+                                                        "States.TaskFailed"
+                                                    ],
                                                     "IntervalSeconds": 2,
                                                     "MaxAttempts": 2,
                                                     "BackoffRate": 2.0,
@@ -1805,7 +1873,11 @@ class LabelEvaluatorStepFunction(ComponentResource):
                             "Next": "SkipAnalytics",
                         }
                     ],
-                    "Default": "CheckEMREnabled" if emr_application_id else "SkipAnalytics",
+                    "Default": (
+                        "CheckEMREnabled"
+                        if emr_application_id
+                        else "SkipAnalytics"
+                    ),
                 },
                 # Check if EMR is configured
                 "CheckEMREnabled": {
@@ -1814,7 +1886,11 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         {
                             "Variable": "$.summary_result.status",
                             "StringEquals": "completed",
-                            "Next": "RunSparkAnalytics" if emr_application_id else "SkipAnalytics",
+                            "Next": (
+                                "RunSparkAnalytics"
+                                if emr_application_id
+                                else "SkipAnalytics"
+                            ),
                         }
                     ],
                     "Default": "SkipAnalytics",
@@ -1870,9 +1946,14 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "SparkSubmit": {
                             "EntryPoint": f"s3://{spark_artifacts_bucket}/spark/emr_job.py",
                             "EntryPointArguments": [
-                                "--input", f"s3://{langsmith_export_bucket}/traces/",
-                                "--output.$", "States.Format('s3://" + analytics_output_bucket + "/analytics/{}', $.summary_result.execution_id)",
-                                "--job-type", "all",
+                                "--input",
+                                f"s3://{langsmith_export_bucket}/traces/",
+                                "--output.$",
+                                "States.Format('s3://"
+                                + analytics_output_bucket
+                                + "/analytics/{}', $.summary_result.execution_id)",
+                                "--job-type",
+                                "all",
                                 "--partition-by-merchant",
                             ],
                             "SparkSubmitParameters": f"--conf spark.archives=s3://{spark_artifacts_bucket}/spark/spark_env.tar.gz#environment --conf spark.emr-serverless.driverEnv.PYSPARK_DRIVER_PYTHON=./environment/bin/python --conf spark.emr-serverless.driverEnv.PYSPARK_PYTHON=./environment/bin/python --conf spark.executorEnv.PYSPARK_PYTHON=./environment/bin/python --conf spark.executor.cores=2 --conf spark.executor.memory=4g --conf spark.driver.cores=2 --conf spark.driver.memory=4g",

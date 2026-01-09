@@ -79,14 +79,6 @@ s3 = boto3.client(
 )
 
 
-# Lambda-specific S3 utilities
-from utils.s3_helpers import (
-    download_chromadb_snapshot,
-    get_merchant_hash,
-    load_json_from_s3,
-    upload_json_to_s3,
-)
-
 # Import from receipt_agent instead of duplicate llm_review module
 from receipt_agent.agents.label_evaluator.llm_review import (
     assemble_receipt_text,
@@ -103,6 +95,14 @@ from receipt_agent.utils.chroma_helpers import (
     compute_similarity_distribution,
     enrich_evidence_with_dynamo_reasoning,
     query_similar_words,
+)
+
+# Lambda-specific S3 utilities
+from utils.s3_helpers import (
+    download_chromadb_snapshot,
+    get_merchant_hash,
+    load_json_from_s3,
+    upload_json_to_s3,
 )
 
 
@@ -169,7 +169,11 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
     # This enables the two-phase architecture where receipts are processed
     # independently after all patterns have been computed
     line_item_patterns_s3_key = event.get("line_item_patterns_s3_key")
-    if not line_item_patterns_s3_key and merchant_name and merchant_name != "Unknown":
+    if (
+        not line_item_patterns_s3_key
+        and merchant_name
+        and merchant_name != "Unknown"
+    ):
         merchant_hash = get_merchant_hash(merchant_name)
         line_item_patterns_s3_key = f"line_item_patterns/{merchant_hash}.json"
         logger.info(
@@ -538,7 +542,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                         # LLM call with structured output (preferred) or text parsing fallback
                         max_retries = 3
                         chunk_reviews = None
-                        use_structured = hasattr(llm_invoker, "with_structured_output")
+                        use_structured = hasattr(
+                            llm_invoker, "with_structured_output"
+                        )
 
                         for attempt in range(max_retries):
                             llm_call_count += 1
@@ -546,20 +552,28 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                             if use_structured:
                                 # Try structured output first (API-level schema enforcement)
                                 try:
-                                    structured_invoker = llm_invoker.with_structured_output(
-                                        BatchedReviewResponse
+                                    structured_invoker = (
+                                        llm_invoker.with_structured_output(
+                                            BatchedReviewResponse
+                                        )
                                     )
-                                    response: BatchedReviewResponse = structured_invoker.invoke(
-                                        [HumanMessage(content=prompt)],
-                                        config={
-                                            "run_name": f"llm_review_structured:{len(issues_with_context)}_issues",
-                                            "metadata": {
-                                                "issue_count": len(issues_with_context),
-                                                "prompt_length": len(prompt),
-                                                "attempt": attempt + 1,
-                                                "structured": True,
+                                    response: BatchedReviewResponse = (
+                                        structured_invoker.invoke(
+                                            [HumanMessage(content=prompt)],
+                                            config={
+                                                "run_name": f"llm_review_structured:{len(issues_with_context)}_issues",
+                                                "metadata": {
+                                                    "issue_count": len(
+                                                        issues_with_context
+                                                    ),
+                                                    "prompt_length": len(
+                                                        prompt
+                                                    ),
+                                                    "attempt": attempt + 1,
+                                                    "structured": True,
+                                                },
                                             },
-                                        },
+                                        )
                                     )
                                     chunk_reviews = response.to_ordered_list(
                                         len(issues_with_context)
@@ -585,7 +599,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                                 config={
                                     "run_name": f"llm_review:{len(issues_with_context)}_issues",
                                     "metadata": {
-                                        "issue_count": len(issues_with_context),
+                                        "issue_count": len(
+                                            issues_with_context
+                                        ),
                                         "prompt_length": len(prompt),
                                         "attempt": attempt + 1,
                                         "structured": False,
@@ -616,7 +632,9 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
                                     # Final attempt failed - use fallback
                                     chunk_reviews = parse_batched_llm_response(
                                         response.content.strip(),
-                                        expected_count=len(issues_with_context),
+                                        expected_count=len(
+                                            issues_with_context
+                                        ),
                                         raise_on_parse_error=False,
                                     )
 
@@ -788,7 +806,10 @@ def handler(event: dict[str, Any], _context: Any) -> "LLMReviewBatchOutput":
             from receipt_agent.utils.llm_factory import AllProvidersFailedError
 
             if isinstance(e, (OllamaRateLimitError, AllProvidersFailedError)):
-                logger.error("Rate limit error, propagating for Step Function retry: %s", e)
+                logger.error(
+                    "Rate limit error, propagating for Step Function retry: %s",
+                    e,
+                )
                 raise OllamaRateLimitError(f"Rate limit error: {e}") from e
 
             logger.error("Error in LLM review batch: %s", e, exc_info=True)

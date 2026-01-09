@@ -45,11 +45,14 @@ def _get_s3_credentials() -> dict[str, str]:
     required_keys = ("access_key_id", "secret_access_key")
     for key in required_keys:
         if not credentials.get(key):
-            logger.error("Missing or empty required key '%s' in secret: %s", key, secret_arn)
+            logger.error(
+                "Missing or empty required key '%s' in secret: %s",
+                key,
+                secret_arn,
+            )
             raise ValueError(f"Secret missing required key: {key}")
 
     return credentials
-
 
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
@@ -80,7 +83,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     if use_default_workspace:
         tenant_id = None
     else:
-        tenant_id = event.get("tenant_id") or os.environ.get("LANGSMITH_TENANT_ID")
+        tenant_id = event.get("tenant_id") or os.environ.get(
+            "LANGSMITH_TENANT_ID"
+        )
     bucket_name = event.get("bucket_name") or os.environ.get("EXPORT_BUCKET")
     stack = os.environ.get("STACK", "dev")
     prefix = event.get("prefix", "traces/")
@@ -99,8 +104,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "message": "bucket_name required (via event or EXPORT_BUCKET env var)",
         }
 
-
-    workspace_info = f"tenant: {tenant_id}" if tenant_id else "default workspace"
+    workspace_info = (
+        f"tenant: {tenant_id}" if tenant_id else "default workspace"
+    )
     logger.info(f"Registering bulk export destination for {workspace_info}")
     logger.info(f"Export bucket: {bucket_name}")
 
@@ -235,7 +241,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         if response.status not in (200, 201):
             error_msg = response.data.decode("utf-8")
-            logger.error(f"LangSmith API error: {response.status} - {error_msg}")
+            logger.error(
+                f"LangSmith API error: {response.status} - {error_msg}"
+            )
             return {
                 "statusCode": response.status,
                 "message": f"Failed to register destination: {error_msg}",
@@ -256,7 +264,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         # Store destination_id in SSM Parameter Store (unless skip_ssm is True)
         if not skip_ssm:
-            description = f"LangSmith bulk export destination ID for {workspace_info}"
+            description = (
+                f"LangSmith bulk export destination ID for {workspace_info}"
+            )
             ssm.put_parameter(
                 Name=param_name,
                 Value=destination_id,

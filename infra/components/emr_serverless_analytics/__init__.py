@@ -207,7 +207,9 @@ class EMRServerlessAnalytics(ComponentResource):
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {"Service": "emr-serverless.amazonaws.com"},
+                            "Principal": {
+                                "Service": "emr-serverless.amazonaws.com"
+                            },
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -298,7 +300,9 @@ class EMRServerlessAnalytics(ComponentResource):
         # Upload Entry Point Scripts
         # ============================================================
         # Upload Spark job entry point scripts to S3
-        spark_scripts_dir = REPO_ROOT / "receipt_langsmith" / "receipt_langsmith" / "spark"
+        spark_scripts_dir = (
+            REPO_ROOT / "receipt_langsmith" / "receipt_langsmith" / "spark"
+        )
 
         # Upload emr_job.py
         self.emr_job_script = aws.s3.BucketObjectv2(

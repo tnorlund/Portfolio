@@ -33,12 +33,6 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Optional
 
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
-
-from receipt_agent.agents.label_evaluator.word_context import (
-    assemble_visual_lines,
-    build_word_contexts,
-)
 from receipt_agent.agents.label_evaluator.issue_detection import (
     evaluate_word_contexts,
 )
@@ -46,6 +40,11 @@ from receipt_agent.agents.label_evaluator.state import (
     EvaluationIssue,
     MerchantPatterns,
 )
+from receipt_agent.agents.label_evaluator.word_context import (
+    assemble_visual_lines,
+    build_word_contexts,
+)
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 
 @dataclass
@@ -63,14 +62,18 @@ class LabelComparisonMetrics:
         """Precision = TP / (TP + FP)."""
         if self.true_positives + self.false_positives == 0:
             return 0.0
-        return self.true_positives / (self.true_positives + self.false_positives)
+        return self.true_positives / (
+            self.true_positives + self.false_positives
+        )
 
     @property
     def recall(self) -> float:
         """Recall = TP / (TP + FN)."""
         if self.true_positives + self.false_negatives == 0:
             return 0.0
-        return self.true_positives / (self.true_positives + self.false_negatives)
+        return self.true_positives / (
+            self.true_positives + self.false_negatives
+        )
 
     @property
     def f1_score(self) -> float:
@@ -314,8 +317,12 @@ def label_quality_evaluator(
             "total_issues": quality.total_issues,
             "issues_by_type": quality.issues_by_type,
             "issue_rate": quality.issue_rate,
-            "position_anomaly_rate": quality.get_issue_rate("position_anomaly"),
-            "geometric_anomaly_rate": quality.get_issue_rate("geometric_anomaly"),
+            "position_anomaly_rate": quality.get_issue_rate(
+                "position_anomaly"
+            ),
+            "geometric_anomaly_rate": quality.get_issue_rate(
+                "geometric_anomaly"
+            ),
             "constellation_anomaly_rate": quality.get_issue_rate(
                 "constellation_anomaly"
             ),

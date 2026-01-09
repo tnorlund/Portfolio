@@ -685,16 +685,22 @@ def create_historical_span(
         metadata: Optional metadata to attach
     """
     if not HAS_LANGSMITH or parent_ctx.run_tree is None:
-        logger.debug("Skipping historical span '%s' - no tracing available", name)
+        logger.debug(
+            "Skipping historical span '%s' - no tracing available", name
+        )
         return
 
     if not hasattr(parent_ctx.run_tree, "create_child"):
-        logger.warning("Parent run_tree has no create_child method for historical span")
+        logger.warning(
+            "Parent run_tree has no create_child method for historical span"
+        )
         return
 
     try:
         # Parse ISO timestamps
-        start_dt = datetime.fromisoformat(start_time_iso.replace("Z", "+00:00"))
+        start_dt = datetime.fromisoformat(
+            start_time_iso.replace("Z", "+00:00")
+        )
         end_dt = datetime.fromisoformat(end_time_iso.replace("Z", "+00:00"))
 
         # Build metadata with timing info
@@ -1168,7 +1174,9 @@ def create_merchant_trace(
         return base_info
 
     if not HAS_LANGSMITH or _RunTree is None:
-        logger.info("LangSmith not available, returning empty merchant trace info")
+        logger.info(
+            "LangSmith not available, returning empty merchant trace info"
+        )
         return base_info
 
     # Build metadata with merchant identification
@@ -1180,7 +1188,9 @@ def create_merchant_trace(
     }
 
     trace_tags = list(tags) if tags else []
-    trace_tags.extend(["step-function", "label-evaluator", "phase-1", "per-merchant"])
+    trace_tags.extend(
+        ["step-function", "label-evaluator", "phase-1", "per-merchant"]
+    )
 
     logger.info(
         "Creating merchant trace: %s (merchant=%s, trace_id=%s)",

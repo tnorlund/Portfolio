@@ -55,7 +55,9 @@ def _fetch_cache(bucket: str) -> dict[str, Any]:
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code")
         if error_code == "NoSuchKey":
-            raise CacheNotFoundError(f"Pointer not found: {LATEST_POINTER_KEY}") from e
+            raise CacheNotFoundError(
+                f"Pointer not found: {LATEST_POINTER_KEY}"
+            ) from e
         raise
 
     # Fetch the versioned cache file
@@ -64,7 +66,9 @@ def _fetch_cache(bucket: str) -> dict[str, Any]:
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code")
         if error_code == "NoSuchKey":
-            raise CacheNotFoundError(f"Cache file not found: {cache_key}") from e
+            raise CacheNotFoundError(
+                f"Cache file not found: {cache_key}"
+            ) from e
         raise
 
     return json.loads(response["Body"].read().decode("utf-8"))
@@ -148,7 +152,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         logger.error("S3_CACHE_BUCKET environment variable not set")
         return {
             "statusCode": 500,
-            "body": json.dumps({"error": "Configuration error: S3_CACHE_BUCKET not set"}),
+            "body": json.dumps(
+                {"error": "Configuration error: S3_CACHE_BUCKET not set"}
+            ),
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
@@ -157,7 +163,11 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     try:
         # Fetch cached data
-        logger.info("Fetching cache from s3://%s/%s", S3_CACHE_BUCKET, LATEST_POINTER_KEY)
+        logger.info(
+            "Fetching cache from s3://%s/%s",
+            S3_CACHE_BUCKET,
+            LATEST_POINTER_KEY,
+        )
         cache_data = _fetch_cache(S3_CACHE_BUCKET)
 
         # Add fetch timestamp
@@ -182,10 +192,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         logger.warning("Cache not found: %s", e)
         return {
             "statusCode": 404,
-            "body": json.dumps({
-                "error": "Cache not found",
-                "message": "No cached visualization data found. Run the cache generator first.",
-            }),
+            "body": json.dumps(
+                {
+                    "error": "Cache not found",
+                    "message": "No cached visualization data found. Run the cache generator first.",
+                }
+            ),
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",

@@ -82,7 +82,11 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     merchant_filter = event.get("merchants")
     if merchant_filter:
         # Extract merchant names from filter
-        filter_names = {m.get("merchant_name") for m in merchant_filter if m.get("merchant_name")}
+        filter_names = {
+            m.get("merchant_name")
+            for m in merchant_filter
+            if m.get("merchant_name")
+        }
     else:
         filter_names = None
 
@@ -137,11 +141,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         if limit and len(receipts_by_merchant[merchant_name]) >= limit:
             continue
 
-        receipts_by_merchant[merchant_name].append({
-            "image_id": place.image_id,
-            "receipt_id": place.receipt_id,
-            "merchant_name": merchant_name,
-        })
+        receipts_by_merchant[merchant_name].append(
+            {
+                "image_id": place.image_id,
+                "receipt_id": place.receipt_id,
+                "merchant_name": merchant_name,
+            }
+        )
 
     # Filter merchants by minimum receipt threshold
     qualifying_merchants: list[MerchantInfo] = []
@@ -209,7 +215,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             Body=json.dumps(manifest, indent=2).encode("utf-8"),
             ContentType="application/json",
         )
-        logger.info("Created manifest at s3://%s/%s", batch_bucket, manifest_key)
+        logger.info(
+            "Created manifest at s3://%s/%s", batch_bucket, manifest_key
+        )
     except Exception:
         logger.exception("Failed to upload manifest to %s", manifest_key)
         manifest_key = None

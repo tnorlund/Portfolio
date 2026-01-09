@@ -162,7 +162,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
             # Call LLM for pattern discovery
             llm_start = time.time()
-            patterns = discover_patterns_with_llm(prompt, config, trace_ctx=None)
+            patterns = discover_patterns_with_llm(
+                prompt, config, trace_ctx=None
+            )
             llm_duration = time.time() - llm_start
 
             if not patterns:
@@ -216,9 +218,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 }
 
                 # Store patterns with timing metadata
-                upload_json_to_s3(
-                    s3, batch_bucket, patterns_s3_key, patterns
-                )
+                upload_json_to_s3(s3, batch_bucket, patterns_s3_key, patterns)
                 logger.info(
                     "Stored patterns for %s at %s (discovery took %.2fs)",
                     merchant_name,
@@ -240,7 +240,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         from receipt_agent.utils.ollama_rate_limit import OllamaRateLimitError
 
         if isinstance(e, (OllamaRateLimitError, AllProvidersFailedError)):
-            logger.error("Rate limit error, propagating for Step Function retry: %s", e)
+            logger.error(
+                "Rate limit error, propagating for Step Function retry: %s", e
+            )
             raise OllamaRateLimitError(f"Rate limit error: {e}") from e
 
         logger.error("Error discovering patterns: %s", e, exc_info=True)
