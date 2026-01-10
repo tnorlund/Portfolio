@@ -60,6 +60,15 @@ const MIN_PHASE_DURATION = 800;      // Minimum animation duration for visibilit
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
 
+// Layout constants - must match CSS values in LabelEvaluatorVisualization.module.css
+const QUEUE_WIDTH = 120;
+const QUEUE_ITEM_WIDTH = 100;
+const QUEUE_ITEM_LEFT_INSET = 10;
+const CENTER_COLUMN_WIDTH = 350;
+const CENTER_COLUMN_HEIGHT = 500;
+const QUEUE_HEIGHT = 400;
+const COLUMN_GAP = 24; // 1.5rem at 16px root
+
 // Generate stable random positions for queue items based on receipt ID
 const getQueuePosition = (receiptId: string) => {
   const hash = receiptId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -125,7 +134,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
             className={`${styles.queuedReceipt} ${isFlying ? styles.flyingOut : ""}`}
             style={{
               top: `${stackOffset}px`,
-              left: `${10 + leftOffset}px`,
+              left: `${QUEUE_ITEM_LEFT_INSET + leftOffset}px`,
               transform: `rotate(${rotation}deg)`,
               zIndex,
             }}
@@ -163,8 +172,9 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   formatSupport,
   isFlying,
 }) => {
-  const width = receipt?.width ?? 100;
-  const height = receipt?.height ?? 150;
+  // Guard against zero/invalid dimensions to prevent divide-by-zero
+  const width = Math.max(receipt?.width ?? 100, 1);
+  const height = Math.max(receipt?.height ?? 150, 1);
   const receiptId = receipt ? `${receipt.image_id}_${receipt.receipt_id}` : '';
   const { rotation, leftOffset } = getQueuePosition(receiptId);
 
@@ -188,30 +198,20 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     displayHeight = displayWidth / aspectRatio;
   }
 
-  // Layout dimensions - must match CSS values exactly
-  const queueItemWidth = 100;
-  const queueWidth = 120;
-  const gap = 24; // 1.5rem at 16px root
-  const centerColumnWidth = 350;
-  const queueHeight = 400;
-  const centerColumnHeight = 500;
-
   // X calculation:
   // From center of centerColumn, go left to reach queue item center
-  // Queue item center is at (10 + leftOffset + 50) from left of queue
-  // Distance from centerColumn center to queue item center
-  const distanceToQueueItemCenter = (centerColumnWidth / 2) + gap + (queueWidth - (10 + leftOffset + queueItemWidth / 2));
+  // Queue item center is at (QUEUE_ITEM_LEFT_INSET + leftOffset + QUEUE_ITEM_WIDTH/2) from left of queue
+  const distanceToQueueItemCenter = (CENTER_COLUMN_WIDTH / 2) + COLUMN_GAP + (QUEUE_WIDTH - (QUEUE_ITEM_LEFT_INSET + leftOffset + QUEUE_ITEM_WIDTH / 2));
   const startX = -distanceToQueueItemCenter;
 
   // Y calculation:
   // Both containers are vertically centered (align-items: center)
-  // Queue top is at (centerColumnHeight - queueHeight) / 2 = 50px from top of centerColumn
-  // Queue item at idx 0 is at top: 0, so its top is 50px from top of centerColumn
-  const queueItemHeight = (height / width) * queueItemWidth;
-  const queueItemCenterFromTop = ((centerColumnHeight - queueHeight) / 2) + (queueItemHeight / 2);
-  const startY = queueItemCenterFromTop - (centerColumnHeight / 2);
+  // Queue top is at (CENTER_COLUMN_HEIGHT - QUEUE_HEIGHT) / 2 from top of centerColumn
+  const queueItemHeight = (height / width) * QUEUE_ITEM_WIDTH;
+  const queueItemCenterFromTop = ((CENTER_COLUMN_HEIGHT - QUEUE_HEIGHT) / 2) + (queueItemHeight / 2);
+  const startY = queueItemCenterFromTop - (CENTER_COLUMN_HEIGHT / 2);
 
-  const startScale = queueItemWidth / displayWidth;
+  const startScale = QUEUE_ITEM_WIDTH / displayWidth;
 
   const { x, y, scale, rotate } = useSpring({
     from: {
@@ -1160,6 +1160,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
   } | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showFlyingReceipt, setShowFlyingReceipt] = useState(false);
+  const [flyingReceipt, setFlyingReceipt] = useState<LabelEvaluatorReceipt | null>(null);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
@@ -1171,18 +1172,24 @@ const LabelEvaluatorVisualization: React.FC = () => {
     detectImageFormatSupport().then(setFormatSupport);
   }, []);
 
-  // Control flying receipt visibility with delay to prevent flash
-  // When transition starts, show immediately. When it ends, delay hiding
-  // to let the next receipt render first.
+  // Control flying receipt visibility with delay to prevent flash.
+  // Snapshot the target receipt when transition starts to avoid showing
+  // the wrong receipt if currentIndex advances during the delay.
   useEffect(() => {
     if (isTransitioning) {
+      const next = receipts.length > 0 ? receipts[(currentIndex + 1) % receipts.length] : null;
+      setFlyingReceipt(next);
       setShowFlyingReceipt(true);
-    } else {
-      // Delay hiding to let the next receipt render first
-      const timeout = setTimeout(() => setShowFlyingReceipt(false), 50);
-      return () => clearTimeout(timeout);
+      return;
     }
-  }, [isTransitioning]);
+
+    // Delay hiding to let the next receipt render first
+    const timeout = setTimeout(() => {
+      setShowFlyingReceipt(false);
+      setFlyingReceipt(null);
+    }, 50);
+    return () => clearTimeout(timeout);
+  }, [isTransitioning, currentIndex, receipts]);
 
   // Fetch visualization data
   useEffect(() => {
@@ -1526,10 +1533,10 @@ const LabelEvaluatorVisualization: React.FC = () => {
 
           {/* Flying receipt for desktop transition */}
           <div className={styles.flyingReceiptContainer}>
-            {showFlyingReceipt && nextReceipt && (
+            {showFlyingReceipt && flyingReceipt && (
               <FlyingReceipt
-                key={`flying-${nextReceipt.image_id}_${nextReceipt.receipt_id}`}
-                receipt={nextReceipt}
+                key={`flying-${flyingReceipt.image_id}_${flyingReceipt.receipt_id}`}
+                receipt={flyingReceipt}
                 formatSupport={formatSupport}
                 isFlying={showFlyingReceipt}
               />
