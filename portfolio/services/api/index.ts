@@ -13,23 +13,13 @@ import {
   LabelEvaluatorResponse,
 } from "../../types/api";
 import { withPerformanceTrackingForAPI } from "../../utils/performance/api-wrapper";
+import { API_CONFIG } from "./config";
 
-// Helper function to get the API URL based on environment
-// In development, use local proxy (/api) to avoid CORS issues when testing from other devices
-// In test/production, use direct API URLs
-const getAPIUrl = () => {
-  const env = process.env.NODE_ENV;
-  // Only use proxy in actual development, not in tests or production
-  if (env === "development") {
-    return "/api";  // Proxied via next.config.js rewrites to dev-api.tylernorlund.com
-  }
-  return "https://api.tylernorlund.com";
-};
+// Use centralized API config for URL - handles dev proxy, test, and production
+const getAPIUrl = () => API_CONFIG.baseUrl;
 
 const fetchConfig = {
-  headers: {
-    "Content-Type": "application/json",
-  },
+  headers: API_CONFIG.headers,
 };
 
 // API calls that go directly to external APIs
