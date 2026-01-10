@@ -356,10 +356,13 @@
   .container {
     grid-template-columns: 1fr;
     max-width: 400px;
-    padding: 1rem;
+    padding: 1rem 0;
     gap: 1rem;
     margin-left: auto;
     margin-right: auto;
+    border: none;
+    border-radius: 0;
+    background: transparent;
   }
 
   /* Hide desktop timeline, show mobile */
@@ -382,8 +385,13 @@
     border-radius: 50%;
     width: 32px;
     height: 32px;
-    flex: 0 0 32px; /* Prevent grow AND shrink, fixed basis */
-    aspect-ratio: 1 / 1;
+    min-width: 32px;
+    min-height: 32px;
+    max-width: 32px;
+    max-height: 32px;
+    flex-grow: 0;
+    flex-shrink: 0;
+    flex-basis: auto;
     box-sizing: border-box;
     font-size: 1.25rem;
     line-height: 1;
@@ -393,6 +401,9 @@
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease;
+    -webkit-appearance: none;
+    appearance: none;
+    padding: 0;
   }
 
   .timelineArrow:hover:not(:disabled) {
