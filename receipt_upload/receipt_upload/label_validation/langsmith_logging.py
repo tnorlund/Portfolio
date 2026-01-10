@@ -98,7 +98,7 @@ def log_label_validation(
         return None
 
     try:
-        from langsmith import Client
+        from langsmith import trace
     except ImportError:
         _log("langsmith package not installed, skipping label validation log")
         return None
@@ -120,18 +120,13 @@ def log_label_validation(
     }
 
     try:
-        from datetime import datetime, timezone
-        client = Client()
-        now = datetime.now(timezone.utc)
-        run = client.create_run(
+        with trace(
             name=f"label_validation_{validation_source}",
             run_type="chain",
             inputs=log_data,
-            outputs={"result": decision},
             project_name=_get_label_validation_project(),
-            start_time=now,
-            end_time=now,  # Mark as completed immediately
-        )
+        ) as run:
+            run.end(outputs={"result": decision, "confidence": confidence})
         _log(
             f"Logged label validation: {image_id}/{receipt_id}/{line_id}/{word_id} "
             f"- {decision} ({validation_source}, conf={confidence:.2f})"
@@ -181,7 +176,7 @@ def log_merchant_resolution(
         return None
 
     try:
-        from langsmith import Client
+        from langsmith import trace
     except ImportError:
         _log("langsmith package not installed, skipping merchant resolution log")
         return None
@@ -201,18 +196,13 @@ def log_merchant_resolution(
     }
 
     try:
-        from datetime import datetime, timezone
-        client = Client()
-        now = datetime.now(timezone.utc)
-        run = client.create_run(
+        with trace(
             name=f"merchant_resolution_{resolution_tier}",
             run_type="chain",
             inputs=log_data,
-            outputs={"found": place_id is not None, "merchant_name": merchant_name},
             project_name=_get_merchant_resolution_project(),
-            start_time=now,
-            end_time=now,  # Mark as completed immediately
-        )
+        ) as run:
+            run.end(outputs={"found": place_id is not None, "merchant_name": merchant_name})
         _log(
             f"Logged merchant resolution: {image_id}#{receipt_id} "
             f"- {merchant_name or 'NOT_FOUND'} via {resolution_tier} (conf={confidence:.2f})"
