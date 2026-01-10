@@ -33,11 +33,12 @@ Output:
     ]
 """
 
+import asyncio
 import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from langchain_core.language_models import BaseChatModel
 from pydantic import ValidationError
@@ -747,6 +748,243 @@ def evaluate_financial_math(
                             "word_text": fv.word_text,
                             "issue_type": issue.issue_type,
                             # Equation breakdown for visualization
+                            "expected_value": issue.expected_value,
+                            "actual_value": issue.actual_value,
+                            "difference": issue.difference,
+                            "description": issue.description,
+                        },
+                        "llm_review": {
+                            "decision": "NEEDS_REVIEW",
+                            "reasoning": f"LLM call failed: {e}",
+                            "suggested_label": None,
+                            "confidence": "low",
+                        },
+                    }
+                )
+        return results
+
+
+# =============================================================================
+# Async version
+# =============================================================================
+
+
+async def evaluate_financial_math_async(
+    visual_lines: list[VisualLine],
+    llm: Any,  # RateLimitedLLMInvoker or BaseChatModel with ainvoke
+    image_id: str,
+    receipt_id: int,
+    merchant_name: str = "Unknown",
+) -> list[dict]:
+    """
+    Async version of evaluate_financial_math.
+
+    Uses ainvoke() for concurrent LLM calls. Works with RateLimitedLLMInvoker
+    or any LLM that supports ainvoke().
+
+    Args:
+        visual_lines: Visual lines from the receipt (words with labels)
+        llm: Language model invoker (RateLimitedLLMInvoker or BaseChatModel)
+        image_id: Image ID for output format
+        receipt_id: Receipt ID for output format
+        merchant_name: Merchant name for context
+
+    Returns:
+        List of decisions ready for apply_llm_decisions()
+    """
+    # Step 1: Detect math issues
+    math_issues = detect_math_issues(visual_lines)
+    logger.info("Detected %d math issues", len(math_issues))
+
+    if not math_issues:
+        logger.info("No math issues found, skipping financial validation")
+        return []
+
+    for issue in math_issues:
+        logger.info("  %s: %s", issue.issue_type, issue.description)
+
+    # Step 2: Build prompt
+    prompt = build_financial_validation_prompt(
+        visual_lines=visual_lines,
+        math_issues=math_issues,
+        merchant_name=merchant_name,
+    )
+
+    # Step 3: Call LLM asynchronously
+    max_retries = 3
+    num_issues = len(math_issues)
+    use_structured = hasattr(llm, "with_structured_output")
+
+    try:
+        decisions = None
+
+        for attempt in range(max_retries):
+            try:
+                if use_structured:
+                    try:
+                        structured_llm = llm.with_structured_output(
+                            FinancialEvaluationResponse
+                        )
+                        if hasattr(structured_llm, "ainvoke"):
+                            response: FinancialEvaluationResponse = (
+                                await structured_llm.ainvoke(prompt)
+                            )
+                        else:
+                            # Run sync invoke in thread pool to avoid blocking event loop
+                            response: FinancialEvaluationResponse = (
+                                await asyncio.to_thread(structured_llm.invoke, prompt)
+                            )
+                        decisions = response.to_ordered_list(num_issues)
+                        logger.debug(
+                            "Structured output succeeded with %d evaluations",
+                            len(decisions),
+                        )
+                        break
+                    except Exception as struct_err:
+                        logger.warning(
+                            "Structured output failed (attempt %d), "
+                            "falling back to text: %s",
+                            attempt + 1,
+                            struct_err,
+                        )
+
+                # Text parsing fallback
+                if hasattr(llm, "ainvoke"):
+                    response = await llm.ainvoke(prompt)
+                else:
+                    # Run sync invoke in thread pool to avoid blocking event loop
+                    response = await asyncio.to_thread(llm.invoke, prompt)
+                response_text = (
+                    response.content
+                    if hasattr(response, "content")
+                    else str(response)
+                )
+                decisions = parse_financial_evaluation_response(
+                    response_text, num_issues
+                )
+
+                parse_failures = sum(
+                    1
+                    for d in decisions
+                    if "Failed to parse" in d.get("reasoning", "")
+                )
+                if parse_failures == 0:
+                    break
+                elif parse_failures < len(decisions):
+                    logger.info(
+                        "Partial parse success: %d/%d parsed",
+                        len(decisions) - parse_failures,
+                        len(decisions),
+                    )
+                    break
+                else:
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            "All decisions failed to parse, retrying (attempt %d)",
+                            attempt + 1,
+                        )
+                    else:
+                        logger.warning(
+                            "All decisions failed after %d attempts",
+                            max_retries,
+                        )
+
+            except Exception as inner_err:
+                if attempt == max_retries - 1:
+                    raise inner_err
+                logger.warning(
+                    "LLM invocation failed (attempt %d): %s",
+                    attempt + 1,
+                    inner_err,
+                )
+
+        # Step 4: Format output
+        num_issues = len(math_issues)
+        num_decisions = len(decisions) if decisions else 0
+        if num_decisions != num_issues:
+            logger.warning(
+                "Decision count mismatch: %d issues, %d decisions",
+                num_issues,
+                num_decisions,
+            )
+            decisions = decisions or []
+            while len(decisions) < num_issues:
+                decisions.append(
+                    {
+                        "decision": "NEEDS_REVIEW",
+                        "reasoning": "No decision from LLM (count mismatch)",
+                        "suggested_label": None,
+                        "confidence": "low",
+                        "issue_type": "UNKNOWN",
+                    }
+                )
+            decisions = decisions[:num_issues]
+
+        results = []
+        for issue, decision in zip(math_issues, decisions, strict=False):
+            for fv in issue.involved_values:
+                wc = fv.word_context
+                results.append(
+                    {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "issue": {
+                            "line_id": wc.word.line_id,
+                            "word_id": wc.word.word_id,
+                            "current_label": fv.label,
+                            "word_text": fv.word_text,
+                            "issue_type": issue.issue_type,
+                            "expected_value": issue.expected_value,
+                            "actual_value": issue.actual_value,
+                            "difference": issue.difference,
+                            "description": issue.description,
+                        },
+                        "llm_review": {
+                            "decision": decision.get("decision", "NEEDS_REVIEW"),
+                            "reasoning": decision.get("reasoning", ""),
+                            "suggested_label": decision.get("suggested_label"),
+                            "confidence": decision.get("confidence", "medium"),
+                        },
+                    }
+                )
+
+        decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+        for r in results:
+            dec = r["llm_review"]["decision"]
+            if dec in decision_counts:
+                decision_counts[dec] += 1
+        logger.info("Financial validation results: %s", decision_counts)
+
+        return results
+
+    except Exception as e:
+        from receipt_agent.utils import (
+            BothProvidersFailedError,
+            OllamaRateLimitError,
+        )
+
+        if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+            logger.error(
+                "Financial LLM rate limited, propagating for retry: %s", e
+            )
+            raise
+
+        logger.error("Financial LLM call failed: %s", e)
+
+        results = []
+        for issue in math_issues:
+            for fv in issue.involved_values:
+                wc = fv.word_context
+                results.append(
+                    {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "issue": {
+                            "line_id": wc.word.line_id,
+                            "word_id": wc.word.word_id,
+                            "current_label": fv.label,
+                            "word_text": fv.word_text,
+                            "issue_type": issue.issue_type,
                             "expected_value": issue.expected_value,
                             "actual_value": issue.actual_value,
                             "difference": issue.difference,

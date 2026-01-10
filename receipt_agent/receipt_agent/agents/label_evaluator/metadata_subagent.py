@@ -27,6 +27,7 @@ Output:
     ]
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -746,6 +747,231 @@ def evaluate_metadata_labels(
         )
 
     # Log summary
+    decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+    for r in results:
+        decision = r.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
+        if decision in decision_counts:
+            decision_counts[decision] += 1
+        else:
+            decision_counts["NEEDS_REVIEW"] += 1
+    logger.info("Metadata evaluation results: %s", decision_counts)
+
+    return results
+
+
+# =============================================================================
+# Async version
+# =============================================================================
+
+
+async def evaluate_metadata_labels_async(
+    visual_lines: list[VisualLine],
+    place: Any | None,
+    llm: Any,  # RateLimitedLLMInvoker or BaseChatModel with ainvoke
+    image_id: str,
+    receipt_id: int,
+    merchant_name: str = "Unknown",
+) -> list[dict]:
+    """
+    Async version of evaluate_metadata_labels.
+
+    Uses ainvoke() for concurrent LLM calls. Works with RateLimitedLLMInvoker
+    or any LLM that supports ainvoke().
+
+    Args:
+        visual_lines: Visual lines from the receipt (words with labels)
+        place: ReceiptPlace record from DynamoDB (Google Places data)
+        llm: Language model invoker (RateLimitedLLMInvoker or BaseChatModel)
+        image_id: Image ID for output format
+        receipt_id: Receipt ID for output format
+        merchant_name: Merchant name for context
+
+    Returns:
+        List of decisions ready for apply_llm_decisions()
+    """
+    # Step 1: Collect metadata words to evaluate
+    metadata_words, prefiltered_count = collect_metadata_words(
+        visual_lines, place
+    )
+
+    if prefiltered_count > 0:
+        logger.debug("Pre-filtered %d non-metadata tokens", prefiltered_count)
+
+    logger.info("Found %d metadata words to evaluate", len(metadata_words))
+
+    if not metadata_words:
+        logger.info("No metadata words found to evaluate")
+        return []
+
+    # Step 2: Build prompt
+    prompt = build_metadata_evaluation_prompt(
+        visual_lines=visual_lines,
+        metadata_words=metadata_words,
+        place=place,
+        merchant_name=merchant_name,
+    )
+
+    # Step 3: Call LLM asynchronously
+    max_retries = 3
+    last_decisions = None
+    num_words = len(metadata_words)
+
+    use_structured = hasattr(llm, "with_structured_output")
+
+    for attempt in range(max_retries):
+        try:
+            if use_structured:
+                try:
+                    structured_llm = llm.with_structured_output(
+                        MetadataEvaluationResponse
+                    )
+                    if hasattr(structured_llm, "ainvoke"):
+                        response: MetadataEvaluationResponse = (
+                            await structured_llm.ainvoke(prompt)
+                        )
+                    else:
+                        # Run sync invoke in thread pool to avoid blocking event loop
+                        response: MetadataEvaluationResponse = (
+                            await asyncio.to_thread(structured_llm.invoke, prompt)
+                        )
+                    decisions = response.to_ordered_list(num_words)
+                    logger.debug(
+                        "Structured output succeeded with %d evaluations",
+                        len(decisions),
+                    )
+                except Exception as struct_err:
+                    logger.warning(
+                        "Structured output failed (attempt %d), falling back to text: %s",
+                        attempt + 1,
+                        struct_err,
+                    )
+                    if hasattr(llm, "ainvoke"):
+                        response = await llm.ainvoke(prompt)
+                    else:
+                        # Run sync invoke in thread pool to avoid blocking event loop
+                        response = await asyncio.to_thread(llm.invoke, prompt)
+                    response_text = (
+                        response.content
+                        if hasattr(response, "content")
+                        else str(response)
+                    )
+                    decisions = parse_metadata_evaluation_response(
+                        response_text, num_words
+                    )
+            else:
+                if hasattr(llm, "ainvoke"):
+                    response = await llm.ainvoke(prompt)
+                else:
+                    # Run sync invoke in thread pool to avoid blocking event loop
+                    response = await asyncio.to_thread(llm.invoke, prompt)
+                response_text = (
+                    response.content
+                    if hasattr(response, "content")
+                    else str(response)
+                )
+                decisions = parse_metadata_evaluation_response(
+                    response_text, num_words
+                )
+
+            last_decisions = decisions
+
+            parse_failures = sum(
+                1
+                for d in decisions
+                if "Failed to parse" in d.get("reasoning", "")
+            )
+
+            if parse_failures == 0:
+                break
+            elif parse_failures < len(decisions):
+                logger.info(
+                    "Partial parse success: %d/%d parsed on attempt %d",
+                    len(decisions) - parse_failures,
+                    len(decisions),
+                    attempt + 1,
+                )
+                break
+            else:
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        "All %d decisions failed to parse on attempt %d, retrying...",
+                        len(decisions),
+                        attempt + 1,
+                    )
+                else:
+                    logger.warning(
+                        "All %d decisions failed to parse after %d attempts",
+                        len(decisions),
+                        max_retries,
+                    )
+
+        except Exception as e:
+            from receipt_agent.utils import (
+                BothProvidersFailedError,
+                OllamaRateLimitError,
+            )
+
+            if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+                logger.error(
+                    "Metadata LLM rate limited, propagating for retry: %s", e
+                )
+                raise
+
+            logger.error(
+                "Metadata LLM call failed on attempt %d: %s", attempt + 1, e
+            )
+            if attempt == max_retries - 1:
+                results = []
+                for mw in metadata_words:
+                    wc = mw.word_context
+                    results.append(
+                        {
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                            "issue": {
+                                "line_id": wc.word.line_id,
+                                "word_id": wc.word.word_id,
+                                "current_label": mw.current_label,
+                                "word_text": wc.word.text,
+                            },
+                            "llm_review": {
+                                "decision": "NEEDS_REVIEW",
+                                "reasoning": f"LLM call failed after {max_retries} attempts: {e}",
+                                "suggested_label": None,
+                                "confidence": "low",
+                            },
+                        }
+                    )
+                return results
+
+    decisions = last_decisions or [
+        {
+            "decision": "NEEDS_REVIEW",
+            "reasoning": "No response received",
+            "suggested_label": None,
+            "confidence": "low",
+        }
+        for _ in metadata_words
+    ]
+
+    # Step 4: Format output
+    results = []
+    for mw, decision in zip(metadata_words, decisions, strict=True):
+        wc = mw.word_context
+        results.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "issue": {
+                    "line_id": wc.word.line_id,
+                    "word_id": wc.word.word_id,
+                    "current_label": mw.current_label,
+                    "word_text": wc.word.text,
+                },
+                "llm_review": decision,
+            }
+        )
+
     decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
     for r in results:
         decision = r.get("llm_review", {}).get("decision", "NEEDS_REVIEW")

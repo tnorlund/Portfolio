@@ -28,6 +28,7 @@ class LambdaArns:  # pylint: disable=too-many-instance-attributes
     final_aggregate: str
     discover_patterns: str
     llm_review: str
+    unified_evaluator: str
 
 
 @dataclass
@@ -372,45 +373,8 @@ def build_receipt_processing_states(
     lambdas: LambdaArns,
     phase2_concurrency: int,
 ) -> dict[str, Any]:
-    """Build Phase 2 receipt processing states."""
-    geometric_params = {
-        "data_s3_key.$": "$.receipt_data.data_s3_key",
-        "merchant_name.$": "$.receipt.merchant_name",
-        "execution_id.$": "$.execution_id",
-        "batch_bucket.$": "$.batch_bucket",
-        "enable_tracing.$": "$.enable_tracing",
-        "langchain_project.$": "$.langchain_project",
-        "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
-        "execution_arn.$": "$$.Execution.Id",
-        "batch_index.$": "$.batch_index",
-        "receipt_index.$": "$.receipt_index",
-    }
-
-    currency_params = {
-        "data_s3_key.$": "$.receipt_data.data_s3_key",
-        "merchant_name.$": "$.receipt.merchant_name",
-        "execution_id.$": "$.execution_id",
-        "batch_bucket.$": "$.batch_bucket",
-        "dry_run.$": "$.dry_run",
-        "enable_tracing.$": "$.enable_tracing",
-        "langchain_project.$": "$.langchain_project",
-        "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
-        "execution_arn.$": "$$.Execution.Id",
-    }
-
-    metadata_params = {
-        "data_s3_key.$": "$.receipt_data.data_s3_key",
-        "merchant_name.$": "$.receipt.merchant_name",
-        "execution_id.$": "$.execution_id",
-        "batch_bucket.$": "$.batch_bucket",
-        "dry_run.$": "$.dry_run",
-        "enable_tracing.$": "$.enable_tracing",
-        "langchain_project.$": "$.langchain_project",
-        "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
-        "execution_arn.$": "$$.Execution.Id",
-    }
-
-    # Build the nested per-receipt processor
+    """Build Phase 2 receipt processing states using unified evaluator."""
+    # Simplified receipt processor using unified handler
     receipt_processor = {
         "ProcessorConfig": {"Mode": "INLINE"},
         "StartAt": "LoadReceiptData",
@@ -432,167 +396,35 @@ def build_receipt_processing_states(
                         interval_seconds=1,
                     )
                 ],
-                "Next": "ParallelReview",
+                "Next": "UnifiedReceiptEvaluator",
             },
-            "ParallelReview": {
-                "Type": "Parallel",
-                "Branches": [
-                    {
-                        "StartAt": "FlagGeometricAnomalies",
-                        "States": {
-                            "FlagGeometricAnomalies": {
-                                "Type": "Task",
-                                "Resource": lambdas.evaluate_labels,
-                                "TimeoutSeconds": 300,
-                                "Parameters": geometric_params,
-                                "Retry": [
-                                    build_retry_config(["States.TaskFailed"])
-                                ],
-                                "End": True,
-                            },
-                        },
-                    },
-                    {
-                        "StartAt": "ReviewCurrencyLabels",
-                        "States": {
-                            "ReviewCurrencyLabels": {
-                                "Type": "Task",
-                                "Resource": lambdas.evaluate_currency,
-                                "TimeoutSeconds": 600,
-                                "Parameters": currency_params,
-                                "Retry": build_llm_retry_config(),
-                                "End": True,
-                            },
-                        },
-                    },
-                    {
-                        "StartAt": "ReviewMetadataLabels",
-                        "States": {
-                            "ReviewMetadataLabels": {
-                                "Type": "Task",
-                                "Resource": lambdas.evaluate_metadata,
-                                "TimeoutSeconds": 600,
-                                "Parameters": metadata_params,
-                                "Retry": build_llm_retry_config(),
-                                "End": True,
-                            },
-                        },
-                    },
-                ],
-                "ResultPath": "$.parallel_results",
-                "Next": "ValidateFinancialMath",
-            },
-            "ValidateFinancialMath": {
+            "UnifiedReceiptEvaluator": {
                 "Type": "Task",
-                "Resource": lambdas.evaluate_financial,
-                "TimeoutSeconds": 600,
+                "Resource": lambdas.unified_evaluator,
+                "TimeoutSeconds": 900,  # 15 minutes to cover all evaluations
                 "Parameters": {
                     "data_s3_key.$": "$.receipt_data.data_s3_key",
+                    "merchant_name.$": "$.receipt.merchant_name",
                     "execution_id.$": "$.execution_id",
                     "batch_bucket.$": "$.batch_bucket",
-                    "merchant_name.$": "$.receipt.merchant_name",
                     "dry_run.$": "$.dry_run",
                     "enable_tracing.$": "$.enable_tracing",
                     "langchain_project.$": "$.langchain_project",
                     "receipt_trace_id.$": "$.receipt_data.receipt_trace_id",
                     "execution_arn.$": "$$.Execution.Id",
                 },
-                "ResultPath": "$.financial_result",
+                "ResultPath": "$.evaluation_result",
                 "Retry": build_llm_retry_config(),
-                "Next": "CheckFlaggedWords",
-            },
-            "CheckFlaggedWords": {
-                "Type": "Choice",
-                "Choices": [
-                    {
-                        "Variable": "$.parallel_results[0].issues_found",
-                        "NumericGreaterThan": 0,
-                        "Next": "ReviewFlaggedLabels",
-                    }
-                ],
-                "Default": "FinalizeReceiptTrace",
-            },
-            "ReviewFlaggedLabels": {
-                "Type": "Task",
-                "Resource": lambdas.llm_review,
-                "TimeoutSeconds": 900,
-                "Parameters": {
-                    "execution_id.$": "$.execution_id",
-                    "batch_bucket.$": "$.batch_bucket",
-                    "merchant_name.$": "$.receipt.merchant_name",
-                    "merchant_receipt_count.$": (
-                        "$.receipt.merchant_receipt_count"
-                    ),
-                    "results_s3_key.$": "$.parallel_results[0].results_s3_key",
-                    "image_id.$": "$.parallel_results[0].image_id",
-                    "receipt_id.$": "$.parallel_results[0].receipt_id",
-                    "dry_run.$": "$.dry_run",
-                    "enable_tracing.$": "$.enable_tracing",
-                    "langchain_project.$": "$.langchain_project",
-                    "execution_arn.$": "$$.Execution.Id",
-                    "trace_id.$": "$.parallel_results[0].trace_id",
-                    "root_run_id.$": "$.parallel_results[0].root_run_id",
-                    "root_dotted_order.$": (
-                        "$.parallel_results[0].root_dotted_order"
-                    ),
-                },
-                "ResultPath": "$.llm_review_result",
-                "Retry": [
-                    build_retry_config(
-                        ["States.Timeout"],
-                        interval_seconds=5,
-                        backoff_rate=1.0,
-                    ),
-                    build_retry_config(
-                        ["OllamaRateLimitError"],
-                        interval_seconds=30,
-                        max_attempts=5,
-                        backoff_rate=2.0,
-                    ),
-                    build_retry_config(
-                        ["States.TaskFailed"],
-                        interval_seconds=5,
-                    ),
-                ],
-                "Next": "ReturnResult",
-            },
-            "FinalizeReceiptTrace": {
-                "Type": "Task",
-                "Resource": lambdas.close_trace,
-                "TimeoutSeconds": 30,
-                "Parameters": {
-                    "trace_id.$": "$.parallel_results[0].trace_id",
-                    "root_run_id.$": "$.parallel_results[0].root_run_id",
-                    "image_id.$": "$.parallel_results[0].image_id",
-                    "receipt_id.$": "$.parallel_results[0].receipt_id",
-                    "issues_found.$": "$.parallel_results[0].issues_found",
-                    "enable_tracing.$": "$.enable_tracing",
-                    "langchain_project.$": "$.langchain_project",
-                    "currency_words_evaluated.$": (
-                        "$.parallel_results[1].currency_words_evaluated"
-                    ),
-                    "currency_decisions.$": "$.parallel_results[1].decisions",
-                    "metadata_words_evaluated.$": (
-                        "$.parallel_results[2].metadata_words_evaluated"
-                    ),
-                    "metadata_decisions.$": "$.parallel_results[2].decisions",
-                    "financial_values_evaluated.$": (
-                        "$.financial_result.values_evaluated"
-                    ),
-                    "financial_decisions.$": "$.financial_result.decisions",
-                },
-                "ResultPath": "$.close_trace_result",
-                "Retry": [build_retry_config(["States.TaskFailed"])],
                 "Next": "ReturnResult",
             },
             "ReturnResult": {
                 "Type": "Pass",
                 "Parameters": {
-                    "status.$": "$.parallel_results[0].status",
-                    "image_id.$": "$.parallel_results[0].image_id",
-                    "receipt_id.$": "$.parallel_results[0].receipt_id",
+                    "status.$": "$.evaluation_result.status",
+                    "image_id.$": "$.evaluation_result.image_id",
+                    "receipt_id.$": "$.evaluation_result.receipt_id",
                     "merchant_name.$": "$.receipt.merchant_name",
-                    "issues_found.$": "$.parallel_results[0].issues_found",
+                    "issues_found.$": "$.evaluation_result.issues_found",
                 },
                 "End": True,
             },
