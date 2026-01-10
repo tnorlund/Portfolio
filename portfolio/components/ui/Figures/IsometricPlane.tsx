@@ -216,7 +216,8 @@ const IsometricPlane: React.FC<IsometricPlaneProps> = ({
                     const topY = topCornerY + y;
                     const dx = topX - bottomCornerX;
                     const dy = topY - bottomCornerY;
-                    const len = Math.sqrt(dx * dx + dy * dy);
+                    // Guard against zero-length vector (when gapY=0 or corners coincide)
+                    const len = Math.max(Math.sqrt(dx * dx + dy * dy), 0.001);
                     return bottomCornerX + (dx / len) * (circleRadius + 1);
                   })}
                   y1={phase.to((p) => {
@@ -226,7 +227,7 @@ const IsometricPlane: React.FC<IsometricPlaneProps> = ({
                     const topY = topCornerY + y;
                     const dx = topX - bottomCornerX;
                     const dy = topY - bottomCornerY;
-                    const len = Math.sqrt(dx * dx + dy * dy);
+                    const len = Math.max(Math.sqrt(dx * dx + dy * dy), 0.001);
                     return bottomCornerY + (dy / len) * (circleRadius + 1);
                   })}
                   x2={phase.to((p) => {
@@ -237,7 +238,7 @@ const IsometricPlane: React.FC<IsometricPlaneProps> = ({
                     // End at arrow base
                     const dx = topX - bottomCornerX;
                     const dy = topY - bottomCornerY;
-                    const len = Math.sqrt(dx * dx + dy * dy);
+                    const len = Math.max(Math.sqrt(dx * dx + dy * dy), 0.001);
                     const ux = dx / len;
                     return topX - ux * (arrowSize * 1.5 + 2);
                   })}
@@ -248,7 +249,7 @@ const IsometricPlane: React.FC<IsometricPlaneProps> = ({
                     const topY = topCornerY + y;
                     const dx = topX - bottomCornerX;
                     const dy = topY - bottomCornerY;
-                    const len = Math.sqrt(dx * dx + dy * dy);
+                    const len = Math.max(Math.sqrt(dx * dx + dy * dy), 0.001);
                     const uy = dy / len;
                     return topY - uy * (arrowSize * 1.5 + 2);
                   })}
@@ -265,7 +266,8 @@ const IsometricPlane: React.FC<IsometricPlaneProps> = ({
                     // Direction from bottom to top corner
                     const dx = topX - bottomCornerX;
                     const dy = topY - bottomCornerY;
-                    const len = Math.sqrt(dx * dx + dy * dy);
+                    // Guard against zero-length vector
+                    const len = Math.max(Math.sqrt(dx * dx + dy * dy), 0.001);
                     const ux = dx / len;
                     const uy = dy / len;
                     const px = -uy;
