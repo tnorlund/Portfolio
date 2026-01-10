@@ -119,16 +119,13 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
 
         const queueKey = `${receiptId}-queue-${idx}`;
 
-        // Center the 100px items in the 280px container: (280-100)/2 = 90
-        const centeredLeft = 90 + leftOffset;
-
         return (
           <div
             key={queueKey}
             className={`${styles.queuedReceipt} ${isFlying ? styles.flyingOut : ""}`}
             style={{
               top: `${stackOffset}px`,
-              left: `${centeredLeft}px`,
+              left: `${10 + leftOffset}px`,
               transform: `rotate(${rotation}deg)`,
               zIndex,
             }}
@@ -159,14 +156,12 @@ interface FlyingReceiptProps {
   receipt: LabelEvaluatorReceipt | null;
   formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
   isFlying: boolean;
-  measuredContainerWidth?: number | null;
 }
 
 const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   receipt,
   formatSupport,
   isFlying,
-  measuredContainerWidth,
 }) => {
   const width = receipt?.width ?? 100;
   const height = receipt?.height ?? 150;
@@ -178,36 +173,25 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     return getBestImageUrl(receipt, formatSupport);
   }, [receipt, formatSupport]);
 
-  // Calculate display dimensions using the same logic as CSS constraints
-  // Use measured container width if available, otherwise fall back to 350px
+  // Calculate display dimensions - match LayoutLM's simpler approach
+  // Max height 500px, maintain aspect ratio
   const aspectRatio = width / height;
-  const maxHeight = 500;
-  const maxWidth = measuredContainerWidth ?? 350;
-
-  // Apply constraints: start with height, then check width
-  let displayHeight = Math.min(maxHeight, height);
-  let displayWidth = displayHeight * aspectRatio;
-
-  // If width exceeds container, scale down to fit width instead
-  if (displayWidth > maxWidth) {
-    displayWidth = maxWidth;
-    displayHeight = displayWidth / aspectRatio;
-  }
+  const displayHeight = Math.min(500, height);
+  const displayWidth = displayHeight * aspectRatio;
 
   // Layout dimensions - must match CSS values exactly
   const queueItemWidth = 100;
-  const queueWidth = 280;
+  const queueWidth = 120;
   const gap = 24; // 1.5rem at 16px root
   const centerColumnWidth = 350;
   const queueHeight = 400;
   const centerColumnHeight = 500;
 
   // X calculation:
-  // Queue items are centered at left = 90 + leftOffset (where 90 = (280-100)/2)
-  // Queue item center from left of queue = (90 + leftOffset) + 50 = 140 + leftOffset
-  // From right edge of queue to queue item center = 280 - (140 + leftOffset) = 140 - leftOffset
-  const queueItemLeft = 90 + leftOffset;
-  const distanceToQueueItemCenter = (centerColumnWidth / 2) + gap + (queueWidth - (queueItemLeft + queueItemWidth / 2));
+  // From center of centerColumn, go left to reach queue item center
+  // Queue item center is at (10 + leftOffset + 50) from left of queue
+  // Distance from centerColumn center to queue item center
+  const distanceToQueueItemCenter = (centerColumnWidth / 2) + gap + (queueWidth - (10 + leftOffset + queueItemWidth / 2));
   const startX = -distanceToQueueItemCenter;
 
   // Y calculation:
@@ -418,7 +402,6 @@ interface ReceiptViewerProps {
   phase: Phase;
   revealedDecisions: RevealedDecision[];
   formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
-  onContainerMeasure?: (containerWidth: number) => void;
 }
 
 const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
@@ -427,10 +410,8 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   phase,
   revealedDecisions,
   formatSupport,
-  onContainerMeasure,
 }) => {
   const { words, width, height } = receipt;
-  const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Get the best image URL based on format support
   // Use full-size image so dimensions match receipt.width/height
@@ -438,13 +419,6 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
     if (!formatSupport) return null;
     return getBestImageUrl(receipt, formatSupport);
   }, [receipt, formatSupport]);
-
-  // Measure container width after image loads (when layout is stable)
-  const handleImageLoad = () => {
-    if (wrapperRef.current && onContainerMeasure) {
-      onContainerMeasure(wrapperRef.current.offsetWidth);
-    }
-  };
 
   if (!imageUrl) {
     return <div className={styles.receiptLoading}>Loading...</div>;
@@ -460,7 +434,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
 
   return (
     <div className={styles.receiptViewer}>
-      <div ref={wrapperRef} className={styles.receiptImageWrapper}>
+      <div className={styles.receiptImageWrapper}>
         <div className={styles.receiptImageInner}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -469,7 +443,6 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
             className={styles.receiptImage}
             width={width}
             height={height}
-            onLoad={handleImageLoad}
           />
           {/* SVG overlay for bounding boxes and scan lines */}
           <svg
@@ -1177,7 +1150,7 @@ const LabelEvaluatorVisualization: React.FC = () => {
     supportsAVIF: boolean;
   } | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [measuredContainerWidth, setMeasuredContainerWidth] = useState<number | null>(null);
+  const [showFlyingReceipt, setShowFlyingReceipt] = useState(false);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
@@ -1188,6 +1161,19 @@ const LabelEvaluatorVisualization: React.FC = () => {
   useEffect(() => {
     detectImageFormatSupport().then(setFormatSupport);
   }, []);
+
+  // Control flying receipt visibility with delay to prevent flash
+  // When transition starts, show immediately. When it ends, delay hiding
+  // to let the next receipt render first.
+  useEffect(() => {
+    if (isTransitioning) {
+      setShowFlyingReceipt(true);
+    } else {
+      // Delay hiding to let the next receipt render first
+      const timeout = setTimeout(() => setShowFlyingReceipt(false), 50);
+      return () => clearTimeout(timeout);
+    }
+  }, [isTransitioning]);
 
   // Fetch visualization data
   useEffect(() => {
@@ -1526,19 +1512,17 @@ const LabelEvaluatorVisualization: React.FC = () => {
               phase={phase}
               revealedDecisions={revealedDecisions}
               formatSupport={formatSupport}
-              onContainerMeasure={setMeasuredContainerWidth}
             />
           </div>
 
           {/* Flying receipt for desktop transition */}
           <div className={styles.flyingReceiptContainer}>
-            {isTransitioning && nextReceipt && (
+            {showFlyingReceipt && nextReceipt && (
               <FlyingReceipt
                 key={`flying-${nextReceipt.image_id}_${nextReceipt.receipt_id}`}
                 receipt={nextReceipt}
                 formatSupport={formatSupport}
-                isFlying={isTransitioning}
-                measuredContainerWidth={measuredContainerWidth}
+                isFlying={showFlyingReceipt}
               />
             )}
           </div>
