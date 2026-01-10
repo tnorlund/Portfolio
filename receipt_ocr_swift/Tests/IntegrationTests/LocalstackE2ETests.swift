@@ -41,7 +41,7 @@ final class LocalstackE2ETests: XCTestCase {
         try await sqs.sendMessage(queueURL: cfg.ocrJobQueueURL, body: body)
 
         // Run worker with stub OCR engine
-        let worker = try OCRWorker.make(config: cfg, stubOCR: true)
+        let worker = try await OCRWorker.make(config: cfg, stubOCR: true)
         _ = try await worker.processBatch()
 
         // If no exception thrown, assume path executed. Further assertions could check Dynamo or S3 contents via Soto

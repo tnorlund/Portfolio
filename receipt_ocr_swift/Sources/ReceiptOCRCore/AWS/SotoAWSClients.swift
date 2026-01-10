@@ -5,6 +5,18 @@ import SotoS3
 import SotoSQS
 import SotoDynamoDB
 
+/// Errors that can occur during batch write operations.
+public enum BatchWriteError: Error, LocalizedError {
+    case unprocessedItems(count: Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unprocessedItems(let count):
+            return "Failed to write \(count) items after max retries"
+        }
+    }
+}
+
 public final class SotoAWSFactory {
     public let awsClient: AWSClient
     public let region: SotoCore.Region?
@@ -142,6 +154,79 @@ public final class SotoDynamoClient: DynamoClientProtocol {
         ]
         let req = DynamoDB.PutItemInput(item: item, tableName: tableName)
         _ = try await dynamo.putItem(req)
+    }
+
+    public func addReceiptWordLabels(_ labels: [ReceiptWordLabel]) async throws {
+        guard !labels.isEmpty else { return }
+
+        // Process in chunks of 25 (DynamoDB batch write limit)
+        let chunkSize = 25
+        var remaining = labels[...]
+
+        while !remaining.isEmpty {
+            let chunk = remaining.prefix(chunkSize)
+            remaining = remaining.dropFirst(chunkSize)
+
+            var writeRequests = chunk.map { label -> DynamoDB.WriteRequest in
+                let dict = label.toDynamoItemDict()
+                let item = Self.convertToAttributeValues(dict)
+                return DynamoDB.WriteRequest(putRequest: .init(item: item))
+            }
+
+            // Retry with exponential backoff until all items are processed
+            let maxRetries = 8
+            var retryCount = 0
+            let baseDelayMs: UInt64 = 50
+
+            while !writeRequests.isEmpty && retryCount < maxRetries {
+                let req = DynamoDB.BatchWriteItemInput(requestItems: [tableName: writeRequests])
+                let resp = try await dynamo.batchWriteItem(req)
+
+                // Check for unprocessed items
+                if let unprocessed = resp.unprocessedItems?[tableName], !unprocessed.isEmpty {
+                    writeRequests = unprocessed
+                    retryCount += 1
+
+                    // Exponential backoff with jitter
+                    let delayMs = baseDelayMs * UInt64(1 << retryCount)
+                    let jitter = UInt64.random(in: 0...delayMs / 4)
+                    try await Task.sleep(nanoseconds: (delayMs + jitter) * 1_000_000)
+                } else {
+                    // All items processed
+                    writeRequests = []
+                }
+            }
+
+            // If we still have unprocessed items after max retries, throw an error
+            if !writeRequests.isEmpty {
+                throw BatchWriteError.unprocessedItems(count: writeRequests.count)
+            }
+        }
+    }
+
+    /// Convert dictionary to DynamoDB.AttributeValue format
+    private static func convertToAttributeValues(_ dict: [String: Any]) -> [String: DynamoDB.AttributeValue] {
+        var result: [String: DynamoDB.AttributeValue] = [:]
+        for (key, value) in dict {
+            if let str = value as? String {
+                result[key] = .s(str)
+            } else if let num = value as? Float {
+                result[key] = .n(String(num))
+            } else if let num = value as? Int {
+                result[key] = .n(String(num))
+            } else if let num = value as? Double {
+                result[key] = .n(String(num))
+            } else if value is NSNull || (value as AnyObject) is NSNull {
+                result[key] = .null(true)
+            } else {
+                // For nil optionals cast as Any, they become NSNull
+                let mirror = Mirror(reflecting: value)
+                if mirror.displayStyle == .optional && mirror.children.isEmpty {
+                    result[key] = .null(true)
+                }
+            }
+        }
+        return result
     }
 
     private static func decodeOCRJob(_ attrs: [String: DynamoDB.AttributeValue]) throws -> OCRJob {

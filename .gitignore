@@ -175,6 +175,9 @@ infra/upload/
 # Swift build folder
 .build/
 
+# LayoutLM model cache (downloaded from S3)
+.models/
+
 # LLM
 data_labeling_*
 

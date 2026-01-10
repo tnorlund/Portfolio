@@ -249,12 +249,13 @@ public class LayoutLMInference {
             }
 
             labels.append(config.labelName(for: maxIdx))
-            confidences.append(maxProb)
+            confidences.append(maxProb.isNaN ? 0.0 : maxProb)
 
-            // Build probability dict
+            // Build probability dict (sanitize NaN values for JSON encoding)
             var probDict: [String: Float] = [:]
             for labelIdx in 0..<numLabels {
-                probDict[config.labelName(for: labelIdx)] = probs[labelIdx]
+                let prob = probs[labelIdx]
+                probDict[config.labelName(for: labelIdx)] = prob.isNaN ? 0.0 : prob
             }
             allProbs.append(probDict)
         }
@@ -267,11 +268,24 @@ public class LayoutLMInference {
         )
     }
 
-    /// Compute softmax of logits.
+    /// Compute softmax of logits with NaN protection.
     private func softmax(_ logits: [Float]) -> [Float] {
-        let maxLogit = logits.max() ?? 0
-        let expLogits = logits.map { exp($0 - maxLogit) }
+        // Sanitize input: replace NaN/Inf with 0
+        let sanitized = logits.map { val -> Float in
+            if val.isNaN || val.isInfinite {
+                return 0
+            }
+            return val
+        }
+        let maxLogit = sanitized.max() ?? 0
+        let expLogits = sanitized.map { exp($0 - maxLogit) }
         let sumExp = expLogits.reduce(0, +)
+        // Guard against division by zero
+        if sumExp == 0 || sumExp.isNaN {
+            // Return uniform distribution
+            let uniform = 1.0 / Float(logits.count)
+            return [Float](repeating: uniform, count: logits.count)
+        }
         return expLogits.map { $0 / sumExp }
     }
 

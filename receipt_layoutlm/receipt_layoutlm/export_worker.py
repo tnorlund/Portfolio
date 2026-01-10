@@ -125,7 +125,7 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
     export_id = message["export_id"]
     job_id = message["job_id"]
     model_s3_uri = message["model_s3_uri"]
-    quantize = message.get("quantize", "float16")
+    quantize = message.get("quantize")  # Default to None (FLOAT32)
     output_s3_prefix = message["output_s3_prefix"]
 
     print(f"\nProcessing export job {export_id}")

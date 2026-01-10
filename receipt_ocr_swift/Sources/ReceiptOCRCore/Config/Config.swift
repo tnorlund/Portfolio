@@ -8,13 +8,21 @@ public struct Config {
     public let localstackEndpoint: URL?
     public let logLevel: String
 
+    // LayoutLM model configuration
+    public let layoutLMModelS3Bucket: String?
+    public let layoutLMModelS3Key: String?
+    public let layoutLMLocalCachePath: String
+
     public init(
         ocrJobQueueURL: String,
         ocrResultsQueueURL: String,
         dynamoTableName: String,
         region: String,
         localstackEndpoint: URL?,
-        logLevel: String
+        logLevel: String,
+        layoutLMModelS3Bucket: String? = nil,
+        layoutLMModelS3Key: String? = nil,
+        layoutLMLocalCachePath: String = ".models/layoutlm"
     ) {
         self.ocrJobQueueURL = ocrJobQueueURL
         self.ocrResultsQueueURL = ocrResultsQueueURL
@@ -22,6 +30,9 @@ public struct Config {
         self.region = region
         self.localstackEndpoint = localstackEndpoint
         self.logLevel = logLevel
+        self.layoutLMModelS3Bucket = layoutLMModelS3Bucket
+        self.layoutLMModelS3Key = layoutLMModelS3Key
+        self.layoutLMLocalCachePath = layoutLMLocalCachePath
     }
 }
 
@@ -77,6 +88,9 @@ public extension Config {
         dynamoTableName: String?,
         region: String,
         localstackEndpoint: String?,
+        layoutLMModelS3Bucket: String? = nil,
+        layoutLMModelS3Key: String? = nil,
+        layoutLMLocalCachePath: String? = nil,
         pulumi: PulumiLoading = PulumiLoader()
     ) throws -> Config {
         let endpointURL: URL? = localstackEndpoint.flatMap { URL(string: $0) }
@@ -105,13 +119,21 @@ public extension Config {
             throw ConfigError.missing("dynamodb_table_name")
         }
 
+        // LayoutLM config - optional, can also come from Pulumi outputs
+        let modelBucket = value("layoutlm_model_s3_bucket", explicit: layoutLMModelS3Bucket, from: outputs)
+        let modelKey = value("layoutlm_model_s3_key", explicit: layoutLMModelS3Key, from: outputs)
+        let cachePath = layoutLMLocalCachePath ?? ".models/layoutlm"
+
         return Config(
             ocrJobQueueURL: ocrJobQueueURL,
             ocrResultsQueueURL: ocrResultsQueueURL,
             dynamoTableName: dynamoTableName,
             region: region,
             localstackEndpoint: endpointURL,
-            logLevel: logLevel
+            logLevel: logLevel,
+            layoutLMModelS3Bucket: modelBucket,
+            layoutLMModelS3Key: modelKey,
+            layoutLMLocalCachePath: cachePath
         )
     }
 }

@@ -27,11 +27,13 @@ final class WorkerTests: XCTestCase {
     final class DynamoMock: DynamoClientProtocol {
         var jobs: [String: OCRJob] = [:] // "imageId:jobId"
         var routing: [OCRRoutingDecision] = []
+        var wordLabels: [ReceiptWordLabel] = []
         func getOCRJob(imageId: String, jobId: String) async throws -> OCRJob {
             return jobs["\(imageId):\(jobId)"]!
         }
         func updateOCRJob(_ job: OCRJob) async throws { jobs["\(job.imageId):\(job.jobId)"] = job }
         func addOCRRoutingDecision(_ decision: OCRRoutingDecision) async throws { routing.append(decision) }
+        func addReceiptWordLabels(_ labels: [ReceiptWordLabel]) async throws { wordLabels.append(contentsOf: labels) }
     }
 
     struct TestOCREngine: OCREngineProtocol {

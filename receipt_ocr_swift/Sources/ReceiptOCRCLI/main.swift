@@ -15,7 +15,10 @@ struct ReceiptOCR: AsyncParsableCommand {
     @Option(name: .long, help: "Process a local image file instead of AWS flow") var processLocalImage: String?
     @Option(name: .long, help: "Output directory for local processing JSON") var outputDir: String?
     @Flag(name: .long, help: "Run continuously until queue is empty") var continuous: Bool = false
-    @Option(name: .long, help: "Path to CoreML LayoutLM model bundle for token classification") var layoutlmModel: String?
+    @Option(name: .long, help: "Path to CoreML LayoutLM model bundle for local processing") var layoutlmModel: String?
+    @Option(name: .long, help: "S3 bucket containing LayoutLM model bundle for worker mode") var layoutlmModelBucket: String?
+    @Option(name: .long, help: "S3 key (path) to LayoutLM model bundle zip for worker mode") var layoutlmModelKey: String?
+    @Option(name: .long, help: "Local cache path for downloaded model (default: .models/layoutlm)") var layoutlmCachePath: String?
 
     mutating func run() async throws {
         let config = try Config.load(
@@ -24,7 +27,10 @@ struct ReceiptOCR: AsyncParsableCommand {
             ocrResultsQueueURL: ocrResultsQueueURL,
             dynamoTableName: dynamoTableName,
             region: region,
-            localstackEndpoint: localstackEndpoint
+            localstackEndpoint: localstackEndpoint,
+            layoutLMModelS3Bucket: layoutlmModelBucket,
+            layoutLMModelS3Key: layoutlmModelKey,
+            layoutLMLocalCachePath: layoutlmCachePath
         )
         // Override log level from flag if provided
         let effectiveConfig: Config
@@ -35,7 +41,10 @@ struct ReceiptOCR: AsyncParsableCommand {
                 dynamoTableName: config.dynamoTableName,
                 region: config.region,
                 localstackEndpoint: config.localstackEndpoint,
-                logLevel: ll
+                logLevel: ll,
+                layoutLMModelS3Bucket: config.layoutLMModelS3Bucket,
+                layoutLMModelS3Key: config.layoutLMModelS3Key,
+                layoutLMLocalCachePath: config.layoutLMLocalCachePath
             )
         } else {
             effectiveConfig = config
@@ -54,7 +63,7 @@ struct ReceiptOCR: AsyncParsableCommand {
             #endif
             _ = try engine.process(images: [imageURL], outputDirectory: outURL)
         } else {
-            let worker = try OCRWorker.make(config: effectiveConfig, stubOCR: stubOCR)
+            let worker = try await OCRWorker.make(config: effectiveConfig, stubOCR: stubOCR)
             if continuous {
                 print("Running continuously until queue is empty...")
                 var batchCount = 0
