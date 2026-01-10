@@ -27,17 +27,25 @@ def _log(msg: str) -> None:
     logger.info(msg)
 
 
-# Enable Langsmith tracing if API key is set but LANGCHAIN_TRACING_V2 is not
+# Enable Langsmith tracing if API key is set
+# Both LANGCHAIN_TRACING_V2 (for LangChain) and LANGSMITH_TRACING (for @traceable)
+# are needed for complete tracing coverage
 _api_key = os.environ.get("LANGCHAIN_API_KEY", "")
 _tracing_v2 = os.environ.get("LANGCHAIN_TRACING_V2", "")
+_langsmith_tracing = os.environ.get("LANGSMITH_TRACING", "")
 _log(
     f"Langsmith config: API_KEY={'set' if _api_key else 'NOT SET'} "
-    f"({len(_api_key)} chars), TRACING_V2={_tracing_v2!r}"
+    f"({len(_api_key)} chars), TRACING_V2={_tracing_v2!r}, "
+    f"LANGSMITH_TRACING={_langsmith_tracing!r}"
 )
 
-if _api_key and not _tracing_v2:
-    os.environ["LANGCHAIN_TRACING_V2"] = "true"
-    _log("Auto-enabled LANGCHAIN_TRACING_V2")
+if _api_key:
+    if not _tracing_v2:
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        _log("Auto-enabled LANGCHAIN_TRACING_V2")
+    if not _langsmith_tracing:
+        os.environ["LANGSMITH_TRACING"] = "true"
+        _log("Auto-enabled LANGSMITH_TRACING")
 
 # Default Langsmith projects
 DEFAULT_LABEL_PROJECT = "receipt-label-validation"
