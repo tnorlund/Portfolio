@@ -935,6 +935,66 @@ class LabelEvaluatorStepFunction(ComponentResource):
         close_trace_lambda = close_trace_docker_image.lambda_function
 
         # ============================================================
+        # Container Lambda: unified_receipt_evaluator (NEW)
+        # Consolidates currency, metadata, financial, and LLM review
+        # Uses asyncio for concurrent LLM calls
+        # ============================================================
+        unified_lambda_config = {
+            "role_arn": lambda_role.arn,
+            "timeout": 900,  # 15 minutes (covers all evaluations)
+            "memory_size": 3072,  # 3 GB for ChromaDB + LLM
+            "tags": {"environment": stack},
+            "ephemeral_storage": 10240,  # 10 GB for ChromaDB
+            "environment": {
+                "BATCH_BUCKET": self.batch_bucket.bucket,
+                "CHROMADB_BUCKET": chromadb_bucket_name or "",
+                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
+                "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
+                # Ollama (primary LLM provider)
+                "OLLAMA_API_KEY": ollama_api_key,
+                "OLLAMA_BASE_URL": "https://ollama.com",
+                "OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                "RECEIPT_AGENT_OLLAMA_API_KEY": ollama_api_key,
+                "RECEIPT_AGENT_OLLAMA_BASE_URL": "https://ollama.com",
+                "RECEIPT_AGENT_OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                # OpenRouter (fallback LLM provider)
+                "OPENROUTER_API_KEY": openrouter_api_key,
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+                "OPENROUTER_MODEL": "openai/gpt-oss-120b:free",
+                "OPENROUTER_PAID_MODEL": "openai/gpt-oss-120b",
+                "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
+                **tracing_env,
+                "MAX_ISSUES_PER_LLM_CALL": "15",
+                "CIRCUIT_BREAKER_THRESHOLD": "5",
+                "LLM_MAX_JITTER_SECONDS": "0.25",
+            },
+        }
+
+        unified_docker_image = CodeBuildDockerImage(
+            f"{name}-unified-img",
+            dockerfile_path=(
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.unified"
+            ),
+            build_context_path=".",
+            source_paths=[
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
+                "receipt_chroma",
+                "receipt_places",
+                "receipt_agent",
+                "infra/label_evaluator_step_functions/lambdas",
+            ],
+            lambda_function_name=f"{name}-unified-evaluator",
+            lambda_config=unified_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
+        )
+
+        unified_evaluator_lambda = unified_docker_image.lambda_function
+
+        # ============================================================
         # Step Function role policies
         # ============================================================
         RolePolicy(
@@ -955,6 +1015,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 final_aggregate_lambda.arn,
                 discover_patterns_lambda.arn,
                 llm_review_lambda.arn,
+                unified_evaluator_lambda.arn,
             ).apply(
                 lambda arns: json.dumps(
                     {
@@ -1108,6 +1169,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             final_aggregate_lambda.arn,
             discover_patterns_lambda.arn,
             llm_review_lambda.arn,
+            unified_evaluator_lambda.arn,
             self.batch_bucket.bucket,
         ]
 
@@ -1146,25 +1208,26 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         final_aggregate=args[11],
                         discover_patterns=args[12],
                         llm_review=args[13],
+                        unified_evaluator=args[14],
                     ),
                     runtime=RuntimeConfig(
-                        batch_bucket=args[14],
+                        batch_bucket=args[15],
                         max_concurrency=self.max_concurrency,
                         batch_size=self.batch_size,
                     ),
                     emr=EmrConfig(
-                        application_id=args[15] if self.emr_enabled else None,
+                        application_id=args[16] if self.emr_enabled else None,
                         job_execution_role_arn=(
-                            args[16] if self.emr_enabled else None
-                        ),
-                        langsmith_export_bucket=(
                             args[17] if self.emr_enabled else None
                         ),
-                        analytics_output_bucket=(
+                        langsmith_export_bucket=(
                             args[18] if self.emr_enabled else None
                         ),
-                        spark_artifacts_bucket=(
+                        analytics_output_bucket=(
                             args[19] if self.emr_enabled else None
+                        ),
+                        spark_artifacts_bucket=(
+                            args[20] if self.emr_enabled else None
                         ),
                     ),
                 )
@@ -1195,5 +1258,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "aggregate_results_lambda_arn": aggregate_results_lambda.arn,
                 "final_aggregate_lambda_arn": final_aggregate_lambda.arn,
                 "discover_patterns_lambda_arn": discover_patterns_lambda.arn,
+                "unified_evaluator_lambda_arn": unified_evaluator_lambda.arn,
             }
         )

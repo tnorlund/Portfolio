@@ -28,11 +28,12 @@ Output:
     ]
 """
 
+import asyncio
 import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from langchain_core.language_models import BaseChatModel
 from pydantic import ValidationError
@@ -644,6 +645,258 @@ def evaluate_currency_labels(
             num_decisions,
         )
         # Pad decisions if too few, or truncate if too many
+        while len(decisions) < num_words:
+            decisions.append(
+                {
+                    "decision": "NEEDS_REVIEW",
+                    "reasoning": "No decision from LLM (count mismatch)",
+                    "suggested_label": None,
+                    "confidence": "low",
+                }
+            )
+        decisions = decisions[:num_words]
+
+    for cw, decision in zip(currency_words, decisions, strict=False):
+        wc = cw.word_context
+        results.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "issue": {
+                    "line_id": wc.word.line_id,
+                    "word_id": wc.word.word_id,
+                    "current_label": cw.current_label,
+                    "word_text": wc.word.text,
+                },
+                "llm_review": decision,
+            }
+        )
+
+    # Log summary
+    decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+    for r in results:
+        decision_counts[r["llm_review"]["decision"]] += 1
+    logger.info("Currency evaluation results: %s", decision_counts)
+
+    return results
+
+
+# =============================================================================
+# Async version
+# =============================================================================
+
+
+async def evaluate_currency_labels_async(
+    visual_lines: list[VisualLine],
+    patterns: Optional[dict],
+    llm: Any,  # RateLimitedLLMInvoker or BaseChatModel with ainvoke
+    image_id: str,
+    receipt_id: int,
+    merchant_name: str = "Unknown",
+) -> list[dict]:
+    """
+    Async version of evaluate_currency_labels.
+
+    Uses ainvoke() for concurrent LLM calls. Works with RateLimitedLLMInvoker
+    or any LLM that supports ainvoke().
+
+    Args:
+        visual_lines: Visual lines from the receipt (words with labels)
+        patterns: Line item patterns from DiscoverLineItemPatterns
+        llm: Language model invoker (RateLimitedLLMInvoker or BaseChatModel)
+        image_id: Image ID for output format
+        receipt_id: Receipt ID for output format
+        merchant_name: Merchant name for context
+
+    Returns:
+        List of decisions ready for apply_llm_decisions()
+    """
+    # Step 1: Identify line item rows
+    line_item_rows = identify_line_item_rows(visual_lines, patterns)
+    logger.info("Identified %s line item rows", len(line_item_rows))
+
+    if not line_item_rows:
+        logger.info("No line item rows found, skipping currency evaluation")
+        return []
+
+    # Step 2: Collect currency words to evaluate
+    currency_words = collect_currency_words(
+        visual_lines, line_item_rows, patterns
+    )
+    logger.info("Found %s currency words to evaluate", len(currency_words))
+
+    if not currency_words:
+        logger.info("No currency words found to evaluate")
+        return []
+
+    # Step 3: Build prompt
+    prompt = build_currency_evaluation_prompt(
+        visual_lines=visual_lines,
+        currency_words=currency_words,
+        patterns=patterns,
+        merchant_name=merchant_name,
+    )
+
+    # Step 4: Call LLM asynchronously
+    max_retries = 3
+    last_decisions = None
+    num_words = len(currency_words)
+
+    # Check if LLM supports structured output
+    use_structured = hasattr(llm, "with_structured_output")
+
+    for attempt in range(max_retries):
+        try:
+            if use_structured:
+                try:
+                    structured_llm = llm.with_structured_output(
+                        CurrencyEvaluationResponse
+                    )
+                    # Use ainvoke for async call
+                    if hasattr(structured_llm, "ainvoke"):
+                        response: CurrencyEvaluationResponse = (
+                            await structured_llm.ainvoke(prompt)
+                        )
+                    else:
+                        # Fallback to sync if no ainvoke - run in thread pool to avoid blocking
+                        response: CurrencyEvaluationResponse = (
+                            await asyncio.to_thread(structured_llm.invoke, prompt)
+                        )
+                    decisions = response.to_ordered_list(num_words)
+                    logger.debug(
+                        "Structured output succeeded with %d evaluations",
+                        len(decisions),
+                    )
+                except Exception as struct_err:
+                    # Structured output failed, fall back to text parsing
+                    logger.warning(
+                        "Structured output failed (attempt %d), falling back to text: %s",
+                        attempt + 1,
+                        struct_err,
+                    )
+                    if hasattr(llm, "ainvoke"):
+                        response = await llm.ainvoke(prompt)
+                    else:
+                        # Run sync invoke in thread pool to avoid blocking event loop
+                        response = await asyncio.to_thread(llm.invoke, prompt)
+                    response_text = (
+                        response.content
+                        if hasattr(response, "content")
+                        else str(response)
+                    )
+                    decisions = parse_currency_evaluation_response(
+                        response_text, num_words
+                    )
+            else:
+                # Use ainvoke if available, otherwise fall back to invoke
+                if hasattr(llm, "ainvoke"):
+                    response = await llm.ainvoke(prompt)
+                else:
+                    # Run sync invoke in thread pool to avoid blocking event loop
+                    response = await asyncio.to_thread(llm.invoke, prompt)
+                response_text = (
+                    response.content
+                    if hasattr(response, "content")
+                    else str(response)
+                )
+                decisions = parse_currency_evaluation_response(
+                    response_text, num_words
+                )
+
+            last_decisions = decisions
+
+            # Check if all decisions failed to parse
+            parse_failures = sum(
+                1
+                for d in decisions
+                if "Failed to parse" in d.get("reasoning", "")
+            )
+
+            if parse_failures == 0:
+                break
+            elif parse_failures < len(decisions):
+                logger.info(
+                    "Partial parse success: %d/%d parsed on attempt %d",
+                    len(decisions) - parse_failures,
+                    len(decisions),
+                    attempt + 1,
+                )
+                break
+            else:
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        "All %d decisions failed to parse on attempt %d, retrying...",
+                        len(decisions),
+                        attempt + 1,
+                    )
+                else:
+                    logger.warning(
+                        "All %d decisions failed to parse after %d attempts",
+                        len(decisions),
+                        max_retries,
+                    )
+
+        except Exception as e:
+            from receipt_agent.utils import (
+                BothProvidersFailedError,
+                OllamaRateLimitError,
+            )
+
+            if isinstance(e, (OllamaRateLimitError, BothProvidersFailedError)):
+                logger.error(
+                    "Currency LLM rate limited, propagating for retry: %s", e
+                )
+                raise
+
+            logger.error(
+                "Currency LLM call failed on attempt %d: %s", attempt + 1, e
+            )
+            if attempt == max_retries - 1:
+                # Final attempt failed - return NEEDS_REVIEW for all
+                results = []
+                for cw in currency_words:
+                    wc = cw.word_context
+                    results.append(
+                        {
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                            "issue": {
+                                "line_id": wc.word.line_id,
+                                "word_id": wc.word.word_id,
+                                "current_label": cw.current_label,
+                                "word_text": wc.word.text,
+                            },
+                            "llm_review": {
+                                "decision": "NEEDS_REVIEW",
+                                "reasoning": f"LLM call failed after {max_retries} attempts: {e}",
+                                "suggested_label": None,
+                                "confidence": "low",
+                            },
+                        }
+                    )
+                return results
+
+    # Use the last decisions we got (best effort)
+    decisions = last_decisions or [
+        {
+            "decision": "NEEDS_REVIEW",
+            "reasoning": "No response received",
+            "suggested_label": None,
+            "confidence": "low",
+        }
+        for _ in currency_words
+    ]
+
+    # Step 5: Format output for apply_llm_decisions
+    results = []
+    num_words = len(currency_words)
+    num_decisions = len(decisions)
+    if num_decisions != num_words:
+        logger.warning(
+            "Decision count mismatch: %d words, %d decisions",
+            num_words,
+            num_decisions,
+        )
         while len(decisions) < num_words:
             decisions.append(
                 {
