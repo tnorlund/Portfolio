@@ -120,13 +120,17 @@ def log_label_validation(
     }
 
     try:
+        from datetime import datetime, timezone
         client = Client()
+        now = datetime.now(timezone.utc)
         run = client.create_run(
             name=f"label_validation_{validation_source}",
             run_type="chain",
             inputs=log_data,
             outputs={"result": decision},
             project_name=_get_label_validation_project(),
+            start_time=now,
+            end_time=now,  # Mark as completed immediately
         )
         _log(
             f"Logged label validation: {image_id}/{receipt_id}/{line_id}/{word_id} "
@@ -197,13 +201,17 @@ def log_merchant_resolution(
     }
 
     try:
+        from datetime import datetime, timezone
         client = Client()
+        now = datetime.now(timezone.utc)
         run = client.create_run(
             name=f"merchant_resolution_{resolution_tier}",
             run_type="chain",
             inputs=log_data,
             outputs={"found": place_id is not None, "merchant_name": merchant_name},
             project_name=_get_merchant_resolution_project(),
+            start_time=now,
+            end_time=now,  # Mark as completed immediately
         )
         _log(
             f"Logged merchant resolution: {image_id}#{receipt_id} "
