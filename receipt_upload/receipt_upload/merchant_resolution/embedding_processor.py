@@ -20,7 +20,8 @@ from receipt_upload.label_validation import (
     LightweightLabelValidator,
 )
 from receipt_upload.label_validation.langsmith_logging import (
-    log_validation_for_review,
+    log_label_validation,
+    log_merchant_resolution,
 )
 from receipt_upload.merchant_resolution.resolver import (
     MerchantResolver,
@@ -202,6 +203,38 @@ class MerchantResolvingEmbeddingProcessor:
                 image_id=image_id,
                 receipt_id=receipt_id,
                 line_embeddings=result.line_embeddings,  # Use cached embeddings
+            )
+
+            # Log merchant resolution to Langsmith (all attempts)
+            similarity_matches_data = None
+            if merchant_result.similarity_matches:
+                similarity_matches_data = [
+                    {
+                        "image_id": m.image_id,
+                        "receipt_id": m.receipt_id,
+                        "merchant_name": m.merchant_name,
+                        "embedding_similarity": m.embedding_similarity,
+                        "metadata_boost": m.metadata_boost,
+                        "total_confidence": m.total_confidence,
+                    }
+                    for m in merchant_result.similarity_matches[:5]
+                ]
+
+            log_merchant_resolution(
+                image_id=image_id,
+                receipt_id=receipt_id,
+                resolution_tier=merchant_result.resolution_tier or "not_found",
+                merchant_name=merchant_result.merchant_name,
+                place_id=merchant_result.place_id,
+                confidence=merchant_result.confidence,
+                phone_extracted=merchant_result.phone,
+                address_extracted=merchant_result.address,
+                similarity_matches=similarity_matches_data,
+                source_receipt=(
+                    f"{merchant_result.source_image_id}#{merchant_result.source_receipt_id}"
+                    if merchant_result.source_image_id
+                    else None
+                ),
             )
 
             # Step 3: Enrich receipt in DynamoDB if merchant found
@@ -430,6 +463,27 @@ class MerchantResolvingEmbeddingProcessor:
                     label.reasoning = result.reason
                     self.dynamo.update_receipt_word_label(label)
                     chroma_validated_count += 1
+
+                    # Get word text for logging
+                    word = word_lookup.get((label.line_id, label.word_id))
+                    word_text = word.text if word else ""
+
+                    # Log to Langsmith
+                    log_label_validation(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        line_id=label.line_id,
+                        word_id=label.word_id,
+                        word_text=word_text,
+                        predicted_label=label.label,
+                        final_label=label.label,
+                        validation_source="chroma",
+                        decision="valid",
+                        confidence=result.confidence,
+                        reasoning=result.reason,
+                        merchant_name=merchant_name,
+                    )
+
                     _log(
                         f"  ChromaDB validated: {label.line_id}_{label.word_id} "
                         f"label={label.label} (conf={result.confidence:.2f})"
@@ -559,6 +613,10 @@ class MerchantResolvingEmbeddingProcessor:
                 continue
 
             try:
+                # Map LLM confidence to numeric value
+                confidence_map = {"high": 0.9, "medium": 0.7, "low": 0.5}
+                confidence_score = confidence_map.get(llm_result.confidence, 0.7)
+
                 if llm_result.decision == "VALID":
                     # Keep original label, mark as validated
                     label_entity.validation_status = ValidationStatus.VALID.value
@@ -568,6 +626,24 @@ class MerchantResolvingEmbeddingProcessor:
                     label_entity.reasoning = llm_result.reasoning
                     self.dynamo.update_receipt_word_label(label_entity)
                     validated_count += 1
+
+                    # Log to Langsmith
+                    log_label_validation(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        line_id=label_entity.line_id,
+                        word_id=label_entity.word_id,
+                        word_text=label_data.get("word_text", ""),
+                        predicted_label=label_data["label"],
+                        final_label=llm_result.label,
+                        validation_source="llm",
+                        decision="valid",
+                        confidence=confidence_score,
+                        reasoning=llm_result.reasoning,
+                        similar_words=similar_evidence.get(word_id, []),
+                        merchant_name=merchant_name,
+                    )
+
                 elif llm_result.decision == "CORRECT":
                     # LLM corrected the label
                     if llm_result.label != label_entity.label:
@@ -597,6 +673,24 @@ class MerchantResolvingEmbeddingProcessor:
                         )
                         self.dynamo.add_receipt_word_label(new_label)
                         corrected_count += 1
+
+                        # Log correction to Langsmith
+                        log_label_validation(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            line_id=label_entity.line_id,
+                            word_id=label_entity.word_id,
+                            word_text=label_data.get("word_text", ""),
+                            predicted_label=label_data["label"],
+                            final_label=llm_result.label,
+                            validation_source="llm",
+                            decision="corrected",
+                            confidence=confidence_score,
+                            reasoning=llm_result.reasoning,
+                            similar_words=similar_evidence.get(word_id, []),
+                            merchant_name=merchant_name,
+                        )
+
                         _log(
                             f"Corrected {word_id}: {label_entity.label} -> {llm_result.label}"
                         )
@@ -610,21 +704,22 @@ class MerchantResolvingEmbeddingProcessor:
                         self.dynamo.update_receipt_word_label(label_entity)
                         validated_count += 1
 
-                # Log low confidence validations to Langsmith for review
-                if llm_result.confidence == "low":
-                    log_validation_for_review(
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                        line_id=label_entity.line_id,
-                        word_id=label_entity.word_id,
-                        word_text=label_data.get("word_text", ""),
-                        predicted_label=label_data["label"],
-                        consensus_label=llm_result.label,
-                        confidence=0.5,  # Low confidence indicator
-                        matching_count=len(similar_evidence.get(word_id, [])),
-                        reason=f"Low confidence LLM validation: {llm_result.reasoning}",
-                        merchant_name=merchant_name,
-                    )
+                        # Log to Langsmith
+                        log_label_validation(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            line_id=label_entity.line_id,
+                            word_id=label_entity.word_id,
+                            word_text=label_data.get("word_text", ""),
+                            predicted_label=label_data["label"],
+                            final_label=llm_result.label,
+                            validation_source="llm",
+                            decision="valid",
+                            confidence=confidence_score,
+                            reasoning=llm_result.reasoning,
+                            similar_words=similar_evidence.get(word_id, []),
+                            merchant_name=merchant_name,
+                        )
 
             except Exception as e:
                 _log(
