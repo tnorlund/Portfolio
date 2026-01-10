@@ -1143,7 +1143,7 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         decisions={reviewDecisions}
         totalDecisions={review ? review.all_decisions.length : 0}
         isTransitioning={isTransitioning}
-        nextTotalDecisions={nextReview?.all_decisions.length ?? 0}
+        nextTotalDecisions={0} // Don't show next placeholders - Review depends on Geometric
         showPlaceholders={hasReviewData && scannerState.geometric >= 100}
       />
       {/* Purple - Line Item → Currency → Financial chain */}
@@ -1165,7 +1165,7 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         decisions={currencyDecisions}
         totalDecisions={currency.all_decisions.length}
         isTransitioning={isTransitioning}
-        nextTotalDecisions={nextReceipt?.currency.all_decisions.length ?? 0}
+        nextTotalDecisions={0} // Don't show next placeholders - Currency depends on Line Item
         showPlaceholders={scannerState.lineItem >= 100}
       />
       <ScannerLegendItem
@@ -1178,7 +1178,7 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         decisions={financialDecisions}
         totalDecisions={financial.all_decisions.length}
         isTransitioning={isTransitioning}
-        nextTotalDecisions={nextReceipt?.financial.all_decisions.length ?? 0}
+        nextTotalDecisions={0} // Don't show next placeholders - Financial depends on Currency + Metadata
         showPlaceholders={scannerState.currency >= 100 && scannerState.metadata >= 100}
       />
     </div>
