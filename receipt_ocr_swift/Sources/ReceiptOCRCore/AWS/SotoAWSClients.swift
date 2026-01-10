@@ -5,6 +5,18 @@ import SotoS3
 import SotoSQS
 import SotoDynamoDB
 
+/// Errors that can occur during batch write operations.
+public enum BatchWriteError: Error, LocalizedError {
+    case unprocessedItems(count: Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unprocessedItems(let count):
+            return "Failed to write \(count) items after max retries"
+        }
+    }
+}
+
 public final class SotoAWSFactory {
     public let awsClient: AWSClient
     public let region: SotoCore.Region?
@@ -155,20 +167,39 @@ public final class SotoDynamoClient: DynamoClientProtocol {
             let chunk = remaining.prefix(chunkSize)
             remaining = remaining.dropFirst(chunkSize)
 
-            let writeRequests = chunk.map { label -> DynamoDB.WriteRequest in
+            var writeRequests = chunk.map { label -> DynamoDB.WriteRequest in
                 let dict = label.toDynamoItemDict()
                 let item = Self.convertToAttributeValues(dict)
                 return DynamoDB.WriteRequest(putRequest: .init(item: item))
             }
 
-            let req = DynamoDB.BatchWriteItemInput(requestItems: [tableName: writeRequests])
-            let resp = try await dynamo.batchWriteItem(req)
+            // Retry with exponential backoff until all items are processed
+            let maxRetries = 8
+            var retryCount = 0
+            let baseDelayMs: UInt64 = 50
 
-            // Handle unprocessed items by retrying
-            if let unprocessed = resp.unprocessedItems?[tableName], !unprocessed.isEmpty {
-                // Simple retry - in production would use exponential backoff
-                let retryReq = DynamoDB.BatchWriteItemInput(requestItems: [tableName: unprocessed])
-                _ = try await dynamo.batchWriteItem(retryReq)
+            while !writeRequests.isEmpty && retryCount < maxRetries {
+                let req = DynamoDB.BatchWriteItemInput(requestItems: [tableName: writeRequests])
+                let resp = try await dynamo.batchWriteItem(req)
+
+                // Check for unprocessed items
+                if let unprocessed = resp.unprocessedItems?[tableName], !unprocessed.isEmpty {
+                    writeRequests = unprocessed
+                    retryCount += 1
+
+                    // Exponential backoff with jitter
+                    let delayMs = baseDelayMs * UInt64(1 << retryCount)
+                    let jitter = UInt64.random(in: 0...delayMs / 4)
+                    try await Task.sleep(nanoseconds: (delayMs + jitter) * 1_000_000)
+                } else {
+                    // All items processed
+                    writeRequests = []
+                }
+            }
+
+            // If we still have unprocessed items after max retries, throw an error
+            if !writeRequests.isEmpty {
+                throw BatchWriteError.unprocessedItems(count: writeRequests.count)
             }
         }
     }
