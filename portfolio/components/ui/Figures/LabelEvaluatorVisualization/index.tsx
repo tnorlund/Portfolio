@@ -173,11 +173,20 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     return getBestImageUrl(receipt, formatSupport);
   }, [receipt, formatSupport]);
 
-  // Calculate display dimensions - match LayoutLM's simpler approach
-  // Max height 500px, maintain aspect ratio
+  // Calculate display dimensions with both height and width constraints
+  // to match how CSS constrains the final ReceiptViewer image
   const aspectRatio = width / height;
-  const displayHeight = Math.min(500, height);
-  const displayWidth = displayHeight * aspectRatio;
+  const maxHeight = 500;
+  const maxWidth = 350; // matches centerColumn max-width in CSS
+
+  let displayHeight = Math.min(maxHeight, height);
+  let displayWidth = displayHeight * aspectRatio;
+
+  // For landscape receipts, cap width and recalculate height
+  if (displayWidth > maxWidth) {
+    displayWidth = maxWidth;
+    displayHeight = displayWidth / aspectRatio;
+  }
 
   // Layout dimensions - must match CSS values exactly
   const queueItemWidth = 100;
