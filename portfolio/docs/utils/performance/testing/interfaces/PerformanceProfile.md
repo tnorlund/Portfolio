@@ -6,7 +6,7 @@
 
 # Interface: PerformanceProfile
 
-Defined in: [utils/performance/testing.ts:162](https://github.com/tnorlund/Portfolio/blob/a290573b742a5b5dc79ada03bb2d0e36394dbcad/portfolio/utils/performance/testing.ts#L162)
+Defined in: [utils/performance/testing.ts:162](https://github.com/tnorlund/Portfolio/blob/15f0d8f2ce5d1dd21239f627ef43c875328cdfad/portfolio/utils/performance/testing.ts#L162)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [utils/performance/testing.ts:162](https://github.com/tnorlund/Portf
 
 > **duration**: `number`
 
-Defined in: [utils/performance/testing.ts:166](https://github.com/tnorlund/Portfolio/blob/a290573b742a5b5dc79ada03bb2d0e36394dbcad/portfolio/utils/performance/testing.ts#L166)
+Defined in: [utils/performance/testing.ts:166](https://github.com/tnorlund/Portfolio/blob/15f0d8f2ce5d1dd21239f627ef43c875328cdfad/portfolio/utils/performance/testing.ts#L166)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [utils/performance/testing.ts:166](https://github.com/tnorlund/Portf
 
 > **endTime**: `number`
 
-Defined in: [utils/performance/testing.ts:165](https://github.com/tnorlund/Portfolio/blob/a290573b742a5b5dc79ada03bb2d0e36394dbcad/portfolio/utils/performance/testing.ts#L165)
+Defined in: [utils/performance/testing.ts:165](https://github.com/tnorlund/Portfolio/blob/15f0d8f2ce5d1dd21239f627ef43c875328cdfad/portfolio/utils/performance/testing.ts#L165)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [utils/performance/testing.ts:165](https://github.com/tnorlund/Portf
 
 > **markers**: `object`[]
 
-Defined in: [utils/performance/testing.ts:169](https://github.com/tnorlund/Portfolio/blob/a290573b742a5b5dc79ada03bb2d0e36394dbcad/portfolio/utils/performance/testing.ts#L169)
+Defined in: [utils/performance/testing.ts:169](https://github.com/tnorlund/Portfolio/blob/15f0d8f2ce5d1dd21239f627ef43c875328cdfad/portfolio/utils/performance/testing.ts#L169)
 
 #### name
 
@@ -46,7 +46,7 @@ Defined in: [utils/performance/testing.ts:169](https://github.com/tnorlund/Portf
 
 > **memoryAfter**: [`MemoryUsage`](MemoryUsage.md) \| `null`
 
-Defined in: [utils/performance/testing.ts:168](https://github.com/tnorlund/Portfolio/blob/a290573b742a5b5dc79ada03bb2d0e36394dbcad/portfolio/utils/performance/testing.ts#L168)
+Defined in: [utils/performance/testing.ts:168](https://github.com/tnorlund/Portfolio/blob/15f0d8f2ce5d1dd21239f627ef43c875328cdfad/portfolio/utils/performance/testing.ts#L168)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [utils/performance/testing.ts:168](https://github.com/tnorlund/Portf
 
 > **memoryBefore**: [`MemoryUsage`](MemoryUsage.md) \| `null`
 
-Defined in: [utils/performance/testing.ts:167](https://github.com/tnorlund/Portfolio/blob/a290573b742a5b5dc79ada03bb2d0e36394dbcad/portfolio/utils/performance/testing.ts#L167)
+Defined in: [utils/performance/testing.ts:167](https://github.com/tnorlund/Portfolio/blob/15f0d8f2ce5d1dd21239f627ef43c875328cdfad/portfolio/utils/performance/testing.ts#L167)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [utils/performance/testing.ts:167](https://github.com/tnorlund/Portf
 
 > **name**: `string`
 
-Defined in: [utils/performance/testing.ts:163](https://github.com/tnorlund/Portfolio/blob/a290573b742a5b5dc79ada03bb2d0e36394dbcad/portfolio/utils/performance/testing.ts#L163)
+Defined in: [utils/performance/testing.ts:163](https://github.com/tnorlund/Portfolio/blob/15f0d8f2ce5d1dd21239f627ef43c875328cdfad/portfolio/utils/performance/testing.ts#L163)
 
 ***
 
@@ -70,4 +70,4 @@ Defined in: [utils/performance/testing.ts:163](https://github.com/tnorlund/Portf
 
 > **startTime**: `number`
 
-Defined in: [utils/performance/testing.ts:164](https://github.com/tnorlund/Portfolio/blob/a290573b742a5b5dc79ada03bb2d0e36394dbcad/portfolio/utils/performance/testing.ts#L164)
+Defined in: [utils/performance/testing.ts:164](https://github.com/tnorlund/Portfolio/blob/15f0d8f2ce5d1dd21239f627ef43c875328cdfad/portfolio/utils/performance/testing.ts#L164)
