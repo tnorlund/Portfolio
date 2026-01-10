@@ -23,6 +23,11 @@ export { default as ScanReceiptBoundingBox } from "./ScanReceiptBoundingBox";
 export { default as UploadDiagram } from "./UploadDiagram";
 export { default as ZDepthConstrained } from "./ZDepthConstrained";
 export { default as ZDepthUnconstrained } from "./ZDepthUnconstrained";
+export {
+  default as IsometricPlane,
+  ZDepthConstrainedParametric,
+  ZDepthUnconstrainedParametric,
+} from "./IsometricPlane";
 export { ClientLabelValidationCount as LabelValidationCount, ClientMerchantCount as MerchantCount };
 export const ReceiptPhotoClustering = dynamic(
   () => import("./ReceiptPhotoClustering"),
