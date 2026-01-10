@@ -94,7 +94,8 @@ const IsometricPlane: React.FC<IsometricPlaneProps> = ({
   bottomPlaneFill = "var(--background-color)",
   strokeColor = "var(--text-color)",
 }) => {
-  const [ref, inView] = useOptimizedInView({ threshold: 0.3 });
+  // triggerOnce: false allows animation to pause when scrolling out of view
+  const [ref, inView] = useOptimizedInView({ threshold: 0.3, triggerOnce: false });
 
   // Calculate center positions for both planes
   const centerX = viewBoxWidth / 2;
@@ -156,6 +157,22 @@ const IsometricPlane: React.FC<IsometricPlaneProps> = ({
   const arrowSize = 5;
   const circleRadius = 4;
 
+  // Helper to compute constraint line geometry from animation phase
+  // Returns unit vectors and positions needed for line and arrow
+  const computeConstraintGeometry = (p: number) => {
+    const x = Math.sin(p * 0.8) * horizRange;
+    const y = Math.sin(p) * floatRange;
+    const topX = topCornerX + x;
+    const topY = topCornerY + y;
+    const dx = topX - bottomCornerX;
+    const dy = topY - bottomCornerY;
+    // Guard against zero-length vector (when gapY=0 or corners coincide)
+    const len = Math.max(Math.sqrt(dx * dx + dy * dy), 0.001);
+    const ux = dx / len;
+    const uy = dy / len;
+    return { topX, topY, ux, uy };
+  };
+
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
       <div ref={ref}>
@@ -168,8 +185,7 @@ const IsometricPlane: React.FC<IsometricPlaneProps> = ({
           <svg
             viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
             width="100%"
-            height="auto"
-            style={{ maxWidth: "300px" }}
+            style={{ maxWidth: "300px", height: "auto" }}
           >
             {/* Bottom plane (static) */}
             <g>
@@ -209,48 +225,19 @@ const IsometricPlane: React.FC<IsometricPlaneProps> = ({
                 {/* Line from circle edge to arrow base */}
                 <animated.line
                   x1={phase.to((p) => {
-                    // Calculate direction to offset line start from circle center
-                    const x = Math.sin(p * 0.8) * horizRange;
-                    const y = Math.sin(p) * floatRange;
-                    const topX = topCornerX + x;
-                    const topY = topCornerY + y;
-                    const dx = topX - bottomCornerX;
-                    const dy = topY - bottomCornerY;
-                    // Guard against zero-length vector (when gapY=0 or corners coincide)
-                    const len = Math.max(Math.sqrt(dx * dx + dy * dy), 0.001);
-                    return bottomCornerX + (dx / len) * (circleRadius + 1);
+                    const { ux } = computeConstraintGeometry(p);
+                    return bottomCornerX + ux * (circleRadius + 1);
                   })}
                   y1={phase.to((p) => {
-                    const x = Math.sin(p * 0.8) * horizRange;
-                    const y = Math.sin(p) * floatRange;
-                    const topX = topCornerX + x;
-                    const topY = topCornerY + y;
-                    const dx = topX - bottomCornerX;
-                    const dy = topY - bottomCornerY;
-                    const len = Math.max(Math.sqrt(dx * dx + dy * dy), 0.001);
-                    return bottomCornerY + (dy / len) * (circleRadius + 1);
+                    const { uy } = computeConstraintGeometry(p);
+                    return bottomCornerY + uy * (circleRadius + 1);
                   })}
                   x2={phase.to((p) => {
-                    const x = Math.sin(p * 0.8) * horizRange;
-                    const y = Math.sin(p) * floatRange;
-                    const topX = topCornerX + x;
-                    const topY = topCornerY + y;
-                    // End at arrow base
-                    const dx = topX - bottomCornerX;
-                    const dy = topY - bottomCornerY;
-                    const len = Math.max(Math.sqrt(dx * dx + dy * dy), 0.001);
-                    const ux = dx / len;
+                    const { topX, ux } = computeConstraintGeometry(p);
                     return topX - ux * (arrowSize * 1.5 + 2);
                   })}
                   y2={phase.to((p) => {
-                    const x = Math.sin(p * 0.8) * horizRange;
-                    const y = Math.sin(p) * floatRange;
-                    const topX = topCornerX + x;
-                    const topY = topCornerY + y;
-                    const dx = topX - bottomCornerX;
-                    const dy = topY - bottomCornerY;
-                    const len = Math.max(Math.sqrt(dx * dx + dy * dy), 0.001);
-                    const uy = dy / len;
+                    const { topY, uy } = computeConstraintGeometry(p);
                     return topY - uy * (arrowSize * 1.5 + 2);
                   })}
                   stroke={strokeColor}
@@ -259,17 +246,7 @@ const IsometricPlane: React.FC<IsometricPlaneProps> = ({
                 {/* Arrow pointing along line toward moving corner */}
                 <animated.polygon
                   points={to([phase], (p) => {
-                    const x = Math.sin(p * 0.8) * horizRange;
-                    const y = Math.sin(p) * floatRange;
-                    const topX = topCornerX + x;
-                    const topY = topCornerY + y;
-                    // Direction from bottom to top corner
-                    const dx = topX - bottomCornerX;
-                    const dy = topY - bottomCornerY;
-                    // Guard against zero-length vector
-                    const len = Math.max(Math.sqrt(dx * dx + dy * dy), 0.001);
-                    const ux = dx / len;
-                    const uy = dy / len;
+                    const { topX, topY, ux, uy } = computeConstraintGeometry(p);
                     const px = -uy;
                     const py = ux;
                     // Arrow tip near the corner
