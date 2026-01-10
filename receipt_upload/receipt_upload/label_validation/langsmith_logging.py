@@ -8,6 +8,10 @@ for improving the system. This includes:
 
 Human annotators can review and correct any decision, providing feedback
 that improves future accuracy.
+
+Uses @traceable decorator from langsmith for automatic trace creation.
+Requires wait_for_all_tracers() to be called at the end of Lambda handlers
+to ensure traces are flushed before the execution context terminates.
 """
 
 import logging
@@ -26,7 +30,10 @@ def _log(msg: str) -> None:
 # Enable Langsmith tracing if API key is set but LANGCHAIN_TRACING_V2 is not
 _api_key = os.environ.get("LANGCHAIN_API_KEY", "")
 _tracing_v2 = os.environ.get("LANGCHAIN_TRACING_V2", "")
-_log(f"Langsmith config: API_KEY={'set' if _api_key else 'NOT SET'} ({len(_api_key)} chars), TRACING_V2={_tracing_v2!r}")
+_log(
+    f"Langsmith config: API_KEY={'set' if _api_key else 'NOT SET'} "
+    f"({len(_api_key)} chars), TRACING_V2={_tracing_v2!r}"
+)
 
 if _api_key and not _tracing_v2:
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
@@ -50,6 +57,25 @@ def _get_merchant_resolution_project() -> str:
 def _is_langsmith_enabled() -> bool:
     """Check if Langsmith is enabled (API key is set)."""
     return bool(os.environ.get("LANGCHAIN_API_KEY"))
+
+
+def _get_traceable():
+    """Get the traceable decorator if langsmith is available."""
+    try:
+        from langsmith.run_helpers import traceable
+
+        return traceable
+    except ImportError:
+        _log("langsmith package not installed, tracing disabled")
+
+        # Return a no-op decorator if langsmith not installed
+        def noop_decorator(*args, **kwargs):
+            def wrapper(fn):
+                return fn
+
+            return wrapper
+
+        return noop_decorator
 
 
 def log_label_validation(
@@ -97,41 +123,68 @@ def log_label_validation(
         )
         return None
 
-    try:
-        from langsmith import trace
-    except ImportError:
-        _log("langsmith package not installed, skipping label validation log")
-        return None
+    traceable = _get_traceable()
 
-    log_data = {
-        "image_id": image_id,
-        "receipt_id": receipt_id,
-        "line_id": line_id,
-        "word_id": word_id,
-        "word_text": word_text,
-        "predicted_label": predicted_label,
-        "final_label": final_label,
-        "validation_source": validation_source,
-        "decision": decision,
-        "confidence": confidence,
-        "reasoning": reasoning,
-        "similar_words": similar_words or [],
-        "merchant_name": merchant_name,
-    }
+    @traceable(
+        name=f"label_validation_{validation_source}",
+        project_name=_get_label_validation_project(),
+        tags=[validation_source, decision],
+    )
+    def _traced_validation(
+        image_id: str,
+        receipt_id: int,
+        line_id: int,
+        word_id: int,
+        word_text: str,
+        predicted_label: str,
+        final_label: str,
+        validation_source: str,
+        decision: str,
+        confidence: float,
+        reasoning: str,
+        similar_words: Optional[List[Dict[str, Any]]],
+        merchant_name: Optional[str],
+    ) -> Dict[str, Any]:
+        """Traced validation - captures all inputs and outputs."""
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "line_id": line_id,
+            "word_id": word_id,
+            "word_text": word_text,
+            "predicted_label": predicted_label,
+            "final_label": final_label,
+            "validation_source": validation_source,
+            "decision": decision,
+            "confidence": confidence,
+            "reasoning": reasoning,
+            "similar_words": similar_words or [],
+            "merchant_name": merchant_name,
+        }
 
     try:
-        with trace(
-            name=f"label_validation_{validation_source}",
-            run_type="chain",
-            inputs=log_data,
-            project_name=_get_label_validation_project(),
-        ) as run:
-            run.end(outputs={"result": decision, "confidence": confidence})
+        result = _traced_validation(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=word_id,
+            word_text=word_text,
+            predicted_label=predicted_label,
+            final_label=final_label,
+            validation_source=validation_source,
+            decision=decision,
+            confidence=confidence,
+            reasoning=reasoning,
+            similar_words=similar_words,
+            merchant_name=merchant_name,
+        )
+
         _log(
             f"Logged label validation: {image_id}/{receipt_id}/{line_id}/{word_id} "
             f"- {decision} ({validation_source}, conf={confidence:.2f})"
         )
-        return log_data
+        return result
+
     except Exception as e:
         _log(f"Failed to log label validation to Langsmith: {e}")
         return None
@@ -175,39 +228,63 @@ def log_merchant_resolution(
         )
         return None
 
-    try:
-        from langsmith import trace
-    except ImportError:
-        _log("langsmith package not installed, skipping merchant resolution log")
-        return None
+    traceable = _get_traceable()
 
-    log_data = {
-        "image_id": image_id,
-        "receipt_id": receipt_id,
-        "resolution_tier": resolution_tier,
-        "merchant_name": merchant_name,
-        "place_id": place_id,
-        "confidence": confidence,
-        "phone_extracted": phone_extracted,
-        "address_extracted": address_extracted,
-        "similarity_matches": similarity_matches or [],
-        "source_receipt": source_receipt,
-        "found": place_id is not None,
-    }
+    found = place_id is not None
+
+    @traceable(
+        name=f"merchant_resolution_{resolution_tier}",
+        project_name=_get_merchant_resolution_project(),
+        tags=[resolution_tier, "found" if found else "not_found"],
+    )
+    def _traced_resolution(
+        image_id: str,
+        receipt_id: int,
+        resolution_tier: str,
+        merchant_name: Optional[str],
+        place_id: Optional[str],
+        confidence: float,
+        phone_extracted: Optional[str],
+        address_extracted: Optional[str],
+        similarity_matches: Optional[List[Dict[str, Any]]],
+        source_receipt: Optional[str],
+    ) -> Dict[str, Any]:
+        """Traced resolution - captures all inputs and outputs."""
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "resolution_tier": resolution_tier,
+            "merchant_name": merchant_name,
+            "place_id": place_id,
+            "confidence": confidence,
+            "phone_extracted": phone_extracted,
+            "address_extracted": address_extracted,
+            "similarity_matches": similarity_matches or [],
+            "source_receipt": source_receipt,
+            "found": place_id is not None,
+        }
 
     try:
-        with trace(
-            name=f"merchant_resolution_{resolution_tier}",
-            run_type="chain",
-            inputs=log_data,
-            project_name=_get_merchant_resolution_project(),
-        ) as run:
-            run.end(outputs={"found": place_id is not None, "merchant_name": merchant_name})
+        result = _traced_resolution(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            resolution_tier=resolution_tier,
+            merchant_name=merchant_name,
+            place_id=place_id,
+            confidence=confidence,
+            phone_extracted=phone_extracted,
+            address_extracted=address_extracted,
+            similarity_matches=similarity_matches,
+            source_receipt=source_receipt,
+        )
+
         _log(
             f"Logged merchant resolution: {image_id}#{receipt_id} "
-            f"- {merchant_name or 'NOT_FOUND'} via {resolution_tier} (conf={confidence:.2f})"
+            f"- {merchant_name or 'NOT_FOUND'} via {resolution_tier} "
+            f"(conf={confidence:.2f})"
         )
-        return log_data
+        return result
+
     except Exception as e:
         _log(f"Failed to log merchant resolution to Langsmith: {e}")
         return None
@@ -288,3 +365,21 @@ def log_validation_feedback(
     except Exception as e:
         _log(f"Failed to log feedback to Langsmith: {e}")
         return False
+
+
+def flush_traces() -> None:
+    """Flush all pending Langsmith traces.
+
+    Call this at the end of Lambda handlers to ensure all traces
+    are sent before the execution context terminates.
+    """
+    try:
+        from langchain_core.tracers.langchain import wait_for_all_tracers
+
+        _log("Flushing Langsmith traces...")
+        wait_for_all_tracers()
+        _log("Langsmith traces flushed successfully")
+    except ImportError:
+        _log("langchain_core not installed, skipping trace flush")
+    except Exception as e:
+        _log(f"Failed to flush Langsmith traces: {e}")
