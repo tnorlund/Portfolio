@@ -12,6 +12,20 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
 
+  // Allow cross-origin requests from local network devices (e.g., iPhone testing)
+  allowedDevOrigins: ["192.168.*.*"],
+
+  // Rewrites for local development - proxies API calls to avoid CORS issues
+  // This only works in dev mode (ignored in static export)
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: "https://dev-api.tylernorlund.com/:path*",
+      },
+    ];
+  },
+
   // Only consider these file extensions as pages (excludes .test.tsx, .test.ts, etc.)
   pageExtensions: ['page.tsx', 'page.ts', 'page.jsx', 'page.js', 'tsx', 'ts', 'jsx', 'js'],
 

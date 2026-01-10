@@ -15,10 +15,11 @@ import {
 import { withPerformanceTrackingForAPI } from "../../utils/performance/api-wrapper";
 
 // Helper function to get the API URL based on environment
+// In development, use local proxy (/api) to avoid CORS issues when testing from other devices
 const getAPIUrl = () => {
   const isDevelopment = process.env.NODE_ENV === "development";
   return isDevelopment
-    ? "https://dev-api.tylernorlund.com"
+    ? "/api"  // Proxied via next.config.js rewrites to dev-api.tylernorlund.com
     : "https://api.tylernorlund.com";
 };
 
