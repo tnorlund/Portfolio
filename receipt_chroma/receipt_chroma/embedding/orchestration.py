@@ -20,9 +20,15 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_chroma.embedding.formatting.line_format import (
+    format_line_context_embedding_input,
+)
+from receipt_chroma.embedding.formatting.word_format import (
+    format_word_context_embedding_input,
+)
 from receipt_chroma.embedding.openai import embed_texts
 from receipt_chroma.embedding.records import (
     LineEmbeddingRecord,
@@ -70,6 +76,9 @@ class EmbeddingResult:
             n_results=5
         )
 
+        # Use cached embeddings for similarity search (no additional API calls)
+        embedding = result.line_embeddings.get(line_id)
+
         # Optionally wait for remote compaction
         result.wait_for_compaction_to_finish(dynamo_client, max_wait_seconds=60)
 
@@ -87,9 +96,17 @@ class EmbeddingResult:
     words_client: ChromaClient
     compaction_run: CompactionRun
 
-    # Private fields for temp directory cleanup
-    _lines_dir: str = field(repr=False)
-    _words_dir: str = field(repr=False)
+    # Private fields for temp directory cleanup (no defaults, must come first)
+    _lines_dir: str = field(repr=False, default="")
+    _words_dir: str = field(repr=False, default="")
+
+    # Embedding cache for reuse in merchant resolution and label validation
+    # Avoids redundant OpenAI API calls
+    line_embeddings: Dict[int, List[float]] = field(default_factory=dict)
+    word_embeddings: Dict[Tuple[int, int], List[float]] = field(
+        default_factory=dict
+    )
+
     _closed: bool = field(default=False, repr=False)
 
     def wait_for_compaction_to_finish(
@@ -367,16 +384,23 @@ def create_embeddings_and_compaction_run(
         )
 
         # Step 2: Generate embeddings via OpenAI
+        # Use the same formatted text as batch step functions for consistency
         model = os.environ.get("OPENAI_EMBEDDING_MODEL", EMBEDDING_MODEL)
 
-        line_embeddings = embed_texts(
+        # Format lines with context structure matching batch pipeline:
+        # <TARGET>line text</TARGET> <POS>N</POS> <CONTEXT>prev next</CONTEXT>
+        formatted_line_texts = [
+            format_line_context_embedding_input(ln, receipt_lines)
+            for ln in receipt_lines
+        ]
+        line_embeddings_list = embed_texts(
             client=openai_client,
-            texts=[ln.text for ln in receipt_lines],
+            texts=formatted_line_texts,
             model=model,
         )
         line_records = [
             LineEmbeddingRecord(line=ln, embedding=emb)
-            for ln, emb in zip(receipt_lines, line_embeddings, strict=True)
+            for ln, emb in zip(receipt_lines, line_embeddings_list, strict=True)
         ]
         line_payload = build_line_payload(
             line_records,
@@ -385,14 +409,26 @@ def create_embeddings_and_compaction_run(
             merchant_name=merchant_name,
         )
 
-        word_embeddings = embed_texts(
+        # Build line embedding cache for reuse in merchant resolution
+        line_embedding_cache: Dict[int, List[float]] = {
+            ln.line_id: emb
+            for ln, emb in zip(receipt_lines, line_embeddings_list, strict=True)
+        }
+
+        # Format words with spatial context matching batch pipeline:
+        # "left2 left1 word right1 right2" with <EDGE> tags at boundaries
+        formatted_word_texts = [
+            format_word_context_embedding_input(w, receipt_words, context_size=2)
+            for w in receipt_words
+        ]
+        word_embeddings_list = embed_texts(
             client=openai_client,
-            texts=[w.text for w in receipt_words],
+            texts=formatted_word_texts,
             model=model,
         )
         word_records = [
             WordEmbeddingRecord(word=w, embedding=emb)
-            for w, emb in zip(receipt_words, word_embeddings, strict=True)
+            for w, emb in zip(receipt_words, word_embeddings_list, strict=True)
         ]
         word_payload = build_word_payload(
             word_records,
@@ -400,6 +436,12 @@ def create_embeddings_and_compaction_run(
             receipt_word_labels or [],
             merchant_name=merchant_name,
         )
+
+        # Build word embedding cache for reuse in label validation
+        word_embedding_cache: Dict[Tuple[int, int], List[float]] = {
+            (w.line_id, w.word_id): emb
+            for w, emb in zip(receipt_words, word_embeddings_list, strict=True)
+        }
 
         # Step 3: Create local ChromaClients on downloaded snapshots and upsert
         # These operate on the downloaded snapshots, adding the new embeddings
@@ -521,11 +563,13 @@ def create_embeddings_and_compaction_run(
             receipt_id,
         )
 
-        # Step 6: Return EmbeddingResult
+        # Step 6: Return EmbeddingResult with embedding caches
         return EmbeddingResult(
             lines_client=lines_client,
             words_client=words_client,
             compaction_run=compaction_run,
+            line_embeddings=line_embedding_cache,
+            word_embeddings=word_embedding_cache,
             _lines_dir=local_lines_dir,
             _words_dir=local_words_dir,
         )
