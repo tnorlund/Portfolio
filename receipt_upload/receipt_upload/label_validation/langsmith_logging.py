@@ -16,9 +16,21 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+
+def _log(msg: str) -> None:
+    """Log message with immediate flush for CloudWatch visibility."""
+    print(f"[LANGSMITH_LOGGING] {msg}", flush=True)
+    logger.info(msg)
+
+
 # Enable Langsmith tracing if API key is set but LANGCHAIN_TRACING_V2 is not
-if os.environ.get("LANGCHAIN_API_KEY") and not os.environ.get("LANGCHAIN_TRACING_V2"):
+_api_key = os.environ.get("LANGCHAIN_API_KEY", "")
+_tracing_v2 = os.environ.get("LANGCHAIN_TRACING_V2", "")
+_log(f"Langsmith config: API_KEY={'set' if _api_key else 'NOT SET'} ({len(_api_key)} chars), TRACING_V2={_tracing_v2!r}")
+
+if _api_key and not _tracing_v2:
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    _log("Auto-enabled LANGCHAIN_TRACING_V2")
 
 # Default Langsmith projects
 DEFAULT_LABEL_PROJECT = "receipt-label-validation"
@@ -79,18 +91,16 @@ def log_label_validation(
         Dict with logged data if successful, None if Langsmith is not enabled
     """
     if not _is_langsmith_enabled():
-        logger.debug(
-            "Langsmith not enabled, skipping label validation log for %s",
-            f"{image_id}#{receipt_id}#{line_id}#{word_id}",
+        _log(
+            f"Langsmith not enabled (no API key), skipping log for "
+            f"{image_id}#{receipt_id}#{line_id}#{word_id}"
         )
         return None
 
     try:
         from langsmith.run_helpers import traceable
     except ImportError:
-        logger.warning(
-            "langsmith package not installed, skipping label validation log"
-        )
+        _log("langsmith package not installed, skipping label validation log")
         return None
 
     # Create the traceable function dynamically
@@ -119,19 +129,13 @@ def log_label_validation(
 
     try:
         result = _log_to_langsmith(log_data)
-        logger.info(
-            "Logged label validation: %s/%s/%s/%s - %s (%s, conf=%.2f)",
-            image_id,
-            receipt_id,
-            line_id,
-            word_id,
-            decision,
-            validation_source,
-            confidence,
+        _log(
+            f"Logged label validation: {image_id}/{receipt_id}/{line_id}/{word_id} "
+            f"- {decision} ({validation_source}, conf={confidence:.2f})"
         )
         return result
     except Exception as e:
-        logger.warning("Failed to log label validation to Langsmith: %s", e)
+        _log(f"Failed to log label validation to Langsmith: {e}")
         return None
 
 
@@ -167,19 +171,16 @@ def log_merchant_resolution(
         Dict with logged data if successful, None if Langsmith is not enabled
     """
     if not _is_langsmith_enabled():
-        logger.debug(
-            "Langsmith not enabled, skipping merchant resolution log for %s#%s",
-            image_id,
-            receipt_id,
+        _log(
+            f"Langsmith not enabled (no API key), skipping merchant log for "
+            f"{image_id}#{receipt_id}"
         )
         return None
 
     try:
         from langsmith.run_helpers import traceable
     except ImportError:
-        logger.warning(
-            "langsmith package not installed, skipping merchant resolution log"
-        )
+        _log("langsmith package not installed, skipping merchant resolution log")
         return None
 
     # Create the traceable function dynamically
@@ -206,17 +207,13 @@ def log_merchant_resolution(
 
     try:
         result = _log_to_langsmith(log_data)
-        logger.info(
-            "Logged merchant resolution: %s#%s - %s via %s (conf=%.2f)",
-            image_id,
-            receipt_id,
-            merchant_name or "NOT_FOUND",
-            resolution_tier,
-            confidence,
+        _log(
+            f"Logged merchant resolution: {image_id}#{receipt_id} "
+            f"- {merchant_name or 'NOT_FOUND'} via {resolution_tier} (conf={confidence:.2f})"
         )
         return result
     except Exception as e:
-        logger.warning("Failed to log merchant resolution to Langsmith: %s", e)
+        _log(f"Failed to log merchant resolution to Langsmith: {e}")
         return None
 
 
@@ -274,7 +271,7 @@ def log_validation_feedback(
         True if feedback was logged successfully, False otherwise
     """
     if not _is_langsmith_enabled():
-        logger.debug("Langsmith not enabled, skipping feedback log")
+        _log("Langsmith not enabled, skipping feedback log")
         return False
 
     try:
@@ -287,11 +284,11 @@ def log_validation_feedback(
             value=correct_label,
             comment=f"Annotated by {annotator}",
         )
-        logger.info("Logged feedback for run %s: correct_label=%s", run_id, correct_label)
+        _log(f"Logged feedback for run {run_id}: correct_label={correct_label}")
         return True
     except ImportError:
-        logger.warning("langsmith package not installed")
+        _log("langsmith package not installed")
         return False
     except Exception as e:
-        logger.warning("Failed to log feedback to Langsmith: %s", e)
+        _log(f"Failed to log feedback to Langsmith: {e}")
         return False
