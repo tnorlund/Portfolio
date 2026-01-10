@@ -24,8 +24,8 @@ import {
   ScanReceiptBoundingBox,
   TrainingMetricsAnimation,
   UploadDiagram,
-  ZDepthConstrained,
-  ZDepthUnconstrained,
+  ZDepthConstrainedParametric,
+  ZDepthUnconstrainedParametric,
 } from "../components/ui/Figures";
 import {
   ChromaLogo,
@@ -377,7 +377,7 @@ export default function ReceiptPage({
       </p>
 
       <ClientOnly>
-        <ZDepthConstrained />
+        <ZDepthConstrainedParametric />
       </ClientOnly>
 
       <p>
@@ -399,7 +399,7 @@ export default function ReceiptPage({
       </p>
 
       <ClientOnly>
-        <ZDepthUnconstrained />
+        <ZDepthUnconstrainedParametric />
       </ClientOnly>
 
       <p>
