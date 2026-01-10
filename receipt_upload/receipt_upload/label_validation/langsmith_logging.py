@@ -98,18 +98,10 @@ def log_label_validation(
         return None
 
     try:
-        from langsmith.run_helpers import traceable
+        from langsmith import Client
     except ImportError:
         _log("langsmith package not installed, skipping label validation log")
         return None
-
-    # Create the traceable function dynamically
-    @traceable(
-        project_name=_get_label_validation_project(),
-        name=f"label_validation_{validation_source}",
-    )
-    def _log_to_langsmith(data: Dict[str, Any]) -> Dict[str, Any]:
-        return data
 
     log_data = {
         "image_id": image_id,
@@ -128,12 +120,19 @@ def log_label_validation(
     }
 
     try:
-        result = _log_to_langsmith(log_data)
+        client = Client()
+        run = client.create_run(
+            name=f"label_validation_{validation_source}",
+            run_type="chain",
+            inputs=log_data,
+            outputs={"result": decision},
+            project_name=_get_label_validation_project(),
+        )
         _log(
             f"Logged label validation: {image_id}/{receipt_id}/{line_id}/{word_id} "
             f"- {decision} ({validation_source}, conf={confidence:.2f})"
         )
-        return result
+        return log_data
     except Exception as e:
         _log(f"Failed to log label validation to Langsmith: {e}")
         return None
@@ -178,18 +177,10 @@ def log_merchant_resolution(
         return None
 
     try:
-        from langsmith.run_helpers import traceable
+        from langsmith import Client
     except ImportError:
         _log("langsmith package not installed, skipping merchant resolution log")
         return None
-
-    # Create the traceable function dynamically
-    @traceable(
-        project_name=_get_merchant_resolution_project(),
-        name=f"merchant_resolution_{resolution_tier}",
-    )
-    def _log_to_langsmith(data: Dict[str, Any]) -> Dict[str, Any]:
-        return data
 
     log_data = {
         "image_id": image_id,
@@ -206,12 +197,19 @@ def log_merchant_resolution(
     }
 
     try:
-        result = _log_to_langsmith(log_data)
+        client = Client()
+        run = client.create_run(
+            name=f"merchant_resolution_{resolution_tier}",
+            run_type="chain",
+            inputs=log_data,
+            outputs={"found": place_id is not None, "merchant_name": merchant_name},
+            project_name=_get_merchant_resolution_project(),
+        )
         _log(
             f"Logged merchant resolution: {image_id}#{receipt_id} "
             f"- {merchant_name or 'NOT_FOUND'} via {resolution_tier} (conf={confidence:.2f})"
         )
-        return result
+        return log_data
     except Exception as e:
         _log(f"Failed to log merchant resolution to Langsmith: {e}")
         return None
