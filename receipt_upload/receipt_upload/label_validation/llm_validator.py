@@ -12,6 +12,7 @@ The LLM sees:
 
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
@@ -22,6 +23,24 @@ from receipt_agent.constants import CORE_LABELS
 from receipt_agent.utils.llm_factory import create_resilient_llm
 
 logger = logging.getLogger(__name__)
+
+# Enable Langsmith tracing if API key is set
+if os.environ.get("LANGCHAIN_API_KEY") and not os.environ.get("LANGCHAIN_TRACING_V2"):
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+
+
+def _get_traceable():
+    """Get the traceable decorator if langsmith is available."""
+    try:
+        from langsmith.run_helpers import traceable
+        return traceable
+    except ImportError:
+        # Return a no-op decorator if langsmith not installed
+        def noop_decorator(*args, **kwargs):
+            def wrapper(fn):
+                return fn
+            return wrapper
+        return noop_decorator
 
 
 @dataclass
@@ -360,6 +379,45 @@ class LLMBatchValidator:
         self._call_count = 0
         self._success_count = 0
 
+    def _call_llm_with_tracing(
+        self,
+        prompt: str,
+        pending_labels: List[Dict[str, Any]],
+        merchant_name: Optional[str] = None,
+    ) -> str:
+        """Call LLM with Langsmith tracing.
+
+        This method is traced to capture the full prompt and response
+        in Langsmith for debugging and improvement.
+        """
+        traceable = _get_traceable()
+
+        @traceable(
+            project_name="receipt-label-validation",
+            name="llm_batch_validation",
+        )
+        def _traced_llm_call(
+            prompt: str,
+            label_count: int,
+            merchant: Optional[str],
+        ) -> dict:
+            """Traced LLM call - captures prompt and response."""
+            response = self.llm.invoke([HumanMessage(content=prompt)])
+            response_text = response.content.strip()
+            return {
+                "prompt": prompt,
+                "response": response_text,
+                "label_count": label_count,
+                "merchant": merchant,
+            }
+
+        result = _traced_llm_call(
+            prompt=prompt,
+            label_count=len(pending_labels),
+            merchant=merchant_name,
+        )
+        return result["response"]
+
     def validate_receipt_labels(
         self,
         pending_labels: List[Dict[str, Any]],
@@ -401,9 +459,12 @@ class LLMBatchValidator:
         )
 
         try:
-            # Call LLM
-            response = self.llm.invoke([HumanMessage(content=prompt)])
-            response_text = response.content.strip()
+            # Call LLM with tracing
+            response_text = self._call_llm_with_tracing(
+                prompt=prompt,
+                pending_labels=pending_labels,
+                merchant_name=merchant_name,
+            )
 
             # Parse response
             results = parse_validation_response(response_text, pending_labels)
