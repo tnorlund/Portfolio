@@ -44,13 +44,16 @@ describe('api service', () => {
     expect(result).toBe(7);
   });
 
-  test('fetchReceiptCount uses dev url in development', async () => {
+  test('fetchReceiptCount uses proxy url in development', async () => {
     const originalEnv = process.env.NODE_ENV;
     (process.env as any).NODE_ENV = 'development';
+    // Re-import to pick up new NODE_ENV (module caches the value)
+    jest.resetModules();
+    const { api: devApi } = require('./index');
     fetchMock.mockResolvedValue({ ok: true, json: () => Promise.resolve(8) });
-    const result = await api.fetchReceiptCount();
+    const result = await devApi.fetchReceiptCount();
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://dev-api.tylernorlund.com/receipt_count',
+      '/api/receipt_count',
       expect.any(Object)
     );
     expect(result).toBe(8);
