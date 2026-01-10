@@ -16,6 +16,10 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Enable Langsmith tracing if API key is set but LANGCHAIN_TRACING_V2 is not
+if os.environ.get("LANGCHAIN_API_KEY") and not os.environ.get("LANGCHAIN_TRACING_V2"):
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+
 # Default Langsmith projects
 DEFAULT_LABEL_PROJECT = "receipt-label-validation"
 DEFAULT_MERCHANT_PROJECT = "receipt-merchant-resolution"
