@@ -69,16 +69,18 @@ const CENTER_COLUMN_HEIGHT = 500;
 const QUEUE_HEIGHT = 400;
 const COLUMN_GAP = 24; // 1.5rem at 16px root
 
-// Tally layout constants
+// Tally layout constants - must match CSS values
 const LEGEND_WIDTH = 280;
+const LEGEND_PADDING = 32; // 1rem * 2 (left + right) at 16px root
 const TALLY_PADDING_LEFT = 24;
 const TALLY_ICON_SIZE = 14;
 const TALLY_ICON_GAP = 2;
 const TALLY_MAX_ROWS = 3;
-const TALLY_ROW_HEIGHT = TALLY_ICON_SIZE + TALLY_ICON_GAP + 2; // icon + gap + padding
+const TALLY_ROW_HEIGHT = TALLY_ICON_SIZE + TALLY_ICON_GAP + 4; // icon + gap + row padding
 
 // Calculate how many icons fit in one row and max visible
-const TALLY_AVAILABLE_WIDTH = LEGEND_WIDTH - TALLY_PADDING_LEFT;
+// Account for legend padding: 280px - 32px padding - 24px tally padding-left = 224px
+const TALLY_AVAILABLE_WIDTH = LEGEND_WIDTH - LEGEND_PADDING - TALLY_PADDING_LEFT;
 const TALLY_ICONS_PER_ROW = Math.floor(TALLY_AVAILABLE_WIDTH / (TALLY_ICON_SIZE + TALLY_ICON_GAP));
 const TALLY_MAX_VISIBLE = TALLY_ICONS_PER_ROW * TALLY_MAX_ROWS;
 
