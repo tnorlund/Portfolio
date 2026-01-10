@@ -154,7 +154,6 @@ export function usePhysicsSimulation(
   svgHeight: number
 ): {
   simulateStep: (nodes: LabelNode[]) => boolean;
-  isSettled: (nodes: LabelNode[]) => boolean;
 } {
   const centerX = svgWidth / 2;
   const centerY = svgHeight / 2;
@@ -207,13 +206,5 @@ export function usePhysicsSimulation(
     [centerX, centerY, svgWidth, svgHeight]
   );
 
-  const isSettled = useCallback((nodes: LabelNode[]): boolean => {
-    let totalVelocity = 0;
-    for (const node of nodes) {
-      totalVelocity += Math.abs(node.vx) + Math.abs(node.vy);
-    }
-    return totalVelocity <= VELOCITY_THRESHOLD;
-  }, []);
-
-  return { simulateStep, isSettled };
+  return { simulateStep };
 }

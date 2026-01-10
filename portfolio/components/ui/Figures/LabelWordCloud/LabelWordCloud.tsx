@@ -62,6 +62,7 @@ const LabelWordCloud: React.FC<LabelWordCloudProps> = ({
   const [isSimulating, setIsSimulating] = useState(false);
   const animationFrameRef = useRef<number | null>(null);
   const nodesRef = useRef<LabelNode[]>([]);
+  const hasStartedRef = useRef(false);
 
   const { simulateStep } = usePhysicsSimulation(width, height);
 
@@ -104,12 +105,13 @@ const LabelWordCloud: React.FC<LabelWordCloudProps> = ({
     setNodes(initialNodes);
   }, [data, width, height]);
 
-  // Start simulation when component comes into view
+  // Start simulation once when component comes into view
   useEffect(() => {
-    if (inView && nodes.length > 0 && !isSimulating) {
+    if (inView && nodes.length > 0 && !hasStartedRef.current) {
+      hasStartedRef.current = true;
       setIsSimulating(true);
     }
-  }, [inView, nodes.length, isSimulating]);
+  }, [inView, nodes.length]);
 
   // Run physics simulation
   useEffect(() => {
