@@ -1,0 +1,38 @@
+.container {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.label {
+  font-weight: 500;
+  fill: var(--text-color);
+  text-anchor: middle;
+  dominant-baseline: middle;
+  user-select: none;
+}
+
+.loading,
+.error {
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-color);
+}
+
+.error {
+  color: var(--color-red);
+}
+
+@media (max-width: 600px) {
+  .container {
+    padding: 0 1rem;
+  }
+}
