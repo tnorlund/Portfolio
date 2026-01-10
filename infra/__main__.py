@@ -493,6 +493,13 @@ if enable_sagemaker:
     pulumi.export(
         "layoutlm_codebuild_project", sagemaker_training.codebuild_project.name
     )
+    # Export model location for Swift OCR CLI to download LayoutLM model
+    pulumi.export(
+        "layoutlm_model_s3_bucket", sagemaker_training.output_bucket.bucket
+    )
+    pulumi.export(
+        "layoutlm_model_s3_key", "coreml/layoutlm-coreml-bundle.zip"
+    )
 else:
     # Check if training bucket name is provided as config (for inference-only usage)
     training_bucket_config = ml_cfg.get("training-bucket-name")
