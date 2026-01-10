@@ -240,12 +240,21 @@ def export_coreml(
     # Sort label IDs for consistent ordering in JSON output
     sorted_ids = sorted(id2label.keys())
 
-    # Copy config.json
+    # Copy config.json, ensuring num_labels is present
     config_src = checkpoint_path / "config.json"
     config_dst = output_path / "config.json"
     if config_src.exists():
-        shutil.copy(config_src, config_dst)
-        print(f"Copied config.json to {config_dst}")
+        # Read existing config and ensure num_labels is present
+        with open(config_src, "r", encoding="utf-8") as f:
+            config_data = json.load(f)
+        # Add num_labels if missing (required by Swift LayoutLMConfig)
+        if "num_labels" not in config_data:
+            config_data["num_labels"] = num_labels
+            print(f"Added num_labels={num_labels} to config.json")
+        with open(config_dst, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, indent=2)
+            f.write("\n")  # Trailing newline
+        print(f"Saved config.json to {config_dst}")
     else:
         # Save config manually with sorted id2label
         with open(config_dst, "w", encoding="utf-8") as f:
@@ -260,6 +269,7 @@ def export_coreml(
                 f,
                 indent=2,
             )
+            f.write("\n")  # Trailing newline
         print(f"Saved config.json to {config_dst}")
 
     # Create label_map.json for easy label lookup
