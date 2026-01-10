@@ -227,10 +227,14 @@ def _process_single_record(
     receipt_id = ocr_result.get("receipt_id")
     is_swift_single_pass = ocr_result.get("swift_single_pass", False)
 
-    # Only create embeddings if we have a valid receipt_id
+    # For Swift single-pass with multiple receipts, process all of them
+    receipt_ids = ocr_result.get("receipt_ids", [receipt_id] if receipt_id else [])
+    per_receipt_data = ocr_result.get("per_receipt_data", {})
+
+    # Only create embeddings if we have valid receipt_id(s)
     # NATIVE: receipt_id=1
     # REFINEMENT: receipt_id from the job
-    # Swift single-pass: receipt_id from first receipt, any image_type
+    # Swift single-pass: all receipt_ids from the image
     # Legacy PHOTO/SCAN first pass: receipt_id=None (skip embeddings)
     should_create_embeddings = receipt_id is not None and (
         image_type in ["NATIVE", "REFINEMENT"] or is_swift_single_pass
@@ -239,14 +243,14 @@ def _process_single_record(
         try:
             _log(
                 "Initializing merchant-resolving embedding processor for %s "
-                "receipt (receipt_id=%s)",
+                "image with %s receipt(s)",
                 image_type,
-                receipt_id,
+                len(receipt_ids),
             )
 
             embedding_start = time.time()
 
-            # Initialize merchant-resolving embedding processor
+            # Initialize merchant-resolving embedding processor once
             # This processor generates embeddings, resolves merchant info, and
             # enriches the receipt in DynamoDB
             embedding_processor = MerchantResolvingEmbeddingProcessor(
@@ -259,39 +263,75 @@ def _process_single_record(
                 words_queue_url=os.environ.get("CHROMADB_WORDS_QUEUE_URL"),
             )
 
-            # Create embeddings with merchant resolution
-            # Pass receipt lines/words if available from OCR processor
-            _log(
-                "Creating embeddings with merchant resolution: lines=%s, "
-                "words=%s",
-                ocr_result.get("receipt_lines") is not None,
-                ocr_result.get("receipt_words") is not None,
-            )
-            receipt_id_value = cast(int, receipt_id)
-            embedding_result = embedding_processor.process_embeddings(
-                image_id=image_id,
-                receipt_id=receipt_id_value,
-                lines=ocr_result.get("receipt_lines"),
-                words=ocr_result.get("receipt_words"),
-            )
+            # Process each receipt for merchant resolution and embeddings
+            all_embedding_results = []
+            total_merchants_found = 0
+
+            for rid in receipt_ids:
+                # Get per-receipt lines/words if available, otherwise use combined
+                receipt_data = per_receipt_data.get(rid, {})
+                lines = receipt_data.get("lines") or ocr_result.get("receipt_lines")
+                words = receipt_data.get("words") or ocr_result.get("receipt_words")
+
+                _log(
+                    "Processing embeddings for receipt %s: lines=%s, words=%s",
+                    rid,
+                    lines is not None,
+                    words is not None,
+                )
+
+                try:
+                    embedding_result = embedding_processor.process_embeddings(
+                        image_id=image_id,
+                        receipt_id=rid,
+                        lines=lines,
+                        words=words,
+                    )
+
+                    merchant_found = embedding_result.get("merchant_found", False)
+                    if merchant_found:
+                        total_merchants_found += 1
+
+                    _log(
+                        "SUCCESS: Embeddings created for receipt %s: "
+                        "merchant_found=%s, merchant_name=%s",
+                        rid,
+                        merchant_found,
+                        embedding_result.get("merchant_name"),
+                    )
+
+                    all_embedding_results.append({
+                        "receipt_id": rid,
+                        "success": True,
+                        "merchant_found": merchant_found,
+                        "merchant_name": embedding_result.get("merchant_name"),
+                        "merchant_place_id": embedding_result.get("merchant_place_id"),
+                    })
+
+                except Exception as receipt_exc:
+                    _log(
+                        "ERROR: Embedding failed for receipt %s: %s",
+                        rid,
+                        receipt_exc,
+                    )
+                    all_embedding_results.append({
+                        "receipt_id": rid,
+                        "success": False,
+                        "error": str(receipt_exc),
+                    })
 
             embedding_duration = time.time() - embedding_start
 
-            merchant_found = embedding_result.get("merchant_found", False)
-            merchant_name = embedding_result.get("merchant_name")
-            merchant_tier = embedding_result.get("merchant_resolution_tier")
+            # Use first receipt's result for backward compatibility
+            first_result = all_embedding_results[0] if all_embedding_results else {}
 
             _log(
-                "SUCCESS: Embeddings created for %s receipt: image_id=%s, "
-                "receipt_id=%s, run_id=%s, merchant_found=%s, "
-                "merchant_name=%s, resolution_tier=%s",
+                "SUCCESS: Processed %s receipts for %s image: "
+                "merchants_found=%s, duration=%.2fs",
+                len(receipt_ids),
                 image_type,
-                image_id,
-                receipt_id,
-                embedding_result.get("run_id"),
-                merchant_found,
-                merchant_name,
-                merchant_tier,
+                total_merchants_found,
+                embedding_duration,
             )
 
             # Track metrics (aggregated, not per-call) - add to return dict
@@ -299,18 +339,17 @@ def _process_single_record(
                 "success": True,
                 "image_id": image_id,
                 "receipt_id": receipt_id,
+                "receipt_ids": receipt_ids,
+                "receipts_processed": len(receipt_ids),
                 "image_type": image_type,
-                "run_id": embedding_result.get("run_id"),
                 "embeddings_created": True,
                 "embedding_success": True,
                 "embedding_duration": embedding_duration,
-                "merchant_found": merchant_found,
-                "merchant_name": merchant_name,
-                "merchant_place_id": embedding_result.get("merchant_place_id"),
-                "merchant_resolution_tier": merchant_tier,
-                "merchant_confidence": embedding_result.get(
-                    "merchant_confidence"
-                ),
+                "merchant_found": first_result.get("merchant_found", False),
+                "merchant_name": first_result.get("merchant_name"),
+                "merchant_place_id": first_result.get("merchant_place_id"),
+                "merchants_found_count": total_merchants_found,
+                "all_embedding_results": all_embedding_results,
             }
 
         except Exception as exc:  # pylint: disable=broad-exception-caught
