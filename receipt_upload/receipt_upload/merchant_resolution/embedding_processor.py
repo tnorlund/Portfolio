@@ -7,6 +7,10 @@ This processor:
 2. Resolves merchant information using the MerchantResolver (two-tier strategy)
 3. Enriches the receipt in DynamoDB with merchant data
 4. Returns immediately while compaction happens asynchronously
+
+Tracing:
+- The process_embeddings method creates a parent trace per receipt
+- Child traces for merchant resolution and label validation nest under the parent
 """
 
 import logging
@@ -33,6 +37,24 @@ from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
+
+
+def _get_traceable():
+    """Get the traceable decorator if langsmith is available."""
+    try:
+        from langsmith.run_helpers import traceable
+
+        return traceable
+    except ImportError:
+
+        # Return a no-op decorator if langsmith not installed
+        def noop_decorator(*args, **kwargs):
+            def wrapper(fn):
+                return fn
+
+            return wrapper
+
+        return noop_decorator
 
 
 def _log(msg: str) -> None:
@@ -116,6 +138,10 @@ class MerchantResolvingEmbeddingProcessor:
         """
         Generate embeddings, resolve merchant, and enrich receipt.
 
+        This method creates a parent Langsmith trace for the entire receipt
+        processing pipeline. Child traces for merchant resolution and label
+        validation will nest under this parent.
+
         Args:
             image_id: Receipt's image_id
             receipt_id: Receipt's receipt_id
@@ -125,6 +151,46 @@ class MerchantResolvingEmbeddingProcessor:
         Returns:
             Dict with success status, merchant info, and compaction run details
         """
+        # Create traced wrapper for hierarchical tracing
+        traceable = _get_traceable()
+
+        @traceable(
+            name="receipt_processing",
+            project_name="receipt-label-validation",
+            tags=["upload_lambda"],
+            metadata={
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+            },
+        )
+        def _traced_process_embeddings(
+            image_id: str,
+            receipt_id: int,
+            lines: Optional[List[ReceiptLine]],
+            words: Optional[List[ReceiptWord]],
+        ) -> Dict[str, Any]:
+            return self._process_embeddings_impl(
+                image_id=image_id,
+                receipt_id=receipt_id,
+                lines=lines,
+                words=words,
+            )
+
+        return _traced_process_embeddings(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            lines=lines,
+            words=words,
+        )
+
+    def _process_embeddings_impl(
+        self,
+        image_id: str,
+        receipt_id: int,
+        lines: Optional[List[ReceiptLine]] = None,
+        words: Optional[List[ReceiptWord]] = None,
+    ) -> Dict[str, Any]:
+        """Implementation of process_embeddings (called within trace context)."""
         # Fetch lines/words if not provided
         if lines is None or words is None:
             lines = self.dynamo.list_receipt_lines_from_receipt(

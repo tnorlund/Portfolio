@@ -462,7 +462,8 @@ class UploadImages(ComponentResource):
                 # LangGraph validation with Ollama
                 "OLLAMA_API_KEY": ollama_api_key,
                 "LANGCHAIN_API_KEY": langchain_api_key,
-                "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing
+                "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
+                "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 # EFS configuration for ChromaDB read-only access
                 "CHROMA_ROOT": (
@@ -666,7 +667,9 @@ class UploadImages(ComponentResource):
                 # LangGraph validation with Ollama
                 "OLLAMA_API_KEY": ollama_api_key,
                 "LANGCHAIN_API_KEY": langchain_api_key,
-                "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing
+                "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
+                "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)
+                "OPENROUTER_API_KEY": openrouter_api_key,
                 # EFS configuration for ChromaDB (optional, can use S3 for non-time-sensitive)
                 "CHROMA_ROOT": (
                     "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma"
