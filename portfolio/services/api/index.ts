@@ -13,19 +13,13 @@ import {
   LabelEvaluatorResponse,
 } from "../../types/api";
 import { withPerformanceTrackingForAPI } from "../../utils/performance/api-wrapper";
+import { API_CONFIG } from "./config";
 
-// Helper function to get the API URL based on environment
-const getAPIUrl = () => {
-  const isDevelopment = process.env.NODE_ENV === "development";
-  return isDevelopment
-    ? "https://dev-api.tylernorlund.com"
-    : "https://api.tylernorlund.com";
-};
+// Use centralized API config for URL - handles dev proxy, test, and production
+const getAPIUrl = () => API_CONFIG.baseUrl;
 
 const fetchConfig = {
-  headers: {
-    "Content-Type": "application/json",
-  },
+  headers: API_CONFIG.headers,
 };
 
 // API calls that go directly to external APIs
