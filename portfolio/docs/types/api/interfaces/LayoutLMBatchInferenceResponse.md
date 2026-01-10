@@ -6,7 +6,7 @@
 
 # Interface: LayoutLMBatchInferenceResponse
 
-Defined in: [types/api.ts:355](https://github.com/tnorlund/Portfolio/blob/58bb4724bb8b2089fa5ca8ed2b27d61c8f03a33e/portfolio/types/api.ts#L355)
+Defined in: [types/api.ts:355](https://github.com/tnorlund/Portfolio/blob/b51ecf9396f0722adb2e91a7c9e9786122ceb412/portfolio/types/api.ts#L355)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:355](https://github.com/tnorlund/Portfolio/blob/58bb47
 
 > **aggregate\_stats**: [`LayoutLMAggregateStats`](LayoutLMAggregateStats.md)
 
-Defined in: [types/api.ts:357](https://github.com/tnorlund/Portfolio/blob/58bb4724bb8b2089fa5ca8ed2b27d61c8f03a33e/portfolio/types/api.ts#L357)
+Defined in: [types/api.ts:357](https://github.com/tnorlund/Portfolio/blob/b51ecf9396f0722adb2e91a7c9e9786122ceb412/portfolio/types/api.ts#L357)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:357](https://github.com/tnorlund/Portfolio/blob/58bb47
 
 > **fetched\_at**: `string`
 
-Defined in: [types/api.ts:358](https://github.com/tnorlund/Portfolio/blob/58bb4724bb8b2089fa5ca8ed2b27d61c8f03a33e/portfolio/types/api.ts#L358)
+Defined in: [types/api.ts:358](https://github.com/tnorlund/Portfolio/blob/b51ecf9396f0722adb2e91a7c9e9786122ceb412/portfolio/types/api.ts#L358)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:358](https://github.com/tnorlund/Portfolio/blob/58bb47
 
 > **receipts**: [`LayoutLMReceiptInference`](LayoutLMReceiptInference.md)[]
 
-Defined in: [types/api.ts:356](https://github.com/tnorlund/Portfolio/blob/58bb4724bb8b2089fa5ca8ed2b27d61c8f03a33e/portfolio/types/api.ts#L356)
+Defined in: [types/api.ts:356](https://github.com/tnorlund/Portfolio/blob/b51ecf9396f0722adb2e91a7c9e9786122ceb412/portfolio/types/api.ts#L356)
 
 ***
 
@@ -38,4 +38,4 @@ Defined in: [types/api.ts:356](https://github.com/tnorlund/Portfolio/blob/58bb47
 
 > `optional` **legacy\_mode**: `boolean`
 
-Defined in: [types/api.ts:359](https://github.com/tnorlund/Portfolio/blob/58bb4724bb8b2089fa5ca8ed2b27d61c8f03a33e/portfolio/types/api.ts#L359)
+Defined in: [types/api.ts:359](https://github.com/tnorlund/Portfolio/blob/b51ecf9396f0722adb2e91a7c9e9786122ceb412/portfolio/types/api.ts#L359)
