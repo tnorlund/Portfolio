@@ -144,6 +144,60 @@ public final class SotoDynamoClient: DynamoClientProtocol {
         _ = try await dynamo.putItem(req)
     }
 
+    public func addReceiptWordLabels(_ labels: [ReceiptWordLabel]) async throws {
+        guard !labels.isEmpty else { return }
+
+        // Process in chunks of 25 (DynamoDB batch write limit)
+        let chunkSize = 25
+        var remaining = labels[...]
+
+        while !remaining.isEmpty {
+            let chunk = remaining.prefix(chunkSize)
+            remaining = remaining.dropFirst(chunkSize)
+
+            let writeRequests = chunk.map { label -> DynamoDB.WriteRequest in
+                let dict = label.toDynamoItemDict()
+                let item = Self.convertToAttributeValues(dict)
+                return DynamoDB.WriteRequest(putRequest: .init(item: item))
+            }
+
+            let req = DynamoDB.BatchWriteItemInput(requestItems: [tableName: writeRequests])
+            let resp = try await dynamo.batchWriteItem(req)
+
+            // Handle unprocessed items by retrying
+            if let unprocessed = resp.unprocessedItems?[tableName], !unprocessed.isEmpty {
+                // Simple retry - in production would use exponential backoff
+                let retryReq = DynamoDB.BatchWriteItemInput(requestItems: [tableName: unprocessed])
+                _ = try await dynamo.batchWriteItem(retryReq)
+            }
+        }
+    }
+
+    /// Convert dictionary to DynamoDB.AttributeValue format
+    private static func convertToAttributeValues(_ dict: [String: Any]) -> [String: DynamoDB.AttributeValue] {
+        var result: [String: DynamoDB.AttributeValue] = [:]
+        for (key, value) in dict {
+            if let str = value as? String {
+                result[key] = .s(str)
+            } else if let num = value as? Float {
+                result[key] = .n(String(num))
+            } else if let num = value as? Int {
+                result[key] = .n(String(num))
+            } else if let num = value as? Double {
+                result[key] = .n(String(num))
+            } else if value is NSNull || (value as AnyObject) is NSNull {
+                result[key] = .null(true)
+            } else {
+                // For nil optionals cast as Any, they become NSNull
+                let mirror = Mirror(reflecting: value)
+                if mirror.displayStyle == .optional && mirror.children.isEmpty {
+                    result[key] = .null(true)
+                }
+            }
+        }
+        return result
+    }
+
     private static func decodeOCRJob(_ attrs: [String: DynamoDB.AttributeValue]) throws -> OCRJob {
         func getS(_ key: String) throws -> String {
             guard case .s(let v)? = attrs[key] else { throw DynamoMapError.missing(key) }
