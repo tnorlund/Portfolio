@@ -219,6 +219,13 @@ export function initializeAndSolve(
     if (!shouldContinue) break;
   }
 
+  // Development-mode warning if layout didn't converge
+  if (process.env.NODE_ENV === "development" && iterations >= MAX_ITERATIONS) {
+    console.warn(
+      `LabelWordCloud: Physics simulation reached max iterations (${MAX_ITERATIONS}) without convergence`
+    );
+  }
+
   // Zero out velocities in final state
   for (const node of endNodes) {
     node.vx = 0;

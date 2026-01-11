@@ -262,14 +262,7 @@ export default function LabelValidationTimeline() {
               className={styles.legendDot}
               style={{ backgroundColor: STATUS_COLORS[status] }}
             />
-            <span>
-              {status
-                .toLowerCase()
-                .replace(/_/g, " ")
-                .split(" ")
-                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(" ")}
-            </span>
+            <span>{formatLabel(status)}</span>
           </div>
         ))}
       </div>

@@ -14,7 +14,6 @@ import {
   ImageStack,
   LabelEvaluatorVisualization,
   LabelValidationTimeline,
-  LabelWordCloud,
   LayoutLMBatchVisualization,
   LockingSwimlane,
   MerchantCount,
@@ -520,8 +519,6 @@ export default function ReceiptPage({
       </p>
 
       <LabelValidationTimeline />
-
-      <LabelWordCloud />
 
       <p>
         This dataset is used to train a model to label the words faster and

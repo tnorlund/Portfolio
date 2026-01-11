@@ -43,6 +43,9 @@ const CORE_LABELS = [
 
 const CORE_LABELS_SET = new Set(CORE_LABELS);
 
+// Approximate character width as a ratio of font size for text width estimation
+const CHAR_WIDTH_RATIO = 0.55;
+
 /**
  * Format label name for display, split into lines for word cloud
  */
@@ -116,7 +119,7 @@ function getTextBounds(
 ): { x1: number; y1: number; x2: number; y2: number } {
   const endX = nodeX + Math.cos(angle) * length;
   const endY = nodeY + Math.sin(angle) * length;
-  const textWidth = text.length * fontSize * 0.55;
+  const textWidth = text.length * fontSize * CHAR_WIDTH_RATIO;
   const textHeight = fontSize * 1.4;
   const isRight = Math.cos(angle) > 0;
 
@@ -255,12 +258,20 @@ const LabelWordCloud: React.FC<LabelWordCloudProps> = ({
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setIsMobile(window.innerWidth < 768);
+      }, 150);
     };
-    checkMobile();
+    // Check immediately on mount (no debounce needed)
+    setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener("resize", checkMobile);
+    };
   }, []);
 
   // On mobile: use square-ish layout for better readability
