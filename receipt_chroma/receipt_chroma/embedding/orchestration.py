@@ -18,6 +18,7 @@ import shutil
 import tempfile
 import time
 import uuid
+from concurrent.futures import as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -60,6 +61,217 @@ logger = logging.getLogger(__name__)
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 
+def _get_traceable():
+    """Get the traceable decorator if langsmith is available."""
+    try:
+        from langsmith.run_helpers import traceable  # pylint: disable=import-outside-toplevel
+
+        return traceable
+    except ImportError:
+        # Return a no-op decorator if langsmith not installed
+        def noop_decorator(*args, **kwargs):
+            def wrapper(fn):
+                return fn
+
+            return wrapper
+
+        return noop_decorator
+
+
+def _get_context_thread_pool_executor():
+    """Get ContextThreadPoolExecutor if langsmith is available.
+
+    ContextThreadPoolExecutor automatically propagates context variables
+    (including Langsmith trace context) to child threads, enabling proper
+    trace nesting. Falls back to ThreadPoolExecutor if langsmith not installed.
+    """
+    try:
+        from langsmith.utils import ContextThreadPoolExecutor  # pylint: disable=import-outside-toplevel
+
+        return ContextThreadPoolExecutor
+    except ImportError:
+        from concurrent.futures import ThreadPoolExecutor  # pylint: disable=import-outside-toplevel
+
+        return ThreadPoolExecutor
+
+
+# ============================================================================
+# Langsmith-Traced Helper Functions for Parallel Execution
+# These use @traceable decorator and rely on ContextThreadPoolExecutor
+# to automatically propagate trace context to child threads.
+# ============================================================================
+
+
+def _download_lines_snapshot(
+    chromadb_bucket: str,
+    s3_client: "S3Client",
+) -> dict[str, Any]:
+    """Download lines ChromaDB snapshot from S3 (traced)."""
+    traceable = _get_traceable()
+
+    @traceable(
+        name="s3_download_lines_snapshot",
+        project_name="receipt-label-validation",
+    )
+    def _traced_download(bucket: str, client: "S3Client") -> dict[str, Any]:
+        local_path = tempfile.mkdtemp(prefix="lines_snapshot_")
+        result = download_snapshot_atomic(
+            bucket=bucket,
+            collection="lines",
+            local_path=local_path,
+            verify_integrity=False,
+            s3_client=client,
+        )
+        return {
+            "local_path": local_path,
+            "status": result.get("status"),
+            "version_id": result.get("version_id"),
+        }
+
+    return _traced_download(chromadb_bucket, s3_client)
+
+
+def _download_words_snapshot(
+    chromadb_bucket: str,
+    s3_client: "S3Client",
+) -> dict[str, Any]:
+    """Download words ChromaDB snapshot from S3 (traced)."""
+    traceable = _get_traceable()
+
+    @traceable(
+        name="s3_download_words_snapshot",
+        project_name="receipt-label-validation",
+    )
+    def _traced_download(bucket: str, client: "S3Client") -> dict[str, Any]:
+        local_path = tempfile.mkdtemp(prefix="words_snapshot_")
+        result = download_snapshot_atomic(
+            bucket=bucket,
+            collection="words",
+            local_path=local_path,
+            verify_integrity=False,
+            s3_client=client,
+        )
+        return {
+            "local_path": local_path,
+            "status": result.get("status"),
+            "version_id": result.get("version_id"),
+        }
+
+    return _traced_download(chromadb_bucket, s3_client)
+
+
+def _embed_lines(
+    openai_client: OpenAI,
+    receipt_lines: list[ReceiptLine],
+    model: str,
+) -> list[list[float]]:
+    """Generate embeddings for lines via OpenAI (traced)."""
+    traceable = _get_traceable()
+
+    @traceable(
+        name="openai_embed_lines",
+        project_name="receipt-label-validation",
+        metadata={"line_count": len(receipt_lines), "model": model},
+    )
+    def _traced_embed(
+        client: OpenAI, lines: list[ReceiptLine], embedding_model: str
+    ) -> list[list[float]]:
+        formatted_texts = [
+            format_line_context_embedding_input(ln, lines) for ln in lines
+        ]
+        return embed_texts(client=client, texts=formatted_texts, model=embedding_model)
+
+    return _traced_embed(openai_client, receipt_lines, model)
+
+
+def _embed_words(
+    openai_client: OpenAI,
+    receipt_words: list[ReceiptWord],
+    model: str,
+) -> list[list[float]]:
+    """Generate embeddings for words via OpenAI (traced)."""
+    traceable = _get_traceable()
+
+    @traceable(
+        name="openai_embed_words",
+        project_name="receipt-label-validation",
+        metadata={"word_count": len(receipt_words), "model": model},
+    )
+    def _traced_embed(
+        client: OpenAI, words: list[ReceiptWord], embedding_model: str
+    ) -> list[list[float]]:
+        formatted_texts = [
+            format_word_context_embedding_input(w, words, context_size=2)
+            for w in words
+        ]
+        return embed_texts(client=client, texts=formatted_texts, model=embedding_model)
+
+    return _traced_embed(openai_client, receipt_words, model)
+
+
+def _download_and_embed_parallel(
+    receipt_lines: list[ReceiptLine],
+    receipt_words: list[ReceiptWord],
+    chromadb_bucket: str,
+    s3_client: "S3Client",
+    openai_client: OpenAI,
+    model: str,
+) -> tuple[str, str, list[list[float]], list[list[float]]]:
+    """
+    Run all 4 I/O operations in parallel.
+
+    Uses ContextThreadPoolExecutor from langsmith.utils to automatically
+    propagate trace context to child threads, enabling proper trace nesting.
+
+    Returns:
+        Tuple of (lines_dir, words_dir, line_embeddings, word_embeddings)
+    """
+    thread_pool_class = _get_context_thread_pool_executor()
+
+    with thread_pool_class(max_workers=4) as executor:
+        futures = {
+            executor.submit(
+                _download_lines_snapshot,
+                chromadb_bucket,
+                s3_client,
+            ): "download_lines",
+            executor.submit(
+                _download_words_snapshot,
+                chromadb_bucket,
+                s3_client,
+            ): "download_words",
+            executor.submit(
+                _embed_lines,
+                openai_client,
+                receipt_lines,
+                model,
+            ): "embed_lines",
+            executor.submit(
+                _embed_words,
+                openai_client,
+                receipt_words,
+                model,
+            ): "embed_words",
+        }
+
+        results: dict[str, Any] = {}
+        for future in as_completed(futures):
+            task_name = futures[future]
+            try:
+                results[task_name] = future.result()
+                logger.info("Parallel task completed: %s", task_name)
+            except Exception as e:
+                logger.error("Parallel task failed: %s - %s", task_name, e)
+                raise
+
+    return (
+        results["download_lines"]["local_path"],
+        results["download_words"]["local_path"],
+        results["embed_lines"],
+        results["embed_words"],
+    )
+
+
 @dataclass
 class EmbeddingResult:
     """
@@ -82,8 +294,7 @@ class EmbeddingResult:
         embedding = result.line_embeddings.get(line_id)
 
         # Optionally wait for remote compaction
-        result.wait_for_compaction_to_finish(dynamo_client, max_wait_seconds=60
-        )
+        result.wait_for_compaction_to_finish(dynamo_client, max_wait_seconds=60)
 
         # Always close when done to release file locks
         result.close()
@@ -297,135 +508,6 @@ def _send_sqs_notification(
         logger.warning("Failed to send SQS notification: %s", e)
 
 
-def _download_snapshots(
-    chromadb_bucket: str,
-    s3_client: "S3Client",
-) -> tuple[str, str]:
-    """Download lines and words snapshots from S3.
-
-    Returns:
-        Tuple of (lines_dir, words_dir) paths to local directories.
-    """
-    local_lines_dir = tempfile.mkdtemp(prefix="lines_snapshot_")
-    local_words_dir = tempfile.mkdtemp(prefix="words_snapshot_")
-
-    lines_download = download_snapshot_atomic(
-        bucket=chromadb_bucket,
-        collection="lines",
-        local_path=local_lines_dir,
-        verify_integrity=False,
-        s3_client=s3_client,
-    )
-    logger.info(
-        "Downloaded lines snapshot: status=%s, version=%s",
-        lines_download.get("status"),
-        lines_download.get("version_id"),
-    )
-
-    words_download = download_snapshot_atomic(
-        bucket=chromadb_bucket,
-        collection="words",
-        local_path=local_words_dir,
-        verify_integrity=False,
-        s3_client=s3_client,
-    )
-    logger.info(
-        "Downloaded words snapshot: status=%s, version=%s",
-        words_download.get("status"),
-        words_download.get("version_id"),
-    )
-
-    return local_lines_dir, local_words_dir
-
-
-@dataclass
-class _EmbeddingPayloads:
-    """Internal container for embedding payloads and caches."""
-
-    line_payload: dict[str, Any]
-    word_payload: dict[str, Any]
-    line_embedding_cache: dict[int, list[float]]
-    word_embedding_cache: dict[tuple[int, int], list[float]]
-
-
-def _generate_embeddings(
-    openai_client: OpenAI,
-    receipt_lines: list[ReceiptLine],
-    receipt_words: list[ReceiptWord],
-    receipt_word_labels: list[ReceiptWordLabel],
-    merchant_name: str | None,
-) -> _EmbeddingPayloads:
-    """Generate embeddings for lines and words via OpenAI.
-
-    Returns:
-        _EmbeddingPayloads with payloads for ChromaDB and embedding caches.
-    """
-    model = os.environ.get("OPENAI_EMBEDDING_MODEL", EMBEDDING_MODEL)
-
-    # Format lines with context structure matching batch pipeline:
-    # <TARGET>line text</TARGET> <POS>N</POS> <CONTEXT>prev next</CONTEXT>
-    formatted_line_texts = [
-        format_line_context_embedding_input(ln, receipt_lines)
-        for ln in receipt_lines
-    ]
-    line_embeddings_list = embed_texts(
-        client=openai_client,
-        texts=formatted_line_texts,
-        model=model,
-    )
-    line_records = [
-        LineEmbeddingRecord(line=ln, embedding=emb)
-        for ln, emb in zip(receipt_lines, line_embeddings_list, strict=True)
-    ]
-    line_payload = build_line_payload(
-        line_records,
-        receipt_lines,
-        receipt_words,
-        merchant_name=merchant_name,
-    )
-
-    # Build line embedding cache for reuse in merchant resolution
-    line_embedding_cache: dict[int, list[float]] = {
-        ln.line_id: emb
-        for ln, emb in zip(receipt_lines, line_embeddings_list, strict=True)
-    }
-
-    # Format words with spatial context matching batch pipeline:
-    # "left2 left1 word right1 right2" with <EDGE> tags at boundaries
-    formatted_word_texts = [
-        format_word_context_embedding_input(w, receipt_words, context_size=2)
-        for w in receipt_words
-    ]
-    word_embeddings_list = embed_texts(
-        client=openai_client,
-        texts=formatted_word_texts,
-        model=model,
-    )
-    word_records = [
-        WordEmbeddingRecord(word=w, embedding=emb)
-        for w, emb in zip(receipt_words, word_embeddings_list, strict=True)
-    ]
-    word_payload = build_word_payload(
-        word_records,
-        receipt_words,
-        receipt_word_labels,
-        merchant_name=merchant_name,
-    )
-
-    # Build word embedding cache for reuse in label validation
-    word_embedding_cache: dict[tuple[int, int], list[float]] = {
-        (w.line_id, w.word_id): emb
-        for w, emb in zip(receipt_words, word_embeddings_list, strict=True)
-    }
-
-    return _EmbeddingPayloads(
-        line_payload=line_payload,
-        word_payload=word_payload,
-        line_embedding_cache=line_embedding_cache,
-        word_embedding_cache=word_embedding_cache,
-    )
-
-
 def _upload_deltas(
     line_payload: dict[str, Any],
     word_payload: dict[str, Any],
@@ -528,9 +610,9 @@ def create_embeddings_and_compaction_run(
     Create embeddings, upload deltas to S3, and return local clients.
 
     This is the main orchestration function for embedding creation. It:
-    1. Downloads current snapshots from S3 (or initializes empty if none exist)
-    2. Generates embeddings via OpenAI
-    3. Creates deltas and upserts them locally (snapshot + delta merged)
+    1. Downloads snapshots and generates embeddings in PARALLEL (4 concurrent ops)
+    2. Builds payloads and caches from embeddings
+    3. Upserts to local ChromaDB clients
     4. Uploads deltas to S3 (triggering async compaction via SQS)
     5. Creates and persists CompactionRun to DynamoDB
     6. Returns EmbeddingResult with local ChromaClients for immediate querying
@@ -564,23 +646,66 @@ def create_embeddings_and_compaction_run(
 
     run_id = str(uuid.uuid4())
     s3_client = config.s3_client or boto3.client("s3")
+    model = os.environ.get("OPENAI_EMBEDDING_MODEL", EMBEDDING_MODEL)
 
-    # Step 1: Download snapshots
-    local_lines_dir, local_words_dir = _download_snapshots(
-        config.chromadb_bucket, s3_client
+    # Step 1: Download snapshots + generate embeddings in PARALLEL
+    # This runs 4 I/O operations concurrently for significant speedup
+    logger.info(
+        "Starting parallel download + embedding (4 concurrent operations)"
+    )
+    local_lines_dir, local_words_dir, line_embeddings_list, word_embeddings_list = (
+        _download_and_embed_parallel(
+            receipt_lines=receipt_lines,
+            receipt_words=receipt_words,
+            chromadb_bucket=config.chromadb_bucket,
+            s3_client=s3_client,
+            openai_client=openai_client,
+            model=model,
+        )
+    )
+    logger.info(
+        "Parallel operations complete: lines_dir=%s, words_dir=%s",
+        local_lines_dir,
+        local_words_dir,
     )
 
     try:
-        # Step 2: Generate embeddings
-        payloads = _generate_embeddings(
-            openai_client,
+        # Step 2: Build payloads from embeddings
+        line_records = [
+            LineEmbeddingRecord(line=ln, embedding=emb)
+            for ln, emb in zip(receipt_lines, line_embeddings_list, strict=True)
+        ]
+        line_payload = build_line_payload(
+            line_records,
             receipt_lines,
             receipt_words,
-            config.receipt_word_labels or [],
-            merchant_name,
+            merchant_name=merchant_name,
         )
 
-        # Step 3: Create local clients and upsert
+        # Build line embedding cache for reuse in merchant resolution
+        line_embedding_cache: dict[int, list[float]] = {
+            ln.line_id: emb
+            for ln, emb in zip(receipt_lines, line_embeddings_list, strict=True)
+        }
+
+        word_records = [
+            WordEmbeddingRecord(word=w, embedding=emb)
+            for w, emb in zip(receipt_words, word_embeddings_list, strict=True)
+        ]
+        word_payload = build_word_payload(
+            word_records,
+            receipt_words,
+            config.receipt_word_labels or [],
+            merchant_name=merchant_name,
+        )
+
+        # Build word embedding cache for reuse in label validation
+        word_embedding_cache: dict[tuple[int, int], list[float]] = {
+            (w.line_id, w.word_id): emb
+            for w, emb in zip(receipt_words, word_embeddings_list, strict=True)
+        }
+
+        # Step 3: Create local ChromaClients on downloaded snapshots and upsert
         lines_client = ChromaClient(
             persist_directory=local_lines_dir,
             mode="write",
@@ -592,23 +717,19 @@ def create_embeddings_and_compaction_run(
             metadata_only=True,
         )
 
-        lines_client.upsert_vectors(
-            collection_name="lines", **payloads.line_payload
-        )
-        words_client.upsert_vectors(
-            collection_name="words", **payloads.word_payload
-        )
+        lines_client.upsert_vectors(collection_name="lines", **line_payload)
+        words_client.upsert_vectors(collection_name="words", **word_payload)
 
         logger.info(
             "Upserted embeddings locally: lines=%d, words=%d",
-            len(payloads.line_payload["ids"]),
-            len(payloads.word_payload["ids"]),
+            len(line_payload["ids"]),
+            len(word_payload["ids"]),
         )
 
         # Step 4: Upload deltas to S3
         lines_prefix, words_prefix = _upload_deltas(
-            payloads.line_payload,
-            payloads.word_payload,
+            line_payload,
+            word_payload,
             run_id,
             chromadb_bucket=config.chromadb_bucket,
             s3_client=s3_client,
@@ -636,8 +757,8 @@ def create_embeddings_and_compaction_run(
             lines_client=lines_client,
             words_client=words_client,
             compaction_run=compaction_run,
-            line_embeddings=payloads.line_embedding_cache,
-            word_embeddings=payloads.word_embedding_cache,
+            line_embeddings=line_embedding_cache,
+            word_embeddings=word_embedding_cache,
             _lines_dir=local_lines_dir,
             _words_dir=local_words_dir,
         )
