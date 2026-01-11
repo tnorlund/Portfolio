@@ -15,6 +15,7 @@ Tracing:
 
 import logging
 import os
+from concurrent.futures import as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
@@ -55,6 +56,24 @@ def _get_traceable():
             return wrapper
 
         return noop_decorator
+
+
+def _get_context_thread_pool_executor():
+    """Get ContextThreadPoolExecutor if langsmith is available, else ThreadPoolExecutor.
+
+    ContextThreadPoolExecutor automatically propagates context variables (including
+    Langsmith trace context) to child threads, enabling proper trace nesting.
+
+    See: https://docs.smith.langchain.com/reference/python/utils/langsmith.utils.ContextThreadPoolExecutor
+    """
+    try:
+        from langsmith.utils import ContextThreadPoolExecutor
+
+        return ContextThreadPoolExecutor
+    except ImportError:
+        from concurrent.futures import ThreadPoolExecutor
+
+        return ThreadPoolExecutor
 
 
 def _log(msg: str) -> None:
@@ -258,20 +277,70 @@ class MerchantResolvingEmbeddingProcessor:
             }
 
         merchant_result = MerchantResult()
+        validation_stats: Dict[str, Any] = {}
 
         try:
-            # Step 2: Resolve merchant using cached embeddings
-            _log("Resolving merchant using cached embeddings")
-            merchant_result = self.merchant_resolver.resolve(
-                lines_client=result.lines_client,
-                lines=lines,
-                words=words,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                line_embeddings=result.line_embeddings,  # Use cached embeddings
-            )
+            # Step 2: Run merchant resolution AND label validation in PARALLEL
+            # These are independent operations that can run concurrently
+            _log("Starting Phase 2: parallel merchant resolution + label validation")
 
-            # Log merchant resolution to Langsmith (all attempts)
+            # Use ContextThreadPoolExecutor to automatically propagate trace context
+            # This ensures child threads inherit the parent trace
+            ThreadPoolExecutorClass = _get_context_thread_pool_executor()
+
+            def _resolve_merchant() -> MerchantResult:
+                """Run merchant resolution (traced internally)."""
+                return self.merchant_resolver.resolve(
+                    lines_client=result.lines_client,
+                    lines=lines,
+                    words=words,
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    line_embeddings=result.line_embeddings,
+                )
+
+            def _validate_labels() -> Dict[str, Any]:
+                """Run label validation (traced internally)."""
+                # merchant_name is None here since validation doesn't depend on it
+                return self._validate_pending_labels(
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    word_labels=word_labels,
+                    words=words,
+                    words_client=result.words_client,
+                    merchant_name=None,  # Not needed for validation
+                    word_embeddings=result.word_embeddings,
+                )
+
+            with ThreadPoolExecutorClass(max_workers=2) as executor:
+                # ContextThreadPoolExecutor automatically propagates trace context
+                merchant_future = executor.submit(_resolve_merchant)
+                validation_future = executor.submit(_validate_labels)
+
+                # Wait for both to complete
+                for future in as_completed([merchant_future, validation_future]):
+                    try:
+                        future.result()  # Raise any exceptions
+                    except Exception as e:
+                        _log(f"WARNING: Parallel task failed: {e}")
+                        logger.exception("Parallel task failed")
+
+                # Get results (may raise if failed)
+                try:
+                    merchant_result = merchant_future.result()
+                except Exception as e:
+                    _log(f"WARNING: Merchant resolution failed: {e}")
+                    merchant_result = MerchantResult()
+
+                try:
+                    validation_stats = validation_future.result()
+                except Exception as e:
+                    _log(f"WARNING: Label validation failed: {e}")
+                    validation_stats = {}
+
+            _log("Phase 2 complete: merchant + validation finished")
+
+            # Step 3: Log merchant resolution to Langsmith (after parallel phase)
             similarity_matches_data = None
             if merchant_result.similarity_matches:
                 similarity_matches_data = [
@@ -303,14 +372,13 @@ class MerchantResolvingEmbeddingProcessor:
                 ),
             )
 
-            # Step 3: Enrich receipt in DynamoDB if merchant found
+            # Step 4: Enrich receipt in DynamoDB if merchant found
             if merchant_result.place_id:
                 _log(
                     f"Enriching receipt with merchant: {merchant_result.merchant_name} "
                     f"(place_id={merchant_result.place_id}, "
                     f"tier={merchant_result.resolution_tier})"
                 )
-                # Write to receipt_place
                 self._enrich_receipt_place(
                     image_id=image_id,
                     receipt_id=receipt_id,
@@ -320,23 +388,9 @@ class MerchantResolvingEmbeddingProcessor:
             else:
                 _log("No merchant found - receipt will not be enriched")
 
-            # Step 4: Validate pending labels using cached embeddings
-            validation_stats = self._validate_pending_labels(
-                image_id=image_id,
-                receipt_id=receipt_id,
-                word_labels=word_labels,
-                words=words,
-                words_client=result.words_client,
-                merchant_name=merchant_result.merchant_name,
-                word_embeddings=result.word_embeddings,  # Use cached embeddings
-            )
-
         except Exception as e:
-            _log(f"WARNING: Merchant resolution failed: {e}")
-            logger.exception("Merchant resolution failed")
-            # Don't fail the whole operation if merchant resolution fails
-            # The embeddings are already created and compaction is queued
-            validation_stats = {}
+            _log(f"WARNING: Phase 2 failed: {e}")
+            logger.exception("Phase 2 failed")
 
         finally:
             # Always close the clients to release file locks
