@@ -2,8 +2,9 @@
 Merchant resolution module for receipt processing.
 
 This module provides two-tier merchant resolution:
-1. Tier 1 (Fast): Query ChromaDB lines collection by normalized_phone_10 or
-   normalized_full_address metadata fields
+1. Tier 1 (ChromaDB Similarity): Query ChromaDB lines collection by embedding
+   similarity, then compare normalized metadata (phone, address) to boost
+   confidence. Handles OCR errors like "Westlake" vs "Mestlake".
 2. Tier 2 (Fallback): Use Place ID Finder agent to search Google Places API
 
 Usage:
@@ -11,6 +12,7 @@ Usage:
         MerchantResolver,
         MerchantResolvingEmbeddingProcessor,
         MerchantResult,
+        SimilarityMatch,
     )
 
     # Use the resolver directly
@@ -31,10 +33,12 @@ from receipt_upload.merchant_resolution.embedding_processor import (
 from receipt_upload.merchant_resolution.resolver import (
     MerchantResolver,
     MerchantResult,
+    SimilarityMatch,
 )
 
 __all__ = [
     "MerchantResolver",
     "MerchantResolvingEmbeddingProcessor",
     "MerchantResult",
+    "SimilarityMatch",
 ]

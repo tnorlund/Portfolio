@@ -162,6 +162,11 @@ public struct ReceiptWordLabel: Equatable {
                 // Strip B-/I- prefix
                 let strippedLabel = stripBIOPrefix(rawLabel)
 
+                // Skip "O" labels (Other/None) - they don't provide meaningful labeling
+                if strippedLabel == "O" {
+                    continue
+                }
+
                 let label = ReceiptWordLabel(
                     imageId: imageId,
                     receiptId: receiptId,

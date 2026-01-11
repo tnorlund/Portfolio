@@ -14,6 +14,7 @@ import sys
 import time
 from typing import Any, Dict, cast
 
+from receipt_upload.label_validation.langsmith_logging import flush_traces
 from receipt_upload.merchant_resolution import (
     MerchantResolvingEmbeddingProcessor,
 )
@@ -161,6 +162,10 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 continue
             serialized[key] = value
         serializable_results.append(serialized)
+
+    # Flush Langsmith traces before Lambda terminates
+    # This ensures all validation/merchant resolution decisions are logged
+    flush_traces()
 
     return {
         "statusCode": 200,
