@@ -450,8 +450,8 @@ class UploadImages(ComponentResource):
         process_ocr_lambda_config = {
             "role_arn": process_ocr_role.arn,
             "timeout": 600,  # 10 minutes (longer for merchant validation + embedding)
-            "memory_size": 2048,  # More memory for ChromaDB operations
-            "ephemeral_storage": 2048,  # 2GB for ChromaDB snapshot downloads
+            "memory_size": 3072,  # 3GB - optimal for ~2.2GB actual usage
+            "ephemeral_storage": 4096,  # 4GB for ChromaDB snapshot downloads (words=3.1GB)
             "environment": {
                 "DYNAMO_TABLE_NAME": dynamodb_table.name,
                 "S3_BUCKET": image_bucket.bucket,
