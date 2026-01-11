@@ -62,9 +62,16 @@ const getLabelCategory = (label: string): keyof typeof LABEL_CATEGORIES | null =
   return null;
 };
 
-// Format label name for display (e.g., "ADDRESS_LINE" -> "address line")
+// Format label name for display (e.g., "LOYALTY_ID" -> "Loyalty ID")
 const formatLabelName = (label: string): string => {
-  return label.toLowerCase().replace(/_/g, " ");
+  return label
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .split(" ")
+    .map((word) =>
+      word === "id" ? "ID" : word.charAt(0).toUpperCase() + word.slice(1)
+    )
+    .join(" ");
 };
 
 // CORE_LABELS descriptions from receipt_label/constants.py

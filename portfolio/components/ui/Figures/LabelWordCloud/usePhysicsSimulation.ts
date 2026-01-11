@@ -1,4 +1,3 @@
-import { useRef, useCallback } from "react";
 import type { LabelNode } from "./types";
 
 // Physics constants
@@ -6,10 +5,22 @@ const ATTRACTION_STRENGTH = 0.02;
 const REPULSION_STRENGTH = 1.5;
 const DAMPING = 0.85;
 const VELOCITY_THRESHOLD = 0.1;
-const PADDING = 8;
+const PADDING = 12;
+const MAX_ITERATIONS = 500;
+
+// Radius and font sizing (exported for use in component)
+export const MIN_RADIUS = 15;
+export const MAX_RADIUS = 80;
+export const MIN_FONT_INSIDE = 16;  // Minimum font to fit inside circle (matches body font-size)
+export const MAX_FONT_INSIDE = 48;  // Maximum font for aesthetics
+export const EXTERNAL_FONT_SIZE = 16; // External floating labels (matches body font-size)
+export const REFERENCE_FONT_SIZE = 20; // Font size used for measurement
+
+// Padding ratio for fit check: 1.0 = text can fill entire inscribed rectangle
+export const TEXT_PADDING_RATIO = 0.80;
 
 /**
- * Seeded pseudo-random number generator for reproducible initial positions.
+ * Seeded pseudo-random number generator for reproducible positions.
  */
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -20,17 +31,13 @@ function seededRandom(seed: number): () => number {
 }
 
 /**
- * Calculate distance-based repulsion force between two nodes.
+ * Apply repulsion force between two nodes.
  */
 function applyRepulsion(a: LabelNode, b: LabelNode): void {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-  // Minimum distance based on combined dimensions
-  const minDistX = (a.width + b.width) / 2 + PADDING;
-  const minDistY = (a.height + b.height) / 2 + PADDING;
-  const minDist = Math.sqrt(minDistX * minDistX + minDistY * minDistY) * 0.6;
+  const minDist = a.radius + b.radius + PADDING;
 
   if (dist < minDist) {
     const force = ((minDist - dist) / dist) * REPULSION_STRENGTH;
@@ -45,64 +52,117 @@ function applyRepulsion(a: LabelNode, b: LabelNode): void {
 }
 
 /**
- * Keep node within bounds with soft boundary force.
+ * Apply boundary force to keep node within bounds.
+ * Also hard-clamp positions to prevent overflow.
  */
 function applyBoundaryForce(
   node: LabelNode,
   width: number,
   height: number
 ): void {
-  const margin = 20;
-  const halfW = node.width / 2;
-  const halfH = node.height / 2;
+  const margin = 40;  // Larger margin for leader lines
+  const r = node.radius;
 
-  // Left boundary
-  if (node.x - halfW < margin) {
-    node.vx += (margin - (node.x - halfW)) * 0.1;
+  // Soft boundary forces
+  if (node.x - r < margin) {
+    node.vx += (margin - (node.x - r)) * 0.2;
   }
-  // Right boundary
-  if (node.x + halfW > width - margin) {
-    node.vx -= (node.x + halfW - (width - margin)) * 0.1;
+  if (node.x + r > width - margin) {
+    node.vx -= (node.x + r - (width - margin)) * 0.2;
   }
-  // Top boundary
-  if (node.y - halfH < margin) {
-    node.vy += (margin - (node.y - halfH)) * 0.1;
+  if (node.y - r < margin) {
+    node.vy += (margin - (node.y - r)) * 0.2;
   }
-  // Bottom boundary
-  if (node.y + halfH > height - margin) {
-    node.vy -= (node.y + halfH - (height - margin)) * 0.1;
+  if (node.y + r > height - margin) {
+    node.vy -= (node.y + r - (height - margin)) * 0.2;
   }
+
+  // Hard clamp to prevent overflow - leave room for leader lines and text
+  const minMargin = 80; // Space for leader line + text
+  node.x = Math.max(r + minMargin, Math.min(width - r - minMargin, node.x));
+  node.y = Math.max(r + minMargin, Math.min(height - r - minMargin, node.y));
 }
 
 /**
- * Initialize nodes with random positions scattered from the center.
+ * Run one step of the physics simulation.
+ * Returns true if simulation should continue.
  */
-export function initializeNodes(
-  labels: Array<{ label: string; displayName: string; validCount: number }>,
+function simulateStep(
+  nodes: LabelNode[],
+  centerX: number,
+  centerY: number,
   width: number,
   height: number,
-  minFontSize: number,
-  maxFontSize: number,
+  externalLabels?: Set<string>
+): boolean {
+  // Apply forces
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+
+    // Attraction to center (or repulsion for external labels)
+    const dx = centerX - node.x;
+    const dy = centerY - node.y;
+
+    // External labels get a gentle outward nudge instead of inward pull
+    const isExternal = externalLabels?.has(node.label);
+    const multiplier = isExternal ? -0.3 : 1;
+
+    node.vx += dx * ATTRACTION_STRENGTH * multiplier;
+    node.vy += dy * ATTRACTION_STRENGTH * multiplier;
+
+    // Repulsion from other nodes
+    for (let j = i + 1; j < nodes.length; j++) {
+      applyRepulsion(node, nodes[j]);
+    }
+
+    // Boundary forces
+    applyBoundaryForce(node, width, height);
+  }
+
+  // Update positions with damping
+  let totalVelocity = 0;
+  for (const node of nodes) {
+    node.vx *= DAMPING;
+    node.vy *= DAMPING;
+    node.x += node.vx;
+    node.y += node.vy;
+    totalVelocity += Math.abs(node.vx) + Math.abs(node.vy);
+  }
+
+  return totalVelocity > VELOCITY_THRESHOLD;
+}
+
+/**
+ * Initialize nodes with start positions and calculate final settled positions.
+ * Runs physics simulation synchronously to completion.
+ */
+export function initializeAndSolve(
+  labels: Array<{ label: string; displayLines: string[]; validCount: number }>,
+  width: number,
+  height: number,
   seed: number = 42
-): LabelNode[] {
+): { startNodes: LabelNode[]; endNodes: LabelNode[] } {
   const random = seededRandom(seed);
   const centerX = width / 2;
   const centerY = height / 2;
 
-  // Find min/max counts for font size scaling
+  // Find min/max counts for radius scaling
   const counts = labels.map((l) => l.validCount);
   const minCount = Math.min(...counts);
   const maxCount = Math.max(...counts);
   const countRange = maxCount - minCount || 1;
 
-  return labels.map((item) => {
-    // Calculate font size based on relative count
+  // Create nodes with start positions (scattered from edges)
+  const startNodes: LabelNode[] = labels.map((item) => {
+    // Calculate radius based on relative count (area proportional)
     const normalizedCount = (item.validCount - minCount) / countRange;
-    const fontSize = minFontSize + normalizedCount * (maxFontSize - minFontSize);
+    const radius = MIN_RADIUS + Math.sqrt(normalizedCount) * (MAX_RADIUS - MIN_RADIUS);
 
-    // Estimate text dimensions
-    const textWidth = item.displayName.length * fontSize * 0.55;
-    const textHeight = fontSize * 1.2;
+    // Use reference font size for measurement - actual size calculated after measuring
+    const fontSize = REFERENCE_FONT_SIZE;
+
+    // textFitsInside will be determined by measurement in the component
+    const textFitsInside: boolean | null = null;
 
     // Start from random positions around edges
     const edge = Math.floor(random() * 4);
@@ -127,84 +187,90 @@ export function initializeNodes(
         break;
     }
 
-    // Initial velocity toward center
-    const towardCenterX = (centerX - x) * 0.05;
-    const towardCenterY = (centerY - y) * 0.05;
-
     return {
       label: item.label,
-      displayName: item.displayName,
+      displayLines: item.displayLines,
       validCount: item.validCount,
-      fontSize,
-      width: textWidth,
-      height: textHeight,
+      radius,
+      fontSize: textFitsInside ? fontSize : EXTERNAL_FONT_SIZE,
+      textFitsInside,
       x,
       y,
-      vx: towardCenterX + (random() - 0.5) * 2,
-      vy: towardCenterY + (random() - 0.5) * 2,
+      vx: 0,
+      vy: 0,
     };
   });
+
+  // Create a copy for physics simulation
+  const endNodes: LabelNode[] = startNodes.map((n) => ({
+    ...n,
+    // Start simulation from center area with small random offset
+    x: centerX + (random() - 0.5) * 100,
+    y: centerY + (random() - 0.5) * 100,
+    vx: 0,
+    vy: 0,
+  }));
+
+  // Run physics to completion synchronously
+  let iterations = 0;
+  while (iterations < MAX_ITERATIONS) {
+    const shouldContinue = simulateStep(endNodes, centerX, centerY, width, height);
+    iterations++;
+    if (!shouldContinue) break;
+  }
+
+  // Zero out velocities in final state
+  for (const node of endNodes) {
+    node.vx = 0;
+    node.vy = 0;
+  }
+
+  return { startNodes, endNodes };
 }
 
 /**
- * Custom hook for running physics simulation on label nodes.
+ * Re-run physics simulation to push external-label circles to the edges.
+ * This is called after text measurement determines which labels are external.
  */
-export function usePhysicsSimulation(
-  svgWidth: number,
-  svgHeight: number
-): {
-  simulateStep: (nodes: LabelNode[]) => boolean;
-} {
-  const centerX = svgWidth / 2;
-  const centerY = svgHeight / 2;
-  const frameCountRef = useRef(0);
+export function optimizeForExternalLabels(
+  nodes: LabelNode[],
+  externalLabels: Set<string>,
+  width: number,
+  height: number
+): LabelNode[] {
+  if (externalLabels.size === 0) return nodes;
 
-  const simulateStep = useCallback(
-    (nodes: LabelNode[]): boolean => {
-      frameCountRef.current++;
+  const centerX = width / 2;
+  const centerY = height / 2;
 
-      // Apply forces to all nodes
-      for (let i = 0; i < nodes.length; i++) {
-        const node = nodes[i];
+  // Create a working copy with reset velocities
+  const optimizedNodes: LabelNode[] = nodes.map((n) => ({
+    ...n,
+    vx: 0,
+    vy: 0,
+  }));
 
-        // Attraction to center
-        const dx = centerX - node.x;
-        const dy = centerY - node.y;
-        node.vx += dx * ATTRACTION_STRENGTH;
-        node.vy += dy * ATTRACTION_STRENGTH;
+  // Run physics with external labels being pushed outward
+  let iterations = 0;
+  const maxIterations = 150; // Gentle adjustment, not aggressive push
+  while (iterations < maxIterations) {
+    const shouldContinue = simulateStep(
+      optimizedNodes,
+      centerX,
+      centerY,
+      width,
+      height,
+      externalLabels
+    );
+    iterations++;
+    if (!shouldContinue) break;
+  }
 
-        // Repulsion from other nodes
-        for (let j = i + 1; j < nodes.length; j++) {
-          applyRepulsion(node, nodes[j]);
-        }
+  // Zero out velocities
+  for (const node of optimizedNodes) {
+    node.vx = 0;
+    node.vy = 0;
+  }
 
-        // Boundary forces
-        applyBoundaryForce(node, svgWidth, svgHeight);
-      }
-
-      // Update positions with damping
-      let totalVelocity = 0;
-      for (const node of nodes) {
-        node.vx *= DAMPING;
-        node.vy *= DAMPING;
-        node.x += node.vx;
-        node.y += node.vy;
-
-        totalVelocity += Math.abs(node.vx) + Math.abs(node.vy);
-      }
-
-      // Return true if simulation should continue
-      const shouldContinue =
-        totalVelocity > VELOCITY_THRESHOLD && frameCountRef.current < 500;
-
-      if (!shouldContinue) {
-        frameCountRef.current = 0;
-      }
-
-      return shouldContinue;
-    },
-    [centerX, centerY, svgWidth, svgHeight]
-  );
-
-  return { simulateStep };
+  return optimizedNodes;
 }

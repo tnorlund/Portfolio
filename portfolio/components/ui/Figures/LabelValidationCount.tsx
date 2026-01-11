@@ -13,6 +13,20 @@ const STATUS_COLORS: Record<string, string> = {
   NONE: "var(--text-color)",
 };
 
+/**
+ * Format label/status for display: Title Case with "ID" special case
+ */
+function formatLabel(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .split(" ")
+    .map((word) =>
+      word === "id" ? "ID" : word.charAt(0).toUpperCase() + word.slice(1)
+    )
+    .join(" ");
+}
+
 export default function LabelValidationChart() {
   const [counts, setCounts] = useState<LabelValidationCountResponse | null>(
     null
@@ -75,7 +89,7 @@ export default function LabelValidationChart() {
           return (
             <Fragment key={label}>
               <div style={{ fontWeight: 500, textAlign: "right" }}>
-                {label.toLowerCase().replace(/_/g, " ")}
+                {formatLabel(label)}
               </div>
               <div
                 style={{
@@ -136,14 +150,7 @@ export default function LabelValidationChart() {
                 borderRadius: "2px",
               }}
             />
-            <span>
-              {status
-                .toLowerCase()
-                .replace(/_/g, " ")
-                .split(" ")
-                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(" ")}
-            </span>
+            <span>{formatLabel(status)}</span>
           </div>
         ))}
       </div>

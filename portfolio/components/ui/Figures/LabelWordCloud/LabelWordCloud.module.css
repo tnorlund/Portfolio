@@ -2,20 +2,39 @@
   width: 100%;
   max-width: 800px;
   margin: 0 auto;
+  overflow: hidden;
 }
 
 .svg {
   width: 100%;
   height: auto;
   display: block;
+  overflow: hidden;
 }
 
-.label {
-  font-weight: 500;
+.labelCircle {
   fill: var(--text-color);
-  text-anchor: middle;
-  dominant-baseline: middle;
+}
+
+.labelText {
+  font-weight: 500;
+  fill: var(--background-color);
   user-select: none;
+}
+
+.leaderLine {
+  stroke: var(--text-color);
+  stroke-width: 1.5;
+}
+
+.externalText {
+  font-weight: 600;
+  fill: var(--text-color);
+  user-select: none;
+  /* Add halo/stroke for legibility when overlapping circles */
+  stroke: var(--background-color);
+  stroke-width: 4px;
+  paint-order: stroke fill;
 }
 
 .loading,
@@ -31,8 +50,12 @@
   color: var(--color-red);
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
   .container {
-    padding: 0 1rem;
+    padding: 0 0.5rem;
+  }
+
+  .svg {
+    min-height: 350px;
   }
 }
