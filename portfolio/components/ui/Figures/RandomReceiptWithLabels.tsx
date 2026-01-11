@@ -5,6 +5,7 @@ import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import { api } from "../../../services/api";
 import styles from "../../../styles/RandomReceiptWithLabels.module.css";
 import { RandomReceiptDetailsResponse, ReceiptWord, ReceiptWordLabel } from "../../../types/api";
+import { formatLabel } from "../../../utils/formatLabel";
 import { detectImageFormatSupport, FormatSupport, getBestImageUrl } from "../../../utils/imageFormat";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -62,17 +63,6 @@ const getLabelCategory = (label: string): keyof typeof LABEL_CATEGORIES | null =
   return null;
 };
 
-// Format label name for display (e.g., "LOYALTY_ID" -> "Loyalty ID")
-const formatLabelName = (label: string): string => {
-  return label
-    .toLowerCase()
-    .replace(/_/g, " ")
-    .split(" ")
-    .map((word) =>
-      word === "id" ? "ID" : word.charAt(0).toUpperCase() + word.slice(1)
-    )
-    .join(" ");
-};
 
 // CORE_LABELS descriptions from receipt_label/constants.py
 const LABEL_DESCRIPTIONS: Record<string, string> = {
@@ -443,7 +433,7 @@ const RandomReceiptWithLabels: React.FC = () => {
                             <ul className={styles.labelList}>
                               {labelsInCategory.map((label) => (
                                 <li key={`${receiptId}-${label}`}>
-                                  {formatLabelName(label)}
+                                  {formatLabel(label)}
                                 </li>
                               ))}
                             </ul>
@@ -578,7 +568,7 @@ const RandomReceiptWithLabels: React.FC = () => {
                             <ul className={styles.labelList}>
                               {labelsInCategory.map((label) => (
                                 <li key={`${receiptId}-${label}`}>
-                                  {formatLabelName(label)}
+                                  {formatLabel(label)}
                                 </li>
                               ))}
                             </ul>

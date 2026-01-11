@@ -1,9 +1,8 @@
 import { Fragment, useEffect, useState } from "react";
 
 import { api } from "../../../services/api";
-import {
-  LabelValidationCountResponse
-} from "../../../types/api";
+import { LabelValidationCountResponse } from "../../../types/api";
+import { formatLabel } from "../../../utils/formatLabel";
 
 const STATUS_COLORS: Record<string, string> = {
   VALID: "var(--color-green)",
@@ -12,20 +11,6 @@ const STATUS_COLORS: Record<string, string> = {
   NEEDS_REVIEW: "var(--color-yellow)",
   NONE: "var(--text-color)",
 };
-
-/**
- * Format label/status for display: Title Case with "ID" special case
- */
-function formatLabel(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/_/g, " ")
-    .split(" ")
-    .map((word) =>
-      word === "id" ? "ID" : word.charAt(0).toUpperCase() + word.slice(1)
-    )
-    .join(" ");
-}
 
 export default function LabelValidationChart() {
   const [counts, setCounts] = useState<LabelValidationCountResponse | null>(

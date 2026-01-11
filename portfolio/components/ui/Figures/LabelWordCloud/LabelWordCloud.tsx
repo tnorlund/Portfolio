@@ -3,6 +3,7 @@ import { useSprings, animated, config } from "@react-spring/web";
 import { useOptimizedInView } from "../../../../hooks/useOptimizedInView";
 import { api } from "../../../../services/api";
 import { LabelValidationCountResponse } from "../../../../types/api";
+import { formatLabel } from "../../../../utils/formatLabel";
 import {
   initializeAndSolve,
   optimizeForExternalLabels,
@@ -43,17 +44,10 @@ const CORE_LABELS = [
 const CORE_LABELS_SET = new Set(CORE_LABELS);
 
 /**
- * Format label name for display: Title Case, split into lines
- * Special case: "id" becomes "ID"
+ * Format label name for display, split into lines for word cloud
  */
-function formatLabelName(label: string): string[] {
-  return label
-    .toLowerCase()
-    .replace(/_/g, " ")
-    .split(" ")
-    .map((word) =>
-      word === "id" ? "ID" : word.charAt(0).toUpperCase() + word.slice(1)
-    );
+function formatLabelLines(label: string): string[] {
+  return formatLabel(label).split(" ");
 }
 
 // Leader line settings
@@ -304,7 +298,7 @@ const LabelWordCloud: React.FC<LabelWordCloudProps> = ({
       .filter(([label]) => CORE_LABELS_SET.has(label))
       .map(([label, counts]) => ({
         label,
-        displayLines: formatLabelName(label),
+        displayLines: formatLabelLines(label),
         validCount: counts.VALID || 0,
       }));
 

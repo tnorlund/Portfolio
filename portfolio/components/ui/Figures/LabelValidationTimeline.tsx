@@ -7,6 +7,7 @@ import {
   LabelValidationKeyframe,
   LabelValidationStatusCounts,
 } from "../../../types/api";
+import { formatLabel } from "../../../utils/formatLabel";
 import styles from "./LabelValidationTimeline.module.css";
 
 const STATUSES = ["VALID", "INVALID", "PENDING", "NEEDS_REVIEW", "NONE"] as const;
@@ -19,20 +20,6 @@ const STATUS_COLORS: Record<StatusType, string> = {
   NEEDS_REVIEW: "var(--color-yellow)",
   NONE: "var(--text-color)",
 };
-
-/**
- * Format label for display: Title Case with "ID" special case
- */
-function formatLabel(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/_/g, " ")
-    .split(" ")
-    .map((word) =>
-      word === "id" ? "ID" : word.charAt(0).toUpperCase() + word.slice(1)
-    )
-    .join(" ");
-}
 
 /**
  * Interpolate between keyframes based on progress [0, 1]

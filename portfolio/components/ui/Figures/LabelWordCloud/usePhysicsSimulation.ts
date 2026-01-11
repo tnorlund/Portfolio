@@ -192,7 +192,7 @@ export function initializeAndSolve(
       displayLines: item.displayLines,
       validCount: item.validCount,
       radius,
-      fontSize: textFitsInside ? fontSize : EXTERNAL_FONT_SIZE,
+      fontSize, // Use REFERENCE_FONT_SIZE; actual size calculated after measurement
       textFitsInside,
       x,
       y,
