@@ -162,39 +162,6 @@
   flex-shrink: 0;
 }
 
-.legendSection {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.sectionTitle {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-color);
-  opacity: 0.6;
-  margin: 0 0 0.25rem 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.phaseNumber {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--text-color);
-  color: var(--background-color);
-  font-size: 0.65rem;
-  font-weight: 700;
-  opacity: 0.8;
-}
-
 /* Tier Bar */
 .tierBar {
   display: flex;
@@ -218,14 +185,23 @@
 
 .tierHeader {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
+}
+
+.progressCircleWrapper {
+  flex-shrink: 0;
+}
+
+.progressCircle {
+  display: block;
 }
 
 .tierNameWrapper {
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
+  flex: 1;
 }
 
 .tierName {
@@ -255,6 +231,14 @@
   font-family: "Monaco", "Menlo", "Consolas", monospace;
 }
 
+.waitingBadge {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-color);
+  opacity: 0.5;
+  font-style: italic;
+}
+
 .decisionBadges {
   display: flex;
   gap: 0.25rem;
@@ -273,49 +257,56 @@
   color: white;
 }
 
-.progressTrack {
-  height: 8px;
-  background: var(--text-color);
-  opacity: 0.1;
-  border-radius: 4px;
-  overflow: hidden;
-}
 
-.progressFill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.1s linear;
-}
-
-/* Summary Section */
-.summarySection {
-  margin-top: 0.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--text-color);
-  opacity: 0.3;
-}
-
-.legendItems {
+/* Decision Tallies */
+.decisionTallies {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   margin-top: 0.5rem;
 }
 
-.legendItem {
+.decisionTally {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.8rem;
-  color: var(--text-color);
 }
 
-.legendColor {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
-  flex-shrink: 0;
+.tallyLabel {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-color);
+  opacity: 0.7;
+  min-width: 42px;
 }
+
+.tallyIcons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  flex: 1;
+}
+
+.tallyIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tallyMore {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-color);
+  opacity: 0.5;
+  margin-left: 2px;
+}
+
+
+.decisionIconSvg,
+.emptyIconSvg {
+  display: block;
+}
+
 
 /* Loading / Error states */
 .loading,
@@ -432,10 +423,6 @@
     padding: 0;
     align-items: center;
   }
-
-  .legendSection {
-    width: 250px;
-  }
 }
 
 /* Small mobile */
@@ -450,10 +437,6 @@
 
   .receiptImage {
     max-height: 300px;
-  }
-
-  .sectionTitle {
-    font-size: 0.7rem;
   }
 
   .tierName {

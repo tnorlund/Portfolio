@@ -492,7 +492,7 @@ export interface LabelValidationWord {
   label: string;
   validation_status?: "NONE" | "PENDING" | "VALID" | "INVALID" | "NEEDS_REVIEW";
   validation_source: "chroma" | "llm" | null;
-  decision: "VALID" | "INVALID" | "NEEDS_REVIEW" | null;
+  decision: "VALID" | "INVALID" | "CORRECTED" | "NEEDS_REVIEW" | null;
 }
 
 /**
