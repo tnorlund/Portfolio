@@ -1270,7 +1270,7 @@ pulumi.export(
 # LangSmith Bulk Export infrastructure (for Parquet exports)
 from components.langsmith_bulk_export import LangSmithBulkExport
 
-# Label Evaluator project export (existing)
+# Label Evaluator project export
 langsmith_bulk_export = LangSmithBulkExport(
     f"langsmith-export-{stack}",
     project_name=f"label-evaluator-{stack}",
@@ -1285,7 +1285,7 @@ pulumi.export(
     "langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name
 )
 
-# Receipt Label Validation project export (new - for fast validation traces)
+# Receipt Label Validation project export
 label_validation_export = LangSmithBulkExport(
     f"label-validation-export-{stack}",
     project_name="receipt-label-validation",

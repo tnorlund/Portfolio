@@ -119,18 +119,15 @@ class LightweightLabelValidator:
                 return None
 
             embedding = embeddings[0]
-            # Handle None check safely for numpy arrays
             if embedding is None:
                 return None
 
-            # Handle numpy array - check type first to avoid ambiguous truth value
+            # Convert numpy array to list
             if hasattr(embedding, "tolist"):
-                # It's a numpy array
                 if hasattr(embedding, "size") and embedding.size == 0:
                     return None
                 return embedding.tolist()
 
-            # It's already a list
             if not embedding:
                 return None
             return list(embedding)
