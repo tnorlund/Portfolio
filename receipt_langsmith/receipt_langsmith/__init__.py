@@ -110,6 +110,25 @@ from receipt_langsmith.entities import (  # Base; Validation agent; Label evalua
     VisualizationReceipt,
     VizCacheReceipt,
     WordWithLabel,
+    # Label validation entities (receipt-label-validation project)
+    ChromaDBUpsertOutputs,
+    LabelValidationInputs,
+    LabelValidationOutputs,
+    LabelValidationSummary,
+    LLMBatchValidationInputs,
+    LLMBatchValidationOutputs,
+    MerchantResolutionInputs,
+    MerchantResolutionOutputs,
+    MerchantResolutionSummary,
+    OpenAIEmbedInputs,
+    OpenAIEmbedOutputs,
+    ReceiptProcessingInputs,
+    ReceiptProcessingOutputs,
+    S3DownloadSnapshotInputs,
+    S3DownloadSnapshotOutputs,
+    SimilarityMatchTrace,
+    SimilarWordTrace,
+    StepTimingSummary,
 )
 
 # Parsers (always available)
@@ -117,6 +136,13 @@ from receipt_langsmith.parsers import (
     TraceTreeBuilder,
     parse_extra,
     parse_json,
+    # Label validation helpers (receipt-label-validation project)
+    LabelValidationTraceIndex,
+    build_label_validation_summary,
+    build_merchant_resolution_summary,
+    count_label_validation_decisions,
+    get_merchant_resolution_result,
+    get_step_timings,
 )
 
 # Legacy exports (backward compatibility with existing code)
@@ -132,7 +158,7 @@ from receipt_langsmith.queries import (
 # Lazy imports for optional dependencies
 def __getattr__(name: str):
     """Lazy import for optional dependencies (PySpark)."""
-    # PySpark dependencies
+    # PySpark processor dependencies
     if name == "LangSmithSparkProcessor":
         try:
             from receipt_langsmith.spark.processor import (
@@ -146,13 +172,33 @@ def __getattr__(name: str):
                 "pip install receipt-langsmith[pyspark]"
             ) from e
 
-    if name == "LANGSMITH_PARQUET_SCHEMA":
+    if name == "LabelValidationSparkProcessor":
         try:
-            from receipt_langsmith.spark.schemas import (
-                LANGSMITH_PARQUET_SCHEMA,
+            from receipt_langsmith.spark.label_validation_processor import (
+                LabelValidationSparkProcessor,
             )
 
-            return LANGSMITH_PARQUET_SCHEMA
+            return LabelValidationSparkProcessor
+        except ImportError as e:
+            raise ImportError(
+                "PySpark not available. Install with: "
+                "pip install receipt-langsmith[pyspark]"
+            ) from e
+
+    # PySpark schema dependencies
+    schema_names = [
+        "LANGSMITH_PARQUET_SCHEMA",
+        "LABEL_VALIDATION_RECEIPT_SCHEMA",
+        "LABEL_VALIDATION_STEP_TIMING_SCHEMA",
+        "LABEL_VALIDATION_DECISION_SCHEMA",
+        "MERCHANT_RESOLUTION_SCHEMA",
+    ]
+
+    if name in schema_names:
+        try:
+            from receipt_langsmith.spark import schemas
+
+            return getattr(schemas, name)
         except ImportError as e:
             raise ImportError(
                 "PySpark not available. Install with: "
@@ -240,7 +286,44 @@ __all__ = [
     "get_child_traces",
     "find_receipts_with_anomalies",
     "find_receipts_with_llm_decisions",
-    # PySpark (lazy loaded)
+    # Legacy Parquet-based queries (backward compatibility)
+    "read_traces_from_parquet",
+    "find_receipts_with_decisions_from_parquet",
+    "find_receipts_with_anomalies_from_parquet",
+    "find_visualization_receipts_from_parquet",
+    # Label validation entities (receipt-label-validation project)
+    "ChromaDBUpsertOutputs",
+    "LabelValidationInputs",
+    "LabelValidationOutputs",
+    "LabelValidationSummary",
+    "LLMBatchValidationInputs",
+    "LLMBatchValidationOutputs",
+    "MerchantResolutionInputs",
+    "MerchantResolutionOutputs",
+    "MerchantResolutionSummary",
+    "OpenAIEmbedInputs",
+    "OpenAIEmbedOutputs",
+    "ReceiptProcessingInputs",
+    "ReceiptProcessingOutputs",
+    "S3DownloadSnapshotInputs",
+    "S3DownloadSnapshotOutputs",
+    "SimilarityMatchTrace",
+    "SimilarWordTrace",
+    "StepTimingSummary",
+    # Label validation trace helpers
+    "LabelValidationTraceIndex",
+    "build_label_validation_summary",
+    "build_merchant_resolution_summary",
+    "count_label_validation_decisions",
+    "get_merchant_resolution_result",
+    "get_step_timings",
+    # PySpark processors (lazy imports)
     "LangSmithSparkProcessor",
+    "LabelValidationSparkProcessor",
+    # PySpark schemas (lazy imports)
     "LANGSMITH_PARQUET_SCHEMA",
+    "LABEL_VALIDATION_RECEIPT_SCHEMA",
+    "LABEL_VALIDATION_STEP_TIMING_SCHEMA",
+    "LABEL_VALIDATION_DECISION_SCHEMA",
+    "MERCHANT_RESOLUTION_SCHEMA",
 ]

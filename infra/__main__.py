@@ -1270,6 +1270,7 @@ pulumi.export(
 # LangSmith Bulk Export infrastructure (for Parquet exports)
 from components.langsmith_bulk_export import LangSmithBulkExport
 
+# Label Evaluator project export (existing)
 langsmith_bulk_export = LangSmithBulkExport(
     f"langsmith-export-{stack}",
     project_name=f"label-evaluator-{stack}",
@@ -1282,6 +1283,21 @@ pulumi.export(
 )
 pulumi.export(
     "langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name
+)
+
+# Receipt Label Validation project export (new - for fast validation traces)
+label_validation_export = LangSmithBulkExport(
+    f"label-validation-export-{stack}",
+    project_name="receipt-label-validation",
+)
+pulumi.export(
+    "label_validation_export_bucket", label_validation_export.export_bucket.id
+)
+pulumi.export(
+    "label_validation_setup_lambda", label_validation_export.setup_lambda.name
+)
+pulumi.export(
+    "label_validation_trigger_lambda", label_validation_export.trigger_lambda.name
 )
 
 # EMR Serverless Docker Image (for custom Spark image with receipt_langsmith)
@@ -1483,6 +1499,62 @@ if hasattr(api_gateway, "api"):
         "label_evaluator_viz_lambda_permission",
         action="lambda:InvokeFunction",
         function=label_evaluator_viz_cache.api_lambda.name,
+        principal="apigateway.amazonaws.com",
+        source_arn=api_gateway.api.execution_arn.apply(
+            lambda arn: f"{arn}/*/*"
+        ),
+    )
+
+    # Label Validation Visualization Cache (LangSmith receipt-label-validation traces)
+    from routes.label_validation_viz_cache import create_label_validation_viz_cache
+
+    label_validation_viz_cache = create_label_validation_viz_cache(
+        f"label-validation-viz-{stack}",
+        langsmith_export_bucket=label_validation_export.export_bucket.id,
+        langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
+        langsmith_tenant_id=config.require("LANGSMITH_TENANT_ID"),
+        dynamodb_table_name=dynamodb_table.name,
+        dynamodb_table_arn=dynamodb_table.arn,
+        emr_application_id=emr_analytics.emr_application.id,
+        emr_job_role_arn=emr_analytics.emr_job_role.arn,
+        spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
+        setup_lambda_name=label_validation_export.setup_lambda.name,
+        setup_lambda_arn=label_validation_export.setup_lambda.arn,
+    )
+    pulumi.export(
+        "label_validation_viz_cache_bucket",
+        label_validation_viz_cache.cache_bucket.id,
+    )
+    pulumi.export(
+        "label_validation_viz_step_function_arn",
+        label_validation_viz_cache.step_function.arn,
+    )
+
+    # Label validation visualization endpoint
+    integration_label_validation_viz = aws.apigatewayv2.Integration(
+        "label_validation_viz_cache_integration",
+        api_id=api_gateway.api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=label_validation_viz_cache.api_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    route_label_validation_viz = aws.apigatewayv2.Route(
+        "label_validation_viz_cache_route",
+        api_id=api_gateway.api.id,
+        route_key="GET /label_validation/visualization",
+        target=integration_label_validation_viz.id.apply(
+            lambda id: f"integrations/{id}"
+        ),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+    aws.lambda_.Permission(
+        "label_validation_viz_lambda_permission",
+        action="lambda:InvokeFunction",
+        function=label_validation_viz_cache.api_lambda.name,
         principal="apigateway.amazonaws.com",
         source_arn=api_gateway.api.execution_arn.apply(
             lambda arn: f"{arn}/*/*"

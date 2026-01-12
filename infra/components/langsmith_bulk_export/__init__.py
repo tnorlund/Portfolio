@@ -290,6 +290,10 @@ class LangSmithBulkExport(ComponentResource):
         # ============================================================
         # Setup Lambda (One-time destination registration)
         # ============================================================
+        # Use a unique SSM prefix per component to avoid collisions between
+        # multiple LangSmithBulkExport instances
+        ssm_prefix = name.replace("-", "_")
+
         self.setup_lambda = aws.lambda_.Function(
             f"{name}-setup-lambda",
             runtime="python3.12",
@@ -305,6 +309,7 @@ class LangSmithBulkExport(ComponentResource):
                     "S3_CREDENTIALS_SECRET_ARN": self.langsmith_credentials_secret.arn,
                     "LANGSMITH_PROJECT": project_name,
                     "STACK": stack,
+                    "SSM_PREFIX": ssm_prefix,
                 }
             ),
             memory_size=256,
