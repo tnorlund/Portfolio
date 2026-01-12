@@ -413,21 +413,30 @@ def build_viz_receipt(
                 llm_validations.append(outputs)
 
     # Build validation lookup: (line_id, word_id) -> validation info
+    # Does NOT default to VALID - uses null for missing trace data
     validation_lookup: dict[tuple[int, int], dict] = {}
 
     for v in chroma_validations:
         key = (v.get("line_id", 0), v.get("word_id", 0))
+        decision = v.get("decision", "").upper()
+        # Normalize CORRECT -> CORRECTED
+        if decision == "CORRECT":
+            decision = "CORRECTED"
         validation_lookup[key] = {
             "validation_source": "chroma",
-            "decision": v.get("decision", "VALID").upper(),
+            "decision": decision if decision else None,
             "confidence": v.get("confidence"),
         }
 
     for v in llm_validations:
         key = (v.get("line_id", 0), v.get("word_id", 0))
+        decision = v.get("decision", "").upper()
+        # Normalize CORRECT -> CORRECTED
+        if decision == "CORRECT":
+            decision = "CORRECTED"
         validation_lookup[key] = {
             "validation_source": "llm",
-            "decision": v.get("decision", "VALID").upper(),
+            "decision": decision if decision else None,
             "confidence": v.get("confidence"),
         }
 
@@ -439,11 +448,20 @@ def build_viz_receipt(
         key = (line_id, word_id)
 
         # Get label from lookup (string key format)
-        label = labels_data.get(f"{line_id}_{word_id}", "")
+        # labels_data can be either:
+        # - Simple: {f"{line_id}_{word_id}": "LABEL"}
+        # - Extended: {f"{line_id}_{word_id}": {"label": "LABEL", "validation_status": "VALID"}}
+        label_entry = labels_data.get(f"{line_id}_{word_id}", "")
+        if isinstance(label_entry, dict):
+            label = label_entry.get("label", "")
+            validation_status = label_entry.get("validation_status", "PENDING")
+        else:
+            label = label_entry
+            validation_status = "PENDING"  # Default for simple format
 
         # Only include words with labels (validated words)
         if label:
-            validation = validation_lookup.get(key, {})
+            validation = validation_lookup.get(key)
             viz_words.append(
                 {
                     "text": word.get("text", ""),
@@ -451,8 +469,13 @@ def build_viz_receipt(
                     "word_id": word_id,
                     "bbox": word.get("bbox", {}),
                     "label": label,
-                    "validation_source": validation.get("validation_source", "chroma"),
-                    "decision": validation.get("decision", "VALID"),
+                    # Include DynamoDB validation_status - this is the source of truth
+                    "validation_status": validation_status,
+                    # Trace info - may be null if no trace found
+                    "validation_source": validation.get("validation_source")
+                    if validation
+                    else None,
+                    "decision": validation.get("decision") if validation else None,
                 }
             )
 
@@ -461,20 +484,28 @@ def build_viz_receipt(
         return None
 
     # Build tier summaries
+    # Does NOT default to VALID - only counts words with actual decisions
     chroma_decisions = {"VALID": 0, "CORRECTED": 0, "NEEDS_REVIEW": 0}
     llm_decisions = {"VALID": 0, "CORRECTED": 0, "NEEDS_REVIEW": 0}
 
     for word in viz_words:
-        decision = word.get("decision", "VALID")
-        source = word.get("validation_source", "chroma")
+        decision = word.get("decision")
+        source = word.get("validation_source")
+
+        # Skip words without trace validation data
+        if decision is None or source is None:
+            continue
 
         # Normalize decision
-        if decision in ("VALID",):
+        if decision == "VALID":
             norm_decision = "VALID"
         elif decision in ("CORRECTED", "CORRECT"):
             norm_decision = "CORRECTED"
-        else:
+        elif decision in ("NEEDS_REVIEW", "NEEDS REVIEW"):
             norm_decision = "NEEDS_REVIEW"
+        else:
+            # Unknown decision - don't count
+            continue
 
         if source == "chroma":
             chroma_decisions[norm_decision] += 1
@@ -505,6 +536,26 @@ def build_viz_receipt(
     if not cdn_s3_key:
         return None
 
+    # Build step timings from what's available in traces
+    step_timings = {}
+    if chroma_duration_ms > 0:
+        step_timings["chroma_validation"] = {
+            "duration_ms": chroma_duration_ms,
+            "duration_seconds": chroma_duration_ms / 1000,
+        }
+    if llm_duration_ms > 0:
+        step_timings["llm_validation"] = {
+            "duration_ms": llm_duration_ms,
+            "duration_seconds": llm_duration_ms / 1000,
+        }
+    # Total processing time from root trace
+    total_duration_ms = root_trace.get("duration_ms", 0)
+    if total_duration_ms and total_duration_ms > 0:
+        step_timings["total"] = {
+            "duration_ms": total_duration_ms,
+            "duration_seconds": total_duration_ms / 1000,
+        }
+
     return {
         "image_id": image_id,
         "receipt_id": receipt_id,
@@ -512,6 +563,8 @@ def build_viz_receipt(
         "words": viz_words,
         "chroma": chroma_tier,
         "llm": llm_tier,
+        # Step timing breakdown
+        "step_timings": step_timings,
         "cdn_s3_key": cdn_s3_key,
         "cdn_webp_s3_key": receipt_data.get("cdn_webp_s3_key"),
         "cdn_avif_s3_key": receipt_data.get("cdn_avif_s3_key"),

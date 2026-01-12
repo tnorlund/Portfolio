@@ -742,7 +742,12 @@ class MerchantResolvingEmbeddingProcessor:
                 confidence_map = {"high": 0.9, "medium": 0.7, "low": 0.5}
                 confidence_score = confidence_map.get(llm_result.confidence, 0.7)
 
-                if llm_result.decision == "VALID":
+                # Normalize decision: CORRECT -> CORRECTED
+                decision = llm_result.decision.upper()
+                if decision == "CORRECT":
+                    decision = "CORRECTED"
+
+                if decision == "VALID":
                     # Keep original label, mark as validated
                     label_entity.validation_status = ValidationStatus.VALID.value
                     label_entity.label_proposed_by = (
@@ -769,7 +774,37 @@ class MerchantResolvingEmbeddingProcessor:
                         merchant_name=merchant_name,
                     )
 
-                elif llm_result.decision == "CORRECT":
+                elif decision == "NEEDS_REVIEW":
+                    # LLM couldn't decide - mark for human review
+                    label_entity.validation_status = ValidationStatus.NEEDS_REVIEW.value
+                    label_entity.label_proposed_by = (
+                        f"llm-needs-review:{label_entity.label_proposed_by or 'auto'}"
+                    )
+                    label_entity.reasoning = llm_result.reasoning
+                    self.dynamo.update_receipt_word_label(label_entity)
+
+                    # Log to Langsmith
+                    log_label_validation(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        line_id=label_entity.line_id,
+                        word_id=label_entity.word_id,
+                        word_text=label_data.get("word_text", ""),
+                        predicted_label=label_data["label"],
+                        final_label=llm_result.label,
+                        validation_source="llm",
+                        decision="needs_review",
+                        confidence=confidence_score,
+                        reasoning=llm_result.reasoning,
+                        similar_words=similar_evidence.get(word_id, []),
+                        merchant_name=merchant_name,
+                    )
+
+                    _log(
+                        f"Marked {word_id} as NEEDS_REVIEW: {llm_result.reasoning[:50]}..."
+                    )
+
+                elif decision == "CORRECTED":
                     # LLM corrected the label
                     if llm_result.label != label_entity.label:
                         # Invalidate old label (keep for audit trail), create new one

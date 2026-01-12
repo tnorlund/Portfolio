@@ -108,12 +108,25 @@ def _get_words_from_dynamodb(
 
 def _get_labels_from_dynamodb(
     image_id: str, receipt_id: int
-) -> dict[tuple[int, int], str]:
-    """Fetch word labels from DynamoDB as a lookup dict."""
+) -> dict[tuple[int, int], dict[str, Any]]:
+    """Fetch word labels from DynamoDB as a lookup dict.
+
+    Returns dict mapping (line_id, word_id) -> label info dict with:
+        - label: str
+        - validation_status: str (PENDING, VALID, INVALID, NEEDS_REVIEW)
+        - label_proposed_by: str (source of prediction)
+    """
     try:
         client = _get_dynamo_client()
         labels, _ = client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
-        return {(label.line_id, label.word_id): label.label for label in labels}
+        return {
+            (label.line_id, label.word_id): {
+                "label": label.label,
+                "validation_status": label.validation_status or "PENDING",
+                "label_proposed_by": label.label_proposed_by or "",
+            }
+            for label in labels
+        }
     except Exception as e:
         logger.warning(
             "Failed to fetch labels from DynamoDB for %s_%d: %s",
@@ -150,29 +163,44 @@ def _parse_validation_traces(
 
 def _build_validation_words(
     dynamo_words: list[dict],
-    labels_lookup: dict[tuple[int, int], str],
+    labels_lookup: dict[tuple[int, int], dict[str, Any]],
     chroma_validations: list[dict],
     llm_validations: list[dict],
 ) -> list[dict[str, Any]]:
     """Build word list with validation results.
 
     Matches trace validation outputs to DynamoDB words by line_id/word_id.
+    Does NOT default missing trace validations to VALID - uses DynamoDB validation_status.
+
+    Returns words with:
+        - label: current label
+        - validation_status: from DynamoDB (PENDING, VALID, INVALID, NEEDS_REVIEW)
+        - validation_source: from traces (chroma, llm) or null if no trace
+        - decision: from traces (VALID, CORRECTED, NEEDS_REVIEW) or null if no trace
     """
     # Build lookup from validation traces
     validation_lookup: dict[tuple[int, int], dict] = {}
 
     for v in chroma_validations:
         key = (v.get("line_id", 0), v.get("word_id", 0))
+        decision = v.get("decision", "").upper()
+        # Normalize CORRECT -> CORRECTED
+        if decision == "CORRECT":
+            decision = "CORRECTED"
         validation_lookup[key] = {
             "validation_source": "chroma",
-            "decision": v.get("decision", "VALID").upper(),
+            "decision": decision if decision else None,
         }
 
     for v in llm_validations:
         key = (v.get("line_id", 0), v.get("word_id", 0))
+        decision = v.get("decision", "").upper()
+        # Normalize CORRECT -> CORRECTED
+        if decision == "CORRECT":
+            decision = "CORRECTED"
         validation_lookup[key] = {
             "validation_source": "llm",
-            "decision": v.get("decision", "VALID").upper(),
+            "decision": decision if decision else None,
         }
 
     # Build visualization words
@@ -182,23 +210,24 @@ def _build_validation_words(
         word_id = word["word_id"]
         key = (line_id, word_id)
 
-        label = labels_lookup.get(key, "")
+        label_info = labels_lookup.get(key)
         validation = validation_lookup.get(key)
 
         # Only include words that have labels (validation targets)
-        if label:
+        if label_info:
             viz_word = {
                 "text": word["text"],
                 "line_id": line_id,
                 "word_id": word_id,
                 "bbox": word["bbox"],
-                "label": label,
-                "validation_source": validation.get("validation_source", "chroma")
+                "label": label_info["label"],
+                # Include DynamoDB validation_status - this is the source of truth
+                "validation_status": label_info["validation_status"],
+                # Trace info - may be null if no trace found for this word
+                "validation_source": validation.get("validation_source")
                 if validation
-                else "chroma",
-                "decision": validation.get("decision", "VALID")
-                if validation
-                else "VALID",
+                else None,
+                "decision": validation.get("decision") if validation else None,
             }
             viz_words.append(viz_word)
 
@@ -208,11 +237,14 @@ def _build_validation_words(
 def _build_tier_summary(
     validations: list[dict], duration_seconds: float
 ) -> dict[str, Any]:
-    """Build tier summary from validation traces."""
-    decisions = {"VALID": 0, "CORRECTED": 0, "NEEDS_REVIEW": 0}
+    """Build tier summary from validation traces.
+
+    Does NOT default unknown decisions to VALID - counts them as UNKNOWN.
+    """
+    decisions = {"VALID": 0, "CORRECTED": 0, "NEEDS_REVIEW": 0, "UNKNOWN": 0}
 
     for v in validations:
-        decision = v.get("decision", "valid").upper()
+        decision = v.get("decision", "").upper()
         # Normalize decision names
         if decision == "VALID":
             decisions["VALID"] += 1
@@ -220,8 +252,14 @@ def _build_tier_summary(
             decisions["CORRECTED"] += 1
         elif decision in ("NEEDS_REVIEW", "NEEDS REVIEW"):
             decisions["NEEDS_REVIEW"] += 1
-        else:
-            decisions["VALID"] += 1  # Default to valid
+        elif decision:
+            # Non-empty but unrecognized decision
+            decisions["UNKNOWN"] += 1
+        # Empty decision - don't count at all (trace output was incomplete)
+
+    # Remove UNKNOWN key if zero for cleaner output
+    if decisions["UNKNOWN"] == 0:
+        del decisions["UNKNOWN"]
 
     return {
         "words_count": len(validations),
@@ -298,6 +336,15 @@ def _build_receipt_visualization(
     outputs = root_trace.get("outputs") or {}
     merchant_name = outputs.get("merchant_name")
 
+    # Build step timings for UI (all upload lambda steps)
+    step_timings = {}
+    for step_name, step_data in timings.items():
+        if isinstance(step_data, dict) and "duration_ms" in step_data:
+            step_timings[step_name] = {
+                "duration_ms": step_data["duration_ms"],
+                "duration_seconds": step_data["duration_ms"] / 1000,
+            }
+
     return {
         "image_id": image_id,
         "receipt_id": receipt_id,
@@ -305,6 +352,8 @@ def _build_receipt_visualization(
         "words": viz_words,
         "chroma": chroma_tier,
         "llm": llm_tier,
+        # Full step timing breakdown from get_step_timings
+        "step_timings": step_timings,
         "cdn_s3_key": receipt_info["cdn_s3_key"],
         "cdn_webp_s3_key": receipt_info.get("cdn_webp_s3_key"),
         "cdn_avif_s3_key": receipt_info.get("cdn_avif_s3_key"),
