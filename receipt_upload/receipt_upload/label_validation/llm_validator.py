@@ -9,6 +9,7 @@ The LLM sees:
 3. Merchant context
 4. Mathematical relationships between currency amounts
 
+Uses structured outputs with Pydantic models to ensure type-safe responses.
 Uses LANGCHAIN_PROJECT env var for LangSmith project configuration.
 Traces are sent to the project specified by LANGCHAIN_PROJECT environment variable.
 """
@@ -18,9 +19,10 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from langchain_core.messages import HumanMessage
+from pydantic import BaseModel, Field, ValidationError
 
 from receipt_agent.constants import CORE_LABELS
 from receipt_agent.utils.llm_factory import create_resilient_llm
@@ -32,17 +34,193 @@ if os.environ.get("LANGCHAIN_API_KEY") and not os.environ.get("LANGCHAIN_TRACING
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
 
 
+# =============================================================================
+# Structured Output Models (Pydantic)
+# =============================================================================
+
+# Decision type aligned with ValidationStatus enum
+DecisionType = Literal["VALID", "INVALID", "NEEDS_REVIEW"]
+
+# Confidence levels
+ConfidenceType = Literal["high", "medium", "low"]
+
+# Valid label types from CORE_LABELS
+LabelType = Literal[
+    "MERCHANT_NAME",
+    "STORE_HOURS",
+    "PHONE_NUMBER",
+    "WEBSITE",
+    "LOYALTY_ID",
+    "ADDRESS_LINE",
+    "DATE",
+    "TIME",
+    "PAYMENT_METHOD",
+    "COUPON",
+    "DISCOUNT",
+    "PRODUCT_NAME",
+    "QUANTITY",
+    "UNIT_PRICE",
+    "LINE_TOTAL",
+    "SUBTOTAL",
+    "TAX",
+    "GRAND_TOTAL",
+    "CHANGE",
+    "CASH_BACK",
+    "REFUND",
+]
+
+
+class LabelDecision(BaseModel):
+    """A single label validation decision from the LLM."""
+
+    index: int = Field(
+        description="The index of the pending label being validated (0-indexed)"
+    )
+    decision: DecisionType = Field(
+        description="VALID if label is correct, INVALID if wrong (provide correct label), NEEDS_REVIEW if uncertain"
+    )
+    label: LabelType = Field(
+        description="The correct label - same as predicted if VALID, corrected label if INVALID"
+    )
+    confidence: ConfidenceType = Field(
+        description="Confidence level: high (>90%), medium (70-90%), low (<70%)"
+    )
+    reasoning: str = Field(
+        description="Brief explanation for the decision based on receipt context and evidence"
+    )
+
+
+class LabelValidationResponse(BaseModel):
+    """Structured response containing all label validation decisions."""
+
+    decisions: List[LabelDecision] = Field(
+        description="List of validation decisions, one per pending label"
+    )
+
+
+def convert_structured_response(
+    response: LabelValidationResponse,
+    pending_labels: List[Dict[str, Any]],
+) -> List[LLMValidationResult]:
+    """
+    Convert structured LLM response to LLMValidationResult list.
+
+    Args:
+        response: Pydantic model with validated decisions
+        pending_labels: Original pending labels for word_id mapping
+
+    Returns:
+        List of LLMValidationResult objects
+
+    Note:
+        - Missing indexes are marked as NEEDS_REVIEW
+        - Out-of-range and duplicate indexes are dropped
+        - Validates label is in CORE_LABELS
+    """
+    results = []
+    num_labels = len(pending_labels)
+
+    # Build result lookup with robust index handling
+    result_by_index: Dict[int, LabelDecision] = {}
+    seen_indexes: set = set()
+
+    for decision in response.decisions:
+        idx = decision.index
+
+        # Check range
+        if idx < 0 or idx >= num_labels:
+            logger.warning(
+                "Index %d out of range [0, %d), skipping",
+                idx,
+                num_labels,
+            )
+            continue
+
+        # Check duplicates
+        if idx in seen_indexes:
+            logger.warning("Duplicate index %d, keeping first", idx)
+            continue
+
+        seen_indexes.add(idx)
+        result_by_index[idx] = decision
+
+    # Process each pending label
+    for idx, label in enumerate(pending_labels):
+        word_id = f"{label['line_id']}_{label['word_id']}"
+        llm_decision = result_by_index.get(idx)
+
+        if llm_decision is None:
+            # Missing result - mark as NEEDS_REVIEW
+            logger.warning(
+                "No LLM result for index %d (word_id=%s), marking NEEDS_REVIEW",
+                idx,
+                word_id,
+            )
+            results.append(
+                LLMValidationResult(
+                    word_id=word_id,
+                    decision="NEEDS_REVIEW",
+                    label=label["label"],
+                    confidence="low",
+                    reasoning="LLM did not return a decision for this word",
+                )
+            )
+            continue
+
+        final_label = llm_decision.label
+        decision_str = llm_decision.decision
+        confidence = llm_decision.confidence
+        reasoning = llm_decision.reasoning
+
+        # Validate label is in CORE_LABELS (should be guaranteed by schema, but check)
+        if final_label not in CORE_LABELS:
+            logger.warning(
+                "LLM returned invalid label '%s', keeping original '%s'",
+                final_label,
+                label["label"],
+            )
+            final_label = label["label"]
+            if decision_str == "INVALID":
+                decision_str = "NEEDS_REVIEW"
+                reasoning = f"Invalid label '{llm_decision.label}'. {reasoning}"
+
+        # If INVALID but label unchanged, mark as NEEDS_REVIEW
+        if decision_str == "INVALID" and final_label == label["label"]:
+            decision_str = "NEEDS_REVIEW"
+            reasoning = f"INVALID decision without a corrected label. {reasoning}"
+
+        results.append(
+            LLMValidationResult(
+                word_id=word_id,
+                decision=decision_str,
+                label=final_label,
+                confidence=confidence,
+                reasoning=reasoning,
+            )
+        )
+
+    return results
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+
 def _get_traceable():
     """Get the traceable decorator if langsmith is available."""
     try:
         from langsmith.run_helpers import traceable
+
         return traceable
     except ImportError:
         # Return a no-op decorator if langsmith not installed
         def noop_decorator(*args, **kwargs):
             def wrapper(fn):
                 return fn
+
             return wrapper
+
         return noop_decorator
 
 
@@ -247,9 +425,9 @@ For each pending label, here are similar words that have been validated:
 
 ## Your Task
 
-For each pending label [0] through [{len(pending_labels) - 1}], decide:
+For each pending label [0] through [{len(pending_labels) - 1}], provide a decision:
 - **VALID**: The predicted label is correct
-- **INVALID**: The predicted label is wrong, provide the correct label
+- **INVALID**: The predicted label is wrong - you must provide the correct label
 - **NEEDS_REVIEW**: You cannot decide confidently
 
 Consider:
@@ -258,17 +436,9 @@ Consider:
 3. Mathematical consistency (do amounts add up correctly?)
 4. Merchant patterns (same merchant evidence is most reliable)
 
-Respond with a JSON array:
-```json
-[
-  {{"index": 0, "decision": "VALID", "label": "MERCHANT_NAME", "confidence": "high", "reasoning": "..."}},
-  {{"index": 1, "decision": "INVALID", "label": "LINE_TOTAL", "confidence": "medium", "reasoning": "..."}}
-]
-```
-
 IMPORTANT:
 - Use ONLY labels from the definitions above
-- Every pending label MUST have a decision (no PENDING/UNCERTAIN)
+- Every pending label MUST have a decision
 - Base reasoning on the evidence provided
 """
 
@@ -442,9 +612,10 @@ def parse_validation_response(
 
 class LLMBatchValidator:
     """
-    Validates all pending labels for a receipt using LLM.
+    Validates all pending labels for a receipt using LLM with structured output.
 
     Uses the same Ollama + OpenRouter fallback pattern as the label evaluator.
+    Structured output via Pydantic ensures type-safe responses.
     """
 
     def __init__(
@@ -459,10 +630,12 @@ class LLMBatchValidator:
             temperature: LLM temperature (0.0 for deterministic)
             timeout: Request timeout in seconds
         """
-        self.llm = create_resilient_llm(
+        base_llm = create_resilient_llm(
             temperature=temperature,
             timeout=timeout,
         )
+        # Wrap with structured output for type-safe responses
+        self.structured_llm = base_llm.with_structured_output(LabelValidationResponse)
         self._call_count = 0
         self._success_count = 0
 
@@ -471,11 +644,14 @@ class LLMBatchValidator:
         prompt: str,
         pending_labels: List[Dict[str, Any]],
         merchant_name: Optional[str] = None,
-    ) -> str:
-        """Call LLM with Langsmith tracing.
+    ) -> LabelValidationResponse:
+        """Call LLM with Langsmith tracing and structured output.
 
         This method is traced to capture the full prompt and response
         in Langsmith for debugging and improvement.
+
+        Returns:
+            LabelValidationResponse: Pydantic model with validated decisions
         """
         traceable = _get_traceable()
 
@@ -488,12 +664,11 @@ class LLMBatchValidator:
             label_count: int,
             merchant: Optional[str],
         ) -> dict:
-            """Traced LLM call - captures prompt and response."""
-            response = self.llm.invoke([HumanMessage(content=prompt)])
-            response_text = response.content.strip()
+            """Traced LLM call - captures prompt and structured response."""
+            response = self.structured_llm.invoke([HumanMessage(content=prompt)])
             return {
                 "prompt": prompt,
-                "response": response_text,
+                "response": response,
                 "label_count": label_count,
                 "merchant": merchant,
             }
@@ -514,6 +689,8 @@ class LLMBatchValidator:
     ) -> List[LLMValidationResult]:
         """
         Validate all pending labels for a receipt in one LLM call.
+
+        Uses structured output with Pydantic schema to ensure valid responses.
 
         Args:
             pending_labels: List of pending labels with:
@@ -546,15 +723,15 @@ class LLMBatchValidator:
         )
 
         try:
-            # Call LLM with tracing
-            response_text = self._call_llm_with_tracing(
+            # Call LLM with structured output
+            response = self._call_llm_with_tracing(
                 prompt=prompt,
                 pending_labels=pending_labels,
                 merchant_name=merchant_name,
             )
 
-            # Parse response
-            results = parse_validation_response(response_text, pending_labels)
+            # Convert structured response to results
+            results = convert_structured_response(response, pending_labels)
             self._success_count += 1
 
             # Log summary
@@ -567,6 +744,20 @@ class LLMBatchValidator:
             )
 
             return results
+
+        except ValidationError as e:
+            logger.error("LLM structured output validation failed: %s", e)
+            # Return fallback results - mark all as NEEDS_REVIEW
+            return [
+                LLMValidationResult(
+                    word_id=f"{label['line_id']}_{label['word_id']}",
+                    decision="NEEDS_REVIEW",
+                    label=label["label"],
+                    confidence="low",
+                    reasoning=f"Structured output validation failed: {str(e)[:100]}",
+                )
+                for label in pending_labels
+            ]
 
         except Exception as e:
             logger.error("LLM validation failed: %s", e)
@@ -587,5 +778,5 @@ class LLMBatchValidator:
         return {
             "call_count": self._call_count,
             "success_count": self._success_count,
-            "llm_stats": self.llm.get_stats(),
+            "llm_stats": self.structured_llm.get_stats(),
         }
