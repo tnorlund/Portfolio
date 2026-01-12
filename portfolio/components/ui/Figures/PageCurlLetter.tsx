@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from "react";
+import React, { useEffect, useRef, useCallback, useId } from "react";
 import { useSpring, animated, to } from "@react-spring/web";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 
@@ -148,6 +148,13 @@ const PageCurlLetter: React.FC<PageCurlLetterProps> = ({
   letterColor = "var(--paper-stroke-color)",
   shadowColor = "var(--paper-shadow-color)",
 }) => {
+  // Generate unique IDs to prevent conflicts with multiple instances
+  const uniqueId = useId();
+  const backFaceGradientId = `backFaceGradient-${uniqueId}`;
+  const shadowBlurId = `shadowBlur-${uniqueId}`;
+  const frontClipId = `frontClip-${uniqueId}`;
+  const shadowClipId = `shadowClip-${uniqueId}`;
+
   const [ref, inView] = useOptimizedInView({
     threshold: 0.3,
     triggerOnce: false,
@@ -256,7 +263,7 @@ const PageCurlLetter: React.FC<PageCurlLetterProps> = ({
             <defs>
               {/* Gradient for back face - darker at edges */}
               <linearGradient
-                id="backFaceGradient"
+                id={backFaceGradientId}
                 x1="100%"
                 y1="0%"
                 x2="0%"
@@ -268,12 +275,12 @@ const PageCurlLetter: React.FC<PageCurlLetterProps> = ({
               </linearGradient>
 
               {/* Shadow blur filter */}
-              <filter id="shadowBlur" x="-50%" y="-50%" width="200%" height="200%">
+              <filter id={shadowBlurId} x="-50%" y="-50%" width="200%" height="200%">
                 <feGaussianBlur in="SourceGraphic" stdDeviation="3" />
               </filter>
 
               {/* Clip path for front face - excludes curled region */}
-              <clipPath id="frontClip">
+              <clipPath id={frontClipId}>
                 <animated.path
                   d={to([t], (tVal) => {
                     if (tVal <= 0.01) {
@@ -298,7 +305,7 @@ const PageCurlLetter: React.FC<PageCurlLetterProps> = ({
               </clipPath>
 
               {/* Clip path for shadow - only visible on the paper surface */}
-              <clipPath id="shadowClip">
+              <clipPath id={shadowClipId}>
                 <animated.path
                   d={to([t], (tVal) => {
                     if (tVal <= 0.01) {
@@ -323,7 +330,7 @@ const PageCurlLetter: React.FC<PageCurlLetterProps> = ({
             </defs>
 
             {/* Shadow under the curl - cast onto the paper surface */}
-            <g clipPath="url(#shadowClip)">
+            <g clipPath={`url(#${shadowClipId})`}>
               <animated.path
                 d={to([t], (tVal) => {
                   if (tVal <= 0.05) return "";
@@ -368,13 +375,13 @@ const PageCurlLetter: React.FC<PageCurlLetterProps> = ({
                           Z`;
                 })}
                 fill={shadowColor}
-                filter="url(#shadowBlur)"
+                filter={`url(#${shadowBlurId})`}
                 opacity={to([t], (tVal) => Math.min(tVal * 0.8, 0.5))}
               />
             </g>
 
             {/* Front face - paper with letter, clipped */}
-            <g clipPath="url(#frontClip)">
+            <g clipPath={`url(#${frontClipId})`}>
               <rect
                 x={PAPER_X}
                 y={PAPER_Y}
@@ -408,7 +415,7 @@ const PageCurlLetter: React.FC<PageCurlLetterProps> = ({
                           Q ${ctrl.x} ${ctrl.y} ${rightPoint.x} ${rightPoint.y}
                           L ${reflectedCorner.x} ${reflectedCorner.y} Z`;
                 })}
-                fill="url(#backFaceGradient)"
+                fill={`url(#${backFaceGradientId})`}
                 stroke={letterColor}
                 strokeWidth="1"
               />
