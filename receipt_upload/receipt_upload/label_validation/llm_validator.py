@@ -8,6 +8,9 @@ The LLM sees:
 2. Similar validated words from ChromaDB
 3. Merchant context
 4. Mathematical relationships between currency amounts
+
+Uses LANGCHAIN_PROJECT env var for LangSmith project configuration.
+Traces are sent to the project specified by LANGCHAIN_PROJECT environment variable.
 """
 
 import json
@@ -41,6 +44,11 @@ def _get_traceable():
                 return fn
             return wrapper
         return noop_decorator
+
+
+def _get_label_validation_project() -> str:
+    """Get the Langsmith project name for label validation from env var."""
+    return os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
 
 
 @dataclass
@@ -393,7 +401,7 @@ class LLMBatchValidator:
         traceable = _get_traceable()
 
         @traceable(
-            project_name="receipt-label-validation",
+            project_name=_get_label_validation_project(),
             name="llm_batch_validation",
         )
         def _traced_llm_call(

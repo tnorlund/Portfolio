@@ -24,6 +24,13 @@ from receipt_langsmith.parsers.trace_helpers import (
     is_all_needs_review,
     load_s3_result,
     parse_datetime,
+    # Label validation helpers (receipt-label-validation project)
+    LabelValidationTraceIndex,
+    build_label_validation_summary,
+    build_merchant_resolution_summary,
+    count_label_validation_decisions,
+    get_merchant_resolution_result,
+    get_step_timings,
 )
 from receipt_langsmith.parsers.trace_tree import TraceTreeBuilder
 
@@ -46,4 +53,11 @@ __all__ = [
     "build_geometric_result",
     "build_geometric_from_trace",
     "get_decisions_from_trace",
+    # Label validation helpers (receipt-label-validation project)
+    "LabelValidationTraceIndex",
+    "build_label_validation_summary",
+    "build_merchant_resolution_summary",
+    "count_label_validation_decisions",
+    "get_merchant_resolution_result",
+    "get_step_timings",
 ]

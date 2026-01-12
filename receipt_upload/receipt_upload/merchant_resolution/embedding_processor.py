@@ -58,6 +58,11 @@ def _get_traceable():
         return noop_decorator
 
 
+def _get_label_validation_project() -> str:
+    """Get the Langsmith project name for label validation from env var."""
+    return os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
+
+
 def _get_context_thread_pool_executor():
     """Get ContextThreadPoolExecutor if langsmith is available, else ThreadPoolExecutor.
 
@@ -175,7 +180,7 @@ class MerchantResolvingEmbeddingProcessor:
 
         @traceable(
             name="receipt_processing",
-            project_name="receipt-label-validation",
+            project_name=_get_label_validation_project(),
             tags=["upload_lambda"],
             metadata={
                 "image_id": image_id,

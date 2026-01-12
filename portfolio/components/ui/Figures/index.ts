@@ -61,3 +61,7 @@ export const LabelEvaluatorVisualization = dynamic(
   () => import("./LabelEvaluatorVisualization"),
   { ssr: false }
 );
+export const LabelValidationVisualization = dynamic(
+  () => import("./LabelValidationVisualization"),
+  { ssr: false }
+);

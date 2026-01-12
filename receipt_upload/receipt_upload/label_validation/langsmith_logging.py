@@ -54,7 +54,7 @@ DEFAULT_MERCHANT_PROJECT = "receipt-merchant-resolution"
 
 def _get_label_validation_project() -> str:
     """Get the Langsmith project name for label validation."""
-    return os.environ.get("LANGCHAIN_LABEL_PROJECT", DEFAULT_LABEL_PROJECT)
+    return os.environ.get("LANGCHAIN_PROJECT", DEFAULT_LABEL_PROJECT)
 
 
 def _get_merchant_resolution_project() -> str:
