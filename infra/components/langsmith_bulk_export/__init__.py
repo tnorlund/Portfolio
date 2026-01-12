@@ -342,6 +342,7 @@ class LangSmithBulkExport(ComponentResource):
                     "LANGSMITH_TENANT_ID": langsmith_tenant_id,
                     "LANGSMITH_PROJECT": project_name,
                     "STACK": stack,
+                    "SSM_PREFIX": ssm_prefix,
                 }
             ),
             memory_size=256,
