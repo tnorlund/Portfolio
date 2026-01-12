@@ -472,13 +472,15 @@ def count_label_validation_decisions(
         validations: List of label_validation trace dicts.
 
     Returns:
-        Dict with counts: {'valid': n, 'corrected': m, 'needs_review': k}
+        Dict with counts: {'valid': n, 'invalid': m, 'needs_review': k}
     """
-    counts = {"valid": 0, "corrected": 0, "needs_review": 0}
+    counts = {"valid": 0, "invalid": 0, "needs_review": 0}
 
     for v in validations:
         outputs = v.get("outputs", {}) or {}
         decision = (outputs.get("decision", "") or "").lower()
+        if decision in ("corrected",):
+            decision = "invalid"
         if decision in counts:
             counts[decision] += 1
 
@@ -542,7 +544,7 @@ def build_label_validation_summary(
         return {
             "total_words": 0,
             "valid_count": 0,
-            "corrected_count": 0,
+            "invalid_count": 0,
             "needs_review_count": 0,
             "chroma_count": 0,
             "llm_count": 0,
@@ -566,7 +568,7 @@ def build_label_validation_summary(
     return {
         "total_words": len(validations),
         "valid_count": counts["valid"],
-        "corrected_count": counts["corrected"],
+        "invalid_count": counts["invalid"],
         "needs_review_count": counts["needs_review"],
         "chroma_count": chroma_count,
         "llm_count": llm_count,

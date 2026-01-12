@@ -384,7 +384,7 @@ class LabelValidationSparkProcessor:
 
         Groups decisions by:
         - validation_source (chroma/llm)
-        - decision (valid/corrected/needs_review)
+        - decision (valid/invalid/needs_review)
         - predicted_label
 
         Args:

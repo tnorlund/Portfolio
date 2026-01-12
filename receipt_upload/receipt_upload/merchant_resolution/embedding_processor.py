@@ -742,10 +742,12 @@ class MerchantResolvingEmbeddingProcessor:
                 confidence_map = {"high": 0.9, "medium": 0.7, "low": 0.5}
                 confidence_score = confidence_map.get(llm_result.confidence, 0.7)
 
-                # Normalize decision: CORRECT -> CORRECTED
+                # Normalize decision: CORRECT/CORRECTED -> INVALID
                 decision = llm_result.decision.upper()
-                if decision == "CORRECT":
-                    decision = "CORRECTED"
+                if decision in ("CORRECT", "CORRECTED"):
+                    decision = "INVALID"
+                elif decision == "NEEDS REVIEW":
+                    decision = "NEEDS_REVIEW"
 
                 if decision == "VALID":
                     # Keep original label, mark as validated
@@ -804,8 +806,8 @@ class MerchantResolvingEmbeddingProcessor:
                         f"Marked {word_id} as NEEDS_REVIEW: {llm_result.reasoning[:50]}..."
                     )
 
-                elif decision == "CORRECTED":
-                    # LLM corrected the label
+                elif decision == "INVALID":
+                    # LLM invalidated the label and provided a correction
                     if llm_result.label != label_entity.label:
                         # Invalidate old label (keep for audit trail), create new one
                         from datetime import datetime, timezone
@@ -828,7 +830,7 @@ class MerchantResolvingEmbeddingProcessor:
                             reasoning=llm_result.reasoning,
                             timestamp_added=datetime.now(timezone.utc),
                             validation_status=ValidationStatus.VALID.value,
-                            label_proposed_by=f"llm-corrected:{label_entity.label_proposed_by or 'auto'}",
+                            label_proposed_by=f"llm-invalidated:{label_entity.label_proposed_by or 'auto'}",
                             label_consolidated_from=label_entity.label,
                         )
                         self.dynamo.add_receipt_word_label(new_label)
@@ -844,7 +846,7 @@ class MerchantResolvingEmbeddingProcessor:
                             predicted_label=label_data["label"],
                             final_label=llm_result.label,
                             validation_source="llm",
-                            decision="corrected",
+                            decision="invalid",
                             confidence=confidence_score,
                             reasoning=llm_result.reasoning,
                             similar_words=similar_evidence.get(word_id, []),
@@ -880,6 +882,32 @@ class MerchantResolvingEmbeddingProcessor:
                             similar_words=similar_evidence.get(word_id, []),
                             merchant_name=merchant_name,
                         )
+
+                else:
+                    label_entity.validation_status = ValidationStatus.NEEDS_REVIEW.value
+                    label_entity.label_proposed_by = (
+                        f"llm-needs-review:{label_entity.label_proposed_by or 'auto'}"
+                    )
+                    label_entity.reasoning = (
+                        f"Unrecognized decision '{decision}'. {llm_result.reasoning}"
+                    )
+                    self.dynamo.update_receipt_word_label(label_entity)
+
+                    log_label_validation(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        line_id=label_entity.line_id,
+                        word_id=label_entity.word_id,
+                        word_text=label_data.get("word_text", ""),
+                        predicted_label=label_data["label"],
+                        final_label=llm_result.label,
+                        validation_source="llm",
+                        decision="needs_review",
+                        confidence=confidence_score,
+                        reasoning=llm_result.reasoning,
+                        similar_words=similar_evidence.get(word_id, []),
+                        merchant_name=merchant_name,
+                    )
 
             except Exception as e:
                 _log(

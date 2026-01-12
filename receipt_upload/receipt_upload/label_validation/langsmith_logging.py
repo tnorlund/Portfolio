@@ -95,7 +95,7 @@ def log_label_validation(
     predicted_label: str,
     final_label: str,
     validation_source: str,  # "chroma" or "llm"
-    decision: str,  # "valid", "corrected", "needs_review"
+    decision: str,  # "valid", "invalid", "needs_review"
     confidence: float,
     reasoning: str,
     similar_words: Optional[List[Dict[str, Any]]] = None,
@@ -115,7 +115,7 @@ def log_label_validation(
         predicted_label: The original predicted label from LayoutLM
         final_label: The final label after validation
         validation_source: "chroma" for ChromaDB consensus, "llm" for LLM
-        decision: "valid", "corrected", or "needs_review"
+        decision: "valid", "invalid", or "needs_review"
         confidence: Confidence score (0.0 to 1.0)
         reasoning: Explanation for the decision
         similar_words: Optional list of similar validated words used as evidence

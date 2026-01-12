@@ -56,8 +56,8 @@ class LLMValidationResult:
     """Result of LLM validation for a single label."""
 
     word_id: str
-    decision: str  # "VALID", "CORRECTED", or "NEEDS_REVIEW"
-    label: str  # Final label (original if VALID, corrected if CORRECTED)
+    decision: str  # "VALID", "INVALID", or "NEEDS_REVIEW"
+    label: str  # Final label (original if VALID, corrected if INVALID)
     confidence: str  # "high", "medium", "low"
     reasoning: str
 
@@ -249,7 +249,8 @@ For each pending label, here are similar words that have been validated:
 
 For each pending label [0] through [{len(pending_labels) - 1}], decide:
 - **VALID**: The predicted label is correct
-- **CORRECT**: The predicted label is wrong, provide the correct label
+- **INVALID**: The predicted label is wrong, provide the correct label
+- **NEEDS_REVIEW**: You cannot decide confidently
 
 Consider:
 1. Position on receipt (header labels at top, totals at bottom)
@@ -261,7 +262,7 @@ Respond with a JSON array:
 ```json
 [
   {{"index": 0, "decision": "VALID", "label": "MERCHANT_NAME", "confidence": "high", "reasoning": "..."}},
-  {{"index": 1, "decision": "CORRECT", "label": "LINE_TOTAL", "confidence": "medium", "reasoning": "..."}}
+  {{"index": 1, "decision": "INVALID", "label": "LINE_TOTAL", "confidence": "medium", "reasoning": "..."}}
 ]
 ```
 
@@ -291,7 +292,7 @@ def parse_validation_response(
     Note:
         - Missing labels are marked as NEEDS_REVIEW (not auto-VALID)
         - Out-of-range and duplicate indexes are dropped
-        - CORRECT and CORRECTED are normalized to CORRECTED
+        - CORRECT and CORRECTED are normalized to INVALID
     """
     results = []
     num_labels = len(pending_labels)
@@ -391,11 +392,13 @@ def parse_validation_response(
             )
             continue
 
-        # Normalize decision: CORRECT -> CORRECTED
+        # Normalize decision: CORRECT/CORRECTED -> INVALID
         decision = llm_result.get("decision", "").upper()
-        if decision == "CORRECT":
-            decision = "CORRECTED"
-        elif decision not in ("VALID", "CORRECTED", "NEEDS_REVIEW"):
+        if decision in ("CORRECT", "CORRECTED"):
+            decision = "INVALID"
+        elif decision in ("NEEDS REVIEW",):
+            decision = "NEEDS_REVIEW"
+        elif decision not in ("VALID", "INVALID", "NEEDS_REVIEW"):
             logger.warning(
                 "Unknown decision '%s' for index %d, treating as NEEDS_REVIEW",
                 decision,
@@ -415,10 +418,14 @@ def parse_validation_response(
                 label["label"],
             )
             final_label = label["label"]
-            # If decision was CORRECTED but label is invalid, mark as NEEDS_REVIEW
-            if decision == "CORRECTED":
+            # If decision was INVALID but label is invalid, mark as NEEDS_REVIEW
+            if decision == "INVALID":
                 decision = "NEEDS_REVIEW"
-                reasoning = f"Invalid corrected label '{llm_result.get('label')}'. {reasoning}"
+                reasoning = f"Invalid label '{llm_result.get('label')}'. {reasoning}"
+
+        if decision == "INVALID" and final_label == label["label"]:
+            decision = "NEEDS_REVIEW"
+            reasoning = f"INVALID decision without a corrected label. {reasoning}"
 
         results.append(
             LLMValidationResult(
@@ -552,22 +559,22 @@ class LLMBatchValidator:
 
             # Log summary
             valid_count = sum(1 for r in results if r.decision == "VALID")
-            correct_count = sum(1 for r in results if r.decision == "CORRECT")
+            invalid_count = sum(1 for r in results if r.decision == "INVALID")
             logger.info(
-                "LLM validation complete: %d VALID, %d CORRECTED",
+                "LLM validation complete: %d VALID, %d INVALID",
                 valid_count,
-                correct_count,
+                invalid_count,
             )
 
             return results
 
         except Exception as e:
             logger.error("LLM validation failed: %s", e)
-            # Return fallback results - mark all as valid with low confidence
+            # Return fallback results - mark all as NEEDS_REVIEW
             return [
                 LLMValidationResult(
                     word_id=f"{label['line_id']}_{label['word_id']}",
-                    decision="VALID",
+                    decision="NEEDS_REVIEW",
                     label=label["label"],
                     confidence="low",
                     reasoning=f"LLM call failed: {str(e)[:100]}",
