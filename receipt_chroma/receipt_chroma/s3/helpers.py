@@ -150,17 +150,16 @@ def _download_single_file_with_retry(
             )
 
             # Verify size if expected_size is provided
-            if expected_size and local_file.exists():
-                actual_size = local_file.stat().st_size
-                if actual_size != expected_size:
-                    logger.warning(
-                        "Size mismatch for %s: expected %d, got %d",
-                        s3_key,
-                        expected_size,
-                        actual_size,
-                    )
+            actual_size = local_file.stat().st_size if local_file.exists() else 0
+            if expected_size and actual_size != expected_size:
+                logger.warning(
+                    "Size mismatch for %s: expected %d, got %d",
+                    s3_key,
+                    expected_size,
+                    actual_size,
+                )
 
-            return (s3_key, expected_size, None)
+            return (s3_key, actual_size, None)
 
         except (ChecksumError, FlexibleChecksumError) as e:
             if not allow_checksum_bypass:
@@ -377,6 +376,36 @@ def download_snapshot_from_s3_parallel(
                 len(errors),
                 errors[:3],
             )
+
+        # Verify integrity if requested - check that all files exist with expected sizes
+        integrity_errors: List[str] = []
+        if verify_integrity:
+            logger.info("Verifying integrity of %d downloaded files", file_count)
+            for s3_key, local_file, expected_size in files_to_download:
+                if not local_file.exists():
+                    integrity_errors.append(f"{s3_key}: file missing")
+                elif expected_size > 0:
+                    actual_size = local_file.stat().st_size
+                    if actual_size != expected_size:
+                        integrity_errors.append(
+                            f"{s3_key}: size mismatch (expected {expected_size}, got {actual_size})"
+                        )
+
+            if integrity_errors:
+                logger.error(
+                    "Integrity verification failed with %d errors: %s",
+                    len(integrity_errors),
+                    integrity_errors[:5],
+                )
+                return {
+                    "status": "failed",
+                    "error": f"Integrity verification failed: {integrity_errors[:3]}",
+                    "snapshot_key": snapshot_key,
+                    "integrity_errors": integrity_errors,
+                }
+            logger.info("Integrity verification passed for all %d files", file_count)
+
+        elapsed = time.time() - start_time
 
         logger.info(
             "Parallel download complete: %d files, %d bytes, %.2fs (%.1f MB/s)",
@@ -1045,7 +1074,8 @@ def download_snapshot_compressed(
             total_size = 0
 
             with tarfile.open(tar_path, "r:gz") as tar:
-                # Security: validate member paths before extraction
+                # Security: validate member paths and build safe members list
+                safe_members = []
                 for member in tar.getmembers():
                     # Prevent path traversal attacks
                     member_path = os.path.normpath(member.name)
@@ -1055,12 +1085,13 @@ def download_snapshot_compressed(
                         )
                         continue
 
+                    safe_members.append(member)
                     if member.isfile():
                         file_count += 1
                         total_size += member.size
 
-                # Extract all (after validation)
-                tar.extractall(local_path)
+                # Extract only validated safe members
+                tar.extractall(local_path, members=safe_members)
 
             extract_time = time.time() - extract_start
             total_time = time.time() - start_time
