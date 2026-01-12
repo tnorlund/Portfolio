@@ -206,15 +206,33 @@ export function initializeAndSolve(
     };
   });
 
-  // Create a copy for physics simulation
-  const endNodes: LabelNode[] = startNodes.map((n) => ({
-    ...n,
-    // Start simulation from center area with small random offset
-    x: centerX + (random() - 0.5) * 100,
-    y: centerY + (random() - 0.5) * 100,
-    vx: 0,
-    vy: 0,
-  }));
+  // Sort by radius (largest first) for better initial placement
+  const sortedByRadius = [...startNodes].sort((a, b) => b.radius - a.radius);
+
+  // Create a copy for physics simulation with better initial distribution
+  // Large circles start near center, small circles spread around periphery
+  const endNodes: LabelNode[] = sortedByRadius.map((n, i) => {
+    const totalNodes = sortedByRadius.length;
+    // Normalized index: 0 = largest, 1 = smallest
+    const normalizedIndex = i / (totalNodes - 1 || 1);
+
+    // Golden angle for even angular distribution
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    const angle = i * goldenAngle;
+
+    // Distance from center: large circles closer to center, small ones further out
+    // But add some randomness to avoid too uniform pattern
+    const baseDistance = normalizedIndex * Math.min(width, height) * 0.35;
+    const distance = baseDistance + (random() - 0.5) * 50;
+
+    return {
+      ...n,
+      x: centerX + Math.cos(angle) * distance + (random() - 0.5) * 30,
+      y: centerY + Math.sin(angle) * distance + (random() - 0.5) * 30,
+      vx: 0,
+      vy: 0,
+    };
+  });
 
   // Run physics to completion synchronously
   let iterations = 0;
@@ -237,7 +255,11 @@ export function initializeAndSolve(
     node.vy = 0;
   }
 
-  return { startNodes, endNodes };
+  // Restore original order (by label) to match startNodes
+  const endNodesByLabel = new Map(endNodes.map((n) => [n.label, n]));
+  const orderedEndNodes = startNodes.map((s) => endNodesByLabel.get(s.label)!);
+
+  return { startNodes, endNodes: orderedEndNodes };
 }
 
 /**
