@@ -355,3 +355,309 @@ def get_decisions_from_trace(
     child = children_by_name.get(trace_name, {})
     outputs = child.get("outputs", {}) or {}
     return outputs.get(decisions_key, [])
+
+
+# ============================================================================
+# Label Validation Helpers (receipt-label-validation project)
+# ============================================================================
+
+
+class LabelValidationTraceIndex(TraceIndex):
+    """Index specialized for receipt-label-validation project traces.
+
+    Extends TraceIndex with methods for the new trace hierarchy where
+    the root trace is `receipt_processing` instead of `ReceiptEvaluation`.
+
+    Args:
+        traces: List of raw trace dicts from Parquet.
+        parent_name_filter: Parent trace name filter (default: receipt_processing).
+
+    Example:
+        ```python
+        index = LabelValidationTraceIndex(traces)
+        for parent in index.parents:
+            validations = index.get_validation_traces(parent["id"])
+            summary = build_label_validation_summary(validations)
+        ```
+    """
+
+    def __init__(
+        self,
+        traces: list[dict[str, Any]],
+        parent_name_filter: str = "receipt_processing",
+    ):
+        super().__init__(traces, parent_name_filter)
+
+    def get_validation_traces(self, parent_id: str) -> list[dict[str, Any]]:
+        """Get all label_validation_* child traces.
+
+        Args:
+            parent_id: Parent trace ID.
+
+        Returns:
+            List of label_validation_chroma and label_validation_llm traces.
+        """
+        return [
+            c
+            for c in self.get_children(parent_id)
+            if c.get("name", "").startswith("label_validation_")
+        ]
+
+    def get_merchant_traces(self, parent_id: str) -> list[dict[str, Any]]:
+        """Get all merchant_resolution_* child traces.
+
+        Args:
+            parent_id: Parent trace ID.
+
+        Returns:
+            List of merchant_resolution_chroma_* traces.
+        """
+        return [
+            c
+            for c in self.get_children(parent_id)
+            if c.get("name", "").startswith("merchant_resolution_")
+        ]
+
+    def get_s3_download_traces(self, parent_id: str) -> list[dict[str, Any]]:
+        """Get S3 download snapshot traces.
+
+        Args:
+            parent_id: Parent trace ID.
+
+        Returns:
+            List of s3_download_*_snapshot traces.
+        """
+        return [
+            c
+            for c in self.get_children(parent_id)
+            if c.get("name", "").startswith("s3_download_")
+        ]
+
+    def get_embedding_traces(self, parent_id: str) -> list[dict[str, Any]]:
+        """Get OpenAI embedding traces.
+
+        Args:
+            parent_id: Parent trace ID.
+
+        Returns:
+            List of openai_embed_* traces.
+        """
+        return [
+            c
+            for c in self.get_children(parent_id)
+            if c.get("name", "").startswith("openai_embed_")
+        ]
+
+    def get_llm_batch_trace(self, parent_id: str) -> dict[str, Any] | None:
+        """Get the llm_batch_validation trace.
+
+        Args:
+            parent_id: Parent trace ID.
+
+        Returns:
+            The llm_batch_validation trace or None.
+        """
+        for c in self.get_children(parent_id):
+            if c.get("name") == "llm_batch_validation":
+                return c
+        return None
+
+
+def count_label_validation_decisions(
+    validations: list[dict[str, Any]],
+) -> dict[str, int]:
+    """Count validation decisions for label_validation_* traces.
+
+    Args:
+        validations: List of label_validation trace dicts.
+
+    Returns:
+        Dict with counts: {'valid': n, 'corrected': m, 'needs_review': k}
+    """
+    counts = {"valid": 0, "corrected": 0, "needs_review": 0}
+
+    for v in validations:
+        outputs = v.get("outputs", {}) or {}
+        decision = (outputs.get("decision", "") or "").lower()
+        if decision in counts:
+            counts[decision] += 1
+
+    return counts
+
+
+def get_merchant_resolution_result(
+    merchant_traces: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Get the successful merchant resolution result.
+
+    Checks phone -> address -> text order for first success.
+
+    Args:
+        merchant_traces: List of merchant_resolution_* trace dicts.
+
+    Returns:
+        Dict with merchant info or None if not resolved.
+    """
+    tier_order = ["phone", "address", "text"]
+
+    # Build tier -> trace mapping
+    by_tier: dict[str, dict[str, Any]] = {}
+    for trace in merchant_traces:
+        name = trace.get("name", "")
+        for tier in tier_order:
+            if tier in name:
+                by_tier[tier] = trace
+                break
+
+    # Check in priority order
+    for tier in tier_order:
+        trace = by_tier.get(tier)
+        if not trace:
+            continue
+
+        outputs = trace.get("outputs", {}) or {}
+        if outputs.get("found"):
+            return {
+                "merchant_name": outputs.get("merchant_name"),
+                "place_id": outputs.get("place_id"),
+                "confidence": outputs.get("confidence", 0.0),
+                "resolution_tier": tier,
+            }
+
+    return None
+
+
+def build_label_validation_summary(
+    validations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build summary statistics for label validations.
+
+    Args:
+        validations: List of label_validation_* trace dicts.
+
+    Returns:
+        Dict with summary stats including counts and averages.
+    """
+    if not validations:
+        return {
+            "total_words": 0,
+            "valid_count": 0,
+            "corrected_count": 0,
+            "needs_review_count": 0,
+            "chroma_count": 0,
+            "llm_count": 0,
+            "avg_confidence": 0.0,
+        }
+
+    counts = count_label_validation_decisions(validations)
+
+    chroma_count = sum(1 for v in validations if "chroma" in v.get("name", ""))
+    llm_count = sum(1 for v in validations if "llm" in v.get("name", ""))
+
+    confidences = []
+    for v in validations:
+        outputs = v.get("outputs", {}) or {}
+        if conf := outputs.get("confidence"):
+            try:
+                confidences.append(float(conf))
+            except (ValueError, TypeError):
+                pass
+
+    return {
+        "total_words": len(validations),
+        "valid_count": counts["valid"],
+        "corrected_count": counts["corrected"],
+        "needs_review_count": counts["needs_review"],
+        "chroma_count": chroma_count,
+        "llm_count": llm_count,
+        "avg_confidence": sum(confidences) / len(confidences) if confidences else 0.0,
+    }
+
+
+def build_merchant_resolution_summary(
+    merchant_traces: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build summary of merchant resolution attempts.
+
+    Args:
+        merchant_traces: List of merchant_resolution_* trace dicts.
+
+    Returns:
+        Dict with resolution attempt results by tier.
+    """
+    summary = {
+        "phone_attempted": False,
+        "phone_success": False,
+        "address_attempted": False,
+        "address_success": False,
+        "text_attempted": False,
+        "text_success": False,
+        "final_tier": None,
+        "final_confidence": 0.0,
+    }
+
+    tier_order = ["phone", "address", "text"]
+
+    for trace in merchant_traces:
+        name = trace.get("name", "")
+        outputs = trace.get("outputs", {}) or {}
+        found = outputs.get("found", False)
+
+        for tier in tier_order:
+            if tier in name:
+                summary[f"{tier}_attempted"] = True
+                if found:
+                    summary[f"{tier}_success"] = True
+                    if summary["final_tier"] is None:
+                        summary["final_tier"] = tier
+                        summary["final_confidence"] = outputs.get("confidence", 0.0)
+                break
+
+    return summary
+
+
+def get_step_timings(
+    parent: dict[str, Any],
+    children: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Get timing breakdown for all steps in a receipt processing trace.
+
+    Args:
+        parent: The receipt_processing root trace.
+        children: List of child traces.
+
+    Returns:
+        Dict mapping step type to timing info.
+    """
+    parent_start = parse_datetime(parent.get("start_time"))
+
+    timings: dict[str, dict[str, Any]] = {
+        "s3_download": {"duration_ms": 0, "count": 0},
+        "embedding": {"duration_ms": 0, "count": 0},
+        "chroma_validation": {"duration_ms": 0, "count": 0},
+        "llm_validation": {"duration_ms": 0, "count": 0},
+        "merchant_resolution": {"duration_ms": 0, "count": 0},
+    }
+
+    for child in children:
+        name = child.get("name", "")
+        duration = get_duration_seconds(child)
+        duration_ms = (duration or 0) * 1000
+
+        if name.startswith("s3_download_"):
+            timings["s3_download"]["duration_ms"] += duration_ms
+            timings["s3_download"]["count"] += 1
+        elif name.startswith("openai_embed_"):
+            timings["embedding"]["duration_ms"] += duration_ms
+            timings["embedding"]["count"] += 1
+        elif name == "label_validation_chroma":
+            timings["chroma_validation"]["duration_ms"] += duration_ms
+            timings["chroma_validation"]["count"] += 1
+        elif name in ("llm_batch_validation", "label_validation_llm"):
+            timings["llm_validation"]["duration_ms"] += duration_ms
+            timings["llm_validation"]["count"] += 1
+        elif name.startswith("merchant_resolution_"):
+            timings["merchant_resolution"]["duration_ms"] += duration_ms
+            timings["merchant_resolution"]["count"] += 1
+
+    return timings

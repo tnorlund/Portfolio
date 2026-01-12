@@ -329,6 +329,9 @@ class EMRServerlessAnalytics(ComponentResource):
 
         emr_job_path = spark_scripts_dir / "emr_job.py"
         viz_cache_path = spark_scripts_dir / "viz_cache_job.py"
+        label_validation_viz_cache_path = (
+            spark_scripts_dir / "label_validation_viz_cache_job.py"
+        )
 
         # Upload emr_job.py (source_hash forces update on content change)
         self.emr_job_script = aws.s3.BucketObjectv2(
@@ -347,6 +350,16 @@ class EMRServerlessAnalytics(ComponentResource):
             key="spark/viz_cache_job.py",
             source=FileAsset(str(viz_cache_path)),
             source_hash=file_hash(viz_cache_path),
+            opts=ResourceOptions(parent=self.artifacts_bucket),
+        )
+
+        # Upload label_validation_viz_cache_job.py
+        self.label_validation_viz_cache_job_script = aws.s3.BucketObjectv2(
+            f"{name}-label-validation-viz-cache-job-script",
+            bucket=self.artifacts_bucket.id,
+            key="spark/label_validation_viz_cache_job.py",
+            source=FileAsset(str(label_validation_viz_cache_path)),
+            source_hash=file_hash(label_validation_viz_cache_path),
             opts=ResourceOptions(parent=self.artifacts_bucket),
         )
 

@@ -69,3 +69,7 @@ export const LabelWordCloud = dynamic(
   () => import("./LabelWordCloud"),
   { ssr: false }
 );
+export const LabelValidationVisualization = dynamic(
+  () => import("./LabelValidationVisualization"),
+  { ssr: false }
+);
