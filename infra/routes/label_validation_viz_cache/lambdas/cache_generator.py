@@ -270,7 +270,7 @@ def _build_receipt_visualization(
     chroma_validations, llm_validations = _parse_validation_traces(index, root_id)
 
     # Get timing info
-    children = index.get_child_runs(root_id)
+    children = index.get_children(root_id)
     timings = get_step_timings(root_trace, children)
 
     chroma_duration = timings.get("chroma_validation", {}).get("duration_ms", 0) / 1000
@@ -426,7 +426,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     try:
         reader = ParquetReader(bucket=LANGSMITH_EXPORT_BUCKET)
-        traces = reader.read_all_traces(prefix=LANGSMITH_EXPORT_PREFIX)
+        traces = reader.read_all_traces(LANGSMITH_EXPORT_PREFIX)
     except Exception as e:
         logger.exception("Failed to read traces from Parquet")
         return {"statusCode": 500, "error": f"Failed to read traces: {e}"}
@@ -439,7 +439,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
     # Build trace index
     index = LabelValidationTraceIndex(traces)
-    root_runs = index.get_root_runs()
+    root_runs = index.parents
 
     logger.info("Found %d root receipt_processing runs", len(root_runs))
 
