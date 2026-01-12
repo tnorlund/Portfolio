@@ -23,7 +23,7 @@ import {
   ReceiptStack,
   ScanReceiptBoundingBox,
   TrainingMetricsAnimation,
-  UploadDiagram,
+  AWSFlowDiagram,
   ZDepthConstrainedParametric,
   ZDepthUnconstrainedParametric,
 } from "../components/ui/Figures";
@@ -421,7 +421,7 @@ export default function ReceiptPage({
       </p>
 
       <ClientOnly>
-        <UploadDiagram chars={uploadDiagramChars} />
+        <AWSFlowDiagram chars={uploadDiagramChars} />
       </ClientOnly>
 
       <p>
