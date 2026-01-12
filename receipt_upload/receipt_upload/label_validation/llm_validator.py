@@ -97,6 +97,17 @@ class LabelValidationResponse(BaseModel):
     )
 
 
+@dataclass
+class LLMValidationResult:
+    """Result of LLM validation for a single label."""
+
+    word_id: str
+    decision: str  # "VALID", "INVALID", or "NEEDS_REVIEW"
+    label: str  # Final label (original if VALID, corrected if INVALID)
+    confidence: str  # "high", "medium", "low"
+    reasoning: str
+
+
 def convert_structured_response(
     response: LabelValidationResponse,
     pending_labels: List[Dict[str, Any]],
@@ -225,17 +236,6 @@ def _get_traceable():
 def _get_label_validation_project() -> str:
     """Get the Langsmith project name for label validation from env var."""
     return os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
-
-
-@dataclass
-class LLMValidationResult:
-    """Result of LLM validation for a single label."""
-
-    word_id: str
-    decision: str  # "VALID", "INVALID", or "NEEDS_REVIEW"
-    label: str  # Final label (original if VALID, corrected if INVALID)
-    confidence: str  # "high", "medium", "low"
-    reasoning: str
 
 
 def _build_core_labels_prompt() -> str:

@@ -4,7 +4,7 @@ This Lambda generates visualization cache from LangSmith bulk exports,
 combining trace data (validation decisions, timing) with DynamoDB data
 (word bboxes, CDN keys).
 
-Reads from the `receipt-label-validation` LangSmith project.
+Reads from the `receipt-validation-jan-12` LangSmith project.
 """
 
 import json
