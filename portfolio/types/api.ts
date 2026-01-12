@@ -621,6 +621,9 @@ export interface LabelValidationAggregateStats {
   avg_chroma_rate: number;
   avg_confidence: number;
   total_receipts: number;
+  total_valid: number;
+  total_corrected: number;
+  total_needs_review: number;
 }
 
 /**

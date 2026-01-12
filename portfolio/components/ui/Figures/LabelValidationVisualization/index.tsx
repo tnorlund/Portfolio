@@ -740,7 +740,7 @@ const LabelValidationVisualization: React.FC = () => {
       }
       isAnimatingRef.current = false;
     };
-  }, [inView, receipts.length > 0, currentIndex]);
+  }, [inView, receipts.length, currentIndex]);
 
   if (loading) {
     return (
