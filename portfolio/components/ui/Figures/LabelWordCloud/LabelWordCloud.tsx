@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useLayoutEffect, useRef, useCallback } from "react";
-import { useSprings, animated, config } from "@react-spring/web";
+import { useSprings, animated, config, to } from "@react-spring/web";
 import { useOptimizedInView } from "../../../../hooks/useOptimizedInView";
 import { api } from "../../../../services/api";
 import { LabelValidationCountResponse } from "../../../../types/api";
@@ -72,6 +72,13 @@ function lineIntersectsCircle(
   const fy = y1 - cy;
 
   const a = dx * dx + dy * dy;
+
+  // Handle degenerate segment (zero-length line is just a point)
+  if (a < Number.EPSILON) {
+    // Check if the point (x1, y1) is inside or on the circle
+    return fx * fx + fy * fy <= radius * radius;
+  }
+
   const b = 2 * (fx * dx + fy * dy);
   const c = fx * fx + fy * fy - radius * radius;
 
@@ -292,13 +299,21 @@ const LabelWordCloud: React.FC<LabelWordCloudProps> = ({
 
   // Fetch label validation counts
   useEffect(() => {
+    let mounted = true;
     api
       .fetchLabelValidationCount()
-      .then(setData)
+      .then((result) => {
+        if (mounted) setData(result);
+      })
       .catch((err) => {
-        console.error("Failed to fetch label validation counts:", err);
-        setError("Failed to load data");
+        if (mounted) {
+          console.error("Failed to fetch label validation counts:", err);
+          setError("Failed to load data");
+        }
       });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // Compute initial nodes (without textFitsInside determined yet)
@@ -485,9 +500,7 @@ const LabelWordCloud: React.FC<LabelWordCloudProps> = ({
               key={`circle-${node.label}`}
               style={{
                 opacity: spring.opacity,
-                transform: spring.x.to(
-                  (x) => `translate(${x}px, ${spring.y.get()}px)`
-                ),
+                transform: to([spring.x, spring.y], (x, y) => `translate(${x}px, ${y}px)`),
               }}
             >
               <circle r={node.radius} className={styles.labelCircle} />
@@ -509,9 +522,7 @@ const LabelWordCloud: React.FC<LabelWordCloudProps> = ({
               key={`text-${node.label}`}
               style={{
                 opacity: spring.opacity,
-                transform: spring.x.to(
-                  (x) => `translate(${x}px, ${spring.y.get()}px)`
-                ),
+                transform: to([spring.x, spring.y], (x, y) => `translate(${x}px, ${y}px)`),
               }}
             >
               <text
@@ -551,9 +562,7 @@ const LabelWordCloud: React.FC<LabelWordCloudProps> = ({
               key={`leader-${node.label}`}
               style={{
                 opacity: spring.opacity,
-                transform: spring.x.to(
-                  (x) => `translate(${x}px, ${spring.y.get()}px)`
-                ),
+                transform: to([spring.x, spring.y], (x, y) => `translate(${x}px, ${y}px)`),
               }}
             >
               <line

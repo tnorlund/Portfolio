@@ -142,6 +142,11 @@ export function initializeAndSolve(
   height: number,
   seed: number = 42
 ): { startNodes: LabelNode[]; endNodes: LabelNode[] } {
+  // Guard against empty labels array (Math.min/max on empty spread returns Infinity/-Infinity)
+  if (labels.length === 0) {
+    return { startNodes: [], endNodes: [] };
+  }
+
   const random = seededRandom(seed);
   const centerX = width / 2;
   const centerY = height / 2;
