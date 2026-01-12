@@ -56,8 +56,8 @@ class LLMValidationResult:
     """Result of LLM validation for a single label."""
 
     word_id: str
-    decision: str  # "VALID" or "CORRECT"
-    label: str  # Final label (original if VALID, corrected if CORRECT)
+    decision: str  # "VALID", "CORRECTED", or "NEEDS_REVIEW"
+    label: str  # Final label (original if VALID, corrected if CORRECTED)
     confidence: str  # "high", "medium", "low"
     reasoning: str
 
@@ -287,23 +287,29 @@ def parse_validation_response(
 
     Returns:
         List of LLMValidationResult objects
+
+    Note:
+        - Missing labels are marked as NEEDS_REVIEW (not auto-VALID)
+        - Out-of-range and duplicate indexes are dropped
+        - CORRECT and CORRECTED are normalized to CORRECTED
     """
     results = []
+    num_labels = len(pending_labels)
 
     # Try to extract JSON from response
     json_match = re.search(r"\[[\s\S]*\]", response_text)
     if not json_match:
         logger.warning("No JSON array found in LLM response")
-        # Fallback: mark all as valid with low confidence
+        # Fallback: mark all as NEEDS_REVIEW (not auto-VALID)
         for label in pending_labels:
             word_id = f"{label['line_id']}_{label['word_id']}"
             results.append(
                 LLMValidationResult(
                     word_id=word_id,
-                    decision="VALID",
+                    decision="NEEDS_REVIEW",
                     label=label["label"],
                     confidence="low",
-                    reasoning="LLM response parsing failed",
+                    reasoning="LLM response parsing failed - no JSON found",
                 )
             )
         return results
@@ -312,28 +318,91 @@ def parse_validation_response(
         parsed = json.loads(json_match.group())
     except json.JSONDecodeError as e:
         logger.warning("Failed to parse LLM JSON: %s", e)
-        # Fallback
+        # Fallback: mark all as NEEDS_REVIEW
         for label in pending_labels:
             word_id = f"{label['line_id']}_{label['word_id']}"
             results.append(
                 LLMValidationResult(
                     word_id=word_id,
-                    decision="VALID",
+                    decision="NEEDS_REVIEW",
                     label=label["label"],
                     confidence="low",
-                    reasoning="LLM response parsing failed",
+                    reasoning=f"LLM response parsing failed: {str(e)[:50]}",
                 )
             )
         return results
 
-    # Process each result
-    result_by_index = {r.get("index", i): r for i, r in enumerate(parsed)}
+    # Build result lookup with robust index handling
+    # - Coerce index to int
+    # - Drop out-of-range indexes
+    # - Drop duplicate indexes (keep first)
+    result_by_index: Dict[int, Dict[str, Any]] = {}
+    seen_indexes: set = set()
 
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+
+        # Coerce index to int
+        raw_index = item.get("index")
+        try:
+            idx = int(raw_index) if raw_index is not None else -1
+        except (ValueError, TypeError):
+            logger.warning("Invalid index value: %r, skipping", raw_index)
+            continue
+
+        # Check range
+        if idx < 0 or idx >= num_labels:
+            logger.warning(
+                "Index %d out of range [0, %d), skipping",
+                idx,
+                num_labels,
+            )
+            continue
+
+        # Check duplicates
+        if idx in seen_indexes:
+            logger.warning("Duplicate index %d, keeping first", idx)
+            continue
+
+        seen_indexes.add(idx)
+        result_by_index[idx] = item
+
+    # Process each pending label
     for idx, label in enumerate(pending_labels):
         word_id = f"{label['line_id']}_{label['word_id']}"
-        llm_result = result_by_index.get(idx, {})
+        llm_result = result_by_index.get(idx)
 
-        decision = llm_result.get("decision", "VALID").upper()
+        if llm_result is None:
+            # Missing result - mark as NEEDS_REVIEW, not auto-VALID
+            logger.warning(
+                "No LLM result for index %d (word_id=%s), marking NEEDS_REVIEW",
+                idx,
+                word_id,
+            )
+            results.append(
+                LLMValidationResult(
+                    word_id=word_id,
+                    decision="NEEDS_REVIEW",
+                    label=label["label"],
+                    confidence="low",
+                    reasoning="LLM did not return a decision for this word",
+                )
+            )
+            continue
+
+        # Normalize decision: CORRECT -> CORRECTED
+        decision = llm_result.get("decision", "").upper()
+        if decision == "CORRECT":
+            decision = "CORRECTED"
+        elif decision not in ("VALID", "CORRECTED", "NEEDS_REVIEW"):
+            logger.warning(
+                "Unknown decision '%s' for index %d, treating as NEEDS_REVIEW",
+                decision,
+                idx,
+            )
+            decision = "NEEDS_REVIEW"
+
         final_label = llm_result.get("label", label["label"])
         confidence = llm_result.get("confidence", "medium")
         reasoning = llm_result.get("reasoning", "")
@@ -346,7 +415,10 @@ def parse_validation_response(
                 label["label"],
             )
             final_label = label["label"]
-            decision = "VALID"
+            # If decision was CORRECTED but label is invalid, mark as NEEDS_REVIEW
+            if decision == "CORRECTED":
+                decision = "NEEDS_REVIEW"
+                reasoning = f"Invalid corrected label '{llm_result.get('label')}'. {reasoning}"
 
         results.append(
             LLMValidationResult(
