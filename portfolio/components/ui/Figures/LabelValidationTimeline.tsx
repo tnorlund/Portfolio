@@ -7,6 +7,7 @@ import {
   LabelValidationKeyframe,
   LabelValidationStatusCounts,
 } from "../../../types/api";
+import { formatLabel } from "../../../utils/formatLabel";
 import styles from "./LabelValidationTimeline.module.css";
 
 const STATUSES = ["VALID", "INVALID", "PENDING", "NEEDS_REVIEW", "NONE"] as const;
@@ -126,7 +127,7 @@ const AnimatedLabelRow: React.FC<AnimatedLabelRowProps> = ({
   return (
     <Fragment>
       <div className={styles.labelName}>
-        {labelName.toLowerCase().replace(/_/g, " ")}
+        {formatLabel(labelName)}
       </div>
 
       {/* Bar container - width scales to max */}
@@ -261,14 +262,7 @@ export default function LabelValidationTimeline() {
               className={styles.legendDot}
               style={{ backgroundColor: STATUS_COLORS[status] }}
             />
-            <span>
-              {status
-                .toLowerCase()
-                .replace(/_/g, " ")
-                .split(" ")
-                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(" ")}
-            </span>
+            <span>{formatLabel(status)}</span>
           </div>
         ))}
       </div>

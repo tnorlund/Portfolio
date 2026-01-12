@@ -1,9 +1,8 @@
 import { Fragment, useEffect, useState } from "react";
 
 import { api } from "../../../services/api";
-import {
-  LabelValidationCountResponse
-} from "../../../types/api";
+import { LabelValidationCountResponse } from "../../../types/api";
+import { formatLabel } from "../../../utils/formatLabel";
 
 const STATUS_COLORS: Record<string, string> = {
   VALID: "var(--color-green)",
@@ -75,7 +74,7 @@ export default function LabelValidationChart() {
           return (
             <Fragment key={label}>
               <div style={{ fontWeight: 500, textAlign: "right" }}>
-                {label.toLowerCase().replace(/_/g, " ")}
+                {formatLabel(label)}
               </div>
               <div
                 style={{
@@ -136,14 +135,7 @@ export default function LabelValidationChart() {
                 borderRadius: "2px",
               }}
             />
-            <span>
-              {status
-                .toLowerCase()
-                .replace(/_/g, " ")
-                .split(" ")
-                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(" ")}
-            </span>
+            <span>{formatLabel(status)}</span>
           </div>
         ))}
       </div>
