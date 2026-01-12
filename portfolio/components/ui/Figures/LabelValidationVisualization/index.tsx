@@ -26,7 +26,7 @@ const TIER_COLORS = {
 // Decision colors
 const DECISION_COLORS: Record<string, string> = {
   VALID: "var(--color-green)",
-  CORRECTED: "var(--color-orange)",
+  INVALID: "var(--color-orange)",
   NEEDS_REVIEW: "var(--color-yellow)",
 };
 
@@ -240,7 +240,7 @@ interface TierBarProps {
   isComplete: boolean;
   isWaiting?: boolean;
   durationMs?: number;
-  decisions?: { VALID: number; CORRECTED: number; NEEDS_REVIEW: number };
+  decisions?: { VALID: number; INVALID: number; NEEDS_REVIEW: number; UNKNOWN?: number };
   wordsCount?: number;
 }
 
@@ -255,8 +255,11 @@ const TierBar: React.FC<TierBarProps> = ({
   decisions,
   wordsCount,
 }) => {
+  const invalidCount = decisions
+    ? decisions.INVALID ?? (decisions as Record<string, number>).CORRECTED ?? 0
+    : 0;
   const totalDecisions = decisions
-    ? decisions.VALID + decisions.CORRECTED + decisions.NEEDS_REVIEW
+    ? decisions.VALID + invalidCount + decisions.NEEDS_REVIEW
     : 0;
 
   return (
@@ -284,12 +287,12 @@ const TierBar: React.FC<TierBarProps> = ({
                   {decisions.VALID}
                 </span>
               )}
-              {decisions.CORRECTED > 0 && (
+              {invalidCount > 0 && (
                 <span
                   className={styles.badge}
-                  style={{ backgroundColor: DECISION_COLORS.CORRECTED }}
+                  style={{ backgroundColor: DECISION_COLORS.INVALID }}
                 >
-                  {decisions.CORRECTED}
+                  {invalidCount}
                 </span>
               )}
               {decisions.NEEDS_REVIEW > 0 && (
@@ -354,6 +357,9 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   // Calculate which words should be revealed based on tier progress
   const getRevealedWords = (): LabelValidationWord[] => {
     return words.filter((word) => {
+      if (!word.validation_source || !word.decision) {
+        return false;
+      }
       const wordTopY = 1 - word.bbox.y - word.bbox.height;
 
       if (word.validation_source === "chroma") {
@@ -402,7 +408,12 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
 
             {/* Word bounding boxes with decision indicators */}
             {revealedWords.map((word) => {
-              const color = DECISION_COLORS[word.decision];
+              const rawDecision = word.decision ?? "";
+              const decision =
+                rawDecision === "CORRECTED" || rawDecision === "CORRECT"
+                  ? "INVALID"
+                  : rawDecision;
+              const color = DECISION_COLORS[decision];
               const x = word.bbox.x * width;
               const y = (1 - word.bbox.y - word.bbox.height) * height;
               const w = word.bbox.width * width;
@@ -432,7 +443,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                     fill={color}
                   />
                   {/* Decision icons */}
-                  {word.decision === 'VALID' && (
+                  {decision === 'VALID' && (
                     <path
                       d={`M ${centerX - iconSize * 0.8} ${centerY}
                           L ${centerX - iconSize * 0.2} ${centerY + iconSize * 0.6}
@@ -444,7 +455,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                       strokeLinejoin="round"
                     />
                   )}
-                  {word.decision === 'CORRECTED' && (
+                  {decision === 'INVALID' && (
                     <g>
                       {/* Pencil/edit icon */}
                       <path
@@ -456,7 +467,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                       />
                     </g>
                   )}
-                  {word.decision === 'NEEDS_REVIEW' && (
+                  {decision === 'NEEDS_REVIEW' && (
                     <g>
                       <circle
                         cx={centerX}
@@ -567,8 +578,8 @@ const ValidationLegend: React.FC<ValidationLegendProps> = ({
             <span>Valid</span>
           </div>
           <div className={styles.legendItem}>
-            <span className={styles.legendColor} style={{ backgroundColor: DECISION_COLORS.CORRECTED }} />
-            <span>Corrected</span>
+            <span className={styles.legendColor} style={{ backgroundColor: DECISION_COLORS.INVALID }} />
+            <span>Invalid</span>
           </div>
           <div className={styles.legendItem}>
             <span className={styles.legendColor} style={{ backgroundColor: DECISION_COLORS.NEEDS_REVIEW }} />

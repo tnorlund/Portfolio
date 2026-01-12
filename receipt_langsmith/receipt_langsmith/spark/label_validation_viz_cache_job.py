@@ -419,9 +419,9 @@ def build_viz_receipt(
     for v in chroma_validations:
         key = (v.get("line_id", 0), v.get("word_id", 0))
         decision = v.get("decision", "").upper()
-        # Normalize CORRECT -> CORRECTED
-        if decision == "CORRECT":
-            decision = "CORRECTED"
+        # Normalize CORRECT/CORRECTED -> INVALID
+        if decision in ("CORRECT", "CORRECTED"):
+            decision = "INVALID"
         validation_lookup[key] = {
             "validation_source": "chroma",
             "decision": decision if decision else None,
@@ -431,9 +431,9 @@ def build_viz_receipt(
     for v in llm_validations:
         key = (v.get("line_id", 0), v.get("word_id", 0))
         decision = v.get("decision", "").upper()
-        # Normalize CORRECT -> CORRECTED
-        if decision == "CORRECT":
-            decision = "CORRECTED"
+        # Normalize CORRECT/CORRECTED -> INVALID
+        if decision in ("CORRECT", "CORRECTED"):
+            decision = "INVALID"
         validation_lookup[key] = {
             "validation_source": "llm",
             "decision": decision if decision else None,
@@ -485,8 +485,8 @@ def build_viz_receipt(
 
     # Build tier summaries
     # Does NOT default to VALID - only counts words with actual decisions
-    chroma_decisions = {"VALID": 0, "CORRECTED": 0, "NEEDS_REVIEW": 0}
-    llm_decisions = {"VALID": 0, "CORRECTED": 0, "NEEDS_REVIEW": 0}
+    chroma_decisions = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+    llm_decisions = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
 
     for word in viz_words:
         decision = word.get("decision")
@@ -499,8 +499,8 @@ def build_viz_receipt(
         # Normalize decision
         if decision == "VALID":
             norm_decision = "VALID"
-        elif decision in ("CORRECTED", "CORRECT"):
-            norm_decision = "CORRECTED"
+        elif decision in ("INVALID", "CORRECTED", "CORRECT"):
+            norm_decision = "INVALID"
         elif decision in ("NEEDS_REVIEW", "NEEDS REVIEW"):
             norm_decision = "NEEDS_REVIEW"
         else:
@@ -584,7 +584,7 @@ def calculate_aggregate_stats(receipts: list[dict]) -> dict[str, Any]:
     total_words = 0
     chroma_words = 0
     total_valid = 0
-    total_corrected = 0
+    total_invalid = 0
     total_needs_review = 0
 
     for r in receipts:
@@ -600,13 +600,13 @@ def calculate_aggregate_stats(receipts: list[dict]) -> dict[str, Any]:
         # Aggregate decisions
         chroma_decisions = chroma.get("decisions", {})
         total_valid += chroma_decisions.get("VALID", 0)
-        total_corrected += chroma_decisions.get("CORRECTED", 0)
+        total_invalid += chroma_decisions.get("INVALID", 0)
         total_needs_review += chroma_decisions.get("NEEDS_REVIEW", 0)
 
         if llm:
             llm_decisions = llm.get("decisions", {})
             total_valid += llm_decisions.get("VALID", 0)
-            total_corrected += llm_decisions.get("CORRECTED", 0)
+            total_invalid += llm_decisions.get("INVALID", 0)
             total_needs_review += llm_decisions.get("NEEDS_REVIEW", 0)
 
     avg_chroma_rate = (chroma_words / total_words * 100) if total_words > 0 else 0.0
@@ -615,7 +615,7 @@ def calculate_aggregate_stats(receipts: list[dict]) -> dict[str, Any]:
         "total_receipts": len(receipts),
         "avg_chroma_rate": round(avg_chroma_rate, 1),
         "total_valid": total_valid,
-        "total_corrected": total_corrected,
+        "total_invalid": total_invalid,
         "total_needs_review": total_needs_review,
     }
 

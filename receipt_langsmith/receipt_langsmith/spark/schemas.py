@@ -171,7 +171,7 @@ LABEL_VALIDATION_STEP_TIMING_SCHEMA = StructType(
 LABEL_VALIDATION_DECISION_SCHEMA = StructType(
     [
         StructField("validation_source", StringType(), True),  # chroma, llm
-        StructField("decision", StringType(), True),  # valid, corrected, needs_review
+        StructField("decision", StringType(), True),  # valid, invalid, needs_review
         StructField("label_type", StringType(), True),  # predicted_label value
         StructField("count", LongType(), True),
         StructField("avg_confidence", DoubleType(), True),

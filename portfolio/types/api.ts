@@ -574,8 +574,9 @@ export interface LabelValidationWord {
     height: number;
   };
   label: string;
-  validation_source: "chroma" | "llm";
-  decision: "VALID" | "CORRECTED" | "NEEDS_REVIEW";
+  validation_status?: "NONE" | "PENDING" | "VALID" | "INVALID" | "NEEDS_REVIEW";
+  validation_source: "chroma" | "llm" | null;
+  decision: "VALID" | "INVALID" | "NEEDS_REVIEW" | null;
 }
 
 /**
@@ -588,8 +589,9 @@ export interface LabelValidationTier {
   words_count: number;
   decisions: {
     VALID: number;
-    CORRECTED: number;
+    INVALID: number;
     NEEDS_REVIEW: number;
+    UNKNOWN?: number;
   };
 }
 
@@ -604,6 +606,10 @@ export interface LabelValidationReceipt {
   words: LabelValidationWord[];
   chroma: LabelValidationTier;
   llm: LabelValidationTier | null;
+  step_timings?: Record<
+    string,
+    { duration_ms: number; duration_seconds: number }
+  >;
   cdn_s3_key: string;
   cdn_webp_s3_key?: string;
   cdn_avif_s3_key?: string;
@@ -622,7 +628,7 @@ export interface LabelValidationAggregateStats {
   avg_confidence: number;
   total_receipts: number;
   total_valid: number;
-  total_corrected: number;
+  total_invalid: number;
   total_needs_review: number;
 }
 

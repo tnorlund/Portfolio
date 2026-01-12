@@ -31,9 +31,9 @@ class TestParseValidationResponse:
         assert results[0].decision == "VALID"
         assert results[0].label == "TOTAL"
 
-        # CORRECT should be normalized to CORRECTED
+        # CORRECT should be normalized to INVALID
         assert results[1].word_id == "1_2"
-        assert results[1].decision == "CORRECTED"
+        assert results[1].decision == "INVALID"
         assert results[1].label == "TAX"
 
     def test_parse_no_json_returns_needs_review(self):
@@ -113,7 +113,7 @@ class TestParseValidationResponse:
         response_text = """
         [
             {"index": 0, "decision": "VALID", "label": "TOTAL", "confidence": "high", "reasoning": "First"},
-            {"index": 0, "decision": "CORRECTED", "label": "TAX", "confidence": "high", "reasoning": "Duplicate"},
+            {"index": 0, "decision": "INVALID", "label": "TAX", "confidence": "high", "reasoning": "Duplicate"},
             {"index": 1, "decision": "VALID", "label": "SUBTOTAL", "confidence": "high", "reasoning": "OK"}
         ]
         """
@@ -179,22 +179,22 @@ class TestParseValidationResponse:
         assert len(results) == 1
         assert results[0].decision == "NEEDS_REVIEW"
 
-    def test_parse_invalid_label_rejected_and_corrected_becomes_needs_review(self):
-        """Test that invalid corrected labels become NEEDS_REVIEW."""
+    def test_parse_invalid_label_rejected_and_invalid_becomes_needs_review(self):
+        """Test that invalid labels with INVALID decision become NEEDS_REVIEW."""
         pending_labels = [
             {"line_id": 1, "word_id": 1, "label": "TOTAL"},
         ]
 
         response_text = """
         [
-            {"index": 0, "decision": "CORRECTED", "label": "INVALID_LABEL_XYZ", "confidence": "high", "reasoning": "Bad"}
+            {"index": 0, "decision": "INVALID", "label": "INVALID_LABEL_XYZ", "confidence": "high", "reasoning": "Bad"}
         ]
         """
 
         results = parse_validation_response(response_text, pending_labels)
 
         assert len(results) == 1
-        # Invalid label with CORRECTED decision should become NEEDS_REVIEW
+        # Invalid label with INVALID decision should become NEEDS_REVIEW
         assert results[0].decision == "NEEDS_REVIEW"
         # Should keep original label
         assert results[0].label == "TOTAL"

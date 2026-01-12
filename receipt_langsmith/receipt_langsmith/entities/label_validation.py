@@ -174,7 +174,7 @@ class LabelValidationOutputs(BaseModel):
     """Source of validation: 'chroma' or 'llm'."""
 
     decision: str = ""
-    """Decision: 'valid', 'corrected', or 'needs_review'."""
+    """Decision: 'valid', 'invalid', or 'needs_review'."""
 
     confidence: float = 0.0
     """Confidence score (0-1)."""
@@ -332,7 +332,7 @@ class ReceiptProcessingOutputs(BaseModel):
     """Total labels validated."""
 
     labels_corrected: int = 0
-    """Number of labels corrected."""
+    """Number of labels corrected (invalidated predictions)."""
 
     chroma_validated: int = 0
     """Labels validated via ChromaDB consensus."""
@@ -356,8 +356,8 @@ class LabelValidationSummary(BaseModel):
     valid_count: int = 0
     """Labels marked valid (no change needed)."""
 
-    corrected_count: int = 0
-    """Labels that were corrected."""
+    invalid_count: int = 0
+    """Labels that were invalidated and corrected."""
 
     needs_review_count: int = 0
     """Labels needing manual review."""

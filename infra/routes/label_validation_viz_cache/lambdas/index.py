@@ -112,7 +112,7 @@ def _calculate_aggregate_stats(
     total_words = 0
     chroma_words = 0
     total_valid = 0
-    total_corrected = 0
+    total_invalid = 0
     total_needs_review = 0
 
     for r in receipts:
@@ -128,13 +128,13 @@ def _calculate_aggregate_stats(
         # Aggregate decisions
         chroma_decisions = chroma.get("decisions", {})
         total_valid += chroma_decisions.get("VALID", 0)
-        total_corrected += chroma_decisions.get("CORRECTED", 0)
+        total_invalid += chroma_decisions.get("INVALID", 0)
         total_needs_review += chroma_decisions.get("NEEDS_REVIEW", 0)
 
         if llm:
             llm_decisions = llm.get("decisions", {})
             total_valid += llm_decisions.get("VALID", 0)
-            total_corrected += llm_decisions.get("CORRECTED", 0)
+            total_invalid += llm_decisions.get("INVALID", 0)
             total_needs_review += llm_decisions.get("NEEDS_REVIEW", 0)
 
     avg_chroma_rate = (chroma_words / total_words * 100) if total_words > 0 else 0.0
@@ -143,7 +143,7 @@ def _calculate_aggregate_stats(
         "total_receipts": pool_size,
         "avg_chroma_rate": round(avg_chroma_rate, 1),
         "total_valid": total_valid,
-        "total_corrected": total_corrected,
+        "total_invalid": total_invalid,
         "total_needs_review": total_needs_review,
     }
 
