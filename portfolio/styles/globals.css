@@ -48,6 +48,13 @@ html {
 
   --background-color-rgb: 255, 255, 255;
   /* Add this for light mode */
+
+  /* Paper curl component - light mode */
+  --paper-color: #ffffff;
+  --paper-back-color: #e0e0e0;
+  --paper-back-edge-color: #c0c0c0;
+  --paper-stroke-color: #1a1a1a;
+  --paper-shadow-color: rgba(0, 0, 0, 0.35);
 }
 
 main {
@@ -241,6 +248,13 @@ li {
 
     --background-color-rgb: 18, 18, 18;
     /* Add this for dark mode */
+
+    /* Paper curl component - dark mode */
+    --paper-color: #2a2a2a;
+    --paper-back-color: #1a1a1a;
+    --paper-back-edge-color: #0a0a0a;
+    --paper-stroke-color: #e0e0e0;
+    --paper-shadow-color: rgba(0, 0, 0, 0.6);
   }
 }
 
