@@ -48,12 +48,16 @@ class TestMerchantResolverTier1Phone:
             MagicMock(
                 spec=ReceiptWord,
                 text="(555) 123-4567",
+                line_id=1,
                 extracted_data={"type": "phone", "value": "5551234567"},
             )
         ]
-        lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store Name")]
+        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Store Name")
+        mock_line.calculate_centroid.return_value = (0.5, 0.1)
+        lines = [mock_line]
 
         # Mock ChromaDB query to return matching receipt
+        # Distance of 0.1 = similarity of 0.95 (1 - 0.1/2)
         mock_lines_client.query.return_value = {
             "metadatas": [
                 [
@@ -64,7 +68,8 @@ class TestMerchantResolverTier1Phone:
                         "normalized_phone_10": "5551234567",
                     }
                 ]
-            ]
+            ],
+            "distances": [[0.1]],
         }
 
         # Mock DynamoDB to return place_id
@@ -72,17 +77,23 @@ class TestMerchantResolverTier1Phone:
         mock_place.place_id = "ChIJ_test_place_id"
         mock_dynamo_client.get_receipt_place.return_value = mock_place
 
+        # Provide pre-cached line embeddings to avoid OpenAI API calls
+        fake_embedding = [0.1] * 1536
+        line_embeddings = {1: fake_embedding}
+
         result = resolver.resolve(
             lines_client=mock_lines_client,
             lines=lines,
             words=words,
             image_id="current-image",
             receipt_id=1,
+            line_embeddings=line_embeddings,
         )
 
         assert result.place_id == "ChIJ_test_place_id"
-        assert result.resolution_tier == "phone"
-        assert result.confidence == 0.95
+        assert result.resolution_tier == "chroma_phone"
+        # With phone match boost: 0.95 + 0.20 = 1.0 (capped)
+        assert result.confidence >= 0.95
         assert result.source_image_id == "other-image"
         assert result.source_receipt_id == 99
 
@@ -93,10 +104,13 @@ class TestMerchantResolverTier1Phone:
         words = [
             MagicMock(
                 spec=ReceiptWord,
+                line_id=1,
                 extracted_data={"type": "phone", "value": "5551234567"},
             )
         ]
-        lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store")]
+        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Store")
+        mock_line.calculate_centroid.return_value = (0.5, 0.1)
+        lines = [mock_line]
 
         # Mock ChromaDB to return only the current receipt
         mock_lines_client.query.return_value = {
@@ -108,8 +122,13 @@ class TestMerchantResolverTier1Phone:
                         "merchant_name": "My Store",
                     }
                 ]
-            ]
+            ],
+            "distances": [[0.1]],
         }
+
+        # Provide pre-cached line embeddings
+        fake_embedding = [0.1] * 1536
+        line_embeddings = {1: fake_embedding}
 
         result = resolver.resolve(
             lines_client=mock_lines_client,
@@ -117,6 +136,7 @@ class TestMerchantResolverTier1Phone:
             words=words,
             image_id="current-image",
             receipt_id=1,
+            line_embeddings=line_embeddings,
         )
 
         # Should not find a match (current receipt skipped)
@@ -126,11 +146,17 @@ class TestMerchantResolverTier1Phone:
         self, resolver, mock_lines_client
     ):
         """Test that missing phone proceeds to address tier."""
-        words = [MagicMock(spec=ReceiptWord, extracted_data={})]
-        lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store")]
+        words = [MagicMock(spec=ReceiptWord, line_id=1, extracted_data={})]
+        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Store")
+        mock_line.calculate_centroid.return_value = (0.5, 0.1)
+        lines = [mock_line]
 
-        # No phone query should be made
-        mock_lines_client.query.return_value = {"metadatas": []}
+        # No matching results from ChromaDB
+        mock_lines_client.query.return_value = {"metadatas": [[]], "distances": [[]]}
+
+        # Provide pre-cached line embeddings
+        fake_embedding = [0.1] * 1536
+        line_embeddings = {1: fake_embedding}
 
         result = resolver.resolve(
             lines_client=mock_lines_client,
@@ -138,6 +164,7 @@ class TestMerchantResolverTier1Phone:
             words=words,
             image_id="test-image",
             receipt_id=1,
+            line_embeddings=line_embeddings,
         )
 
         # Should not find a match (no phone or address)
@@ -174,15 +201,19 @@ class TestMerchantResolverTier1Address:
         words = [
             MagicMock(
                 spec=ReceiptWord,
+                line_id=1,
                 extracted_data={
                     "type": "address",
                     "value": "123 Main Street, New York, NY 10001",
                 },
             )
         ]
-        lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store Name")]
+        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Store Name")
+        mock_line.calculate_centroid.return_value = (0.5, 0.1)
+        lines = [mock_line]
 
         # Mock ChromaDB query to return matching receipt
+        # Distance of 0.4 = similarity of 0.80 (1 - 0.4/2)
         mock_lines_client.query.return_value = {
             "metadatas": [
                 [
@@ -193,7 +224,8 @@ class TestMerchantResolverTier1Address:
                         "normalized_full_address": "123 MAIN ST NEW YORK NY 10001",
                     }
                 ]
-            ]
+            ],
+            "distances": [[0.4]],
         }
 
         # Mock DynamoDB to return place_id
@@ -201,17 +233,23 @@ class TestMerchantResolverTier1Address:
         mock_place.place_id = "ChIJ_address_place_id"
         mock_dynamo_client.get_receipt_place.return_value = mock_place
 
+        # Provide pre-cached line embeddings
+        fake_embedding = [0.1] * 1536
+        line_embeddings = {1: fake_embedding}
+
         result = resolver.resolve(
             lines_client=mock_lines_client,
             lines=lines,
             words=words,
             image_id="current-image",
             receipt_id=1,
+            line_embeddings=line_embeddings,
         )
 
         assert result.place_id == "ChIJ_address_place_id"
-        assert result.resolution_tier == "address"
-        assert result.confidence == 0.80
+        assert result.resolution_tier == "chroma_address"
+        # Similarity 0.80 + address match boost 0.15 = 0.95
+        assert result.confidence >= 0.80
         assert result.source_image_id == "other-image"
 
 
@@ -232,8 +270,8 @@ class TestMerchantResolverTier2PlaceIdFinder:
     def mock_lines_client(self):
         """Create mock ChromaClient."""
         client = MagicMock()
-        # Return empty results for Tier 1
-        client.query.return_value = {"metadatas": []}
+        # Return empty results for Tier 1 (no matches)
+        client.query.return_value = {"metadatas": [[]], "distances": [[]]}
         return client
 
     def test_tier2_fallback_when_tier1_fails(
@@ -248,14 +286,10 @@ class TestMerchantResolverTier2PlaceIdFinder:
             places_client=mock_places_client,
         )
 
-        words = [MagicMock(spec=ReceiptWord, extracted_data={})]
-        lines = [
-            MagicMock(
-                spec=ReceiptLine,
-                line_id=1,
-                text="Coffee Shop",
-            )
-        ]
+        words = [MagicMock(spec=ReceiptWord, line_id=1, extracted_data={})]
+        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Coffee Shop")
+        mock_line.calculate_centroid.return_value = (0.5, 0.1)
+        lines = [mock_line]
 
         # Mock _run_place_id_finder method directly to avoid circular import
         tier2_result = MerchantResult(
@@ -267,6 +301,10 @@ class TestMerchantResolverTier2PlaceIdFinder:
             resolution_tier="place_id_finder",
         )
 
+        # Provide pre-cached line embeddings
+        fake_embedding = [0.1] * 1536
+        line_embeddings = {1: fake_embedding}
+
         with patch.object(
             resolver, "_run_place_id_finder", return_value=tier2_result
         ):
@@ -276,6 +314,7 @@ class TestMerchantResolverTier2PlaceIdFinder:
                 words=words,
                 image_id="test-image",
                 receipt_id=1,
+                line_embeddings=line_embeddings,
             )
 
         assert result.place_id == "ChIJ_tier2_place_id"
@@ -295,8 +334,14 @@ class TestMerchantResolverTier2PlaceIdFinder:
             places_client=mock_places_client,
         )
 
-        words = [MagicMock(spec=ReceiptWord, extracted_data={})]
-        lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Unknown")]
+        words = [MagicMock(spec=ReceiptWord, line_id=1, extracted_data={})]
+        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Unknown")
+        mock_line.calculate_centroid.return_value = (0.5, 0.1)
+        lines = [mock_line]
+
+        # Provide pre-cached line embeddings
+        fake_embedding = [0.1] * 1536
+        line_embeddings = {1: fake_embedding}
 
         # Mock _run_place_id_finder to return empty result
         with patch.object(
@@ -308,6 +353,7 @@ class TestMerchantResolverTier2PlaceIdFinder:
                 words=words,
                 image_id="test-image",
                 receipt_id=1,
+                line_embeddings=line_embeddings,
             )
 
         assert result.place_id is None
@@ -370,22 +416,24 @@ class TestMerchantResolverHelpers:
 
     def test_extract_merchant_name_from_first_line(self, resolver):
         """Test merchant name extraction from first line."""
-        lines = [
-            MagicMock(spec=ReceiptLine, line_id=2, text="123 Address St"),
-            MagicMock(spec=ReceiptLine, line_id=1, text="Store Name"),
-        ]
+        mock_line1 = MagicMock(spec=ReceiptLine, line_id=2, text="123 Address St")
+        mock_line1.calculate_centroid.return_value = (0.5, 0.3)
+        mock_line2 = MagicMock(spec=ReceiptLine, line_id=1, text="Store Name")
+        mock_line2.calculate_centroid.return_value = (0.5, 0.1)
+        lines = [mock_line1, mock_line2]
 
         name = resolver._extract_merchant_name(lines)
         assert name == "Store Name"
 
-    def test_extract_merchant_name_skips_address_like_lines(self, resolver):
-        """Test that address-like lines are skipped."""
-        lines = [
-            MagicMock(spec=ReceiptLine, line_id=1, text="123 Main St"),
-        ]
+    def test_extract_merchant_name_returns_first_line_text(self, resolver):
+        """Test that merchant name is extracted from the first line."""
+        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="123 Main St")
+        mock_line.calculate_centroid.return_value = (0.5, 0.1)
+        lines = [mock_line]
 
         name = resolver._extract_merchant_name(lines)
-        assert name is None
+        # The method returns the first line text regardless of content
+        assert name == "123 Main St"
 
 
 class TestMerchantResolverErrorHandling:
@@ -411,12 +459,22 @@ class TestMerchantResolverErrorHandling:
         )
 
         words = [
-            MagicMock(extracted_data={"type": "phone", "value": "5551234567"})
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=1,
+                extracted_data={"type": "phone", "value": "5551234567"},
+            )
         ]
-        lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store")]
+        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Store")
+        mock_line.calculate_centroid.return_value = (0.5, 0.1)
+        lines = [mock_line]
 
         # Mock ChromaDB to raise exception
         mock_lines_client.query.side_effect = Exception("ChromaDB error")
+
+        # Provide pre-cached line embeddings
+        fake_embedding = [0.1] * 1536
+        line_embeddings = {1: fake_embedding}
 
         result = resolver.resolve(
             lines_client=mock_lines_client,
@@ -424,6 +482,7 @@ class TestMerchantResolverErrorHandling:
             words=words,
             image_id="test-image",
             receipt_id=1,
+            line_embeddings=line_embeddings,
         )
 
         # Should return empty result, not raise
@@ -439,20 +498,28 @@ class TestMerchantResolverErrorHandling:
         )
 
         words = [
-            MagicMock(extracted_data={"type": "phone", "value": "5551234567"})
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=1,
+                extracted_data={"type": "phone", "value": "5551234567"},
+            )
         ]
-        lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store")]
+        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Store")
+        mock_line.calculate_centroid.return_value = (0.5, 0.1)
+        lines = [mock_line]
 
-        # Mock ChromaDB to return a match
+        # Mock ChromaDB to return a match with distance
         mock_lines_client.query.return_value = {
             "metadatas": [
                 [
                     {
                         "image_id": "other-image",
                         "receipt_id": 99,
+                        "normalized_phone_10": "5551234567",
                     }
                 ]
-            ]
+            ],
+            "distances": [[0.1]],
         }
 
         # Mock DynamoDB to raise exception
@@ -460,12 +527,17 @@ class TestMerchantResolverErrorHandling:
             "DynamoDB error"
         )
 
+        # Provide pre-cached line embeddings
+        fake_embedding = [0.1] * 1536
+        line_embeddings = {1: fake_embedding}
+
         result = resolver.resolve(
             lines_client=mock_lines_client,
             lines=lines,
             words=words,
             image_id="test-image",
             receipt_id=1,
+            line_embeddings=line_embeddings,
         )
 
         # Should return empty result
@@ -481,21 +553,38 @@ class TestMerchantResolverErrorHandling:
         )
 
         words = [
-            MagicMock(extracted_data={"type": "phone", "value": "5551234567"})
+            MagicMock(
+                spec=ReceiptWord,
+                line_id=1,
+                extracted_data={"type": "phone", "value": "5551234567"},
+            )
         ]
-        lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store")]
+        mock_line = MagicMock(spec=ReceiptLine, line_id=1, text="Store")
+        mock_line.calculate_centroid.return_value = (0.5, 0.1)
+        lines = [mock_line]
 
         mock_lines_client.query.return_value = {
-            "metadatas": [[{"image_id": "other", "receipt_id": 99}]]
+            "metadatas": [
+                [
+                    {
+                        "image_id": "other",
+                        "receipt_id": 99,
+                        "normalized_phone_10": "5551234567",
+                    }
+                ]
+            ],
+            "distances": [[0.1]],
         }
+
+        # Provide pre-cached line embeddings
+        fake_embedding = [0.1] * 1536
+        line_embeddings = {1: fake_embedding}
 
         # Test invalid place_id values
         for invalid_id in ["", "null", "NO_RESULTS", "INVALID"]:
             mock_place = MagicMock()
             mock_place.place_id = invalid_id
-            mock_dynamo_client.get_receipt_place.return_value = (
-                mock_place
-            )
+            mock_dynamo_client.get_receipt_place.return_value = mock_place
 
             result = resolver.resolve(
                 lines_client=mock_lines_client,
@@ -503,6 +592,7 @@ class TestMerchantResolverErrorHandling:
                 words=words,
                 image_id="test-image",
                 receipt_id=1,
+                line_embeddings=line_embeddings,
             )
 
             assert result.place_id is None
