@@ -1288,7 +1288,7 @@ pulumi.export(
 # Receipt Label Validation project export
 label_validation_export = LangSmithBulkExport(
     f"label-validation-export-{stack}",
-    project_name="receipt-label-validation",
+    project_name="receipt-validation-jan-12",
 )
 pulumi.export(
     "label_validation_export_bucket", label_validation_export.export_bucket.id
@@ -1505,7 +1505,7 @@ if hasattr(api_gateway, "api"):
         ),
     )
 
-    # Label Validation Visualization Cache (LangSmith receipt-label-validation traces)
+    # Label Validation Visualization Cache (LangSmith receipt-validation-jan-12 traces)
     from routes.label_validation_viz_cache import create_label_validation_viz_cache
 
     label_validation_viz_cache = create_label_validation_viz_cache(

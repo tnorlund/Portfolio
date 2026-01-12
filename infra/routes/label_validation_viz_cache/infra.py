@@ -530,8 +530,8 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 LANGSMITH_API_URL = "https://api.smith.langchain.com"
-# Project name for receipt-label-validation traces
-DEFAULT_PROJECT = "receipt-label-validation"
+# Project name for label validation traces
+DEFAULT_PROJECT = "receipt-validation-jan-12"
 
 
 def _ensure_destination_exists(setup_lambda_name):
@@ -560,7 +560,7 @@ def _ensure_destination_exists(setup_lambda_name):
 
 
 def handler(event, context):
-    """Trigger LangSmith bulk export for receipt-label-validation project."""
+    """Trigger LangSmith bulk export for the configured project."""
     logger.info("Received event: %s", json.dumps(event))
 
     langchain_project = event.get("langchain_project", DEFAULT_PROJECT)
@@ -951,7 +951,7 @@ def handler(event, context):
                             "Type": "Task",
                             "Resource": args[1],
                             "Parameters": {
-                                "langchain_project": "receipt-label-validation",
+                                "langchain_project": "receipt-validation-jan-12",
                             },
                             "ResultPath": "$.export_result",
                             "Next": "InitializePollCount",
