@@ -308,7 +308,7 @@ def log_validation_for_review(
     predicted_label: str,
     consensus_label: Optional[str],
     confidence: float,
-    matching_count: int,
+    _matching_count: int,
     reason: str,
     merchant_name: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:

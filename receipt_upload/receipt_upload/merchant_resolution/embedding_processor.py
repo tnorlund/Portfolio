@@ -773,7 +773,7 @@ class MerchantResolvingEmbeddingProcessor:
                     # LLM corrected the label
                     if llm_result.label != label_entity.label:
                         # Invalidate old label (keep for audit trail), create new one
-                        from datetime import datetime
+                        from datetime import datetime, timezone
 
                         # 1. Mark old label as INVALID (audit trail)
                         label_entity.validation_status = ValidationStatus.INVALID.value
@@ -791,7 +791,7 @@ class MerchantResolvingEmbeddingProcessor:
                             word_id=label_entity.word_id,
                             label=llm_result.label,
                             reasoning=llm_result.reasoning,
-                            timestamp_added=datetime.utcnow(),
+                            timestamp_added=datetime.now(timezone.utc),
                             validation_status=ValidationStatus.VALID.value,
                             label_proposed_by=f"llm-corrected:{label_entity.label_proposed_by or 'auto'}",
                             label_consolidated_from=label_entity.label,

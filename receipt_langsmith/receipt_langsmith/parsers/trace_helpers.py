@@ -629,8 +629,6 @@ def get_step_timings(
     Returns:
         Dict mapping step type to timing info.
     """
-    parent_start = parse_datetime(parent.get("start_time"))
-
     timings: dict[str, dict[str, Any]] = {
         "s3_download": {"duration_ms": 0, "count": 0},
         "embedding": {"duration_ms": 0, "count": 0},
