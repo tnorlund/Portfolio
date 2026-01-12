@@ -11,7 +11,6 @@ The LLM sees:
 
 Uses structured outputs with Pydantic models to ensure type-safe responses.
 Uses LANGCHAIN_PROJECT env var for LangSmith project configuration.
-Traces are sent to the project specified by LANGCHAIN_PROJECT environment variable.
 """
 
 import json
@@ -172,7 +171,6 @@ def convert_structured_response(
         confidence = llm_decision.confidence
         reasoning = llm_decision.reasoning
 
-        # Validate label is in CORE_LABELS (should be guaranteed by schema, but check)
         if final_label not in CORE_LABELS:
             logger.warning(
                 "LLM returned invalid label '%s', keeping original '%s'",
