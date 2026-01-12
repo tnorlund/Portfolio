@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useInView } from "react-intersection-observer";
-import { animated, useSpring, to } from "@react-spring/web";
+import { animated, useSpring, useTransition, to } from "@react-spring/web";
 import { api } from "../../../../services/api";
 import {
   LabelValidationReceipt,
@@ -30,11 +30,80 @@ const DECISION_COLORS: Record<string, string> = {
   NEEDS_REVIEW: "var(--color-yellow)",
 };
 
+// Revealed decision for tally animation
+interface RevealedDecision {
+  id: string;
+  decision: "VALID" | "INVALID" | "NEEDS_REVIEW";
+}
+
+// Decision Icon Component - shows checkmark/X/person based on decision
+const DecisionIcon: React.FC<{ decision: RevealedDecision }> = ({ decision }) => {
+  const bgColor = DECISION_COLORS[decision.decision];
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={styles.decisionIconSvg}>
+      <circle cx="7" cy="7" r="6" fill={bgColor} />
+      {decision.decision === 'VALID' && (
+        <path
+          d="M4 7 L6 9.5 L10 5"
+          fill="none"
+          stroke="white"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
+      {decision.decision === 'INVALID' && (
+        <g>
+          <line x1="4.5" y1="4.5" x2="9.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+          <line x1="9.5" y1="4.5" x2="4.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+        </g>
+      )}
+      {decision.decision === 'NEEDS_REVIEW' && (
+        <g>
+          {/* Person silhouette */}
+          <circle cx="7" cy="5" r="1.5" fill="white" />
+          <path
+            d="M4 11 Q4 8 7 8 Q10 8 10 11"
+            fill="white"
+          />
+        </g>
+      )}
+    </svg>
+  );
+};
+
+// Empty icon placeholder
+const EmptyIcon: React.FC = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={styles.emptyIconSvg}>
+    <circle cx="7" cy="7" r="6" fill="var(--text-color)" fillOpacity="0.15" />
+  </svg>
+);
+
 // Animation timing (ms)
 const TARGET_TOTAL_DURATION = 5000;  // 5 seconds for both tiers
 const MIN_PHASE_DURATION = 800;
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
+
+// Generate SVG path for a pie slice from 12 o'clock, filling clockwise
+const getPieSlicePath = (progress: number, cx: number, cy: number, r: number): string => {
+  if (progress <= 0) return '';
+  if (progress >= 100) return `M ${cx} ${cy} m -${r} 0 a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 -${r * 2} 0`;
+
+  const angle = (progress / 100) * 2 * Math.PI;
+  // Start at 12 o'clock (-π/2)
+  const startAngle = -Math.PI / 2;
+  const endAngle = startAngle + angle;
+
+  const x1 = cx + r * Math.cos(startAngle);
+  const y1 = cy + r * Math.sin(startAngle);
+  const x2 = cx + r * Math.cos(endAngle);
+  const y2 = cy + r * Math.sin(endAngle);
+
+  const largeArcFlag = progress > 50 ? 1 : 0;
+
+  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+};
 
 // Generate stable random positions for queue items
 const getQueuePosition = (receiptId: string) => {
@@ -231,6 +300,59 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   );
 };
 
+// Decision Tally Component - shows animated icons for each decision type
+interface DecisionTallyProps {
+  label: string;
+  total: number;
+  revealed: RevealedDecision[];
+  decisionType: "VALID" | "INVALID" | "NEEDS_REVIEW";
+}
+
+const DecisionTally: React.FC<DecisionTallyProps> = ({
+  label,
+  total,
+  revealed,
+  decisionType,
+}) => {
+  const filteredRevealed = revealed.filter(r => r.decision === decisionType);
+  const maxDisplay = 12; // Limit icons displayed to prevent overflow
+  const displayTotal = Math.min(total, maxDisplay);
+  const hasMore = total > maxDisplay;
+
+  if (total === 0) return null;
+
+  return (
+    <div className={styles.decisionTally}>
+      <span className={styles.tallyLabel}>{label}</span>
+      <div className={styles.tallyIcons}>
+        {Array.from({ length: displayTotal }).map((_, idx) => {
+          const revealedAtIndex = filteredRevealed[idx];
+          if (revealedAtIndex) {
+            return (
+              <animated.span
+                key={`revealed-${revealedAtIndex.id}`}
+                className={styles.tallyIcon}
+                style={{ opacity: 1, transform: 'scale(1)' }}
+              >
+                <DecisionIcon decision={revealedAtIndex} />
+              </animated.span>
+            );
+          }
+
+          return (
+            <span key={`empty-${idx}`} className={styles.tallyIcon}>
+              <EmptyIcon />
+            </span>
+          );
+        })}
+        {hasMore && (
+          <span className={styles.tallyMore}>+{total - maxDisplay}</span>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // Validation tier bar component
 interface TierBarProps {
   name: string;
@@ -242,6 +364,7 @@ interface TierBarProps {
   durationMs?: number;
   decisions?: { VALID: number; INVALID: number; NEEDS_REVIEW: number; UNKNOWN?: number };
   wordsCount?: number;
+  revealedDecisions?: RevealedDecision[];
 }
 
 const TierBar: React.FC<TierBarProps> = ({
@@ -254,17 +377,38 @@ const TierBar: React.FC<TierBarProps> = ({
   durationMs,
   decisions,
   wordsCount,
+  revealedDecisions = [],
 }) => {
   const invalidCount = decisions
     ? decisions.INVALID ?? (decisions as Record<string, number>).CORRECTED ?? 0
-    : 0;
-  const totalDecisions = decisions
-    ? decisions.VALID + invalidCount + decisions.NEEDS_REVIEW
     : 0;
 
   return (
     <div className={`${styles.tierBar} ${isActive ? styles.active : ""} ${isComplete ? styles.complete : ""} ${isWaiting ? styles.waiting : ""}`}>
       <div className={styles.tierHeader}>
+        {/* Progress circle that fills like a clock */}
+        <div className={styles.progressCircleWrapper}>
+          <svg width="20" height="20" viewBox="0 0 20 20" className={styles.progressCircle}>
+            {/* Background circle (unfilled outline) */}
+            <circle
+              cx="10"
+              cy="10"
+              r="8"
+              fill="none"
+              stroke={color}
+              strokeWidth="2"
+              opacity={0.3}
+            />
+            {/* Pie slice fill - grows clockwise from 12 o'clock */}
+            {progress > 0 && (
+              <path
+                d={getPieSlicePath(progress, 10, 10, 8)}
+                fill={color}
+                opacity={isComplete ? 1 : 0.8}
+              />
+            )}
+          </svg>
+        </div>
         <div className={styles.tierNameWrapper}>
           <span className={styles.tierName}>{name}</span>
           {wordsCount !== undefined && wordsCount > 0 && (
@@ -277,45 +421,34 @@ const TierBar: React.FC<TierBarProps> = ({
               {durationMs < 1000 ? `${durationMs.toFixed(0)}ms` : `${(durationMs / 1000).toFixed(1)}s`}
             </span>
           )}
-          {decisions && totalDecisions > 0 && (
-            <div className={styles.decisionBadges}>
-              {decisions.VALID > 0 && (
-                <span
-                  className={styles.badge}
-                  style={{ backgroundColor: DECISION_COLORS.VALID }}
-                >
-                  {decisions.VALID}
-                </span>
-              )}
-              {invalidCount > 0 && (
-                <span
-                  className={styles.badge}
-                  style={{ backgroundColor: DECISION_COLORS.INVALID }}
-                >
-                  {invalidCount}
-                </span>
-              )}
-              {decisions.NEEDS_REVIEW > 0 && (
-                <span
-                  className={styles.badge}
-                  style={{ backgroundColor: DECISION_COLORS.NEEDS_REVIEW }}
-                >
-                  {decisions.NEEDS_REVIEW}
-                </span>
-              )}
-            </div>
+          {isWaiting && (
+            <span className={styles.waitingBadge}>waiting</span>
           )}
         </div>
       </div>
-      <div className={styles.progressTrack}>
-        <div
-          className={styles.progressFill}
-          style={{
-            width: `${progress}%`,
-            backgroundColor: color,
-          }}
-        />
-      </div>
+      {/* Decision tallies with icons */}
+      {decisions && (
+        <div className={styles.decisionTallies}>
+          <DecisionTally
+            label="Valid"
+            total={decisions.VALID}
+            revealed={revealedDecisions}
+            decisionType="VALID"
+          />
+          <DecisionTally
+            label="Invalid"
+            total={invalidCount}
+            revealed={revealedDecisions}
+            decisionType="INVALID"
+          />
+          <DecisionTally
+            label="Review"
+            total={decisions.NEEDS_REVIEW}
+            revealed={revealedDecisions}
+            decisionType="NEEDS_REVIEW"
+          />
+        </div>
+      )}
     </div>
   );
 };
@@ -410,7 +543,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
             {revealedWords.map((word) => {
               const rawDecision = word.decision ?? "";
               const decision =
-                rawDecision === "CORRECTED" || rawDecision === "CORRECT"
+                rawDecision === "CORRECTED"
                   ? "INVALID"
                   : rawDecision;
               const color = DECISION_COLORS[decision];
@@ -527,66 +660,69 @@ const ValidationLegend: React.FC<ValidationLegendProps> = ({
   receipt,
   validationState,
 }) => {
-  const { chroma, llm } = receipt;
+  const { chroma, llm, words } = receipt;
   const hasLLM = llm !== null;
   const llmIsWaiting = hasLLM && validationState.chromaProgress < 100 && validationState.llmProgress === 0;
 
+  // Calculate revealed decisions based on validation progress
+  const getRevealedDecisions = (tier: "chroma" | "llm"): RevealedDecision[] => {
+    const progress = tier === "chroma" ? validationState.chromaProgress : validationState.llmProgress;
+
+    // LLM words only revealed after ChromaDB completes
+    if (tier === "llm" && validationState.chromaProgress < 100) {
+      return [];
+    }
+
+    return words
+      .filter((word) => {
+        if (word.validation_source !== tier || !word.decision) return false;
+        const wordTopY = 1 - word.bbox.y - word.bbox.height;
+        return wordTopY <= (progress / 100);
+      })
+      .map((word) => {
+        const rawDecision = word.decision ?? "";
+        const normalizedDecision =
+          rawDecision === "CORRECTED"
+            ? "INVALID"
+            : rawDecision as "VALID" | "INVALID" | "NEEDS_REVIEW";
+        return {
+          id: `${word.validation_source}_${word.line_id}_${word.word_id}`,
+          decision: normalizedDecision,
+        };
+      });
+  };
+
+  const chromaRevealed = getRevealedDecisions("chroma");
+  const llmRevealed = getRevealedDecisions("llm");
+
   return (
     <div className={styles.validationLegend}>
-      <div className={styles.legendSection}>
-        <h4 className={styles.sectionTitle}>
-          <span className={styles.phaseNumber}>1</span>
-          ChromaDB Consensus
-        </h4>
-        <TierBar
-          name="ChromaDB"
-          color={TIER_COLORS.chroma}
-          progress={validationState.chromaProgress}
-          isActive={validationState.chromaProgress > 0 && validationState.chromaProgress < 100}
-          isComplete={validationState.chromaProgress >= 100}
-          durationMs={validationState.chromaProgress >= 100 ? chroma.duration_seconds * 1000 : undefined}
-          decisions={chroma.decisions}
-          wordsCount={chroma.words_count}
-        />
-      </div>
+      <TierBar
+        name="ChromaDB"
+        color={TIER_COLORS.chroma}
+        progress={validationState.chromaProgress}
+        isActive={validationState.chromaProgress > 0 && validationState.chromaProgress < 100}
+        isComplete={validationState.chromaProgress >= 100}
+        durationMs={validationState.chromaProgress >= 100 ? chroma.duration_seconds * 1000 : undefined}
+        decisions={chroma.decisions}
+        wordsCount={chroma.words_count}
+        revealedDecisions={chromaRevealed}
+      />
 
       {hasLLM && (
-        <div className={styles.legendSection}>
-          <h4 className={styles.sectionTitle}>
-            <span className={styles.phaseNumber}>2</span>
-            LLM Fallback
-          </h4>
-          <TierBar
-            name="LLM"
-            color={TIER_COLORS.llm}
-            progress={validationState.llmProgress}
-            isActive={validationState.llmProgress > 0 && validationState.llmProgress < 100}
-            isComplete={validationState.llmProgress >= 100}
-            isWaiting={llmIsWaiting}
-            durationMs={validationState.llmProgress >= 100 ? llm!.duration_seconds * 1000 : undefined}
-            decisions={llm!.decisions}
-            wordsCount={llm!.words_count}
-          />
-        </div>
+        <TierBar
+          name="LLM"
+          color={TIER_COLORS.llm}
+          progress={validationState.llmProgress}
+          isActive={validationState.llmProgress > 0 && validationState.llmProgress < 100}
+          isComplete={validationState.llmProgress >= 100}
+          isWaiting={llmIsWaiting}
+          durationMs={validationState.llmProgress >= 100 ? llm!.duration_seconds * 1000 : undefined}
+          decisions={llm!.decisions}
+          wordsCount={llm!.words_count}
+          revealedDecisions={llmRevealed}
+        />
       )}
-
-      <div className={styles.summarySection}>
-        <h4 className={styles.sectionTitle}>Legend</h4>
-        <div className={styles.legendItems}>
-          <div className={styles.legendItem}>
-            <span className={styles.legendColor} style={{ backgroundColor: DECISION_COLORS.VALID }} />
-            <span>Valid</span>
-          </div>
-          <div className={styles.legendItem}>
-            <span className={styles.legendColor} style={{ backgroundColor: DECISION_COLORS.INVALID }} />
-            <span>Invalid</span>
-          </div>
-          <div className={styles.legendItem}>
-            <span className={styles.legendColor} style={{ backgroundColor: DECISION_COLORS.NEEDS_REVIEW }} />
-            <span>Needs Review</span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
