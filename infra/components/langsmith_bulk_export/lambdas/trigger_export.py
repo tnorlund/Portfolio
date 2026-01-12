@@ -75,7 +75,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     # Get destination_id from event, SSM, or fail
     if not destination_id:
         ssm = boto3.client("ssm")
-        param_name = f"/langsmith/{stack}/destination_id"
+        ssm_prefix = os.environ.get("SSM_PREFIX", "default")
+        param_name = f"/langsmith/{stack}/{ssm_prefix}/destination_id"
 
         try:
             response = ssm.get_parameter(Name=param_name)

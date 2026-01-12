@@ -96,6 +96,34 @@ class LabelValidationVizCache(ComponentResource):
         )
         cache_bucket_output = self.cache_bucket.id
 
+        # Server-side encryption
+        aws.s3.BucketServerSideEncryptionConfiguration(
+            f"{name}-cache-bucket-encryption",
+            bucket=self.cache_bucket.id,
+            rules=[
+                aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                    apply_server_side_encryption_by_default=(
+                        aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                            sse_algorithm="AES256",
+                        )
+                    ),
+                    bucket_key_enabled=True,
+                ),
+            ],
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Block public access
+        aws.s3.BucketPublicAccessBlock(
+            f"{name}-cache-bucket-pab",
+            bucket=self.cache_bucket.id,
+            block_public_acls=True,
+            block_public_policy=True,
+            ignore_public_acls=True,
+            restrict_public_buckets=True,
+            opts=ResourceOptions(parent=self),
+        )
+
         # ============================================================
         # IAM Role for API Lambda
         # ============================================================
@@ -273,6 +301,9 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Limit receipts to prevent memory issues - visualization only needs a sample
+MAX_RECEIPTS = 500
+
 
 def handler(event, context):
     """Query receipts, words, and labels from DynamoDB and write to S3.
@@ -281,6 +312,8 @@ def handler(event, context):
     - Receipt CDN keys (for image display)
     - Word bounding boxes (for overlays)
     - Labels (for validation word filtering)
+
+    Limited to MAX_RECEIPTS to prevent memory exhaustion.
     """
     logger.info("Received event: %s", json.dumps(event))
 
@@ -290,12 +323,10 @@ def handler(event, context):
     # Import receipt_dynamo (from layer)
     from receipt_dynamo import DynamoClient
 
-    # Initialize DynamoDB client
     client = DynamoClient(table_name)
 
-    logger.info("Querying receipts from DynamoDB table: %s", table_name)
+    logger.info("Querying receipts from DynamoDB table: %s (limit: %d)", table_name, MAX_RECEIPTS)
 
-    # Build receipt lookup with words and labels
     receipt_lookup = {}
     page_count = 0
     last_key = None
@@ -305,9 +336,11 @@ def handler(event, context):
     page_count += 1
 
     for r in receipts:
+        if len(receipt_lookup) >= MAX_RECEIPTS:
+            break
+
         key = f"{r.image_id}_{r.receipt_id}"
 
-        # Get words for this receipt
         words = client.list_receipt_words_from_receipt(r.image_id, r.receipt_id)
         words_data = [
             {
@@ -319,7 +352,6 @@ def handler(event, context):
             for w in words
         ]
 
-        # Get labels for this receipt
         labels, _ = client.list_receipt_word_labels_for_receipt(r.image_id, r.receipt_id)
         labels_data = {
             f"{label.line_id}_{label.word_id}": label.label
@@ -339,12 +371,15 @@ def handler(event, context):
             "labels": labels_data,
         }
 
-    # Paginate through remaining receipts
-    while last_key:
+    # Paginate through remaining receipts until limit reached
+    while last_key and len(receipt_lookup) < MAX_RECEIPTS:
         receipts, last_key = client.list_receipts(limit=500, last_evaluated_key=last_key)
         page_count += 1
 
         for r in receipts:
+            if len(receipt_lookup) >= MAX_RECEIPTS:
+                break
+
             key = f"{r.image_id}_{r.receipt_id}"
 
             words = client.list_receipt_words_from_receipt(r.image_id, r.receipt_id)
@@ -379,7 +414,7 @@ def handler(event, context):
 
         logger.info("Processed page %d, total receipts: %d", page_count, len(receipt_lookup))
 
-    logger.info("Found %d receipts across %d pages", len(receipt_lookup), page_count)
+    logger.info("Collected %d receipts across %d pages (limit: %d)", len(receipt_lookup), page_count, MAX_RECEIPTS)
 
     # Write to S3
     s3 = boto3.client("s3")
@@ -495,8 +530,8 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 LANGSMITH_API_URL = "https://api.smith.langchain.com"
-# Project name for receipt-label-validation traces (golden dataset for testing)
-DEFAULT_PROJECT = "receipt-validation-jan-11"
+# Project name for receipt-label-validation traces
+DEFAULT_PROJECT = "receipt-label-validation"
 
 
 def _ensure_destination_exists(setup_lambda_name):
@@ -916,7 +951,7 @@ def handler(event, context):
                             "Type": "Task",
                             "Resource": args[1],
                             "Parameters": {
-                                "langchain_project": "receipt-validation-jan-11",
+                                "langchain_project": "receipt-label-validation",
                             },
                             "ResultPath": "$.export_result",
                             "Next": "InitializePollCount",
