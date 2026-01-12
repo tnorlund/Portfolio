@@ -12,6 +12,7 @@ const ClientLabelValidationCount = dynamic(
   }
 );
 
+export { default as AWSFlowDiagram } from "./AWSFlowDiagram";
 export { default as CodeBuildDiagram } from "./CodeBuildDiagram";
 export { ClientImageCounts, ClientReceiptCounts } from "./DataCounts";
 export { default as EmbeddingCoordinate } from "./EmbeddingCoordinate";
