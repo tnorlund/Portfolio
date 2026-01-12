@@ -163,9 +163,6 @@ const PageCurlLetter: React.FC<PageCurlLetterProps> = ({
   // Random ratio for curl angle - stored in ref, changes each cycle
   const curlRatioRef = useRef(0.3 + Math.random() * 0.4);
 
-  // Track if animation has started (for initial fade-in)
-  const hasStarted = useRef(false);
-
   // Track if we're currently animating to prevent race conditions
   const isAnimating = useRef(false);
 
@@ -215,7 +212,6 @@ const PageCurlLetter: React.FC<PageCurlLetterProps> = ({
   // Handle visibility changes
   useEffect(() => {
     if (inView) {
-      hasStarted.current = true;
       isAnimating.current = true;
       runCurlCycle();
     } else {
@@ -250,7 +246,7 @@ const PageCurlLetter: React.FC<PageCurlLetterProps> = ({
       <div ref={ref}>
         <div
           style={{
-            opacity: hasStarted.current || inView ? 1 : 0,
+            opacity: inView ? 1 : 0,
             transition: "opacity 0.5s ease-in-out",
           }}
         >
