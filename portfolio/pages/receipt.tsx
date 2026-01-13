@@ -419,7 +419,7 @@ M1LK 2%           1    $4.4g`}</code>
       <p>
         The custom model does most of the work. Then I ship the results to AWS
         where a single AI pass confirms or corrects the labels. One call
-        instead of 15.
+        instead of 15+.
       </p>
 
       {/* <ClientOnly>
