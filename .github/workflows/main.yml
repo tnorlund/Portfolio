@@ -296,16 +296,6 @@ jobs:
           cd ${{ matrix.package }}
 
           if [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
-            # Debug: verify checkout is correct
-            echo "🔍 Verifying file on disk matches expected content..."
-            echo "Current directory: $(pwd)"
-            echo "Git HEAD: $(git rev-parse HEAD)"
-            echo "File hash: $(md5 -q receipt_chroma/embedding/orchestration.py)"
-            echo "Function signature from file:"
-            grep -A 10 "def create_embeddings_and_compaction_run" receipt_chroma/embedding/orchestration.py | head -15
-            # Debug: verify we're loading the correct module
-            echo "🔍 Debugging module import for receipt_chroma..."
-            python -c "import inspect; from receipt_chroma.embedding.orchestration import create_embeddings_and_compaction_run; print('Module file:', inspect.getfile(create_embeddings_and_compaction_run)); print('Function signature:', inspect.signature(create_embeddings_and_compaction_run)); print('Parameters:', list(inspect.signature(create_embeddings_and_compaction_run).parameters.keys()))"
             # receipt_chroma: Run unit tests first (fast feedback), then integration tests
             echo "🚀 Running receipt_chroma unit tests with optimized timeout..."
             python -m pytest tests \
