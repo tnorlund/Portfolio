@@ -10,8 +10,8 @@ import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
   LabelEvaluatorVisualization,
+  LabelValidationTimeline,
   LabelWordCloud,
-  LayoutLMInferenceVisualization,
   PageCurlLetter,
   PhotoReceiptBoundingBox,
   PrecisionRecallDartboard,
@@ -263,8 +263,8 @@ export default function ReceiptPage({
       <h2>Challenge 1: Getting Text Out of the Receipt</h2>
 
       <p>
-        I tried scanning, taking photos, and OCR. None of them worked well. The
-        first approach I took looked something like this:
+        I tried scanning, taking photos, and OCR. None of them worked well. I
+        pointed Tesseract at a CVS receipt. Here's what I got:
       </p>
 
       <pre className={styles.codeBlock}>
@@ -330,9 +330,9 @@ M1LK 2%           1    $4.4g`}</code>
 
       <p>
         I used Google Maps to get more information about the store, but this
-        was slow and expensive. My $8 Google Cloud bill is not an option.
-        I needed a better way to group the receipts by store without spending
-        exorbitant amounts of money.
+        was slow and expensive. After processing 200 receipts, my $8 Google
+        Cloud bill was not an option. I needed a better way to group the
+        receipts by store without spending exorbitant amounts of money.
       </p>
 
       <ClientOnly>
@@ -353,17 +353,16 @@ M1LK 2%           1    $4.4g`}</code>
       <h3>Defining the Corpus</h3>
 
       <p>
-        Using a predefined vocabulary to describe the different words on the
-        receipts helps with finding those similar words.
+        Every receipt has the same kinds of words on it, but every store
+        formats it differently. I needed a shared vocabulary.
       </p>
 
       <LabelWordCloud />
 
       <p>
-        These words are determined by an AI that looks at the receipt,
-        compares it to other receipts from that store, generalizes patterns,
-        and confirms what words belong to what label in our predefined
-        vocabulary.
+        The idea: show AI a receipt, ask it to tag each word with a label, then
+        compare it's answers to other receipts from the same store to see if
+        the patterns still hold.
       </p>
 
       <ClientOnly>
@@ -371,24 +370,30 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        Today's AI isn't that smart and doesn't give consistent results. I used
-        this process over and over again to get the best results.
+        This works, kind of. AI isn't consistent. It would call the price of
+        milk the subtotal. It confused "DAIRY" with "MILK." I can't trust
+        something that doesn't know what milk is. So I corrected the results
+        by asking AI to verify again.
       </p>
 
+      <p>And again. And Again.</p>
+
       <ClientOnly>
-        <LabelEvaluatorVisualization />
+        <LabelValidationTimeline />
       </ClientOnly>
+
+      <p>
+        Each pass got a little better. The red shrinks, the green grows. But
+        asking ~4 different AI, 5+ times to to verify the results was slow and
+        expensive. I needed a better way.
+      </p>
 
       <h3>Making it Faster and Cheaper</h3>
 
       <p>
         Here's the problem: asking AI to verify the results 15+ times is slow
-        and expensive. Watch how long these take.
+        and expensive.
       </p>
-
-      <ClientOnly>
-        <LayoutLMInferenceVisualization />
-      </ClientOnly>
 
       <p>
         This is why I needed to make my own AI. I don't know how to make an AI.
@@ -422,7 +427,7 @@ M1LK 2%           1    $4.4g`}</code>
 </ClientOnly> */}
 
       <p>
-        Same results, Fraction of the time. Fraction of the cost. I can finally
+        Same results. Fraction of the time. Fraction of the cost. I can finally
         afford to find out about the milk.
       </p>
 
