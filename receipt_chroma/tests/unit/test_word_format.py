@@ -196,8 +196,8 @@ class TestGetWordNeighbors:
         assert len(left_words) == 0
         assert len(right_words) == 0
 
-    def test_get_neighbors_different_lines(self):
-        """Neighbors across lines with horizontal alignment."""
+    def test_get_neighbors_different_lines_far_apart(self):
+        """Words on very different lines (y diff > 0.05) are NOT neighbors."""
         words = [
             MockReceiptWord(
                 "img1", "rec1", "line1", "word1", "left", x=0.1, y=0.8
@@ -213,11 +213,10 @@ class TestGetWordNeighbors:
         left_words, right_words = get_word_neighbors(
             target, words, context_size=2
         )
-        # Neighbors selected by horizontal position, regardless of line
-        assert len(left_words) > 0
-        assert len(right_words) > 0
-        assert "left" in left_words
-        assert "right" in right_words
+        # Words on very different lines (y diff of 0.3) should NOT be neighbors
+        # The line-aware algorithm only considers same-line or nearby-line words
+        assert len(left_words) == 0
+        assert len(right_words) == 0
 
     def test_get_neighbors_same_line_far_apart(self):
         """Neighbors on same line that are far apart horizontally."""
@@ -286,18 +285,19 @@ class TestGetWordNeighbors:
         assert "right" in right_words
         assert "far_right" in right_words
 
-    def test_get_neighbors_includes_different_lines(self):
-        """Include other lines when horizontally aligned."""
-        # Words at different y (different lines) but different x positions
+    def test_get_neighbors_nearby_lines(self):
+        """Include words from nearby lines (y diff < 0.05) as neighbors."""
+        # Words on nearby lines (within y_proximity_threshold of 0.05)
+        # and within x_proximity_threshold (0.25) for nearby-line candidates
         words = [
             MockReceiptWord(
                 "img1",
                 "rec1",
                 "line1",
                 "word1",
-                "left_above",
-                x=0.2,
-                y=0.7,
+                "left_nearby",
+                x=0.35,  # x diff of 0.15 from target (within 0.25 threshold)
+                y=0.52,  # y diff of 0.02 from target (within 0.05 threshold)
                 height=0.05,
             ),
             MockReceiptWord(
@@ -315,9 +315,9 @@ class TestGetWordNeighbors:
                 "rec1",
                 "line3",
                 "word3",
-                "right_below",
-                x=0.8,
-                y=0.3,
+                "right_nearby",
+                x=0.65,  # x diff of 0.15 from target (within 0.25 threshold)
+                y=0.48,  # y diff of 0.02 from target (within 0.05 threshold)
                 height=0.05,
             ),
         ]
@@ -325,16 +325,15 @@ class TestGetWordNeighbors:
         left_words, right_words = get_word_neighbors(
             target, words, context_size=2
         )
-        # Should find words from other lines based on horizontal position
+        # Words on nearby lines (y diff < 0.05, x diff < 0.25) should be neighbors
         assert len(left_words) == 1
         assert len(right_words) == 1
-        assert "left_above" in left_words
-        assert "right_below" in right_words
+        assert "left_nearby" in left_words
+        assert "right_nearby" in right_words
 
-    def test_get_neighbors_same_x_different_lines(self):
-        """Same x across lines; order by x then input order."""
-        # Words at same x but different y (different lines)
-        # When x is the same, order depends on list order (stable sort)
+    def test_get_neighbors_same_x_different_lines_far_apart(self):
+        """Words at same x but on very different lines are NOT neighbors."""
+        # Words at same x but very different y (different lines, y diff > 0.05)
         words = [
             MockReceiptWord(
                 "img1",
@@ -343,7 +342,7 @@ class TestGetWordNeighbors:
                 "word1",
                 "above",
                 x=0.5,
-                y=0.7,
+                y=0.7,  # y diff of 0.2 from target
                 height=0.05,
             ),
             MockReceiptWord(
@@ -363,7 +362,7 @@ class TestGetWordNeighbors:
                 "word3",
                 "below",
                 x=0.5,
-                y=0.3,
+                y=0.3,  # y diff of 0.2 from target
                 height=0.05,
             ),
         ]
@@ -371,12 +370,10 @@ class TestGetWordNeighbors:
         left_words, right_words = get_word_neighbors(
             target, words, context_size=2
         )
-        # When x is identical, stable sort preserves original order.
-        # "above" (idx 0) before "target" (idx 1); "below" (idx 2) after.
-        assert len(left_words) > 0
-        assert len(right_words) > 0
-        assert "above" in left_words
-        assert "below" in right_words
+        # Words on very different lines (y diff of 0.2) should NOT be neighbors
+        # even if they have the same x-coordinate
+        assert len(left_words) == 0
+        assert len(right_words) == 0
 
 
 @pytest.mark.unit

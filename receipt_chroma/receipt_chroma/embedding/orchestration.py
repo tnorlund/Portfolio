@@ -23,6 +23,9 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, List, Optional
 
 from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_chroma.embedding.formatting.word_format import (
+    format_word_context_embedding_input,
+)
 from receipt_chroma.embedding.openai import embed_texts
 from receipt_chroma.embedding.records import (
     LineEmbeddingRecord,
@@ -385,9 +388,14 @@ def create_embeddings_and_compaction_run(
             merchant_name=merchant_name,
         )
 
+        # Format words with context (same format as batch pipeline)
+        word_texts = [
+            format_word_context_embedding_input(w, receipt_words, context_size=2)
+            for w in receipt_words
+        ]
         word_embeddings = embed_texts(
             client=openai_client,
-            texts=[w.text for w in receipt_words],
+            texts=word_texts,
             model=model,
         )
         word_records = [
