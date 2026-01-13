@@ -438,8 +438,8 @@ M1LK 2%           1    $4.4g`}</code>
 
       <p>
         After a lot of trial and error-tweaking parameters, retraining, staring
-        at graphs, I mostly understood what was going on. Oh yeah, this is
-        called hyper-parameter tuning.
+        at graphs, I mostly understood what was going on. I found out that this
+        is called hyper-parameter tuning.
       </p>
 
       <ClientOnly>
