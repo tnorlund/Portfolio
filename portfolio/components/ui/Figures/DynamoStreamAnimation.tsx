@@ -71,27 +71,26 @@ export default function DynamoStreamAnimation({
   const targetFor = React.useCallback(
     (shardIndex: number, currentOffset: 0 | 1) => {
       const { slot0, slot1, slot2, hidden } = rolesForLead(lead);
-      const visualSlot =
-        currentOffset === 0
-          ? shardIndex === hidden
-            ? -2
-            : shardIndex === slot0
-              ? 0
-              : shardIndex === slot1
-                ? 1
-                : shardIndex === slot2
-                  ? 2
-                  : -2
-          : // shifting: hidden enters slot0, slot0->slot1, slot1->slot2, slot2 exits
-            shardIndex === hidden
-            ? 0
-            : shardIndex === slot0
-              ? 1
-              : shardIndex === slot1
-                ? 2
-                : shardIndex === slot2
-                  ? 3
-                  : -2;
+      const getVisualSlot = (): number => {
+        const stableMap: Record<number, number> = {
+          [hidden]: -2, // hidden off-screen left
+          [slot0]: 0,
+          [slot1]: 1,
+          [slot2]: 2,
+        };
+
+        const shiftingMap: Record<number, number> = {
+          [hidden]: 0, // hidden enters slot0
+          [slot0]: 1,
+          [slot1]: 2,
+          [slot2]: 3, // exiting
+        };
+
+        const map = currentOffset === 0 ? stableMap : shiftingMap;
+        return map[shardIndex] ?? -2;
+      };
+
+      const visualSlot = getVisualSlot();
 
       // Default: upright geometry
       let x = SLOT0.x;

@@ -19,7 +19,7 @@ export { default as EmbeddingExample } from "./EmbeddingExample";
 export {
   default as IsometricPlane,
   ZDepthConstrainedParametric,
-  ZDepthUnconstrainedParametric,
+  ZDepthUnconstrainedParametric
 } from "./IsometricPlane";
 export { default as LockingSwimlane } from "./LockingSwimlane";
 export { default as PhotoReceiptBoundingBox } from "./PhotoReceiptBoundingBox";

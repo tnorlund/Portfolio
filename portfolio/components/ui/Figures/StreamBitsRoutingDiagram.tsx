@@ -25,6 +25,35 @@ const TILT_DEG = 26;
 
 const FADE = (p: number) => 1 - Math.abs((p % 100) - 50) / 50; // 0→1→0
 
+const clampMs = (n: number) => Math.max(1, Math.round(n));
+
+function mulberry32(seed: number) {
+    let t = seed >>> 0;
+    return () => {
+        t += 0x6d2b79f5;
+        let r = Math.imul(t ^ (t >>> 15), 1 | t);
+        r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function shuffle<T>(arr: T[], rand: () => number) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
+const LABEL_TEXT_PROPS = {
+    fontFamily:
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+    fontSize: "10",
+    fill: "var(--text-color)",
+    fontWeight: 600,
+} as const;
+
 const makeRefs = () =>
     Array.from({ length: 5 }, () => React.createRef<SVGPathElement>());
 
@@ -158,35 +187,10 @@ const StreamBitsRoutingDiagram: React.FC<{
 
         const [cycleKey, setCycleKey] = React.useState(0);
 
-        const clampMs = React.useCallback(
-            (n: number) => Math.max(1, Math.round(n)),
-            []
-        );
-
         const launchStepMs = clampMs(LAUNCH_STEP_MS / timeScale);
         const staggerMs = clampMs(STAGGER_MS / timeScale);
         const cyclePauseMs = clampMs(CYCLE_PAUSE_MS / timeScale);
         const defaultPhaseMs = clampMs(DEFAULT_PHASE_MS / timeScale);
-
-        function mulberry32(seed: number) {
-            // Deterministic PRNG for stable per-cycle shuffles.
-            let t = seed >>> 0;
-            return () => {
-                t += 0x6d2b79f5;
-                let r = Math.imul(t ^ (t >>> 15), 1 | t);
-                r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
-                return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-            };
-        }
-
-        function shuffle<T>(arr: T[], rand: () => number) {
-            const a = [...arr];
-            for (let i = a.length - 1; i > 0; i--) {
-                const j = Math.floor(rand() * (i + 1));
-                [a[i], a[j]] = [a[j], a[i]];
-            }
-            return a;
-        }
 
         const phases = React.useMemo<Phase[]>(() => {
             const robots: Phase[] = [
@@ -240,14 +244,6 @@ const StreamBitsRoutingDiagram: React.FC<{
             const id = setTimeout(() => setCycleKey((c) => c + 1), totalMs);
             return () => clearTimeout(id);
         }, [cycleKey, cyclePauseMs, defaultPhaseMs, launchStepMs, phases, staggerMs]);
-
-        // Node layout (matches Diagram-41 coordinates)
-        const mac = { x: 43.75, y: 150 }; // left-middle
-        const topClient = { x: 43.75, y: 35 };
-        const bottomClient = { x: 43.75, y: 265 };
-        const stream = { x: 150, y: 150 }; // center
-        const dynamo = { x: 257.5, y: 150 }; // right-middle
-        const lambda = { x: 257.5, y: 257.5 }; // bottom-right
 
         return (
             <div style={{ display: "flex", justifyContent: "center" }}>
@@ -574,14 +570,22 @@ const StreamBitsRoutingDiagram: React.FC<{
 
                     {showLabels && (
                         <g opacity={0.7} aria-hidden="true">
+                            {(() => {
+                                // Node layout (matches Diagram-41 coordinates)
+                                const mac = { x: 43.75, y: 150 }; // left-middle
+                                const topClient = { x: 43.75, y: 35 };
+                                const bottomClient = { x: 43.75, y: 265 };
+                                const stream = { x: 150, y: 150 }; // center
+                                const dynamo = { x: 257.5, y: 150 }; // right-middle
+                                const lambda = { x: 257.5, y: 257.5 }; // bottom-right
+
+                                return (
+                                    <>
                             <text
                                 x={topClient.x}
                                 y={topClient.y - 22}
                                 textAnchor="middle"
-                                fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-                                fontSize="10"
-                                fill="var(--text-color)"
-                                fontWeight={600}
+                                {...LABEL_TEXT_PROPS}
                             >
                                 Client
                             </text>
@@ -589,10 +593,7 @@ const StreamBitsRoutingDiagram: React.FC<{
                                 x={mac.x}
                                 y={mac.y - 22}
                                 textAnchor="middle"
-                                fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-                                fontSize="10"
-                                fill="var(--text-color)"
-                                fontWeight={600}
+                                {...LABEL_TEXT_PROPS}
                             >
                                 Mac
                             </text>
@@ -600,10 +601,7 @@ const StreamBitsRoutingDiagram: React.FC<{
                                 x={bottomClient.x}
                                 y={bottomClient.y - 22}
                                 textAnchor="middle"
-                                fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-                                fontSize="10"
-                                fill="var(--text-color)"
-                                fontWeight={600}
+                                {...LABEL_TEXT_PROPS}
                             >
                                 Client
                             </text>
@@ -611,10 +609,7 @@ const StreamBitsRoutingDiagram: React.FC<{
                                 x={stream.x}
                                 y={stream.y - 26}
                                 textAnchor="middle"
-                                fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-                                fontSize="10"
-                                fill="var(--text-color)"
-                                fontWeight={600}
+                                {...LABEL_TEXT_PROPS}
                             >
                                 Stream
                             </text>
@@ -622,10 +617,7 @@ const StreamBitsRoutingDiagram: React.FC<{
                                 x={dynamo.x}
                                 y={dynamo.y - 26}
                                 textAnchor="middle"
-                                fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-                                fontSize="10"
-                                fill="var(--text-color)"
-                                fontWeight={600}
+                                {...LABEL_TEXT_PROPS}
                             >
                                 DynamoDB
                             </text>
@@ -633,13 +625,13 @@ const StreamBitsRoutingDiagram: React.FC<{
                                 x={lambda.x}
                                 y={lambda.y - 26}
                                 textAnchor="middle"
-                                fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-                                fontSize="10"
-                                fill="var(--text-color)"
-                                fontWeight={600}
+                                {...LABEL_TEXT_PROPS}
                             >
                                 Lambda
                             </text>
+                                    </>
+                                );
+                            })()}
                         </g>
                     )}
 
