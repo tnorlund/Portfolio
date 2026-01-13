@@ -297,7 +297,7 @@ class TimeoutAwareShutdownManager(GracefulShutdownManager):
         operation_id: str,
         check_interval: float = 1.0,
     ):
-        """Context manager for operations that should check timeout periodically.
+        """Context manager for operations with periodic timeout checks.
 
         Args:
             operation_id: Unique identifier for the operation
@@ -344,14 +344,14 @@ def register_cleanup_callback(callback: Callable[[], Any]):
 
 @contextmanager
 def managed_operation(operation_id: str):
-    """Context manager for operations that should be managed during shutdown."""
+    """Context manager for shutdown-managed operations."""
     with shutdown_manager.managed_operation(operation_id) as stop_event:
         yield stop_event
 
 
 @contextmanager
 def timeout_aware_operation(operation_id: str, check_interval: float = 1.0):
-    """Context manager for operations that should check timeout periodically."""
+    """Context manager for operations with periodic timeout checks."""
     with shutdown_manager.timeout_aware_operation(
         operation_id, check_interval
     ) as (stop_event, should_stop):

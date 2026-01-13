@@ -12,10 +12,16 @@ const ClientLabelValidationCount = dynamic(
   }
 );
 
+export { default as AWSFlowDiagram } from "./AWSFlowDiagram";
 export { default as CodeBuildDiagram } from "./CodeBuildDiagram";
 export { ClientImageCounts, ClientReceiptCounts } from "./DataCounts";
 export { default as EmbeddingCoordinate } from "./EmbeddingCoordinate";
 export { default as EmbeddingExample } from "./EmbeddingExample";
+export {
+  default as IsometricPlane,
+  ZDepthConstrainedParametric,
+  ZDepthUnconstrainedParametric
+} from "./IsometricPlane";
 export { default as LockingSwimlane } from "./LockingSwimlane";
 export { default as PhotoReceiptBoundingBox } from "./PhotoReceiptBoundingBox";
 export { default as ReceiptStack } from "./ReceiptStack";
@@ -34,13 +40,32 @@ export const PhotoReceiptDBSCAN = dynamic(
 );
 export { default as AddressSimilarity } from "./AddressSimilarity";
 export { default as AddressSimilaritySideBySide } from "./AddressSimilaritySideBySide";
+export { default as CICDLoop } from "./CICDLoop";
 export { default as CroppedAddressImage } from "./CroppedAddressImage";
+export { default as DynamoStreamAnimation } from "./DynamoStreamAnimation";
 export { default as ImageStack } from "./ImageStack";
 export { default as LayoutLMInferenceVisualization } from "./LayoutLMInferenceCarousel";
-export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
-export { default as CICDLoop } from "./CICDLoop";
+export { default as PageCurlLetter } from "./PageCurlLetter";
 export { default as PrecisionRecallDartboard } from "./PrecisionRecallDartboard";
+export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
+export { default as StreamBitsRoutingDiagram } from "./StreamBitsRoutingDiagram";
 export const TrainingMetricsAnimation = dynamic(
   () => import("./TrainingMetricsAnimation"),
+  { ssr: false }
+);
+export const LayoutLMBatchVisualization = dynamic(
+  () => import("./LayoutLMBatchVisualization"),
+  { ssr: false }
+);
+export const LabelValidationTimeline = dynamic(
+  () => import("./LabelValidationTimeline"),
+  { ssr: false }
+);
+export const LabelEvaluatorVisualization = dynamic(
+  () => import("./LabelEvaluatorVisualization"),
+  { ssr: false }
+);
+export const LabelWordCloud = dynamic(
+  () => import("./LabelWordCloud"),
   { ssr: false }
 );

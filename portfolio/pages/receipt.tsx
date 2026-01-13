@@ -13,8 +13,9 @@ import {
   ClientReceiptCounts,
   CodeBuildDiagram,
   ImageStack,
-  LabelValidationCount,
-  LayoutLMInferenceVisualization,
+  LabelEvaluatorVisualization,
+  LabelValidationTimeline,
+  LayoutLMBatchVisualization,
   LockingSwimlane,
   MerchantCount,
   PhotoReceiptBoundingBox,
@@ -26,6 +27,9 @@ import {
   UploadDiagram,
   ZDepthConstrained,
   ZDepthUnconstrained,
+  AWSFlowDiagram,
+  ZDepthConstrainedParametric,
+  ZDepthUnconstrainedParametric,
 } from "../components/ui/Figures";
 import {
   AWSLogo,
@@ -538,7 +542,7 @@ export default function ReceiptPage({
       </p>
 
       <ClientOnly>
-        <ZDepthConstrained />
+        <ZDepthConstrainedParametric />
       </ClientOnly>
 
       <p>
@@ -560,7 +564,7 @@ export default function ReceiptPage({
       </p>
 
       <ClientOnly>
-        <ZDepthUnconstrained />
+        <ZDepthUnconstrainedParametric />
       </ClientOnly>
 
       <p>
@@ -582,7 +586,7 @@ export default function ReceiptPage({
       </p>
 
       <ClientOnly>
-        <UploadDiagram chars={uploadDiagramChars} />
+        <AWSFlowDiagram chars={uploadDiagramChars} />
       </ClientOnly>
 
       <p>
@@ -602,8 +606,12 @@ export default function ReceiptPage({
           gap: "2rem",
         }}
       >
-        <ClientImageCounts />
-        <ClientReceiptCounts />
+        <ClientOnly>
+          <ClientImageCounts />
+        </ClientOnly>
+        <ClientOnly>
+          <ClientReceiptCounts />
+        </ClientOnly>
       </div>
 
       <h2>Identifying the Merchant</h2>
@@ -679,7 +687,7 @@ export default function ReceiptPage({
         label and verifies it again.
       </p>
 
-      <LabelValidationCount />
+      <LabelValidationTimeline />
 
       <p>
         This dataset is used to train a model to label the words faster and
@@ -694,53 +702,81 @@ export default function ReceiptPage({
       </ClientOnly>
 
       <p>
-        LayoutLM is a transformer model that understands both text and layout
-        information. By training it on my labeled receipts, it learns to
-        identify entities like merchant names, dates, addresses, and amounts
-        with high accuracy.
-      </p>
-
-      <p>
-        After reading the research paper, I learned that the model works best
-        using evenly distributed labels. In order to do this, I had to
-        compromise with labeled data I&apos;d know to be disproportionate: an
-        average receipt has more line item prices than it does totals and taxes.
-        Here is how I balanced the labels:
+        LayoutLM is a transformer model that understands both text and layout.
+        I trained it on my labeled receipts to identify 8 entity types:
       </p>
 
       <ul>
-        <li>
-          <strong>Merchant Name</strong>: Merchant Name
-        </li>
-        <li>
-          <strong>Date</strong>: Date and Time
-        </li>
-        <li>
-          <strong>Address</strong>: Address and Phone Number
-        </li>
-        <li>
-          <strong>Amount</strong>: Line Total, Subtotal, Tax, and Grand Total
-        </li>
+        <li><strong>Merchant</strong>, <strong>Date</strong>, <strong>Time</strong></li>
+        <li><strong>Amount</strong> (prices, subtotals, tax, totals)</li>
+        <li><strong>Address</strong> (street, phone)</li>
+        <li><strong>Website</strong>, <strong>Hours</strong>, <strong>Payment</strong></li>
       </ul>
 
+      <p>
+        The visualization below shows the model scanning receipts, revealing
+        bounding boxes as it identifies each entity.
+      </p>
+
       <ClientOnly>
-        <LayoutLMInferenceVisualization />
+        <LayoutLMBatchVisualization />
       </ClientOnly>
 
       <p>
-        Training the model to produce the best results means finding the right
-        settings. Instead of trying every possible setting, I use an LLM to
-        review training results and suggest which settings to try next. It
-        learns what works and what doesn&apos;t, helping me find better
-        configurations faster.
+        Training optimizes for two competing goals: <strong>precision</strong>{" "}
+        (accuracy of predictions) and <strong>recall</strong> (coverage of all
+        entities). Think of it like throwing darts&mdash;high precision means
+        tight groupings, high recall means hitting more targets.
+      </p>
+
+      <ClientOnly>
+        <PrecisionRecallDartboard />
+      </ClientOnly>
+
+      <p>
+        Finding the right hyperparameters to maximize both is tedious. I use an
+        LLM agent to review training metrics and suggest the next configuration
+        to try. It learns from each run, converging on optimal settings faster
+        than manual tuning.
+      </p>
+
+      <ClientOnly>
+        <TrainingMetricsAnimation />
+      </ClientOnly>
+
+      <p>
+        The trained model processes receipts in ~100ms versus 30-60 seconds
+        with an AI agent. The tradeoff is scope: the model extracts 8 core
+        entity types, while the agent provides comprehensive labeling including
+        line items and quantities.
+      </p>
+
+      <h2>Evaluating Label Quality</h2>
+
+      <p>
+        Even after labels are assigned, errors can creep in. OCR mistakes,
+        unusual receipt formats, and edge cases all contribute to mislabeled
+        words. I use a two-tier evaluation system to catch these issues.
       </p>
 
       <p>
-        The custom model processes receipts in about 5 seconds, compared to
-        30-60 seconds with the AI Agent. The tradeoff is coverage: the model
-        focuses on 4 core labels, while the AI Agent provides comprehensive
-        labeling including product names, quantities, and unit prices.
+        The first tier is fast and deterministic. By analyzing thousands of
+        receipts, the system learns spatial patterns: where labels typically
+        appear, how they relate to each other geometrically, and what
+        combinations are normal. When a label appears in an unexpected position,
+        it gets flagged for review.
       </p>
+
+      <p>
+        Flagged issues then go through specialized LLM evaluators that understand
+        context. Three subagents work in parallel: one validates currency
+        formats and line item structure, another verifies metadata against
+        Google Places data, and a third checks that the math adds up.
+      </p>
+
+      <ClientOnly>
+        <LabelEvaluatorVisualization />
+      </ClientOnly>
 
       <h1>What I Learned</h1>
 

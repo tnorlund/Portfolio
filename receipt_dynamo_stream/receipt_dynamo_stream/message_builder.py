@@ -4,25 +4,15 @@ Message building logic for DynamoDB stream records.
 Constructs StreamMessage objects that can be published to SQS queues.
 """
 
-# pylint: disable=broad-exception-caught
+# pylint: disable=import-error
+# import-error: receipt_dynamo is a monorepo sibling installed at runtime
 
 from __future__ import annotations
 
 import logging
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Iterable, Mapping, Optional, Protocol, cast
-
-from receipt_dynamo_stream.change_detection import (
-    get_chromadb_relevant_changes,
-)
-from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
-from receipt_dynamo_stream.parsing import (
-    is_compaction_run,
-    is_embeddings_completed,
-    parse_compaction_run,
-    parse_stream_record,
-)
+from typing import Callable, Iterable, Optional
 
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_line import ReceiptLine
@@ -30,26 +20,31 @@ from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
+from receipt_dynamo_stream.change_detection import (
+    get_chromadb_relevant_changes,
+)
+from receipt_dynamo_stream.models import (
+    ChromaDBCollection,
+    StreamMessage,
+    StreamRecordContext,
+)
+from receipt_dynamo_stream.parsing import (
+    is_compaction_run,
+    is_embeddings_completed,
+    parse_compaction_run,
+    parse_stream_record,
+)
+from receipt_dynamo_stream.stream_types import (
+    DynamoDBStreamRecord,
+    MetricsRecorder,
+)
+
 logger = logging.getLogger(__name__)
-
-StreamRecord = Mapping[str, object]
-
-
-class MetricsRecorder(Protocol):  # pylint: disable=too-few-public-methods
-    """Minimal protocol for metrics clients."""
-
-    def count(
-        self,
-        name: str,
-        value: int,
-        dimensions: Optional[Mapping[str, str]] = None,
-    ) -> object:
-        """Record a count metric."""
-        return None
 
 
 def build_messages_from_records(
-    records: Iterable[StreamRecord], metrics: Optional[MetricsRecorder] = None
+    records: Iterable[DynamoDBStreamRecord],
+    metrics: Optional[MetricsRecorder] = None,
 ) -> list[StreamMessage]:
     """
     Build StreamMessage objects from DynamoDB stream records.
@@ -75,7 +70,7 @@ def build_messages_from_records(
 
 
 def build_compaction_run_messages(
-    record: StreamRecord, metrics: Optional[MetricsRecorder] = None
+    record: DynamoDBStreamRecord, metrics: Optional[MetricsRecorder] = None
 ) -> list[StreamMessage]:
     """
     Build messages for COMPACTION_RUN INSERT events (one per collection).
@@ -83,18 +78,16 @@ def build_compaction_run_messages(
     messages: list[StreamMessage] = []
 
     try:
-        dynamodb = cast(dict[str, object], record.get("dynamodb", {}))
-        new_image = cast(Optional[dict[str, object]], dynamodb.get("NewImage"))
-        keys = cast(dict[str, object], dynamodb.get("Keys", {}))
-        pk = cast(dict[str, str], keys.get("PK", {})).get("S", "")
-        sk = cast(dict[str, str], keys.get("SK", {})).get("S", "")
+        dynamodb = record["dynamodb"]
+        new_image = dynamodb.get("NewImage")
+        keys = dynamodb["Keys"]
+        pk = keys["PK"]["S"]
+        sk = keys["SK"]["S"]
 
         if not (new_image and is_compaction_run(pk, sk)):
             return messages
 
-        compaction_run = parse_compaction_run(
-            cast(dict[str, object], new_image), pk, sk
-        )
+        compaction_run = parse_compaction_run(new_image, pk, sk)
         cr_entity = {
             "run_id": compaction_run.get("run_id"),
             "image_id": compaction_run.get("image_id"),
@@ -117,11 +110,12 @@ def build_compaction_run_messages(
                     changes={},
                     event_name="INSERT",
                     collections=(collection,),
-                    source="dynamodb_stream",
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    stream_record_id=str(record.get("eventID", "unknown")),
-                    aws_region=str(record.get("awsRegion", "unknown")),
-                    record_snapshot=cast(Mapping[str, object], new_image),
+                    context=StreamRecordContext(
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        record_id=str(record.get("eventID", "unknown")),
+                        aws_region=str(record.get("awsRegion", "unknown")),
+                    ),
+                    record_snapshot=new_image,
                 )
             )
 
@@ -133,7 +127,7 @@ def build_compaction_run_messages(
             },
         )
 
-    except Exception as exc:  # pragma: no cover - defensive
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
         logger.exception("Failed to build compaction run message: %s", exc)
         if metrics:
             metrics.count("CompactionRunMessageBuildError", 1)
@@ -142,7 +136,7 @@ def build_compaction_run_messages(
 
 
 def build_compaction_run_completion_messages(
-    record: StreamRecord, metrics: Optional[MetricsRecorder] = None
+    record: DynamoDBStreamRecord, metrics: Optional[MetricsRecorder] = None
 ) -> list[StreamMessage]:
     """
     Build messages for COMPACTION_RUN MODIFY events when embeddings complete.
@@ -150,22 +144,20 @@ def build_compaction_run_completion_messages(
     messages: list[StreamMessage] = []
 
     try:
-        dynamodb = cast(dict[str, object], record.get("dynamodb", {}))
-        new_image = cast(Optional[dict[str, object]], dynamodb.get("NewImage"))
-        keys = cast(dict[str, object], dynamodb.get("Keys", {}))
-        pk = cast(dict[str, str], keys.get("PK", {})).get("S", "")
-        sk = cast(dict[str, str], keys.get("SK", {})).get("S", "")
+        dynamodb = record["dynamodb"]
+        new_image = dynamodb.get("NewImage")
+        keys = dynamodb["Keys"]
+        pk = keys["PK"]["S"]
+        sk = keys["SK"]["S"]
 
-        if not new_image or not keys:
+        if not new_image:
             return messages
         if not is_compaction_run(pk, sk):
             return messages
-        if not is_embeddings_completed(cast(dict[str, object], new_image)):
+        if not is_embeddings_completed(new_image):
             return messages
 
-        compaction_run = parse_compaction_run(
-            cast(dict[str, object], new_image), pk, sk
-        )
+        compaction_run = parse_compaction_run(new_image, pk, sk)
         for collection in (ChromaDBCollection.LINES, ChromaDBCollection.WORDS):
             messages.append(
                 StreamMessage(
@@ -178,11 +170,12 @@ def build_compaction_run_completion_messages(
                     changes={},
                     event_name=str(record.get("eventName", "MODIFY")),
                     collections=(collection,),
-                    source="dynamodb_stream",
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    stream_record_id=str(record.get("eventID", "unknown")),
-                    aws_region=str(record.get("awsRegion", "unknown")),
-                    record_snapshot=cast(Mapping[str, object], new_image),
+                    context=StreamRecordContext(
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        record_id=str(record.get("eventID", "unknown")),
+                        aws_region=str(record.get("awsRegion", "unknown")),
+                    ),
+                    record_snapshot=new_image,
                 )
             )
 
@@ -198,7 +191,7 @@ def build_compaction_run_completion_messages(
             },
         )
 
-    except Exception as exc:  # pragma: no cover - defensive
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
         logger.exception(
             "Failed to build compaction run completion message: %s", exc
         )
@@ -209,7 +202,7 @@ def build_compaction_run_completion_messages(
 
 
 def build_entity_change_message(
-    record: StreamRecord, metrics: Optional[MetricsRecorder] = None
+    record: DynamoDBStreamRecord, metrics: Optional[MetricsRecorder] = None
 ) -> StreamMessage | None:
     """
     Build a StreamMessage from an entity change (MODIFY/REMOVE) record.
@@ -254,8 +247,9 @@ def build_entity_change_message(
                     },
                 )
 
-        # Convert new_entity to dict for snapshot (current state after change)
-        # For MODIFY events, this is the updated entity; for REMOVE, it's the entity being removed
+        # Convert new_entity to dict for snapshot (current state after
+        # change). For MODIFY events, this is the updated entity; for
+        # REMOVE, it's the entity being removed
         record_snapshot = asdict(new_entity) if new_entity else None
 
         return StreamMessage(
@@ -264,89 +258,113 @@ def build_entity_change_message(
             changes=changes,
             event_name=str(record.get("eventName", "UNKNOWN")),
             collections=tuple(target_collections),
-            source="dynamodb_stream",
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            stream_record_id=str(record.get("eventID", "unknown")),
-            aws_region=str(record.get("awsRegion", "unknown")),
+            context=StreamRecordContext(
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                record_id=str(record.get("eventID", "unknown")),
+                aws_region=str(record.get("awsRegion", "unknown")),
+            ),
             record_snapshot=record_snapshot,
         )
 
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.exception("Failed to build entity change message: %s", exc)
+    except (KeyError, TypeError, ValueError, AttributeError):
+        logger.exception("Failed to build entity change message")
         if metrics:
             metrics.count("EntityMessageBuildError", 1)
         return None
 
 
+def _extract_receipt_place(
+    entity: ReceiptPlace,
+) -> tuple[dict[str, object], list[ChromaDBCollection]]:
+    return {
+        "entity_type": "RECEIPT_PLACE",
+        "image_id": entity.image_id,
+        "receipt_id": entity.receipt_id,
+    }, [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
+
+
+def _extract_receipt_word_label(
+    entity: ReceiptWordLabel,
+) -> tuple[dict[str, object], list[ChromaDBCollection]]:
+    return {
+        "entity_type": "RECEIPT_WORD_LABEL",
+        "image_id": entity.image_id,
+        "receipt_id": entity.receipt_id,
+        "line_id": entity.line_id,
+        "word_id": entity.word_id,
+        "label": entity.label,
+    }, [ChromaDBCollection.WORDS]
+
+
+def _extract_receipt(
+    entity: Receipt,
+) -> tuple[dict[str, object], list[ChromaDBCollection]]:
+    return {
+        "entity_type": "RECEIPT",
+        "image_id": entity.image_id,
+        "receipt_id": entity.receipt_id,
+    }, [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
+
+
+def _extract_receipt_word(
+    entity: ReceiptWord,
+) -> tuple[dict[str, object], list[ChromaDBCollection]]:
+    return {
+        "entity_type": "RECEIPT_WORD",
+        "image_id": entity.image_id,
+        "receipt_id": entity.receipt_id,
+        "line_id": entity.line_id,
+        "word_id": entity.word_id,
+    }, [ChromaDBCollection.WORDS]
+
+
+def _extract_receipt_line(
+    entity: ReceiptLine,
+) -> tuple[dict[str, object], list[ChromaDBCollection]]:
+    return {
+        "entity_type": "RECEIPT_LINE",
+        "image_id": entity.image_id,
+        "receipt_id": entity.receipt_id,
+        "line_id": entity.line_id,
+    }, [ChromaDBCollection.LINES]
+
+
+# Entity type to (expected class, extractor function) mapping
+_ENTITY_EXTRACTORS: dict[
+    str,
+    tuple[
+        type,
+        Callable[..., tuple[dict[str, object], list[ChromaDBCollection]]],
+    ],
+] = {
+    "RECEIPT_PLACE": (ReceiptPlace, _extract_receipt_place),
+    "RECEIPT_WORD_LABEL": (ReceiptWordLabel, _extract_receipt_word_label),
+    "RECEIPT": (Receipt, _extract_receipt),
+    "RECEIPT_WORD": (ReceiptWord, _extract_receipt_word),
+    "RECEIPT_LINE": (ReceiptLine, _extract_receipt_line),
+}
+
+
 def _extract_entity_data(
     entity_type: str,
-    entity: Receipt | ReceiptLine | ReceiptPlace | ReceiptWord | ReceiptWordLabel | None,
+    entity: (
+        Receipt
+        | ReceiptLine
+        | ReceiptPlace
+        | ReceiptWord
+        | ReceiptWordLabel
+        | None
+    ),
 ) -> tuple[dict[str, object], list[ChromaDBCollection]]:
-    """
-    Extract entity data and determine target collections.
-    """
+    """Extract entity data and determine target collections."""
     if not entity:
         return {}, []
 
-    if entity_type == "RECEIPT_PLACE" and isinstance(
-        entity, ReceiptPlace
-    ):
-        entity_data = {
-            "entity_type": entity_type,
-            "image_id": entity.image_id,
-            "receipt_id": entity.receipt_id,
-        }
-        return entity_data, [
-            ChromaDBCollection.LINES,
-            ChromaDBCollection.WORDS,
-        ]
-
-    if entity_type == "RECEIPT_WORD_LABEL" and isinstance(
-        entity, ReceiptWordLabel
-    ):
-        entity_data = {
-            "entity_type": entity_type,
-            "image_id": entity.image_id,
-            "receipt_id": entity.receipt_id,
-            "line_id": entity.line_id,
-            "word_id": entity.word_id,
-            "label": entity.label,
-        }
-        return entity_data, [ChromaDBCollection.WORDS]
-
-    # RECEIPT deletion: affects both LINES and WORDS collections
-    # All embeddings for this receipt need to be deleted
-    if entity_type == "RECEIPT" and isinstance(entity, Receipt):
-        entity_data = {
-            "entity_type": entity_type,
-            "image_id": entity.image_id,
-            "receipt_id": entity.receipt_id,
-        }
-        return entity_data, [
-            ChromaDBCollection.LINES,
-            ChromaDBCollection.WORDS,
-        ]
-
-    # RECEIPT_WORD deletion: delete from WORDS collection only
-    if entity_type == "RECEIPT_WORD" and isinstance(entity, ReceiptWord):
-        entity_data = {
-            "entity_type": entity_type,
-            "image_id": entity.image_id,
-            "receipt_id": entity.receipt_id,
-            "line_id": entity.line_id,
-            "word_id": entity.word_id,
-        }
-        return entity_data, [ChromaDBCollection.WORDS]
-
-    # RECEIPT_LINE deletion: delete from LINES collection only
-    if entity_type == "RECEIPT_LINE" and isinstance(entity, ReceiptLine):
-        entity_data = {
-            "entity_type": entity_type,
-            "image_id": entity.image_id,
-            "receipt_id": entity.receipt_id,
-            "line_id": entity.line_id,
-        }
-        return entity_data, [ChromaDBCollection.LINES]
+    extractor_info = _ENTITY_EXTRACTORS.get(entity_type)
+    if extractor_info:
+        expected_class, extractor = extractor_info
+        if isinstance(entity, expected_class):
+            return extractor(entity)
 
     return {}, []
 

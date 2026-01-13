@@ -3,12 +3,16 @@ import json
 import os
 from typing import Dict, List, Optional
 
-from .config import DataConfig, TrainingConfig, MERGE_PRESETS
-from .trainer import ReceiptLayoutLMTrainer
+from .config import MERGE_PRESETS, DataConfig, TrainingConfig
+from .export_coreml import export_coreml, export_from_s3
 from .inference import LayoutLMInference
+from .trainer import ReceiptLayoutLMTrainer
+from .validate_coreml import validate_coreml
 
 
-def _build_label_merges(args: argparse.Namespace) -> Optional[Dict[str, List[str]]]:
+def _build_label_merges(
+    args: argparse.Namespace,
+) -> Optional[Dict[str, List[str]]]:
     """Build label_merges dict from CLI arguments.
 
     Priority order:
@@ -38,7 +42,7 @@ def _build_label_merges(args: argparse.Namespace) -> Optional[Dict[str, List[str
             if not isinstance(explicit_merges, dict):
                 raise SystemExit(
                     "--label-merges must be a JSON object, e.g., "
-                    "'{\"AMOUNT\": [\"LINE_TOTAL\", \"SUBTOTAL\"]}'"
+                    '\'{"AMOUNT": ["LINE_TOTAL", "SUBTOTAL"]}\''
                 )
             result.update(explicit_merges)
         except json.JSONDecodeError as e:
@@ -151,7 +155,7 @@ def main() -> None:
         default=None,
         help=(
             "JSON string of label merges. E.g., "
-            "'{\"AMOUNT\": [\"LINE_TOTAL\", \"SUBTOTAL\", \"TAX\", \"GRAND_TOTAL\"]}'. "
+            '\'{"AMOUNT": ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"]}\'. '
             "Overrides legacy merge flags. Can be combined with --merge-preset."
         ),
     )
@@ -193,6 +197,20 @@ def main() -> None:
             "Defaults to LAYOUTLM_TRAINING_BUCKET env var."
         ),
     )
+    train_p.add_argument(
+        "--export-coreml",
+        action="store_true",
+        help=(
+            "Automatically queue CoreML export after training completes. "
+            "Requires COREML_EXPORT_JOB_QUEUE_URL env var to be set."
+        ),
+    )
+    train_p.add_argument(
+        "--coreml-quantize",
+        choices=["float16", "int8", "int4"],
+        default="float16",
+        help="Quantization mode for CoreML export (default: float16).",
+    )
 
     infer_p = sub.add_parser("infer", help="Run LayoutLM inference")
     infer_p.add_argument(
@@ -219,6 +237,110 @@ def main() -> None:
         help=(
             "Env var containing S3 bucket name; will auto-resolve latest run if set"
         ),
+    )
+
+    # Export to CoreML subcommand
+    export_p = sub.add_parser(
+        "export-coreml", help="Export trained model to CoreML format"
+    )
+    export_p.add_argument(
+        "--checkpoint-dir",
+        help="Local directory containing model checkpoint",
+    )
+    export_p.add_argument(
+        "--s3-uri",
+        help="S3 URI to model checkpoint (s3://bucket/prefix/)",
+    )
+    export_p.add_argument(
+        "--output-dir",
+        required=True,
+        help="Directory to write CoreML bundle",
+    )
+    export_p.add_argument(
+        "--model-name",
+        default="LayoutLM",
+        help="Name for the .mlpackage file (default: LayoutLM)",
+    )
+    export_p.add_argument(
+        "--local-cache",
+        help="Local directory to cache S3 downloads",
+    )
+    export_p.add_argument(
+        "--quantize",
+        choices=["float16", "int8", "int4"],
+        default=None,
+        help="Quantization mode for smaller model size",
+    )
+
+    # Validate CoreML subcommand
+    validate_p = sub.add_parser(
+        "validate-coreml", help="Validate CoreML model against PyTorch"
+    )
+    validate_p.add_argument(
+        "--checkpoint-dir",
+        required=True,
+        help="Path to PyTorch checkpoint",
+    )
+    validate_p.add_argument(
+        "--coreml-bundle",
+        required=True,
+        help="Path to CoreML bundle directory",
+    )
+    validate_p.add_argument(
+        "--dynamo-table",
+        default=os.getenv("DYNAMO_TABLE_NAME"),
+        help="DynamoDB table for test data",
+    )
+    validate_p.add_argument(
+        "--region",
+        default="us-east-1",
+        help="AWS region",
+    )
+    validate_p.add_argument(
+        "--num-samples",
+        type=int,
+        default=100,
+        help="Number of samples to test",
+    )
+    validate_p.add_argument(
+        "--output-json",
+        help="Save detailed results to JSON file",
+    )
+
+    # Export worker subcommand (macOS only)
+    worker_p = sub.add_parser(
+        "export-worker",
+        help="Run CoreML export worker (macOS only)",
+    )
+    worker_p.add_argument(
+        "--job-queue-url",
+        default=os.getenv("COREML_EXPORT_JOB_QUEUE_URL"),
+        help="SQS URL for job queue (or COREML_EXPORT_JOB_QUEUE_URL env)",
+    )
+    worker_p.add_argument(
+        "--results-queue-url",
+        default=os.getenv("COREML_EXPORT_RESULTS_QUEUE_URL"),
+        help="SQS URL for results queue (or COREML_EXPORT_RESULTS_QUEUE_URL env)",
+    )
+    worker_p.add_argument(
+        "--dynamo-table",
+        default=os.getenv("DYNAMO_TABLE_NAME"),
+        help="DynamoDB table name for status updates",
+    )
+    worker_p.add_argument(
+        "--region",
+        default=os.getenv("AWS_REGION", "us-east-1"),
+        help="AWS region",
+    )
+    worker_p.add_argument(
+        "--once",
+        action="store_true",
+        help="Process one batch then exit (default: run continuously)",
+    )
+    worker_p.add_argument(
+        "--continuous",
+        action="store_true",
+        help="Run continuously until interrupted (default behavior)",
     )
 
     args = parser.parse_args()
@@ -268,6 +390,8 @@ def main() -> None:
         data_cfg.dataset_snapshot_load = args.dataset_snapshot_load
         data_cfg.dataset_snapshot_save = args.dataset_snapshot_save
         train_cfg.output_s3_path = args.output_s3_path
+        train_cfg.auto_export_coreml = args.export_coreml
+        train_cfg.coreml_quantize = args.coreml_quantize
         trainer = ReceiptLayoutLMTrainer(data_cfg, train_cfg)
         job_id = trainer.train(job_name=args.job_name)
         print(job_id)
@@ -306,6 +430,66 @@ def main() -> None:
                     ],
                 }
             )
+        )
+    elif args.cmd == "export-coreml":
+        if not args.checkpoint_dir and not args.s3_uri:
+            raise SystemExit("Either --checkpoint-dir or --s3-uri is required")
+
+        if args.s3_uri:
+            bundle_path = export_from_s3(
+                s3_uri=args.s3_uri,
+                output_dir=args.output_dir,
+                model_name=args.model_name,
+                local_cache=args.local_cache,
+                quantize=args.quantize,
+            )
+        else:
+            bundle_path = export_coreml(
+                checkpoint_dir=args.checkpoint_dir,
+                output_dir=args.output_dir,
+                model_name=args.model_name,
+                quantize=args.quantize,
+            )
+        print(f"CoreML bundle created: {bundle_path}")
+
+    elif args.cmd == "validate-coreml":
+        result = validate_coreml(
+            checkpoint_dir=args.checkpoint_dir,
+            coreml_bundle_dir=args.coreml_bundle,
+            dynamo_table=args.dynamo_table,
+            region=args.region,
+            num_samples=args.num_samples,
+        )
+        print(result)
+
+        if args.output_json:
+            import json as _json
+
+            with open(args.output_json, "w") as f:
+                _json.dump(result.to_dict(), f, indent=2)
+            print(f"\nDetailed results saved to {args.output_json}")
+
+    elif args.cmd == "export-worker":
+        from .export_worker import check_macos, run_worker
+
+        # Verify macOS
+        check_macos()
+
+        if not args.job_queue_url:
+            raise SystemExit(
+                "--job-queue-url or COREML_EXPORT_JOB_QUEUE_URL env is required"
+            )
+        if not args.results_queue_url:
+            raise SystemExit(
+                "--results-queue-url or COREML_EXPORT_RESULTS_QUEUE_URL env is required"
+            )
+
+        run_worker(
+            job_queue_url=args.job_queue_url,
+            results_queue_url=args.results_queue_url,
+            dynamo_table=args.dynamo_table,
+            region=args.region,
+            run_once=args.once,
         )
 
 

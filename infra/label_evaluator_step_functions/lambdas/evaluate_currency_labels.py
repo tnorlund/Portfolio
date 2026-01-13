@@ -27,7 +27,11 @@ try:
         receipt_state_trace,
     )
 
-    from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+    from utils.s3_helpers import (
+        get_merchant_hash,
+        load_json_from_s3,
+        upload_json_to_s3,
+    )
 
     _tracing_import_source = "container"
 except ImportError:
@@ -54,7 +58,11 @@ except ImportError:
             "lambdas",
         ),
     )
-    from utils.s3_helpers import load_json_from_s3, upload_json_to_s3
+    from utils.s3_helpers import (
+        get_merchant_hash,
+        load_json_from_s3,
+        upload_json_to_s3,
+    )
 
     _tracing_import_source = "local"
 
@@ -111,12 +119,27 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         logger.info("LangSmith project set to: %s", langchain_project)
 
     data_s3_key = event.get("data_s3_key")
-    line_item_patterns_s3_key = event.get("line_item_patterns_s3_key")
     execution_id = event.get("execution_id", "unknown")
     execution_arn = event.get("execution_arn", f"local:{execution_id}")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET")
     merchant_name = event.get("merchant_name", "unknown")
     dry_run = event.get("dry_run", False)
+
+    # Compute line_item_patterns_s3_key from merchant_name if not provided
+    # This enables the two-phase architecture where receipts are processed
+    # independently after all patterns have been computed
+    line_item_patterns_s3_key = event.get("line_item_patterns_s3_key")
+    if (
+        not line_item_patterns_s3_key
+        and merchant_name
+        and merchant_name != "unknown"
+    ):
+        merchant_hash = get_merchant_hash(merchant_name)
+        line_item_patterns_s3_key = f"line_item_patterns/{merchant_hash}.json"
+        logger.info(
+            "Computed line_item_patterns_s3_key from merchant_name: %s",
+            line_item_patterns_s3_key,
+        )
 
     # Receipt-level trace_id from FetchReceiptData
     # This ensures all parallel evaluators (EvaluateLabels, Currency, Metadata)
@@ -209,7 +232,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                     receipt_id,
                 )
 
-            # 2. Load line item patterns from S3
+            # 2. Load line item patterns from S3 (with graceful fallback)
             patterns = None
             if line_item_patterns_s3_key:
                 with child_trace("load_patterns", trace_ctx):
@@ -218,8 +241,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                         batch_bucket,
                         line_item_patterns_s3_key,
                     )
+                    # Use allow_missing=True for graceful fallback
                     patterns_data = load_json_from_s3(
-                        s3, batch_bucket, line_item_patterns_s3_key, logger=logger
+                        s3,
+                        batch_bucket,
+                        line_item_patterns_s3_key,
+                        logger=logger,
+                        allow_missing=True,
                     )
                     if patterns_data:
                         # DiscoverPatterns writes patterns dict directly to S3
@@ -235,6 +263,13 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                                 if patterns
                                 else None
                             ),
+                        )
+                    else:
+                        logger.warning(
+                            "No line item patterns found at s3://%s/%s - "
+                            "proceeding without patterns",
+                            batch_bucket,
+                            line_item_patterns_s3_key,
                         )
 
             # 3. Build visual lines from words and labels
@@ -341,7 +376,8 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                             logger.info("Applied decisions: %s", applied_stats)
                         else:
                             logger.warning(
-                                "DYNAMODB_TABLE_NAME not configured, skipping apply of %s invalid decisions",
+                                "DYNAMODB_TABLE_NAME not configured, "
+                                "skipping apply of %s invalid decisions",
                                 len(invalid_decisions),
                             )
 
@@ -375,15 +411,40 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "status": "completed",
                 "image_id": image_id,
                 "receipt_id": receipt_id,
+                "merchant_name": merchant_name,
                 "currency_words_evaluated": len(decisions),
                 "decisions": decision_counts,
                 "results_s3_key": results_s3_key,
                 "applied_stats": applied_stats,
+                # Full evaluations for visualization
+                "all_decisions": decisions,
             }
 
             trace_ctx.set_outputs(result)
 
         except Exception as e:
+            # Re-raise rate limit errors for Step Function retry
+            from receipt_agent.utils.llm_factory import AllProvidersFailedError
+            from receipt_agent.utils.ollama_rate_limit import (
+                OllamaRateLimitError,
+            )
+
+            if isinstance(e, AllProvidersFailedError):
+                logger.error(
+                    "All providers failed, propagating for Step Function retry: %s",
+                    e,
+                )
+                flush_langsmith_traces()
+                raise
+
+            if isinstance(e, OllamaRateLimitError):
+                logger.error(
+                    "Rate limit error, propagating for Step Function retry: %s",
+                    e,
+                )
+                flush_langsmith_traces()
+                raise
+
             logger.exception("Currency evaluation failed")
             result = {
                 "status": "failed",

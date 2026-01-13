@@ -5,10 +5,13 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
+from botocore.exceptions import ClientError
+
 from receipt_dynamo_stream.models import (
     ChromaDBCollection,
     FieldChange,
     StreamMessage,
+    StreamRecordContext,
 )
 from receipt_dynamo_stream.sqs_publisher import (
     _message_to_dict,
@@ -59,9 +62,11 @@ def _create_test_message(
         "changes": {"field": FieldChange(old="old", new="new")},
         "event_name": "MODIFY",
         "collections": collections,
-        "timestamp": datetime.now().isoformat(),
-        "stream_record_id": "event-1",
-        "aws_region": "us-east-1",
+        "context": StreamRecordContext(
+            timestamp=datetime.now().isoformat(),
+            record_id="event-1",
+            aws_region="us-east-1",
+        ),
     }
     defaults.update(kwargs)
     return StreamMessage(**defaults)  # type: ignore[arg-type]
@@ -113,16 +118,18 @@ def test_message_to_dict_multiple_changes() -> None:
 
 
 def test_message_to_dict_none_optional_fields() -> None:
-    """Test message with None optional fields."""
+    """Test message with None optional fields in context."""
     msg = StreamMessage(
         entity_type="TEST",
         entity_data={},
         changes={},
         event_name="TEST",
         collections=(ChromaDBCollection.LINES,),
-        timestamp=None,
-        stream_record_id=None,
-        aws_region=None,
+        context=StreamRecordContext(
+            timestamp=None,
+            record_id=None,
+            aws_region=None,
+        ),
     )
     result = _message_to_dict(msg)
 
@@ -194,10 +201,10 @@ def test_send_batch_to_queue_missing_queue_url() -> None:
     mock_sqs.send_message_batch.assert_not_called()
 
 
-def test_send_batch_to_queue_compaction_run_message_group(
+def test_send_batch_to_queue_compaction_run_no_message_group_id(
     env_test_queue: None,
 ) -> None:
-    """Test message group ID for COMPACTION_RUN uses single group per collection."""
+    """Test that Standard queues don't use MessageGroupId."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -221,14 +228,14 @@ def test_send_batch_to_queue_compaction_run_message_group(
     assert sent == 1
     call_args = mock_sqs.send_message_batch.call_args
     entries = call_args[1]["Entries"]
-    # All messages use single group per collection for optimal batching
-    assert entries[0]["MessageGroupId"] == "compaction:lines"
+    # Standard queues don't use MessageGroupId - Lambda handles ordering
+    assert "MessageGroupId" not in entries[0]
 
 
-def test_send_batch_to_queue_receipt_place_message_group(
+def test_send_batch_to_queue_receipt_place_no_message_group_id(
     env_test_queue: None,
 ) -> None:
-    """Test message group ID for RECEIPT_PLACE uses single group per collection."""
+    """Test that Standard queues don't use MessageGroupId for RECEIPT_PLACE."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -248,14 +255,14 @@ def test_send_batch_to_queue_receipt_place_message_group(
     assert sent == 1
     call_args = mock_sqs.send_message_batch.call_args
     entries = call_args[1]["Entries"]
-    # All messages use single group per collection for optimal batching
-    assert entries[0]["MessageGroupId"] == "compaction:words"
+    # Standard queues don't use MessageGroupId - Lambda handles ordering
+    assert "MessageGroupId" not in entries[0]
 
 
-def test_send_batch_to_queue_unknown_entity_type_message_group(
+def test_send_batch_to_queue_unknown_entity_type_no_message_group_id(
     env_test_queue: None,
 ) -> None:
-    """Test message group ID for unknown entity type uses single group."""
+    """Test that Standard queues don't use MessageGroupId for unknown types."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -275,14 +282,14 @@ def test_send_batch_to_queue_unknown_entity_type_message_group(
     assert sent == 1
     call_args = mock_sqs.send_message_batch.call_args
     entries = call_args[1]["Entries"]
-    # All messages use single group per collection for optimal batching
-    assert entries[0]["MessageGroupId"] == "compaction:lines"
+    # Standard queues don't use MessageGroupId - Lambda handles ordering
+    assert "MessageGroupId" not in entries[0]
 
 
-def test_send_batch_to_queue_missing_entity_data_fields(
+def test_send_batch_to_queue_missing_entity_data_no_message_group_id(
     env_test_queue: None,
 ) -> None:
-    """Test message group ID when entity_data is missing uses single group."""
+    """Test that Standard queues don't use MessageGroupId even with empty data."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -302,8 +309,8 @@ def test_send_batch_to_queue_missing_entity_data_fields(
     assert sent == 1
     call_args = mock_sqs.send_message_batch.call_args
     entries = call_args[1]["Entries"]
-    # All messages use single group per collection for optimal batching
-    assert entries[0]["MessageGroupId"] == "compaction:lines"
+    # Standard queues don't use MessageGroupId - Lambda handles ordering
+    assert "MessageGroupId" not in entries[0]
 
 
 def test_send_batch_to_queue_batching(
@@ -369,7 +376,10 @@ def test_send_batch_to_queue_failure_with_metrics(
     metrics = MockMetrics()
 
     mock_sqs = Mock()
-    mock_sqs.send_message_batch.side_effect = Exception("SQS Error")
+    mock_sqs.send_message_batch.side_effect = ClientError(
+        {"Error": {"Code": "ServiceUnavailable", "Message": "SQS Error"}},
+        "SendMessageBatch",
+    )
 
     msg = _create_test_message()
     msg_dict = _message_to_dict(msg)

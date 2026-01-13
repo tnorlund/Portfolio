@@ -4,6 +4,30 @@ export interface LabelValidationCountResponse {
   };
 }
 
+export interface LabelValidationStatusCounts {
+  VALID: number;
+  INVALID: number;
+  PENDING: number;
+  NEEDS_REVIEW: number;
+  NONE: number;
+  total: number;
+}
+
+export interface LabelValidationKeyframe {
+  progress: number;
+  timestamp: string;
+  records_processed: number;
+  labels: {
+    [labelName: string]: LabelValidationStatusCounts;
+  };
+}
+
+export interface LabelValidationTimelineResponse {
+  generated_at: string;
+  total_records: number;
+  keyframes: LabelValidationKeyframe[];
+}
+
 export interface ImageDetailsApiResponse {
   image: Image;
   lines: Line[];
@@ -222,13 +246,227 @@ export interface TrainingMetricsEpoch {
   >;
 }
 
+export interface DatasetMetrics {
+  num_train_samples?: number;
+  num_val_samples?: number;
+  o_entity_ratio_train?: number;
+  o_entity_ratio_val?: number;
+  random_seed?: number;
+  num_train_receipts?: number;
+  num_val_receipts?: number;
+}
+
 export interface TrainingMetricsResponse {
   job_id: string;
   job_name: string;
   status: string;
   created_at: string;
+  dataset_metrics?: DatasetMetrics;
   epochs: TrainingMetricsEpoch[];
   best_epoch: number;
   best_f1: number;
   total_epochs: number;
+}
+
+// LayoutLM Batch Inference Types
+
+export interface LayoutLMPrediction {
+  word_id: number | null;
+  line_id: number;
+  text: string;
+  predicted_label: string;
+  predicted_label_base: string;
+  ground_truth_label: string | null;
+  ground_truth_label_base: string | null;
+  ground_truth_label_original?: string | null;
+  predicted_confidence: number;
+  is_correct: boolean;
+  all_class_probabilities?: Record<string, number>;
+  all_class_probabilities_base?: Record<string, number>;
+}
+
+export interface LayoutLMReceiptWord {
+  receipt_id: number;
+  line_id: number;
+  word_id: number;
+  text: string;
+  bounding_box: BoundingBox;
+  top_left?: Point;
+  top_right?: Point;
+  bottom_left?: Point;
+  bottom_right?: Point;
+}
+
+export interface LayoutLMEntitiesSummary {
+  merchant_name: string | null;
+  date: string | null;
+  address: string | null;
+  amount: string | null;
+}
+
+export interface LayoutLMReceiptInference {
+  receipt_id: string;
+  original: {
+    receipt: {
+      image_id: string;
+      receipt_id: number;
+      width: number;
+      height: number;
+      cdn_s3_bucket: string;
+      cdn_s3_key: string;
+      cdn_webp_s3_key?: string;
+      cdn_avif_s3_key?: string;
+      cdn_medium_s3_key?: string;
+      cdn_medium_webp_s3_key?: string;
+      cdn_medium_avif_s3_key?: string;
+    };
+    words: LayoutLMReceiptWord[];
+    predictions: LayoutLMPrediction[];
+  };
+  metrics: {
+    overall_accuracy: number;
+    total_words: number;
+    correct_predictions: number;
+    per_label_f1?: Record<string, number>;
+    per_label_precision?: Record<string, number>;
+    per_label_recall?: Record<string, number>;
+  };
+  model_info: {
+    model_name: string;
+    device: string;
+    s3_uri: string;
+  };
+  entities_summary: LayoutLMEntitiesSummary;
+  inference_time_ms: number;
+  cached_at: string;
+}
+
+export interface LayoutLMAggregateStats {
+  avg_accuracy: number;
+  min_accuracy: number;
+  max_accuracy: number;
+  avg_inference_time_ms: number;
+  total_receipts_in_pool: number;
+  batch_size: number;
+  total_words_processed: number;
+  estimated_throughput_per_hour: number;
+}
+
+export interface LayoutLMBatchInferenceResponse {
+  receipts: LayoutLMReceiptInference[];
+  aggregate_stats: LayoutLMAggregateStats;
+  fetched_at: string;
+  legacy_mode?: boolean;
+}
+
+// Label Evaluator Visualization Types
+
+export interface LabelEvaluatorWord {
+  text: string;
+  label: string | null;
+  line_id: number;
+  word_id: number;
+  bbox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+export interface LabelEvaluatorIssue {
+  type: string;
+  word_text: string;
+  word_id: number;
+  line_id: number;
+  current_label: string | null;
+  suggested_label: string;
+  suggested_status: string;
+  reasoning: string;
+}
+
+export interface LabelEvaluatorDecision {
+  image_id: string;
+  receipt_id: number;
+  issue: {
+    line_id: number;
+    word_id: number;
+    current_label: string;
+    word_text: string;
+  };
+  llm_review: {
+    decision: "VALID" | "INVALID" | "NEEDS_REVIEW";
+    reasoning: string;
+    suggested_label: string | null;
+    confidence: "high" | "medium" | "low";
+  };
+}
+
+export interface LabelEvaluatorEvaluation {
+  image_id: string;
+  receipt_id: number;
+  merchant_name: string;
+  duration_seconds: number;
+  decisions: {
+    VALID: number;
+    INVALID: number;
+    NEEDS_REVIEW: number;
+  };
+  all_decisions: LabelEvaluatorDecision[];
+}
+
+export interface LabelEvaluatorGeometric {
+  image_id: string;
+  receipt_id: number;
+  issues_found: number;
+  issues: LabelEvaluatorIssue[];
+  error: string | null;
+  merchant_receipts_analyzed: number;
+  label_types_found: number;
+  duration_seconds?: number;
+}
+
+export interface LabelEvaluatorReceipt {
+  image_id: string;
+  receipt_id: number;
+  merchant_name?: string;
+  issues_found: number;
+  words: LabelEvaluatorWord[];
+  geometric: LabelEvaluatorGeometric;
+  currency: LabelEvaluatorEvaluation;
+  metadata: LabelEvaluatorEvaluation;
+  financial: LabelEvaluatorEvaluation;
+  // Review runs after Geometric if issues were found - produces V/I/R decisions
+  review?: LabelEvaluatorEvaluation;
+  // Line item structure discovery duration (seconds)
+  line_item_duration_seconds?: number | null;
+  // CDN image keys
+  cdn_s3_key: string;
+  cdn_webp_s3_key?: string;
+  cdn_avif_s3_key?: string;
+  cdn_medium_s3_key?: string;
+  cdn_medium_webp_s3_key?: string;
+  cdn_medium_avif_s3_key?: string;
+  width: number;
+  height: number;
+}
+
+export interface LabelEvaluatorAggregateStats {
+  total_receipts_in_pool: number;
+  batch_size: number;
+  avg_issues: number;
+  max_issues: number;
+  receipts_with_issues: number;
+}
+
+export interface LabelEvaluatorResponse {
+  receipts: LabelEvaluatorReceipt[];
+  total_count: number;
+  offset: number;
+  has_more: boolean;
+  seed: number;
+  aggregate_stats: LabelEvaluatorAggregateStats;
+  execution_id?: string;
+  cached_at?: string;
+  fetched_at?: string;
 }

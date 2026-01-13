@@ -1,6 +1,7 @@
 import {
   ImageDetailsApiResponse,
   LabelValidationCountResponse,
+  LabelValidationTimelineResponse,
   MerchantCountsResponse,
   ReceiptApiResponse,
   ImageCountApiResponse,
@@ -8,21 +9,17 @@ import {
   RandomReceiptDetailsResponse,
   AddressSimilarityResponse,
   TrainingMetricsResponse,
+  LayoutLMBatchInferenceResponse,
+  LabelEvaluatorResponse,
 } from "../../types/api";
 import { withPerformanceTrackingForAPI } from "../../utils/performance/api-wrapper";
+import { API_CONFIG } from "./config";
 
-// Helper function to get the API URL based on environment
-const getAPIUrl = () => {
-  const isDevelopment = process.env.NODE_ENV === "development";
-  return isDevelopment
-    ? "https://dev-api.tylernorlund.com"
-    : "https://api.tylernorlund.com";
-};
+// Use centralized API config for URL - handles dev proxy, test, and production
+const getAPIUrl = () => API_CONFIG.baseUrl;
 
 const fetchConfig = {
-  headers: {
-    "Content-Type": "application/json",
-  },
+  headers: API_CONFIG.headers,
 };
 
 // API calls that go directly to external APIs
@@ -62,6 +59,20 @@ const baseApi = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/label_validation_count`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchLabelValidationTimeline(): Promise<LabelValidationTimelineResponse> {
+    const apiUrl = getAPIUrl();
+    const response = await fetch(
+      `${apiUrl}/label_validation_timeline`,
       fetchConfig
     );
     if (!response.ok) {
@@ -191,7 +202,7 @@ const baseApi = {
     return response.json();
   },
 
-  async fetchLayoutLMInference(): Promise<any> {
+  async fetchLayoutLMInference(): Promise<LayoutLMBatchInferenceResponse> {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/layoutlm_inference`,
@@ -209,6 +220,31 @@ const baseApi = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/jobs/featured/training-metrics?collapse_bio=true`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchLabelEvaluatorVisualization(
+    batchSize: number = 20,
+    seed?: number,
+    offset: number = 0
+  ): Promise<LabelEvaluatorResponse> {
+    const apiUrl = getAPIUrl();
+    const params = new URLSearchParams();
+    params.set("batch_size", batchSize.toString());
+    params.set("offset", offset.toString());
+    if (seed !== undefined) {
+      params.set("seed", seed.toString());
+    }
+
+    const response = await fetch(
+      `${apiUrl}/label_evaluator/visualization?${params.toString()}`,
       fetchConfig
     );
     if (!response.ok) {

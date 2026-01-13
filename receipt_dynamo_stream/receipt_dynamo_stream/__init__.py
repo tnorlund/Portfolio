@@ -5,6 +5,10 @@ This package owns stream parsing, change detection, and stream message models
 so Lambdas can stay minimal while sharing business logic with other services.
 """
 
+# pylint: disable=duplicate-code
+# Re-exports from submodules for clean top-level API (e.g., `from
+# receipt_dynamo_stream import X` instead of deeper imports).
+
 __version__ = "0.1.0"
 
 from receipt_dynamo_stream.change_detection.detector import (
@@ -18,6 +22,7 @@ from receipt_dynamo_stream.models import (
     LambdaResponse,
     ParsedStreamRecord,
     StreamMessage,
+    StreamRecordContext,
 )
 from receipt_dynamo_stream.parsing.compaction_run import (
     is_compaction_run,
@@ -33,6 +38,19 @@ from receipt_dynamo_stream.sqs_publisher import (
     publish_messages,
     send_batch_to_queue,
 )
+from receipt_dynamo_stream.stream_types import (
+    APIGatewayResponse,
+    AttributeValue,
+    AttributeValueS,
+    DynamoDBItem,
+    DynamoDBKeys,
+    DynamoDBStreamEvent,
+    DynamoDBStreamRecord,
+    LambdaContext,
+    MetricsRecorder,
+    StreamProcessorResponseData,
+    StreamRecordDynamoDB,
+)
 
 __all__ = [
     "__version__",
@@ -42,6 +60,7 @@ __all__ = [
     "LambdaResponse",
     "ParsedStreamRecord",
     "StreamMessage",
+    "StreamRecordContext",
     "build_messages_from_records",
     "detect_entity_type",
     "get_chromadb_relevant_changes",
@@ -52,4 +71,16 @@ __all__ = [
     "parse_stream_record",
     "publish_messages",
     "send_batch_to_queue",
+    # Type definitions
+    "APIGatewayResponse",
+    "AttributeValue",
+    "AttributeValueS",
+    "DynamoDBItem",
+    "DynamoDBKeys",
+    "DynamoDBStreamEvent",
+    "DynamoDBStreamRecord",
+    "LambdaContext",
+    "MetricsRecorder",
+    "StreamProcessorResponseData",
+    "StreamRecordDynamoDB",
 ]

@@ -304,7 +304,7 @@ class TestProcessor:
         # Create invalid message (missing required fields)
         from datetime import datetime
 
-        from receipt_dynamo_stream.models import StreamMessage
+        from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
 
         invalid_msg = StreamMessage(
             entity_type="RECEIPT_PLACE",
@@ -312,9 +312,11 @@ class TestProcessor:
             changes={},
             event_name="MODIFY",
             collections=(ChromaDBCollection.LINES,),
-            timestamp=datetime.now().isoformat(),
-            stream_record_id="invalid",
-            aws_region="us-east-1",
+            context=StreamRecordContext(
+                timestamp=datetime.now().isoformat(),
+                record_id="invalid",
+                aws_region="us-east-1",
+            ),
         )
 
         # Process updates

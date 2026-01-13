@@ -26,6 +26,7 @@ public protocol DynamoClientProtocol {
     func getOCRJob(imageId: String, jobId: String) async throws -> OCRJob
     func updateOCRJob(_ job: OCRJob) async throws
     func addOCRRoutingDecision(_ decision: OCRRoutingDecision) async throws
+    func addReceiptWordLabels(_ labels: [ReceiptWordLabel]) async throws
 }
 
 

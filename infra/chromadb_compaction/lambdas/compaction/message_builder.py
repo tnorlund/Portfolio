@@ -1,4 +1,4 @@
-"""SQS message processing and categorization for the enhanced compaction handler."""
+"""SQS message processing for enhanced compaction handler."""
 
 import json
 import os
@@ -13,7 +13,7 @@ def process_sqs_messages(
     records: List[Dict[str, Any]],
     logger: Any,
     metrics: Any = None,
-    OBSERVABILITY_AVAILABLE: bool = False,
+    observability_available: bool = False,
     process_stream_messages_func: Any = None,
     process_delta_messages_func: Any = None,
 ) -> Dict[str, Any]:
@@ -57,7 +57,7 @@ def process_sqs_messages(
                     logger.warning(
                         "Stream message missing collection attribute"
                     )
-                    if OBSERVABILITY_AVAILABLE and metrics:
+                    if observability_available and metrics:
                         metrics.count("CompactionMessageMissingCollection", 1)
                     continue
 
@@ -68,7 +68,7 @@ def process_sqs_messages(
                         "Invalid collection value",
                         collection_value=collection_value,
                     )
-                    if OBSERVABILITY_AVAILABLE and metrics:
+                    if observability_available and metrics:
                         metrics.count("CompactionInvalidCollection", 1)
                     continue
 
@@ -91,7 +91,7 @@ def process_sqs_messages(
                 )
                 stream_messages.append(stream_msg)
 
-                if OBSERVABILITY_AVAILABLE and metrics:
+                if observability_available and metrics:
                     metrics.count(
                         "CompactionStreamMessage",
                         1,
@@ -102,25 +102,21 @@ def process_sqs_messages(
                     )
             else:
                 # Traditional delta message or unknown - treat as delta
-                # Store the full record to get messageId for partial batch failure
+                # Store full record for partial batch failure
                 delta_message_records.append(
                     {"record": record, "body": message_body}
                 )
 
-                if OBSERVABILITY_AVAILABLE and metrics:
+                if observability_available and metrics:
                     metrics.count("CompactionDeltaMessage", 1)
 
             processed_count += 1
 
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("Error parsing SQS message", error=str(e))
+        except (KeyError, json.JSONDecodeError, TypeError):
+            logger.exception("Error parsing SQS message")
 
-            if OBSERVABILITY_AVAILABLE and metrics:
-                metrics.count(
-                    "CompactionMessageParseError",
-                    1,
-                    {"error_type": type(e).__name__},
-                )
+            if observability_available and metrics:
+                metrics.count("CompactionMessageParseError", 1)
             continue
 
     # Process stream messages if any
@@ -137,16 +133,16 @@ def process_sqs_messages(
         delta_bodies = [msg["body"] for msg in delta_message_records]
         process_delta_messages_func(delta_bodies, metrics=metrics)
 
-        # Since delta processing is not implemented, mark all delta messages as failed
-        # to prevent data loss by forcing SQS to retry them
+        # Delta processing not implemented: mark as failed for retry
+        # to prevent data loss
         for msg_record in delta_message_records:
             message_id = msg_record["record"].get("receiptHandle")
             if message_id:
                 failed_message_ids.append(message_id)
 
-        if OBSERVABILITY_AVAILABLE and metrics:
+        if observability_available and metrics:
             logger.warning(
-                "Delta messages not processed - added to failed list for retry",
+                "Delta messages added to failed list for retry",
                 count=len(delta_message_records),
             )
             metrics.count(
@@ -167,7 +163,7 @@ def process_sqs_messages(
             ]
         }
 
-        if OBSERVABILITY_AVAILABLE and metrics:
+        if observability_available and metrics:
             logger.info(
                 "Returning partial batch failure response",
                 failed_count=len(failed_message_ids),
@@ -192,7 +188,7 @@ def process_sqs_messages(
         message="SQS messages processed successfully",
     )
 
-    if OBSERVABILITY_AVAILABLE and metrics:
+    if observability_available and metrics:
         metrics.gauge("CompactionProcessedMessages", processed_count)
         metrics.gauge("CompactionStreamMessages", len(stream_messages))
         metrics.gauge("CompactionDeltaMessages", len(delta_message_records))

@@ -10,7 +10,69 @@
   margin: 0 auto;
 }
 
-/* Epoch Timeline */
+/* Dataset Stats with segmented bars */
+.datasetStats {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  padding-bottom: 0.75rem;
+}
+
+.statGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.statLabel {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: rgba(var(--text-color-rgb), 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  width: 55px;
+  text-align: right;
+}
+
+.segmentedBar {
+  display: flex;
+  width: 80px;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: rgba(var(--text-color-rgb), 0.1);
+}
+
+.segmentTrain {
+  height: 100%;
+  background: var(--text-color);
+}
+
+.segmentVal {
+  height: 100%;
+  background: rgba(var(--text-color-rgb), 0.35);
+}
+
+.segmentEntity {
+  height: 100%;
+  background: var(--text-color);
+}
+
+.segmentO {
+  height: 100%;
+  background: rgba(var(--text-color-rgb), 0.2);
+}
+
+.statValues {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: rgba(var(--text-color-rgb), 0.6);
+  font-variant-numeric: tabular-nums;
+  min-width: 70px;
+}
+
+/* Epoch Timeline (Desktop) */
 .timeline {
   grid-column: 1 / -1;
   display: flex;
@@ -18,6 +80,11 @@
   justify-content: center;
   position: relative;
   padding: 1.5rem 0 1.5rem;
+}
+
+/* Mobile Timeline (hidden on desktop) */
+.timelineMobile {
+  display: none;
 }
 
 .timelineNodes {
@@ -91,7 +158,7 @@
   top: -14px;
   font-size: 0.55rem;
   font-weight: 600;
-  color: var(--color-green);
+  color: var(--text-color);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   animation: fadeInDown 0.3s ease;
@@ -133,7 +200,7 @@
 .gaugeValue {
   font-size: 2rem;
   font-weight: 700;
-  color: var(--color-green);
+  color: var(--text-color);
   font-variant-numeric: tabular-nums;
 }
 
@@ -141,14 +208,14 @@
   width: 100%;
   max-width: 120px;
   height: 8px;
-  background: rgba(var(--color-green-rgb), 0.2);
+  background: rgba(var(--text-color-rgb), 0.2);
   border-radius: 4px;
   overflow: hidden;
 }
 
 .gaugeBarFill {
   height: 100%;
-  background: var(--color-green);
+  background: var(--text-color);
   border-radius: 4px;
   transition: width 0.3s ease-out;
 }
@@ -165,44 +232,45 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  height: 28px;
+  height: 20px;
 }
 
 .labelName {
   width: 70px;
   font-size: 0.6rem;
   font-weight: 500;
-  color: var(--text-color);
+  color: rgba(var(--text-color-rgb), 0.5);
   text-align: right;
   flex-shrink: 0;
   line-height: 1.1;
 }
 
-.labelBarContainer {
+.labelBarSegmented {
+  display: flex;
   flex: 1;
-  height: 16px;
-  background: rgba(128, 128, 128, 0.15);
+  height: 6px;
   border-radius: 3px;
   overflow: hidden;
-  position: relative;
   min-width: 60px;
 }
 
-.labelBar {
+.labelBarFilled {
   height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s ease-out;
+  background: var(--text-color);
+}
+
+.labelBarEmpty {
+  height: 100%;
+  background: rgba(var(--text-color-rgb), 0.2);
 }
 
 .labelBarValue {
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 0.6rem;
-  font-weight: 600;
-  color: var(--text-color);
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: rgba(var(--text-color-rgb), 0.6);
   font-variant-numeric: tabular-nums;
+  min-width: 32px;
+  text-align: left;
 }
 
 /* Confusion Matrix Heatmap */
@@ -211,6 +279,11 @@
   flex-direction: column;
   gap: 0.5rem;
   width: fit-content;
+
+  /* Responsive sizing via CSS custom properties (avoids SSR hydration issues) */
+  --matrix-cell-size: 34px;
+  --matrix-label-col: 42px;
+  --matrix-header-row: 32px;
 }
 
 .matrixGrid {
@@ -219,16 +292,16 @@
 }
 
 .matrixAxisLabel {
-  font-size: 0.55rem;
+  font-size: 0.5rem;
   font-weight: 500;
   color: var(--text-color);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2px;
+  padding: 1px;
   opacity: 0.8;
   text-align: center;
-  line-height: 1.2;
+  line-height: 1.1;
 }
 
 .matrixAxisLabelY {
@@ -241,9 +314,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.65rem;
+  font-size: 0.5rem;
   font-weight: 500;
-  border-radius: 3px;
+  border-radius: 2px;
   transition: background-color 0.3s ease-out;
 }
 
@@ -261,7 +334,7 @@
 }
 
 .legendCorrect {
-  color: var(--color-green);
+  color: var(--text-color);
 }
 
 .legendError {
@@ -283,26 +356,172 @@
   .container {
     grid-template-columns: 1fr;
     max-width: 400px;
+    padding: 1rem 0;
+    gap: 1rem;
+    margin-left: auto;
+    margin-right: auto;
+    border: none;
+    border-radius: 0;
+    background: transparent;
   }
 
-  .leftPanel {
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: space-between;
+  /* Hide desktop timeline, show mobile */
+  .timeline {
+    display: none;
+  }
+
+  .timelineMobile {
+    grid-column: 1 / -1;
+    display: flex;
     align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 0.75rem 0;
+  }
+
+  .timelineArrow {
+    background: var(--text-color);
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    max-width: 32px;
+    max-height: 32px;
+    flex-grow: 0;
+    flex-shrink: 0;
+    flex-basis: auto;
+    box-sizing: border-box;
+    font-size: 1.25rem;
+    line-height: 1;
+    color: var(--background-color);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    -webkit-appearance: none;
+    appearance: none;
+    padding: 0;
+  }
+
+  .timelineArrow:hover:not(:disabled) {
+    opacity: 0.8;
+  }
+
+  .timelineArrow:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+  }
+
+  .timelineArrow:disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
+  }
+
+  .timelineMobileCenter {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    min-width: 60px;
+    flex: 1 1 auto; /* Allow center to take remaining space */
+    text-align: center;
+  }
+
+  .timelineMobileText {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-color);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .timelineBestLabelMobile {
+    font-size: 0.55rem;
+    font-weight: 600;
+    color: var(--text-color);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    animation: fadeInDown 0.3s ease;
+  }
+
+  /* Dataset stats more compact */
+  .datasetStats {
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .statGroup {
+    gap: 0.35rem;
+  }
+
+  .segmentedBar {
+    width: 60px;
+  }
+
+  /* Left panel stacks vertically */
+  .leftPanel {
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
   }
 
   .gaugeContainer {
     flex: 0 0 auto;
   }
 
+  .gaugeBar {
+    max-width: 80px;
+  }
+
+  /* Smaller per-label bars */
   .perLabelContainer {
-    flex: 1;
-    min-width: 150px;
+    width: 100%;
+    max-width: 340px;
+    margin: 0 auto;
+    gap: 0.35rem;
+  }
+
+  .labelRow {
+    height: 16px;
+    gap: 0.35rem;
+  }
+
+  .labelName {
+    width: 55px;
+    font-size: 0.6rem;
+  }
+
+  .labelBarSegmented {
+    height: 4px;
+    min-width: 40px;
+  }
+
+  .labelBarValue {
+    font-size: 0.65rem;
+    min-width: 28px;
+  }
+
+  /* Center confusion matrix */
+  .rightPanel {
+    justify-content: center;
+  }
+
+  .matrixContainer {
+    margin: 0 auto;
+    --matrix-cell-size: 28px;
+    --matrix-label-col: 36px;
+    --matrix-header-row: 28px;
   }
 
   .matrixCell {
-    min-width: 40px;
-    min-height: 40px;
+    font-size: 0.5rem;
+  }
+
+  .matrixAxisLabel {
+    font-size: 0.5rem;
   }
 }

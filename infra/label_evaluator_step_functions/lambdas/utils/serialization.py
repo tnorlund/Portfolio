@@ -167,6 +167,16 @@ def deserialize_patterns(
     label_pair_geometry: dict[tuple[str, str], LabelPairGeometry] = {}
     for geom_data in p.get("label_pair_geometry", []):
         pair_key = tuple(geom_data["labels"])
+        # Compute std_deviation from std_dx and std_dy if not provided
+        # std_deviation represents the typical distance from mean in Cartesian space
+        std_dx = geom_data.get("std_dx")
+        std_dy = geom_data.get("std_dy")
+        std_deviation = geom_data.get("std_deviation")
+        if std_deviation is None and std_dx is not None and std_dy is not None:
+            import math
+
+            # Use Euclidean norm of (std_dx, std_dy) as combined deviation
+            std_deviation = math.sqrt(std_dx**2 + std_dy**2)
         geom = LabelPairGeometry(
             observations=[],  # Not stored in serialized form
             mean_angle=geom_data.get("mean_angle"),
@@ -175,8 +185,9 @@ def deserialize_patterns(
             std_distance=geom_data.get("std_distance"),
             mean_dx=geom_data.get("mean_dx"),
             mean_dy=geom_data.get("mean_dy"),
-            std_dx=geom_data.get("std_dx"),
-            std_dy=geom_data.get("std_dy"),
+            std_dx=std_dx,
+            std_dy=std_dy,
+            std_deviation=std_deviation,
         )
         label_pair_geometry[pair_key] = geom
 
@@ -186,11 +197,20 @@ def deserialize_patterns(
         labels_key = tuple(cg_data["labels"])
         relative_positions = {}
         for label, rel_data in cg_data.get("relative_positions", {}).items():
+            # Compute std_deviation from std_dx and std_dy if not provided
+            std_dx = rel_data.get("std_dx", 0.0)
+            std_dy = rel_data.get("std_dy", 0.0)
+            std_deviation = rel_data.get("std_deviation")
+            if std_deviation is None:
+                import math
+
+                std_deviation = math.sqrt(std_dx**2 + std_dy**2)
             relative_positions[label] = LabelRelativePosition(
                 mean_dx=rel_data.get("mean_dx", 0.0),
                 mean_dy=rel_data.get("mean_dy", 0.0),
-                std_dx=rel_data.get("std_dx", 0.0),
-                std_dy=rel_data.get("std_dy", 0.0),
+                std_dx=std_dx,
+                std_dy=std_dy,
+                std_deviation=std_deviation,
             )
         constellation_geometry[labels_key] = ConstellationGeometry(
             labels=labels_key,
@@ -209,8 +229,13 @@ def deserialize_patterns(
     )
 
     # Reconstruct labels_with_same_line_multiplicity
-    labels_with_multiplicity = set(
+    labels_with_same_line_multiplicity = set(
         p.get("labels_with_same_line_multiplicity", [])
+    )
+
+    # Reconstruct labels_with_receipt_multiplicity
+    labels_with_receipt_multiplicity = set(
+        p.get("labels_with_receipt_multiplicity", [])
     )
 
     patterns = MerchantPatterns(
@@ -221,7 +246,8 @@ def deserialize_patterns(
         all_observed_pairs=all_observed_pairs,
         constellation_geometry=constellation_geometry,
         batch_classification=batch_classification,
-        labels_with_same_line_multiplicity=labels_with_multiplicity,
+        labels_with_same_line_multiplicity=labels_with_same_line_multiplicity,
+        labels_with_receipt_multiplicity=labels_with_receipt_multiplicity,
     )
 
     return patterns

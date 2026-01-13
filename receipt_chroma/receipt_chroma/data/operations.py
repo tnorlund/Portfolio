@@ -149,8 +149,12 @@ def update_receipt_place(
             metrics.gauge("CompactionChromaDBRecordsFound", found_count)
 
         if found_count == 0:
-            logger.error(
-                "No matching embeddings found in ChromaDB for place update",
+            # Graceful handling: embedding may have been deleted by a REMOVE
+            # that arrived in the same batch (Standard queues don't guarantee
+            # ordering, but we sort REMOVE first within each batch)
+            logger.info(
+                "No matching embeddings found in ChromaDB for place update - "
+                "may have been deleted",
                 receipt_id=receipt_id,
                 image_id=image_id,
                 expected=len(chromadb_ids),
@@ -486,9 +490,12 @@ def update_word_labels(
         # Get the specific record from ChromaDB
         result = collection.get(ids=[chromadb_id], include=["metadatas"])
         if not result["ids"]:
+            # Graceful handling: embedding may have been deleted by a REMOVE
+            # that arrived in the same batch (Standard queues don't guarantee
+            # ordering, but we sort REMOVE first within each batch)
             if logger:
-                logger.error(
-                    "Word embedding not found in snapshot",
+                logger.info(
+                    "Word embedding not found in snapshot - may have been deleted",
                     chromadb_id=chromadb_id,
                     image_id=image_id,
                     receipt_id=receipt_id,

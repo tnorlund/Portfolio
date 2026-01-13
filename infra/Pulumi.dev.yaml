@@ -42,3 +42,7 @@ config:
   portfolio:OPENROUTER_API_KEY:
     secure: AAABAN6ptx7AysWMDQ4oCllzXWxWkIu7uxwgHswFkbfa0B0+DBMbJoVT5RZ2i5uSakARs45iOO6KNuiX1sUgZPRF8o6iWpDmwr06IZJ1GIz8CWUtTEz6A07PC4Hv9LivlK//JXLIXV2/
   ml-training:enable-sagemaker: "true"
+  portfolio:LANGSMITH_SERVICE_API_KEY:
+    secure: AAABALDwD+PxYHuh4x/KSvGVb4AL0l+nWLeMQVmnOdwBfvImSLIZa62jYL4mdflrCVxKsRUt2PAsCnrh0DG0nRjPnzb3XBsfEco9cpSM9HE1+Ak=
+  portfolio:LANGSMITH_TENANT_ID: 2586637a-4a13-4ad7-8bc1-2f8221e32c1b
+  emr-docker-build:force-rebuild: "true"

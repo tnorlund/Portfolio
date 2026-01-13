@@ -8,10 +8,12 @@ from typing import Any, cast
 import boto3
 import pytest
 from moto import mock_aws
+
 from receipt_dynamo_stream import (
     ChromaDBCollection,
     FieldChange,
     StreamMessage,
+    StreamRecordContext,
     publish_messages,
 )
 
@@ -23,20 +25,13 @@ def moto_sqs() -> Any:
 
 
 @pytest.fixture
-def fifo_queues(moto_sqs: Any) -> dict[str, str]:
+def standard_queues(moto_sqs: Any) -> dict[str, str]:
+    """Create Standard SQS queues for high-throughput testing."""
     lines_queue = moto_sqs.create_queue(
-        QueueName="lines.fifo",
-        Attributes={
-            "FifoQueue": "true",
-            "ContentBasedDeduplication": "true",
-        },
+        QueueName="lines-queue",
     )["QueueUrl"]
     words_queue = moto_sqs.create_queue(
-        QueueName="words.fifo",
-        Attributes={
-            "FifoQueue": "true",
-            "ContentBasedDeduplication": "true",
-        },
+        QueueName="words-queue",
     )["QueueUrl"]
 
     os.environ["LINES_QUEUE_URL"] = lines_queue
@@ -53,9 +48,11 @@ def _sample_place_message() -> StreamMessage:
         },
         event_name="MODIFY",
         collections=(ChromaDBCollection.LINES, ChromaDBCollection.WORDS),
-        timestamp=datetime.now().isoformat(),
-        stream_record_id="event-1",
-        aws_region="us-east-1",
+        context=StreamRecordContext(
+            timestamp=datetime.now().isoformat(),
+            record_id="event-1",
+            aws_region="us-east-1",
+        ),
     )
 
 
@@ -72,9 +69,11 @@ def _sample_word_label_remove() -> StreamMessage:
         changes={},
         event_name="REMOVE",
         collections=(ChromaDBCollection.WORDS,),
-        timestamp=datetime.now().isoformat(),
-        stream_record_id="event-2",
-        aws_region="us-east-1",
+        context=StreamRecordContext(
+            timestamp=datetime.now().isoformat(),
+            record_id="event-2",
+            aws_region="us-east-1",
+        ),
     )
 
 
@@ -90,9 +89,11 @@ def _sample_compaction_run() -> StreamMessage:
         changes={},
         event_name="INSERT",
         collections=(ChromaDBCollection.LINES, ChromaDBCollection.WORDS),
-        timestamp=datetime.now().isoformat(),
-        stream_record_id="event-3",
-        aws_region="us-east-1",
+        context=StreamRecordContext(
+            timestamp=datetime.now().isoformat(),
+            record_id="event-3",
+            aws_region="us-east-1",
+        ),
     )
 
 
@@ -106,14 +107,14 @@ def _get_messages(sqs: Any, queue_url: str) -> list[dict[str, Any]]:
 
 
 def test_place_routed_to_both_queues(
-    moto_sqs: Any, fifo_queues: dict[str, str]
+    moto_sqs: Any, standard_queues: dict[str, str]
 ) -> None:
     msg = _sample_place_message()
     sent = publish_messages([msg])
     assert sent == 2
 
-    lines_msgs = _get_messages(moto_sqs, fifo_queues["lines"])
-    words_msgs = _get_messages(moto_sqs, fifo_queues["words"])
+    lines_msgs = _get_messages(moto_sqs, standard_queues["lines"])
+    words_msgs = _get_messages(moto_sqs, standard_queues["words"])
 
     assert len(lines_msgs) == 1
     assert len(words_msgs) == 1
@@ -128,14 +129,14 @@ def test_place_routed_to_both_queues(
 
 
 def test_word_label_remove_only_words_queue(
-    moto_sqs: Any, fifo_queues: dict[str, str]
+    moto_sqs: Any, standard_queues: dict[str, str]
 ) -> None:
     msg = _sample_word_label_remove()
     sent = publish_messages([msg])
     assert sent == 1
 
-    lines_msgs = _get_messages(moto_sqs, fifo_queues["lines"])
-    words_msgs = _get_messages(moto_sqs, fifo_queues["words"])
+    lines_msgs = _get_messages(moto_sqs, standard_queues["lines"])
+    words_msgs = _get_messages(moto_sqs, standard_queues["words"])
 
     assert len(lines_msgs) == 0
     assert len(words_msgs) == 1
@@ -145,14 +146,14 @@ def test_word_label_remove_only_words_queue(
 
 
 def test_compaction_run_sends_one_per_collection(
-    moto_sqs: Any, fifo_queues: dict[str, str]
+    moto_sqs: Any, standard_queues: dict[str, str]
 ) -> None:
     msg = _sample_compaction_run()
     sent = publish_messages([msg])
     assert sent == 2
 
-    lines_msgs = _get_messages(moto_sqs, fifo_queues["lines"])
-    words_msgs = _get_messages(moto_sqs, fifo_queues["words"])
+    lines_msgs = _get_messages(moto_sqs, standard_queues["lines"])
+    words_msgs = _get_messages(moto_sqs, standard_queues["words"])
 
     assert len(lines_msgs) == 1
     assert len(words_msgs) == 1
@@ -162,7 +163,7 @@ def test_compaction_run_sends_one_per_collection(
 
 
 def test_batches_above_ten_messages(
-    moto_sqs: Any, fifo_queues: dict[str, str]
+    moto_sqs: Any, standard_queues: dict[str, str]
 ) -> None:
     msgs = [
         StreamMessage(
@@ -171,9 +172,11 @@ def test_batches_above_ten_messages(
             changes={"merchant_name": FieldChange(old="A", new="B")},
             event_name="MODIFY",
             collections=(ChromaDBCollection.LINES, ChromaDBCollection.WORDS),
-            timestamp=datetime.now().isoformat(),
-            stream_record_id=f"event-{i}",
-            aws_region="us-east-1",
+            context=StreamRecordContext(
+                timestamp=datetime.now().isoformat(),
+                record_id=f"event-{i}",
+                aws_region="us-east-1",
+            ),
         )
         for i in range(15)
     ]
@@ -182,8 +185,8 @@ def test_batches_above_ten_messages(
     # 15 records, two queues each => 30
     assert sent == 30
 
-    lines_msgs = _get_messages(moto_sqs, fifo_queues["lines"])
-    words_msgs = _get_messages(moto_sqs, fifo_queues["words"])
+    lines_msgs = _get_messages(moto_sqs, standard_queues["lines"])
+    words_msgs = _get_messages(moto_sqs, standard_queues["words"])
     assert len(lines_msgs) == 10  # moto default receive max
     assert len(words_msgs) == 10
 

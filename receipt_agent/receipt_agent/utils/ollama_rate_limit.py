@@ -404,3 +404,41 @@ class RateLimitedLLMInvoker:
         if self.circuit_breaker:
             stats["circuit_breaker"] = self.circuit_breaker.get_stats()
         return stats
+
+    def with_structured_output(self, schema: type) -> "RateLimitedLLMInvoker":
+        """
+        Create a new RateLimitedLLMInvoker with structured output for the LLM.
+
+        Uses LangChain's with_structured_output() to enforce JSON schema at
+        the API level (via function calling or JSON mode).
+
+        Args:
+            schema: A Pydantic model class defining the expected output structure
+
+        Returns:
+            New RateLimitedLLMInvoker with structured output enabled
+
+        Example:
+            from pydantic import BaseModel
+
+            class ReviewResponse(BaseModel):
+                decision: str
+                reasoning: str
+
+            structured_invoker = invoker.with_structured_output(ReviewResponse)
+            response = structured_invoker.invoke(messages)  # Returns ReviewResponse
+        """
+        if hasattr(self.llm, "with_structured_output"):
+            structured_llm = self.llm.with_structured_output(schema)
+        else:
+            logger.warning(
+                "LLM %s does not support with_structured_output",
+                type(self.llm).__name__,
+            )
+            structured_llm = self.llm
+
+        return RateLimitedLLMInvoker(
+            llm=structured_llm,
+            circuit_breaker=self.circuit_breaker,
+            max_jitter_seconds=self.max_jitter_seconds,
+        )

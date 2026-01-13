@@ -5,9 +5,14 @@ This handler combines the functionality of:
 - SplitWordIntoChunks (splitting into chunks and uploading to S3)
 - LoadChunksFromS3 (creating chunk indices)
 
+SIMPLIFIED ARCHITECTURE (v2):
+- Creates BIG chunks (target 5-10 parallel Lambdas total)
+- Each Lambda processes many deltas and creates one intermediate
+- Final merge takes all intermediates directly (no reduce loop)
+
 This simplification:
-- Reduces Lambda invocations from 3 to 1
-- Eliminates intermediate Step Functions state
+- Reduces Lambda invocations dramatically
+- Eliminates the complex reduce loop in Step Functions
 - Makes data flow clearer
 - Ensures poll_results_s3_key is always available for MarkBatchesComplete
 """
@@ -16,28 +21,86 @@ import json
 import logging
 import os
 import tempfile
-from typing import Any, Dict, List
+from typing import Literal, TypedDict
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+
+# =============================================================================
+# Type Definitions
+# =============================================================================
+
+
+class PollResultRef(TypedDict):
+    """S3 reference from PollBatches Map state."""
+
+    batch_id: str
+    result_s3_key: str
+    result_s3_bucket: str
+
+
+class DeltaResult(TypedDict, total=False):
+    """A delta result with required delta_key and optional collection."""
+
+    delta_key: str
+    collection: str
+
+
+class ChunkItem(TypedDict):
+    """Item passed to ProcessChunksInParallel Map state."""
+
+    chunk_index: int
+    batch_id: str
+    chunks_s3_key: str
+    chunks_s3_bucket: str
+    database: str
+
+
+class Chunk(TypedDict):
+    """Internal chunk containing delta results."""
+
+    chunk_index: int
+    batch_id: str
+    delta_results: list[DeltaResult]
+
+
+class LambdaEvent(TypedDict, total=False):
+    """Input event for the Lambda handler."""
+
+    poll_results: list[PollResultRef | DeltaResult]
+    batch_id: str
+    database: Literal["words", "lines"]
+
+
+class LambdaResponse(TypedDict):
+    """Output response from the Lambda handler."""
+
+    batch_id: str
+    chunks: list[ChunkItem]
+    total_chunks: int
+    chunks_s3_key: str | None
+    chunks_s3_bucket: str | None
+    poll_results_s3_key: str | None
+    poll_results_s3_bucket: str | None
+    has_chunks: bool
+
 
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Configuration
-CHUNK_SIZE_WORDS = int(os.environ.get("CHUNK_SIZE_WORDS", "15"))
-CHUNK_SIZE_LINES = int(os.environ.get("CHUNK_SIZE_LINES", "25"))
+# SIMPLIFIED ARCHITECTURE: Target number of parallel Lambdas
+# Instead of many small chunks, create exactly this many big chunks
+# Conservative: 10, Recommended: 8, Aggressive: 5
+TARGET_PARALLEL_LAMBDAS = int(os.environ.get("TARGET_PARALLEL_LAMBDAS", "8"))
 
-# Batched chunk processing: process multiple chunks per Lambda invocation
-# This reduces Lambda invocations by grouping chunks together
-# Conservative: 3, Recommended: 4, Aggressive: 5
-CHUNKS_PER_LAMBDA = int(os.environ.get("CHUNKS_PER_LAMBDA", "4"))
+# Minimum deltas per chunk to avoid too many small Lambdas
+MIN_DELTAS_PER_CHUNK = int(os.environ.get("MIN_DELTAS_PER_CHUNK", "5"))
 
 s3_client = boto3.client("s3")
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    # pylint: disable=unused-argument
+def lambda_handler(event: LambdaEvent, _context: object) -> LambdaResponse:
     """Prepare chunks for parallel processing.
 
     Takes poll results (S3 references from PollBatches Map), combines them,
@@ -72,13 +135,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if not bucket:
         raise ValueError("CHROMADB_BUCKET environment variable not set")
 
-    chunk_size = CHUNK_SIZE_WORDS if database == "words" else CHUNK_SIZE_LINES
-
     logger.info(
-        "Starting prepare_chunks: batch_id=%s, database=%s, chunk_size=%d, poll_results_count=%d",
+        "Starting prepare_chunks: batch_id=%s, database=%s, poll_results_count=%d",
         batch_id,
         database,
-        chunk_size,
         len(poll_results_refs) if poll_results_refs else 0,
     )
 
@@ -131,7 +191,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "has_chunks": False,
         }
 
-    chunks = _create_chunks(valid_deltas, chunk_size, batch_id)
+    chunks = _create_chunks(valid_deltas, batch_id)
 
     logger.info(
         "Created chunks: batch_id=%s, delta_count=%d, chunk_count=%d",
@@ -151,33 +211,31 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         len(chunks),
     )
 
-    # Step 5: Create chunk batches for Map state (batched processing optimization)
-    # Group multiple chunks together to reduce Lambda invocations
-    chunk_batches = []
-    for i in range(0, len(chunks), CHUNKS_PER_LAMBDA):
-        # Get chunk indices for this batch (up to CHUNKS_PER_LAMBDA chunks)
-        batch_chunk_indices = list(range(i, min(i + CHUNKS_PER_LAMBDA, len(chunks))))
-
-        chunk_batches.append({
-            "chunk_indices": batch_chunk_indices,  # Array of chunk indices to process
-            "batch_id": batch_id,
-            "chunks_s3_key": chunks_s3_key,
-            "chunks_s3_bucket": bucket,
-        })
+    # Step 5: Create chunk items for Map state
+    # SIMPLIFIED ARCHITECTURE: Each chunk is processed by exactly one Lambda
+    # No batching needed since we already created big chunks
+    chunk_items: list[ChunkItem] = []
+    for chunk in chunks:
+        chunk_items.append(
+            ChunkItem(
+                chunk_index=chunk["chunk_index"],
+                batch_id=batch_id,
+                chunks_s3_key=chunks_s3_key,
+                chunks_s3_bucket=bucket,
+                database=database,
+            )
+        )
 
     logger.info(
-        "Created chunk batches: original_chunks=%d, batches=%d, chunks_per_lambda=%d",
-        len(chunks),
-        len(chunk_batches),
-        CHUNKS_PER_LAMBDA,
+        "SIMPLIFIED: Created %d chunk items (1 Lambda per chunk, each processing ~%d deltas)",
+        len(chunk_items),
+        len(valid_deltas) // len(chunks) if chunks else 0,
     )
 
     return {
         "batch_id": batch_id,
-        "chunks": chunk_batches,  # Now contains batches, not individual chunks
+        "chunks": chunk_items,  # Each item = 1 Lambda invocation
         "total_chunks": len(chunks),
-        "total_batches": len(chunk_batches),
-        "chunks_per_lambda": CHUNKS_PER_LAMBDA,
         "chunks_s3_key": chunks_s3_key,
         "chunks_s3_bucket": bucket,
         "poll_results_s3_key": poll_results_s3_key,
@@ -187,8 +245,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 
 def _download_and_combine_poll_results(
-    poll_results_refs: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    poll_results_refs: list[PollResultRef | DeltaResult],
+) -> list[DeltaResult]:
     """Download individual poll results from S3 and combine them."""
     if not poll_results_refs:
         return []
@@ -206,6 +264,7 @@ def _download_and_combine_poll_results(
 
         if result_bucket and result_key:
             # Download from S3
+            tmp_file_path = None
             try:
                 with tempfile.NamedTemporaryFile(
                     mode="r", suffix=".json", delete=False
@@ -225,16 +284,31 @@ def _download_and_combine_poll_results(
                 elif isinstance(result, dict):
                     combined.append(result)
 
-                os.unlink(tmp_file_path)
-
-            except Exception as e:
-                logger.error(
-                    "Failed to download poll result from S3: bucket=%s, key=%s, error=%s",
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "Unknown")
+                logger.exception(
+                    "S3 client error downloading poll result: "
+                    "bucket=%s, key=%s, code=%s",
                     result_bucket,
                     result_key,
-                    str(e),
+                    error_code,
                 )
                 # Continue with other results
+            except BotoCoreError:
+                logger.exception(
+                    "Botocore error downloading poll result: "
+                    "bucket=%s, key=%s",
+                    result_bucket,
+                    result_key,
+                )
+                # Continue with other results
+            finally:
+                # Clean up temp file regardless of success or failure
+                if tmp_file_path:
+                    try:
+                        os.unlink(tmp_file_path)
+                    except OSError:
+                        pass  # Temp file cleanup failure is non-critical
         else:
             # Legacy format: direct result object (has delta_key or other data)
             combined.append(ref)
@@ -243,8 +317,8 @@ def _download_and_combine_poll_results(
 
 
 def _filter_valid_deltas(
-    poll_results: List[Dict[str, Any]], database: str
-) -> List[Dict[str, Any]]:
+    poll_results: list[DeltaResult], database: str
+) -> list[DeltaResult]:
     """Filter poll results to only include valid deltas."""
     valid = []
 
@@ -267,26 +341,80 @@ def _filter_valid_deltas(
 
 
 def _create_chunks(
-    deltas: List[Dict[str, Any]], chunk_size: int, batch_id: str
-) -> List[Dict[str, Any]]:
-    """Split deltas into chunks."""
-    chunks = []
+    deltas: list[DeltaResult],
+    batch_id: str,
+) -> list[Chunk]:
+    """Split deltas into BIG chunks targeting TARGET_PARALLEL_LAMBDAS.
 
-    for i in range(0, len(deltas), chunk_size):
-        chunk_deltas = deltas[i : i + chunk_size]
+    SIMPLIFIED ARCHITECTURE:
+    Instead of creating many small chunks (e.g., 15 deltas each), we create
+    a small number of BIG chunks (e.g., 8 chunks total) so that:
+    - We have exactly TARGET_PARALLEL_LAMBDAS parallel Lambda invocations
+    - Each Lambda processes many deltas and creates ONE intermediate
+    - Final merge only needs to merge TARGET_PARALLEL_LAMBDAS intermediates
+    - No reduce loop needed!
+    """
+    if not deltas:
+        return []
+
+    total_deltas = len(deltas)
+
+    # Calculate optimal number of chunks
+    # - At least 1 chunk
+    # - At most TARGET_PARALLEL_LAMBDAS chunks
+    # - Each chunk should have at least MIN_DELTAS_PER_CHUNK deltas
+    if total_deltas <= MIN_DELTAS_PER_CHUNK:
+        # Very few deltas - just one chunk
+        num_chunks = 1
+    else:
+        # Target TARGET_PARALLEL_LAMBDAS, but ensure each chunk has enough work
+        max_chunks_by_min_size = total_deltas // MIN_DELTAS_PER_CHUNK
+        num_chunks = min(TARGET_PARALLEL_LAMBDAS, max_chunks_by_min_size)
+        num_chunks = max(1, num_chunks)  # At least 1
+
+    # Calculate deltas per chunk (distribute evenly)
+    base_size = total_deltas // num_chunks
+    remainder = total_deltas % num_chunks
+
+    logger.info(
+        "Creating BIG chunks: total_deltas=%d, num_chunks=%d, base_size=%d, remainder=%d",
+        total_deltas,
+        num_chunks,
+        base_size,
+        remainder,
+    )
+
+    chunks: list[Chunk] = []
+    start_idx = 0
+
+    for i in range(num_chunks):
+        # Distribute remainder across first 'remainder' chunks
+        this_chunk_size = base_size + (1 if i < remainder else 0)
+        end_idx = start_idx + this_chunk_size
+
+        chunk_deltas = deltas[start_idx:end_idx]
         chunks.append(
-            {
-                "chunk_index": len(chunks),
-                "batch_id": batch_id,
-                "delta_results": chunk_deltas,
-            }
+            Chunk(
+                chunk_index=i,
+                batch_id=batch_id,
+                delta_results=chunk_deltas,
+            )
         )
+
+        start_idx = end_idx
 
     return chunks
 
 
-def _upload_json_to_s3(data: Any, bucket: str, key: str) -> None:
-    """Upload JSON data to S3."""
+def _upload_json_to_s3(
+    data: list[DeltaResult] | list[Chunk], bucket: str, key: str
+) -> None:
+    """Upload JSON data to S3.
+
+    Raises:
+        ClientError: If S3 upload fails (access denied, bucket not found, etc.)
+        BotoCoreError: If there's a connection or configuration error.
+    """
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", delete=False
     ) as tmp_file:
@@ -298,5 +426,5 @@ def _upload_json_to_s3(data: Any, bucket: str, key: str) -> None:
     finally:
         try:
             os.unlink(tmp_file_path)
-        except Exception:
-            pass
+        except OSError:
+            pass  # Temp file cleanup failure is non-critical

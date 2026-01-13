@@ -10,39 +10,44 @@ Focuses on:
 - RECEIPT_WORD_LABEL entities (word label changes)
 - COMPACTION_RUN entities (delta compaction jobs)
 - Both MODIFY and REMOVE operations
+
+Lambda Bundling:
+    This Lambda is bundled by Pulumi with a specific directory structure:
+    - `utils/` is copied directly into the Lambda package (local module)
+    - `receipt_dynamo_stream` is installed from the monorepo as a pip package
+    - Third-party deps are installed via requirements.txt
+
+    When running pylint locally, these imports fail because:
+    - `utils` is not on PYTHONPATH (it's relative to Lambda root)
+    - `receipt_dynamo_stream` may not be installed in the local venv
+
+    The Lambda runtime has all dependencies available via the bundled package.
 """
 
-# pylint: disable=duplicate-code
-# Some duplication with enhanced_compaction_handler is expected
+# pylint: disable=duplicate-code,no-name-in-module,wrong-import-order,import-error
+# duplicate-code: Some patterns shared with enhanced_compaction_handler
+# no-name-in-module: receipt_dynamo_stream is installed at Lambda runtime
+# wrong-import-order: utils is local to Lambda, not third-party
+# import-error: utils is bundled into Lambda package, not available locally
 
-import logging
 import os
 import time
-from typing import Any, Dict, Optional
+from dataclasses import dataclass
 
-# Configuration from environment variables with sensible defaults
-# These values are set by Pulumi infrastructure and should match Lambda configuration
 
-# Max records to process in a single invocation (should match DynamoDB Stream batch_size)
-MAX_RECORDS_PER_INVOCATION = int(os.getenv("MAX_RECORDS_PER_INVOCATION", "10"))
+class BatchSizeExceededError(ValueError):
+    """Raised when a batch exceeds the maximum allowed size."""
 
-# Lambda timeout in seconds (set by Pulumi infrastructure)
-LAMBDA_TIMEOUT_SECONDS = int(os.getenv("LAMBDA_TIMEOUT_SECONDS", "120"))
 
-# Timeout threshold for graceful shutdown (80% of timeout to leave buffer for cleanup)
-LAMBDA_TIMEOUT_THRESHOLD_SECONDS = int(LAMBDA_TIMEOUT_SECONDS * 0.8)
-
-# Circuit breaker: stop processing after this many consecutive failures
-MAX_CONSECUTIVE_FAILURES = int(os.getenv("MAX_CONSECUTIVE_FAILURES", "10"))
-
-# Import modular components (same pattern as utils)
 from receipt_dynamo_stream import (
+    DynamoDBStreamEvent,
+    LambdaContext,
     LambdaResponse,
+    StreamProcessorResponseData,
     build_messages_from_records,
     publish_messages,
 )
 
-# Enhanced observability imports
 from utils import (
     emf_metrics,
     format_response,
@@ -57,12 +62,87 @@ from utils import (
 # Configure logging with observability
 logger = get_operation_logger(__name__)
 
+# Configuration from environment variables with sensible defaults.
+# These values are set by Pulumi infrastructure.
+
+# Max records per invocation (should match DynamoDB Stream batch_size)
+MAX_RECORDS_PER_INVOCATION = int(os.getenv("MAX_RECORDS_PER_INVOCATION", "10"))
+
+# Lambda timeout in seconds (set by Pulumi infrastructure)
+LAMBDA_TIMEOUT_SECONDS = int(os.getenv("LAMBDA_TIMEOUT_SECONDS", "120"))
+
+# Timeout threshold for graceful shutdown (80% of timeout for cleanup)
+LAMBDA_TIMEOUT_THRESHOLD_SECONDS = int(LAMBDA_TIMEOUT_SECONDS * 0.8)
+
+# Circuit breaker: stop after this many consecutive failures
+MAX_CONSECUTIVE_FAILURES = int(os.getenv("MAX_CONSECUTIVE_FAILURES", "10"))
+
+
+@dataclass
+class BatchStats:
+    """Processing statistics for a stream batch."""
+
+    total_records: int
+    messages_generated: int
+    sent_count: int
+    start_time: float
+
+    @property
+    def skipped(self) -> int:
+        """Records that didn't generate messages."""
+        return max(self.total_records - self.messages_generated, 0)
+
+    @property
+    def duration_ms(self) -> int:
+        """Processing duration in milliseconds."""
+        return int((time.time() - self.start_time) * 1000)
+
+    @property
+    def success_rate(self) -> float:
+        """Percentage of records that generated messages."""
+        if self.total_records == 0:
+            return 0.0
+        return self.messages_generated / self.total_records * 100
+
+    def to_metrics(self) -> dict[str, float]:
+        """Convert to metrics dict for EMF logging."""
+        return {
+            "StreamBatchSize": self.total_records,
+            "StreamRecordsProcessed": self.total_records,
+            "StreamRecordsSkipped": self.skipped,
+            "MessagesGenerated": self.messages_generated,
+            "MessagesQueued": self.sent_count,
+            "ProcessingDurationMs": self.duration_ms,
+            "SuccessRate": self.success_rate,
+        }
+
+
+def _count_event_types(records: list[dict]) -> dict[str, int]:
+    """Count occurrences of each event type for observability."""
+    counts: dict[str, int] = {}
+    for record in records:
+        event_name = record.get("eventName", "unknown")
+        counts[event_name] = counts.get(event_name, 0) + 1
+    return counts
+
+
+def _validate_batch_size(total_records: int) -> None:
+    """Validate batch size, raising BatchSizeExceededError if too large."""
+    if total_records > MAX_RECORDS_PER_INVOCATION:
+        raise BatchSizeExceededError(
+            f"Batch size ({total_records}) exceeds maximum "
+            f"({MAX_RECORDS_PER_INVOCATION}). "
+            f"Rejecting to trigger retry with smaller batch."
+        )
+
 
 @trace_function(operation_name="stream_processor")
 @with_compaction_timeout_protection(
     max_duration=LAMBDA_TIMEOUT_THRESHOLD_SECONDS
 )
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(
+    event: DynamoDBStreamEvent, context: LambdaContext
+) -> StreamProcessorResponseData:
     """
     Process DynamoDB stream events for ChromaDB metadata synchronization.
 
@@ -98,7 +178,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     # Collect metrics during processing to batch them via EMF (cost-effective)
     # This avoids expensive per-metric CloudWatch API calls
-    collected_metrics: Dict[str, float] = {}
+    collected_metrics: dict[str, float] = {}
 
     try:
         # Validate event structure
@@ -111,13 +191,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 {"StreamProcessorInvalidEvent": 1},
                 properties={"event_keys": list(event.keys())},
             )
+            error_data: StreamProcessorResponseData = {
+                "statusCode": 400,
+                "processed_records": 0,
+                "queued_messages": 0,
+                "error": "Invalid event structure: missing Records",
+            }
             return format_response(
-                {
-                    "statusCode": 400,
-                    "processed_records": 0,
-                    "queued_messages": 0,
-                    "error": "Invalid event structure: missing Records",
-                },
+                error_data,
                 event,
                 correlation_id=correlation_id,
             )
@@ -130,21 +211,17 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Collect batch-level metrics
         collected_metrics["StreamRecordsReceived"] = total_records
 
-        # Validate batch size - fail fast if batch is too large to prevent data loss
-        # DynamoDB Streams will retry with a smaller batch on failure
-        if total_records > MAX_RECORDS_PER_INVOCATION:
-            error_msg = (
-                f"Batch size ({total_records}) exceeds maximum "
-                f"({MAX_RECORDS_PER_INVOCATION}). Rejecting to trigger retry with smaller batch."
-            )
-            logger.error(error_msg, total_records=total_records)
+        # Validate batch size - fail fast if too large (prevents data loss).
+        # DynamoDB Streams will retry with a smaller batch on failure.
+        try:
+            _validate_batch_size(total_records)
+        except BatchSizeExceededError:
+            logger.exception("Batch too large", total_records=total_records)
             emf_metrics.log_metrics(
                 {"StreamBatchTooLarge": 1},
                 properties={"total_records": total_records},
             )
-            raise ValueError(error_msg)
-
-        records_to_process = event["Records"]
+            raise
 
         logger.info(
             "Processing DynamoDB stream batch",
@@ -153,28 +230,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
 
         # Track event types for observability
-        event_name_counts: Dict[str, int] = {}
-        for record in records_to_process:
-            event_name = record.get("eventName", "unknown")
-            event_name_counts[event_name] = (
-                event_name_counts.get(event_name, 0) + 1
-            )
+        event_name_counts = _count_event_types(event["Records"])
 
         # Build messages from all stream records in batch
         messages_to_send = build_messages_from_records(
-            records_to_process, metrics
-        )
-
-        # Calculate processing statistics
-        messages_generated = len(messages_to_send)
-        skipped_records = max(total_records - messages_generated, 0)
-
-        logger.info(
-            "Batch processing completed",
-            total_records=total_records,
-            messages_generated=messages_generated,
-            skipped_records=skipped_records,
-            event_breakdown=event_name_counts,
+            event["Records"], metrics
         )
 
         # Send all messages to appropriate SQS queues
@@ -185,32 +245,24 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "Messages sent to compaction queues", message_count=sent_count
             )
 
-        # Record processing duration
-        processing_duration = int(
-            (time.time() - start_time) * 1000
-        )  # milliseconds
-
-        # Calculate success rate
-        success_rate = (
-            (messages_generated / total_records * 100)
-            if total_records > 0
-            else 0
+        # Collect batch statistics
+        stats = BatchStats(
+            total_records=total_records,
+            messages_generated=len(messages_to_send),
+            sent_count=sent_count,
+            start_time=start_time,
         )
 
-        # Collect all metrics for batch EMF logging (cost-effective)
-        collected_metrics.update(
-            {
-                "StreamBatchSize": total_records,
-                "StreamRecordsProcessed": total_records,
-                "StreamRecordsSkipped": skipped_records,
-                "MessagesGenerated": messages_generated,
-                "MessagesQueued": sent_count,
-                "ProcessingDurationMs": processing_duration,
-                "SuccessRate": success_rate,
-            }
+        logger.info(
+            "Batch processing completed",
+            total_records=stats.total_records,
+            messages_generated=stats.messages_generated,
+            skipped_records=stats.skipped,
+            event_breakdown=event_name_counts,
         )
 
         # Log all metrics via EMF in a single log line (no API call cost)
+        collected_metrics.update(stats.to_metrics())
         emf_metrics.log_metrics(
             collected_metrics,
             properties={
@@ -221,25 +273,27 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         logger.info(
             "Stream processing completed successfully",
-            processed_records=messages_generated,
-            queued_messages=sent_count,
-            duration_ms=processing_duration,
-            success_rate=f"{success_rate:.1f}%",
+            processed_records=stats.messages_generated,
+            queued_messages=stats.sent_count,
+            duration_ms=stats.duration_ms,
+            success_rate=f"{stats.success_rate:.1f}%",
         )
 
         # Return response
         response = LambdaResponse(
             status_code=200,
-            processed_records=messages_generated,
-            queued_messages=sent_count,
+            processed_records=stats.messages_generated,
+            queued_messages=stats.sent_count,
         )
 
         return format_response(
-            response.to_dict(), event, correlation_id=correlation_id
+            response.to_dict(),
+            event,
+            correlation_id=correlation_id,
         )
 
-    except ValueError as e:
-        # ValueError includes batch size validation errors
+    except BatchSizeExceededError as e:
+        # Batch size validation error
         logger.exception("Stream processor validation failed")
         emf_metrics.log_metrics(
             {"StreamProcessorValidationError": 1},
@@ -248,7 +302,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Return error to trigger DynamoDB Stream retry
         raise
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.exception("Stream processor encountered unexpected error")
 
         # Log error via EMF (no API call cost)
@@ -262,7 +316,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             },
         )
 
-        error_response = {
+        error_response: StreamProcessorResponseData = {
             "statusCode": 500,
             "processed_records": 0,
             "queued_messages": 0,

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import boto3
+from chromadb.errors import NotFoundError
 from receipt_chroma import LockManager  # type: ignore[attr-defined]
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.s3 import (
@@ -166,10 +167,12 @@ def compact_handler(
         return final_merge_handler(event)
     if operation == "final_merge_single":
         return final_merge_single_handler(event)
+    if operation == "final_merge_all":
+        return final_merge_all_handler(event)
 
     logger.error(
         "Invalid operation. Expected 'process_chunk', "
-        "'merge_chunk_group', 'merge_pair', 'final_merge', or 'final_merge_single'",
+        "'merge_chunk_group', 'merge_pair', 'final_merge', 'final_merge_single', or 'final_merge_all'",
         operation=operation,
     )
     return {
@@ -177,7 +180,7 @@ def compact_handler(
         "error": f"Invalid operation: {operation}",
         "message": (
             "Operation must be 'process_chunk', 'merge_chunk_group', "
-            "'merge_pair', 'final_merge', or 'final_merge_single'"
+            "'merge_pair', 'final_merge', 'final_merge_single', or 'final_merge_all'"
         ),
     }
 
@@ -968,6 +971,286 @@ def final_merge_single_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
+def final_merge_all_handler(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    SIMPLIFIED ARCHITECTURE: Final merge of ALL intermediates directly to snapshot.
+
+    OPTIMIZED: Pre-compacts all intermediates BEFORE acquiring lock to minimize
+    lock hold time. The flow is:
+    1. Pre-download all intermediates from S3 (no lock)
+    2. Compact all intermediates into a single temp ChromaDB (no lock)
+    3. Acquire lock
+    4. Merge single compacted intermediate into snapshot (fast, minimal lock time)
+    5. Release lock
+
+    Input format:
+    {
+        "operation": "final_merge_all",
+        "batch_id": "batch-uuid",
+        "chunk_results": [
+            {"intermediate_key": "intermediate/batch-uuid/chunk-0/"},
+            {"intermediate_key": "intermediate/batch-uuid/chunk-1/"},
+            ...
+        ],
+        "database": "words" or "lines",
+        "poll_results_s3_key": "...",
+        "poll_results_s3_bucket": "..."
+    }
+
+    Returns:
+    {
+        "statusCode": 200,
+        "batch_id": "...",
+        "snapshot_key": "...",
+        "total_embeddings": N,
+        "poll_results_s3_key": "...",
+        "poll_results_s3_bucket": "..."
+    }
+    """
+    logger.info("Starting FINAL MERGE ALL (simplified architecture, optimized)")
+
+    batch_id = event.get("batch_id")
+    chunk_results = event.get("chunk_results", [])
+    database_name = event.get("database", "words")
+    poll_results_s3_key = event.get("poll_results_s3_key")
+    poll_results_s3_bucket = event.get("poll_results_s3_bucket")
+
+    if not batch_id:
+        return {
+            "statusCode": 400,
+            "error": "batch_id is required for final merge all",
+            "poll_results_s3_key": poll_results_s3_key,
+            "poll_results_s3_bucket": poll_results_s3_bucket,
+        }
+
+    # Handle empty chunk_results (no intermediates to merge)
+    if not chunk_results:
+        logger.info("No chunk results to merge - skipping final merge")
+        return {
+            "statusCode": 200,
+            "batch_id": batch_id,
+            "database": database_name,
+            "message": "No intermediates to merge",
+            "poll_results_s3_key": poll_results_s3_key,
+            "poll_results_s3_bucket": poll_results_s3_bucket,
+            "skipped": True,
+        }
+
+    # Filter valid chunk results (have intermediate_key)
+    valid_chunks = [
+        c
+        for c in chunk_results
+        if isinstance(c, dict) and "intermediate_key" in c
+    ]
+
+    if not valid_chunks:
+        logger.warning(
+            "No valid intermediate keys found in chunk_results",
+            batch_id=batch_id,
+            chunk_count=len(chunk_results),
+        )
+        return {
+            "statusCode": 200,
+            "batch_id": batch_id,
+            "database": database_name,
+            "message": "No valid intermediates to merge",
+            "poll_results_s3_key": poll_results_s3_key,
+            "poll_results_s3_bucket": poll_results_s3_bucket,
+            "skipped": True,
+        }
+
+    logger.info(
+        "OPTIMIZED: Pre-compacting intermediates before lock acquisition",
+        batch_id=batch_id,
+        database=database_name,
+        intermediate_count=len(valid_chunks),
+    )
+
+    # =========================================================================
+    # OPTIMIZATION: Pre-compact all intermediates BEFORE acquiring lock
+    # This dramatically reduces lock hold time since the bulk of work happens
+    # outside the critical section.
+    # =========================================================================
+    bucket = os.environ["CHROMADB_BUCKET"]
+    precompact_start = time.time()
+    downloaded_temp_dirs: List[str] = []
+    compacted_temp_dir: Optional[str] = None
+
+    try:
+        # Step 1: Pre-download all intermediates from S3
+        logger.info(
+            "Step 1: Pre-downloading all intermediates",
+            count=len(valid_chunks),
+        )
+        download_start = time.time()
+
+        for chunk in valid_chunks:
+            intermediate_key = chunk["intermediate_key"]
+            temp_dir = tempfile.mkdtemp()
+            downloaded_temp_dirs.append(temp_dir)
+            download_from_s3(bucket, intermediate_key, temp_dir)
+            logger.info(
+                "Downloaded intermediate",
+                intermediate_key=intermediate_key,
+                temp_dir=temp_dir,
+            )
+
+        download_duration = time.time() - download_start
+        logger.info(
+            "Pre-download complete",
+            count=len(downloaded_temp_dirs),
+            duration_seconds=download_duration,
+        )
+
+        # Step 2: Compact all intermediates into a single temp ChromaDB
+        logger.info(
+            "Step 2: Compacting all intermediates into single ChromaDB",
+            count=len(downloaded_temp_dirs),
+        )
+        compact_start = time.time()
+        compacted_temp_dir = tempfile.mkdtemp()
+        total_precompact_embeddings = 0
+
+        # Create a new ChromaDB for the compacted result
+        compacted_client = ChromaClient(
+            persist_directory=compacted_temp_dir,
+            mode="delta",
+            metadata_only=True,
+        )
+
+        # Merge each downloaded intermediate into the compacted ChromaDB
+        for i, temp_dir in enumerate(downloaded_temp_dirs):
+            logger.info(
+                "Compacting intermediate",
+                current=i + 1,
+                total=len(downloaded_temp_dirs),
+            )
+
+            # Load the intermediate
+            chunk_client = ChromaClient(
+                persist_directory=temp_dir,
+                mode="read",
+                metadata_only=True,
+            )
+
+            # Merge all collections from this intermediate
+            for collection_name in chunk_client.list_collections():
+                chunk_collection = chunk_client.get_collection(collection_name)
+
+                # Get or create collection in compacted DB
+                try:
+                    compacted_collection = compacted_client.get_collection(
+                        collection_name
+                    )
+                except (ValueError, NotFoundError):
+                    # ValueError: raised by ChromaClient when collection not found
+                    # NotFoundError: underlying ChromaDB exception
+                    compacted_collection = compacted_client.get_collection(
+                        collection_name,
+                        create_if_missing=True,
+                    )
+
+                # Copy all data from intermediate to compacted
+                chunk_count = chunk_collection.count()
+                if chunk_count > 0:
+                    batch_size = 1000
+                    if chunk_count > batch_size:
+                        all_ids = chunk_collection.get(include=[])["ids"]
+                        for j in range(0, len(all_ids), batch_size):
+                            batch_ids = all_ids[j : j + batch_size]
+                            results = chunk_collection.get(
+                                ids=batch_ids,
+                                include=["embeddings", "documents", "metadatas"],
+                            )
+                            compacted_collection.upsert(
+                                ids=results["ids"],
+                                embeddings=results["embeddings"],
+                                documents=results["documents"],
+                                metadatas=results["metadatas"],
+                            )
+                            total_precompact_embeddings += len(results["ids"])
+                    else:
+                        results = chunk_collection.get(
+                            include=["embeddings", "documents", "metadatas"]
+                        )
+                        if results["ids"]:
+                            compacted_collection.upsert(
+                                ids=results["ids"],
+                                embeddings=results["embeddings"],
+                                documents=results["documents"],
+                                metadatas=results["metadatas"],
+                            )
+                            total_precompact_embeddings += len(results["ids"])
+
+            # Close the chunk client
+            close_chromadb_client(chunk_client, collection_name="precompact")
+
+        # Close and persist the compacted client
+        close_chromadb_client(compacted_client, collection_name="compacted")
+
+        compact_duration = time.time() - compact_start
+        precompact_total = time.time() - precompact_start
+
+        logger.info(
+            "Pre-compaction complete",
+            total_embeddings=total_precompact_embeddings,
+            download_seconds=download_duration,
+            compact_seconds=compact_duration,
+            total_seconds=precompact_total,
+            compacted_dir=compacted_temp_dir,
+        )
+
+        # Clean up downloaded intermediates (no longer needed)
+        for temp_dir in downloaded_temp_dirs:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        downloaded_temp_dirs = []
+
+        # Step 3: Pass the single compacted intermediate to final_merge_handler
+        # Use a synthetic key for logging/tracking purposes
+        synthetic_key = f"precompacted/{batch_id}/combined/"
+
+        # Collect original S3 keys for cleanup after merge
+        original_s3_keys = [c["intermediate_key"] for c in valid_chunks]
+
+        logger.info(
+            "Step 3: Delegating to final_merge_handler with single compacted intermediate",
+            synthetic_key=synthetic_key,
+            compacted_dir=compacted_temp_dir,
+            original_s3_keys_count=len(original_s3_keys),
+        )
+
+        return final_merge_handler(
+            {
+                "operation": "final_merge",
+                "batch_id": batch_id,
+                "chunk_results": [{"intermediate_key": synthetic_key}],
+                "database": database_name,
+                "poll_results_s3_key": poll_results_s3_key,
+                "poll_results_s3_bucket": poll_results_s3_bucket,
+                # Pass the pre-compacted intermediate directly
+                "_precompacted_intermediate": {
+                    "key": synthetic_key,
+                    "temp_dir": compacted_temp_dir,
+                    # Include original S3 keys for cleanup
+                    "original_s3_keys": original_s3_keys,
+                },
+            }
+        )
+
+    except Exception as e:
+        logger.exception(
+            "Pre-compaction failed",
+            batch_id=batch_id,
+            error=str(e),
+        )
+        # Clean up on failure
+        for temp_dir in downloaded_temp_dirs:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        if compacted_temp_dir:
+            shutil.rmtree(compacted_temp_dir, ignore_errors=True)
+        raise
+
+
 def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     """
     Final merge step that ALWAYS acquires mutex lock and merges to final snapshot.
@@ -1077,6 +1360,9 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     # OPTIMIZATION: Pre-download intermediates BEFORE acquiring lock
     # This reduces lock hold time significantly since intermediate download
     # can take time but doesn't require exclusive access to the snapshot.
+    #
+    # ENHANCED: If _precompacted_intermediate is provided, skip S3 download
+    # and use the already-compacted local intermediate directly.
     # =========================================================================
     bucket = os.environ["CHROMADB_BUCKET"]
     predownloaded_intermediates = (
@@ -1084,42 +1370,60 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     )  # List of (intermediate_key, temp_dir) tuples
     predownload_start = time.time()
 
-    # Extract intermediate keys
-    intermediate_keys_to_download = []
-    for chunk in chunk_results:
-        if isinstance(chunk, dict) and "intermediate_key" in chunk:
-            intermediate_keys_to_download.append(chunk["intermediate_key"])
-        elif isinstance(chunk, str):  # type: ignore[unreachable]
-            intermediate_keys_to_download.append(chunk)  # type: ignore[unreachable]
+    # Check if a pre-compacted intermediate was provided (from final_merge_all)
+    precompacted = event.get("_precompacted_intermediate")
 
-    logger.info(
-        "Pre-downloading intermediates before lock acquisition",
-        intermediate_count=len(intermediate_keys_to_download),
-        batch_id=batch_id,
-    )
+    if precompacted:
+        # Use the pre-compacted intermediate directly - skip S3 download entirely
+        synthetic_key = precompacted["key"]
+        temp_dir = precompacted["temp_dir"]
+        predownloaded_intermediates.append((synthetic_key, temp_dir))
 
-    try:
-        for intermediate_key in intermediate_keys_to_download:
-            temp_dir = tempfile.mkdtemp()
-            download_from_s3(bucket, intermediate_key, temp_dir)
-            predownloaded_intermediates.append((intermediate_key, temp_dir))
-            logger.info(
-                "Pre-downloaded intermediate",
-                intermediate_key=intermediate_key,
-                temp_dir=temp_dir,
-            )
-
-        predownload_duration = time.time() - predownload_start
         logger.info(
-            "Pre-download complete",
-            intermediate_count=len(predownloaded_intermediates),
-            duration_seconds=predownload_duration,
+            "Using pre-compacted intermediate (skipping S3 download)",
+            synthetic_key=synthetic_key,
+            temp_dir=temp_dir,
+            batch_id=batch_id,
         )
-    except Exception as e:
-        # Clean up any pre-downloaded intermediates on failure
-        for _, temp_dir in predownloaded_intermediates:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-        raise RuntimeError(f"Failed to pre-download intermediates: {e}") from e
+        predownload_duration = 0.0
+    else:
+        # Standard path: download intermediates from S3
+        # Extract intermediate keys
+        intermediate_keys_to_download = []
+        for chunk in chunk_results:
+            if isinstance(chunk, dict) and "intermediate_key" in chunk:
+                intermediate_keys_to_download.append(chunk["intermediate_key"])
+            elif isinstance(chunk, str):  # type: ignore[unreachable]
+                intermediate_keys_to_download.append(chunk)  # type: ignore[unreachable]
+
+        logger.info(
+            "Pre-downloading intermediates before lock acquisition",
+            intermediate_count=len(intermediate_keys_to_download),
+            batch_id=batch_id,
+        )
+
+        try:
+            for intermediate_key in intermediate_keys_to_download:
+                temp_dir = tempfile.mkdtemp()
+                download_from_s3(bucket, intermediate_key, temp_dir)
+                predownloaded_intermediates.append((intermediate_key, temp_dir))
+                logger.info(
+                    "Pre-downloaded intermediate",
+                    intermediate_key=intermediate_key,
+                    temp_dir=temp_dir,
+                )
+
+            predownload_duration = time.time() - predownload_start
+            logger.info(
+                "Pre-download complete",
+                intermediate_count=len(predownloaded_intermediates),
+                duration_seconds=predownload_duration,
+            )
+        except Exception as e:
+            # Clean up any pre-downloaded intermediates on failure
+            for _, temp_dir in predownloaded_intermediates:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            raise RuntimeError(f"Failed to pre-download intermediates: {e}") from e
 
     # Acquire lock for final merge with retry logic
     # Wait-acquire pattern: retry within Lambda to reduce Step Function retry overhead
@@ -1385,7 +1689,15 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
         # Clean up intermediate chunks from S3
         # (local temp dirs are cleaned up in finally block)
-        intermediate_keys = [key for key, _ in predownloaded_intermediates]
+        # When using pre-compaction, clean up the original S3 keys, not the synthetic key
+        if precompacted and precompacted.get("original_s3_keys"):
+            intermediate_keys = precompacted["original_s3_keys"]
+            logger.info(
+                "Cleaning up original S3 intermediates (pre-compaction mode)",
+                key_count=len(intermediate_keys),
+            )
+        else:
+            intermediate_keys = [key for key, _ in predownloaded_intermediates]
         cleanup_intermediate_chunks_by_keys(intermediate_keys)
 
         # Always return full format for final merge
@@ -1987,7 +2299,7 @@ def perform_intermediate_merge(
                         main_collection = chroma_client.get_collection(
                             collection_name
                         )
-                    except Exception:
+                    except (ValueError, NotFoundError):
                         main_collection = chroma_client.get_collection(
                             collection_name,
                             create_if_missing=True,
@@ -2310,7 +2622,7 @@ def perform_final_merge(
                             collection=collection_name,
                             count=collection.count(),
                         )
-                    except Exception:
+                    except (ValueError, NotFoundError):
                         # Collection doesn't exist, create it
                         collection = chroma_client.get_collection(
                             collection_name,
@@ -2372,7 +2684,7 @@ def perform_final_merge(
                             "Collection already exists in new snapshot",
                             collection=collection_name,
                         )
-                    except Exception:
+                    except (ValueError, NotFoundError):
                         # Collection doesn't exist, create it
                         collection = chroma_client.get_collection(
                             collection_name,
@@ -2485,7 +2797,7 @@ def perform_final_merge(
                         main_collection = chroma_client.get_collection(
                             collection_name
                         )
-                    except Exception:
+                    except (ValueError, NotFoundError):
                         main_collection = chroma_client.get_collection(
                             collection_name,
                             create_if_missing=True,

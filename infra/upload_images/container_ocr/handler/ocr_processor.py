@@ -263,6 +263,8 @@ class OCRProcessor:
 
         all_receipt_lines = []
         all_receipt_words = []
+        # Track lines/words per receipt for individual merchant resolution
+        per_receipt_data: Dict[int, Dict[str, Any]] = {}
 
         for receipt_idx, receipt_data in enumerate(receipts):
             try:
@@ -403,6 +405,12 @@ class OCRProcessor:
                 len(receipt_letters),
             )
 
+            # Store per-receipt data for individual merchant resolution
+            per_receipt_data[receipt_id] = {
+                "lines": receipt_lines,
+                "words": receipt_words,
+            }
+
         # Update routing decision
         ocr_routing_decision.status = OCRStatus.COMPLETED.value
         ocr_routing_decision.receipt_count = receipt_count
@@ -487,16 +495,16 @@ class OCRProcessor:
                 image_id,
             )
 
-        # For Swift single-pass, return first receipt_id for embedding
-        # processing (most uploads are single-receipt; multi-receipt will
-        # process first only).
-        first_receipt_id = receipts[0]["cluster_id"] if receipts else None
+        # Return all receipt_ids and per-receipt data for merchant resolution
+        all_receipt_ids = [r["cluster_id"] for r in receipts]
 
         return {
             "success": True,
             "image_id": image_id,
             "image_type": image_type_str,
-            "receipt_id": first_receipt_id,
+            "receipt_id": all_receipt_ids[0] if all_receipt_ids else None,
+            "receipt_ids": all_receipt_ids,  # All receipts for processing
+            "per_receipt_data": per_receipt_data,  # Lines/words per receipt
             "receipt_count": receipt_count,
             "receipt_lines": all_receipt_lines,
             "receipt_words": all_receipt_words,

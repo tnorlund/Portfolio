@@ -160,6 +160,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     ) as trace_ctx:
 
         try:
+            # Import rate limit exceptions early for error handling
+            from receipt_agent.utils.llm_factory import AllProvidersFailedError
+            from receipt_agent.utils.ollama_rate_limit import (
+                OllamaRateLimitError,
+            )
+
             # Import utilities
             from utils.serialization import (
                 deserialize_label,
@@ -353,15 +359,35 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "status": "completed",
                 "image_id": image_id,
                 "receipt_id": receipt_id,
+                "merchant_name": merchant_name,
                 "metadata_words_evaluated": len(decisions),
                 "decisions": decision_counts,
                 "results_s3_key": results_s3_key,
                 "applied_stats": applied_stats,
+                # Full evaluations for visualization
+                "all_decisions": decisions,
             }
 
             trace_ctx.set_outputs(result)
 
         except Exception as e:
+            # Re-raise rate limit errors for Step Function retry
+            from receipt_agent.utils.llm_factory import AllProvidersFailedError
+            from receipt_agent.utils.ollama_rate_limit import (
+                OllamaRateLimitError,
+            )
+
+            if isinstance(e, OllamaRateLimitError):
+                logger.exception(
+                    "Rate limit error, propagating for Step Function retry"
+                )
+                raise
+            if isinstance(e, AllProvidersFailedError):
+                logger.exception(
+                    "All providers failed, propagating for Step Function retry"
+                )
+                raise OllamaRateLimitError(str(e)) from e
+
             logger.exception("Metadata evaluation failed")
             result = {
                 "status": "failed",

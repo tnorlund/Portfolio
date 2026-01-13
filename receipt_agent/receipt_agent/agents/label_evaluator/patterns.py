@@ -9,14 +9,11 @@ classification for quality-based pattern learning.
 import logging
 import math
 import statistics
-from collections import Counter, defaultdict
+from collections import defaultdict
 from itertools import combinations
 from typing import Any, Optional
 
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
-
 from receipt_agent.agents.label_evaluator.geometry import (
-    angle_difference,
     calculate_angle_degrees,
     calculate_distance,
     convert_polar_to_cartesian,
@@ -35,6 +32,7 @@ from receipt_agent.constants import (
     LABEL_TO_GROUP,
     WITHIN_GROUP_PRIORITY_PAIRS,
 )
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
@@ -538,9 +536,7 @@ def _compute_patterns_for_subset(
                         if pair not in geometry_dict:
                             geometry_dict[pair] = LabelPairGeometry()
 
-                        angle = calculate_angle_degrees(
-                            centroid_a, centroid_b
-                        )
+                        angle = calculate_angle_degrees(centroid_a, centroid_b)
                         distance = calculate_distance(centroid_a, centroid_b)
 
                         geometry_dict[pair].observations.append(
@@ -1107,6 +1103,15 @@ def compute_merchant_patterns(
                 y = word.calculate_centroid()[1]
                 patterns.label_positions[label.label].append(y)
                 patterns.label_texts[label.label].add(word.text)
+
+        # Track receipt-wide label multiplicity (labels appearing more than once)
+        receipt_label_counts: dict[str, int] = defaultdict(int)
+        for _key, label in current_labels.items():
+            receipt_label_counts[label.label] += 1
+
+        for lbl_name, count in receipt_label_counts.items():
+            if count > 1:
+                patterns.labels_with_receipt_multiplicity.add(lbl_name)
 
         # Record same-line pairs using line_id as proxy
         labels_by_line: dict[int, list[str]] = defaultdict(list)

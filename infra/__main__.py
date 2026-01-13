@@ -63,11 +63,10 @@ from upload_images import UploadImages
 
 # Import other necessary components
 try:
-    from infra.components import lambda_layer  # side effects
+    from infra.components import lambda_layer  # noqa: F401 (side effects)
     from lambda_functions.label_count_cache_updater.infra import (
         label_count_cache_updater_lambda,
     )
-    from routes.health_check.infra import health_check_lambda
 
     print("✓ Successfully imported label_count_cache_updater_lambda")
 except ImportError as e:
@@ -239,7 +238,8 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     chromadb_buckets=shared_chromadb_buckets,
     vpc_id=public_vpc.vpc_id,
     subnet_ids=compaction_lambda_subnets,  # Private subnets only for Lambda
-    efs_subnet_ids=unique_efs_subnets,  # EFS requires unique AZs (public + first private)
+    # EFS requires unique AZs (public + first private)
+    efs_subnet_ids=unique_efs_subnets,
     lambda_security_group_id=security.sg_lambda_id,
     use_efs=compaction_use_efs,
     storage_mode=compaction_storage_mode,
@@ -257,7 +257,8 @@ embedding_infrastructure = EmbeddingInfrastructure(
     f"embedding-infra-{pulumi.get_stack()}",
     chromadb_queues=chromadb_infrastructure.chromadb_queues,
     chromadb_buckets=shared_chromadb_buckets,
-    vpc_subnet_ids=compaction_lambda_subnets,  # Use same subnets as compaction Lambda
+    # Use same subnets as compaction Lambda
+    vpc_subnet_ids=compaction_lambda_subnets,
     lambda_security_group_id=security.sg_lambda_id,
     efs_access_point_arn=(
         chromadb_infrastructure.efs.access_point_arn
@@ -307,7 +308,8 @@ logs_interface_endpoint = aws.ec2.VpcEndpoint(
     vpc_id=public_vpc.vpc_id,
     service_name=f"com.amazonaws.{aws.config.region}.logs",
     vpc_endpoint_type="Interface",
-    subnet_ids=logs_endpoint_subnets,  # Conditional: single AZ for dev, multi-AZ for prod
+    # Conditional: single AZ for dev, multi-AZ for prod
+    subnet_ids=logs_endpoint_subnets,
     security_group_ids=[security.sg_vpce_id],
     private_dns_enabled=True,
 )
@@ -326,7 +328,8 @@ sqs_interface_endpoint = aws.ec2.VpcEndpoint(
     vpc_id=public_vpc.vpc_id,
     service_name=f"com.amazonaws.{aws.config.region}.sqs",
     vpc_endpoint_type="Interface",
-    subnet_ids=sqs_endpoint_subnets,  # Conditional: single AZ for dev, multi-AZ for prod
+    # Conditional: single AZ for dev, multi-AZ for prod
+    subnet_ids=sqs_endpoint_subnets,
     security_group_ids=[security.sg_vpce_id],
     private_dns_enabled=True,
 )
@@ -410,11 +413,23 @@ if enable_sagemaker:
         dynamodb_table_name=dynamodb_table.name,
     )
     layoutlm_training_bucket_name = sagemaker_training.output_bucket.bucket
-    pulumi.export("layoutlm_training_bucket", sagemaker_training.output_bucket.bucket)
-    pulumi.export("layoutlm_sagemaker_ecr_repo", sagemaker_training.ecr_repo.repository_url)
-    pulumi.export("layoutlm_sagemaker_role_arn", sagemaker_training.sagemaker_role.arn)
-    pulumi.export("layoutlm_start_training_lambda", sagemaker_training.start_training_lambda.arn)
-    pulumi.export("layoutlm_codebuild_project", sagemaker_training.codebuild_project.name)
+    pulumi.export(
+        "layoutlm_training_bucket", sagemaker_training.output_bucket.bucket
+    )
+    pulumi.export(
+        "layoutlm_sagemaker_ecr_repo",
+        sagemaker_training.ecr_repo.repository_url,
+    )
+    pulumi.export(
+        "layoutlm_sagemaker_role_arn", sagemaker_training.sagemaker_role.arn
+    )
+    pulumi.export(
+        "layoutlm_start_training_lambda",
+        sagemaker_training.start_training_lambda.arn,
+    )
+    pulumi.export(
+        "layoutlm_codebuild_project", sagemaker_training.codebuild_project.name
+    )
 else:
     # Check if training bucket name is provided as config (for inference-only usage)
     training_bucket_config = ml_cfg.get("training-bucket-name")
@@ -431,10 +446,18 @@ if layoutlm_training_bucket_name is not None:
     from routes.layoutlm_inference_cache_generator.infra import (
         create_layoutlm_inference_cache_generator,
     )
+    from routes.layoutlm_inference_cache_generator.step_function import (
+        create_batch_cache_generator,
+    )
 
     # Create cache generator (which creates the cache bucket)
     layoutlm_cache_generator = create_layoutlm_inference_cache_generator(
         layoutlm_training_bucket=layoutlm_training_bucket_name,
+    )
+
+    # Create Step Function for batch cache generation (weekly)
+    layoutlm_batch_cache_generator = create_batch_cache_generator(
+        inference_lambda_arn=layoutlm_cache_generator.lambda_function.arn,
     )
 
     # Create the API Lambda only after the cache bucket exists
@@ -502,11 +525,16 @@ if layoutlm_training_bucket_name is not None:
         "layoutlm_inference_cache_bucket",
         layoutlm_cache_generator.cache_bucket.id,
     )
+    pulumi.export(
+        "layoutlm_batch_cache_state_machine_arn",
+        layoutlm_batch_cache_generator.state_machine.arn,
+    )
 
 
 # Use stack-specific existing key pair from AWS console
 # (stack variable already defined earlier for VPC endpoint configuration)
-key_pair_name = f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
+# Use existing key pairs created in AWS console
+key_pair_name = f"portfolio-receipt-{stack}"
 
 # Create EC2 Instance Profile for ML training instances
 ml_training_role = aws.iam.Role(
@@ -1158,18 +1186,216 @@ pulumi.export(
     metadata_harmonizer_sf.batch_bucket_name,
 )
 
-# Label Evaluator Step Function (with LangSmith observability)
+# LangSmith Bulk Export infrastructure (for Parquet exports)
+from components.langsmith_bulk_export import LangSmithBulkExport
+
+langsmith_bulk_export = LangSmithBulkExport(
+    f"langsmith-export-{stack}",
+    project_name=f"label-evaluator-{stack}",
+)
+pulumi.export(
+    "langsmith_export_bucket", langsmith_bulk_export.export_bucket.id
+)
+pulumi.export(
+    "langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name
+)
+pulumi.export(
+    "langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name
+)
+
+# EMR Serverless Docker Image (for custom Spark image with receipt_langsmith)
+from components.emr_serverless_docker_image import (
+    create_emr_serverless_docker_image,
+)
+
+emr_docker_image = create_emr_serverless_docker_image(
+    name="emr-spark",
+    emr_release="emr-7.5.0",  # Using 7.5.0 base with Python 3.12 installed
+    # CodeBuild will stop and update the EMR Application after building the image
+    emr_application_name=f"langsmith-analytics-{stack}",
+    # Use sync mode on first deployment to ensure image exists before EMR App is created
+    # After first deployment, this can be set to False for faster deployments
+    sync_mode=True,
+)
+pulumi.export("emr_docker_image_uri", emr_docker_image.image_uri)
+
+# EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
+from components.emr_serverless_analytics import create_emr_serverless_analytics
+
+# NOTE: On first deployment, don't pass custom_image_uri - the EMR Application will use
+# the default EMR image initially. After the CodeBuild pipeline completes, it will
+# update the EMR Application with the custom image (see emr_application_name above).
+# On subsequent deployments, the image already exists so custom_image_uri can be used.
+emr_analytics = create_emr_serverless_analytics(
+    langsmith_export_bucket_arn=langsmith_bulk_export.export_bucket.arn,
+    # Uncomment after first successful deployment:
+    # custom_image_uri=emr_docker_image.image_uri,
+)
+pulumi.export("emr_application_id", emr_analytics.emr_application.id)
+pulumi.export("emr_analytics_bucket", emr_analytics.analytics_bucket.id)
+pulumi.export("emr_artifacts_bucket", emr_analytics.artifacts_bucket.id)
+
+# Label Evaluator Step Function (with LangSmith observability + EMR analytics)
 label_evaluator_sf = LabelEvaluatorStepFunction(
     f"label-evaluator-{stack}",
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-    max_concurrency=3,  # Limited to 3 to avoid Ollama rate limits
+    # Increased from 3 - OpenRouter fallback handles rate limits
+    max_concurrency=8,
     batch_size=25,  # 25 receipts per batch
+    # EMR Serverless Analytics integration
+    emr_application_id=emr_analytics.emr_application.id,
+    emr_job_execution_role_arn=emr_analytics.emr_job_role.arn,
+    langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
+    analytics_output_bucket=emr_analytics.analytics_bucket.id,
+    spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
 )
 
 pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
 pulumi.export(
     "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
 )
+
+# CoreML Export Queue Infrastructure (for exporting LayoutLM models to CoreML on macOS)
+# Only create if SageMaker training is enabled (we need the training bucket)
+if enable_sagemaker and layoutlm_training_bucket_name is not None:
+    from infra.components.lambda_layer import dynamo_layer
+    from infra.coreml_export import CoreMLExportComponent
+
+    coreml_export = CoreMLExportComponent(
+        f"coreml-export-{stack}",
+        dynamodb_table_name=dynamodb_table.name,
+        dynamodb_table_arn=dynamodb_table.arn,
+        layoutlm_bucket_name=layoutlm_training_bucket_name,
+        layoutlm_bucket_arn=sagemaker_training.output_bucket.arn,
+        lambda_layer_arn=dynamo_layer.arn,
+    )
+
+    pulumi.export("coreml_export_job_queue_url", coreml_export.job_queue_url)
+    pulumi.export(
+        "coreml_export_results_queue_url", coreml_export.results_queue_url
+    )
+    pulumi.export(
+        "coreml_export_process_results_lambda_arn",
+        coreml_export.process_results_lambda.arn,
+    )
+
+from routes.label_validation_timeline.infra import (
+    create_label_validation_timeline_lambda,
+)
+
+# Label Validation Timeline API (S3-cached timeline for animated visualization)
+from routes.label_validation_timeline_cache.infra import (
+    create_label_validation_timeline_cache,
+)
+
+# Create cache generator (which creates the cache bucket)
+timeline_cache_bucket, timeline_cache_generator_lambda = (
+    create_label_validation_timeline_cache()
+)
+
+# Create the API Lambda using the cache bucket
+label_validation_timeline_lambda = create_label_validation_timeline_lambda(
+    cache_bucket_name=timeline_cache_bucket.id,
+)
+
+# Create API Gateway route for label_validation_timeline
+if hasattr(api_gateway, "api"):
+    integration_label_validation_timeline = aws.apigatewayv2.Integration(
+        "label_validation_timeline_lambda_integration",
+        api_id=api_gateway.api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=label_validation_timeline_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    route_label_validation_timeline = aws.apigatewayv2.Route(
+        "label_validation_timeline_route",
+        api_id=api_gateway.api.id,
+        route_key="GET /label_validation_timeline",
+        target=integration_label_validation_timeline.id.apply(
+            lambda id: f"integrations/{id}"
+        ),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+    lambda_permission_label_validation_timeline = aws.lambda_.Permission(
+        "label_validation_timeline_lambda_permission",
+        action="lambda:InvokeFunction",
+        function=label_validation_timeline_lambda.name,
+        principal="apigateway.amazonaws.com",
+        source_arn=api_gateway.api.execution_arn.apply(
+            lambda arn: f"{arn}/*/*"
+        ),
+    )
+
+pulumi.export(
+    "label_validation_timeline_cache_bucket", timeline_cache_bucket.id
+)
+pulumi.export(
+    "label_validation_timeline_cache_generator_lambda",
+    timeline_cache_generator_lambda.name,
+)
+
+# Label Evaluator Visualization Cache (EMR Serverless + Step Functions)
+from routes.label_evaluator_viz_cache.infra import (
+    create_label_evaluator_viz_cache,
+)
+
+# Note: langsmith_bulk_export is created earlier (before label_evaluator_sf)
+# to support EMR Serverless analytics integration
+
+# Create API Gateway route for label evaluator visualization
+if hasattr(api_gateway, "api"):
+    # Create label evaluator visualization cache (reads from LangSmith exports + DynamoDB)
+    label_evaluator_viz_cache = create_label_evaluator_viz_cache(
+        langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
+        langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
+        langsmith_tenant_id=config.require("LANGSMITH_TENANT_ID"),
+        batch_bucket=label_evaluator_sf.batch_bucket_name,
+        dynamodb_table_name=dynamodb_table.name,
+        dynamodb_table_arn=dynamodb_table.arn,
+        emr_application_id=emr_analytics.emr_application.id,
+        emr_job_role_arn=emr_analytics.emr_job_role.arn,
+        spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
+        label_evaluator_sf_arn=label_evaluator_sf.state_machine_arn,
+        setup_lambda_name=langsmith_bulk_export.setup_lambda.name,
+        setup_lambda_arn=langsmith_bulk_export.setup_lambda.arn,
+    )
+    pulumi.export(
+        "label_evaluator_viz_cache_bucket",
+        label_evaluator_viz_cache.cache_bucket.id,
+    )
+
+    # Label evaluator visualization endpoint
+    integration_viz = aws.apigatewayv2.Integration(
+        "label_evaluator_viz_cache_integration",
+        api_id=api_gateway.api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=label_evaluator_viz_cache.api_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    route_viz = aws.apigatewayv2.Route(
+        "label_evaluator_viz_cache_route",
+        api_id=api_gateway.api.id,
+        route_key="GET /label_evaluator/visualization",
+        target=integration_viz.id.apply(lambda id: f"integrations/{id}"),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+    aws.lambda_.Permission(
+        "label_evaluator_viz_lambda_permission",
+        action="lambda:InvokeFunction",
+        function=label_evaluator_viz_cache.api_lambda.name,
+        principal="apigateway.amazonaws.com",
+        source_arn=api_gateway.api.execution_arn.apply(
+            lambda arn: f"{arn}/*/*"
+        ),
+    )

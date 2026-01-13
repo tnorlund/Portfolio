@@ -2,15 +2,19 @@ import React, { useEffect, useState, useMemo, useRef } from "react";
 import { animated, useSpring, config } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
 import { api } from "../../../../services/api";
-import { TrainingMetricsEpoch } from "../../../../types/api";
+import { DatasetMetrics, TrainingMetricsEpoch } from "../../../../types/api";
 import styles from "./TrainingMetricsAnimation.module.css";
 
-// Label color mapping
+// Label color mapping for 8-label hybrid model
 const LABEL_COLORS: Record<string, string> = {
-  ADDRESS: "var(--color-red)",
-  AMOUNT: "var(--color-green)",
-  DATE: "var(--color-blue)",
   MERCHANT_NAME: "var(--color-yellow)",
+  DATE: "var(--color-blue)",
+  TIME: "var(--color-blue)",
+  AMOUNT: "var(--color-green)",
+  ADDRESS: "var(--color-red)",
+  WEBSITE: "var(--color-purple)",
+  STORE_HOURS: "var(--color-orange)",
+  PAYMENT_METHOD: "var(--color-orange)",
   O: "var(--color-purple)",
 };
 
@@ -27,10 +31,27 @@ const formatLabel = (label: string): string => {
     .join(" ");
 };
 
+// Abbreviated labels for confusion matrix
+const LABEL_ABBREV: Record<string, string> = {
+  MERCHANT_NAME: "Merch",
+  DATE: "Date",
+  TIME: "Time",
+  AMOUNT: "Amt",
+  ADDRESS: "Addr",
+  WEBSITE: "Web",
+  STORE_HOURS: "Hours",
+  PAYMENT_METHOD: "Pay",
+  O: "O",
+};
+
+const formatLabelAbbrev = (label: string): string => {
+  return LABEL_ABBREV[label] || label.slice(0, 4);
+};
+
 // Spring config for smooth animations
 const SPRING_CONFIG = { tension: 120, friction: 14 };
 
-// Epoch Timeline Component
+// Epoch Timeline Component (Desktop - dots)
 interface EpochTimelineProps {
   epochs: TrainingMetricsEpoch[];
   currentIndex: number;
@@ -74,31 +95,138 @@ const EpochTimeline: React.FC<EpochTimelineProps> = ({
     return () => window.removeEventListener('resize', updateLine);
   }, [epochs.length]);
 
+  const currentEpoch = epochs[currentIndex];
+  const isBest = currentEpoch?.is_best && showBestLabel;
+
   return (
-    <div className={styles.timeline}>
-      <div ref={nodesRef} className={styles.timelineNodes}>
-        {lineStyle && (
+    <>
+      {/* Desktop timeline with dots */}
+      <div className={styles.timeline}>
+        <div ref={nodesRef} className={styles.timelineNodes}>
+          {lineStyle && (
+            <div
+              className={styles.timelineLine}
+              style={{ left: lineStyle.left, width: lineStyle.width }}
+            />
+          )}
+          {epochs.map((epoch, index) => (
+            <button
+              key={epoch.epoch}
+              className={`${styles.timelineNode} ${
+                index === currentIndex ? styles.timelineNodeActive : ""
+              }`}
+              onClick={() => onSelectEpoch(index)}
+              title={`Epoch ${epoch.epoch}${epoch.is_best ? " (Best)" : ""}`}
+            >
+              {epoch.is_best && showBestLabel && (
+                <span className={styles.timelineBestLabel}>Best</span>
+              )}
+              <span className={styles.timelineNodeDot} />
+              <span className={styles.timelineNodeLabel}>{epoch.epoch}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Mobile timeline with arrows */}
+      <div className={styles.timelineMobile}>
+        <button
+          className={styles.timelineArrow}
+          onClick={() => onSelectEpoch(Math.max(0, currentIndex - 1))}
+          disabled={currentIndex === 0}
+          aria-label="Previous epoch"
+        >
+          ‹
+        </button>
+        <div className={styles.timelineMobileCenter}>
+          {isBest && <span className={styles.timelineBestLabelMobile}>Best</span>}
+          <span className={styles.timelineMobileText}>
+            {currentIndex + 1} / {epochs.length}
+          </span>
+        </div>
+        <button
+          className={styles.timelineArrow}
+          onClick={() => onSelectEpoch(Math.min(epochs.length - 1, currentIndex + 1))}
+          disabled={currentIndex === epochs.length - 1}
+          aria-label="Next epoch"
+        >
+          ›
+        </button>
+      </div>
+    </>
+  );
+};
+
+// Dataset Stats Component with segmented bars
+interface DatasetStatsProps {
+  datasetMetrics?: DatasetMetrics;
+}
+
+const DatasetStats: React.FC<DatasetStatsProps> = ({ datasetMetrics }) => {
+  // Validate required fields exist
+  if (
+    !datasetMetrics ||
+    datasetMetrics.num_train_samples == null ||
+    datasetMetrics.num_val_samples == null ||
+    datasetMetrics.o_entity_ratio_train == null
+  ) {
+    return null;
+  }
+
+  const { num_train_samples, num_val_samples, o_entity_ratio_train } =
+    datasetMetrics;
+
+  // Calculate percentages for train/val split
+  const total = num_train_samples + num_val_samples;
+  if (total === 0) return null;
+
+  const trainPercent = (num_train_samples / total) * 100;
+  const valPercent = (num_val_samples / total) * 100;
+
+  // Calculate percentages for O:entity ratio
+  // ratio = O / entity, so entity% = 1 / (1 + ratio), O% = ratio / (1 + ratio)
+  const ratio = o_entity_ratio_train;
+  const entityPercent = (1 / (1 + ratio)) * 100;
+  const oPercent = (ratio / (1 + ratio)) * 100;
+
+  return (
+    <div className={styles.datasetStats}>
+      {/* Train/Val Split Bar */}
+      <div className={styles.statGroup}>
+        <span className={styles.statLabel}>Train/Val</span>
+        <div className={styles.segmentedBar}>
           <div
-            className={styles.timelineLine}
-            style={{ left: lineStyle.left, width: lineStyle.width }}
+            className={styles.segmentTrain}
+            style={{ width: `${trainPercent}%` }}
+            title={`Train: ${num_train_samples.toLocaleString()}`}
           />
-        )}
-        {epochs.map((epoch, index) => (
-          <button
-            key={epoch.epoch}
-            className={`${styles.timelineNode} ${
-              index === currentIndex ? styles.timelineNodeActive : ""
-            }`}
-            onClick={() => onSelectEpoch(index)}
-            title={`Epoch ${epoch.epoch}${epoch.is_best ? " (Best)" : ""}`}
-          >
-            {epoch.is_best && showBestLabel && (
-              <span className={styles.timelineBestLabel}>Best</span>
-            )}
-            <span className={styles.timelineNodeDot} />
-            <span className={styles.timelineNodeLabel}>{epoch.epoch}</span>
-          </button>
-        ))}
+          <div
+            className={styles.segmentVal}
+            style={{ width: `${valPercent}%` }}
+            title={`Val: ${num_val_samples.toLocaleString()}`}
+          />
+        </div>
+        <span className={styles.statValues}>
+          {num_train_samples.toLocaleString()} / {num_val_samples.toLocaleString()}
+        </span>
+      </div>
+
+      {/* O:Entity Ratio Bar */}
+      <div className={styles.statGroup}>
+        <span className={styles.statLabel}>Labeled</span>
+        <div className={styles.segmentedBar}>
+          <div
+            className={styles.segmentEntity}
+            style={{ width: `${entityPercent}%` }}
+            title={`Entity tokens: ${entityPercent.toFixed(0)}%`}
+          />
+          <div
+            className={styles.segmentO}
+            style={{ width: `${oPercent}%` }}
+            title={`O tokens: ${oPercent.toFixed(0)}%`}
+          />
+        </div>
+        <span className={styles.statValues}>{ratio.toFixed(1)}:1</span>
       </div>
     </div>
   );
@@ -155,25 +283,26 @@ interface LabelBarProps {
 
 const LabelBar: React.FC<LabelBarProps> = ({ label, value }) => {
   const spring = useSpring({
-    to: { width: value * 100, displayValue: value * 100 },
+    to: { width: value * 100, displayValue: value },
     config: SPRING_CONFIG,
   });
 
   return (
     <div className={styles.labelRow}>
       <span className={styles.labelName}>{formatLabel(label)}</span>
-      <div className={styles.labelBarContainer}>
+      <div className={styles.labelBarSegmented}>
         <animated.div
-          className={styles.labelBar}
-          style={{
-            width: spring.width.to((w) => `${w}%`),
-            backgroundColor: getLabelColor(label),
-          }}
+          className={styles.labelBarFilled}
+          style={{ width: spring.width.to((w) => `${w}%`) }}
         />
-        <animated.span className={styles.labelBarValue}>
-          {spring.displayValue.to((v) => `${v.toFixed(0)}%`)}
-        </animated.span>
+        <animated.div
+          className={styles.labelBarEmpty}
+          style={{ width: spring.width.to((w) => `${100 - w}%`) }}
+        />
       </div>
+      <animated.span className={styles.labelBarValue}>
+        {spring.displayValue.to((v) => v.toFixed(2))}
+      </animated.span>
     </div>
   );
 };
@@ -190,10 +319,9 @@ const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => 
     return matrix.map((row) => row.reduce((sum, val) => sum + val, 0) || 1);
   }, [matrix]);
 
-  // Grid template: first column for Y labels, then fixed-size columns for cells
-  const cellSize = "50px";
-  const gridTemplateColumns = `45px repeat(${labels.length}, ${cellSize})`;
-  const gridTemplateRows = `35px repeat(${labels.length}, ${cellSize})`;
+  // Grid template uses CSS custom properties for responsive sizing (avoids SSR hydration issues)
+  const gridTemplateColumns = `var(--matrix-label-col) repeat(${labels.length}, var(--matrix-cell-size))`;
+  const gridTemplateRows = `var(--matrix-header-row) repeat(${labels.length}, var(--matrix-cell-size))`;
 
   return (
     <div className={styles.matrixContainer}>
@@ -206,8 +334,12 @@ const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => 
 
         {/* X-axis labels (top) */}
         {labels.map((label) => (
-          <div key={`x-${label}`} className={styles.matrixAxisLabel}>
-            {formatLabel(label)}
+          <div
+            key={`x-${label}`}
+            className={styles.matrixAxisLabel}
+            title={formatLabel(label)}
+          >
+            {formatLabelAbbrev(label)}
           </div>
         ))}
 
@@ -217,8 +349,9 @@ const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ labels, matrix }) => 
             {/* Y-axis label */}
             <div
               className={`${styles.matrixAxisLabel} ${styles.matrixAxisLabelY}`}
+              title={formatLabel(labels[i])}
             >
-              {formatLabel(labels[i])}
+              {formatLabelAbbrev(labels[i])}
             </div>
 
             {/* Cells */}
@@ -281,6 +414,7 @@ const TrainingMetricsAnimation: React.FC = () => {
     triggerOnce: true,
   });
   const [epochs, setEpochs] = useState<TrainingMetricsEpoch[]>([]);
+  const [datasetMetrics, setDatasetMetrics] = useState<DatasetMetrics | undefined>();
   const [currentEpochIndex, setCurrentEpochIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [showBestLabel, setShowBestLabel] = useState(false);
@@ -292,6 +426,7 @@ const TrainingMetricsAnimation: React.FC = () => {
       .fetchFeaturedTrainingMetrics()
       .then((data) => {
         setEpochs(data.epochs);
+        setDatasetMetrics(data.dataset_metrics);
         setIsLoading(false);
       })
       .catch((err) => {
@@ -361,6 +496,7 @@ const TrainingMetricsAnimation: React.FC = () => {
 
   return (
     <animated.div ref={ref} className={styles.container}>
+      <DatasetStats datasetMetrics={datasetMetrics} />
       <EpochTimeline
         epochs={epochs}
         currentIndex={currentEpochIndex}

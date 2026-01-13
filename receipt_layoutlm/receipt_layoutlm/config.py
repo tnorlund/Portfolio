@@ -1,6 +1,5 @@
-from dataclasses import dataclass, field
-from typing import Optional, List, Dict
-
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
 # Predefined merge presets for common label grouping scenarios
 MERGE_PRESETS: Dict[str, Dict[str, List[str]]] = {
@@ -68,3 +67,6 @@ class TrainingConfig:
     label_smoothing: float = 0.0
     early_stopping_patience: int = 2
     output_s3_path: Optional[str] = None
+    # CoreML export configuration
+    auto_export_coreml: bool = False
+    coreml_quantize: Optional[str] = "float16"

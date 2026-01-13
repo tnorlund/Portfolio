@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
+from collections import deque
 import hashlib
 
 import importlib
@@ -83,66 +84,203 @@ class LineExample:
     receipt_key: str
 
 
-def _build_line_example(
-    line_key: Tuple[str, int, int],
-    items: List[Tuple[int, str, List[int], str]],
-    line_to_receipt: Dict[Tuple[str, int, int], Tuple[str, int]],
+@dataclass
+class WordInfo:
+    """Intermediate representation of a word with its metadata."""
+
+    word_id: int
+    text: str
+    bbox: List[int]  # [x0, y0, x1, y1] normalized
+    label: str  # Merged label for BIO tagging (not BIO prefix)
+    original_label: str  # Original label before merging (for grouping)
+    line_id: int
+    image_id: str
+    receipt_id: int
+
+
+def _ranges_overlap(a_min: float, a_max: float, b_min: float, b_max: float) -> bool:
+    """Check if two 1D ranges overlap."""
+    return a_min < b_max and b_min < a_max
+
+
+def _find_right_neighbor(word: WordInfo, all_words: List[WordInfo]) -> Optional[int]:
+    """Find the index of the word directly to the right of this word.
+
+    Returns the closest word that:
+    - Has x_min > word's x_max (is to the right)
+    - Has overlapping y-range (on same visual line)
+    """
+    word_x_max = word.bbox[2]
+    word_y_min, word_y_max = word.bbox[1], word.bbox[3]
+
+    best_idx: Optional[int] = None
+    best_distance = float("inf")
+
+    for i, other in enumerate(all_words):
+        if other is word:
+            continue
+
+        other_x_min = other.bbox[0]
+        other_y_min, other_y_max = other.bbox[1], other.bbox[3]
+
+        # Must be to the right
+        if other_x_min <= word_x_max:
+            continue
+
+        # Must have overlapping y-range (same visual line)
+        if not _ranges_overlap(word_y_min, word_y_max, other_y_min, other_y_max):
+            continue
+
+        distance = other_x_min - word_x_max
+        if distance < best_distance:
+            best_distance = distance
+            best_idx = i
+
+    return best_idx
+
+
+def _find_below_neighbor(word: WordInfo, all_words: List[WordInfo]) -> Optional[int]:
+    """Find the index of the word directly below this word.
+
+    Returns the closest word that:
+    - Has y_min > word's y_max (is below)
+    - Has overlapping x-range (vertically aligned)
+    """
+    word_y_max = word.bbox[3]
+    word_x_min, word_x_max = word.bbox[0], word.bbox[2]
+
+    best_idx: Optional[int] = None
+    best_distance = float("inf")
+
+    for i, other in enumerate(all_words):
+        if other is word:
+            continue
+
+        other_y_min = other.bbox[1]
+        other_x_min, other_x_max = other.bbox[0], other.bbox[2]
+
+        # Must be below
+        if other_y_min <= word_y_max:
+            continue
+
+        # Must have overlapping x-range (vertically aligned)
+        if not _ranges_overlap(word_x_min, word_x_max, other_x_min, other_x_max):
+            continue
+
+        distance = other_y_min - word_y_max
+        if distance < best_distance:
+            best_distance = distance
+            best_idx = i
+
+    return best_idx
+
+
+def _group_words_into_blocks(words: List[WordInfo]) -> List[List[WordInfo]]:
+    """Group words into spatially contiguous blocks of the same ORIGINAL label.
+
+    Uses spatial adjacency (right neighbor, below neighbor) to build a graph,
+    then finds connected components where all words share the same original label.
+
+    Grouping by original_label (before merging) ensures that:
+    - Multi-line addresses (all ADDRESS_LINE) are grouped together
+    - Separate amounts (SUBTOTAL, TAX, GRAND_TOTAL) stay as separate blocks
+      even though they merge to the same AMOUNT label
+
+    Args:
+        words: List of WordInfo objects to group.
+
+    Returns:
+        List of word groups, each containing words of the same original label.
+    """
+    if not words:
+        return []
+
+    n = len(words)
+
+    # Build adjacency list: connect words with same ORIGINAL label that are neighbors
+    adjacency: List[List[int]] = [[] for _ in range(n)]
+
+    for i, word in enumerate(words):
+        # Find right neighbor
+        right_idx = _find_right_neighbor(word, words)
+        if right_idx is not None and words[right_idx].original_label == word.original_label:
+            adjacency[i].append(right_idx)
+            adjacency[right_idx].append(i)
+
+        # Find below neighbor
+        below_idx = _find_below_neighbor(word, words)
+        if below_idx is not None and words[below_idx].original_label == word.original_label:
+            adjacency[i].append(below_idx)
+            adjacency[below_idx].append(i)
+
+    # Find connected components using BFS
+    visited = [False] * n
+    blocks: List[List[WordInfo]] = []
+
+    for start in range(n):
+        if visited[start]:
+            continue
+
+        # BFS to find all words in this component
+        component: List[WordInfo] = []
+        queue: deque[int] = deque([start])
+        visited[start] = True
+
+        while queue:
+            idx = queue.popleft()
+            component.append(words[idx])
+
+            for neighbor in adjacency[idx]:
+                if not visited[neighbor]:
+                    visited[neighbor] = True
+                    queue.append(neighbor)
+
+        blocks.append(component)
+
+    return blocks
+
+
+def _build_block_example(
+    block: List[WordInfo],
+    receipt_key: str,
 ) -> LineExample:
-    # sort by word_id to preserve order
-    items.sort(key=lambda t: t[0])
-    img_id, rec_id, ln_id = line_key
+    """Build a LineExample from a word block with proper BIO tagging.
+
+    Args:
+        block: List of WordInfo objects (all same label) to convert.
+        receipt_key: The receipt key for this example.
+
+    Returns:
+        LineExample with proper BIO tags across the entire block.
+    """
+    # Sort words by y then x for reading order
+    sorted_words = sorted(block, key=lambda w: (w.bbox[1], w.bbox[0]))
 
     tokens: List[str] = []
-    boxes: List[List[int]] = []
-    raw_labels: List[str] = []
-
-    for wid, tok, box, lbl in items:
-        if not isinstance(tok, str):
-            raise ValueError(
-                "Invalid token type: expected str, got "
-                f"{type(tok).__name__} for image_id={img_id} "
-                f"receipt_id={rec_id} line_id={ln_id} word_id={wid}"
-            )
-        if (
-            not isinstance(box, list)
-            or len(box) != 4
-            or any(not isinstance(v, int) for v in box)
-        ):
-            raise ValueError(
-                "Invalid bbox: expected list[int] of length 4 for "
-                f"image_id={img_id} receipt_id={rec_id} "
-                f"line_id={ln_id} word_id={wid}; got {box!r}"
-            )
-        if not isinstance(lbl, str):
-            raise ValueError(
-                "Invalid label type: expected str, got "
-                f"{type(lbl).__name__} for image_id={img_id} "
-                f"receipt_id={rec_id} line_id={ln_id} word_id={wid}"
-            )
-        tokens.append(tok)
-        boxes.append(box)
-        raw_labels.append(lbl)
-
-    # Compute simple BIO tags per-line: B- for first occurrence, I- for contiguous same label
+    bboxes: List[List[int]] = []
     bio_labels: List[str] = []
-    prev = "O"
-    for lbl in raw_labels:
-        if lbl == "O":
-            bio_labels.append("O")
-            prev = "O"
-        else:
-            bio_labels.append("B-" + lbl if prev != lbl else "I-" + lbl)
-            prev = lbl
 
-    rk = line_to_receipt.get(line_key)
-    receipt_key = f"{rk[0]}#{rk[1]:05d}" if rk else ""
+    # All words in a block have the same label
+    label = sorted_words[0].label
+    for i, word in enumerate(sorted_words):
+        tokens.append(word.text)
+        bboxes.append(word.bbox)
+
+        if label == "O":
+            bio_labels.append("O")
+        else:
+            # First word is B-, rest are I-
+            bio_labels.append("B-" + label if i == 0 else "I-" + label)
+
+    # Use first word's IDs for the example
+    first_word = sorted_words[0]
 
     return LineExample(
-        image_id=img_id,
-        receipt_id=rec_id,
-        line_id=ln_id,
+        image_id=first_word.image_id,
+        receipt_id=first_word.receipt_id,
+        line_id=first_word.line_id,  # Use first word's line_id
         tokens=tokens,
-        bboxes=boxes,
+        bboxes=bboxes,
         ner_tags=bio_labels,
         receipt_key=receipt_key,
     )
@@ -265,6 +403,55 @@ def _raw_label(
     return _normalize_word_label(labels[0], allowed, merge_lookup)
 
 
+def _get_original_and_merged_labels(
+    labels: List[str],
+    allowed: Optional[set[str]] = None,
+    merge_lookup: Optional[Dict[str, str]] = None,
+) -> Tuple[str, str]:
+    """Get both original (pre-merge) and merged labels for a word.
+
+    Args:
+        labels: List of label strings from DynamoDB.
+        allowed: Optional set of allowed labels. Others map to "O".
+        merge_lookup: Dict mapping source labels to target labels.
+
+    Returns:
+        Tuple of (original_label, merged_label).
+        - original_label: Label before merging (for spatial grouping)
+        - merged_label: Label after merging (for BIO tagging)
+    """
+    if not labels:
+        return "O", "O"
+
+    raw = (labels[0] or "").upper()
+    if raw == "O":
+        return "O", "O"
+
+    # Get original label (before merge, but after allowed filtering)
+    original = raw
+
+    # Apply merge lookup to get merged label
+    merged = raw
+    if merge_lookup and raw in merge_lookup:
+        merged = merge_lookup[raw]
+
+    # Filter to allowed labels - apply to merged label
+    if allowed is not None and merged not in allowed:
+        return "O", "O"
+
+    # Validate against core labels + merge targets
+    valid_labels = _CORE_SET.copy()
+    if merge_lookup:
+        valid_labels.update(merge_lookup.values())
+
+    if merged not in valid_labels:
+        return "O", "O"
+
+    # If original was merged, keep original for grouping
+    # If original was filtered out, both are O
+    return original, merged
+
+
 @dataclass
 class MergeInfo:
     """Information about label merging applied during dataset loading."""
@@ -365,35 +552,49 @@ def load_datasets(
     # Track resulting labels for metrics
     resulting_labels_set: set[str] = set()
 
-    # Group by line so each example is a sequence of tokens
-    seq_map: Dict[
-        Tuple[str, int, int], List[Tuple[int, str, List[int], str]]
-    ] = {}
-    # Track receipt key per line for receipt-level splitting
-    line_to_receipt: Dict[Tuple[str, int, int], Tuple[str, int]] = {}
+    # Group words by receipt for spatial block grouping
+    # This allows multi-line entities to be properly tagged with BIO continuity
+    receipt_words: Dict[Tuple[str, int], List[WordInfo]] = {}
     for w in words:
         word_key = (w.image_id, w.receipt_id, w.line_id, w.word_id)
-        line_key = (w.image_id, w.receipt_id, w.line_id)
-        label = _raw_label(
+        receipt_key_tuple = (w.image_id, w.receipt_id)
+        # Get both original (for grouping) and merged (for BIO tags) labels
+        original_label, merged_label = _get_original_and_merged_labels(
             label_map.get(word_key, []),
             allowed,
             merge_lookup,
         )
-        # Track non-O labels for resulting_labels
-        if label != "O":
-            resulting_labels_set.add(label)
+        # Track non-O labels for resulting_labels (use merged)
+        if merged_label != "O":
+            resulting_labels_set.add(merged_label)
         max_x, max_y = image_extents.get(w.image_id, (1.0, 1.0))
         x0, y0, x1, y1 = _box_from_word(w)
         norm_box = _normalize_box_from_extents(x0, y0, x1, y1, max_x, max_y)
-        seq_map.setdefault(line_key, []).append(
-            (w.word_id, w.text, norm_box, label)
-        )
-        line_to_receipt[line_key] = (w.image_id, w.receipt_id)
 
+        word_info = WordInfo(
+            word_id=w.word_id,
+            text=w.text,
+            bbox=norm_box,
+            label=merged_label,  # Used for BIO tagging
+            original_label=original_label,  # Used for spatial grouping
+            line_id=w.line_id,
+            image_id=w.image_id,
+            receipt_id=w.receipt_id,
+        )
+        receipt_words.setdefault(receipt_key_tuple, []).append(word_info)
+
+    # Build examples from spatial blocks within each receipt
     examples: List[LineExample] = []
 
-    for line_key, items in seq_map.items():
-        examples.append(_build_line_example(line_key, items, line_to_receipt))
+    for (img_id, rec_id), words_in_receipt in receipt_words.items():
+        receipt_key = f"{img_id}#{rec_id:05d}"
+
+        # Group words into spatially contiguous blocks of the same label
+        blocks = _group_words_into_blocks(words_in_receipt)
+
+        # Build an example from each block
+        for block in blocks:
+            examples.append(_build_block_example(block, receipt_key))
 
     ds_mod = importlib.import_module("datasets")
     Dataset = getattr(ds_mod, "Dataset")

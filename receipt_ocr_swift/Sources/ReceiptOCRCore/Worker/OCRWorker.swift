@@ -26,6 +26,14 @@ private struct ParsedReceiptInfo {
     let warpedWidth: Int
     let warpedHeight: Int
     let lineIndices: [Int]
+    let layoutLMPredictions: [ParsedLinePrediction]?
+}
+
+/// Parsed LayoutLM prediction for a line
+private struct ParsedLinePrediction {
+    let tokens: [String]
+    let labels: [String]
+    let confidences: [Float]
 }
 
 /// Receipt bounds from JSON
@@ -72,13 +80,31 @@ private func parseReceiptsFromJSON(_ jsonData: Data) -> [ParsedReceiptInfo] {
             bottomLeft: (x: bottomLeftX, y: bottomLeftY)
         )
 
+        // Parse LayoutLM predictions if present
+        var layoutLMPredictions: [ParsedLinePrediction]? = nil
+        if let predictionsArray = receiptDict["layoutlm_predictions"] as? [[String: Any]] {
+            layoutLMPredictions = predictionsArray.compactMap { predDict -> ParsedLinePrediction? in
+                guard let tokens = predDict["tokens"] as? [String],
+                      let labels = predDict["labels"] as? [String],
+                      let confidences = predDict["confidences"] as? [Double] else {
+                    return nil
+                }
+                return ParsedLinePrediction(
+                    tokens: tokens,
+                    labels: labels,
+                    confidences: confidences.map { Float($0) }
+                )
+            }
+        }
+
         return ParsedReceiptInfo(
             clusterId: clusterId,
             localFileName: s3Key,  // s3Key initially contains local filename
             bounds: bounds,
             warpedWidth: warpedWidth,
             warpedHeight: warpedHeight,
-            lineIndices: lineIndices
+            lineIndices: lineIndices,
+            layoutLMPredictions: layoutLMPredictions
         )
     }
 }
@@ -118,18 +144,38 @@ public final class OCRWorker {
         self.logger = logger
     }
 
-    public static func make(config: Config, stubOCR: Bool) throws -> OCRWorker {
+    public static func make(config: Config, stubOCR: Bool) async throws -> OCRWorker {
+        let factory = SotoAWSFactory(config: config)
+        let s3Client = SotoS3Client(s3: factory.makeS3())
+
+        // Download LayoutLM model if configured
+        var layoutLMBundlePath: URL? = nil
         #if os(macOS)
-        let engine: OCREngineProtocol = stubOCR ? StubOCREngine() : VisionOCREngine()
+        if let bucket = config.layoutLMModelS3Bucket,
+           let key = config.layoutLMModelS3Key,
+           !bucket.isEmpty, !key.isEmpty {
+            var logger = Logger(label: "receipt.ocr.model")
+            logger.logLevel = .info
+            let downloader = ModelDownloader(s3: s3Client, logger: logger)
+            layoutLMBundlePath = try await downloader.ensureModelDownloaded(
+                bucket: bucket,
+                key: key,
+                localCachePath: config.layoutLMLocalCachePath
+            )
+        }
+        #endif
+
+        #if os(macOS)
+        let engine: OCREngineProtocol = stubOCR ? StubOCREngine() : VisionOCREngine(layoutLMBundlePath: layoutLMBundlePath)
         #else
         let engine: OCREngineProtocol = StubOCREngine()
         #endif
-        let factory = SotoAWSFactory(config: config)
+
         let worker = OCRWorker(
             config: config,
             ocr: engine,
             sqs: SotoSQSClient(sqs: factory.makeSQS()),
-            s3: SotoS3Client(s3: factory.makeS3()),
+            s3: s3Client,
             dynamo: SotoDynamoClient(dynamo: factory.makeDynamo(), tableName: config.dynamoTableName),
             sotoFactory: factory
         )
@@ -208,6 +254,40 @@ public final class OCRWorker {
                 }
             }
             logger.info("receipts_uploaded count=\(uploadedReceiptKeys.count) image_id=\(ctx.imageId)")
+
+            // Upload LayoutLM predicted labels to DynamoDB as PENDING
+            #if os(macOS)
+            for receipt in receipts {
+                if let predictions = receipt.layoutLMPredictions, !predictions.isEmpty {
+                    // Convert parsed predictions to LinePrediction format for ReceiptWordLabel
+                    let linePredictions = predictions.map { pred in
+                        LinePrediction(
+                            tokens: pred.tokens,
+                            labels: pred.labels,
+                            confidences: pred.confidences,
+                            allProbabilities: nil
+                        )
+                    }
+
+                    let labels = ReceiptWordLabel.fromLinePredictions(
+                        predictions: linePredictions,
+                        imageId: ctx.imageId,
+                        receiptId: receipt.clusterId
+                    )
+
+                    if !labels.isEmpty {
+                        logger.info("upload_labels image_id=\(ctx.imageId) receipt_id=\(receipt.clusterId) count=\(labels.count)")
+                        do {
+                            try await Retry.withBackoff {
+                                try await self.dynamo.addReceiptWordLabels(labels)
+                            }
+                        } catch {
+                            logger.warning("failed_upload_labels image_id=\(ctx.imageId) receipt_id=\(receipt.clusterId) error=\(error)")
+                        }
+                    }
+                }
+            }
+            #endif
 
             // Upload OCR result JSON
             let resultKey = "ocr_results/\(resultURL.lastPathComponent)"
