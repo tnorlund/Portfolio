@@ -392,14 +392,12 @@ def chroma_snapshot_with_data(temp_chromadb_dir):
             {
                 "text": "Test",
                 "label_status": "auto_suggested",
-                "valid_labels": "",
-                "invalid_labels": "",
+                # No boolean label fields - word is pending validation
             },
             {
                 "text": "Word",
                 "label_status": "auto_suggested",
-                "valid_labels": "",
-                "invalid_labels": "",
+                # No boolean label fields - word is pending validation
             },
         ],
     )
