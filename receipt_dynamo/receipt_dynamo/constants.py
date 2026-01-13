@@ -174,4 +174,9 @@ CORE_LABELS: dict[str, str] = {
     "SUBTOTAL": "Sum of all line totals before tax and discounts.",
     "TAX": "Any tax line (sales tax, VAT, bottle deposit).",
     "GRAND_TOTAL": "Final amount due after all discounts, taxes and fees.",
+    # ── Payment-related ────────────────────────────────────────
+    # Added to prevent mislabeling as LINE_TOTAL in training data.
+    "CHANGE": "Change amount returned to the customer after transaction.",
+    "CASH_BACK": "Cash back amount dispensed from purchase.",
+    "REFUND": "Refund amount (full or partial return).",
 }

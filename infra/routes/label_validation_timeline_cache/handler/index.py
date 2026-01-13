@@ -15,6 +15,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 import boto3
+from receipt_dynamo.constants import CORE_LABELS
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger()
@@ -23,27 +24,6 @@ logger.setLevel(logging.INFO)
 # Configuration
 KEYFRAME_COUNT = 200  # Number of keyframes to sample for smooth animation
 S3_CACHE_KEY = "label_validation_timeline.json"
-
-CORE_LABELS = [
-    "MERCHANT_NAME",
-    "STORE_HOURS",
-    "PHONE_NUMBER",
-    "WEBSITE",
-    "LOYALTY_ID",
-    "ADDRESS_LINE",
-    "DATE",
-    "TIME",
-    "PAYMENT_METHOD",
-    "COUPON",
-    "DISCOUNT",
-    "PRODUCT_NAME",
-    "QUANTITY",
-    "UNIT_PRICE",
-    "LINE_TOTAL",
-    "SUBTOTAL",
-    "TAX",
-    "GRAND_TOTAL",
-]
 
 # Initialize clients outside handler for connection reuse
 _dynamo_client = None
