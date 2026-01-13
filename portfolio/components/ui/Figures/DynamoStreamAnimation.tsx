@@ -1,5 +1,5 @@
-import React from "react";
 import { animated, to, useSprings } from "@react-spring/web";
+import React from "react";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 
 interface DynamoStreamAnimationProps {
