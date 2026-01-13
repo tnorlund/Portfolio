@@ -5,7 +5,7 @@ import useOptimizedInView from "../../../hooks/useOptimizedInView";
 interface DynamoStreamAnimationProps {
   /** Width of the component */
   width?: number;
-  /** Height of the component */
+  /** Height of the component. If omitted, it is derived from `width` to match the viewBox aspect ratio. */
   height?: number;
   /** Duration between shard shifts in ms (default: 1000) */
   shiftInterval?: number;
@@ -37,10 +37,14 @@ const SLOTS = [SLOT0, SLOT1, SLOT2] as const;
 
 export default function DynamoStreamAnimation({
   width = 300,
-  height = 300,
+  height,
   shiftInterval = 1000,
   shardSlots = 3,
 }: DynamoStreamAnimationProps) {
+  // The SVG viewBox is 300x150. If callers don't specify height, derive it from width
+  // so we don't render a tall box with lots of empty space above/below the diagram.
+  const resolvedHeight = height ?? Math.round((width * 150) / 300);
+
   const [containerRef, inView] = useOptimizedInView({
     threshold: 0.3,
     triggerOnce: false,
@@ -180,7 +184,7 @@ export default function DynamoStreamAnimation({
     <div ref={containerRef} style={{ display: "flex", justifyContent: "center" }}>
       <svg
         width={width}
-        height={height}
+        height={resolvedHeight}
         viewBox={VIEWBOX}
         style={{ overflow: "visible", display: "block" }}
       >
