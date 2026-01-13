@@ -60,6 +60,30 @@ const MIN_PHASE_DURATION = 800;      // Minimum animation duration for visibilit
 const HOLD_DURATION = 1000;
 const TRANSITION_DURATION = 600;
 
+// Layout constants - must match CSS values in LabelEvaluatorVisualization.module.css
+const QUEUE_WIDTH = 120;
+const QUEUE_ITEM_WIDTH = 100;
+const QUEUE_ITEM_LEFT_INSET = 10;
+const CENTER_COLUMN_WIDTH = 350;
+const CENTER_COLUMN_HEIGHT = 500;
+const QUEUE_HEIGHT = 400;
+const COLUMN_GAP = 24; // 1.5rem at 16px root
+
+// Tally layout constants - must match CSS values
+const LEGEND_WIDTH = 280;
+const LEGEND_PADDING = 32; // 1rem * 2 (left + right) at 16px root
+const TALLY_PADDING_LEFT = 24;
+const TALLY_ICON_SIZE = 14;
+const TALLY_ICON_GAP = 2;
+const TALLY_MAX_ROWS = 3;
+const TALLY_ROW_HEIGHT = TALLY_ICON_SIZE + TALLY_ICON_GAP + 4; // icon + gap + row padding
+
+// Calculate how many icons fit in one row and max visible
+// Account for legend padding: 280px - 32px padding - 24px tally padding-left = 224px
+const TALLY_AVAILABLE_WIDTH = LEGEND_WIDTH - LEGEND_PADDING - TALLY_PADDING_LEFT;
+const TALLY_ICONS_PER_ROW = Math.floor(TALLY_AVAILABLE_WIDTH / (TALLY_ICON_SIZE + TALLY_ICON_GAP));
+const TALLY_MAX_VISIBLE = TALLY_ICONS_PER_ROW * TALLY_MAX_ROWS;
+
 // Generate stable random positions for queue items based on receipt ID
 const getQueuePosition = (receiptId: string) => {
   const hash = receiptId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -119,16 +143,13 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
 
         const queueKey = `${receiptId}-queue-${idx}`;
 
-        // Center the 100px items in the 280px container: (280-100)/2 = 90
-        const centeredLeft = 90 + leftOffset;
-
         return (
           <div
             key={queueKey}
             className={`${styles.queuedReceipt} ${isFlying ? styles.flyingOut : ""}`}
             style={{
               top: `${stackOffset}px`,
-              left: `${centeredLeft}px`,
+              left: `${QUEUE_ITEM_LEFT_INSET + leftOffset}px`,
               transform: `rotate(${rotation}deg)`,
               zIndex,
             }}
@@ -159,17 +180,16 @@ interface FlyingReceiptProps {
   receipt: LabelEvaluatorReceipt | null;
   formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
   isFlying: boolean;
-  measuredContainerWidth?: number | null;
 }
 
 const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
   receipt,
   formatSupport,
   isFlying,
-  measuredContainerWidth,
 }) => {
-  const width = receipt?.width ?? 100;
-  const height = receipt?.height ?? 150;
+  // Guard against zero/invalid dimensions to prevent divide-by-zero
+  const width = Math.max(receipt?.width ?? 100, 1);
+  const height = Math.max(receipt?.height ?? 150, 1);
   const receiptId = receipt ? `${receipt.image_id}_${receipt.receipt_id}` : '';
   const { rotation, leftOffset } = getQueuePosition(receiptId);
 
@@ -178,47 +198,35 @@ const FlyingReceipt: React.FC<FlyingReceiptProps> = ({
     return getBestImageUrl(receipt, formatSupport);
   }, [receipt, formatSupport]);
 
-  // Calculate display dimensions using the same logic as CSS constraints
-  // Use measured container width if available, otherwise fall back to 350px
+  // Calculate display dimensions with both height and width constraints
+  // to match how CSS constrains the final ReceiptViewer image
   const aspectRatio = width / height;
   const maxHeight = 500;
-  const maxWidth = measuredContainerWidth ?? 350;
+  const maxWidth = 350; // matches centerColumn max-width in CSS
 
-  // Apply constraints: start with height, then check width
   let displayHeight = Math.min(maxHeight, height);
   let displayWidth = displayHeight * aspectRatio;
 
-  // If width exceeds container, scale down to fit width instead
+  // For landscape receipts, cap width and recalculate height
   if (displayWidth > maxWidth) {
     displayWidth = maxWidth;
     displayHeight = displayWidth / aspectRatio;
   }
 
-  // Layout dimensions - must match CSS values exactly
-  const queueItemWidth = 100;
-  const queueWidth = 280;
-  const gap = 24; // 1.5rem at 16px root
-  const centerColumnWidth = 350;
-  const queueHeight = 400;
-  const centerColumnHeight = 500;
-
   // X calculation:
-  // Queue items are centered at left = 90 + leftOffset (where 90 = (280-100)/2)
-  // Queue item center from left of queue = (90 + leftOffset) + 50 = 140 + leftOffset
-  // From right edge of queue to queue item center = 280 - (140 + leftOffset) = 140 - leftOffset
-  const queueItemLeft = 90 + leftOffset;
-  const distanceToQueueItemCenter = (centerColumnWidth / 2) + gap + (queueWidth - (queueItemLeft + queueItemWidth / 2));
+  // From center of centerColumn, go left to reach queue item center
+  // Queue item center is at (QUEUE_ITEM_LEFT_INSET + leftOffset + QUEUE_ITEM_WIDTH/2) from left of queue
+  const distanceToQueueItemCenter = (CENTER_COLUMN_WIDTH / 2) + COLUMN_GAP + (QUEUE_WIDTH - (QUEUE_ITEM_LEFT_INSET + leftOffset + QUEUE_ITEM_WIDTH / 2));
   const startX = -distanceToQueueItemCenter;
 
   // Y calculation:
   // Both containers are vertically centered (align-items: center)
-  // Queue top is at (centerColumnHeight - queueHeight) / 2 = 50px from top of centerColumn
-  // Queue item at idx 0 is at top: 0, so its top is 50px from top of centerColumn
-  const queueItemHeight = (height / width) * queueItemWidth;
-  const queueItemCenterFromTop = ((centerColumnHeight - queueHeight) / 2) + (queueItemHeight / 2);
-  const startY = queueItemCenterFromTop - (centerColumnHeight / 2);
+  // Queue top is at (CENTER_COLUMN_HEIGHT - QUEUE_HEIGHT) / 2 from top of centerColumn
+  const queueItemHeight = (height / width) * QUEUE_ITEM_WIDTH;
+  const queueItemCenterFromTop = ((CENTER_COLUMN_HEIGHT - QUEUE_HEIGHT) / 2) + (queueItemHeight / 2);
+  const startY = queueItemCenterFromTop - (CENTER_COLUMN_HEIGHT / 2);
 
-  const startScale = queueItemWidth / displayWidth;
+  const startScale = QUEUE_ITEM_WIDTH / displayWidth;
 
   const { x, y, scale, rotate } = useSpring({
     from: {
@@ -418,7 +426,6 @@ interface ReceiptViewerProps {
   phase: Phase;
   revealedDecisions: RevealedDecision[];
   formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
-  onContainerMeasure?: (containerWidth: number) => void;
 }
 
 const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
@@ -427,10 +434,8 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
   phase,
   revealedDecisions,
   formatSupport,
-  onContainerMeasure,
 }) => {
   const { words, width, height } = receipt;
-  const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Get the best image URL based on format support
   // Use full-size image so dimensions match receipt.width/height
@@ -438,13 +443,6 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
     if (!formatSupport) return null;
     return getBestImageUrl(receipt, formatSupport);
   }, [receipt, formatSupport]);
-
-  // Measure container width after image loads (when layout is stable)
-  const handleImageLoad = () => {
-    if (wrapperRef.current && onContainerMeasure) {
-      onContainerMeasure(wrapperRef.current.offsetWidth);
-    }
-  };
 
   if (!imageUrl) {
     return <div className={styles.receiptLoading}>Loading...</div>;
@@ -460,7 +458,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
 
   return (
     <div className={styles.receiptViewer}>
-      <div ref={wrapperRef} className={styles.receiptImageWrapper}>
+      <div className={styles.receiptImageWrapper}>
         <div className={styles.receiptImageInner}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -469,7 +467,6 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
             className={styles.receiptImage}
             width={width}
             height={height}
-            onLoad={handleImageLoad}
           />
           {/* SVG overlay for bounding boxes and scan lines */}
           <svg
@@ -830,6 +827,65 @@ interface ScannerLegendItemProps {
   showPlaceholders?: boolean; // false = only show filled icons (allows layout shift)
 }
 
+// Helper to calculate number of rows needed for a given number of icons
+const calculateTallyRows = (iconCount: number): number => {
+  if (iconCount <= 0) return 0;
+  return Math.min(Math.ceil(iconCount / TALLY_ICONS_PER_ROW), TALLY_MAX_ROWS);
+};
+
+// Helper to calculate height for tally container
+const calculateTallyHeight = (iconCount: number): number => {
+  const rows = calculateTallyRows(iconCount);
+  return rows * TALLY_ROW_HEIGHT;
+};
+
+// Decision icon SVG component
+const DecisionIcon: React.FC<{ decision: RevealedDecision }> = ({ decision }) => {
+  const bgColor = DECISION_COLORS[decision.decision];
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <circle cx="7" cy="7" r="6" fill={bgColor} />
+      {decision.decision === 'VALID' && (
+        <path
+          d="M4 7 L6 9.5 L10 5"
+          fill="none"
+          stroke="white"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
+      {decision.decision === 'INVALID' && (
+        <g>
+          <line x1="4.5" y1="4.5" x2="9.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+          <line x1="9.5" y1="4.5" x2="4.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+        </g>
+      )}
+      {decision.decision === 'NEEDS_REVIEW' && (
+        <g>
+          <circle cx="7" cy="5" r="1.8" fill="white" />
+          <path d="M3.5 11.5 Q3.5 8 7 8 Q10.5 8 10.5 11.5" fill="white" />
+        </g>
+      )}
+    </svg>
+  );
+};
+
+// Empty placeholder icon SVG
+const EmptyIcon: React.FC = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <circle
+      cx="7"
+      cy="7"
+      r="5.5"
+      fill="none"
+      stroke="var(--text-color)"
+      strokeWidth="1"
+      opacity="0.3"
+    />
+  </svg>
+);
+
 // Generate SVG path for a pie slice from 12 o'clock, filling clockwise
 const getPieSlicePath = (progress: number, cx: number, cy: number, r: number): string => {
   if (progress <= 0) return '';
@@ -868,6 +924,29 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
   const hasDecisions = totalDecisions > 0;
   const hasNextDecisions = nextTotalDecisions > 0;
   const hasVisibleContent = showPlaceholders ? hasDecisions : decisions.length > 0;
+
+  // Calculate visible icons and overflow for current and next receipt
+  const currentVisibleCount = Math.min(totalDecisions, TALLY_MAX_VISIBLE);
+  const currentOverflow = Math.max(0, totalDecisions - TALLY_MAX_VISIBLE);
+  const nextVisibleCount = Math.min(nextTotalDecisions, TALLY_MAX_VISIBLE);
+  const nextOverflow = Math.max(0, nextTotalDecisions - TALLY_MAX_VISIBLE);
+
+  // Animate height between current and next tally
+  const currentHeight = calculateTallyHeight(currentVisibleCount + (currentOverflow > 0 ? 1 : 0));
+  const nextHeight = calculateTallyHeight(nextVisibleCount + (nextOverflow > 0 ? 1 : 0));
+  const targetHeight = isTransitioning ? nextHeight : currentHeight;
+
+  const heightSpring = useSpring({
+    height: targetHeight,
+    config: { tension: 200, friction: 20 },
+  });
+
+  // Build visible decisions (capped at max visible, leaving room for overflow badge)
+  const maxDecisionIcons = currentOverflow > 0 ? TALLY_MAX_VISIBLE - 1 : TALLY_MAX_VISIBLE;
+  const visibleDecisions = decisions.slice(0, maxDecisionIcons);
+  const emptyCount = showPlaceholders
+    ? Math.max(0, Math.min(totalDecisions, maxDecisionIcons) - decisions.length)
+    : 0;
 
   return (
     <div className={`${styles.legendItem} ${isActive ? styles.active : ""} ${isComplete ? styles.complete : ""} ${isSkipped ? styles.skipped : ""}`}>
@@ -949,88 +1028,42 @@ const ScannerLegendItem: React.FC<ScannerLegendItemProps> = ({
           <span className={styles.legendWaiting}>waiting</span>
         ) : null}
       </div>
-      {/* Decision tally row - shows filled icons + empty placeholders (if enabled) */}
-      {/* During transition: current row fades out, next row overlays and fades in */}
+      {/* Decision tally with max 3 rows, animated height, and crossfade */}
       {(hasVisibleContent || (isTransitioning && hasNextDecisions)) && (
-        <div className={styles.legendTally}>
-          {/* Current receipt's tally - filled icons + optional empty placeholders */}
-          {/* Stays in normal flow to maintain container height, fades out during transition */}
+        <animated.div className={styles.legendTally} style={{ height: heightSpring.height, overflow: 'hidden' }}>
+          {/* Current receipt's tally - fades out during transition */}
           <div className={`${styles.tallyRow} ${isTransitioning ? styles.tallyFadeOut : ''}`}>
-            {/* Filled icons for revealed decisions */}
-            {decisions.map((d) => {
-              const bgColor = DECISION_COLORS[d.decision];
-              return (
-                <span
-                  key={d.key}
-                  className={styles.tallyIcon}
-                  title={`${d.wordText}: ${d.decision}`}
-                >
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <circle cx="7" cy="7" r="6" fill={bgColor} />
-                    {d.decision === 'VALID' && (
-                      <path
-                        d="M4 7 L6 9.5 L10 5"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    )}
-                    {d.decision === 'INVALID' && (
-                      <g>
-                        <line x1="4.5" y1="4.5" x2="9.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-                        <line x1="9.5" y1="4.5" x2="4.5" y2="9.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-                      </g>
-                    )}
-                    {d.decision === 'NEEDS_REVIEW' && (
-                      <g>
-                        <circle cx="7" cy="5" r="1.8" fill="white" />
-                        <path d="M3.5 11.5 Q3.5 8 7 8 Q10.5 8 10.5 11.5" fill="white" />
-                      </g>
-                    )}
-                  </svg>
-                </span>
-              );
-            })}
-            {/* Empty placeholders for unrevealed decisions (only if showPlaceholders is true) */}
-            {showPlaceholders && Array.from({ length: Math.max(0, totalDecisions - decisions.length) }).map((_, idx) => (
-              <span key={`empty-${idx}`} className={styles.tallyIcon}>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <circle
-                    cx="7"
-                    cy="7"
-                    r="5.5"
-                    fill="none"
-                    stroke="var(--text-color)"
-                    strokeWidth="1"
-                    opacity="0.3"
-                  />
-                </svg>
+            {/* Filled icons for revealed decisions (capped) */}
+            {visibleDecisions.map((d) => (
+              <span key={d.key} className={styles.tallyIcon} title={`${d.wordText}: ${d.decision}`}>
+                <DecisionIcon decision={d} />
               </span>
             ))}
+            {/* Empty placeholders for unrevealed decisions */}
+            {Array.from({ length: emptyCount }).map((_, idx) => (
+              <span key={`empty-${idx}`} className={styles.tallyIcon}>
+                <EmptyIcon />
+              </span>
+            ))}
+            {/* Overflow indicator */}
+            {currentOverflow > 0 && (
+              <span className={styles.tallyOverflow}>+{currentOverflow}</span>
+            )}
           </div>
-          {/* Next receipt's empty placeholders - absolutely positioned overlay, fades in */}
+          {/* Next receipt's placeholders - overlay that fades in during transition */}
           {isTransitioning && hasNextDecisions && showPlaceholders && (
             <div className={`${styles.tallyRow} ${styles.tallyRowOverlay} ${styles.tallyFadeIn}`}>
-              {Array.from({ length: nextTotalDecisions }).map((_, idx) => (
+              {Array.from({ length: Math.min(nextTotalDecisions, nextOverflow > 0 ? TALLY_MAX_VISIBLE - 1 : TALLY_MAX_VISIBLE) }).map((_, idx) => (
                 <span key={`next-${idx}`} className={styles.tallyIcon}>
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <circle
-                      cx="7"
-                      cy="7"
-                      r="5.5"
-                      fill="none"
-                      stroke="var(--text-color)"
-                      strokeWidth="1"
-                      opacity="0.3"
-                    />
-                  </svg>
+                  <EmptyIcon />
                 </span>
               ))}
+              {nextOverflow > 0 && (
+                <span className={styles.tallyOverflow}>+{nextOverflow}</span>
+              )}
             </div>
           )}
-        </div>
+        </animated.div>
       )}
     </div>
   );
@@ -1110,7 +1143,7 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         decisions={reviewDecisions}
         totalDecisions={review ? review.all_decisions.length : 0}
         isTransitioning={isTransitioning}
-        nextTotalDecisions={nextReview?.all_decisions.length ?? 0}
+        nextTotalDecisions={0} // Don't show next placeholders - Review depends on Geometric
         showPlaceholders={hasReviewData && scannerState.geometric >= 100}
       />
       {/* Purple - Line Item → Currency → Financial chain */}
@@ -1132,7 +1165,7 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         decisions={currencyDecisions}
         totalDecisions={currency.all_decisions.length}
         isTransitioning={isTransitioning}
-        nextTotalDecisions={nextReceipt?.currency.all_decisions.length ?? 0}
+        nextTotalDecisions={0} // Don't show next placeholders - Currency depends on Line Item
         showPlaceholders={scannerState.lineItem >= 100}
       />
       <ScannerLegendItem
@@ -1145,7 +1178,7 @@ const ScannerLegend: React.FC<ScannerLegendProps> = ({
         decisions={financialDecisions}
         totalDecisions={financial.all_decisions.length}
         isTransitioning={isTransitioning}
-        nextTotalDecisions={nextReceipt?.financial.all_decisions.length ?? 0}
+        nextTotalDecisions={0} // Don't show next placeholders - Financial depends on Currency + Metadata
         showPlaceholders={scannerState.currency >= 100 && scannerState.metadata >= 100}
       />
     </div>
@@ -1177,7 +1210,8 @@ const LabelEvaluatorVisualization: React.FC = () => {
     supportsAVIF: boolean;
   } | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [measuredContainerWidth, setMeasuredContainerWidth] = useState<number | null>(null);
+  const [showFlyingReceipt, setShowFlyingReceipt] = useState(false);
+  const [flyingReceipt, setFlyingReceipt] = useState<LabelEvaluatorReceipt | null>(null);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
@@ -1188,6 +1222,25 @@ const LabelEvaluatorVisualization: React.FC = () => {
   useEffect(() => {
     detectImageFormatSupport().then(setFormatSupport);
   }, []);
+
+  // Control flying receipt visibility with delay to prevent flash.
+  // Snapshot the target receipt when transition starts to avoid showing
+  // the wrong receipt if currentIndex advances during the delay.
+  useEffect(() => {
+    if (isTransitioning) {
+      const next = receipts.length > 0 ? receipts[(currentIndex + 1) % receipts.length] : null;
+      setFlyingReceipt(next);
+      setShowFlyingReceipt(true);
+      return;
+    }
+
+    // Delay hiding to let the next receipt render first
+    const timeout = setTimeout(() => {
+      setShowFlyingReceipt(false);
+      setFlyingReceipt(null);
+    }, 50);
+    return () => clearTimeout(timeout);
+  }, [isTransitioning, currentIndex, receipts]);
 
   // Fetch visualization data
   useEffect(() => {
@@ -1526,19 +1579,17 @@ const LabelEvaluatorVisualization: React.FC = () => {
               phase={phase}
               revealedDecisions={revealedDecisions}
               formatSupport={formatSupport}
-              onContainerMeasure={setMeasuredContainerWidth}
             />
           </div>
 
           {/* Flying receipt for desktop transition */}
           <div className={styles.flyingReceiptContainer}>
-            {isTransitioning && nextReceipt && (
+            {showFlyingReceipt && flyingReceipt && (
               <FlyingReceipt
-                key={`flying-${nextReceipt.image_id}_${nextReceipt.receipt_id}`}
-                receipt={nextReceipt}
+                key={`flying-${flyingReceipt.image_id}_${flyingReceipt.receipt_id}`}
+                receipt={flyingReceipt}
                 formatSupport={formatSupport}
-                isFlying={isTransitioning}
-                measuredContainerWidth={measuredContainerWidth}
+                isFlying={showFlyingReceipt}
               />
             )}
           </div>

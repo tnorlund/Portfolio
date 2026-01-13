@@ -8,6 +8,7 @@
 
 - [types/api](types/api/README.md)
 - [types/css](types/css/README.md)
+- [utils/formatLabel](utils/formatLabel/README.md)
 - [utils/geometry](utils/geometry/README.md)
 - [utils/geometry.test](utils/geometry.test/README.md)
 - [utils/geometry/basic](utils/geometry/basic/README.md)

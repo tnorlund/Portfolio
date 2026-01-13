@@ -24,7 +24,7 @@ import {
   ReceiptStack,
   ScanReceiptBoundingBox,
   TrainingMetricsAnimation,
-  UploadDiagram,
+  AWSFlowDiagram,
   ZDepthConstrainedParametric,
   ZDepthUnconstrainedParametric,
 } from "../components/ui/Figures";
@@ -422,7 +422,7 @@ export default function ReceiptPage({
       </p>
 
       <ClientOnly>
-        <UploadDiagram chars={uploadDiagramChars} />
+        <AWSFlowDiagram chars={uploadDiagramChars} />
       </ClientOnly>
 
       <p>
@@ -442,8 +442,12 @@ export default function ReceiptPage({
           gap: "2rem",
         }}
       >
-        <ClientImageCounts />
-        <ClientReceiptCounts />
+        <ClientOnly>
+          <ClientImageCounts />
+        </ClientOnly>
+        <ClientOnly>
+          <ClientReceiptCounts />
+        </ClientOnly>
       </div>
 
       <h2>Identifying the Merchant</h2>

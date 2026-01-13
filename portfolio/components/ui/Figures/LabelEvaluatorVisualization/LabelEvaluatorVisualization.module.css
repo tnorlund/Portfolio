@@ -19,7 +19,7 @@
 
 /* Receipt Queue - Left Column */
 .receiptQueue {
-  width: 280px;
+  width: 120px;
   height: 400px;
   position: relative;
   flex-shrink: 0;
