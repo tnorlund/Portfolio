@@ -9,6 +9,7 @@ import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
+  DynamoStreamAnimation,
   LabelEvaluatorVisualization,
   LabelValidationTimeline,
   LabelWordCloud,
@@ -17,6 +18,7 @@ import {
   PrecisionRecallDartboard,
   ReceiptStack,
   ScanReceiptBoundingBox,
+  StreamBitsRoutingDiagram,
   TrainingMetricsAnimation,
   ZDepthConstrainedParametric,
   ZDepthUnconstrainedParametric
@@ -342,13 +344,41 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        I embedded the receipts into a vector database, Chroma, so I could
-        retrieve them by similarity.
+
+        Introducing Chroma. Another database to manage... Thankfully, the
+        existing one, DynamoDB, is a good fit for this use case because it
+        has built-in support for change data capture.
+      </p>
+
+      <ClientOnly>
+        <DynamoStreamAnimation />
+      </ClientOnly>
+
+      <p>
+        Amazon's DynamoDB allows me to consistently write to both DynamoDB and
+        Chroma through serverless Lambda functions.
+      </p>
+
+      <ClientOnly>
+        <StreamBitsRoutingDiagram />
+      </ClientOnly>
+
+      <p>
+        I embedded the receipts into, Chroma, so I could retrieve them by
+        similarity.
       </p>
 
       <ClientOnly>
         <AddressSimilaritySideBySide />
       </ClientOnly>
+
+      <p>
+        Being able to compare receipts that have the same addresses, phone
+        numbers, websites, etc. allows me to skip Google and confirm the
+        results. When I get a new receipt, I can compare it to the receipts
+        from the stores I've alerady seen to confirm the results. If I haven't
+        seen the store before, I can use Google to get the information.
+      </p>
 
       <h3>Defining the Corpus</h3>
 
