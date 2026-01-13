@@ -212,7 +212,8 @@ def get_word_neighbors(
         w_top = w_bottom + w.bounding_box["height"]
 
         # Check vertical span overlap (same visual line)
-        if w_bottom >= target_bottom and w_top <= target_top:
+        # Two intervals overlap when: w_bottom <= target_top AND w_top >= target_bottom
+        if w_bottom <= target_top and w_top >= target_bottom:
             same_line_candidates.append((orig_idx, w))
         # Check y-proximity (nearby lines)
         elif abs(w_centroid[1] - target_y) < y_proximity_threshold:

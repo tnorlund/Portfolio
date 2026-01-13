@@ -147,7 +147,27 @@ def delete_image_cascade(dynamo: DynamoClient, image_id: str, dry_run: bool = Tr
             except Exception as e:
                 stats["errors"].append(f"delete_receipts: {e}")
 
-    # Delete OCR lines/words/letters (non-receipt)
+    # Delete OCR letters/words/lines (non-receipt) - children before parents
+    if details.letters:
+        stats["letters"] = len(details.letters)
+        if not dry_run:
+            try:
+                for i in range(0, len(details.letters), 25):
+                    chunk = details.letters[i:i + 25]
+                    dynamo.delete_letters(chunk)
+            except Exception as e:
+                stats["errors"].append(f"delete_letters: {e}")
+
+    if details.words:
+        stats["words"] = len(details.words)
+        if not dry_run:
+            try:
+                for i in range(0, len(details.words), 25):
+                    chunk = details.words[i:i + 25]
+                    dynamo.delete_words(chunk)
+            except Exception as e:
+                stats["errors"].append(f"delete_words: {e}")
+
     if details.lines:
         stats["lines"] = len(details.lines)
         if not dry_run:
@@ -155,14 +175,6 @@ def delete_image_cascade(dynamo: DynamoClient, image_id: str, dry_run: bool = Tr
                 dynamo.delete_lines_from_image(image_id)
             except Exception as e:
                 stats["errors"].append(f"delete_lines_from_image: {e}")
-
-    if details.words:
-        stats["words"] = len(details.words)
-        # Words are deleted with lines via delete_lines_from_image
-
-    if details.letters:
-        stats["letters"] = len(details.letters)
-        # Letters are deleted with lines via delete_lines_from_image
 
     # Delete OCR jobs
     if details.ocr_jobs:
