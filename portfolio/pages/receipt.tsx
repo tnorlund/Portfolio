@@ -406,7 +406,7 @@ M1LK 2%           1    $4.4g`}</code>
         by asking AI to verify again.
       </p>
 
-      <p>And again. And Again.</p>
+      <p>And again. And again.</p>
 
       <ClientOnly>
         <LabelValidationTimeline />
