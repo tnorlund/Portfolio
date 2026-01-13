@@ -148,6 +148,9 @@ def delete_image_cascade(dynamo: DynamoClient, image_id: str, dry_run: bool = Tr
                 stats["errors"].append(f"delete_receipts: {e}")
 
     # Delete OCR letters/words/lines (non-receipt) - children before parents
+    # Note: Unlike lines, there's no delete_letters_from_image or delete_words_from_image
+    # helper in receipt_dynamo, so we chunk manually here. The 25-item batch size matches
+    # DynamoDB's BatchWriteItem limit.
     if details.letters:
         stats["letters"] = len(details.letters)
         if not dry_run:
