@@ -160,7 +160,9 @@ const IsometricPlane: React.FC<IsometricPlaneProps> = ({
   // Helper to compute constraint line geometry from animation phase
   // Returns unit vectors and positions needed for line and arrow
   const computeConstraintGeometry = (p: number) => {
-    const x = Math.sin(p * 0.8) * horizRange;
+    // IMPORTANT: Keep all motion strictly 2π-periodic so the animation loops seamlessly.
+    // Using non-integer multipliers like sin(p * 0.8) will not match at p=0 vs p=2π and will "snap".
+    const x = Math.sin(p + 0.7) * horizRange;
     const y = Math.sin(p) * floatRange;
     const topX = topCornerX + x;
     const topY = topCornerY + y;
@@ -202,9 +204,10 @@ const IsometricPlane: React.FC<IsometricPlaneProps> = ({
             <animated.g
               style={{
                 transform: phase.to((p) => {
-                  const x = Math.sin(p * 0.8) * horizRange;
+                  // Keep transforms strictly 2π-periodic for a perfect loop.
+                  const x = Math.sin(p + 0.7) * horizRange;
                   const y = Math.sin(p) * floatRange;
-                  const skew = allowSkew ? Math.sin(p * 0.9) * skewRange : 0;
+                  const skew = allowSkew ? Math.sin(p + 1.1) * skewRange : 0;
                   return `translate(${x}px, ${y}px)${allowSkew ? ` skewY(${skew}deg)` : ""}`;
                 }),
                 transformOrigin: `${centerX}px ${topPlaneY}px`,
