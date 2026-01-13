@@ -139,6 +139,7 @@ def get_word_neighbors(
     all_words: List[ReceiptWord],
     context_size: int = 2,
     y_proximity_threshold: float = 0.05,
+    x_proximity_threshold: float = 0.25,
 ) -> Tuple[List[str], List[str]]:
     """
     Get the left and right neighbor words for the target word with
@@ -161,6 +162,10 @@ def get_word_neighbors(
             (default: 2). Actual number may be less if fewer neighbors exist.
         y_proximity_threshold: Maximum y-coordinate difference to consider
             words as being on "nearby" lines (default: 0.05 normalized units)
+        x_proximity_threshold: Maximum x-coordinate difference to consider
+            nearby-line words as candidates (default: 0.25 normalized units).
+            This filters out words that are horizontally too far from the target
+            when falling back to nearby lines.
 
     Returns:
         Tuple of (left_words, right_words) where each is a list of up to
@@ -228,7 +233,6 @@ def get_word_neighbors(
             nearby_line_candidates.append((orig_idx, w))
 
     # Filter nearby-line candidates by x-proximity, then sort by y-proximity
-    x_proximity_threshold = 0.25
     nearby_line_left_filtered = [
         (orig_idx, w) for orig_idx, w in nearby_line_candidates
         if centroid_cache[word_key(w)][0] < target_x
