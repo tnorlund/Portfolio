@@ -8,6 +8,7 @@ import styles from "../styles/Receipt.module.css";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
+  AWSFlowDiagram,
   CICDLoop,
   ClientImageCounts,
   ClientReceiptCounts,
@@ -16,6 +17,7 @@ import {
   LabelEvaluatorVisualization,
   LabelValidationTimeline,
   LayoutLMBatchVisualization,
+  LayoutLMInferenceVisualization,
   LockingSwimlane,
   MerchantCount,
   PhotoReceiptBoundingBox,
@@ -26,9 +28,8 @@ import {
   TrainingMetricsAnimation,
   UploadDiagram,
   ZDepthConstrained,
-  ZDepthUnconstrained,
-  AWSFlowDiagram,
   ZDepthConstrainedParametric,
+  ZDepthUnconstrained,
   ZDepthUnconstrainedParametric,
 } from "../components/ui/Figures";
 import {
