@@ -15,6 +15,7 @@ class MockReceiptWord:
     Implements WordLike protocol for use in word formatting functions.
     """
 
+    # pylint: disable=too-many-positional-arguments
     def __init__(
         self,
         image_id: str,
@@ -22,6 +23,7 @@ class MockReceiptWord:
         line_id: int,
         word_id: int,
         text: str,
+        *,
         x: float = 0.5,
         y: float = 0.5,
         width: float = 0.1,

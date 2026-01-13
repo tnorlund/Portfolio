@@ -20,8 +20,10 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any
 
+import boto3
+from openai import OpenAI
 from receipt_dynamo.constants import CompactionState
 from receipt_dynamo.entities import (
     CompactionRun,
@@ -211,6 +213,25 @@ class EmbeddingResult:
         self.close()
 
 
+@dataclass
+class EmbeddingConfig:
+    """Configuration for embedding orchestration.
+
+    Groups parameters for create_embeddings_and_compaction_run to reduce
+    function signature complexity.
+    """
+
+    image_id: str
+    receipt_id: int
+    chromadb_bucket: str
+    dynamo_client: "DynamoClient"
+    s3_client: "S3Client | None" = None
+    receipt_place: ReceiptPlace | None = None
+    receipt_word_labels: list[ReceiptWordLabel] | None = None
+    merchant_name: str | None = None
+    sqs_notify: bool = True
+
+
 def _send_sqs_notification(
     collection: str,
     delta_prefix: str,
@@ -218,8 +239,6 @@ def _send_sqs_notification(
     vector_count: int,
 ) -> None:
     """Send SQS notification for async compaction."""
-    import boto3
-
     queue_url_env = f"CHROMADB_{collection.upper()}_QUEUE_URL"
     queue_url = os.environ.get(queue_url_env)
 
@@ -228,7 +247,7 @@ def _send_sqs_notification(
         return
 
     try:
-        sqs = boto3.client("sqs")  # pylint: disable=import-outside-toplevel
+        sqs = boto3.client("sqs")
         message_body = {
             "delta_key": delta_prefix,
             "collection": collection,
@@ -263,18 +282,199 @@ def _send_sqs_notification(
         logger.warning("Failed to send SQS notification: %s", e)
 
 
-def create_embeddings_and_compaction_run(
-    receipt_lines: List[ReceiptLine],
-    receipt_words: List[ReceiptWord],
-    image_id: str,
-    receipt_id: int,
+def _download_snapshots(
     chromadb_bucket: str,
-    dynamo_client: "DynamoClient",
-    s3_client: Optional["S3Client"] = None,
-    receipt_place: Optional[ReceiptPlace] = None,
-    receipt_word_labels: Optional[List[ReceiptWordLabel]] = None,
-    merchant_name: Optional[str] = None,
-    sqs_notify: bool = True,
+    s3_client: "S3Client",
+) -> tuple[str, str]:
+    """Download lines and words snapshots from S3.
+
+    Returns:
+        Tuple of (lines_dir, words_dir) paths to local directories.
+    """
+    local_lines_dir = tempfile.mkdtemp(prefix="lines_snapshot_")
+    local_words_dir = tempfile.mkdtemp(prefix="words_snapshot_")
+
+    lines_download = download_snapshot_atomic(
+        bucket=chromadb_bucket,
+        collection="lines",
+        local_path=local_lines_dir,
+        verify_integrity=False,
+        s3_client=s3_client,
+    )
+    logger.info(
+        "Downloaded lines snapshot: status=%s, version=%s",
+        lines_download.get("status"),
+        lines_download.get("version_id"),
+    )
+
+    words_download = download_snapshot_atomic(
+        bucket=chromadb_bucket,
+        collection="words",
+        local_path=local_words_dir,
+        verify_integrity=False,
+        s3_client=s3_client,
+    )
+    logger.info(
+        "Downloaded words snapshot: status=%s, version=%s",
+        words_download.get("status"),
+        words_download.get("version_id"),
+    )
+
+    return local_lines_dir, local_words_dir
+
+
+def _generate_embeddings(
+    openai_client: OpenAI,
+    receipt_lines: list[ReceiptLine],
+    receipt_words: list[ReceiptWord],
+    receipt_word_labels: list[ReceiptWordLabel],
+    merchant_name: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Generate embeddings for lines and words via OpenAI.
+
+    Returns:
+        Tuple of (line_payload, word_payload) dicts for ChromaDB upsert.
+    """
+    model = os.environ.get("OPENAI_EMBEDDING_MODEL", EMBEDDING_MODEL)
+
+    # Generate line embeddings
+    line_embeddings = embed_texts(
+        client=openai_client,
+        texts=[ln.text for ln in receipt_lines],
+        model=model,
+    )
+    line_records = [
+        LineEmbeddingRecord(line=ln, embedding=emb)
+        for ln, emb in zip(receipt_lines, line_embeddings, strict=True)
+    ]
+    line_payload = build_line_payload(
+        line_records,
+        receipt_lines,
+        receipt_words,
+        merchant_name=merchant_name,
+    )
+
+    # Generate word embeddings with context formatting
+    word_texts = [
+        format_word_context_embedding_input(w, receipt_words, context_size=2)
+        for w in receipt_words
+    ]
+    word_embeddings = embed_texts(
+        client=openai_client,
+        texts=word_texts,
+        model=model,
+    )
+    word_records = [
+        WordEmbeddingRecord(word=w, embedding=emb)
+        for w, emb in zip(receipt_words, word_embeddings, strict=True)
+    ]
+    word_payload = build_word_payload(
+        word_records,
+        receipt_words,
+        receipt_word_labels,
+        merchant_name=merchant_name,
+    )
+
+    return line_payload, word_payload
+
+
+def _upload_deltas(
+    line_payload: dict[str, Any],
+    word_payload: dict[str, Any],
+    run_id: str,
+    *,
+    chromadb_bucket: str,
+    s3_client: "S3Client",
+    sqs_notify: bool,
+) -> tuple[str, str]:
+    """Create delta ChromaDB collections and upload to S3.
+
+    Returns:
+        Tuple of (lines_prefix, words_prefix) for the uploaded deltas.
+    """
+    delta_lines_dir = tempfile.mkdtemp(prefix="lines_delta_")
+    delta_words_dir = tempfile.mkdtemp(prefix="words_delta_")
+
+    try:
+        # Create delta-only clients and upsert
+        delta_line_client = ChromaClient(
+            persist_directory=delta_lines_dir,
+            mode="delta",
+            metadata_only=True,
+        )
+        delta_word_client = ChromaClient(
+            persist_directory=delta_words_dir,
+            mode="delta",
+            metadata_only=True,
+        )
+
+        delta_line_client.upsert_vectors(
+            collection_name="lines", **line_payload
+        )
+        delta_word_client.upsert_vectors(
+            collection_name="words", **word_payload
+        )
+
+        # Close before upload (critical for file locking)
+        delta_line_client.close()
+        delta_word_client.close()
+
+        # Upload deltas to S3
+        lines_prefix = f"lines/delta/{run_id}"
+        words_prefix = f"words/delta/{run_id}"
+
+        lines_upload = upload_delta_tarball(
+            local_delta_dir=delta_lines_dir,
+            bucket=chromadb_bucket,
+            delta_prefix=lines_prefix,
+            metadata={"delta_key": lines_prefix, "run_id": run_id},
+            s3_client=s3_client,
+        )
+        if lines_upload.get("status") != "uploaded":
+            raise RuntimeError(f"Failed to upload lines delta: {lines_upload}")
+
+        words_upload = upload_delta_tarball(
+            local_delta_dir=delta_words_dir,
+            bucket=chromadb_bucket,
+            delta_prefix=words_prefix,
+            metadata={"delta_key": words_prefix, "run_id": run_id},
+            s3_client=s3_client,
+        )
+        if words_upload.get("status") != "uploaded":
+            raise RuntimeError(f"Failed to upload words delta: {words_upload}")
+
+        logger.info(
+            "Uploaded deltas to S3: lines=%s, words=%s",
+            lines_upload.get("object_key"),
+            words_upload.get("object_key"),
+        )
+
+        # Send SQS notifications if enabled
+        if sqs_notify:
+            _send_sqs_notification(
+                collection="lines",
+                delta_prefix=lines_prefix,
+                run_id=run_id,
+                vector_count=len(line_payload["ids"]),
+            )
+            _send_sqs_notification(
+                collection="words",
+                delta_prefix=words_prefix,
+                run_id=run_id,
+                vector_count=len(word_payload["ids"]),
+            )
+
+        return lines_prefix, words_prefix
+
+    finally:
+        shutil.rmtree(delta_lines_dir, ignore_errors=True)
+        shutil.rmtree(delta_words_dir, ignore_errors=True)
+
+
+def create_embeddings_and_compaction_run(
+    receipt_lines: list[ReceiptLine],
+    receipt_words: list[ReceiptWord],
+    config: EmbeddingConfig,
 ) -> EmbeddingResult:
     """
     Create embeddings, upload deltas to S3, and return local clients.
@@ -290,15 +490,7 @@ def create_embeddings_and_compaction_run(
     Args:
         receipt_lines: Lines to embed (required)
         receipt_words: Words to embed (required)
-        image_id: Image identifier
-        receipt_id: Receipt identifier
-        chromadb_bucket: S3 bucket for ChromaDB snapshots/deltas
-        dynamo_client: DynamoDB client for CompactionRun persistence
-        s3_client: Optional S3 client (creates one if not provided)
-        receipt_place: Optional place data for merchant context
-        receipt_word_labels: Optional word labels for enrichment
-        merchant_name: Explicit merchant name override
-        sqs_notify: Whether to send SQS notification (default True)
+        config: EmbeddingConfig with image_id, receipt_id, bucket, etc.
 
     Returns:
         EmbeddingResult with lines_client, words_client, and compaction_run
@@ -312,111 +504,39 @@ def create_embeddings_and_compaction_run(
         raise ValueError("receipt_lines cannot be empty")
     if not receipt_words:
         raise ValueError("receipt_words cannot be empty")
-
     if not os.environ.get("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY environment variable not set")
-
-    # Import OpenAI client lazily
-    from openai import (  # pylint: disable=import-outside-toplevel
-        OpenAI,
-    )
 
     openai_client = OpenAI()
 
     # Resolve merchant name from receipt_place if not explicitly provided
-    merchant_name = merchant_name or (
-        receipt_place.merchant_name if receipt_place else None
+    merchant_name = config.merchant_name or (
+        config.receipt_place.merchant_name if config.receipt_place else None
     )
 
     run_id = str(uuid.uuid4())
+    s3_client = config.s3_client or boto3.client("s3")
 
-    # Create S3 client if not provided
-    if s3_client is None:
-        import boto3  # pylint: disable=import-outside-toplevel
-
-        s3_client = boto3.client("s3")
-
-    # Step 1: Download snapshots to local directories
-    local_lines_dir = tempfile.mkdtemp(prefix="lines_snapshot_")
-    local_words_dir = tempfile.mkdtemp(prefix="words_snapshot_")
+    # Step 1: Download snapshots
+    local_lines_dir, local_words_dir = _download_snapshots(
+        config.chromadb_bucket, s3_client
+    )
 
     try:
-        # Download lines snapshot
-        lines_download = download_snapshot_atomic(
-            bucket=chromadb_bucket,
-            collection="lines",
-            local_path=local_lines_dir,
-            verify_integrity=False,  # Skip for speed
-            s3_client=s3_client,
-        )
-        logger.info(
-            "Downloaded lines snapshot: status=%s, version=%s",
-            lines_download.get("status"),
-            lines_download.get("version_id"),
-        )
-
-        # Download words snapshot
-        words_download = download_snapshot_atomic(
-            bucket=chromadb_bucket,
-            collection="words",
-            local_path=local_words_dir,
-            verify_integrity=False,
-            s3_client=s3_client,
-        )
-        logger.info(
-            "Downloaded words snapshot: status=%s, version=%s",
-            words_download.get("status"),
-            words_download.get("version_id"),
-        )
-
-        # Step 2: Generate embeddings via OpenAI
-        model = os.environ.get("OPENAI_EMBEDDING_MODEL", EMBEDDING_MODEL)
-
-        line_embeddings = embed_texts(
-            client=openai_client,
-            texts=[ln.text for ln in receipt_lines],
-            model=model,
-        )
-        line_records = [
-            LineEmbeddingRecord(line=ln, embedding=emb)
-            for ln, emb in zip(receipt_lines, line_embeddings, strict=True)
-        ]
-        line_payload = build_line_payload(
-            line_records,
+        # Step 2: Generate embeddings
+        line_payload, word_payload = _generate_embeddings(
+            openai_client,
             receipt_lines,
             receipt_words,
-            merchant_name=merchant_name,
+            config.receipt_word_labels or [],
+            merchant_name,
         )
 
-        # Format words with context (same format as batch pipeline)
-        word_texts = [
-            format_word_context_embedding_input(
-                w, receipt_words, context_size=2
-            )
-            for w in receipt_words
-        ]
-        word_embeddings = embed_texts(
-            client=openai_client,
-            texts=word_texts,
-            model=model,
-        )
-        word_records = [
-            WordEmbeddingRecord(word=w, embedding=emb)
-            for w, emb in zip(receipt_words, word_embeddings, strict=True)
-        ]
-        word_payload = build_word_payload(
-            word_records,
-            receipt_words,
-            receipt_word_labels or [],
-            merchant_name=merchant_name,
-        )
-
-        # Step 3: Create local ChromaClients on downloaded snapshots and upsert
-        # These operate on the downloaded snapshots, adding the new embeddings
+        # Step 3: Create local clients and upsert
         lines_client = ChromaClient(
             persist_directory=local_lines_dir,
-            mode="write",  # Write mode to allow upserts
-            metadata_only=True,  # Avoid OpenAI API costs
+            mode="write",
+            metadata_only=True,
         )
         words_client = ChromaClient(
             persist_directory=local_words_dir,
@@ -433,102 +553,30 @@ def create_embeddings_and_compaction_run(
             len(word_payload["ids"]),
         )
 
-        # Step 4: Create separate delta directories and upload to S3
-        delta_lines_dir = tempfile.mkdtemp(prefix="lines_delta_")
-        delta_words_dir = tempfile.mkdtemp(prefix="words_delta_")
-
-        try:
-            # Create delta-only clients
-            delta_line_client = ChromaClient(
-                persist_directory=delta_lines_dir,
-                mode="delta",
-                metadata_only=True,
-            )
-            delta_word_client = ChromaClient(
-                persist_directory=delta_words_dir,
-                mode="delta",
-                metadata_only=True,
-            )
-
-            delta_line_client.upsert_vectors(
-                collection_name="lines", **line_payload
-            )
-            delta_word_client.upsert_vectors(
-                collection_name="words", **word_payload
-            )
-
-            # Close delta clients before upload (critical for file locking)
-            delta_line_client.close()
-            delta_word_client.close()
-
-            # Upload deltas to S3
-            lines_prefix = f"lines/delta/{run_id}"
-            words_prefix = f"words/delta/{run_id}"
-
-            lines_upload = upload_delta_tarball(
-                local_delta_dir=delta_lines_dir,
-                bucket=chromadb_bucket,
-                delta_prefix=lines_prefix,
-                metadata={"delta_key": lines_prefix, "run_id": run_id},
-                s3_client=s3_client,
-            )
-            if lines_upload.get("status") != "uploaded":
-                raise RuntimeError(
-                    f"Failed to upload lines delta: {lines_upload}"
-                )
-
-            words_upload = upload_delta_tarball(
-                local_delta_dir=delta_words_dir,
-                bucket=chromadb_bucket,
-                delta_prefix=words_prefix,
-                metadata={"delta_key": words_prefix, "run_id": run_id},
-                s3_client=s3_client,
-            )
-            if words_upload.get("status") != "uploaded":
-                raise RuntimeError(
-                    f"Failed to upload words delta: {words_upload}"
-                )
-
-            logger.info(
-                "Uploaded deltas to S3: lines=%s, words=%s",
-                lines_upload.get("object_key"),
-                words_upload.get("object_key"),
-            )
-
-            # Send SQS notifications if enabled
-            if sqs_notify:
-                _send_sqs_notification(
-                    collection="lines",
-                    delta_prefix=lines_prefix,
-                    run_id=run_id,
-                    vector_count=len(line_payload["ids"]),
-                )
-                _send_sqs_notification(
-                    collection="words",
-                    delta_prefix=words_prefix,
-                    run_id=run_id,
-                    vector_count=len(word_payload["ids"]),
-                )
-
-        finally:
-            # Clean up delta directories
-            shutil.rmtree(delta_lines_dir, ignore_errors=True)
-            shutil.rmtree(delta_words_dir, ignore_errors=True)
+        # Step 4: Upload deltas to S3
+        lines_prefix, words_prefix = _upload_deltas(
+            line_payload,
+            word_payload,
+            run_id,
+            chromadb_bucket=config.chromadb_bucket,
+            s3_client=s3_client,
+            sqs_notify=config.sqs_notify,
+        )
 
         # Step 5: Create and persist CompactionRun
         compaction_run = CompactionRun(
             run_id=run_id,
-            image_id=image_id,
-            receipt_id=receipt_id,
+            image_id=config.image_id,
+            receipt_id=config.receipt_id,
             lines_delta_prefix=f"{lines_prefix}/",
             words_delta_prefix=f"{words_prefix}/",
         )
 
-        dynamo_client.add_compaction_run(compaction_run)
+        config.dynamo_client.add_compaction_run(compaction_run)
         logger.info(
             "Created CompactionRun %s for receipt %s",
             run_id,
-            receipt_id,
+            config.receipt_id,
         )
 
         # Step 6: Return EmbeddingResult
@@ -540,8 +588,7 @@ def create_embeddings_and_compaction_run(
             _words_dir=local_words_dir,
         )
 
-    except Exception:  # pylint: disable=broad-exception-caught
-        # Clean up on failure
+    except Exception:
         shutil.rmtree(local_lines_dir, ignore_errors=True)
         shutil.rmtree(local_words_dir, ignore_errors=True)
         raise
