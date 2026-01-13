@@ -62,56 +62,9 @@ def format_word_context_embedding_input(
     Returns:
         Formatted string with context words and <EDGE> tags
     """
-    # Sort all words by x-coordinate (horizontal position)
-    # Use a stable sort key: (x, original_index) to preserve order when
-    # x is identical
-    sorted_all = sorted(
-        enumerate(all_words),
-        key=lambda item: (item[1].calculate_centroid()[0], item[0]),
+    left_words, right_words = get_word_neighbors(
+        target_word, all_words, context_size
     )
-
-    # Find index of target in sorted list
-    idx = next(
-        i
-        for i, (orig_idx, w) in enumerate(sorted_all)
-        if (w.image_id, w.receipt_id, w.line_id, w.word_id)
-        == (
-            target_word.image_id,
-            target_word.receipt_id,
-            target_word.line_id,
-            target_word.word_id,
-        )
-    )
-
-    # Collect left neighbors (up to context_size)
-    # Find words based on horizontal position, regardless of line
-    left_words = []
-    for orig_idx, w in reversed(sorted_all[:idx]):
-        if (w.image_id, w.receipt_id, w.line_id, w.word_id) == (
-            target_word.image_id,
-            target_word.receipt_id,
-            target_word.line_id,
-            target_word.word_id,
-        ):
-            continue
-        left_words.append(w.text)
-        if len(left_words) >= context_size:
-            break
-
-    # Collect right neighbors (up to context_size)
-    # Find words based on horizontal position, regardless of line
-    right_words = []
-    for orig_idx, w in sorted_all[idx + 1 :]:
-        if (w.image_id, w.receipt_id, w.line_id, w.word_id) == (
-            target_word.image_id,
-            target_word.receipt_id,
-            target_word.line_id,
-            target_word.word_id,
-        ):
-            continue
-        right_words.append(w.text)
-        if len(right_words) >= context_size:
-            break
 
     # Pad left with <EDGE> tags if needed (one per missing position)
     left_padded = (
@@ -185,6 +138,7 @@ def get_word_neighbors(
     target_word: ReceiptWord,
     all_words: List[ReceiptWord],
     context_size: int = 2,
+    y_proximity_threshold: float = 0.05,
 ) -> Tuple[List[str], List[str]]:
     """
     Get the left and right neighbor words for the target word with
@@ -195,31 +149,40 @@ def get_word_neighbors(
     shorter than context_size. Callers requiring <EDGE>-padded outputs should
     use format_word_context_embedding_input instead.
 
-    Finds neighbors based on horizontal position (x-coordinate), regardless
-    of line (y-coordinate). When x-coordinates are identical, preserves
-    original list order (stable sort).
+    Uses a line-aware approach:
+    1. First, find words on the same visual line using vertical span overlap
+    2. If not enough, find words on nearby lines (within y_proximity_threshold)
+    3. Sort by x-coordinate to find left/right neighbors
 
     Args:
         target_word: The word to find neighbors for
         all_words: All words in the receipt
         context_size: Maximum number of words to include on each side
             (default: 2). Actual number may be less if fewer neighbors exist.
+        y_proximity_threshold: Maximum y-coordinate difference to consider
+            words as being on "nearby" lines (default: 0.05 normalized units)
 
     Returns:
         Tuple of (left_words, right_words) where each is a list of up to
         context_size word texts. Lists may be shorter if fewer neighbors are
         available.
     """
-    # Sort all words by x-coordinate (horizontal position)
-    # Use a stable sort key: (x, original_index) to preserve order when
-    # x is identical
+    target_centroid = target_word.calculate_centroid()
+    target_x = target_centroid[0]
+    target_y = target_centroid[1]
+
+    # Use vertical span overlap for same-line detection
+    target_bottom = target_word.bounding_box["y"]
+    target_top = target_bottom + target_word.bounding_box["height"]
+
+    # Sort all words by x-coordinate
     sorted_all = sorted(
         enumerate(all_words),
         key=lambda item: (item[1].calculate_centroid()[0], item[0]),
     )
 
-    # Find index of target in sorted list
-    idx = next(
+    # Find target word's index
+    target_idx = next(
         i
         for i, (orig_idx, w) in enumerate(sorted_all)
         if (w.image_id, w.receipt_id, w.line_id, w.word_id)
@@ -231,25 +194,11 @@ def get_word_neighbors(
         )
     )
 
-    # Collect left neighbors (up to context_size)
-    # Find words based on horizontal position, regardless of line
-    left_words = []
-    for orig_idx, w in reversed(sorted_all[:idx]):
-        if (w.image_id, w.receipt_id, w.line_id, w.word_id) == (
-            target_word.image_id,
-            target_word.receipt_id,
-            target_word.line_id,
-            target_word.word_id,
-        ):
-            continue
-        left_words.append(w.text)
-        if len(left_words) >= context_size:
-            break
+    # Find candidates: same line (vertical span overlap) or nearby lines (y-proximity)
+    same_line_candidates = []
+    nearby_line_candidates = []
 
-    # Collect right neighbors (up to context_size)
-    # Find words based on horizontal position, regardless of line
-    right_words = []
-    for orig_idx, w in sorted_all[idx + 1 :]:
+    for orig_idx, w in sorted_all:
         if (w.image_id, w.receipt_id, w.line_id, w.word_id) == (
             target_word.image_id,
             target_word.receipt_id,
@@ -257,8 +206,78 @@ def get_word_neighbors(
             target_word.word_id,
         ):
             continue
-        right_words.append(w.text)
-        if len(right_words) >= context_size:
-            break
+
+        w_centroid = w.calculate_centroid()
+        w_bottom = w.bounding_box["y"]
+        w_top = w_bottom + w.bounding_box["height"]
+
+        # Check vertical span overlap (same visual line)
+        if w_bottom >= target_bottom and w_top <= target_top:
+            same_line_candidates.append((orig_idx, w))
+        # Check y-proximity (nearby lines)
+        elif abs(w_centroid[1] - target_y) < y_proximity_threshold:
+            nearby_line_candidates.append((orig_idx, w))
+
+    # Filter nearby-line candidates by x-proximity, then sort by y-proximity
+    x_proximity_threshold = 0.25
+    nearby_line_left_filtered = [
+        (orig_idx, w) for orig_idx, w in nearby_line_candidates
+        if w.calculate_centroid()[0] < target_x
+        and (target_x - w.calculate_centroid()[0]) < x_proximity_threshold
+    ]
+    nearby_line_right_filtered = [
+        (orig_idx, w) for orig_idx, w in nearby_line_candidates
+        if w.calculate_centroid()[0] > target_x
+        and (w.calculate_centroid()[0] - target_x) < x_proximity_threshold
+    ]
+
+    nearby_line_left_sorted = sorted(
+        nearby_line_left_filtered,
+        key=lambda item: (
+            abs(item[1].calculate_centroid()[1] - target_y),
+            target_x - item[1].calculate_centroid()[0],
+        ),
+    )
+    nearby_line_right_sorted = sorted(
+        nearby_line_right_filtered,
+        key=lambda item: (
+            abs(item[1].calculate_centroid()[1] - target_y),
+            item[1].calculate_centroid()[0] - target_x,
+        ),
+    )
+
+    # Collect left neighbors: prioritize same line, then nearby lines
+    left_words = []
+
+    # First, try same-line words to the left
+    for orig_idx, w in reversed(sorted_all[:target_idx]):
+        if (orig_idx, w) in same_line_candidates:
+            left_words.append(w.text)
+            if len(left_words) >= context_size:
+                break
+
+    # If not enough, add nearby-line words to the left
+    if len(left_words) < context_size:
+        for orig_idx, w in nearby_line_left_sorted:
+            left_words.append(w.text)
+            if len(left_words) >= context_size:
+                break
+
+    # Collect right neighbors: prioritize same line, then nearby lines
+    right_words = []
+
+    # First, try same-line words to the right
+    for orig_idx, w in sorted_all[target_idx + 1 :]:
+        if (orig_idx, w) in same_line_candidates:
+            right_words.append(w.text)
+            if len(right_words) >= context_size:
+                break
+
+    # If not enough, add nearby-line words to the right
+    if len(right_words) < context_size:
+        for orig_idx, w in nearby_line_right_sorted:
+            right_words.append(w.text)
+            if len(right_words) >= context_size:
+                break
 
     return left_words, right_words
