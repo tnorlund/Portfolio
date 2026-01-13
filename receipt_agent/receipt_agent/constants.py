@@ -102,9 +102,6 @@ LINE_ITEM_EVALUATION_LABELS = {
     "QUANTITY",
 }
 
-# Backward compatibility alias
-CURRENCY_LABELS = LINE_ITEM_EVALUATION_LABELS
-
 # Financial math labels - labels involved in receipt math validation
 # Used by financial_subagent to verify: GRAND_TOTAL = SUBTOTAL + TAX, etc.
 FINANCIAL_MATH_LABELS = {

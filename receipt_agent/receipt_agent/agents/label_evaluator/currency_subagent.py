@@ -36,7 +36,7 @@ from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
 from pydantic import ValidationError
-from receipt_agent.constants import CURRENCY_LABELS
+from receipt_agent.constants import LINE_ITEM_EVALUATION_LABELS
 from receipt_agent.prompts.structured_outputs import (
     CurrencyEvaluationResponse,
     extract_json_from_response,
@@ -173,7 +173,7 @@ def identify_line_item_rows(
                 wc
                 for wc in line.words
                 if wc.current_label is not None
-                and wc.current_label.label in CURRENCY_LABELS
+                and wc.current_label.label in LINE_ITEM_EVALUATION_LABELS
             ]
             rows.append(
                 LineItemRow(
@@ -209,7 +209,7 @@ def collect_currency_words(
             )
 
             # Check if word has a currency label (LINE_TOTAL, UNIT_PRICE, etc.)
-            has_eval_label = current_label in CURRENCY_LABELS
+            has_eval_label = current_label in LINE_ITEM_EVALUATION_LABELS
 
             # Check if word looks like currency and is on a line item row
             text = wc.word.text
