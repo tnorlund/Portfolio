@@ -4,7 +4,7 @@ This module provides functions for formatting word context for embeddings,
 including neighbor detection and position calculation.
 """
 
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 from receipt_dynamo.entities import ReceiptWord
 
@@ -167,7 +167,15 @@ def get_word_neighbors(
         context_size word texts. Lists may be shorter if fewer neighbors are
         available.
     """
-    target_centroid = target_word.calculate_centroid()
+    # Cache centroids for all words to avoid repeated calculations
+    def word_key(w: ReceiptWord) -> Tuple[str, int, int, int]:
+        return (w.image_id, w.receipt_id, w.line_id, w.word_id)
+
+    centroid_cache: Dict[Tuple[str, int, int, int], Tuple[float, float]] = {
+        word_key(w): w.calculate_centroid() for w in all_words
+    }
+
+    target_centroid = centroid_cache[word_key(target_word)]
     target_x = target_centroid[0]
     target_y = target_centroid[1]
 
@@ -178,7 +186,7 @@ def get_word_neighbors(
     # Sort all words by x-coordinate
     sorted_all = sorted(
         enumerate(all_words),
-        key=lambda item: (item[1].calculate_centroid()[0], item[0]),
+        key=lambda item: (centroid_cache[word_key(item[1])][0], item[0]),
     )
 
     # Find target word's index
@@ -207,7 +215,7 @@ def get_word_neighbors(
         ):
             continue
 
-        w_centroid = w.calculate_centroid()
+        w_centroid = centroid_cache[word_key(w)]
         w_bottom = w.bounding_box["y"]
         w_top = w_bottom + w.bounding_box["height"]
 
@@ -223,27 +231,27 @@ def get_word_neighbors(
     x_proximity_threshold = 0.25
     nearby_line_left_filtered = [
         (orig_idx, w) for orig_idx, w in nearby_line_candidates
-        if w.calculate_centroid()[0] < target_x
-        and (target_x - w.calculate_centroid()[0]) < x_proximity_threshold
+        if centroid_cache[word_key(w)][0] < target_x
+        and (target_x - centroid_cache[word_key(w)][0]) < x_proximity_threshold
     ]
     nearby_line_right_filtered = [
         (orig_idx, w) for orig_idx, w in nearby_line_candidates
-        if w.calculate_centroid()[0] > target_x
-        and (w.calculate_centroid()[0] - target_x) < x_proximity_threshold
+        if centroid_cache[word_key(w)][0] > target_x
+        and (centroid_cache[word_key(w)][0] - target_x) < x_proximity_threshold
     ]
 
     nearby_line_left_sorted = sorted(
         nearby_line_left_filtered,
         key=lambda item: (
-            abs(item[1].calculate_centroid()[1] - target_y),
-            target_x - item[1].calculate_centroid()[0],
+            abs(centroid_cache[word_key(item[1])][1] - target_y),
+            target_x - centroid_cache[word_key(item[1])][0],
         ),
     )
     nearby_line_right_sorted = sorted(
         nearby_line_right_filtered,
         key=lambda item: (
-            abs(item[1].calculate_centroid()[1] - target_y),
-            item[1].calculate_centroid()[0] - target_x,
+            abs(centroid_cache[word_key(item[1])][1] - target_y),
+            centroid_cache[word_key(item[1])][0] - target_x,
         ),
     )
 
