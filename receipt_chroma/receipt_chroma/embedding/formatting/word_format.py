@@ -247,19 +247,26 @@ def get_word_neighbors(
         ),
     )
 
+    # Create set of same-line word identifiers for O(1) lookup
+    same_line_ids = {
+        (w.image_id, w.receipt_id, w.line_id, w.word_id)
+        for _, w in same_line_candidates
+    }
+
     # Collect left neighbors: prioritize same line, then nearby lines
     left_words = []
 
     # First, try same-line words to the left
-    for orig_idx, w in reversed(sorted_all[:target_idx]):
-        if (orig_idx, w) in same_line_candidates:
+    for _, w in reversed(sorted_all[:target_idx]):
+        word_id = (w.image_id, w.receipt_id, w.line_id, w.word_id)
+        if word_id in same_line_ids:
             left_words.append(w.text)
             if len(left_words) >= context_size:
                 break
 
     # If not enough, add nearby-line words to the left
     if len(left_words) < context_size:
-        for orig_idx, w in nearby_line_left_sorted:
+        for _, w in nearby_line_left_sorted:
             left_words.append(w.text)
             if len(left_words) >= context_size:
                 break
@@ -268,15 +275,16 @@ def get_word_neighbors(
     right_words = []
 
     # First, try same-line words to the right
-    for orig_idx, w in sorted_all[target_idx + 1 :]:
-        if (orig_idx, w) in same_line_candidates:
+    for _, w in sorted_all[target_idx + 1 :]:
+        word_id = (w.image_id, w.receipt_id, w.line_id, w.word_id)
+        if word_id in same_line_ids:
             right_words.append(w.text)
             if len(right_words) >= context_size:
                 break
 
     # If not enough, add nearby-line words to the right
     if len(right_words) < context_size:
-        for orig_idx, w in nearby_line_right_sorted:
+        for _, w in nearby_line_right_sorted:
             right_words.append(w.text)
             if len(right_words) >= context_size:
                 break
