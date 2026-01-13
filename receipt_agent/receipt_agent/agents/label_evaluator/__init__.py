@@ -91,6 +91,7 @@ For LangSmith evaluations:
     )
 """
 
+from receipt_agent.constants import LINE_ITEM_EVALUATION_LABELS
 from receipt_agent.agents.label_evaluator.currency_subagent import (
     CurrencyWord,
     LineItemRow,
@@ -148,7 +149,6 @@ from receipt_agent.agents.label_evaluator.langsmith_evaluator import (
     label_quality_evaluator,
 )
 from receipt_agent.agents.label_evaluator.llm_review import (
-    CURRENCY_LABELS,
     apply_llm_decisions,
     assemble_receipt_text,
     build_review_context,
@@ -258,7 +258,7 @@ __all__ = [
     "query_similar_validated_words",
     "format_similar_words_for_prompt",
     # Receipt text assembly for LLM review
-    "CURRENCY_LABELS",
+    "LINE_ITEM_EVALUATION_LABELS",
     "assemble_receipt_text",
     "extract_receipt_currency_context",
     "is_currency_amount",

@@ -13,43 +13,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.label_count_cache import LabelCountCache
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-
-CORE_LABELS = [
-    # Merchant & store info
-    "MERCHANT_NAME",
-    "STORE_HOURS",
-    "PHONE_NUMBER",
-    "WEBSITE",
-    "LOYALTY_ID",
-    # Location/address (either as one line or broken out)
-    "ADDRESS_LINE",  # or, for finer breakdown:
-    # "ADDRESS_NUMBER",
-    # "STREET_NAME",
-    # "CITY",
-    # "STATE",
-    # "POSTAL_CODE",
-    # Transaction info
-    "DATE",
-    "TIME",
-    "PAYMENT_METHOD",
-    "COUPON",
-    "DISCOUNT",  # if you want to distinguish coupons vs. generic discounts
-    # Line‑item fields
-    "PRODUCT_NAME",  # or ITEM_NAME
-    "QUANTITY",  # or ITEM_QUANTITY
-    "UNIT_PRICE",  # or ITEM_PRICE
-    "LINE_TOTAL",  # or ITEM_TOTAL
-    # Totals & taxes
-    "SUBTOTAL",
-    "TAX",
-    "GRAND_TOTAL",  # or TOTAL
-]
 
 dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
 dynamo_client = DynamoClient(dynamodb_table_name)

@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from receipt_chroma.embedding.orchestration import (
+    EmbeddingConfig,
     EmbeddingResult,
     create_embeddings_and_compaction_run,
 )
@@ -242,15 +243,18 @@ class TestCreateEmbeddingsValidation:
         """Verify ValueError raised for empty receipt_lines."""
         mock_dynamo = MagicMock()
         mock_word = MagicMock()
+        config = EmbeddingConfig(
+            image_id="test",
+            receipt_id=1,
+            chromadb_bucket="bucket",
+            dynamo_client=mock_dynamo,
+        )
 
         with pytest.raises(ValueError, match="receipt_lines cannot be empty"):
             create_embeddings_and_compaction_run(
                 receipt_lines=[],
                 receipt_words=[mock_word],
-                image_id="test",
-                receipt_id=1,
-                chromadb_bucket="bucket",
-                dynamo_client=mock_dynamo,
+                config=config,
             )
 
     @pytest.mark.unit
@@ -258,15 +262,18 @@ class TestCreateEmbeddingsValidation:
         """Verify ValueError raised for empty receipt_words."""
         mock_dynamo = MagicMock()
         mock_line = MagicMock()
+        config = EmbeddingConfig(
+            image_id="test",
+            receipt_id=1,
+            chromadb_bucket="bucket",
+            dynamo_client=mock_dynamo,
+        )
 
         with pytest.raises(ValueError, match="receipt_words cannot be empty"):
             create_embeddings_and_compaction_run(
                 receipt_lines=[mock_line],
                 receipt_words=[],
-                image_id="test",
-                receipt_id=1,
-                chromadb_bucket="bucket",
-                dynamo_client=mock_dynamo,
+                config=config,
             )
 
     @pytest.mark.unit
@@ -275,6 +282,12 @@ class TestCreateEmbeddingsValidation:
         mock_dynamo = MagicMock()
         mock_line = MagicMock()
         mock_word = MagicMock()
+        config = EmbeddingConfig(
+            image_id="test",
+            receipt_id=1,
+            chromadb_bucket="bucket",
+            dynamo_client=mock_dynamo,
+        )
 
         # Ensure OPENAI_API_KEY is not set
         with patch.dict(os.environ, {}, clear=True):
@@ -287,8 +300,5 @@ class TestCreateEmbeddingsValidation:
                 create_embeddings_and_compaction_run(
                     receipt_lines=[mock_line],
                     receipt_words=[mock_word],
-                    image_id="test",
-                    receipt_id=1,
-                    chromadb_bucket="bucket",
-                    dynamo_client=mock_dynamo,
+                    config=config,
                 )

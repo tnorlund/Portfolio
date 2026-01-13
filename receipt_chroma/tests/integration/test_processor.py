@@ -121,7 +121,7 @@ class TestProcessor:
                 {
                     "text": "Total",
                     "label_status": "auto_suggested",
-                    "valid_labels": "",
+                    # No boolean label fields - word is pending validation
                 }
             ],
         )
@@ -459,8 +459,8 @@ class TestProcessor:
                 {
                     "text": "Total",
                     "label_status": "auto_suggested",
-                    "valid_labels": "",
                     "merchant_name": "Initial",
+                    # No boolean label fields - word is pending validation
                 }
             ],
         )

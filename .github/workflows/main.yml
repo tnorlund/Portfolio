@@ -148,6 +148,9 @@ jobs:
         package: [receipt_dynamo, receipt_dynamo_stream, receipt_chroma, receipt_places]
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Force clean checkout on self-hosted runners to prevent stale file issues
+          clean: true
 
       - name: Set up Python (GitHub-hosted)
         if: ${{ runner.os != 'macOS' }}
@@ -284,6 +287,10 @@ jobs:
           SKIP_PERFORMANCE_TESTS: "true"
         run: |
           echo "🚀 Running unified test suite for ${{ matrix.package }} with -n auto parallelization"
+
+          # Clean __pycache__ directories to prevent stale .pyc files from causing import issues
+          echo "🧹 Cleaning __pycache__ directories..."
+          find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
           # Run all tests together with optimal parallelization
           cd ${{ matrix.package }}

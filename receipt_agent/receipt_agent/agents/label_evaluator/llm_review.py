@@ -20,7 +20,6 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage
 
-from receipt_agent.constants import CURRENCY_LABELS
 from receipt_agent.prompts.label_evaluator import (
     build_batched_review_prompt,
     build_receipt_context_prompt,

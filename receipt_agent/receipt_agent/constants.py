@@ -1,32 +1,10 @@
-"""Shared constants for receipt_agent."""
+"""Shared constants for receipt_agent.
 
-CORE_LABELS = {
-    "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
-    "STORE_HOURS": "Printed business hours or opening times for the merchant.",
-    "PHONE_NUMBER": "Telephone number printed on the receipt (store's main line).",
-    "WEBSITE": "Web or email address printed on the receipt (e.g., sprouts.com).",
-    "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
-    "ADDRESS_LINE": ("Full address line (street + city etc.) printed on the receipt."),
-    "DATE": "Calendar date of the transaction.",
-    "TIME": "Time of the transaction.",
-    "PAYMENT_METHOD": ("Payment instrument summary (e.g., VISA ••••1234, CASH)."),
-    "COUPON": "Coupon code or description that reduces price.",
-    "DISCOUNT": "Any non-coupon discount line item (e.g., '10% OFF').",
-    "PRODUCT_NAME": "Name of a product or item being purchased.",
-    "QUANTITY": "Number of units purchased (e.g., '2', '1.5 lbs').",
-    "UNIT_PRICE": "Price per unit of the product.",
-    "LINE_TOTAL": "Total price for a line item (quantity × unit_price).",
-    "SUBTOTAL": "Subtotal before tax and discounts.",
-    "TAX": "Tax amount (sales tax, VAT, etc.).",
-    "GRAND_TOTAL": ("Final total amount paid (after all discounts and taxes)."),
-    # Payment-related labels (added 2025-12-18)
-    # These were missing from original schema and caused mislabeling in
-    # training data. When these values appeared on receipts, they were
-    # incorrectly labeled as LINE_TOTAL.
-    "CHANGE": "Change amount returned to the customer after transaction.",
-    "CASH_BACK": "Cash back amount dispensed from purchase.",
-    "REFUND": "Refund amount (full or partial return).",
-}
+CORE_LABELS is imported from receipt_dynamo.constants (single source of truth).
+This module extends with receipt_agent-specific groupings and relationships.
+"""
+
+from receipt_dynamo.constants import CORE_LABELS
 
 # Set of valid core label names for quick lookup
 CORE_LABELS_SET = set(CORE_LABELS.keys())
@@ -123,9 +101,6 @@ LINE_ITEM_EVALUATION_LABELS = {
     "PRODUCT_NAME",
     "QUANTITY",
 }
-
-# Backward compatibility alias
-CURRENCY_LABELS = LINE_ITEM_EVALUATION_LABELS
 
 # Financial math labels - labels involved in receipt math validation
 # Used by financial_subagent to verify: GRAND_TOTAL = SUBTOTAL + TAX, etc.
