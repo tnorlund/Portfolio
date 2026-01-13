@@ -441,8 +441,12 @@ export default function ReceiptPage({
           gap: "2rem",
         }}
       >
-        <ClientImageCounts />
-        <ClientReceiptCounts />
+        <ClientOnly>
+          <ClientImageCounts />
+        </ClientOnly>
+        <ClientOnly>
+          <ClientReceiptCounts />
+        </ClientOnly>
       </div>
 
       <h2>Identifying the Merchant</h2>
