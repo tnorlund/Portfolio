@@ -16,10 +16,28 @@ Usage:
 import argparse
 import logging
 import time
-from typing import Set
+from typing import List, Set, TypedDict
 
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
+
+
+class CascadeStats(TypedDict):
+    """Stats for cascade delete operation."""
+
+    receipts: int
+    receipt_lines: int
+    receipt_words: int
+    receipt_letters: int
+    receipt_word_labels: int
+    receipt_places: int
+    lines: int
+    words: int
+    letters: int
+    ocr_jobs: int
+    ocr_routing_decisions: int
+    errors: List[str]
+
 
 # Configure logging
 logging.basicConfig(
@@ -35,7 +53,9 @@ def get_all_image_ids(dynamo: DynamoClient) -> Set[str]:
     last_key = None
 
     while True:
-        images, last_key = dynamo.list_images(limit=100, last_evaluated_key=last_key)
+        images, last_key = dynamo.list_images(
+            limit=100, last_evaluated_key=last_key
+        )
         for img in images:
             image_ids.add(img.image_id)
 
@@ -45,13 +65,15 @@ def get_all_image_ids(dynamo: DynamoClient) -> Set[str]:
     return image_ids
 
 
-def delete_image_cascade(dynamo: DynamoClient, image_id: str, dry_run: bool = True) -> dict:
+def delete_image_cascade(
+    dynamo: DynamoClient, image_id: str, dry_run: bool = True
+) -> CascadeStats:
     """
     Delete an image and ALL its child records.
 
     Returns stats about what was deleted.
     """
-    stats = {
+    stats: CascadeStats = {
         "receipts": 0,
         "receipt_lines": 0,
         "receipt_words": 0,
@@ -79,7 +101,7 @@ def delete_image_cascade(dynamo: DynamoClient, image_id: str, dry_run: bool = Tr
         if not dry_run:
             try:
                 for i in range(0, len(details.receipt_word_labels), 25):
-                    chunk = details.receipt_word_labels[i:i + 25]
+                    chunk = details.receipt_word_labels[i : i + 25]
                     dynamo.delete_receipt_word_labels(chunk)
             except Exception as e:
                 stats["errors"].append(f"delete_receipt_word_labels: {e}")
@@ -90,7 +112,7 @@ def delete_image_cascade(dynamo: DynamoClient, image_id: str, dry_run: bool = Tr
         if not dry_run:
             try:
                 for i in range(0, len(details.receipt_letters), 25):
-                    chunk = details.receipt_letters[i:i + 25]
+                    chunk = details.receipt_letters[i : i + 25]
                     dynamo.delete_receipt_letters(chunk)
             except Exception as e:
                 stats["errors"].append(f"delete_receipt_letters: {e}")
@@ -101,7 +123,7 @@ def delete_image_cascade(dynamo: DynamoClient, image_id: str, dry_run: bool = Tr
         if not dry_run:
             try:
                 for i in range(0, len(details.receipt_words), 25):
-                    chunk = details.receipt_words[i:i + 25]
+                    chunk = details.receipt_words[i : i + 25]
                     dynamo.delete_receipt_words(chunk)
             except Exception as e:
                 stats["errors"].append(f"delete_receipt_words: {e}")
@@ -112,7 +134,7 @@ def delete_image_cascade(dynamo: DynamoClient, image_id: str, dry_run: bool = Tr
         if not dry_run:
             try:
                 for i in range(0, len(details.receipt_lines), 25):
-                    chunk = details.receipt_lines[i:i + 25]
+                    chunk = details.receipt_lines[i : i + 25]
                     dynamo.delete_receipt_lines(chunk)
             except Exception as e:
                 stats["errors"].append(f"delete_receipt_lines: {e}")
@@ -123,7 +145,7 @@ def delete_image_cascade(dynamo: DynamoClient, image_id: str, dry_run: bool = Tr
         if not dry_run:
             try:
                 for i in range(0, len(details.receipt_places), 25):
-                    chunk = details.receipt_places[i:i + 25]
+                    chunk = details.receipt_places[i : i + 25]
                     dynamo.delete_receipt_places(chunk)
             except Exception as e:
                 stats["errors"].append(f"delete_receipt_places: {e}")
@@ -134,21 +156,20 @@ def delete_image_cascade(dynamo: DynamoClient, image_id: str, dry_run: bool = Tr
         if not dry_run:
             try:
                 for i in range(0, len(details.receipts), 25):
-                    chunk = details.receipts[i:i + 25]
+                    chunk = details.receipts[i : i + 25]
                     dynamo.delete_receipts(chunk)
             except Exception as e:
                 stats["errors"].append(f"delete_receipts: {e}")
 
-    # Delete OCR letters/words/lines (non-receipt) - children before parents
-    # Note: Unlike lines, there's no delete_letters_from_image or delete_words_from_image
-    # helper in receipt_dynamo, so we chunk manually here. The 25-item batch size matches
-    # DynamoDB's BatchWriteItem limit.
+    # Delete OCR letters/words/lines (non-receipt) - children first
+    # Note: Unlike lines, no delete_letters_from_image helper exists.
+    # We chunk manually (25-item limit matches DynamoDB BatchWriteItem).
     if details.letters:
         stats["letters"] = len(details.letters)
         if not dry_run:
             try:
                 for i in range(0, len(details.letters), 25):
-                    chunk = details.letters[i:i + 25]
+                    chunk = details.letters[i : i + 25]
                     dynamo.delete_letters(chunk)
             except Exception as e:
                 stats["errors"].append(f"delete_letters: {e}")
@@ -158,7 +179,7 @@ def delete_image_cascade(dynamo: DynamoClient, image_id: str, dry_run: bool = Tr
         if not dry_run:
             try:
                 for i in range(0, len(details.words), 25):
-                    chunk = details.words[i:i + 25]
+                    chunk = details.words[i : i + 25]
                     dynamo.delete_words(chunk)
             except Exception as e:
                 stats["errors"].append(f"delete_words: {e}")
@@ -185,7 +206,9 @@ def delete_image_cascade(dynamo: DynamoClient, image_id: str, dry_run: bool = Tr
         stats["ocr_routing_decisions"] = len(details.ocr_routing_decisions)
         if not dry_run:
             try:
-                dynamo.delete_ocr_routing_decisions(details.ocr_routing_decisions)
+                dynamo.delete_ocr_routing_decisions(
+                    details.ocr_routing_decisions
+                )
             except Exception as e:
                 stats["errors"].append(f"delete_ocr_routing_decisions: {e}")
 
@@ -228,7 +251,9 @@ def main():
     logger.info(f"Mode: {mode}")
 
     if not args.dry_run:
-        logger.warning("This will DELETE images from DEV that don't exist in PROD!")
+        logger.warning(
+            "This will DELETE images from DEV that don't exist in PROD!"
+        )
         logger.warning("Press Ctrl+C within 5 seconds to abort...")
         time.sleep(5)
 
@@ -252,7 +277,9 @@ def main():
 
     # Find images in dev that are NOT in prod
     images_to_delete = dev_image_ids - prod_image_ids
-    logger.info(f"Found {len(images_to_delete)} images in DEV that are NOT in PROD")
+    logger.info(
+        f"Found {len(images_to_delete)} images in DEV that are NOT in PROD"
+    )
 
     if not images_to_delete:
         logger.info("No images to delete. DEV and PROD are in sync.")
@@ -260,7 +287,7 @@ def main():
 
     # Apply limit if specified
     if args.limit:
-        images_to_delete = set(list(images_to_delete)[:args.limit])
+        images_to_delete = set(list(images_to_delete)[: args.limit])
         logger.info(f"Limited to {len(images_to_delete)} images")
 
     # Delete each image with cascade
@@ -282,14 +309,27 @@ def main():
 
     for idx, image_id in enumerate(images_to_delete, 1):
         if idx % 10 == 0 or idx == 1:
-            logger.info(f"Processing image {idx}/{len(images_to_delete)}: {image_id[:8]}...")
+            total = len(images_to_delete)
+            logger.info(f"Processing image {idx}/{total}: {image_id[:8]}...")
 
-        stats = delete_image_cascade(dev_dynamo, image_id, dry_run=args.dry_run)
+        stats = delete_image_cascade(
+            dev_dynamo, image_id, dry_run=args.dry_run
+        )
 
         total_stats["images_deleted"] += 1
-        for key in ["receipts", "receipt_lines", "receipt_words", "receipt_letters",
-                    "receipt_word_labels", "receipt_places",
-                    "lines", "words", "letters", "ocr_jobs", "ocr_routing_decisions"]:
+        for key in [
+            "receipts",
+            "receipt_lines",
+            "receipt_words",
+            "receipt_letters",
+            "receipt_word_labels",
+            "receipt_places",
+            "lines",
+            "words",
+            "letters",
+            "ocr_jobs",
+            "ocr_routing_decisions",
+        ]:
             total_stats[key] += stats.get(key, 0)
         total_stats["errors"].extend(stats.get("errors", []))
 
@@ -309,7 +349,9 @@ def main():
     logger.info(f"  Words (OCR): {total_stats['words']}")
     logger.info(f"  Letters (OCR): {total_stats['letters']}")
     logger.info(f"  OCR Jobs: {total_stats['ocr_jobs']}")
-    logger.info(f"  OCR Routing Decisions: {total_stats['ocr_routing_decisions']}")
+    logger.info(
+        f"  OCR Routing Decisions: {total_stats['ocr_routing_decisions']}"
+    )
 
     if total_stats["errors"]:
         logger.warning(f"\n{len(total_stats['errors'])} errors occurred:")
@@ -319,7 +361,7 @@ def main():
             logger.warning(f"  ... and {len(total_stats['errors']) - 10} more")
 
     if args.dry_run:
-        logger.info("\n[DRY RUN] No changes were made. Use --no-dry-run to apply changes.")
+        logger.info("\n[DRY RUN] No changes made. Use --no-dry-run to apply.")
 
 
 if __name__ == "__main__":

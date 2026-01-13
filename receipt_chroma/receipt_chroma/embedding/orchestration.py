@@ -1,8 +1,8 @@
 """
 High-level embedding orchestration for receipt processing.
 
-Provides EmbeddingResult class and create_embeddings_and_compaction_run function
-that encapsulates the complete embedding workflow:
+Provides EmbeddingResult class and create_embeddings_and_compaction_run
+function that encapsulates the complete embedding workflow:
 1. Download S3 snapshots -> local directories
 2. Generate embeddings via OpenAI
 3. Upsert to local clients (snapshot + delta merged for immediate querying)
@@ -22,6 +22,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, List, Optional
 
+from receipt_dynamo.constants import CompactionState
+from receipt_dynamo.entities import (
+    CompactionRun,
+    ReceiptLine,
+    ReceiptPlace,
+    ReceiptWord,
+    ReceiptWordLabel,
+)
+
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.formatting.word_format import (
     format_word_context_embedding_input,
@@ -36,18 +45,8 @@ from receipt_chroma.embedding.records import (
 from receipt_chroma.s3.helpers import upload_delta_tarball
 from receipt_chroma.s3.snapshot import download_snapshot_atomic
 
-from receipt_dynamo.constants import CompactionState
-from receipt_dynamo.entities import (
-    CompactionRun,
-    ReceiptLine,
-    ReceiptPlace,
-    ReceiptWord,
-    ReceiptWordLabel,
-)
-
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
-
     from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger(__name__)
@@ -74,7 +73,8 @@ class EmbeddingResult:
         )
 
         # Optionally wait for remote compaction
-        result.wait_for_compaction_to_finish(dynamo_client, max_wait_seconds=60)
+        result.wait_for_compaction_to_finish(dynamo_client, max_wait_seconds=60
+        )
 
         # Always close when done to release file locks
         result.close()
@@ -390,7 +390,9 @@ def create_embeddings_and_compaction_run(
 
         # Format words with context (same format as batch pipeline)
         word_texts = [
-            format_word_context_embedding_input(w, receipt_words, context_size=2)
+            format_word_context_embedding_input(
+                w, receipt_words, context_size=2
+            )
             for w in receipt_words
         ]
         word_embeddings = embed_texts(

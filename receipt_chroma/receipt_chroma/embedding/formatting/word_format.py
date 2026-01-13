@@ -163,15 +163,16 @@ def get_word_neighbors(
         y_proximity_threshold: Maximum y-coordinate difference to consider
             words as being on "nearby" lines (default: 0.05 normalized units)
         x_proximity_threshold: Maximum x-coordinate difference to consider
-            nearby-line words as candidates (default: 0.25 normalized units).
-            This filters out words that are horizontally too far from the target
-            when falling back to nearby lines.
+            nearby-line words as candidates (default: 0.25 normalized
+            units). Filters out words that are horizontally too far from
+            the target when falling back to nearby lines.
 
     Returns:
         Tuple of (left_words, right_words) where each is a list of up to
         context_size word texts. Lists may be shorter if fewer neighbors are
         available.
     """
+
     # Cache centroids for all words to avoid repeated calculations
     def word_key(w: ReceiptWord) -> Tuple[str, int, int, int]:
         return (w.image_id, w.receipt_id, w.line_id, w.word_id)
@@ -207,7 +208,7 @@ def get_word_neighbors(
         )
     )
 
-    # Find candidates: same line (vertical span overlap) or nearby lines (y-proximity)
+    # Find candidates: same line (vertical overlap) or nearby lines
     same_line_candidates = []
     nearby_line_candidates = []
 
@@ -225,7 +226,7 @@ def get_word_neighbors(
         w_top = w_bottom + w.bounding_box["height"]
 
         # Check vertical span overlap (same visual line)
-        # Two intervals overlap when: w_bottom <= target_top AND w_top >= target_bottom
+        # Overlap: w_bottom <= target_top AND w_top >= target_bottom
         if w_bottom <= target_top and w_top >= target_bottom:
             same_line_candidates.append((orig_idx, w))
         # Check y-proximity (nearby lines)
@@ -234,12 +235,14 @@ def get_word_neighbors(
 
     # Filter nearby-line candidates by x-proximity, then sort by y-proximity
     nearby_line_left_filtered = [
-        (orig_idx, w) for orig_idx, w in nearby_line_candidates
+        (orig_idx, w)
+        for orig_idx, w in nearby_line_candidates
         if centroid_cache[word_key(w)][0] < target_x
         and (target_x - centroid_cache[word_key(w)][0]) < x_proximity_threshold
     ]
     nearby_line_right_filtered = [
-        (orig_idx, w) for orig_idx, w in nearby_line_candidates
+        (orig_idx, w)
+        for orig_idx, w in nearby_line_candidates
         if centroid_cache[word_key(w)][0] > target_x
         and (centroid_cache[word_key(w)][0] - target_x) < x_proximity_threshold
     ]
