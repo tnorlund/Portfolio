@@ -8,23 +8,15 @@ This script:
 3. Deletes those images AND all their child records (cascade delete)
 
 Usage:
+    pip install -e ./receipt_dynamo  # First, install the package
     python scripts/cleanup_dev_images.py --dry-run
     python scripts/cleanup_dev_images.py --no-dry-run
 """
 
 import argparse
 import logging
-import os
-import sys
 import time
-from typing import List, Set
-
-# Add parent directories to path for imports
-script_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(script_dir)
-
-sys.path.insert(0, parent_dir)
-sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
+from typing import Set
 
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
