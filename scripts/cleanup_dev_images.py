@@ -16,7 +16,7 @@ Usage:
 import argparse
 import logging
 import time
-from typing import List, Set, TypedDict
+from typing import TypedDict
 
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
@@ -36,7 +36,7 @@ class CascadeStats(TypedDict):
     letters: int
     ocr_jobs: int
     ocr_routing_decisions: int
-    errors: List[str]
+    errors: list[str]
 
 
 # Configure logging
@@ -47,7 +47,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def get_all_image_ids(dynamo: DynamoClient) -> Set[str]:
+def get_all_image_ids(dynamo: DynamoClient) -> set[str]:
     """Fetch all image IDs from a DynamoDB table."""
     image_ids = set()
     last_key = None

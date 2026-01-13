@@ -1,7 +1,5 @@
 """Unit tests for word formatting utilities."""
 
-from typing import Dict
-
 import pytest
 
 from receipt_chroma.embedding.formatting.word_format import (
@@ -14,15 +12,15 @@ from receipt_chroma.embedding.formatting.word_format import (
 class MockReceiptWord:
     """Mock ReceiptWord for testing.
 
-    Duck-typed to match ReceiptWord interface for test purposes.
+    Implements WordLike protocol for use in word formatting functions.
     """
 
     def __init__(
         self,
         image_id: str,
-        receipt_id: str,
-        line_id: str,
-        word_id: str,
+        receipt_id: int,
+        line_id: int,
+        word_id: int,
         text: str,
         x: float = 0.5,
         y: float = 0.5,
@@ -34,14 +32,12 @@ class MockReceiptWord:
         self.line_id = line_id
         self.word_id = word_id
         self.text = text
-        self.bounding_box: Dict[str, float] = {
+        self.bounding_box: dict[str, float] = {
             "x": x,
             "y": y,
             "width": width,
             "height": height,
         }
-        self.top_left: Dict[str, float] = {"x": x, "y": y + height}
-        self.bottom_left: Dict[str, float] = {"x": x, "y": y}
 
     def calculate_centroid(self) -> tuple[float, float]:
         """Calculate centroid coordinates."""
@@ -56,9 +52,9 @@ class TestFormatWordContextEmbeddingInput:
 
     def test_format_single_word(self) -> None:
         """Test formatting a single word (at edge)."""
-        word = MockReceiptWord("img1", "rec1", "line1", "word1", "hello")
+        word = MockReceiptWord("img1", 1, 1, 1, "hello")
         result = format_word_context_embedding_input(
-            word, [word], context_size=2  # type: ignore[arg-type, list-item]
+            word, [word], context_size=2
         )
         # Should have <EDGE> tags for missing context
         assert "<EDGE>" in result
@@ -70,19 +66,13 @@ class TestFormatWordContextEmbeddingInput:
     def test_format_with_neighbors(self) -> None:
         """Test formatting with left and right neighbors."""
         words = [
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word1", "left", x=0.1, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word2", "target", x=0.5, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word3", "right", x=0.9, y=0.5
-            ),
+            MockReceiptWord("img1", 1, 1, 1, "left", x=0.1, y=0.5),
+            MockReceiptWord("img1", 1, 1, 2, "target", x=0.5, y=0.5),
+            MockReceiptWord("img1", 1, 1, 3, "right", x=0.9, y=0.5),
         ]
         target = words[1]
         result = format_word_context_embedding_input(
-            target, words, context_size=2  # type: ignore[arg-type]
+            target, words, context_size=2
         )
         # Format should be: "<EDGE> left target right <EDGE>" or similar
         assert "target" in result
@@ -91,11 +81,9 @@ class TestFormatWordContextEmbeddingInput:
 
     def test_format_edge_word(self) -> None:
         """Test formatting word at edge (no neighbors)."""
-        word = MockReceiptWord(
-            "img1", "rec1", "line1", "word1", "hello", x=0.1, y=0.5
-        )
+        word = MockReceiptWord("img1", 1, 1, 1, "hello", x=0.1, y=0.5)
         result = format_word_context_embedding_input(
-            word, [word], context_size=2  # type: ignore[arg-type, list-item]
+            word, [word], context_size=2
         )
         # Should have multiple <EDGE> tags
         assert "<EDGE>" in result
@@ -106,25 +94,15 @@ class TestFormatWordContextEmbeddingInput:
     def test_format_with_multiple_context(self) -> None:
         """Test formatting with context_size=2 (multiple words)."""
         words = [
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w1", "item1", x=0.1, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w2", "item2", x=0.3, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w3", "target", x=0.5, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w4", "item4", x=0.7, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w5", "item5", x=0.9, y=0.5
-            ),
+            MockReceiptWord("img1", 1, 1, 1, "item1", x=0.1, y=0.5),
+            MockReceiptWord("img1", 1, 1, 2, "item2", x=0.3, y=0.5),
+            MockReceiptWord("img1", 1, 1, 3, "target", x=0.5, y=0.5),
+            MockReceiptWord("img1", 1, 1, 4, "item4", x=0.7, y=0.5),
+            MockReceiptWord("img1", 1, 1, 5, "item5", x=0.9, y=0.5),
         ]
         target = words[2]
         result = format_word_context_embedding_input(
-            target, words, context_size=2  # type: ignore[arg-type]
+            target, words, context_size=2
         )
         # Should have 2 words on each side in reading order (left-to-right)
         assert result == "item1 item2 target item4 item5"
@@ -137,19 +115,13 @@ class TestGetWordNeighbors:
     def test_get_neighbors_single(self) -> None:
         """Test getting single left and right neighbor."""
         words = [
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word1", "left", x=0.1, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word2", "target", x=0.5, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word3", "right", x=0.9, y=0.5
-            ),
+            MockReceiptWord("img1", 1, 1, 1, "left", x=0.1, y=0.5),
+            MockReceiptWord("img1", 1, 1, 2, "target", x=0.5, y=0.5),
+            MockReceiptWord("img1", 1, 1, 3, "right", x=0.9, y=0.5),
         ]
         target = words[1]
         left_words, right_words = get_word_neighbors(
-            target, words, context_size=1  # type: ignore[arg-type]
+            target, words, context_size=1
         )
         assert len(left_words) == 1
         assert len(right_words) == 1
@@ -159,25 +131,15 @@ class TestGetWordNeighbors:
     def test_get_neighbors_multiple(self) -> None:
         """Test getting multiple neighbors with context_size=2."""
         words = [
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w1", "left1", x=0.1, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w2", "left2", x=0.3, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w3", "target", x=0.5, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w4", "right1", x=0.7, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line1", "w5", "right2", x=0.9, y=0.5
-            ),
+            MockReceiptWord("img1", 1, 1, 1, "left1", x=0.1, y=0.5),
+            MockReceiptWord("img1", 1, 1, 2, "left2", x=0.3, y=0.5),
+            MockReceiptWord("img1", 1, 1, 3, "target", x=0.5, y=0.5),
+            MockReceiptWord("img1", 1, 1, 4, "right1", x=0.7, y=0.5),
+            MockReceiptWord("img1", 1, 1, 5, "right2", x=0.9, y=0.5),
         ]
         target = words[2]
         left_words, right_words = get_word_neighbors(
-            target, words, context_size=2  # type: ignore[arg-type]
+            target, words, context_size=2
         )
         assert len(left_words) == 2
         assert len(right_words) == 2
@@ -188,11 +150,9 @@ class TestGetWordNeighbors:
 
     def test_get_neighbors_edge(self) -> None:
         """Test getting neighbors for word at edge."""
-        word = MockReceiptWord(
-            "img1", "rec1", "line1", "word1", "hello", x=0.1, y=0.5
-        )
+        word = MockReceiptWord("img1", 1, 1, 1, "hello", x=0.1, y=0.5)
         left_words, right_words = get_word_neighbors(
-            word, [word], context_size=2  # type: ignore[arg-type, list-item]
+            word, [word], context_size=2
         )
         # Should return empty lists (no neighbors found)
         assert len(left_words) == 0
@@ -201,19 +161,13 @@ class TestGetWordNeighbors:
     def test_get_neighbors_different_lines_far_apart(self) -> None:
         """Words on very different lines (y diff > 0.05) are NOT neighbors."""
         words = [
-            MockReceiptWord(
-                "img1", "rec1", "line1", "word1", "left", x=0.1, y=0.8
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line2", "word2", "target", x=0.5, y=0.5
-            ),
-            MockReceiptWord(
-                "img1", "rec1", "line3", "word3", "right", x=0.9, y=0.2
-            ),
+            MockReceiptWord("img1", 1, 1, 1, "left", x=0.1, y=0.8),
+            MockReceiptWord("img1", 1, 2, 2, "target", x=0.5, y=0.5),
+            MockReceiptWord("img1", 1, 3, 3, "right", x=0.9, y=0.2),
         ]
         target = words[1]
         left_words, right_words = get_word_neighbors(
-            target, words, context_size=2  # type: ignore[arg-type]
+            target, words, context_size=2
         )
         # Words on very different lines (y diff of 0.3) should NOT be neighbors
         # Line-aware algo only considers same-line or nearby-line words
@@ -225,59 +179,24 @@ class TestGetWordNeighbors:
         # Words on same line (same y-coordinate) but far apart horizontally
         words = [
             MockReceiptWord(
-                "img1",
-                "rec1",
-                "line1",
-                "word1",
-                "far_left",
-                x=0.05,
-                y=0.5,
-                height=0.05,
+                "img1", 1, 1, 1, "far_left", x=0.05, y=0.5, height=0.05
             ),
             MockReceiptWord(
-                "img1",
-                "rec1",
-                "line1",
-                "word2",
-                "left",
-                x=0.2,
-                y=0.5,
-                height=0.05,
+                "img1", 1, 1, 2, "left", x=0.2, y=0.5, height=0.05
             ),
             MockReceiptWord(
-                "img1",
-                "rec1",
-                "line1",
-                "word3",
-                "target",
-                x=0.5,
-                y=0.5,
-                height=0.05,
+                "img1", 1, 1, 3, "target", x=0.5, y=0.5, height=0.05
             ),
             MockReceiptWord(
-                "img1",
-                "rec1",
-                "line1",
-                "word4",
-                "right",
-                x=0.7,
-                y=0.5,
-                height=0.05,
+                "img1", 1, 1, 4, "right", x=0.7, y=0.5, height=0.05
             ),
             MockReceiptWord(
-                "img1",
-                "rec1",
-                "line1",
-                "word5",
-                "far_right",
-                x=0.9,
-                y=0.5,
-                height=0.05,
+                "img1", 1, 1, 5, "far_right", x=0.9, y=0.5, height=0.05
             ),
         ]
         target = words[2]  # "target" at x=0.5
         left_words, right_words = get_word_neighbors(
-            target, words, context_size=2  # type: ignore[arg-type]
+            target, words, context_size=2
         )
         # Should find neighbors on same line even if far apart
         assert len(left_words) == 2
@@ -294,29 +213,22 @@ class TestGetWordNeighbors:
         words = [
             MockReceiptWord(
                 "img1",
-                "rec1",
-                "line1",
-                "word1",
+                1,
+                1,
+                1,
                 "left_nearby",
                 x=0.35,  # x diff of 0.15 from target (within 0.25 threshold)
                 y=0.52,  # y diff of 0.02 from target (within 0.05 threshold)
                 height=0.05,
             ),
             MockReceiptWord(
-                "img1",
-                "rec1",
-                "line2",
-                "word2",
-                "target",
-                x=0.5,
-                y=0.5,
-                height=0.05,
+                "img1", 1, 2, 2, "target", x=0.5, y=0.5, height=0.05
             ),
             MockReceiptWord(
                 "img1",
-                "rec1",
-                "line3",
-                "word3",
+                1,
+                3,
+                3,
                 "right_nearby",
                 x=0.65,  # x diff of 0.15 from target (within 0.25 threshold)
                 y=0.48,  # y diff of 0.02 from target (within 0.05 threshold)
@@ -325,7 +237,7 @@ class TestGetWordNeighbors:
         ]
         target = words[1]  # "target" at x=0.5
         left_words, right_words = get_word_neighbors(
-            target, words, context_size=2  # type: ignore[arg-type]
+            target, words, context_size=2
         )
         # Nearby lines (y diff < 0.05, x diff < 0.25) should be neighbors
         assert len(left_words) == 1
@@ -339,29 +251,22 @@ class TestGetWordNeighbors:
         words = [
             MockReceiptWord(
                 "img1",
-                "rec1",
-                "line1",
-                "word1",
+                1,
+                1,
+                1,
                 "above",
                 x=0.5,
                 y=0.7,  # y diff of 0.2 from target
                 height=0.05,
             ),
             MockReceiptWord(
-                "img1",
-                "rec1",
-                "line2",
-                "word2",
-                "target",
-                x=0.5,
-                y=0.5,
-                height=0.05,
+                "img1", 1, 2, 2, "target", x=0.5, y=0.5, height=0.05
             ),
             MockReceiptWord(
                 "img1",
-                "rec1",
-                "line3",
-                "word3",
+                1,
+                3,
+                3,
                 "below",
                 x=0.5,
                 y=0.3,  # y diff of 0.2 from target
@@ -370,7 +275,7 @@ class TestGetWordNeighbors:
         ]
         target = words[1]  # "target" at x=0.5, middle of list
         left_words, right_words = get_word_neighbors(
-            target, words, context_size=2  # type: ignore[arg-type]
+            target, words, context_size=2
         )
         # Words on very different lines (y diff of 0.2) should NOT be neighbors
         # even if they have the same x-coordinate

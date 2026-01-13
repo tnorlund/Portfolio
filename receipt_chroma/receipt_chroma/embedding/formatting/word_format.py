@@ -4,12 +4,29 @@ This module provides functions for formatting word context for embeddings,
 including neighbor detection and position calculation.
 """
 
-from typing import Dict, List, Tuple
+from collections.abc import Sequence
+from typing import Protocol, runtime_checkable
 
-from receipt_dynamo.entities import ReceiptWord
+
+@runtime_checkable
+class WordLike(Protocol):
+    """Protocol defining the interface for word objects.
+
+    This allows both ReceiptWord and test mocks to be used interchangeably.
+    """
+
+    image_id: str
+    receipt_id: int
+    line_id: int
+    word_id: int
+    text: str
+    bounding_box: dict[str, float]
+
+    def calculate_centroid(self) -> tuple[float, float]:
+        """Calculate the centroid coordinates of the word."""
 
 
-def _get_word_position(word: ReceiptWord) -> str:
+def _get_word_position(word: WordLike) -> str:
     """
     Get word position in 3x3 grid format matching batch system.
 
@@ -39,8 +56,8 @@ def _get_word_position(word: ReceiptWord) -> str:
 
 
 def format_word_context_embedding_input(
-    target_word: ReceiptWord,
-    all_words: List[ReceiptWord],
+    target_word: WordLike,
+    all_words: Sequence[WordLike],
     context_size: int = 2,
 ) -> str:
     """
@@ -82,7 +99,7 @@ def format_word_context_embedding_input(
 
 def parse_left_right_from_formatted(
     fmt: str, context_size: int = 2
-) -> Tuple[List[str], List[str]]:
+) -> tuple[list[str], list[str]]:
     """
     Parse left and right context words from formatted embedding input.
 
@@ -135,12 +152,12 @@ def parse_left_right_from_formatted(
 
 
 def get_word_neighbors(
-    target_word: ReceiptWord,
-    all_words: List[ReceiptWord],
+    target_word: WordLike,
+    all_words: Sequence[WordLike],
     context_size: int = 2,
     y_proximity_threshold: float = 0.05,
     x_proximity_threshold: float = 0.25,
-) -> Tuple[List[str], List[str]]:
+) -> tuple[list[str], list[str]]:
     """
     Get the left and right neighbor words for the target word with
     configurable context size.
@@ -174,10 +191,10 @@ def get_word_neighbors(
     """
 
     # Cache centroids for all words to avoid repeated calculations
-    def word_key(w: ReceiptWord) -> Tuple[str, int, int, int]:
+    def word_key(w: WordLike) -> tuple[str, int, int, int]:
         return (w.image_id, w.receipt_id, w.line_id, w.word_id)
 
-    centroid_cache: Dict[Tuple[str, int, int, int], Tuple[float, float]] = {
+    centroid_cache: dict[tuple[str, int, int, int], tuple[float, float]] = {
         word_key(w): w.calculate_centroid() for w in all_words
     }
 
