@@ -276,8 +276,8 @@ M1LK 2%           1    $4.4g`}</code>
       </pre>
 
       <p>
-        I had to get creative to get the text out of the receipt. The first
-        principles approach is: a receipt is a piece of paper with words on it.
+        I had to get creative. The first principles approach is: a receipt is a
+        piece of paper with words on it.
       </p>
 
       <ClientOnly>
@@ -285,8 +285,8 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        After determining what a receipt is, I needed to get that piece of
-        paper out of the image and make it flat.
+        After determining what a receipt is, I needed to pull the piece of
+        paper with words on it out of the image.
       </p>
 
       <div className={styles.figureGrid2x2}>
@@ -321,7 +321,7 @@ M1LK 2%           1    $4.4g`}</code>
       <p>
         There's no standard format for a receipt. I can say that each store has
         their own unique way of structuring the data. I needed to find a way to
-        group the receipts by store they came from.
+        group the receipts by the store they came from.
       </p>
 
       <ClientOnly>
@@ -364,7 +364,7 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        I embedded the receipts into, Chroma, so I could retrieve them by
+        I embedded the receipts into Chroma so I could retrieve them by
         similarity.
       </p>
 
