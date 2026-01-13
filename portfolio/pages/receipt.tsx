@@ -467,6 +467,13 @@ M1LK 2%           1    $4.4g`}</code>
 
       <h2>Challenge 3: Asking About the $$$ Spent on Milk</h2>
 
+      <p>
+        The question still stands: "How much did I spend on milk?" When I ask
+        AI, it looks at our corpus and the quesiton to answer it.
+      </p>
+
+
+
 
 
 
