@@ -297,4 +297,5 @@ def get_word_neighbors(
             if len(right_words) >= context_size:
                 break
 
-    return left_words, right_words
+    # Reverse left_words to reading order (farthest-first for left-to-right)
+    return list(reversed(left_words)), right_words

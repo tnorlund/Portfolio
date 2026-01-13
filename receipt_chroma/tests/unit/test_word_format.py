@@ -120,12 +120,8 @@ class TestFormatWordContextEmbeddingInput:
         result = format_word_context_embedding_input(
             target, words, context_size=2
         )
-        # Should have 2 words on each side: "item1 item2 target item4 item5"
-        assert "target" in result
-        assert "item1" in result
-        assert "item2" in result
-        assert "item4" in result
-        assert "item5" in result
+        # Should have 2 words on each side in reading order (left-to-right)
+        assert result == "item1 item2 target item4 item5"
 
 
 @pytest.mark.unit
