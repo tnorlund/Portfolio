@@ -9,43 +9,21 @@ import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
-  CICDLoop,
-  ClientImageCounts,
-  ClientReceiptCounts,
-  CodeBuildDiagram,
-  ImageStack,
   LabelEvaluatorVisualization,
-  LabelValidationTimeline,
-  LayoutLMBatchVisualization,
+  LabelWordCloud,
   LayoutLMInferenceVisualization,
-  LockingSwimlane,
-  MerchantCount,
+  PageCurlLetter,
   PhotoReceiptBoundingBox,
   PrecisionRecallDartboard,
-  RandomReceiptWithLabels,
   ReceiptStack,
   ScanReceiptBoundingBox,
   TrainingMetricsAnimation,
-  UploadDiagram,
-  ZDepthConstrained,
   ZDepthConstrainedParametric,
-  ZDepthUnconstrained,
-  ZDepthUnconstrainedParametric,
+  ZDepthUnconstrainedParametric
 } from "../components/ui/Figures";
 import {
-  AWSLogo,
   ChromaLogo,
-  DockerLogo,
-  GithubActionsLogo,
-  GithubLogo,
-  GoogleMapsLogo,
-  HuggingFaceLogo,
-  LangChainLogo,
-  OllamaLogo,
-  OpenAILogo,
-  PineconeLogo,
-  PulumiLogo,
-  TerraformLogo,
+  GoogleMapsLogo
 } from "../components/ui/Logos";
 
 interface ReceiptPageProps {
@@ -275,353 +253,73 @@ export default function ReceiptPage({
       {/* Upload button in the top section */}
 
       <h1>Introduction</h1>
+
       <p>
-        I wanted to get better at machine learning, LLMs, and programming. This
-        project touches all three disciplines. I was able to learn a lot about
-        each of them, and I'm excited to share what I learned.
+        I wanted to know exactly how much I spent on milk. This should be easy,
+        but receipts are the worst documents ever designed. I taught my laptop
+        to read them for me so I don't have to.
       </p>
 
+      <h2>Challenge 1: Getting Text Out of the Receipt</h2>
 
-      <h2>Machine Learning</h2>
       <p>
-        Structuring data quickly and accurately is a challenge. I was able to
-        learn a lot about machine learning by trying different approaches and
-        recording what worked and what didn't.
+        I tried scanning, taking photos, and OCR. None of them worked well. The
+        first approach I took looked something like this:
       </p>
 
-      <h3>Unsupervised Machine Learning</h3>
-      <p>
-        I group words that are physically close together on the receipt,
-        without telling the system what any word means.
-      </p>
-
-
-      {/*
-      TODO: This should be a grid 2x2 of with the Z depth diagram above
-      and the Scan and Photo Receipt Bounding Box diagrams below.
-*/}
-      <ClientOnly>
-        <ZDepthConstrained />
-      </ClientOnly>
-      <ScanReceiptBoundingBox />
-      <ClientOnly>
-        <ZDepthUnconstrained />
-      </ClientOnly>
-      <PhotoReceiptBoundingBox />
+      <pre className={styles.codeBlock}>
+        <code>{`CVS/pharmacy
+1tem              Qy   Pr1ce
+M1LK 2%           1    $4.4g`}</code>
+      </pre>
 
       <p>
-        This process is unsupervised because it discovers structure without any
-        examples to learn from. It is a pre-processing step that helps the
-        supervised learning step be more accurate.
-      </p>
-
-
-      <h3>Supervised Machine Learning</h3>
-      <p>
-        Supervised machine learning is a type of machine learning that uses
-        labeled data to train a model. These cleaned receipts provide the best
-        opportunity to train a model to label the words accurately.
+        I had to get creative to get the text out of the receipt. The first
+        principles approach is: a receipt is a piece of paper with words on it.
       </p>
 
       <ClientOnly>
-        <LayoutLMInferenceVisualization />
+        <PageCurlLetter />
       </ClientOnly>
 
       <p>
-        Getting a model to label the words accurately is a challenge. It would
-        be easy to label all words the most common label, but that would be
-        inaccurate. Since not all words are important, we need a way to measure
-        how well the model is doing.
+        After determining what a receipt is, I needed to get that piece of
+        paper out of the image and make it flat.
       </p>
 
-      <PrecisionRecallDartboard />
-
-      <p>
-        The model needs high precision and high recall. Precision is when an
-        important word is labeled correctly. Recall is when those words are
-        not missed.
-      </p>
-
-      <ClientOnly>
-        <TrainingMetricsAnimation />
-      </ClientOnly>
-
-      <p>
-        These graphs and numbers became overwhelming. I used LLMs to
-        explain what the results meant and how to improve them. This helped me
-        learn about the model and build quickly. The biggest win
-        described to me was accurate labels.
-      </p>
-
-
-      <h2>LLMs</h2>
-
-      <p>
-        The labels were not accurate to start, but I used LLMs to label the
-        data correctly. Since receipts from the same business are similar, I
-        was able to get the Google Maps associated with the different
-        businesses and compare the labels within and outside of each business.
-      </p>
-
-      {/* TODO: add the Google Maps Logo with the bar chart below it */}
-
-      <h2>Programming</h2>
-      <p>
-        I went into this calling LLMs a "black box" and assuming they're word
-        calculators. This was simply because I hadn't tried it myself! This
-        tech changes programming by making typing and reading cheap, but best
-        practices still apply.
-      </p>
-
-      <ClientOnly>
-        <CICDLoop />
-      </ClientOnly>
-
-      <p>
-        I generated _a lot_ of code, but this loop above allowed me to try
-        something new, test it out, and see if it worked. With LLMs, the goal
-        is not to write code, but get feedback quickly: loop through this as
-        fast as possible.
-      </p>
-
-      <ClientOnly>
-        <div className={styles["logos-container"]}>
-          <AnimatedInView>
-            <GithubLogo />
-          </AnimatedInView>
-          <AnimatedInView>
-            <GithubActionsLogo />
-          </AnimatedInView>
+      <div className={styles.figureGrid2x2}>
+        <div className={styles.figureGridCell}>
+          <ClientOnly>
+            <ZDepthConstrainedParametric />
+          </ClientOnly>
         </div>
-      </ClientOnly>
-
-      <p>
-        This code is hosted on Amazon Web Services (AWS) and deployed using
-        Pulumi.
-      </p>
-
-      <ClientOnly>
-        <div className={styles["logos-container"]}>
-          <AnimatedInView>
-            <AWSLogo />
-          </AnimatedInView>
-          <AnimatedInView>
-            <PulumiLogo />
-          </AnimatedInView>
+        <div className={styles.figureGridCell}>
+          <ClientOnly>
+            <ZDepthUnconstrainedParametric />
+          </ClientOnly>
         </div>
-      </ClientOnly>
-
-
-      <p>
-        I got pretty good at using Pulumi to deploy my code as fast as
-        possible. I was abel to reduce my build times using a combination of
-        Pulumi and AWS CodeBuild.
-      </p>
-
-      <ClientOnly>
-        <CodeBuildDiagram chars={codeBuildDiagramChars} />
-      </ClientOnly>
+        <div className={styles.figureGridCell}>
+          <ScanReceiptBoundingBox />
+        </div>
+        <div className={styles.figureGridCell}>
+          <PhotoReceiptBoundingBox />
+        </div>
+      </div>
 
       <p>
-        I learned all the different messsaging and queueing options available in
-        AWS. Since I started coding this on my laptop, the latency between my
-        Macbook and the cloud was a bottleneck. I was able to use AWS's SQS
-        queueing service to stream the information from my laptop to the cloud.
-      </p>
-
-      <ClientOnly>
-        <UploadDiagram chars={uploadDiagramChars} />
-      </ClientOnly>
-
-
-
-
-      {/* TODO: remove what's below this */}
-
-
-
-
-
-
-      <h2>Why Receipts?</h2>
-
-      <p>
-        Receipts are a difficult problem to solve. To turn a crumpled piece of
-        paper into structured data, you have to read three layers of data:
-      </p>
-      <ul>
-        <li>
-          <strong>Text</strong>: The words on the receipt
-        </li>
-        <li>
-          <strong>Layout</strong>: The layout of the receipt
-        </li>
-        <li>
-          <strong>Meaning</strong>: The meaning of the words
-        </li>
-      </ul>
-      <p>
-        Since these layers arrive in messy, mixed formats, receipts are an ideal
-        test case for learning how to use AI to automate real-world tasks. The
-        rest of this post describes how I disentangle those three layers and
-        stitch the answers back together.
-      </p>
-
-      {/*
-      TODO: Fix OCR Section Disconnect - Show Visual Mess Before Technical Solution
-
-      PROBLEM IDENTIFIED:
-      - Text jumps straight into technical solutions ("DBSCAN clustering, convex hull")
-      - Visuals show perfect, clean geometric processing
-      - Missing the messy visual reality that creates the problem
-      - No clear "why" for non-technical readers about why this clustering matters
-
-      SOLUTION STRATEGY:
-      Create a new flow that shows the mess first, then the solution:
-
-      1. START WITH CHAOS: Show ReceiptStack (or similar) to demonstrate real-world receipt images:
-         - Crumpled and wrinkled receipts
-         - Photos taken at angles
-         - Multiple receipts overlapping in frame
-         - Poor lighting conditions
-         - Mixed with other objects/backgrounds
-
-      2. EXPLAIN THE CONSEQUENCE: Without proper processing, text recognition gives:
-         - Jumbled words with no grouping
-         - Text from multiple receipts mixed together
-         - Wrong reading order
-         - Background noise included as "receipt data"
-
-      3. PRESENT SIMPLE SOLUTION: "The challenge isn't just reading text - it's figuring
-         out which words belong together"
-
-      4. SHOW TECHNICAL SOLUTION WORKING: Current ScanReceiptBoundingBox and
-         PhotoReceiptBoundingBox visualizations now make sense as the "after"
-
-      IMPLEMENTATION NEEDED:
-      - Move ReceiptStack or create similar component showing messy input images
-      - Rewrite intro text to be accessible (avoid OCR jargon)
-      - Focus on "grouping text that belongs together" rather than geometric algorithms
-      - Position existing visualizations as the successful "clean" result
-
-      This makes "cleanest, most organized approach" meaningful because readers see
-      the chaotic starting point first.
-      */}
-
-      <h1>From Images to Words and Coordinates</h1>
-
-      <p>
-        Every receipt&apos;s journey begins as raw pixels, whether a crisp scan
-        or a hastily snapped photo. But hidden within those pixels is structured
-        information waiting to be extracted.
-      </p>
-
-      <ImageStack />
-
-      <p>
-        Text recognition finds words, but not context. Multiple receipts become
-        one confusing jumble. The critical step: determining{" "}
-        <strong>which words belong together</strong>.
-      </p>
-
-      <h2>Scans vs Photos</h2>
-      <p>
-        This is where the difference between <strong>scanned receipts</strong>{" "}
-        and <strong>photographed receipts</strong> becomes crucial. Scans are
-        the easy case: flat, well-lit, and aligned. But photos? They&apos;re
-        captured at odd angles, under harsh store lighting, with shadows and
-        curves that confuse even the best text recognition. Each type needs its
-        own approach to group related words and separate one receipt from
-        another.
-      </p>
-
-      <h2>Scans</h2>
-
-      <p>
-        With scans being the easier of the two, we can say that the receipt is
-        parallel to the image sensor.
-      </p>
-
-      <ClientOnly>
-        <ZDepthConstrainedParametric />
-      </ClientOnly>
-
-      <p>
-        Grouping the scanned words is straightforward. Since the scanner
-        captures everything flat and aligned, we can use simple rules: words
-        that line up horizontally likely belong to the same line item, and
-        everything on the page belongs to the same receipt. It&apos;s like
-        reading a well-organized spreadsheet.
-      </p>
-
-      <ScanReceiptBoundingBox />
-      <h2>Photos</h2>
-      <p>
-        Photos are trickier. When you snap a picture of a receipt on a counter,
-        the camera captures it from an angle. Words at the top might appear
-        smaller than words at the bottom. Lines that should be straight look
-        curved. And if there are multiple receipts in frame? Now you need to
-        figure out which words belong to which piece of paper.
-      </p>
-
-      <ClientOnly>
-        <ZDepthUnconstrainedParametric />
-      </ClientOnly>
-
-      <p>
-        To solve this puzzle, I look for clusters of words that seem to move
-        together—like finding constellations in a sky full of stars. Words that
-        are close together and follow similar patterns likely belong to the same
-        receipt. Once identified, I can digitally &quot;flatten&quot; each
-        receipt, making it as clean as a scan.
-      </p>
-
-      <PhotoReceiptBoundingBox />
-
-      <h2>Making It Work at Scale</h2>
-      <p>
-        Now that we can group words correctly, we face a new challenge:
-        processing thousands of receipts efficiently. My solution? My laptop
-        handles the tricky word orientation while the cloud handles the visual
-        processing (finding and flattening receipts).
-      </p>
-
-      <ClientOnly>
-        <AWSFlowDiagram chars={uploadDiagramChars} />
-      </ClientOnly>
-
-      <p>
-        This hybrid approach has processed hundreds of receipts, transforming
-        messy photos and scans into organized, searchable data:
+        This flattened receipt is now as clean as it can be.
       </p>
 
       <ReceiptStack />
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-around",
-          marginTop: "3rem",
-          marginBottom: "3rem",
-          flexWrap: "wrap",
-          gap: "2rem",
-        }}
-      >
-        <ClientOnly>
-          <ClientImageCounts />
-        </ClientOnly>
-        <ClientOnly>
-          <ClientReceiptCounts />
-        </ClientOnly>
-      </div>
+      <h2>Challenge 2: Structuring the Chaos</h2>
 
-      <h2>Identifying the Merchant</h2>
+      <h3>Finding the Store</h3>
+
       <p>
-        Knowing which business a receipt comes from allows for faster
-        processing. I wrote an agent that uses Google Maps to identify the
-        business the receipt came from. The AI agent is able to consider OCR
-        errors, &quot;Mestlake&quot; instead of &quot;Westlake&quot;, and still identify the correct
-        business.
+        There's no standard format for a receipt. I can say that each store has
+        their own unique way of structuring the data. I needed to find a way to
+        group the receipts by store they came from.
       </p>
 
       <ClientOnly>
@@ -631,19 +329,10 @@ export default function ReceiptPage({
       </ClientOnly>
 
       <p>
-        The agent tries multiple strategies to identify the business. I give it
-        the tools to search by phone, address, and text. When one approach
-        fails, it combines the other approaches to identify the business.
-      </p>
-
-      <MerchantCount />
-
-      <h2>Finding Similar Receipts</h2>
-
-      <p>
-        Once I&apos;ve identified the business, I can reuse that information for
-        similar receipts. I use Chroma to find similar receipts by comparing
-        addresses, phone numbers, and URLs.
+        I used Google Maps to get more information about the store, but this
+        was slow and expensive. My $8 Google Cloud bill is not an option.
+        I needed a better way to group the receipts by store without spending
+        exorbitant amounts of money.
       </p>
 
       <ClientOnly>
@@ -653,92 +342,69 @@ export default function ReceiptPage({
       </ClientOnly>
 
       <p>
-        Chroma stores text as vector embeddings: a numerical representation of
-        the text. Describing text as numbers allows for easy comparison in
-        larger datasets. When I search for &apos;1012 Westlake Blvd&apos;, it finds
-        similar addresses even if the wording is slightly different.
+        I embedded the receipts into a vector database, Chroma, so I could
+        retrieve them by similarity.
       </p>
 
       <ClientOnly>
         <AddressSimilaritySideBySide />
       </ClientOnly>
 
+      <h3>Defining the Corpus</h3>
+
       <p>
-        When Chroma finds another receipt with the same address, phone number,
-        or URL, I can skip Google Maps and reuse the information from the
-        previous receipt, making this process faster and cheaper.
+        Using a predefined vocabulary to describe the different words on the
+        receipts helps with finding those similar words.
       </p>
 
-      <h2>Labeling the Receipts</h2>
+      <LabelWordCloud />
 
       <p>
-        After finding the business and similar receipts, I can use this context
-        to label the words more accurately. Each label structures the data for
-        processing.
-      </p>
-
-      <ClientOnly>
-        <RandomReceiptWithLabels />
-      </ClientOnly>
-
-      <p>
-        The agent verifies the label guesses using a chain of verification. It
-        generates a series of questions to answer, and uses the answers to
-        verify the label. If the label is incorrect, the agent generates a new
-        label and verifies it again.
-      </p>
-
-      <LabelValidationTimeline />
-
-      <p>
-        This dataset is used to train a model to label the words faster and
-        cheaper. I found a model, LayoutLM, on Hugging Face that can label the
-        words given the OCR data.
+        These words are determined by an AI that looks at the receipt,
+        compares it to other receipts from that store, generalizes patterns,
+        and confirms what words belong to what label in our predefined
+        vocabulary.
       </p>
 
       <ClientOnly>
-        <AnimatedInView>
-          <HuggingFaceLogo />
-        </AnimatedInView>
+        <LabelEvaluatorVisualization />
       </ClientOnly>
 
       <p>
-        LayoutLM is a transformer model that understands both text and layout.
-        I trained it on my labeled receipts to identify 8 entity types:
-      </p>
-
-      <ul>
-        <li><strong>Merchant</strong>, <strong>Date</strong>, <strong>Time</strong></li>
-        <li><strong>Amount</strong> (prices, subtotals, tax, totals)</li>
-        <li><strong>Address</strong> (street, phone)</li>
-        <li><strong>Website</strong>, <strong>Hours</strong>, <strong>Payment</strong></li>
-      </ul>
-
-      <p>
-        The visualization below shows the model scanning receipts, revealing
-        bounding boxes as it identifies each entity.
+        Today's AI isn't that smart and doesn't give consistent results. I used
+        this process over and over again to get the best results.
       </p>
 
       <ClientOnly>
-        <LayoutLMBatchVisualization />
+        <LabelEvaluatorVisualization />
       </ClientOnly>
 
+      <h3>Making it Faster and Cheaper</h3>
+
       <p>
-        Training optimizes for two competing goals: <strong>precision</strong>{" "}
-        (accuracy of predictions) and <strong>recall</strong> (coverage of all
-        entities). Think of it like throwing darts&mdash;high precision means
-        tight groupings, high recall means hitting more targets.
+        Here's the problem: asking AI to verify the results 15+ times is slow
+        and expensive. Watch how long these take.
       </p>
 
       <ClientOnly>
-        <PrecisionRecallDartboard />
+        <LayoutLMInferenceVisualization />
       </ClientOnly>
 
       <p>
-        Finding the right hyperparameters to maximize both is tedious. I use an
-        LLM agent to review training metrics and suggest the next configuration
-        to try. It learns from each run, converging on optimal settings faster
-        than manual tuning.
+        This is why I needed to make my own AI. I don't know how to make an AI.
+        Turns out training an AI involves staring at metrics I didn't fully
+        understand. Precision and recall, apparently, are in some way related
+        to the accuracy of the model. High precision means "when it says
+        'MILK', it's probably right." High recall means "it finds most of the
+        MILKs" You can't crank both to 100%.
+      </p>
+
+      <PrecisionRecallDartboard />
+
+      <p>
+        After a lot of trial and error-tweaking parameters, retraining, staring
+        at graphs, I mostly understood what was going on. Oh yeah, this is
+        called hyper-parameter tuning.
       </p>
 
       <ClientOnly>
@@ -746,226 +412,28 @@ export default function ReceiptPage({
       </ClientOnly>
 
       <p>
-        The trained model processes receipts in ~100ms versus 30-60 seconds
-        with an AI agent. The tradeoff is scope: the model extracts 8 core
-        entity types, while the agent provides comprehensive labeling including
-        line items and quantities.
+        The custom model does most of the work. Then I ship the results to AWS
+        where a single AI pass confirms or corrects the labels. One call
+        instead of 15.
       </p>
 
-      <h2>Evaluating Label Quality</h2>
+      {/* <ClientOnly>
+  <LabelValidationVisualization />
+</ClientOnly> */}
 
       <p>
-        Even after labels are assigned, errors can creep in. OCR mistakes,
-        unusual receipt formats, and edge cases all contribute to mislabeled
-        words. I use a two-tier evaluation system to catch these issues.
-      </p>
-
-      <p>
-        The first tier is fast and deterministic. By analyzing thousands of
-        receipts, the system learns spatial patterns: where labels typically
-        appear, how they relate to each other geometrically, and what
-        combinations are normal. When a label appears in an unexpected position,
-        it gets flagged for review.
-      </p>
-
-      <p>
-        Flagged issues then go through specialized LLM evaluators that understand
-        context. Three subagents work in parallel: one validates currency
-        formats and line item structure, another verifies metadata against
-        Google Places data, and a third checks that the math adds up.
+        Same results, Fraction of the time. Fraction of the cost. I can finally
+        afford to find out about the milk.
       </p>
 
       <ClientOnly>
-        <LabelEvaluatorVisualization />
+        <AWSFlowDiagram />
       </ClientOnly>
 
-      <h1>What I Learned</h1>
-
-      <p>
-        AI has made <i>typing</i> cheap, but the bottlenecks remain{" "}
-        <i>understanding</i>, <i>testing</i>, <i>reviewing</i>, and{" "}
-        <i>trusting</i>. By shifting my focus from typing code to testing,
-        understanding, and architecting solutions, I prototype and experiment
-        faster.
-      </p>
-
-      <h2>Pulumi</h2>
-
-      <p>
-        I&apos;ve been able to iterate quickly using Pulumi&apos;s
-        Infrastructure as Code (IaC). Before, I would strictly use Terraform.
-      </p>
-
-      <ClientOnly>
-        <div className={styles["logos-container"]}>
-          <AnimatedInView>
-            <PulumiLogo />
-          </AnimatedInView>
-          <AnimatedInView>
-            <TerraformLogo />
-          </AnimatedInView>
-        </div>
-      </ClientOnly>
-
-      <p>
-        Pulumi allows me to write my infrastructure in Python. Not only am I
-        more comfortable with Python, but I can hack my way into making Pulumi
-        my own. My docker builds were killing me with their 7 minute deploy
-        times.
-      </p>
-
-      <ClientOnly>
-        <AnimatedInView>
-          <DockerLogo />
-        </AnimatedInView>
-      </ClientOnly>
-
-      <p>
-        After asking around, I learned that the real pros are building and
-        deploying their containers in the cloud. I looked into CodeBuild and
-        CodePipeline, and wrote a new component that manages the
-        container-based lambda functions entirely in AWS. This allows me to
-        quickly iterate the infrastructure while not waiting on builds to
-        deploy.
-      </p>
-
-      <ClientOnly>
-        <CodeBuildDiagram chars={codeBuildDiagramChars} />
-      </ClientOnly>
-
-      <p>
-        This has allowed me to try something new <i>at scale</i> quickly. These
-        cheap tries are allowing me to &ldquo;skill-max&ldquo; my cloud
-        expertise.
-      </p>
-
-      <h2>Vector Embeddings</h2>
-
-      <p>
-        This was also my first time using vector embeddings. I started with
-        Pinecone, but found it too expensive for my use case. They market their
-        service as &ldquo;serverless&rdquo;, but there&apos;s no scale to zero option which
-        means you&apos;re always paying for it, even when you&apos;re not using it. After
-        deciding Pinecone wasn&apos;t the right fit, I found Chroma, an open-source
-        vector database.
-      </p>
-
-      <ClientOnly>
-        <div className={styles["logos-container"]}>
-          <AnimatedInView>
-            <PineconeLogo />
-          </AnimatedInView>
-          <AnimatedInView>
-            <ChromaLogo />
-          </AnimatedInView>
-        </div>
-      </ClientOnly>
-
-      <p>
-        Since Chroma is open-source, I was able to hack it to work with my
-        existing DynamoDB infrastructure. I continue my serverless approach by
-        using Dynamo Streams to trigger compaction Lambda functions. This
-        allows me to scale to zero and only pay for what I use. The problem is
-        that I need to coordinate the writing of the new receipts. I developed
-        a distributed locking mechanism that queues writes.
-      </p>
-
-      <ClientOnly>
-        <LockingSwimlane chars={lockingSwimlaneChars} />
-      </ClientOnly>
-
-      <p>
-        This distributed system allows me to write 1,000+ receipts per second
-        while not having to pay the $200+ Pinecone is asking for. Keeping the
-        data in AWS also means that my query times are 10 times faster than
-        querying from Pinecone&apos;s servers.
-      </p>
-
-      <h2>Large Language Models</h2>
-      <p>
-        Running Large Language Models (LLMs) is incredibly expensive. I started
-        with OpenAI&apos;s batch API, but it didn&apos;t provide me with the fast feedback
-        I needed.
-      </p>
-      <ClientOnly>
-        <AnimatedInView>
-          <OpenAILogo />
-        </AnimatedInView>
-      </ClientOnly>
-
-      <p>
-        After asking around, I learned about graph RAG (Retrieval-Augmented
-        Generation) and agents. More specifically, I learned about LangChain, a
-        framework for building chain-of-thought LLM applications.
-      </p>
-
-      <ClientOnly>
-        <AnimatedInView>
-          <LangChainLogo />
-        </AnimatedInView>
-      </ClientOnly>
-
-      <p>
-        Not only was I able to start testing different agentic workflows, but I
-        was able to save each agent&apos;s answers and compare them to other
-        agents&apos;s answers. Again, this got expensive quickly, and I had to find
-        a cheaper way to run LLMs. I found Ollama, an open-source LLM server,
-        that I could run locally.
-      </p>
-
-      <ClientOnly>
-        <AnimatedInView>
-          <OllamaLogo />
-        </AnimatedInView>
-      </ClientOnly>
-
-      <p>
-        Ollama is a great way to run LLMs locally. It&apos;s free and easy to use.
-        I was able to run small models locally, but my MacBook was
-        definitely a limiting factor. Thankfully, Ollama
-        released a new cloud service that allows me to run larger models in the
-        cloud. I&apos;m still writing new agents. This is definitely the largest
-        place to grow for this project.
-      </p>
-
-      <h2>GitHub</h2>
-      <p>
-        This rapid iteration with developer best practices allows me to
-        prototype in a safe environment, review and test my changes, and ship
-        with confidence using GitHub and Pulumi.
-      </p>
+      <h2>Challenge 3: Asking About the $$$ Spent on Milk</h2>
 
 
-      <ClientOnly>
-        <div className={styles["logos-container"]}>
-          <AnimatedInView>
-            <GithubLogo />
-          </AnimatedInView>
-          <AnimatedInView>
-            <GithubActionsLogo />
-          </AnimatedInView>
-        </div>
-      </ClientOnly>
 
-      <p>
-        GitHub allows me to separate and structure my work into manageable
-        chunks. I can ask AI &quot;what if I do X?&quot; try it out, debug it, and review
-        it before adding it to what I know works. This is a great way to learn
-        and iterate quickly. Action produces information. Even when I&apos;m unsure
-        what to do, I just <i>do anything</i> and see what happens. This gives
-        me the information about what I should actually be doing.
-      </p>
-
-      <h1>Conclusion</h1>
-
-      <p>
-        Building with AI isn&apos;t about finding the perfect tool. It&apos;s about
-        moving fast enough to learn what actually works. The process is simple:
-        build quickly, test, and iterate. The best way to learn is to build
-        something. Please look at the{" "}
-        <a href="https://github.com/tnorlund/Portfolio" target="_blank" rel="noopener noreferrer">GitHub repository</a> for the full
-        code and documentation.
-      </p>
 
       <div style={{ marginBottom: "2rem", textAlign: "center" }}>
         <label htmlFor="file-upload" style={{ display: "inline-block" }}>
