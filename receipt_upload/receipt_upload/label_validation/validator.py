@@ -136,33 +136,27 @@ class LightweightLabelValidator:
             logger.warning("Error getting embedding for %s: %s", chroma_id, e)
         return None
 
-    def _query_similar_for_label(
+    def _query_single_label_value(
         self,
         embedding: List[float],
         exclude_id: str,
-        predicted_label: str,
-        n_results: int = 20,
+        label_field: str,
+        label_value: bool,
+        n_results: int,
     ) -> List[Dict[str, Any]]:
-        """Query for similar words that have been evaluated for a specific label.
-
-        This queries ChromaDB for words where the specific label field exists
-        (either True or False), giving us both positive and negative evidence
-        for consensus voting.
+        """Query for similar words with a specific label value (True or False).
 
         Args:
             embedding: The word's embedding vector
             exclude_id: ChromaDB ID to exclude (the word being validated)
-            predicted_label: The label to filter by (e.g., "GRAND_TOTAL")
+            label_field: The label field name (e.g., "label_GRAND_TOTAL")
+            label_value: True for positive evidence, False for negative
             n_results: Maximum number of results to return
 
         Returns:
-            List of dicts with similarity, label_valid (bool), merchant_name, word_text
+            List of dicts with similarity, label_valid, merchant_name, word_text
         """
-        label_field = f"label_{predicted_label}"
-
         try:
-            # Query for words that have been evaluated for this specific label
-            # (either confirmed valid OR confirmed invalid for this label)
             results = self.words_client.query(
                 collection_name="words",
                 query_embeddings=[embedding],
@@ -170,12 +164,7 @@ class LightweightLabelValidator:
                 where={
                     "$and": [
                         {"label_status": "validated"},
-                        {
-                            "$or": [
-                                {label_field: True},
-                                {label_field: False},
-                            ]
-                        },
+                        {label_field: label_value},
                     ]
                 },
                 include=["metadatas", "distances"],
@@ -186,7 +175,6 @@ class LightweightLabelValidator:
 
             similar = []
             for metadata, distance in zip(metadatas, distances):
-                # Build result ID to check for self
                 result_id = _build_word_chroma_id(
                     metadata.get("image_id", ""),
                     metadata.get("receipt_id", 0),
@@ -203,7 +191,7 @@ class LightweightLabelValidator:
                 similar.append(
                     {
                         "similarity": similarity,
-                        "label_valid": metadata.get(label_field) is True,
+                        "label_valid": label_value,
                         "merchant_name": metadata.get("merchant_name"),
                         "word_text": metadata.get("text", ""),
                     }
@@ -213,9 +201,56 @@ class LightweightLabelValidator:
 
         except Exception as e:
             logger.warning(
-                "Error querying similar words for label %s: %s", predicted_label, e
+                "Error querying %s=%s: %s", label_field, label_value, e
             )
             return []
+
+    def _query_similar_for_label(
+        self,
+        embedding: List[float],
+        exclude_id: str,
+        predicted_label: str,
+        n_results_per_query: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """Query for similar words with balanced positive and negative evidence.
+
+        Runs TWO separate queries to ensure balanced evidence:
+        1. Words where label=True (positive evidence)
+        2. Words where label=False (negative evidence)
+
+        This prevents skewed results when one category dominates similarity.
+
+        Args:
+            embedding: The word's embedding vector
+            exclude_id: ChromaDB ID to exclude (the word being validated)
+            predicted_label: The label to filter by (e.g., "GRAND_TOTAL")
+            n_results_per_query: Results per query (default 10 each = 20 total max)
+
+        Returns:
+            List of dicts with similarity, label_valid (bool), merchant_name, word_text
+        """
+        label_field = f"label_{predicted_label}"
+
+        # Query for positive evidence (words validated AS this label)
+        positive = self._query_single_label_value(
+            embedding=embedding,
+            exclude_id=exclude_id,
+            label_field=label_field,
+            label_value=True,
+            n_results=n_results_per_query,
+        )
+
+        # Query for negative evidence (words validated as NOT this label)
+        negative = self._query_single_label_value(
+            embedding=embedding,
+            exclude_id=exclude_id,
+            label_field=label_field,
+            label_value=False,
+            n_results=n_results_per_query,
+        )
+
+        # Combine results
+        return positive + negative
 
     def validate_label(
         self,
