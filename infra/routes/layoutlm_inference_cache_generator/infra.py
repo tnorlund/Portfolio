@@ -25,7 +25,12 @@ stack = pulumi.get_stack()
 
 
 class LayoutLMInferenceCacheGenerator(ComponentResource):
-    """Container-based Lambda for generating LayoutLM inference cache."""
+    """Container-based Lambda for generating LayoutLM inference cache.
+
+    Supports both single-pass and two-pass inference modes:
+    - Single-pass: Uses LAYOUTLM_TRAINING_BUCKET to auto-discover latest model
+    - Two-pass: Uses PASS1_MODEL_S3_URI + PASS2_MODEL_S3_URI or auto-discovery
+    """
 
     def __init__(
         self,
@@ -34,6 +39,11 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
         layoutlm_training_bucket: Input[str],
         model_s3_uri: Optional[Input[str]] = None,
         cache_bucket_name: Optional[Input[str]] = None,
+        # Two-pass mode configuration
+        two_pass_enabled: bool = False,
+        pass1_model_s3_uri: Optional[Input[str]] = None,
+        pass2_model_s3_uri: Optional[Input[str]] = None,
+        two_pass_auto_discover_bucket: Optional[Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -193,6 +203,32 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
         # Create Lambda function name first (needed for CodeBuild)
         lambda_function_name = f"{name}-lambda-{stack}"
 
+        # Build environment variables dict
+        lambda_environment = {
+            "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
+            "S3_CACHE_BUCKET": self.cache_bucket.id,
+            "LAYOUTLM_TRAINING_BUCKET": layoutlm_training_bucket_output,
+        }
+
+        # Add two-pass configuration if enabled
+        if two_pass_enabled:
+            lambda_environment["TWO_PASS_ENABLED"] = "true"
+            if pass1_model_s3_uri:
+                lambda_environment["PASS1_MODEL_S3_URI"] = Output.from_input(
+                    pass1_model_s3_uri
+                )
+            if pass2_model_s3_uri:
+                lambda_environment["PASS2_MODEL_S3_URI"] = Output.from_input(
+                    pass2_model_s3_uri
+                )
+            if two_pass_auto_discover_bucket:
+                lambda_environment["TWO_PASS_AUTO_DISCOVER_BUCKET"] = Output.from_input(
+                    two_pass_auto_discover_bucket
+                )
+        elif model_s3_uri_output:
+            # Single-pass mode with explicit model URI
+            lambda_environment["MODEL_S3_URI"] = model_s3_uri_output
+
         # Build Docker image using CodeBuild
         # Include receipt_layoutlm in source_paths since it's not in default packages
         self.docker_image = CodeBuildDockerImage(
@@ -209,13 +245,7 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
                 "memory_size": 3008,  # Maximum for Lambda (PyTorch needs memory)
                 "ephemeral_storage": 10240,  # 10GB for model download
                 "architectures": ["arm64"],
-                "environment": {
-                    "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
-                    "S3_CACHE_BUCKET": self.cache_bucket.id,
-                    "LAYOUTLM_TRAINING_BUCKET": layoutlm_training_bucket_output,
-                    # MODEL_S3_URI overrides auto-detection of latest model
-                    **({"MODEL_S3_URI": model_s3_uri_output} if model_s3_uri_output else {}),
-                },
+"environment": lambda_environment,
             },
             platform="linux/arm64",
             opts=ResourceOptions(parent=self),
@@ -274,21 +304,34 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
 
 def create_layoutlm_inference_cache_generator(
     layoutlm_training_bucket: Input[str],
+    *,
     model_s3_uri: Optional[Input[str]] = None,
+    two_pass_enabled: bool = False,
+    pass1_model_s3_uri: Optional[Input[str]] = None,
+    pass2_model_s3_uri: Optional[Input[str]] = None,
+    two_pass_auto_discover_bucket: Optional[Input[str]] = None,
     opts: Optional[ResourceOptions] = None,
 ) -> LayoutLMInferenceCacheGenerator:
     """Factory function to create LayoutLM inference cache generator.
 
     Args:
-        layoutlm_training_bucket: S3 bucket containing trained models
+        layoutlm_training_bucket: S3 bucket containing trained models.
         model_s3_uri: Optional S3 URI to a specific model. If not provided,
                       the lambda will auto-select the most recently modified model.
-        opts: Pulumi resource options
+        two_pass_enabled: Enable two-pass inference mode.
+        pass1_model_s3_uri: Explicit S3 URI for Pass 1 model.
+        pass2_model_s3_uri: Explicit S3 URI for Pass 2 model.
+        two_pass_auto_discover_bucket: S3 bucket to auto-discover Pass 1 and Pass 2 models.
+        opts: Pulumi resource options.
     """
     return LayoutLMInferenceCacheGenerator(
         f"layoutlm-inference-cache-generator-{pulumi.get_stack()}",
         layoutlm_training_bucket=layoutlm_training_bucket,
         model_s3_uri=model_s3_uri,
+        two_pass_enabled=two_pass_enabled,
+        pass1_model_s3_uri=pass1_model_s3_uri,
+        pass2_model_s3_uri=pass2_model_s3_uri,
+        two_pass_auto_discover_bucket=two_pass_auto_discover_bucket,
         opts=opts,
     )
 

@@ -1,5 +1,14 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import Dict, List, Optional
+
+
+class ModelType(str, Enum):
+    """Type of LayoutLM model for two-pass inference."""
+
+    SINGLE_PASS = "single_pass"  # Standard single-pass model
+    TWO_PASS_P1 = "two_pass_p1"  # Pass 1: Coarse region detection
+    TWO_PASS_P2 = "two_pass_p2"  # Pass 2: Fine-grained classification
 
 # Labels that belong to the financial region (line items + totals)
 # Used for two-pass training: Pass 2 trains only on Y-ranges containing these labels
@@ -93,3 +102,6 @@ class TrainingConfig:
     # CoreML export configuration
     auto_export_coreml: bool = False
     coreml_quantize: Optional[str] = "float16"
+    # Two-pass model type: identifies this model's role in two-pass inference
+    # Used by inference to discover and pair models correctly
+    model_type: ModelType = ModelType.SINGLE_PASS

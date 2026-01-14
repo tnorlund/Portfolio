@@ -303,6 +303,246 @@ def export_coreml(
     return str(output_path)
 
 
+def _export_single_model_from_s3(
+    s3_uri: str,
+    output_dir: str,
+    model_name: str,
+    quantize: Optional[str],
+    max_seq_length: int,
+    min_seq_length: int,
+    temp_cache_dir: Path,
+) -> dict:
+    """Internal helper to download and export a single model from S3.
+
+    Returns dict with model metadata for manifest creation.
+    """
+    from urllib.parse import urlparse
+
+    try:
+        import boto3
+    except ImportError as e:
+        msg = "boto3 required for S3 download: pip install boto3"
+        raise MissingDependencyError(msg) from e
+
+    # Parse S3 URI
+    parsed = urlparse(s3_uri)
+    bucket = parsed.netloc
+    prefix = parsed.path.lstrip("/")
+
+    # Create model-specific subdirectory in cache
+    model_cache_dir = temp_cache_dir / model_name.lower().replace(" ", "_")
+    model_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Downloading model from {s3_uri} to {model_cache_dir}...")
+
+    # Download all files from S3 prefix
+    s3 = boto3.client("s3")
+    paginator = s3.get_paginator("list_objects_v2")
+
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            rel_path = key[len(prefix) :].lstrip("/")
+            if not rel_path:
+                continue
+
+            local_path = model_cache_dir / rel_path
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+
+            print(f"  Downloading {rel_path}...")
+            s3.download_file(bucket, key, str(local_path))
+
+    # Export from downloaded checkpoint
+    export_coreml(
+        checkpoint_dir=str(model_cache_dir),
+        output_dir=output_dir,
+        model_name=model_name,
+        quantize=quantize,
+        max_seq_length=max_seq_length,
+        min_seq_length=min_seq_length,
+    )
+
+    # Read run.json if available for metadata
+    run_json_path = model_cache_dir / "run.json"
+    model_metadata = {"s3_uri": s3_uri, "model_name": model_name}
+    if run_json_path.exists():
+        with open(run_json_path, "r", encoding="utf-8") as f:
+            run_data = json.load(f)
+            model_metadata["model_type"] = run_data.get("model_type", "unknown")
+            model_metadata["job_name"] = run_data.get("job_name", "unknown")
+            model_metadata["label_list"] = run_data.get("label_list", [])
+
+    return model_metadata
+
+
+def export_two_pass_coreml(
+    pass1_s3_uri: str,
+    pass2_s3_uri: str,
+    output_dir: str,
+    quantize: Optional[str] = None,
+    max_seq_length: int = 512,
+    min_seq_length: int = 1,
+    local_cache: Optional[str] = None,
+) -> str:
+    """Export two-pass LayoutLM models to CoreML format.
+
+    Creates a bundle with both Pass 1 (region detection) and Pass 2
+    (fine-grained classification) models, along with a manifest file
+    that describes the two-pass pipeline.
+
+    Args:
+        pass1_s3_uri: S3 URI to Pass 1 model checkpoint.
+        pass2_s3_uri: S3 URI to Pass 2 model checkpoint.
+        output_dir: Directory to write CoreML bundles.
+        quantize: Quantization mode: None, "float16", "int8", or "int4".
+        max_seq_length: Maximum sequence length for models.
+        min_seq_length: Minimum sequence length for models.
+        local_cache: Local directory to cache downloaded models.
+
+    Returns:
+        Path to the created bundle directory.
+    """
+    import tempfile
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # Use provided cache dir or create temp dir
+    temp_dir_obj = None
+    if local_cache:
+        cache_dir = Path(local_cache)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        temp_dir_obj = tempfile.TemporaryDirectory(prefix="layoutlm_two_pass_")
+        cache_dir = Path(temp_dir_obj.name)
+
+    try:
+        print("=" * 60)
+        print("Exporting Two-Pass LayoutLM Models to CoreML")
+        print("=" * 60)
+
+        # Export Pass 1 model
+        print("\n[Pass 1] Region Detection Model")
+        print("-" * 40)
+        pass1_metadata = _export_single_model_from_s3(
+            s3_uri=pass1_s3_uri,
+            output_dir=output_dir,
+            model_name="LayoutLM_Pass1",
+            quantize=quantize,
+            max_seq_length=max_seq_length,
+            min_seq_length=min_seq_length,
+            temp_cache_dir=cache_dir,
+        )
+
+        # Export Pass 2 model
+        print("\n[Pass 2] Fine-Grained Classification Model")
+        print("-" * 40)
+        pass2_metadata = _export_single_model_from_s3(
+            s3_uri=pass2_s3_uri,
+            output_dir=output_dir,
+            model_name="LayoutLM_Pass2",
+            quantize=quantize,
+            max_seq_length=max_seq_length,
+            min_seq_length=min_seq_length,
+            temp_cache_dir=cache_dir,
+        )
+
+        # Create two-pass manifest
+        manifest = {
+            "pipeline_type": "two_pass",
+            "version": "1.0",
+            "pass1": {
+                "model_file": "LayoutLM_Pass1.mlpackage",
+                "purpose": "region_detection",
+                "region_label": "FINANCIAL_REGION",
+                **pass1_metadata,
+            },
+            "pass2": {
+                "model_file": "LayoutLM_Pass2.mlpackage",
+                "purpose": "fine_grained_classification",
+                **pass2_metadata,
+            },
+            "inference_config": {
+                "min_region_tokens": 3,
+                "min_confidence_skip_pass2": 0.95,
+            },
+        }
+
+        manifest_path = output_path / "two_pass_manifest.json"
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2)
+            f.write("\n")
+
+        print("\n" + "=" * 60)
+        print(f"Two-pass CoreML bundle created at: {output_path}")
+        print("Contents:")
+        for item in sorted(output_path.iterdir()):
+            if item.is_dir():
+                print(f"  {item.name}/")
+            else:
+                print(f"  {item.name}")
+        print("=" * 60)
+
+        return str(output_path)
+
+    finally:
+        if temp_dir_obj is not None:
+            temp_dir_obj.cleanup()
+
+
+def export_two_pass_coreml_auto_discover(
+    bucket_name: str,
+    output_dir: str,
+    quantize: Optional[str] = None,
+    max_seq_length: int = 512,
+    min_seq_length: int = 1,
+    local_cache: Optional[str] = None,
+) -> str:
+    """Export two-pass models to CoreML, auto-discovering from S3 bucket.
+
+    Scans the bucket for models with model_type=two_pass_p1 and two_pass_p2
+    in their run.json, selects the latest of each, and exports both.
+
+    Args:
+        bucket_name: S3 bucket to scan for two-pass models.
+        output_dir: Directory to write CoreML bundles.
+        quantize: Quantization mode: None, "float16", "int8", or "int4".
+        max_seq_length: Maximum sequence length for models.
+        min_seq_length: Minimum sequence length for models.
+        local_cache: Local directory to cache downloaded models.
+
+    Returns:
+        Path to the created bundle directory.
+
+    Raises:
+        ValueError: If matching Pass 1 or Pass 2 model not found.
+    """
+    # Import discovery function from inference module
+    from .inference import discover_two_pass_models
+
+    print(f"Scanning bucket '{bucket_name}' for two-pass models...")
+    model_pair = discover_two_pass_models(bucket_name)
+
+    if model_pair is None:
+        raise ValueError(
+            f"Could not find matching Pass 1 and Pass 2 models in bucket '{bucket_name}'. "
+            "Ensure models have model_type='two_pass_p1' and 'two_pass_p2' in run.json."
+        )
+
+    print(f"Found Pass 1 model: {model_pair.pass1.job_name} ({model_pair.pass1.s3_uri})")
+    print(f"Found Pass 2 model: {model_pair.pass2.job_name} ({model_pair.pass2.s3_uri})")
+
+    return export_two_pass_coreml(
+        pass1_s3_uri=model_pair.pass1.s3_uri,
+        pass2_s3_uri=model_pair.pass2.s3_uri,
+        output_dir=output_dir,
+        quantize=quantize,
+        max_seq_length=max_seq_length,
+        min_seq_length=min_seq_length,
+        local_cache=local_cache,
+    )
+
+
 def export_from_s3(
     s3_uri: str,
     output_dir: str,
@@ -390,6 +630,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Export LayoutLM model to CoreML format"
     )
+
+    # Single model export options
     parser.add_argument(
         "--checkpoint-dir",
         help="Local directory containing model checkpoint",
@@ -399,14 +641,35 @@ if __name__ == "__main__":
         help="S3 URI to model checkpoint (s3://bucket/prefix/)",
     )
     parser.add_argument(
-        "--output-dir",
-        required=True,
-        help="Directory to write CoreML bundle",
-    )
-    parser.add_argument(
         "--model-name",
         default="LayoutLM",
         help="Name for the .mlpackage file",
+    )
+
+    # Two-pass export options
+    parser.add_argument(
+        "--two-pass",
+        action="store_true",
+        help="Export two-pass model pipeline (requires --pass1-s3-uri and --pass2-s3-uri, or --auto-discover-bucket)",
+    )
+    parser.add_argument(
+        "--pass1-s3-uri",
+        help="S3 URI to Pass 1 (region detection) model for two-pass export",
+    )
+    parser.add_argument(
+        "--pass2-s3-uri",
+        help="S3 URI to Pass 2 (fine-grained classification) model for two-pass export",
+    )
+    parser.add_argument(
+        "--auto-discover-bucket",
+        help="S3 bucket to auto-discover two-pass models (alternative to --pass1-s3-uri and --pass2-s3-uri)",
+    )
+
+    # Common options
+    parser.add_argument(
+        "--output-dir",
+        required=True,
+        help="Directory to write CoreML bundle",
     )
     parser.add_argument(
         "--local-cache",
@@ -433,15 +696,40 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if not args.checkpoint_dir and not args.s3_uri:
-        parser.error("Either --checkpoint-dir or --s3-uri is required")
-
     if args.min_seq_length > args.max_seq_length:
         parser.error(
             "--min-seq-length cannot be greater than --max-seq-length"
         )
 
-    if args.s3_uri:
+    if args.two_pass:
+        # Two-pass export mode
+        if args.auto_discover_bucket:
+            # Auto-discover models from bucket
+            export_two_pass_coreml_auto_discover(
+                bucket_name=args.auto_discover_bucket,
+                output_dir=args.output_dir,
+                quantize=args.quantize,
+                max_seq_length=args.max_seq_length,
+                min_seq_length=args.min_seq_length,
+                local_cache=args.local_cache,
+            )
+        elif args.pass1_s3_uri and args.pass2_s3_uri:
+            # Explicit model URIs
+            export_two_pass_coreml(
+                pass1_s3_uri=args.pass1_s3_uri,
+                pass2_s3_uri=args.pass2_s3_uri,
+                output_dir=args.output_dir,
+                quantize=args.quantize,
+                max_seq_length=args.max_seq_length,
+                min_seq_length=args.min_seq_length,
+                local_cache=args.local_cache,
+            )
+        else:
+            parser.error(
+                "--two-pass requires either --auto-discover-bucket, or both "
+                "--pass1-s3-uri and --pass2-s3-uri"
+            )
+    elif args.s3_uri:
         export_from_s3(
             s3_uri=args.s3_uri,
             output_dir=args.output_dir,
@@ -451,7 +739,7 @@ if __name__ == "__main__":
             max_seq_length=args.max_seq_length,
             min_seq_length=args.min_seq_length,
         )
-    else:
+    elif args.checkpoint_dir:
         export_coreml(
             checkpoint_dir=args.checkpoint_dir,
             output_dir=args.output_dir,
@@ -459,4 +747,9 @@ if __name__ == "__main__":
             quantize=args.quantize,
             max_seq_length=args.max_seq_length,
             min_seq_length=args.min_seq_length,
+        )
+    else:
+        parser.error(
+            "Either --checkpoint-dir, --s3-uri, or --two-pass with model "
+            "source options is required"
         )

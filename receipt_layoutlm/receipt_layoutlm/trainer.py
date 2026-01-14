@@ -356,6 +356,9 @@ class ReceiptLayoutLMTrainer:
                 merge_info.resulting_labels if merge_info else []
             ),
             "epoch_metrics": [],
+            # Two-pass model identification for inference discovery
+            "model_type": self.training_config.model_type.value,
+            "region_extraction": self.data_config.region_extraction,
         }
         with open(run_json_path, "w", encoding="utf-8") as f:
             json.dump(run_payload, f, indent=2)

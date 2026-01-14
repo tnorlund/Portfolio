@@ -3,7 +3,7 @@ import json
 import os
 from typing import Dict, List, Optional
 
-from .config import MERGE_PRESETS, DataConfig, TrainingConfig
+from .config import MERGE_PRESETS, DataConfig, ModelType, TrainingConfig
 from .export_coreml import export_coreml, export_from_s3
 from .inference import LayoutLMInference
 from .trainer import ReceiptLayoutLMTrainer
@@ -199,6 +199,19 @@ def main() -> None:
         help=(
             "Margin around extracted region as fraction of Y-range (default: 0.05 = 5%%). "
             "Only used when --region-extraction is set."
+        ),
+    )
+    train_p.add_argument(
+        "--model-type",
+        type=str,
+        choices=["single_pass", "two_pass_p1", "two_pass_p2"],
+        default="single_pass",
+        help=(
+            "Model type for two-pass inference: "
+            "'single_pass' (standard model, default), "
+            "'two_pass_p1' (Pass 1: coarse region detection), "
+            "'two_pass_p2' (Pass 2: fine-grained classification). "
+            "Written to run.json for model discovery during inference."
         ),
     )
     train_p.add_argument(
@@ -425,6 +438,10 @@ def main() -> None:
         train_cfg.output_s3_path = args.output_s3_path
         train_cfg.auto_export_coreml = args.export_coreml
         train_cfg.coreml_quantize = args.coreml_quantize
+
+        # Two-pass model type identification
+        train_cfg.model_type = ModelType(args.model_type)
+
         trainer = ReceiptLayoutLMTrainer(data_cfg, train_cfg)
         job_id = trainer.train(job_name=args.job_name)
         print(job_id)

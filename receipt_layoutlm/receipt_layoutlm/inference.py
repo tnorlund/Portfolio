@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 # Reuse normalization helpers to match training exactly
-from .config import FINANCIAL_REGION_LABELS
+from .config import FINANCIAL_REGION_LABELS, ModelType
 from .data_loader import _box_from_word, _normalize_box_from_extents
 
 
@@ -28,6 +28,159 @@ class InferenceResult:
     receipt_id: int
     lines: List[LinePrediction]
     meta: Dict[str, Any]
+
+
+@dataclass
+class ModelInfo:
+    """Metadata about a trained LayoutLM model from S3."""
+
+    s3_uri: str  # Full S3 URI to model (e.g., s3://bucket/runs/job/best/)
+    job_name: str  # Training job name
+    model_type: str  # "single_pass", "two_pass_p1", or "two_pass_p2"
+    label_list: List[str]  # Labels the model was trained on
+    created_at: Optional[str] = None  # ISO timestamp from S3 metadata
+
+
+@dataclass
+class TwoPassModelPair:
+    """A matched pair of Pass 1 and Pass 2 models for two-pass inference."""
+
+    pass1: ModelInfo
+    pass2: ModelInfo
+
+
+def discover_models_in_bucket(
+    bucket: str,
+    prefix: str = "runs/",
+) -> List[ModelInfo]:
+    """Discover all LayoutLM models in an S3 bucket.
+
+    Scans the bucket for model directories and reads their run.json to
+    extract model metadata including model_type.
+
+    Args:
+        bucket: S3 bucket name.
+        prefix: Prefix to scan (default: "runs/").
+
+    Returns:
+        List of ModelInfo for each discovered model.
+    """
+    try:
+        boto3 = importlib.import_module("boto3")
+    except ModuleNotFoundError:
+        return []
+
+    s3 = boto3.client("s3")
+    models: List[ModelInfo] = []
+
+    # List all job directories under prefix
+    resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix, Delimiter="/")
+    job_prefixes = [cp["Prefix"] for cp in resp.get("CommonPrefixes", [])]
+
+    for job_prefix in job_prefixes:
+        # Check for best/ subdirectory first
+        best_prefix = f"{job_prefix}best/"
+        run_json_key = f"{job_prefix}run.json"
+
+        try:
+            # Check if best/ exists by looking for model.safetensors
+            s3.head_object(Bucket=bucket, Key=f"{best_prefix}model.safetensors")
+            model_uri = f"s3://{bucket}/{best_prefix}"
+        except Exception:
+            # No best/, try to find a checkpoint
+            try:
+                page = s3.list_objects_v2(Bucket=bucket, Prefix=job_prefix)
+                checkpoints = [
+                    o
+                    for o in page.get("Contents", [])
+                    if o["Key"].endswith("model.safetensors")
+                    and "checkpoint-" in o["Key"]
+                ]
+                if not checkpoints:
+                    continue
+                latest = max(checkpoints, key=lambda o: o["LastModified"])
+                model_uri = "s3://{}/{}".format(
+                    bucket, latest["Key"].rsplit("/", 1)[0] + "/"
+                )
+            except Exception:
+                continue
+
+        # Read run.json to get model metadata
+        try:
+            response = s3.get_object(Bucket=bucket, Key=run_json_key)
+            run_config = json.loads(response["Body"].read().decode("utf-8"))
+
+            models.append(
+                ModelInfo(
+                    s3_uri=model_uri,
+                    job_name=run_config.get("job_name", job_prefix.rstrip("/").split("/")[-1]),
+                    model_type=run_config.get("model_type", "single_pass"),
+                    label_list=run_config.get("label_list", []),
+                    created_at=response.get("LastModified", "").isoformat()
+                    if hasattr(response.get("LastModified", ""), "isoformat")
+                    else None,
+                )
+            )
+        except Exception:
+            # run.json not found or invalid - skip this model
+            continue
+
+    return models
+
+
+def discover_two_pass_models(
+    bucket: str,
+    prefix: str = "runs/",
+) -> Optional[TwoPassModelPair]:
+    """Discover the latest matching Pass 1 and Pass 2 models in S3.
+
+    Scans the bucket for models with model_type "two_pass_p1" and "two_pass_p2",
+    then returns the most recent pair.
+
+    Args:
+        bucket: S3 bucket name.
+        prefix: Prefix to scan (default: "runs/").
+
+    Returns:
+        TwoPassModelPair if both Pass 1 and Pass 2 models found, None otherwise.
+    """
+    models = discover_models_in_bucket(bucket, prefix)
+
+    # Separate by model type
+    pass1_models = [m for m in models if m.model_type == ModelType.TWO_PASS_P1.value]
+    pass2_models = [m for m in models if m.model_type == ModelType.TWO_PASS_P2.value]
+
+    if not pass1_models or not pass2_models:
+        return None
+
+    # Get the most recent of each type
+    # Sort by created_at descending (most recent first)
+    pass1_models.sort(key=lambda m: m.created_at or "", reverse=True)
+    pass2_models.sort(key=lambda m: m.created_at or "", reverse=True)
+
+    return TwoPassModelPair(
+        pass1=pass1_models[0],
+        pass2=pass2_models[0],
+    )
+
+
+def discover_two_pass_models_from_env(
+    bucket_env_var: str = "LAYOUTLM_TRAINING_BUCKET",
+) -> Optional[TwoPassModelPair]:
+    """Discover two-pass models from environment variable.
+
+    Convenience function that reads bucket name from environment.
+
+    Args:
+        bucket_env_var: Environment variable name containing bucket.
+
+    Returns:
+        TwoPassModelPair if found, None otherwise.
+    """
+    bucket = os.getenv(bucket_env_var)
+    if not bucket:
+        return None
+    return discover_two_pass_models(bucket)
 
 
 class LayoutLMInference:
@@ -465,6 +618,11 @@ class TwoPassLayoutLMInference:
     This approach improves classification of visually similar labels
     (LINE_TOTAL, SUBTOTAL, TAX, GRAND_TOTAL) by first isolating the
     financial region, then running a specialized model on just that region.
+
+    Model Loading Options:
+    1. Explicit S3 URIs: pass1_model_s3_uri + pass2_model_s3_uri
+    2. Auto-discovery: auto_discover_from_bucket scans S3 for model_type metadata
+    3. Environment variables: PASS1_MODEL_S3_URI + PASS2_MODEL_S3_URI
     """
 
     def __init__(
@@ -473,6 +631,7 @@ class TwoPassLayoutLMInference:
         pass1_model_s3_uri: Optional[str] = None,
         pass2_model_dir: Optional[str] = None,
         pass2_model_s3_uri: Optional[str] = None,
+        auto_discover_from_bucket: Optional[str] = None,
         min_region_tokens: int = 3,
         min_confidence_skip_pass2: float = 0.95,
     ) -> None:
@@ -483,17 +642,54 @@ class TwoPassLayoutLMInference:
             pass1_model_s3_uri: S3 URI for Pass 1 model (coarse detection).
             pass2_model_dir: Local directory for Pass 2 model.
             pass2_model_s3_uri: S3 URI for Pass 2 model (fine-grained classification).
+            auto_discover_from_bucket: S3 bucket to scan for models by model_type.
+                If set, discovers latest Pass 1 and Pass 2 models automatically.
             min_region_tokens: Minimum tokens in region to run Pass 2 (default: 3).
             min_confidence_skip_pass2: Skip Pass 2 if avg confidence > this (default: 0.95).
+
+        Environment Variables (checked if explicit URIs not provided):
+            PASS1_MODEL_S3_URI: S3 URI for Pass 1 model
+            PASS2_MODEL_S3_URI: S3 URI for Pass 2 model
+            TWO_PASS_AUTO_DISCOVER_BUCKET: S3 bucket for auto-discovery
         """
+        # Resolve model URIs from various sources
+        p1_uri = pass1_model_s3_uri or os.getenv("PASS1_MODEL_S3_URI")
+        p2_uri = pass2_model_s3_uri or os.getenv("PASS2_MODEL_S3_URI")
+
+        # Auto-discovery if explicit URIs not provided
+        if not p1_uri or not p2_uri:
+            discover_bucket = auto_discover_from_bucket or os.getenv(
+                "TWO_PASS_AUTO_DISCOVER_BUCKET"
+            )
+            if discover_bucket:
+                pair = discover_two_pass_models(discover_bucket)
+                if pair:
+                    p1_uri = p1_uri or pair.pass1.s3_uri
+                    p2_uri = p2_uri or pair.pass2.s3_uri
+
+        if not p1_uri:
+            raise ValueError(
+                "Pass 1 model not specified. Provide pass1_model_s3_uri, "
+                "set PASS1_MODEL_S3_URI env var, or enable auto-discovery."
+            )
+        if not p2_uri:
+            raise ValueError(
+                "Pass 2 model not specified. Provide pass2_model_s3_uri, "
+                "set PASS2_MODEL_S3_URI env var, or enable auto-discovery."
+            )
+
+        # Store resolved URIs for metadata
+        self._pass1_s3_uri = p1_uri
+        self._pass2_s3_uri = p2_uri
+
         # Initialize both models
         self._pass1 = LayoutLMInference(
             model_dir=pass1_model_dir or os.path.expanduser("~/model_pass1"),
-            model_s3_uri=pass1_model_s3_uri,
+            model_s3_uri=p1_uri,
         )
         self._pass2 = LayoutLMInference(
             model_dir=pass2_model_dir or os.path.expanduser("~/model_pass2"),
-            model_s3_uri=pass2_model_s3_uri,
+            model_s3_uri=p2_uri,
         )
 
         self._min_region_tokens = min_region_tokens
@@ -662,6 +858,8 @@ class TwoPassLayoutLMInference:
             meta={
                 **pass1_result.meta,
                 "two_pass": True,
+                "pass1_model_s3_uri": self._pass1_s3_uri,
+                "pass2_model_s3_uri": self._pass2_s3_uri,
                 "financial_region": {
                     "y_min": region.y_min,
                     "y_max": region.y_max,

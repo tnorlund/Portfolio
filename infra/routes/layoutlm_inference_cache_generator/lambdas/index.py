@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 import boto3
 from receipt_layoutlm import LayoutLMInference
+from receipt_layoutlm.inference import TwoPassLayoutLMInference
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
@@ -26,31 +27,61 @@ logger.setLevel(logging.INFO)
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
 S3_CACHE_BUCKET = os.environ["S3_CACHE_BUCKET"]
 LAYOUTLM_TRAINING_BUCKET = os.environ.get("LAYOUTLM_TRAINING_BUCKET")
-MODEL_S3_URI = os.environ.get("MODEL_S3_URI")  # Optional override
+MODEL_S3_URI = os.environ.get("MODEL_S3_URI")  # Optional override for single-pass
 CACHE_KEY = "layoutlm-inference-cache/latest.json"
 CACHE_PREFIX = "layoutlm-inference-cache/receipts/"  # For batch mode
 MODEL_DIR = "/tmp/layoutlm-model"  # Persists across warm invocations
+
+# Two-pass mode environment variables
+TWO_PASS_ENABLED = os.environ.get("TWO_PASS_ENABLED", "false").lower() == "true"
+PASS1_MODEL_S3_URI = os.environ.get("PASS1_MODEL_S3_URI")
+PASS2_MODEL_S3_URI = os.environ.get("PASS2_MODEL_S3_URI")
+TWO_PASS_AUTO_DISCOVER_BUCKET = os.environ.get("TWO_PASS_AUTO_DISCOVER_BUCKET")
+MODEL_DIR_PASS1 = "/tmp/layoutlm-model-pass1"
+MODEL_DIR_PASS2 = "/tmp/layoutlm-model-pass2"
 
 # Initialize clients
 s3_client = boto3.client("s3")
 
 # Global model instance for warm starts
-_model_instance: Optional[LayoutLMInference] = None
+# Can be either single-pass or two-pass model
+_model_instance: Optional[Any] = None
 
 
-def _get_model() -> LayoutLMInference:
-    """Get or create LayoutLM model instance (cached for warm starts)."""
+def _get_model() -> Any:
+    """Get or create LayoutLM model instance (cached for warm starts).
+
+    Returns either LayoutLMInference or TwoPassLayoutLMInference based on
+    the TWO_PASS_ENABLED environment variable.
+    """
     global _model_instance
     if _model_instance is None:
-        logger.info("Loading LayoutLM model from S3")
-        _model_instance = LayoutLMInference(
-            model_dir=MODEL_DIR,
-            model_s3_uri=MODEL_S3_URI,
-            auto_from_bucket_env=(
-                "LAYOUTLM_TRAINING_BUCKET" if LAYOUTLM_TRAINING_BUCKET else None
-            ),
-        )
-        logger.info("Model loaded successfully. Device: %s", _model_instance._device)
+        if TWO_PASS_ENABLED:
+            logger.info("Loading two-pass LayoutLM models from S3")
+            _model_instance = TwoPassLayoutLMInference(
+                pass1_model_dir=MODEL_DIR_PASS1,
+                pass1_model_s3_uri=PASS1_MODEL_S3_URI,
+                pass2_model_dir=MODEL_DIR_PASS2,
+                pass2_model_s3_uri=PASS2_MODEL_S3_URI,
+                auto_discover_from_bucket=TWO_PASS_AUTO_DISCOVER_BUCKET,
+            )
+            logger.info(
+                "Two-pass models loaded. Pass1: %s, Pass2: %s",
+                _model_instance._pass1_s3_uri,
+                _model_instance._pass2_s3_uri,
+            )
+        else:
+            logger.info("Loading single-pass LayoutLM model from S3")
+            _model_instance = LayoutLMInference(
+                model_dir=MODEL_DIR,
+                model_s3_uri=MODEL_S3_URI,
+                auto_from_bucket_env=(
+                    "LAYOUTLM_TRAINING_BUCKET" if LAYOUTLM_TRAINING_BUCKET else None
+                ),
+            )
+            logger.info(
+                "Single-pass model loaded. Device: %s", _model_instance._device
+            )
     return _model_instance
 
 
