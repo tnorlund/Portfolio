@@ -367,6 +367,27 @@ class ReceiptLayoutLMTrainer:
                 merge_info.resulting_labels if merge_info else []
             ),
         }
+
+        # Build storage info for S3 model artifacts
+        # This enables best_dir_uri() to return the correct path for CoreML export
+        storage: Optional[Dict[str, str]] = None
+        s3_path = self.training_config.output_s3_path
+        if s3_path:
+            if s3_path.startswith("s3://"):
+                parsed = urlparse(s3_path)
+                bucket = parsed.netloc
+                prefix = parsed.path.lstrip("/")
+                if not prefix.endswith("/"):
+                    prefix += "/"
+                run_prefix = f"{prefix}{job_name}/"
+            else:
+                bucket = s3_path
+                run_prefix = f"runs/{job_name}/"
+            storage = {
+                "bucket": bucket,
+                "run_root_prefix": run_prefix,
+            }
+
         job = Job(
             job_id=str(uuid.uuid4()),
             name=job_name,
@@ -378,6 +399,7 @@ class ReceiptLayoutLMTrainer:
             job_config=job_config_dict,
             estimated_duration=None,
             tags={},
+            storage=storage,
         )
         self.dynamo.add_job(job)
 
