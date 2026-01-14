@@ -100,6 +100,8 @@ def log_label_validation(
     reasoning: str,
     similar_words: Optional[List[Dict[str, Any]]] = None,
     merchant_name: Optional[str] = None,
+    suggested_label: Optional[str] = None,
+    label_scores: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Log a label validation decision to Langsmith.
 
@@ -120,6 +122,8 @@ def log_label_validation(
         reasoning: Explanation for the decision
         similar_words: Optional list of similar validated words used as evidence
         merchant_name: Optional merchant name for context
+        suggested_label: Optional best alternative label from brute-force search
+        label_scores: Optional list of top label candidates with scores
 
     Returns:
         Dict with logged data if successful, None if Langsmith is not enabled
@@ -152,6 +156,8 @@ def log_label_validation(
         reasoning: str,
         similar_words: Optional[List[Dict[str, Any]]],
         merchant_name: Optional[str],
+        suggested_label: Optional[str],
+        label_scores: Optional[List[Dict[str, Any]]],
     ) -> Dict[str, Any]:
         """Traced validation - captures all inputs and outputs."""
         return {
@@ -168,6 +174,8 @@ def log_label_validation(
             "reasoning": reasoning,
             "similar_words": similar_words or [],
             "merchant_name": merchant_name,
+            "suggested_label": suggested_label,
+            "label_scores": label_scores or [],
         }
 
     try:
@@ -185,6 +193,8 @@ def log_label_validation(
             reasoning=reasoning,
             similar_words=similar_words,
             merchant_name=merchant_name,
+            suggested_label=suggested_label,
+            label_scores=label_scores,
         )
 
         _log(
