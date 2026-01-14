@@ -96,13 +96,7 @@ public extension Config {
     ) throws -> Config {
         var logger = Logger(label: "receipt.ocr.config")
         let envLogLevel = ProcessInfo.processInfo.environment["LOG_LEVEL"] ?? "info"
-        switch envLogLevel.lowercased() {
-        case "trace": logger.logLevel = .trace
-        case "debug": logger.logLevel = .debug
-        case "warn": logger.logLevel = .warning
-        case "error": logger.logLevel = .error
-        default: logger.logLevel = .info
-        }
+        logger.logLevel = .from(string: envLogLevel)
 
         let endpointURL: URL? = localstackEndpoint.flatMap { URL(string: $0) }
 

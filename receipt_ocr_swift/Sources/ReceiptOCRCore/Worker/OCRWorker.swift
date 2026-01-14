@@ -134,13 +134,7 @@ public final class OCRWorker {
         self.dynamo = dynamo
         self.sotoFactory = sotoFactory
         var logger = Logger(label: "receipt.ocr.worker")
-        switch config.logLevel.lowercased() {
-        case "trace": logger.logLevel = .trace
-        case "debug": logger.logLevel = .debug
-        case "warn": logger.logLevel = .warning
-        case "error": logger.logLevel = .error
-        default: logger.logLevel = .info
-        }
+        logger.logLevel = .from(string: config.logLevel)
         self.logger = logger
     }
 
@@ -150,13 +144,7 @@ public final class OCRWorker {
 
         // Set up logger for model operations
         var modelLogger = Logger(label: "receipt.ocr.model")
-        switch config.logLevel.lowercased() {
-        case "trace": modelLogger.logLevel = .trace
-        case "debug": modelLogger.logLevel = .debug
-        case "warn": modelLogger.logLevel = .warning
-        case "error": modelLogger.logLevel = .error
-        default: modelLogger.logLevel = .info
-        }
+        modelLogger.logLevel = .from(string: config.logLevel)
 
         // Download LayoutLM model if configured
         var layoutLMBundlePath: URL? = nil
