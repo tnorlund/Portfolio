@@ -614,6 +614,54 @@ class MerchantResolvingEmbeddingProcessor:
                         f"label={label.label} (conf={result.confidence:.2f})"
                     )
 
+                elif result.decision == ValidationDecision.AUTO_INVALID:
+                    # Strong evidence AGAINST the prediction - mark as invalid
+                    label.validation_status = ValidationStatus.INVALID.value
+                    label.label_proposed_by = (
+                        f"chroma-invalidated:{label.label_proposed_by or 'auto'}"
+                    )
+                    label.reasoning = result.reason
+                    self.dynamo.update_receipt_word_label(label)
+
+                    # Get word text for logging
+                    word = word_lookup.get((label.line_id, label.word_id))
+                    word_text = word.text if word else ""
+
+                    # Serialize label_scores for logging
+                    label_scores_data = [
+                        {
+                            "label": s.label,
+                            "match_count": s.match_count,
+                            "avg_similarity": round(s.avg_similarity, 4),
+                            "score": round(s.score, 2),
+                        }
+                        for s in (result.label_scores or [])
+                    ]
+
+                    # Log to Langsmith
+                    log_label_validation(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        line_id=label.line_id,
+                        word_id=label.word_id,
+                        word_text=word_text,
+                        predicted_label=label.label,
+                        final_label=label.label,  # Keep original for audit
+                        validation_source="chroma",
+                        decision="invalid",
+                        confidence=result.confidence,
+                        reasoning=result.reason,
+                        merchant_name=merchant_name,
+                        suggested_label=result.suggested_label,
+                        label_scores=label_scores_data,
+                    )
+
+                    _log(
+                        f"  ChromaDB invalidated: {label.line_id}_{label.word_id} "
+                        f"label={label.label} suggested={result.suggested_label} "
+                        f"(conf={result.confidence:.2f})"
+                    )
+
                 elif result.decision == ValidationDecision.NEEDS_REVIEW:
                     # ChromaDB found disagreement - needs LLM to decide
                     chroma_needs_review.append({
@@ -633,6 +681,12 @@ class MerchantResolvingEmbeddingProcessor:
             f"Tier 1 (ChromaDB): validated={chroma_validated_count}, "
             f"needs_review={len(chroma_needs_review)}, needs_llm={len(labels_needing_llm)}"
         )
+
+        # Create lookup for chroma results (for labels that had NEEDS_REVIEW)
+        chroma_results_lookup = {
+            (item["label"].line_id, item["label"].word_id): item["chroma_result"]
+            for item in chroma_needs_review
+        }
 
         # =========================================================================
         # TIER 2: LLM Validation (Fallback)
@@ -749,6 +803,23 @@ class MerchantResolvingEmbeddingProcessor:
                 elif decision == "NEEDS REVIEW":
                     decision = "NEEDS_REVIEW"
 
+                # Get chroma suggestion if available (from Tier 1 NEEDS_REVIEW)
+                chroma_result = chroma_results_lookup.get(
+                    (label_entity.line_id, label_entity.word_id)
+                )
+                chroma_suggested = chroma_result.suggested_label if chroma_result else None
+                chroma_scores = None
+                if chroma_result and chroma_result.label_scores:
+                    chroma_scores = [
+                        {
+                            "label": s.label,
+                            "match_count": s.match_count,
+                            "avg_similarity": round(s.avg_similarity, 4),
+                            "score": round(s.score, 2),
+                        }
+                        for s in chroma_result.label_scores
+                    ]
+
                 if decision == "VALID":
                     # Keep original label, mark as validated
                     label_entity.validation_status = ValidationStatus.VALID.value
@@ -774,6 +845,8 @@ class MerchantResolvingEmbeddingProcessor:
                         reasoning=llm_result.reasoning,
                         similar_words=similar_evidence.get(word_id, []),
                         merchant_name=merchant_name,
+                        suggested_label=chroma_suggested,
+                        label_scores=chroma_scores,
                     )
 
                 elif decision == "NEEDS_REVIEW":
@@ -800,6 +873,8 @@ class MerchantResolvingEmbeddingProcessor:
                         reasoning=llm_result.reasoning,
                         similar_words=similar_evidence.get(word_id, []),
                         merchant_name=merchant_name,
+                        suggested_label=chroma_suggested,
+                        label_scores=chroma_scores,
                     )
 
                     _log(
@@ -851,6 +926,8 @@ class MerchantResolvingEmbeddingProcessor:
                             reasoning=llm_result.reasoning,
                             similar_words=similar_evidence.get(word_id, []),
                             merchant_name=merchant_name,
+                            suggested_label=chroma_suggested,
+                            label_scores=chroma_scores,
                         )
 
                         _log(
@@ -881,6 +958,8 @@ class MerchantResolvingEmbeddingProcessor:
                             reasoning=llm_result.reasoning,
                             similar_words=similar_evidence.get(word_id, []),
                             merchant_name=merchant_name,
+                            suggested_label=chroma_suggested,
+                            label_scores=chroma_scores,
                         )
 
                 else:
@@ -907,6 +986,8 @@ class MerchantResolvingEmbeddingProcessor:
                         reasoning=llm_result.reasoning,
                         similar_words=similar_evidence.get(word_id, []),
                         merchant_name=merchant_name,
+                        suggested_label=chroma_suggested,
+                        label_scores=chroma_scores,
                     )
 
             except Exception as e:
