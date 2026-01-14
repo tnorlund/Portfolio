@@ -25,7 +25,6 @@ from dynamo_db import dynamodb_table
 
 # Import the CodeBuildDockerImage component
 from infra.components.codebuild_docker_image import CodeBuildDockerImage
-from infra.components.lambda_layer import upload_layer
 
 config = Config("portfolio")
 current_region = aws.get_region()
@@ -234,34 +233,30 @@ class UploadImages(ComponentResource):
             ),
         )
 
-        upload_receipt_lambda = Function(
-            f"{name}-upload-receipt-lambda",
-            name=f"{name}-{stack}-upload-receipt",
-            role=upload_receipt_role.arn,
-            runtime="python3.12",
-            handler="upload_receipt.handler",
-            code=AssetArchive(
-                {
-                    "upload_receipt.py": FileAsset(
-                        os.path.join(
-                            os.path.dirname(__file__), "upload_receipt.py"
-                        )
-                    )
-                }
-            ),
-            architectures=["arm64"],
-            layers=[
-                upload_layer.arn
-            ],  # receipt-upload includes receipt-dynamo
-            tags={"environment": stack},
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "BUCKET_NAME": image_bucket.bucket,
-                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
-                    "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
-                }
-            ),
-            opts=ResourceOptions(parent=self, ignore_changes=["layers"]),
+        # Container-based upload_receipt Lambda (replaces layer-based deployment)
+        upload_receipt_lambda_config = {
+            "role_arn": upload_receipt_role.arn,
+            "timeout": 30,  # 30 seconds is plenty for presign + DynamoDB write
+            "memory_size": 256,  # Minimal memory needed
+            "environment": {
+                "BUCKET_NAME": image_bucket.bucket,
+                "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
+            },
+        }
+
+        upload_receipt_docker_image = CodeBuildDockerImage(
+            f"{name}-upload-receipt-image",
+            dockerfile_path="infra/upload_images/container_upload/Dockerfile",
+            build_context_path=".",  # Project root for monorepo access
+            source_paths=["receipt_dynamo"],  # Only need receipt_dynamo
+            lambda_config=upload_receipt_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[upload_receipt_role]),
+        )
+
+        upload_receipt_lambda = cast(
+            Function, upload_receipt_docker_image.lambda_function
         )
 
         # Create a dedicated role for the OCR processing Lambda
