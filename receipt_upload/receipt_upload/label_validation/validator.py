@@ -12,6 +12,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_dynamo.constants import CORE_LABELS
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,26 @@ def _build_word_chroma_id(
 def _distance_to_similarity(distance: float) -> float:
     """Convert L2 distance to similarity score (0-1)."""
     return max(0.0, 1.0 - (distance / 2.0))
+
+
+def _extract_valid_labels_from_metadata(metadata: Dict[str, Any]) -> List[str]:
+    """Extract valid labels from boolean metadata fields.
+
+    PR #636 changed the metadata format from comma-delimited 'valid_labels'
+    to individual boolean fields per label (e.g., 'label_GRAND_TOTAL': True).
+
+    Args:
+        metadata: ChromaDB document metadata
+
+    Returns:
+        List of label names that are marked as valid (True)
+    """
+    valid_labels = []
+    for label in CORE_LABELS:
+        field_name = f"label_{label}"
+        if metadata.get(field_name) is True:
+            valid_labels.append(label)
+    return valid_labels
 
 
 class LightweightLabelValidator:
@@ -170,13 +191,8 @@ class LightweightLabelValidator:
                 if similarity < self.MIN_SIMILARITY:
                     continue
 
-                # Parse valid_labels from comma-delimited format
-                valid_labels_str = metadata.get("valid_labels", "")
-                valid_labels = [
-                    lbl.strip()
-                    for lbl in valid_labels_str.split(",")
-                    if lbl.strip()
-                ]
+                # Extract valid labels from boolean metadata fields
+                valid_labels = _extract_valid_labels_from_metadata(metadata)
 
                 if not valid_labels:
                     continue
