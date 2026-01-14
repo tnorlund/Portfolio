@@ -10,6 +10,8 @@ import os
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
 
+from .config import FINANCIAL_REGION_LABELS
+
 
 @dataclass
 class SplitMetadata:
@@ -292,6 +294,82 @@ def _normalize_box_from_extents(
     return [nx0, ny0, nx1, ny1]
 
 
+# Set of labels that define the financial region for Y-range extraction
+_FINANCIAL_REGION_SET = set(FINANCIAL_REGION_LABELS)
+
+
+def compute_financial_region_y_range(
+    words: List[Any],
+    label_map: Dict[Tuple[str, int, int, int], List[str]],
+    y_margin: float = 0.05,
+) -> Optional[Tuple[float, float]]:
+    """Compute the Y-range containing all financial region labels.
+
+    Scans all words in a receipt and finds the min/max Y coordinates of words
+    that have financial region labels (LINE_TOTAL, SUBTOTAL, TAX, GRAND_TOTAL,
+    PRODUCT_NAME, QUANTITY, UNIT_PRICE).
+
+    Args:
+        words: List of word objects from DynamoDB.
+        label_map: Dict mapping (image_id, receipt_id, line_id, word_id) to labels.
+        y_margin: Margin to add around the region as fraction of range (default 5%).
+
+    Returns:
+        Tuple of (y_min, y_max) in raw coordinates, or None if no financial labels found.
+    """
+    financial_y_coords: List[float] = []
+
+    for w in words:
+        word_key = (w.image_id, w.receipt_id, w.line_id, w.word_id)
+        labels = label_map.get(word_key, [])
+
+        # Check if any label is in the financial region set
+        for label in labels:
+            if (label or "").upper() in _FINANCIAL_REGION_SET:
+                _, y0, _, y1 = _box_from_word(w)
+                financial_y_coords.extend([y0, y1])
+                break
+
+    if not financial_y_coords:
+        return None
+
+    y_min = min(financial_y_coords)
+    y_max = max(financial_y_coords)
+
+    # Add margin
+    y_range = y_max - y_min
+    margin_size = y_range * y_margin
+    y_min -= margin_size
+    y_max += margin_size
+
+    return (y_min, y_max)
+
+
+def filter_words_to_y_range(
+    words: List[Any],
+    y_range: Tuple[float, float],
+) -> List[Any]:
+    """Filter words to only those within the specified Y-range.
+
+    Args:
+        words: List of word objects from DynamoDB.
+        y_range: Tuple of (y_min, y_max) in raw coordinates.
+
+    Returns:
+        Filtered list of words within the Y-range.
+    """
+    y_min, y_max = y_range
+
+    filtered: List[Any] = []
+    for w in words:
+        _, word_y0, _, word_y1 = _box_from_word(w)
+        # Include word if it overlaps with the Y-range
+        if word_y1 >= y_min and word_y0 <= y_max:
+            filtered.append(w)
+
+    return filtered
+
+
 _CORE_SET = set(CORE_LABELS.keys())
 
 
@@ -430,6 +508,8 @@ def load_datasets(
     random_seed: Optional[int] = None,
     label_merges: Optional[Dict[str, List[str]]] = None,
     allowed_labels: Optional[List[str]] = None,
+    region_extraction: Optional[str] = None,
+    region_y_margin: float = 0.05,
 ) -> Tuple[Any, SplitMetadata, MergeInfo]:
     """Load and process datasets from DynamoDB.
 
@@ -440,6 +520,9 @@ def load_datasets(
         label_merges: Dict mapping target labels to source labels to merge.
             E.g., {"AMOUNT": ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"]}
         allowed_labels: Optional list of allowed labels (whitelist).
+        region_extraction: Type of region extraction for two-pass training.
+            Options: None (full receipt), "financial" (extract financial region Y-range).
+        region_y_margin: Margin around extracted region as fraction of range (default 5%).
 
     Returns:
         Tuple of (DatasetDict, SplitMetadata, MergeInfo).
@@ -461,6 +544,34 @@ def load_datasets(
     words: List[Any] = []
     for img_id, rec_id in receipts_with_labels:
         words.extend(dynamo.list_receipt_words_from_receipt(img_id, rec_id))
+
+    # Apply region extraction if requested (for two-pass training)
+    if region_extraction == "financial":
+        # Group words by receipt first to compute per-receipt Y-ranges
+        words_by_receipt: Dict[Tuple[str, int], List[Any]] = {}
+        for w in words:
+            key = (w.image_id, w.receipt_id)
+            words_by_receipt.setdefault(key, []).append(w)
+
+        # Filter each receipt to its financial region Y-range
+        filtered_words: List[Any] = []
+        receipts_skipped = 0
+        for (img_id, rec_id), receipt_words_list in words_by_receipt.items():
+            y_range = compute_financial_region_y_range(
+                receipt_words_list, label_map, y_margin=region_y_margin
+            )
+            if y_range is None:
+                # No financial labels in this receipt - skip entirely for Pass 2 training
+                receipts_skipped += 1
+                continue
+            filtered = filter_words_to_y_range(receipt_words_list, y_range)
+            filtered_words.extend(filtered)
+
+        words = filtered_words
+        # Update receipts_with_labels to exclude skipped receipts
+        receipts_with_labels = {
+            (w.image_id, w.receipt_id) for w in words
+        }
 
     # Compute per-image maxima to normalize pixel coordinates if needed
     image_extents: Dict[str, Tuple[float, float]] = {}

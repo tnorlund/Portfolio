@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 # Reuse normalization helpers to match training exactly
+from .config import FINANCIAL_REGION_LABELS
 from .data_loader import _box_from_word, _normalize_box_from_extents
 
 
@@ -442,3 +443,292 @@ class LayoutLMInference:
                 "model_dir": self._model_dir,
             },
         )
+
+
+@dataclass
+class FinancialRegion:
+    """Detected financial region from Pass 1 inference."""
+
+    y_min: float  # Minimum Y coordinate (normalized 0-1000)
+    y_max: float  # Maximum Y coordinate (normalized 0-1000)
+    num_tokens: int  # Number of tokens in the region
+    avg_confidence: float  # Average confidence of FINANCIAL_REGION predictions
+    line_ids: List[int]  # Line IDs that overlap with the region
+
+
+class TwoPassLayoutLMInference:
+    """Two-pass hierarchical inference for LayoutLM models.
+
+    Pass 1: Detect coarse regions (e.g., FINANCIAL_REGION)
+    Pass 2: Within detected regions, classify fine-grained labels
+
+    This approach improves classification of visually similar labels
+    (LINE_TOTAL, SUBTOTAL, TAX, GRAND_TOTAL) by first isolating the
+    financial region, then running a specialized model on just that region.
+    """
+
+    def __init__(
+        self,
+        pass1_model_dir: Optional[str] = None,
+        pass1_model_s3_uri: Optional[str] = None,
+        pass2_model_dir: Optional[str] = None,
+        pass2_model_s3_uri: Optional[str] = None,
+        min_region_tokens: int = 3,
+        min_confidence_skip_pass2: float = 0.95,
+    ) -> None:
+        """Initialize two-pass inference.
+
+        Args:
+            pass1_model_dir: Local directory for Pass 1 model.
+            pass1_model_s3_uri: S3 URI for Pass 1 model (coarse detection).
+            pass2_model_dir: Local directory for Pass 2 model.
+            pass2_model_s3_uri: S3 URI for Pass 2 model (fine-grained classification).
+            min_region_tokens: Minimum tokens in region to run Pass 2 (default: 3).
+            min_confidence_skip_pass2: Skip Pass 2 if avg confidence > this (default: 0.95).
+        """
+        # Initialize both models
+        self._pass1 = LayoutLMInference(
+            model_dir=pass1_model_dir or os.path.expanduser("~/model_pass1"),
+            model_s3_uri=pass1_model_s3_uri,
+        )
+        self._pass2 = LayoutLMInference(
+            model_dir=pass2_model_dir or os.path.expanduser("~/model_pass2"),
+            model_s3_uri=pass2_model_s3_uri,
+        )
+
+        self._min_region_tokens = min_region_tokens
+        self._min_confidence_skip_pass2 = min_confidence_skip_pass2
+
+        # Financial region label (expected from Pass 1 with two_pass_p1 merge preset)
+        self._financial_region_label = "FINANCIAL_REGION"
+
+    def extract_financial_region(
+        self,
+        pass1_result: InferenceResult,
+    ) -> Optional[FinancialRegion]:
+        """Extract the financial region Y-range from Pass 1 predictions.
+
+        Finds all tokens predicted as FINANCIAL_REGION (or B-FINANCIAL_REGION,
+        I-FINANCIAL_REGION) and computes their Y-range.
+
+        Args:
+            pass1_result: Result from Pass 1 inference.
+
+        Returns:
+            FinancialRegion if detected, None otherwise.
+        """
+        region_y_coords: List[float] = []
+        region_confidences: List[float] = []
+        region_line_ids: Set[int] = set()
+
+        for line in pass1_result.lines:
+            for i, (label, confidence, box) in enumerate(
+                zip(line.labels, line.confidences, line.boxes)
+            ):
+                # Check for FINANCIAL_REGION label (with or without BIO prefix)
+                base_label = label.replace("B-", "").replace("I-", "")
+                if base_label == self._financial_region_label:
+                    # box is [x0, y0, x1, y1] normalized to 0-1000
+                    region_y_coords.extend([box[1], box[3]])
+                    region_confidences.append(confidence)
+                    region_line_ids.add(line.line_id)
+
+        if not region_y_coords:
+            return None
+
+        return FinancialRegion(
+            y_min=min(region_y_coords),
+            y_max=max(region_y_coords),
+            num_tokens=len(region_confidences),
+            avg_confidence=sum(region_confidences) / len(region_confidences),
+            line_ids=sorted(region_line_ids),
+        )
+
+    def should_run_pass2(
+        self,
+        region: Optional[FinancialRegion],
+    ) -> bool:
+        """Determine whether to run Pass 2 on a detected region.
+
+        Skip Pass 2 if:
+        - No financial region detected
+        - Region is too small (< min_region_tokens)
+        - Pass 1 confidence is very high (> min_confidence_skip_pass2)
+
+        Args:
+            region: Detected financial region from Pass 1, or None.
+
+        Returns:
+            True if Pass 2 should be run, False otherwise.
+        """
+        if region is None:
+            return False
+
+        if region.num_tokens < self._min_region_tokens:
+            return False
+
+        # Note: We intentionally don't skip based on high confidence
+        # because Pass 1 predicts FINANCIAL_REGION, not the fine-grained labels.
+        # High confidence in Pass 1 just means we're confident it's *a* financial
+        # region, not that we know *which* specific label it is.
+
+        return True
+
+    def filter_lines_to_region(
+        self,
+        tokens_per_line: List[List[str]],
+        boxes_per_line: List[List[List[int]]],
+        line_ids: List[int],
+        region: FinancialRegion,
+        y_margin: float = 50.0,  # Normalized margin (out of 1000)
+    ) -> Tuple[List[List[str]], List[List[List[int]]], List[int], List[int]]:
+        """Filter lines to only those within the financial region Y-range.
+
+        Args:
+            tokens_per_line: Tokens for each line.
+            boxes_per_line: Normalized boxes for each line.
+            line_ids: Original line IDs.
+            region: Detected financial region.
+            y_margin: Additional margin around region (default: 50 normalized units).
+
+        Returns:
+            Tuple of (filtered_tokens, filtered_boxes, filtered_line_ids, original_indices).
+            original_indices maps each filtered line back to its position in the input.
+        """
+        y_min = region.y_min - y_margin
+        y_max = region.y_max + y_margin
+
+        filtered_tokens: List[List[str]] = []
+        filtered_boxes: List[List[List[int]]] = []
+        filtered_line_ids: List[int] = []
+        original_indices: List[int] = []
+
+        for idx, (tokens, boxes, line_id) in enumerate(
+            zip(tokens_per_line, boxes_per_line, line_ids)
+        ):
+            # Check if any word in this line overlaps with the Y-range
+            line_overlaps = False
+            for box in boxes:
+                word_y_min, word_y_max = box[1], box[3]
+                if word_y_max >= y_min and word_y_min <= y_max:
+                    line_overlaps = True
+                    break
+
+            if line_overlaps:
+                filtered_tokens.append(tokens)
+                filtered_boxes.append(boxes)
+                filtered_line_ids.append(line_id)
+                original_indices.append(idx)
+
+        return filtered_tokens, filtered_boxes, filtered_line_ids, original_indices
+
+    def merge_predictions(
+        self,
+        pass1_result: InferenceResult,
+        pass2_predictions: List[LinePrediction],
+        region: FinancialRegion,
+    ) -> InferenceResult:
+        """Merge Pass 1 and Pass 2 predictions.
+
+        For lines within the financial region, use Pass 2 predictions.
+        For lines outside the region, use Pass 1 predictions.
+
+        Args:
+            pass1_result: Full receipt predictions from Pass 1.
+            pass2_predictions: Fine-grained predictions for financial region lines.
+            region: The detected financial region.
+
+        Returns:
+            Merged InferenceResult with fine-grained labels in financial region.
+        """
+        # Build lookup for Pass 2 predictions by line_id
+        pass2_by_line: Dict[int, LinePrediction] = {
+            pred.line_id: pred for pred in pass2_predictions
+        }
+
+        merged_lines: List[LinePrediction] = []
+        for line in pass1_result.lines:
+            if line.line_id in pass2_by_line:
+                # Use Pass 2 predictions for this line
+                merged_lines.append(pass2_by_line[line.line_id])
+            else:
+                # Keep Pass 1 predictions
+                merged_lines.append(line)
+
+        return InferenceResult(
+            image_id=pass1_result.image_id,
+            receipt_id=pass1_result.receipt_id,
+            lines=merged_lines,
+            meta={
+                **pass1_result.meta,
+                "two_pass": True,
+                "financial_region": {
+                    "y_min": region.y_min,
+                    "y_max": region.y_max,
+                    "num_tokens": region.num_tokens,
+                    "avg_confidence": region.avg_confidence,
+                    "num_lines": len(region.line_ids),
+                },
+                "pass2_lines": len(pass2_predictions),
+            },
+        )
+
+    def predict_receipt_from_dynamo(
+        self,
+        dynamo_client: Any,
+        image_id: str,
+        receipt_id: int,
+    ) -> InferenceResult:
+        """Run two-pass inference on a receipt from DynamoDB.
+
+        1. Run Pass 1 on full receipt to detect FINANCIAL_REGION
+        2. Extract Y-range of detected region
+        3. If region found, run Pass 2 on just that region
+        4. Merge results
+
+        Args:
+            dynamo_client: DynamoDB client instance.
+            image_id: Receipt image ID.
+            receipt_id: Receipt ID.
+
+        Returns:
+            InferenceResult with merged predictions.
+        """
+        # Step 1: Run Pass 1 on full receipt
+        pass1_result = self._pass1.predict_receipt_from_dynamo(
+            dynamo_client, image_id, receipt_id
+        )
+
+        # Step 2: Extract financial region
+        region = self.extract_financial_region(pass1_result)
+
+        # Step 3: Check if Pass 2 is needed
+        if not self.should_run_pass2(region):
+            # Return Pass 1 results with metadata indicating no Pass 2
+            pass1_result.meta["two_pass"] = False
+            pass1_result.meta["pass2_skipped_reason"] = (
+                "no_region" if region is None else "region_too_small"
+            )
+            return pass1_result
+
+        # Step 4: Prepare data for Pass 2 (filter to region)
+        # We need to rebuild tokens/boxes from pass1_result
+        tokens_per_line = [line.tokens for line in pass1_result.lines]
+        boxes_per_line = [line.boxes for line in pass1_result.lines]
+        line_ids = [line.line_id for line in pass1_result.lines]
+
+        filtered_tokens, filtered_boxes, filtered_line_ids, _ = (
+            self.filter_lines_to_region(
+                tokens_per_line, boxes_per_line, line_ids, region
+            )
+        )
+
+        # Step 5: Run Pass 2 on filtered region
+        pass2_predictions = self._pass2.predict_lines(
+            tokens_per_line=filtered_tokens,
+            boxes_per_line=filtered_boxes,
+            line_ids=filtered_line_ids,
+        )
+
+        # Step 6: Merge results
+        return self.merge_predictions(pass1_result, pass2_predictions, region)

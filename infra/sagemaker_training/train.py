@@ -80,6 +80,9 @@ def build_train_command(hps: dict) -> list[str]:
         "early_stopping_patience": "--early-stopping-patience",
         "pretrained": "--pretrained",
         "o_entity_ratio": "--o-entity-ratio",
+        # Two-pass training parameters
+        "region_extraction": "--region-extraction",
+        "region_y_margin": "--region-y-margin",
     }
 
     for hp_name, cli_flag in param_mapping.items():

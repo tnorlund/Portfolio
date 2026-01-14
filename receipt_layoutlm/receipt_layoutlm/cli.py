@@ -162,7 +162,14 @@ def main() -> None:
     train_p.add_argument(
         "--merge-preset",
         type=str,
-        choices=["amounts", "date_time", "address_phone", "sroie", "none"],
+        choices=[
+            "amounts",
+            "date_time",
+            "address_phone",
+            "sroie",
+            "two_pass_p1",
+            "none",
+        ],
         default=None,
         help=(
             "Use a predefined merge preset: "
@@ -170,7 +177,28 @@ def main() -> None:
             "'date_time' (TIME → DATE), "
             "'address_phone' (address labels → ADDRESS), "
             "'sroie' (all three for 4-label setup), "
+            "'two_pass_p1' (financial labels → FINANCIAL_REGION for Pass 1), "
             "'none' (no merging)."
+        ),
+    )
+    train_p.add_argument(
+        "--region-extraction",
+        type=str,
+        choices=["financial", "none"],
+        default=None,
+        help=(
+            "Extract specific Y-ranges for two-pass training: "
+            "'financial' (only Y-range containing financial labels for Pass 2), "
+            "'none' (use full receipt, default)."
+        ),
+    )
+    train_p.add_argument(
+        "--region-y-margin",
+        type=float,
+        default=0.05,
+        help=(
+            "Margin around extracted region as fraction of Y-range (default: 0.05 = 5%%). "
+            "Only used when --region-extraction is set."
         ),
     )
     train_p.add_argument(
@@ -386,6 +414,11 @@ def main() -> None:
 
         # Keep legacy merge_amounts for backwards compatibility with DataConfig
         data_cfg.merge_amounts = bool(args.merge_amounts)
+
+        # Two-pass training: region extraction settings
+        if args.region_extraction and args.region_extraction != "none":
+            data_cfg.region_extraction = args.region_extraction
+            data_cfg.region_y_margin = args.region_y_margin
 
         data_cfg.dataset_snapshot_load = args.dataset_snapshot_load
         data_cfg.dataset_snapshot_save = args.dataset_snapshot_save

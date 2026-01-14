@@ -1,6 +1,20 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+# Labels that belong to the financial region (line items + totals)
+# Used for two-pass training: Pass 2 trains only on Y-ranges containing these labels
+FINANCIAL_REGION_LABELS: List[str] = [
+    # Amounts (totals)
+    "LINE_TOTAL",
+    "SUBTOTAL",
+    "TAX",
+    "GRAND_TOTAL",
+    # Line items
+    "PRODUCT_NAME",
+    "QUANTITY",
+    "UNIT_PRICE",
+]
+
 # Predefined merge presets for common label grouping scenarios
 MERGE_PRESETS: Dict[str, Dict[str, List[str]]] = {
     "amounts": {"AMOUNT": ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"]},
@@ -11,6 +25,10 @@ MERGE_PRESETS: Dict[str, Dict[str, List[str]]] = {
         "AMOUNT": ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"],
         "DATE": ["TIME"],
         "ADDRESS": ["PHONE_NUMBER", "ADDRESS_LINE"],
+    },
+    # Two-pass hierarchical classification: Pass 1 merges financial labels
+    "two_pass_p1": {
+        "FINANCIAL_REGION": FINANCIAL_REGION_LABELS,
     },
 }
 
@@ -29,6 +47,11 @@ class DataConfig:
     merge_amounts: bool = False
     dataset_snapshot_load: Optional[str] = None
     dataset_snapshot_save: Optional[str] = None
+    # Two-pass training: extract only specific Y-ranges for Pass 2 training
+    # Options: None (use full receipt), "financial" (extract financial region Y-range)
+    region_extraction: Optional[str] = None
+    # Margin around extracted region as fraction of receipt height (default 5%)
+    region_y_margin: float = 0.05
 
     def get_effective_label_merges(self) -> Dict[str, List[str]]:
         """Return the effective label merges, combining explicit config and legacy flags.

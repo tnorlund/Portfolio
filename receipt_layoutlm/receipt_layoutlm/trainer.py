@@ -104,12 +104,16 @@ class ReceiptLayoutLMTrainer:
                     self.dynamo,
                     label_merges=effective_label_merges,
                     allowed_labels=self.data_config.allowed_labels,
+                    region_extraction=self.data_config.region_extraction,
+                    region_y_margin=self.data_config.region_y_margin,
                 )
         else:
             datasets, split_metadata, merge_info = load_datasets(
                 self.dynamo,
                 label_merges=effective_label_merges,
                 allowed_labels=self.data_config.allowed_labels,
+                region_extraction=self.data_config.region_extraction,
+                region_y_margin=self.data_config.region_y_margin,
             )
 
         # Compute dataset counts prior to tokenization for run logging
