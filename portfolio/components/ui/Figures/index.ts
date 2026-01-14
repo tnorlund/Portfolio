@@ -40,6 +40,7 @@ export const PhotoReceiptDBSCAN = dynamic(
 );
 export { default as AddressSimilarity } from "./AddressSimilarity";
 export { default as AddressSimilaritySideBySide } from "./AddressSimilaritySideBySide";
+export { default as WordSimilarity } from "./WordSimilarity";
 export { default as CICDLoop } from "./CICDLoop";
 export { default as CroppedAddressImage } from "./CroppedAddressImage";
 export { default as DynamoStreamAnimation } from "./DynamoStreamAnimation";

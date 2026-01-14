@@ -20,6 +20,7 @@ import {
   ScanReceiptBoundingBox,
   StreamBitsRoutingDiagram,
   TrainingMetricsAnimation,
+  WordSimilarity,
   ZDepthConstrainedParametric,
   ZDepthUnconstrainedParametric
 } from "../components/ui/Figures";
@@ -380,6 +381,16 @@ M1LK 2%           1    $4.4g`}</code>
         from the stores I've alerady seen to confirm the results. If I haven't
         seen the store before, I can use Google to get the information.
       </p>
+
+      <p>
+        The same technique works for individual words. Here's a search for
+        "milk" - the original word on the left, and similar words from other
+        receipts on the right.
+      </p>
+
+      <ClientOnly>
+        <WordSimilarity />
+      </ClientOnly>
 
       <h3>Defining the Corpus</h3>
 

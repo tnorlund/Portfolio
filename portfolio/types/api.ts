@@ -220,6 +220,28 @@ export interface AddressSimilarityResponse {
   cached_at: string;
 }
 
+export interface WordSimilarityResponse {
+  query_word: string;
+  original: {
+    receipt: Receipt;
+    lines: Line[];
+    words: Word[];
+    labels: ReceiptWordLabel[];
+    target_word: Word | null;
+    bbox?: AddressBoundingBox;
+  };
+  similar: Array<{
+    receipt: Receipt;
+    lines: Line[];
+    words: Word[];
+    labels: ReceiptWordLabel[];
+    target_word: Word;
+    similarity_distance: number;
+    bbox?: AddressBoundingBox;
+  }>;
+  cached_at: string;
+}
+
 export interface TrainingMetricsEpoch {
   epoch: number;
   is_best: boolean;

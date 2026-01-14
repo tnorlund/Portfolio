@@ -8,6 +8,7 @@ import {
   ImagesApiResponse,
   RandomReceiptDetailsResponse,
   AddressSimilarityResponse,
+  WordSimilarityResponse,
   TrainingMetricsResponse,
   LayoutLMBatchInferenceResponse,
   LabelEvaluatorResponse,
@@ -192,6 +193,20 @@ const baseApi = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/address_similarity`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchWordSimilarity(): Promise<WordSimilarityResponse> {
+    const apiUrl = getAPIUrl();
+    const response = await fetch(
+      `${apiUrl}/word_similarity`,
       fetchConfig
     );
     if (!response.ok) {
