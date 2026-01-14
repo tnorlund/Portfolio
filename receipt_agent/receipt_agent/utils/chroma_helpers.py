@@ -313,7 +313,275 @@ def parse_labels_from_metadata(
 
 
 # =============================================================================
-# ChromaDB Similar Word Query
+# Targeted Boolean Label Query (Optimized for Label Validation)
+# =============================================================================
+
+
+@dataclass
+class LabelEvidence:
+    """Evidence for or against a specific label from a similar word."""
+
+    word_text: str
+    similarity_score: float
+    chroma_id: str
+    label_valid: bool  # True = validated AS this label, False = validated NOT this label
+    merchant_name: str
+    is_same_merchant: bool
+    position_description: str
+    left_neighbor: str
+    right_neighbor: str
+
+
+def query_label_evidence(
+    chroma_client: Any,
+    image_id: str,
+    receipt_id: int,
+    line_id: int,
+    word_id: int,
+    target_label: str,
+    target_merchant: str,
+    n_results_per_query: int = 15,
+    min_similarity: float = 0.70,
+) -> list[LabelEvidence]:
+    """
+    Query ChromaDB for evidence FOR and AGAINST a specific label.
+
+    Uses targeted boolean metadata filters to efficiently fetch only
+    relevant evidence for validating a single label. Runs two queries:
+    1. Words where label was validated as TRUE (positive evidence)
+    2. Words where label was validated as FALSE (negative evidence)
+
+    This is more efficient than fetching all labels and filtering client-side.
+
+    Args:
+        chroma_client: ChromaDB client
+        image_id: Image ID of the word being validated
+        receipt_id: Receipt ID of the word
+        line_id: Line ID of the word
+        word_id: Word ID of the word
+        target_label: The specific label to find evidence for (e.g., "GRAND_TOTAL")
+        target_merchant: Merchant name for same-merchant identification
+        n_results_per_query: Max results per query (positive + negative)
+        min_similarity: Minimum similarity threshold (0-1)
+
+    Returns:
+        List of LabelEvidence sorted by: same_merchant, then similarity (descending)
+    """
+    word_chroma_id = build_word_chroma_id(
+        image_id, receipt_id, line_id, word_id
+    )
+    label_field = f"label_{target_label}"
+
+    # Get the word's embedding
+    try:
+        word_result = chroma_client.get(
+            collection_name="words",
+            ids=[word_chroma_id],
+            include=["embeddings"],
+        )
+
+        embeddings = word_result.get("embeddings")
+        if embeddings is None or len(embeddings) == 0:
+            logger.warning("No embedding found for %s", word_chroma_id)
+            return []
+
+        embedding = embeddings[0]
+        if hasattr(embedding, "tolist"):
+            embedding = embedding.tolist()
+
+    except Exception as e:
+        logger.warning("Error getting embedding for %s: %s", word_chroma_id, e)
+        return []
+
+    def _query_single_value(label_value: bool) -> list[LabelEvidence]:
+        """Query for words with a specific label value (True or False)."""
+        try:
+            results = chroma_client.query(
+                collection_name="words",
+                query_embeddings=[embedding],
+                n_results=n_results_per_query,
+                where={
+                    "$and": [
+                        {"label_status": "validated"},
+                        {label_field: label_value},
+                    ]
+                },
+                include=["metadatas", "distances"],
+            )
+
+            metadatas = results.get("metadatas", [[]])[0]
+            distances = results.get("distances", [[]])[0]
+
+            evidence_list: list[LabelEvidence] = []
+            for metadata, distance in zip(metadatas, distances, strict=True):
+                # Build result ID to check for self
+                result_id = build_word_chroma_id(
+                    metadata.get("image_id", ""),
+                    metadata.get("receipt_id", 0),
+                    metadata.get("line_id", 0),
+                    metadata.get("word_id", 0),
+                )
+                if result_id == word_chroma_id:
+                    continue
+
+                # Convert L2 distance to similarity
+                similarity = max(0.0, 1.0 - (distance / 2.0))
+                if similarity < min_similarity:
+                    continue
+
+                merchant = metadata.get("merchant_name", "Unknown")
+                is_same = merchant.lower() == target_merchant.lower()
+
+                evidence_list.append(
+                    LabelEvidence(
+                        word_text=metadata.get("text", ""),
+                        similarity_score=round(similarity, 3),
+                        chroma_id=result_id,
+                        label_valid=label_value,
+                        merchant_name=merchant,
+                        is_same_merchant=is_same,
+                        position_description=describe_position(
+                            metadata.get("x", 0.5), metadata.get("y", 0.5)
+                        ),
+                        left_neighbor=metadata.get("left", "<EDGE>"),
+                        right_neighbor=metadata.get("right", "<EDGE>"),
+                    )
+                )
+
+            return evidence_list
+
+        except Exception as e:
+            logger.warning(
+                "Error querying %s=%s: %s", label_field, label_value, e
+            )
+            return []
+
+    # Query for positive evidence (validated AS this label)
+    positive = _query_single_value(True)
+
+    # Query for negative evidence (validated as NOT this label)
+    negative = _query_single_value(False)
+
+    # Combine and sort by: same merchant first, then similarity descending
+    combined = positive + negative
+    combined.sort(
+        key=lambda e: (e.is_same_merchant, e.similarity_score),
+        reverse=True,
+    )
+
+    return combined
+
+
+def compute_label_consensus(
+    evidence: list[LabelEvidence],
+    same_merchant_boost: float = 0.1,
+) -> tuple[float, int, int]:
+    """
+    Compute weighted consensus score from label evidence.
+
+    Args:
+        evidence: List of LabelEvidence from query_label_evidence()
+        same_merchant_boost: Extra weight for same-merchant matches
+
+    Returns:
+        Tuple of (consensus_score, positive_count, negative_count)
+        - consensus_score: -1.0 to 1.0 (negative = INVALID, positive = VALID)
+        - positive_count: Number of positive evidence items
+        - negative_count: Number of negative evidence items
+    """
+    if not evidence:
+        return 0.0, 0, 0
+
+    positive_weight = 0.0
+    negative_weight = 0.0
+    positive_count = 0
+    negative_count = 0
+
+    for e in evidence:
+        weight = e.similarity_score
+        if e.is_same_merchant:
+            weight += same_merchant_boost
+
+        if e.label_valid:
+            positive_weight += weight
+            positive_count += 1
+        else:
+            negative_weight += weight
+            negative_count += 1
+
+    total_weight = positive_weight + negative_weight
+    if total_weight == 0:
+        return 0.0, positive_count, negative_count
+
+    # Consensus ranges from -1 (all negative) to +1 (all positive)
+    consensus = (positive_weight - negative_weight) / total_weight
+
+    return consensus, positive_count, negative_count
+
+
+def format_label_evidence_for_prompt(
+    evidence: list[LabelEvidence],
+    target_label: str,
+    max_positive: int = 5,
+    max_negative: int = 3,
+) -> str:
+    """
+    Format label evidence for inclusion in LLM prompt.
+
+    Args:
+        evidence: List of LabelEvidence from query_label_evidence()
+        target_label: The label being validated
+        max_positive: Max positive examples to show
+        max_negative: Max negative examples to show
+
+    Returns:
+        Formatted string for LLM prompt
+    """
+    if not evidence:
+        return f"No similar validated words found for {target_label}."
+
+    positive = [e for e in evidence if e.label_valid][:max_positive]
+    negative = [e for e in evidence if not e.label_valid][:max_negative]
+
+    lines = []
+
+    if positive:
+        lines.append(f"Words validated AS {target_label}:")
+        for e in positive:
+            merchant_tag = "(same merchant)" if e.is_same_merchant else ""
+            lines.append(
+                f'  - "{e.word_text}" [{e.position_description}] '
+                f"{e.similarity_score:.0%} similar {merchant_tag}"
+            )
+
+    if negative:
+        lines.append(f"Words validated as NOT {target_label}:")
+        for e in negative:
+            merchant_tag = "(same merchant)" if e.is_same_merchant else ""
+            lines.append(
+                f'  - "{e.word_text}" [{e.position_description}] '
+                f"{e.similarity_score:.0%} similar {merchant_tag}"
+            )
+
+    # Add consensus summary
+    consensus, pos_count, neg_count = compute_label_consensus(evidence)
+    if pos_count + neg_count > 0:
+        if consensus > 0.3:
+            verdict = "Evidence suggests VALID"
+        elif consensus < -0.3:
+            verdict = "Evidence suggests INVALID"
+        else:
+            verdict = "Evidence is mixed"
+        lines.append(
+            f"\nConsensus: {verdict} "
+            f"({pos_count} for, {neg_count} against, score: {consensus:+.2f})"
+        )
+
+    return "\n".join(lines)
+
+
+# =============================================================================
+# ChromaDB Similar Word Query (General Purpose)
 # =============================================================================
 
 

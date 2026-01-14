@@ -538,53 +538,77 @@ async def unified_receipt_evaluator(
                         parse_batched_llm_response,
                     )
                     from receipt_agent.utils.chroma_helpers import (
-                        enrich_evidence_with_dynamo_reasoning,
-                        query_similar_words,
+                        compute_label_consensus,
+                        format_label_evidence_for_prompt,
+                        query_label_evidence,
                     )
                     from langchain_core.messages import HumanMessage
 
-                    # Gather context for issues
+                    # Gather context for issues using targeted boolean queries
                     issues_with_context = []
                     for issue in geometric_issues[:15]:  # Limit to 15
                         word_text = issue.get("word_text", "")
                         line_id = issue.get("line_id", 0)
                         word_id = issue.get("word_id", 0)
+                        current_label = issue.get("current_label", "")
 
                         try:
-                            similar_evidence = query_similar_words(
-                                chroma_client=chroma_client,
-                                word_text=word_text,
-                                image_id=image_id,
-                                receipt_id=receipt_id,
-                                line_id=line_id,
-                                word_id=word_id,
-                                target_merchant=merchant_name,
-                            )
+                            # Use targeted query for the specific label being reviewed
+                            if current_label and current_label != "O":
+                                label_evidence = query_label_evidence(
+                                    chroma_client=chroma_client,
+                                    image_id=image_id,
+                                    receipt_id=receipt_id,
+                                    line_id=line_id,
+                                    word_id=word_id,
+                                    target_label=current_label,
+                                    target_merchant=merchant_name,
+                                    n_results_per_query=15,
+                                    min_similarity=0.70,
+                                )
 
-                            if dynamo_table:
-                                dynamo_client = DynamoClient(
-                                    table_name=dynamo_table
+                                # Format evidence for prompt
+                                evidence_text = format_label_evidence_for_prompt(
+                                    label_evidence,
+                                    target_label=current_label,
+                                    max_positive=5,
+                                    max_negative=3,
                                 )
-                                similar_evidence = (
-                                    enrich_evidence_with_dynamo_reasoning(
-                                        similar_evidence,
-                                        dynamo_client,
-                                        limit=15,
-                                    )
+
+                                # Compute consensus for decision support
+                                consensus, pos_count, neg_count = (
+                                    compute_label_consensus(label_evidence)
                                 )
+                            else:
+                                label_evidence = []
+                                evidence_text = "No evidence needed for O labels."
+                                consensus, pos_count, neg_count = 0.0, 0, 0
 
                             issues_with_context.append(
                                 {
                                     "issue": issue,
-                                    "similar_evidence": similar_evidence,
+                                    "label_evidence": label_evidence,
+                                    "evidence_text": evidence_text,
+                                    "consensus": consensus,
+                                    "positive_count": pos_count,
+                                    "negative_count": neg_count,
                                 }
                             )
                         except Exception as e:
                             logger.warning(
-                                "Error gathering context: %s", e
+                                "Error gathering context for %s: %s",
+                                current_label,
+                                e,
                             )
                             issues_with_context.append(
-                                {"issue": issue, "similar_evidence": []}
+                                {
+                                    "issue": issue,
+                                    "label_evidence": [],
+                                    "evidence_text": f"Error: {e}",
+                                    "consensus": 0.0,
+                                    "positive_count": 0,
+                                    "negative_count": 0,
+                                }
                             )
 
                     if issues_with_context:
