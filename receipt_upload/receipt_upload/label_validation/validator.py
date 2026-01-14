@@ -12,7 +12,6 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_chroma.data.chroma_client import ChromaClient
-from receipt_dynamo.constants import CORE_LABELS
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +31,9 @@ class ValidationResult:
 
     decision: ValidationDecision
     confidence: float
-    consensus_label: Optional[str]  # The label consensus agrees on (None if unknown)
+    consensus_label: Optional[str]
     matching_count: int
     reason: str
-    suggested_label: Optional[str] = None  # Alternative label hint for LLM review
 
 
 def _build_word_chroma_id(
@@ -254,77 +252,6 @@ class LightweightLabelValidator:
         # Combine results
         return positive + negative
 
-    def _find_suggested_label(
-        self,
-        embedding: List[float],
-        exclude_id: str,
-        exclude_label: str,
-        n_results: int = 10,
-    ) -> Optional[str]:
-        """Find the most likely alternative label for a word.
-
-        Queries similar validated words (any label) and counts which labels
-        they have. Returns the most common label that isn't the excluded one.
-
-        Used to provide a hint to LLM review: "This isn't GRAND_TOTAL,
-        but similar words are often LINE_TOTAL."
-
-        Args:
-            embedding: The word's embedding vector
-            exclude_id: ChromaDB ID to exclude (the word being validated)
-            exclude_label: Label to exclude from suggestions (the rejected prediction)
-            n_results: Number of similar words to check
-
-        Returns:
-            Most common alternative label, or None if no suggestion
-        """
-        try:
-            results = self.words_client.query(
-                collection_name="words",
-                query_embeddings=[embedding],
-                n_results=n_results,
-                where={"label_status": "validated"},
-                include=["metadatas", "distances"],
-            )
-
-            metadatas = results.get("metadatas", [[]])[0]
-            distances = results.get("distances", [[]])[0]
-
-            # Count weighted votes for each label
-            label_weights: Dict[str, float] = {}
-
-            for metadata, distance in zip(metadatas, distances):
-                result_id = _build_word_chroma_id(
-                    metadata.get("image_id", ""),
-                    metadata.get("receipt_id", 0),
-                    metadata.get("line_id", 0),
-                    metadata.get("word_id", 0),
-                )
-                if result_id == exclude_id:
-                    continue
-
-                similarity = _distance_to_similarity(distance)
-                if similarity < self.MIN_SIMILARITY:
-                    continue
-
-                # Find which labels are True for this word
-                for label in CORE_LABELS:
-                    if label == exclude_label:
-                        continue
-                    field_name = f"label_{label}"
-                    if metadata.get(field_name) is True:
-                        label_weights[label] = label_weights.get(label, 0) + similarity
-
-            if not label_weights:
-                return None
-
-            # Return the label with highest weight
-            return max(label_weights, key=label_weights.get)  # type: ignore
-
-        except Exception as e:
-            logger.warning("Error finding suggested label: %s", e)
-            return None
-
     def validate_label(
         self,
         image_id: str,
@@ -441,33 +368,19 @@ class LightweightLabelValidator:
 
         if confidence <= (1.0 - self.CONSENSUS_THRESHOLD):
             # Strong evidence AGAINST the prediction
-            # Find what label it might actually be
-            suggested = self._find_suggested_label(
-                embedding=embedding,
-                exclude_id=chroma_id,
-                exclude_label=predicted_label,
-            )
             return ValidationResult(
                 decision=ValidationDecision.AUTO_INVALID,
                 confidence=1.0 - confidence,  # Confidence in INVALID decision
-                consensus_label=None,  # We don't know what it IS, only what it's NOT
+                consensus_label=predicted_label,
                 matching_count=len(similar_words),
                 reason=f"{1.0 - confidence:.0%} of similar words rejected {predicted_label}",
-                suggested_label=suggested,
             )
 
         # Mixed evidence - needs review
-        # Find what label it might be to help LLM review
-        suggested = self._find_suggested_label(
-            embedding=embedding,
-            exclude_id=chroma_id,
-            exclude_label=predicted_label,
-        )
         return ValidationResult(
             decision=ValidationDecision.NEEDS_REVIEW,
             confidence=confidence,
-            consensus_label=None,  # No clear consensus
+            consensus_label=predicted_label,
             matching_count=len(similar_words),
             reason=f"Mixed evidence: {confidence:.0%} for, {1.0 - confidence:.0%} against",
-            suggested_label=suggested,
         )
