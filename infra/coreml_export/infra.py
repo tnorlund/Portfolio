@@ -4,6 +4,8 @@ This component creates the SQS queues needed to export LayoutLM models to CoreML
 Since coremltools only runs on macOS, we use a two-queue pattern:
 1. Job queue: AWS sends export requests, macOS worker polls
 2. Results queue: macOS worker sends results, Lambda processes
+
+Optionally enables auto-export via EventBridge when SageMaker training completes.
 """
 
 import json
@@ -23,6 +25,8 @@ from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.sqs import Queue
 
 stack = pulumi.get_stack()
+region = aws.get_region().name
+account_id = aws.get_caller_identity().account_id
 
 
 class CoreMLExportComponent(ComponentResource):
@@ -32,6 +36,7 @@ class CoreMLExportComponent(ComponentResource):
     - SQS job queue for export requests (AWS -> macOS)
     - SQS results queue for export results (macOS -> AWS)
     - Lambda to process results and update DynamoDB
+    - (Optional) EventBridge rule to auto-queue exports after SageMaker training
     """
 
     def __init__(
@@ -42,6 +47,7 @@ class CoreMLExportComponent(ComponentResource):
         layoutlm_bucket_name: pulumi.Input[str],
         layoutlm_bucket_arn: pulumi.Input[str],
         lambda_layer_arn: pulumi.Input[str],
+        enable_auto_export: bool = True,
         opts: ResourceOptions | None = None,
     ):
         """Initialize CoreML export infrastructure.
@@ -53,6 +59,7 @@ class CoreMLExportComponent(ComponentResource):
             layoutlm_bucket_name: Name of the S3 bucket for LayoutLM models
             layoutlm_bucket_arn: ARN of the S3 bucket for LayoutLM models
             lambda_layer_arn: ARN of the Lambda layer with receipt_dynamo
+            enable_auto_export: If True, auto-queue CoreML export when SageMaker completes
             opts: Pulumi resource options
         """
         super().__init__(
@@ -208,6 +215,156 @@ class CoreMLExportComponent(ComponentResource):
             enabled=True,
             opts=ResourceOptions(parent=self),
         )
+
+        # ---------------------------------------------------------------------
+        # Auto-Export: EventBridge -> Lambda -> SQS
+        # Automatically queue CoreML export when SageMaker training completes
+        # ---------------------------------------------------------------------
+        if enable_auto_export:
+            # IAM Role for queue export Lambda
+            queue_export_role = Role(
+                f"{name}-queue-export-role",
+                assume_role_policy=json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Action": "sts:AssumeRole",
+                            }
+                        ],
+                    }
+                ),
+                opts=ResourceOptions(parent=self),
+            )
+
+            # Basic execution policy
+            RolePolicyAttachment(
+                f"{name}-queue-export-basic-exec",
+                role=queue_export_role.name,
+                policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+                opts=ResourceOptions(parent=self),
+            )
+
+            # Policy for DynamoDB, SQS, and SageMaker access
+            RolePolicy(
+                f"{name}-queue-export-policy",
+                role=queue_export_role.id,
+                policy=Output.all(
+                    dynamodb_table_arn,
+                    self.job_queue.arn,
+                ).apply(
+                    lambda args: json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                # DynamoDB: Read Job (Query GSI2), Write CoreMLExportJob
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "dynamodb:GetItem",
+                                        "dynamodb:Query",
+                                        "dynamodb:PutItem",
+                                    ],
+                                    "Resource": [
+                                        args[0],
+                                        f"{args[0]}/index/*",
+                                    ],
+                                },
+                                # SQS: Send export job messages
+                                {
+                                    "Effect": "Allow",
+                                    "Action": ["sqs:SendMessage"],
+                                    "Resource": args[1],
+                                },
+                                # SageMaker: List tags for opt-out check
+                                {
+                                    "Effect": "Allow",
+                                    "Action": ["sagemaker:ListTags"],
+                                    "Resource": f"arn:aws:sagemaker:{region}:{account_id}:training-job/*",
+                                },
+                            ],
+                        }
+                    )
+                ),
+                opts=ResourceOptions(parent=self),
+            )
+
+            # Lambda to queue CoreML export on SageMaker completion
+            self.queue_export_lambda = Function(
+                f"{name}-queue-export-lambda",
+                name=f"{name}-{stack}-queue-coreml-export",
+                role=queue_export_role.arn,
+                runtime="python3.12",
+                handler="queue_export.handler",
+                code=AssetArchive(
+                    {
+                        "queue_export.py": FileAsset(
+                            os.path.join(
+                                os.path.dirname(__file__), "queue_export.py"
+                            )
+                        )
+                    }
+                ),
+                architectures=["arm64"],
+                layers=[lambda_layer_arn],  # receipt_dynamo package
+                timeout=60,
+                memory_size=256,
+                tags={"environment": stack},
+                environment=FunctionEnvironmentArgs(
+                    variables=Output.all(
+                        dynamodb_table_name,
+                        self.job_queue.url,
+                        layoutlm_bucket_name,
+                    ).apply(
+                        lambda args: {
+                            "DYNAMO_TABLE_NAME": args[0],
+                            "COREML_EXPORT_JOB_QUEUE_URL": args[1],
+                            "OUTPUT_BUCKET": args[2],
+                            "DEFAULT_QUANTIZE": "float16",
+                        }
+                    ),
+                ),
+                opts=ResourceOptions(parent=self),
+            )
+
+            # EventBridge rule for SageMaker training completion
+            self.sagemaker_completion_rule = aws.cloudwatch.EventRule(
+                f"{name}-sagemaker-completion-rule",
+                name=f"{name}-{stack}-sagemaker-training-completed",
+                description="Trigger CoreML export when SageMaker training completes",
+                event_pattern=json.dumps(
+                    {
+                        "source": ["aws.sagemaker"],
+                        "detail-type": ["SageMaker Training Job State Change"],
+                        "detail": {
+                            "TrainingJobStatus": ["Completed"],
+                            "TrainingJobName": [{"prefix": "layoutlm-"}],
+                        },
+                    }
+                ),
+                tags={"environment": stack},
+                opts=ResourceOptions(parent=self),
+            )
+
+            # EventBridge target to invoke Lambda
+            aws.cloudwatch.EventTarget(
+                f"{name}-sagemaker-completion-target",
+                rule=self.sagemaker_completion_rule.name,
+                arn=self.queue_export_lambda.arn,
+                opts=ResourceOptions(parent=self),
+            )
+
+            # Permission for EventBridge to invoke Lambda
+            aws.lambda_.Permission(
+                f"{name}-eventbridge-invoke-permission",
+                action="lambda:InvokeFunction",
+                function=self.queue_export_lambda.name,
+                principal="events.amazonaws.com",
+                source_arn=self.sagemaker_completion_rule.arn,
+                opts=ResourceOptions(parent=self),
+            )
 
         # Export queue URLs for configuration
         self.job_queue_url = self.job_queue.url
