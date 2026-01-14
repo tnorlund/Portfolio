@@ -12,7 +12,6 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_chroma.data.chroma_client import ChromaClient
-from receipt_dynamo.constants import CORE_LABELS
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +19,9 @@ logger = logging.getLogger(__name__)
 class ValidationDecision(Enum):
     """Validation decision for a pending label."""
 
-    AUTO_VALIDATE = "auto_validate"  # High confidence, update to VALIDATED
-    NEEDS_REVIEW = "needs_review"  # Log to Langsmith, keep PENDING
+    AUTO_VALIDATE = "auto_validate"  # High confidence FOR, update to VALID
+    AUTO_INVALID = "auto_invalid"  # High confidence AGAINST, update to INVALID
+    NEEDS_REVIEW = "needs_review"  # Mixed evidence, log to Langsmith
     KEEP_PENDING = "keep_pending"  # Not enough data, keep PENDING
 
 
@@ -49,26 +49,6 @@ def _build_word_chroma_id(
 def _distance_to_similarity(distance: float) -> float:
     """Convert L2 distance to similarity score (0-1)."""
     return max(0.0, 1.0 - (distance / 2.0))
-
-
-def _extract_valid_labels_from_metadata(metadata: Dict[str, Any]) -> List[str]:
-    """Extract valid labels from boolean metadata fields.
-
-    PR #636 changed the metadata format from comma-delimited 'valid_labels'
-    to individual boolean fields per label (e.g., 'label_GRAND_TOTAL': True).
-
-    Args:
-        metadata: ChromaDB document metadata
-
-    Returns:
-        List of label names that are marked as valid (True)
-    """
-    valid_labels = []
-    for label in CORE_LABELS:
-        field_name = f"label_{label}"
-        if metadata.get(field_name) is True:
-            valid_labels.append(label)
-    return valid_labels
 
 
 class LightweightLabelValidator:
@@ -156,19 +136,48 @@ class LightweightLabelValidator:
             logger.warning("Error getting embedding for %s: %s", chroma_id, e)
         return None
 
-    def _query_similar_validated(
+    def _query_similar_for_label(
         self,
         embedding: List[float],
         exclude_id: str,
+        predicted_label: str,
         n_results: int = 20,
     ) -> List[Dict[str, Any]]:
-        """Query for similar words with validated labels."""
+        """Query for similar words that have been evaluated for a specific label.
+
+        This queries ChromaDB for words where the specific label field exists
+        (either True or False), giving us both positive and negative evidence
+        for consensus voting.
+
+        Args:
+            embedding: The word's embedding vector
+            exclude_id: ChromaDB ID to exclude (the word being validated)
+            predicted_label: The label to filter by (e.g., "GRAND_TOTAL")
+            n_results: Maximum number of results to return
+
+        Returns:
+            List of dicts with similarity, label_valid (bool), merchant_name, word_text
+        """
+        label_field = f"label_{predicted_label}"
+
         try:
+            # Query for words that have been evaluated for this specific label
+            # (either confirmed valid OR confirmed invalid for this label)
             results = self.words_client.query(
                 collection_name="words",
                 query_embeddings=[embedding],
                 n_results=n_results,
-                where={"label_status": "validated"},
+                where={
+                    "$and": [
+                        {"label_status": "validated"},
+                        {
+                            "$or": [
+                                {label_field: True},
+                                {label_field: False},
+                            ]
+                        },
+                    ]
+                },
                 include=["metadatas", "distances"],
             )
 
@@ -191,16 +200,10 @@ class LightweightLabelValidator:
                 if similarity < self.MIN_SIMILARITY:
                     continue
 
-                # Extract valid labels from boolean metadata fields
-                valid_labels = _extract_valid_labels_from_metadata(metadata)
-
-                if not valid_labels:
-                    continue
-
                 similar.append(
                     {
                         "similarity": similarity,
-                        "valid_labels": valid_labels,
+                        "label_valid": metadata.get(label_field) is True,
                         "merchant_name": metadata.get("merchant_name"),
                         "word_text": metadata.get("text", ""),
                     }
@@ -209,7 +212,9 @@ class LightweightLabelValidator:
             return similar
 
         except Exception as e:
-            logger.warning("Error querying similar validated words: %s", e)
+            logger.warning(
+                "Error querying similar words for label %s: %s", predicted_label, e
+            )
             return []
 
     def validate_label(
@@ -221,6 +226,10 @@ class LightweightLabelValidator:
         predicted_label: str,
     ) -> ValidationResult:
         """Validate a single pending label against similar validated words.
+
+        Uses binary consensus voting: queries similar words that have been
+        evaluated for the specific predicted label, then counts weighted
+        votes for (label=True) and against (label=False).
 
         Args:
             image_id: Image ID of the word
@@ -258,10 +267,11 @@ class LightweightLabelValidator:
                 reason="Word embedding not found",
             )
 
-        # Query similar validated words
-        similar_words = self._query_similar_validated(
+        # Query similar words evaluated for this specific label
+        similar_words = self._query_similar_for_label(
             embedding=embedding,
             exclude_id=chroma_id,
+            predicted_label=predicted_label,
         )
 
         if not similar_words:
@@ -270,7 +280,7 @@ class LightweightLabelValidator:
                 confidence=0.0,
                 consensus_label=None,
                 matching_count=0,
-                reason="No similar validated words found",
+                reason=f"No similar words evaluated for {predicted_label}",
             )
 
         if len(similar_words) < self.MIN_MATCHES:
@@ -282,63 +292,60 @@ class LightweightLabelValidator:
                 reason=f"Only {len(similar_words)} matches (need {self.MIN_MATCHES})",
             )
 
-        # Compute weighted label distribution
-        label_weights: Dict[str, float] = {}
+        # Binary consensus voting: count weighted votes for/against
+        votes_for = 0.0
+        votes_against = 0.0
+
         for word in similar_words:
             # Apply same-merchant boost
-            effective_similarity = word["similarity"]
+            weight = word["similarity"]
             if self.merchant_name and word.get("merchant_name") == self.merchant_name:
-                effective_similarity = min(
-                    1.0, effective_similarity + self.SAME_MERCHANT_BOOST
-                )
+                weight = min(1.0, weight + self.SAME_MERCHANT_BOOST)
 
-            # Each valid label gets the effective similarity weight
-            for label in word["valid_labels"]:
-                label_weights[label] = (
-                    label_weights.get(label, 0) + effective_similarity
-                )
+            if word["label_valid"]:
+                votes_for += weight
+            else:
+                votes_against += weight
 
-        if not label_weights:
+        total_votes = votes_for + votes_against
+        if total_votes == 0:
             return ValidationResult(
                 decision=ValidationDecision.KEEP_PENDING,
                 confidence=0.0,
                 consensus_label=None,
                 matching_count=len(similar_words),
-                reason="No valid labels found in similar words",
+                reason="No weighted votes computed",
             )
 
-        # Find consensus label
-        total_weight = sum(label_weights.values())
-        best_label = max(label_weights, key=label_weights.get)  # type: ignore
-        consensus_ratio = label_weights[best_label] / total_weight
+        # Confidence = proportion of votes FOR the predicted label
+        confidence = votes_for / total_votes
 
-        # Make decision based on consensus
-        if consensus_ratio >= self.CONSENSUS_THRESHOLD:
-            if best_label == predicted_label:
-                return ValidationResult(
-                    decision=ValidationDecision.AUTO_VALIDATE,
-                    confidence=consensus_ratio,
-                    consensus_label=best_label,
-                    matching_count=len(similar_words),
-                    reason=f"Prediction matches {consensus_ratio:.0%} consensus",
-                )
-            # Consensus disagrees with prediction - needs human review
+        # Make decision based on confidence thresholds
+        if confidence >= self.CONSENSUS_THRESHOLD:
+            # Strong evidence FOR the prediction
             return ValidationResult(
-                decision=ValidationDecision.NEEDS_REVIEW,
-                confidence=consensus_ratio,
-                consensus_label=best_label,
+                decision=ValidationDecision.AUTO_VALIDATE,
+                confidence=confidence,
+                consensus_label=predicted_label,
                 matching_count=len(similar_words),
-                reason=(
-                    f"Consensus ({best_label}) differs from "
-                    f"prediction ({predicted_label})"
-                ),
+                reason=f"{confidence:.0%} of similar words validated as {predicted_label}",
             )
 
-        # No clear consensus - needs review
+        if confidence <= (1.0 - self.CONSENSUS_THRESHOLD):
+            # Strong evidence AGAINST the prediction
+            return ValidationResult(
+                decision=ValidationDecision.AUTO_INVALID,
+                confidence=1.0 - confidence,  # Confidence in INVALID decision
+                consensus_label=predicted_label,
+                matching_count=len(similar_words),
+                reason=f"{1.0 - confidence:.0%} of similar words rejected {predicted_label}",
+            )
+
+        # Mixed evidence - needs review
         return ValidationResult(
             decision=ValidationDecision.NEEDS_REVIEW,
-            confidence=consensus_ratio,
-            consensus_label=best_label,
+            confidence=confidence,
+            consensus_label=predicted_label,
             matching_count=len(similar_words),
-            reason=f"Weak consensus ({consensus_ratio:.0%} for {best_label})",
+            reason=f"Mixed evidence: {confidence:.0%} for, {1.0 - confidence:.0%} against",
         )
