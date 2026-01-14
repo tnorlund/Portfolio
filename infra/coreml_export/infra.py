@@ -309,6 +309,7 @@ class CoreMLExportComponent(ComponentResource):
                     }
                 ),
                 architectures=["arm64"],
+                layers=[lambda_layer_arn],  # receipt_dynamo package
                 timeout=60,
                 memory_size=256,
                 tags={"environment": stack},

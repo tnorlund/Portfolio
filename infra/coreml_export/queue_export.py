@@ -5,6 +5,8 @@ completes successfully. It:
 1. Looks up the Job entity in DynamoDB to get the best checkpoint S3 path
 2. Creates a CoreMLExportJob record in DynamoDB
 3. Sends a message to the export job queue for the Mac worker to process
+
+Uses the receipt_dynamo package (via Lambda layer) for proper entity access.
 """
 
 import json
@@ -14,9 +16,13 @@ from datetime import datetime, timezone
 
 import boto3
 
+# receipt_dynamo is provided via Lambda layer
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import CoreMLExportStatus
+from receipt_dynamo.entities import CoreMLExportJob
+
 # Initialize clients
 sqs = boto3.client("sqs")
-dynamodb = boto3.resource("dynamodb")
 
 
 def handler(event, context):
@@ -53,31 +59,44 @@ def handler(event, context):
     # Check for opt-out tag
     job_arn = detail.get("TrainingJobArn", "")
     if _has_skip_export_tag(job_arn):
-        print(f"Skipping export - job has skip-coreml-export tag")
+        print("Skipping export - job has skip-coreml-export tag")
         return {"statusCode": 200, "body": "Skipped - opt-out tag"}
 
-    # Look up the Job entity in DynamoDB to get the best checkpoint path
+    # Initialize DynamoDB client using receipt_dynamo
     dynamo_table = os.environ["DYNAMO_TABLE_NAME"]
-    job_data = _get_job_by_name(dynamo_table, job_name)
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    dynamo = DynamoClient(table_name=dynamo_table, region=region)
 
-    if not job_data:
+    # Look up the Job entity by name using GSI2
+    try:
+        jobs, _ = dynamo.get_job_by_name(name=job_name, limit=1)
+    except Exception as e:
+        print(f"Failed to look up job by name: {e}")
+        return {"statusCode": 500, "body": f"Failed to look up job: {e}"}
+
+    if not jobs:
         print(f"Job not found in DynamoDB: {job_name}")
         return {"statusCode": 404, "body": f"Job not found: {job_name}"}
 
-    # Get the best checkpoint S3 path from job.results
-    results = job_data.get("results", {})
-    if isinstance(results, str):
-        results = json.loads(results)
+    job = jobs[0]
+    print(f"Found job: {job.name} (ID: {job.job_id}, status: {job.status})")
 
-    model_s3_uri = results.get("best_checkpoint_s3_path")
+    # Get the best checkpoint S3 path from job.results
+    model_s3_uri = None
+    if job.results:
+        model_s3_uri = job.results.get("best_checkpoint_s3_path")
+
+    # Fallback to best_dir_uri() helper method
+    if not model_s3_uri:
+        model_s3_uri = job.best_dir_uri()
+
     if not model_s3_uri:
         print(f"No best_checkpoint_s3_path in job results: {job_name}")
-        print(f"Job results: {results}")
+        print(f"Job results: {job.results}")
         return {"statusCode": 400, "body": "No best_checkpoint_s3_path found"}
 
     # Generate export job details
     export_id = str(uuid.uuid4())
-    job_id = job_data.get("job_id", job_name)
 
     # Parse bucket from model S3 URI for output path
     # model_s3_uri format: s3://bucket/runs/job-name/best/
@@ -89,16 +108,21 @@ def handler(event, context):
     quantize = os.environ.get("DEFAULT_QUANTIZE", "float16")
     queue_url = os.environ["COREML_EXPORT_JOB_QUEUE_URL"]
 
-    # Create CoreMLExportJob record in DynamoDB
+    # Create CoreMLExportJob entity using proper class
+    export_job = CoreMLExportJob(
+        export_id=export_id,
+        job_id=job.job_id,
+        model_s3_uri=model_s3_uri,
+        created_at=datetime.now(timezone.utc),
+        status=CoreMLExportStatus.PENDING.value,
+        quantize=quantize,
+        output_s3_prefix=output_s3_prefix,
+    )
+
+    # Add to DynamoDB using proper data layer method
     try:
-        _create_export_job_record(
-            dynamo_table=dynamo_table,
-            export_id=export_id,
-            job_id=job_id,
-            model_s3_uri=model_s3_uri,
-            quantize=quantize,
-            output_s3_prefix=output_s3_prefix,
-        )
+        dynamo.add_coreml_export_job(export_job)
+        print(f"Created CoreMLExportJob record: {export_id}")
     except Exception as e:
         print(f"Failed to create DynamoDB record: {e}")
         return {"statusCode": 500, "body": f"Failed to create DynamoDB record: {e}"}
@@ -106,7 +130,7 @@ def handler(event, context):
     # Send message to export queue
     message = {
         "export_id": export_id,
-        "job_id": job_id,
+        "job_id": job.job_id,
         "model_s3_uri": model_s3_uri,
         "quantize": quantize,
         "output_s3_prefix": output_s3_prefix,
@@ -119,7 +143,7 @@ def handler(event, context):
         )
         print(f"Queued CoreML export: {export_id}")
         print(f"  Training Job: {job_name}")
-        print(f"  Job ID: {job_id}")
+        print(f"  Job ID: {job.job_id}")
         print(f"  Model: {model_s3_uri}")
         print(f"  Output: {output_s3_prefix}")
         print(f"  Quantize: {quantize}")
@@ -129,7 +153,7 @@ def handler(event, context):
             "body": json.dumps({
                 "export_id": export_id,
                 "job_name": job_name,
-                "job_id": job_id,
+                "job_id": job.job_id,
                 "model_s3_uri": model_s3_uri,
             }),
         }
@@ -151,84 +175,3 @@ def _has_skip_export_tag(job_arn: str) -> bool:
     except Exception as e:
         print(f"Failed to list tags: {e}")
         return False
-
-
-def _get_job_by_name(table_name: str, job_name: str) -> dict | None:
-    """Look up a Job by name using GSI1 (name index).
-
-    The Job entity uses GSI1PK = "JOB" and GSI1SK = job_name for name lookups.
-    """
-    table = dynamodb.Table(table_name)
-
-    try:
-        # Query GSI1 for jobs by name
-        response = table.query(
-            IndexName="GSI1",
-            KeyConditionExpression="GSI1PK = :pk AND GSI1SK = :sk",
-            ExpressionAttributeValues={
-                ":pk": "JOB",
-                ":sk": job_name,
-            },
-            Limit=1,
-        )
-
-        items = response.get("Items", [])
-        if items:
-            return items[0]
-
-        # Fallback: scan for job by name (less efficient but more robust)
-        response = table.scan(
-            FilterExpression="#n = :name AND #t = :type",
-            ExpressionAttributeNames={
-                "#n": "name",
-                "#t": "entity_type",
-            },
-            ExpressionAttributeValues={
-                ":name": job_name,
-                ":type": "Job",
-            },
-            Limit=1,
-        )
-
-        items = response.get("Items", [])
-        return items[0] if items else None
-
-    except Exception as e:
-        print(f"Failed to look up job: {e}")
-        return None
-
-
-def _create_export_job_record(
-    dynamo_table: str,
-    export_id: str,
-    job_id: str,
-    model_s3_uri: str,
-    quantize: str,
-    output_s3_prefix: str,
-) -> None:
-    """Create a CoreMLExportJob record in DynamoDB."""
-    table = dynamodb.Table(dynamo_table)
-
-    now = datetime.now(timezone.utc).isoformat()
-
-    item = {
-        "PK": f"COREML_EXPORT#{export_id}",
-        "SK": f"COREML_EXPORT#{export_id}",
-        "entity_type": "CoreMLExportJob",
-        "export_id": export_id,
-        "job_id": job_id,
-        "model_s3_uri": model_s3_uri,
-        "quantize": quantize,
-        "output_s3_prefix": output_s3_prefix,
-        "status": "PENDING",
-        "created_at": now,
-        # GSI1: Query by job_id
-        "GSI1PK": f"JOB#{job_id}",
-        "GSI1SK": f"COREML_EXPORT#{export_id}",
-        # GSI2: Query by status
-        "GSI2PK": "COREML_EXPORT_STATUS#PENDING",
-        "GSI2SK": now,
-    }
-
-    table.put_item(Item=item)
-    print(f"Created CoreMLExportJob record: {export_id}")
