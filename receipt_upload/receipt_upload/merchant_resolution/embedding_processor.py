@@ -1,25 +1,50 @@
 """
 Merchant-resolving embedding processor for unified upload container.
 
-This processor:
-1. Uses receipt_chroma.create_embeddings_and_compaction_run() to generate embeddings
-   and get snapshot+delta pre-merged clients
-2. Resolves merchant information using the MerchantResolver (two-tier strategy)
-3. Enriches the receipt in DynamoDB with merchant data
-4. Returns immediately while compaction happens asynchronously
+This processor uses PARALLEL PIPELINES for optimal performance:
+
+Phase 1: Download + Embed (4 concurrent ops)
+- Download lines snapshot from S3
+- Download words snapshot from S3
+- Embed lines via OpenAI
+- Embed words via OpenAI
+
+Phase 2: Parallel Pipelines
+- Lines Pipeline: merchant resolution → build payload → upsert → upload delta
+- Words Pipeline: label validation → build payload → upsert → upload delta
+
+Phase 3: Create CompactionRun (DynamoDB stream triggers async compaction)
+
+Phase 4: Enrich receipt place (AFTER compaction run to avoid race conditions)
 
 Tracing:
 - The process_embeddings method creates a parent trace per receipt
-- Child traces for merchant resolution and label validation nest under the parent
+- Child traces for each phase nest under the parent
 """
 
 import logging
 import os
-from concurrent.futures import as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
+import shutil
+import tempfile
+import uuid
+
 import boto3
-from receipt_chroma import create_embeddings_and_compaction_run
+from receipt_chroma import (
+    ChromaClient,
+    EmbeddingConfig,
+    build_lines_payload,
+    build_words_payload,
+    create_compaction_run,
+    create_embeddings_and_compaction_run,
+    download_and_embed_parallel,
+    upload_lines_delta,
+    upload_words_delta,
+    upsert_lines_local,
+    upsert_words_local,
+)
 from receipt_upload.label_validation import (
     LLMBatchValidator,
     LightweightLabelValidator,
@@ -63,28 +88,316 @@ def _get_label_validation_project() -> str:
     return os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
 
 
-def _get_context_thread_pool_executor():
-    """Get ContextThreadPoolExecutor if langsmith is available, else ThreadPoolExecutor.
-
-    ContextThreadPoolExecutor automatically propagates context variables (including
-    Langsmith trace context) to child threads, enabling proper trace nesting.
-
-    See: https://docs.smith.langchain.com/reference/python/utils/langsmith.utils.ContextThreadPoolExecutor
-    """
-    try:
-        from langsmith.utils import ContextThreadPoolExecutor
-
-        return ContextThreadPoolExecutor
-    except ImportError:
-        from concurrent.futures import ThreadPoolExecutor
-
-        return ThreadPoolExecutor
-
-
 def _log(msg: str) -> None:
     """Log message with immediate flush for CloudWatch visibility."""
     print(f"[MERCHANT_EMBEDDING_PROCESSOR] {msg}", flush=True)
     logger.info(msg)
+
+
+# =============================================================================
+# Module-level worker functions for ProcessPoolExecutor
+# These must be at module level to be picklable for multiprocessing
+# =============================================================================
+
+
+def _run_lines_pipeline_worker(
+    local_lines_dir: str,
+    lines_data: List[Dict[str, Any]],
+    words_data: List[Dict[str, Any]],
+    line_embeddings_list: List[List[float]],
+    image_id: str,
+    receipt_id: int,
+    run_id: str,
+    chromadb_bucket: str,
+    table_name: str,
+    google_places_api_key: Optional[str],
+    langsmith_headers: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """
+    Worker function for lines pipeline (runs in separate process).
+
+    Creates its own ChromaClient and runs merchant resolution.
+    Returns serializable dict with results.
+
+    Args:
+        langsmith_headers: Optional headers from parent RunTree for trace context
+    """
+    # Import inside worker to avoid pickling issues
+    from receipt_chroma import ChromaClient, build_lines_payload, upload_lines_delta
+    from receipt_dynamo import DynamoClient
+    from receipt_dynamo.entities import ReceiptLine, ReceiptWord
+    from receipt_upload.merchant_resolution.resolver import (
+        MerchantResolver,
+        MerchantResult,
+    )
+
+    def _do_lines_work() -> Dict[str, Any]:
+        # Reconstruct entities from dicts using **unpacking
+        lines = [ReceiptLine(**d) for d in lines_data]
+        words = [ReceiptWord(**d) for d in words_data]
+
+        # Create ChromaClient in this process
+        client = ChromaClient(
+            persist_directory=local_lines_dir,
+            mode="write",
+            metadata_only=True,
+        )
+
+        try:
+            # Build embedding cache
+            line_embedding_cache: Dict[int, List[float]] = {
+                ln.line_id: emb
+                for ln, emb in zip(lines, line_embeddings_list, strict=True)
+            }
+
+            # Create resolver and run merchant resolution
+            dynamo = DynamoClient(table_name)
+            resolver = MerchantResolver(
+                dynamo_client=dynamo,
+                google_places_api_key=google_places_api_key,
+            )
+
+            merchant_result = resolver.resolve(
+                lines_client=client,
+                lines=lines,
+                words=words,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                line_embeddings=line_embedding_cache,
+            )
+
+            # Build lines payload with resolved merchant name
+            line_payload, _ = build_lines_payload(
+                receipt_lines=lines,
+                receipt_words=words,
+                line_embeddings_list=line_embeddings_list,
+                merchant_name=merchant_result.merchant_name,
+            )
+
+            # Upsert to local ChromaDB
+            client.upsert_vectors(collection_name="lines", **line_payload)
+
+            # Upload delta to S3
+            import boto3
+            s3_client = boto3.client("s3")
+            prefix = upload_lines_delta(
+                line_payload=line_payload,
+                run_id=run_id,
+                chromadb_bucket=chromadb_bucket,
+                s3_client=s3_client,
+            )
+
+            # Return serializable result
+            return {
+                "success": True,
+                "lines_prefix": prefix,
+                "merchant_name": merchant_result.merchant_name,
+                "place_id": merchant_result.place_id,
+                "resolution_tier": merchant_result.resolution_tier,
+                "confidence": merchant_result.confidence,
+                "phone": merchant_result.phone,
+                "address": merchant_result.address,
+                "source_image_id": merchant_result.source_image_id,
+                "source_receipt_id": merchant_result.source_receipt_id,
+                "similarity_matches": [
+                    {
+                        "image_id": m.image_id,
+                        "receipt_id": m.receipt_id,
+                        "merchant_name": m.merchant_name,
+                        "embedding_similarity": m.embedding_similarity,
+                        "metadata_boost": m.metadata_boost,
+                        "total_confidence": m.total_confidence,
+                    }
+                    for m in (merchant_result.similarity_matches or [])[:5]
+                ],
+            }
+        finally:
+            client.close()
+
+    # Execute with LangSmith tracing context if headers provided
+    # tracing_context(parent=...) propagates the parent to ALL nested @traceable functions
+    if langsmith_headers:
+        try:
+            from langsmith import RunTree, tracing_context
+            import os
+            import logging
+            log = logging.getLogger(__name__)
+            log.info("[LINES_WORKER] Headers received: %s", list(langsmith_headers.keys()))
+            log.info("[LINES_WORKER] LANGCHAIN_API_KEY set: %s", bool(os.environ.get('LANGCHAIN_API_KEY')))
+            parent_rt = RunTree.from_headers(langsmith_headers)
+            log.info("[LINES_WORKER] Parent RunTree created: id=%s, name=%s", parent_rt.id, parent_rt.name)
+            with tracing_context(parent=parent_rt):
+                log.info("[LINES_WORKER] Inside tracing_context, calling _do_lines_work")
+                return _do_lines_work()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("[LINES_WORKER] ERROR setting up tracing: %s", e)
+    return _do_lines_work()
+
+
+def _run_words_pipeline_worker(
+    local_words_dir: str,
+    words_data: List[Dict[str, Any]],
+    word_labels_data: List[Dict[str, Any]],
+    word_embeddings_list: List[List[float]],
+    image_id: str,
+    receipt_id: int,
+    run_id: str,
+    chromadb_bucket: str,
+    table_name: str,
+    langsmith_headers: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """
+    Worker function for words pipeline (runs in separate process).
+
+    Creates its own ChromaClient and runs label validation.
+    Returns serializable dict with results.
+
+    Args:
+        langsmith_headers: Optional headers from parent RunTree for trace context
+    """
+    # Import inside worker to avoid pickling issues
+    from receipt_chroma import ChromaClient, build_words_payload, upload_words_delta
+    from receipt_dynamo import DynamoClient
+    from receipt_dynamo.constants import ValidationStatus
+    from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
+    from receipt_upload.label_validation import (
+        LLMBatchValidator,
+        LightweightLabelValidator,
+    )
+
+    def _do_words_work() -> Dict[str, Any]:
+        # Reconstruct entities from dicts using **unpacking
+        words = [ReceiptWord(**d) for d in words_data]
+        word_labels = [ReceiptWordLabel(**d) for d in word_labels_data]
+
+        # Create ChromaClient in this process
+        client = ChromaClient(
+            persist_directory=local_words_dir,
+            mode="write",
+            metadata_only=True,
+        )
+
+        try:
+            # Build embedding cache
+            word_embedding_cache: Dict[Tuple[int, int], List[float]] = {
+                (w.line_id, w.word_id): emb
+                for w, emb in zip(words, word_embeddings_list, strict=True)
+            }
+
+            # Run label validation
+            dynamo = DynamoClient(table_name)
+            validation_stats: Dict[str, Any] = {}
+
+            pending_labels = [
+                wl for wl in word_labels
+                if wl.validation_status == ValidationStatus.PENDING.value
+            ]
+
+            if pending_labels:
+                lightweight_validator = LightweightLabelValidator(client)
+                llm_validator = LLMBatchValidator(dynamo)
+
+                chroma_validated = 0
+                llm_validated = 0
+                llm_needed = []
+
+                for label in pending_labels:
+                    word = next(
+                        (w for w in words
+                         if w.line_id == label.line_id and w.word_id == label.word_id),
+                        None,
+                    )
+                    if not word:
+                        continue
+
+                    embedding = word_embedding_cache.get((label.line_id, label.word_id))
+                    result = lightweight_validator.validate(
+                        word=word,
+                        label=label,
+                        embedding=embedding,
+                    )
+
+                    if result.decision in ("VALIDATED", "REJECTED"):
+                        dynamo.update_receipt_word_label_validation(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            line_id=label.line_id,
+                            word_id=label.word_id,
+                            label_type=label.label_type,
+                            validation_status=(
+                                ValidationStatus.VALIDATED.value
+                                if result.decision == "VALIDATED"
+                                else ValidationStatus.REJECTED.value
+                            ),
+                            proposed_by=f"chroma_{result.decision.lower()}",
+                        )
+                        chroma_validated += 1
+                    else:
+                        llm_needed.append((word, label, embedding))
+
+                if llm_needed:
+                    llm_results = llm_validator.validate_batch(
+                        [(w, lbl) for w, lbl, _ in llm_needed],
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                    )
+                    llm_validated = len(llm_results)
+
+                validation_stats = {
+                    "pending_labels": len(pending_labels),
+                    "chroma_validated": chroma_validated,
+                    "llm_validated": llm_validated,
+                }
+
+            # Build words payload
+            word_payload, _ = build_words_payload(
+                receipt_words=words,
+                word_embeddings_list=word_embeddings_list,
+                word_labels=word_labels,
+                merchant_name=None,
+            )
+
+            # Upsert to local ChromaDB
+            client.upsert_vectors(collection_name="words", **word_payload)
+
+            # Upload delta to S3
+            import boto3
+            s3_client = boto3.client("s3")
+            prefix = upload_words_delta(
+                word_payload=word_payload,
+                run_id=run_id,
+                chromadb_bucket=chromadb_bucket,
+                s3_client=s3_client,
+            )
+
+            return {
+                "success": True,
+                "words_prefix": prefix,
+                **validation_stats,
+            }
+        finally:
+            client.close()
+
+    # Execute with LangSmith tracing context if headers provided
+    # tracing_context(parent=...) propagates the parent to ALL nested @traceable functions
+    if langsmith_headers:
+        try:
+            from langsmith import RunTree, tracing_context
+            import os
+            import logging
+            log = logging.getLogger(__name__)
+            log.info("[WORDS_WORKER] Headers received: %s", list(langsmith_headers.keys()))
+            log.info("[WORDS_WORKER] LANGCHAIN_API_KEY set: %s", bool(os.environ.get('LANGCHAIN_API_KEY')))
+            parent_rt = RunTree.from_headers(langsmith_headers)
+            log.info("[WORDS_WORKER] Parent RunTree created: id=%s, name=%s", parent_rt.id, parent_rt.name)
+            with tracing_context(parent=parent_rt):
+                log.info("[WORDS_WORKER] Inside tracing_context, calling _do_words_work")
+                return _do_words_work()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("[WORDS_WORKER] ERROR setting up tracing: %s", e)
+    return _do_words_work()
 
 
 class MerchantResolvingEmbeddingProcessor:
@@ -95,7 +408,7 @@ class MerchantResolvingEmbeddingProcessor:
     1. Generates embeddings using receipt_chroma orchestration
     2. Queries the merged snapshot+delta clients for merchant resolution
     3. Updates DynamoDB with merchant information
-    4. Triggers async compaction via SQS
+    4. Creates CompactionRun record (DynamoDB stream triggers async compaction)
     """
 
     def __init__(
@@ -105,8 +418,6 @@ class MerchantResolvingEmbeddingProcessor:
         chroma_http_endpoint: Optional[str] = None,
         google_places_api_key: Optional[str] = None,
         openai_api_key: Optional[str] = None,
-        lines_queue_url: Optional[str] = None,
-        words_queue_url: Optional[str] = None,
     ):
         """
         Initialize the processor.
@@ -117,19 +428,11 @@ class MerchantResolvingEmbeddingProcessor:
             chroma_http_endpoint: Optional HTTP endpoint (unused, kept for compat)
             google_places_api_key: Google Places API key for Tier 2 resolution
             openai_api_key: OpenAI API key for embeddings
-            lines_queue_url: SQS queue URL for lines compaction (set via env)
-            words_queue_url: SQS queue URL for words compaction (set via env)
         """
         self.dynamo = DynamoClient(table_name)
         self.chromadb_bucket = chromadb_bucket
         self.openai_api_key = openai_api_key
         self.google_places_api_key = google_places_api_key
-
-        # Set queue URLs in environment for receipt_chroma to use
-        if lines_queue_url:
-            os.environ["CHROMADB_LINES_QUEUE_URL"] = lines_queue_url
-        if words_queue_url:
-            os.environ["CHROMADB_WORDS_QUEUE_URL"] = words_queue_url
 
         # Initialize Places client if API key provided
         self.places_client = None
@@ -214,7 +517,16 @@ class MerchantResolvingEmbeddingProcessor:
         lines: Optional[List[ReceiptLine]] = None,
         words: Optional[List[ReceiptWord]] = None,
     ) -> Dict[str, Any]:
-        """Implementation of process_embeddings (called within trace context)."""
+        """
+        Implementation of process_embeddings using parallel pipelines.
+
+        This implementation runs TWO PARALLEL PIPELINES:
+        - Lines Pipeline: merchant resolution → build → upsert → upload
+        - Words Pipeline: label validation → build → upsert → upload
+
+        This allows merchant resolution to complete as soon as lines are ready,
+        rather than waiting for all I/O to complete first.
+        """
         # Fetch lines/words if not provided
         if lines is None or words is None:
             lines = self.dynamo.list_receipt_lines_from_receipt(
@@ -247,105 +559,201 @@ class MerchantResolvingEmbeddingProcessor:
         except Exception as e:
             _log(f"Could not fetch receipt place: {e}")
 
-        # Step 1: Generate embeddings and get merged snapshot+delta clients
+        # Generate run_id for this processing run
+        run_id = str(uuid.uuid4())
         _log(
             f"Creating embeddings for {image_id}#{receipt_id} "
-            f"({len(lines)} lines, {len(words)} words)"
+            f"({len(lines)} lines, {len(words)} words) run_id={run_id}"
         )
 
-        # Resolve merchant name from receipt_place
-        merchant_name = None
-        if receipt_place and receipt_place.merchant_name:
-            merchant_name = receipt_place.merchant_name
-
+        # =====================================================================
+        # PHASE 1: Download snapshots + embed in parallel (4 concurrent ops)
+        # =====================================================================
         try:
-            result = create_embeddings_and_compaction_run(
-                receipt_lines=lines,
-                receipt_words=words,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                chromadb_bucket=self.chromadb_bucket,
-                dynamo_client=self.dynamo,
-                s3_client=self.s3_client,
-                receipt_place=receipt_place,
-                receipt_word_labels=word_labels,
-                merchant_name=merchant_name,
-                sqs_notify=True,  # Trigger async compaction
+            from openai import OpenAI
+            openai_client = OpenAI()
+            model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
+            local_lines_dir, local_words_dir, line_embeddings_list, word_embeddings_list = (
+                download_and_embed_parallel(
+                    receipt_lines=lines,
+                    receipt_words=words,
+                    chromadb_bucket=self.chromadb_bucket,
+                    s3_client=self.s3_client,
+                    openai_client=openai_client,
+                    model=model,
+                )
             )
+            _log("Phase 1 complete: downloaded snapshots and generated embeddings")
         except Exception as e:
-            _log(f"ERROR: Failed to create embeddings: {e}")
-            logger.exception("Embedding creation failed")
+            _log(f"ERROR: Failed to download/embed: {e}")
+            logger.exception("Download/embed failed")
             return {
                 "success": False,
                 "error": str(e),
                 "merchant_found": False,
             }
 
+        # Track resources for cleanup
         merchant_result = MerchantResult()
         validation_stats: Dict[str, Any] = {}
+        lines_prefix: Optional[str] = None
+        words_prefix: Optional[str] = None
 
         try:
-            # Step 2: Run merchant resolution AND label validation in PARALLEL
-            # These are independent operations that can run concurrently
-            _log("Starting Phase 2: parallel merchant resolution + label validation")
+            # =================================================================
+            # PHASE 2: Run parallel pipelines using ProcessPoolExecutor
+            # Lines: merchant_resolution → build → upsert → upload
+            # Words: label_validation → build → upsert → upload
+            #
+            # ProcessPoolExecutor provides TRUE parallelism by running each
+            # pipeline in a separate process, avoiding Python GIL limitations
+            # and ChromaDB SQLite lock contention.
+            # =================================================================
+            _log("Starting Phase 2: parallel pipelines (ProcessPoolExecutor)")
 
-            # Use ContextThreadPoolExecutor to automatically propagate trace context
-            # This ensures child threads inherit the parent trace
-            ThreadPoolExecutorClass = _get_context_thread_pool_executor()
+            # Convert entities to dicts for pickling (required for multiprocessing)
+            from dataclasses import asdict
+            lines_data = [asdict(ln) for ln in lines]
+            words_data = [asdict(w) for w in words]
+            word_labels_data = [asdict(wl) for wl in word_labels]
 
-            def _resolve_merchant() -> MerchantResult:
-                """Run merchant resolution (traced internally)."""
-                return self.merchant_resolver.resolve(
-                    lines_client=result.lines_client,
-                    lines=lines,
-                    words=words,
+            _log(f"Serialized {len(lines_data)} lines, {len(words_data)} words, {len(word_labels_data)} labels")
+
+            # Get table name from dynamo client
+            table_name = self.dynamo.table_name
+
+            # Get LangSmith tracing headers to propagate to child processes
+            langsmith_headers: Optional[Dict[str, str]] = None
+            try:
+                from langsmith import get_current_run_tree
+                current_run = get_current_run_tree()
+                if current_run:
+                    langsmith_headers = current_run.to_headers()
+                    _log(f"LangSmith trace context captured: run_id={current_run.id}, headers={list(langsmith_headers.keys())}")
+                else:
+                    _log("WARNING: get_current_run_tree() returned None - no parent trace context")
+            except Exception as e:
+                _log(f"Could not capture LangSmith context: {e}")
+
+            # Run both pipelines in separate PROCESSES for true parallelism
+            with ProcessPoolExecutor(max_workers=2) as executor:
+                _log("Submitting lines and words pipelines to ProcessPoolExecutor")
+
+                lines_future = executor.submit(
+                    _run_lines_pipeline_worker,
+                    local_lines_dir=local_lines_dir,
+                    lines_data=lines_data,
+                    words_data=words_data,
+                    line_embeddings_list=line_embeddings_list,
                     image_id=image_id,
                     receipt_id=receipt_id,
-                    line_embeddings=result.line_embeddings,
+                    run_id=run_id,
+                    chromadb_bucket=self.chromadb_bucket,
+                    table_name=table_name,
+                    google_places_api_key=self.google_places_api_key,
+                    langsmith_headers=langsmith_headers,
                 )
 
-            def _validate_labels() -> Dict[str, Any]:
-                """Run label validation (traced internally)."""
-                # merchant_name is None here since validation doesn't depend on it
-                return self._validate_pending_labels(
+                words_future = executor.submit(
+                    _run_words_pipeline_worker,
+                    local_words_dir=local_words_dir,
+                    words_data=words_data,
+                    word_labels_data=word_labels_data,
+                    word_embeddings_list=word_embeddings_list,
                     image_id=image_id,
                     receipt_id=receipt_id,
-                    word_labels=word_labels,
-                    words=words,
-                    words_client=result.words_client,
-                    merchant_name=None,  # Not needed for validation
-                    word_embeddings=result.word_embeddings,
+                    run_id=run_id,
+                    chromadb_bucket=self.chromadb_bucket,
+                    table_name=table_name,
+                    langsmith_headers=langsmith_headers,
                 )
-
-            with ThreadPoolExecutorClass(max_workers=2) as executor:
-                # ContextThreadPoolExecutor automatically propagates trace context
-                merchant_future = executor.submit(_resolve_merchant)
-                validation_future = executor.submit(_validate_labels)
 
                 # Wait for both to complete
-                for future in as_completed([merchant_future, validation_future]):
+                for future in as_completed([lines_future, words_future]):
                     try:
-                        future.result()  # Raise any exceptions
+                        future.result()
                     except Exception as e:
-                        _log(f"WARNING: Parallel task failed: {e}")
-                        logger.exception("Parallel task failed")
+                        _log(f"WARNING: Pipeline failed: {e}")
+                        logger.exception("Pipeline failed")
 
-                # Get results (may raise if failed)
+                # Get results and reconstruct objects
                 try:
-                    merchant_result = merchant_future.result()
+                    lines_result = lines_future.result()
+                    lines_prefix = lines_result.get("lines_prefix")
+
+                    # Reconstruct MerchantResult from serializable dict
+                    if lines_result.get("success"):
+                        # Import here to avoid circular import
+                        from receipt_upload.merchant_resolution.resolver import SimilarityMatch
+
+                        similarity_matches = None
+                        if lines_result.get("similarity_matches"):
+                            similarity_matches = [
+                                SimilarityMatch(
+                                    image_id=m["image_id"],
+                                    receipt_id=m["receipt_id"],
+                                    merchant_name=m["merchant_name"],
+                                    embedding_similarity=m["embedding_similarity"],
+                                    metadata_boost=m["metadata_boost"],
+                                    total_confidence=m["total_confidence"],
+                                )
+                                for m in lines_result["similarity_matches"]
+                            ]
+
+                        merchant_result = MerchantResult(
+                            merchant_name=lines_result.get("merchant_name"),
+                            place_id=lines_result.get("place_id"),
+                            resolution_tier=lines_result.get("resolution_tier"),
+                            confidence=lines_result.get("confidence"),
+                            phone=lines_result.get("phone"),
+                            address=lines_result.get("address"),
+                            source_image_id=lines_result.get("source_image_id"),
+                            source_receipt_id=lines_result.get("source_receipt_id"),
+                            similarity_matches=similarity_matches,
+                        )
                 except Exception as e:
-                    _log(f"WARNING: Merchant resolution failed: {e}")
+                    _log(f"WARNING: Lines pipeline failed: {e}")
+                    logger.exception("Lines pipeline error")
                     merchant_result = MerchantResult()
+                    lines_prefix = None
 
                 try:
-                    validation_stats = validation_future.result()
+                    words_result = words_future.result()
+                    words_prefix = words_result.get("words_prefix")
+                    if words_result.get("success"):
+                        validation_stats = {
+                            k: v for k, v in words_result.items()
+                            if k not in ("success", "words_prefix")
+                        }
                 except Exception as e:
-                    _log(f"WARNING: Label validation failed: {e}")
+                    _log(f"WARNING: Words pipeline failed: {e}")
+                    logger.exception("Words pipeline error")
                     validation_stats = {}
+                    words_prefix = None
 
-            _log("Phase 2 complete: merchant + validation finished")
+            _log("Phase 2 complete: parallel pipelines finished")
 
-            # Step 3: Log merchant resolution to Langsmith (after parallel phase)
+            # =================================================================
+            # PHASE 3: Create compaction run (after both deltas uploaded)
+            # =================================================================
+            if lines_prefix and words_prefix:
+                compaction_run = create_compaction_run(
+                    run_id=run_id,
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    lines_prefix=lines_prefix,
+                    words_prefix=words_prefix,
+                    dynamo_client=self.dynamo,
+                )
+                _log(f"Phase 3 complete: created compaction run {run_id}")
+            else:
+                _log("WARNING: Skipping compaction run - missing delta prefixes")
+                compaction_run = None
+
+            # =================================================================
+            # PHASE 4: Log merchant resolution + enrich receipt place
+            # =================================================================
             similarity_matches_data = None
             if merchant_result.similarity_matches:
                 similarity_matches_data = [
@@ -377,7 +785,7 @@ class MerchantResolvingEmbeddingProcessor:
                 ),
             )
 
-            # Step 4: Enrich receipt in DynamoDB if merchant found
+            # Enrich receipt place AFTER compaction run is created
             if merchant_result.place_id:
                 _log(
                     f"Enriching receipt with merchant: {merchant_result.merchant_name} "
@@ -393,17 +801,29 @@ class MerchantResolvingEmbeddingProcessor:
             else:
                 _log("No merchant found - receipt will not be enriched")
 
+            _log("Phase 4 complete: logged merchant + enriched receipt")
+
         except Exception as e:
-            _log(f"WARNING: Phase 2 failed: {e}")
-            logger.exception("Phase 2 failed")
+            _log(f"WARNING: Processing failed: {e}")
+            logger.exception("Processing failed")
 
         finally:
-            # Always close the clients to release file locks
-            result.close()
+            # Clean up temp directories
+            # Note: ChromaClients are created and closed within worker processes
+            try:
+                if local_lines_dir and os.path.exists(local_lines_dir):
+                    shutil.rmtree(local_lines_dir, ignore_errors=True)
+            except Exception as e:
+                logger.warning("Error cleaning up lines_dir: %s", e)
+            try:
+                if local_words_dir and os.path.exists(local_words_dir):
+                    shutil.rmtree(local_words_dir, ignore_errors=True)
+            except Exception as e:
+                logger.warning("Error cleaning up words_dir: %s", e)
 
         return {
             "success": True,
-            "run_id": result.compaction_run.run_id,
+            "run_id": run_id,
             "lines_count": len(lines),
             "words_count": len(words),
             "merchant_found": merchant_result.place_id is not None,
@@ -536,15 +956,25 @@ class MerchantResolvingEmbeddingProcessor:
         if not word_labels:
             return {"labels_validated": 0, "labels_corrected": 0, "chroma_validated": 0}
 
-        # Filter to only PENDING labels
+        # Filter to only PENDING labels, excluding "O" (no-label) which don't need validation
         pending_label_entities = [
             label
             for label in word_labels
             if label.validation_status == ValidationStatus.PENDING.value
+            and label.label != "O"  # Skip "O" labels - they're background/no-label
         ]
 
+        # Count "O" labels for logging
+        o_label_count = sum(
+            1 for label in word_labels
+            if label.validation_status == ValidationStatus.PENDING.value
+            and label.label == "O"
+        )
+        if o_label_count > 0:
+            _log(f"Skipping {o_label_count} 'O' labels (no validation needed)")
+
         if not pending_label_entities:
-            _log("No pending labels to validate")
+            _log("No pending labels to validate (after filtering 'O' labels)")
             return {"labels_validated": 0, "labels_corrected": 0, "chroma_validated": 0}
 
         _log(f"Validating {len(pending_label_entities)} pending labels (ChromaDB first, then LLM)")

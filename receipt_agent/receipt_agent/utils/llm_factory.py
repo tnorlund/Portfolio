@@ -186,8 +186,13 @@ def _create_ollama_llm(
     timeout: int = 120,
     **kwargs: Any,
 ) -> "BaseChatModel":
-    """Create a ChatOllama instance."""
-    from langchain_ollama import ChatOllama
+    """Create a ChatOpenAI instance configured for Ollama Cloud.
+
+    Uses Ollama's OpenAI-compatible endpoint (/v1/) which properly supports
+    structured outputs via response_format. The native Ollama API ignores the
+    format parameter, causing structured output calls to return raw text.
+    """
+    from langchain_openai import ChatOpenAI
 
     _model = (
         model
@@ -207,22 +212,32 @@ def _create_ollama_llm(
         or os.environ.get("RECEIPT_AGENT_OLLAMA_API_KEY", "")
     )
 
-    client_kwargs = kwargs.pop("client_kwargs", {})
-    if _api_key:
-        headers = client_kwargs.get("headers", {})
-        headers["Authorization"] = f"Bearer {_api_key}"
-        client_kwargs["headers"] = headers
-    client_kwargs.setdefault("timeout", timeout)
+    # Ensure we're using the OpenAI-compatible endpoint
+    # Ollama Cloud: https://ollama.com -> https://ollama.com/v1
+    if not _base_url.rstrip("/").endswith("/v1"):
+        _base_url = _base_url.rstrip("/") + "/v1"
+
+    if not _api_key:
+        raise ValueError(
+            "Ollama API key is required. Set OLLAMA_API_KEY or "
+            "RECEIPT_AGENT_OLLAMA_API_KEY environment variable."
+        )
+
+    # Remove client_kwargs if passed - not supported by ChatOpenAI
+    kwargs.pop("client_kwargs", None)
 
     logger.debug(
-        "Creating Ollama LLM: model=%s, base_url=%s", _model, _base_url
+        "Creating Ollama LLM (OpenAI-compat): model=%s, base_url=%s",
+        _model,
+        _base_url,
     )
 
-    return ChatOllama(
+    return ChatOpenAI(
         model=_model,
         base_url=_base_url,
+        api_key=_api_key,
         temperature=temperature,
-        client_kwargs=client_kwargs,
+        timeout=timeout,
         **kwargs,
     )
 
@@ -449,6 +464,9 @@ def _is_empty_response(response: Any) -> bool:
     - Empty list content ([])
     - Whitespace-only content
 
+    Note: Pydantic model responses (from with_structured_output) are always
+    considered non-empty since they represent successfully parsed results.
+
     Args:
         response: The LLM response object
 
@@ -457,6 +475,16 @@ def _is_empty_response(response: Any) -> bool:
     """
     if response is None:
         return True
+
+    # Pydantic models from structured output are never empty
+    # (they represent successfully parsed responses)
+    try:
+        from pydantic import BaseModel
+
+        if isinstance(response, BaseModel):
+            return False
+    except ImportError:
+        pass
 
     # Get content from response
     content = None
@@ -913,6 +941,11 @@ class ResilientLLM:
         Uses LangChain's with_structured_output() to enforce JSON schema at
         the API level (via function calling or JSON mode).
 
+        Note: Ollama Cloud's OpenAI-compatible endpoint only supports
+        'json_mode' (response_format: {type: "json_object"}), not the more
+        advanced 'json_schema' mode. We detect this and use the appropriate
+        method for each provider.
+
         Args:
             schema: A Pydantic model class defining the expected output structure
 
@@ -930,12 +963,27 @@ class ResilientLLM:
             response = structured_llm.invoke(messages)  # Returns ReviewResponse object
         """
 
+        def _is_ollama_llm(llm: Any) -> bool:
+            """Check if this LLM is configured for Ollama Cloud."""
+            if not hasattr(llm, "openai_api_base"):
+                return False
+            base_url = getattr(llm, "openai_api_base", "") or ""
+            return "ollama.com" in base_url
+
         def wrap_with_structured(llm: Any, name: str) -> Any:
             """Wrap an LLM with structured output if supported."""
             if llm is None:
                 return None
             if hasattr(llm, "with_structured_output"):
                 try:
+                    # Ollama Cloud only supports json_mode, not json_schema
+                    if _is_ollama_llm(llm):
+                        logger.debug(
+                            "Using json_mode for Ollama provider (%s)", name
+                        )
+                        return llm.with_structured_output(
+                            schema, method="json_mode"
+                        )
                     return llm.with_structured_output(schema)
                 except Exception as e:
                     logger.warning(

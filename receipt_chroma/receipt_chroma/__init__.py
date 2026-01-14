@@ -18,8 +18,18 @@ from receipt_chroma.embedding.delta import (
     save_word_embeddings_as_delta,
 )
 from receipt_chroma.embedding.orchestration import (
+    EmbeddingConfig,
     EmbeddingResult,
     create_embeddings_and_compaction_run,
+    # Parallel pipeline helpers
+    _build_lines_payload_traced as build_lines_payload,
+    _build_words_payload_traced as build_words_payload,
+    _create_compaction_run_traced as create_compaction_run,
+    _download_and_embed_parallel as download_and_embed_parallel,
+    _upload_lines_delta_traced as upload_lines_delta,
+    _upload_words_delta_traced as upload_words_delta,
+    _upsert_lines_local_traced as upsert_lines_local,
+    _upsert_words_local_traced as upsert_words_local,
 )
 from receipt_chroma.lock_manager import LockManager
 
@@ -38,18 +48,28 @@ __all__ = [
     "__version__",
     "ChromaClient",
     "CollectionUpdateResult",
+    "EmbeddingConfig",
     "EmbeddingResult",
     "LabelUpdateResult",
     "LockManager",
     "MetadataUpdateResult",
     "StorageManager",
     "StorageMode",
+    # Parallel pipeline helpers
+    "build_lines_payload",
+    "build_words_payload",
+    "create_compaction_run",
     "create_embeddings_and_compaction_run",
+    "download_and_embed_parallel",
     "download_snapshot_atomic",
     "initialize_empty_snapshot",
     "process_collection_updates",
     "produce_embedding_delta",
     "save_line_embeddings_as_delta",
     "save_word_embeddings_as_delta",
+    "upload_lines_delta",
     "upload_snapshot_atomic",
+    "upload_words_delta",
+    "upsert_lines_local",
+    "upsert_words_local",
 ]

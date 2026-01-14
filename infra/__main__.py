@@ -1288,7 +1288,7 @@ pulumi.export(
 # Receipt Label Validation project export
 label_validation_export = LangSmithBulkExport(
     f"label-validation-export-{stack}",
-    project_name="receipt-validation-jan-12",
+    project_name="receipt-validation-jan-14-full-tracing",
 )
 pulumi.export(
     "label_validation_export_bucket", label_validation_export.export_bucket.id

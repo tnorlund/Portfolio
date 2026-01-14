@@ -531,7 +531,7 @@ logger.setLevel(logging.INFO)
 
 LANGSMITH_API_URL = "https://api.smith.langchain.com"
 # Project name for label validation traces
-DEFAULT_PROJECT = "receipt-validation-jan-12"
+DEFAULT_PROJECT = "receipt-validation-jan-13-v5"
 
 
 def _ensure_destination_exists(setup_lambda_name):
@@ -951,7 +951,7 @@ def handler(event, context):
                             "Type": "Task",
                             "Resource": args[1],
                             "Parameters": {
-                                "langchain_project": "receipt-validation-jan-12",
+                                "langchain_project": "receipt-validation-jan-13-v5",
                             },
                             "ResultPath": "$.export_result",
                             "Next": "InitializePollCount",

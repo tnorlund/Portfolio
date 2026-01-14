@@ -75,14 +75,13 @@ def create_embeddings_and_compaction_run(
 
     # Import and call receipt_chroma implementation
     from receipt_chroma.embedding.orchestration import (
+        EmbeddingConfig,
         create_embeddings_and_compaction_run as chroma_create_embeddings,
     )
 
     try:
         # Use no-op DynamoDB client - caller persists CompactionRun separately
-        result = chroma_create_embeddings(
-            receipt_lines=receipt_lines,
-            receipt_words=receipt_words,
+        config = EmbeddingConfig(
             image_id=image_id,
             receipt_id=new_receipt_id,  # Map new_receipt_id -> receipt_id
             chromadb_bucket=chromadb_bucket,
@@ -90,6 +89,11 @@ def create_embeddings_and_compaction_run(
             receipt_place=receipt_place,
             receipt_word_labels=None,  # combine_receipts doesn't use labels
             merchant_name=None,  # Let receipt_chroma extract from place
+        )
+        result = chroma_create_embeddings(
+            receipt_lines=receipt_lines,
+            receipt_words=receipt_words,
+            config=config,
         )
 
         # Extract CompactionRun before closing

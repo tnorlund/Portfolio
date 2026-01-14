@@ -10,12 +10,16 @@ Two-tier resolution strategy:
 The ChromaDB query uses the snapshot+delta pre-merged clients from
 create_embeddings_and_compaction_run(), enabling immediate similarity search
 against the freshest data.
+
+Tracing:
+- All key methods are decorated with @traceable for LangSmith visibility
+- This enables parallel execution to be visible in the waterfall graph
 """
 
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from receipt_chroma import ChromaClient
 from receipt_chroma.embedding.formatting.line_format import (
@@ -29,6 +33,29 @@ from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
 logger = logging.getLogger(__name__)
+
+
+def _get_traceable() -> Callable:
+    """Get the traceable decorator if langsmith is available."""
+    try:
+        from langsmith.run_helpers import traceable
+
+        return traceable
+    except ImportError:
+        # Return a no-op decorator if langsmith not installed
+        def noop_decorator(*args, **kwargs):
+            def wrapper(fn):
+                return fn
+
+            return wrapper
+
+        return noop_decorator
+
+
+def _get_project_name() -> str:
+    """Get the Langsmith project name from environment."""
+    return os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
+
 
 # Invalid place_id sentinel values to filter out
 INVALID_PLACE_IDS = frozenset(("", "null", "NO_RESULTS", "INVALID"))
@@ -173,6 +200,40 @@ class MerchantResolver:
         Returns:
             MerchantResult with resolved merchant information
         """
+        # Create traced wrapper for LangSmith visibility
+        traceable = _get_traceable()
+
+        @traceable(
+            name="merchant_resolution",
+            project_name=_get_project_name(),
+            tags=["merchant", "resolution"],
+            metadata={
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+            },
+        )
+        def _traced_resolve() -> MerchantResult:
+            return self._resolve_impl(
+                lines_client=lines_client,
+                lines=lines,
+                words=words,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                line_embeddings=line_embeddings,
+            )
+
+        return _traced_resolve()
+
+    def _resolve_impl(
+        self,
+        lines_client: ChromaClient,
+        lines: List[ReceiptLine],
+        words: List[ReceiptWord],
+        image_id: str,
+        receipt_id: int,
+        line_embeddings: Optional[Dict[int, List[float]]] = None,
+    ) -> MerchantResult:
+        """Implementation of resolve() - called within trace context."""
         # Store embeddings cache for use in _similarity_search
         self._line_embeddings = line_embeddings or {}
         # Extract contact info from receipt
@@ -259,7 +320,9 @@ class MerchantResolver:
 
         # Tier 2: Fall back to Place ID Finder agent (Google Places API)
         _log("Tier 1 failed, invoking Tier 2: Place ID Finder agent")
-        result = self._run_place_id_finder(lines, words, image_id, receipt_id)
+        result = self._run_place_id_finder(
+            lines_client, lines, words, image_id, receipt_id
+        )
 
         if result.place_id:
             _log(
@@ -338,6 +401,45 @@ class MerchantResolver:
         Returns:
             MerchantResult with best match or empty result
         """
+        # Create traced wrapper for LangSmith visibility
+        traceable = _get_traceable()
+
+        @traceable(
+            name=f"similarity_search_{resolution_tier}",
+            project_name=_get_project_name(),
+            tags=["chroma", "similarity", resolution_tier],
+            metadata={
+                "image_id": current_image_id,
+                "receipt_id": current_receipt_id,
+                "line_text": query_line.text[:50] if query_line.text else "",
+                "expected_phone": expected_phone,
+                "expected_address": expected_address[:30] if expected_address else None,
+            },
+        )
+        def _traced_search() -> MerchantResult:
+            return self._similarity_search_impl(
+                lines_client=lines_client,
+                query_line=query_line,
+                current_image_id=current_image_id,
+                current_receipt_id=current_receipt_id,
+                expected_phone=expected_phone,
+                expected_address=expected_address,
+                resolution_tier=resolution_tier,
+            )
+
+        return _traced_search()
+
+    def _similarity_search_impl(
+        self,
+        lines_client: ChromaClient,
+        query_line: ReceiptLine,
+        current_image_id: str,
+        current_receipt_id: int,
+        expected_phone: Optional[str],
+        expected_address: Optional[str],
+        resolution_tier: str,
+    ) -> MerchantResult:
+        """Implementation of _similarity_search - called within trace context."""
         # Use cached embedding if available, otherwise generate
         embedding = self._line_embeddings.get(query_line.line_id)
         if not embedding:
@@ -611,6 +713,7 @@ class MerchantResolver:
 
     def _run_place_id_finder(
         self,
+        lines_client: ChromaClient,
         lines: List[ReceiptLine],
         words: List[ReceiptWord],
         image_id: str,
@@ -619,9 +722,12 @@ class MerchantResolver:
         """
         Run Place ID Finder agent to search Google Places API.
 
-        This is the Tier 2 fallback when metadata filtering fails.
+        This is the Tier 2 fallback when metadata filtering fails. Uses the
+        agentic approach which can reason about receipt content (e.g., extract
+        merchant names from website domains like "Sprouts.com").
 
         Args:
+            lines_client: ChromaClient for similarity search
             lines: Receipt lines
             words: Receipt words
             image_id: Receipt's image_id
@@ -630,8 +736,180 @@ class MerchantResolver:
         Returns:
             MerchantResult with Google Places data
         """
+        # Create traced wrapper for LangSmith visibility
+        traceable = _get_traceable()
+
+        @traceable(
+            name="place_id_finder",
+            project_name=_get_project_name(),
+            tags=["tier2", "places_api"],
+            metadata={
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+            },
+        )
+        def _traced_place_id_finder() -> MerchantResult:
+            return self._run_place_id_finder_impl(
+                lines_client=lines_client,
+                lines=lines,
+                words=words,
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+
+        return _traced_place_id_finder()
+
+    def _run_place_id_finder_impl(
+        self,
+        lines_client: ChromaClient,
+        lines: List[ReceiptLine],
+        words: List[ReceiptWord],
+        image_id: str,
+        receipt_id: int,
+    ) -> MerchantResult:
+        """Implementation of _run_place_id_finder - called within trace context."""
+        import asyncio  # pylint: disable=import-outside-toplevel
+
+        # Get current Langsmith callbacks for parent trace context
+        langsmith_callbacks = None
         try:
-            # Import Place ID Finder
+            from langsmith.run_helpers import get_current_run_tree  # pylint: disable=import-outside-toplevel
+
+            run_tree = get_current_run_tree()
+            if run_tree:
+                # Get callbacks that will make agent traces children of current trace
+                from langchain_core.tracers.langchain import LangChainTracer  # pylint: disable=import-outside-toplevel
+
+                langsmith_callbacks = [LangChainTracer(
+                    project_name=os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation"),
+                    client=run_tree.client,
+                )]
+                _log("Got Langsmith callbacks for parent trace context")
+        except ImportError:
+            _log("Langsmith not available for trace context propagation")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            _log("Could not get Langsmith callbacks: %s", e)
+
+        try:
+            # Try agentic approach first (can reason about receipt content)
+            # pylint: disable=import-outside-toplevel
+            from receipt_agent.agents.place_id_finder import (
+                create_place_id_finder_graph,
+                run_place_id_finder,
+            )
+
+            _log("Tier 2: Using agentic Place ID Finder")
+
+            # Create embed function from OpenAI client
+            def embed_fn(texts: List[str]) -> List[List[float]]:
+                if not self.openai_client or not texts:
+                    return []
+                from receipt_chroma.embedding.openai.realtime import (  # pylint: disable=import-outside-toplevel
+                    embed_texts,
+                )
+
+                return embed_texts(
+                    client=self.openai_client,
+                    texts=texts,
+                    model="text-embedding-3-small",
+                )
+
+            # Create the agentic graph
+            graph, state_holder = create_place_id_finder_graph(
+                dynamo_client=self.dynamo,
+                chroma_client=lines_client,
+                embed_fn=embed_fn,
+                places_api=self.places_client,
+            )
+
+            # Run the agent (sync wrapper for async)
+            result = asyncio.get_event_loop().run_until_complete(
+                run_place_id_finder(
+                    graph=graph,
+                    state_holder=state_holder,
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    callbacks=langsmith_callbacks,
+                )
+            )
+
+            if result and result.get("found") and result.get("place_id"):
+                return MerchantResult(
+                    place_id=result["place_id"],
+                    merchant_name=result.get("place_name"),
+                    address=result.get("place_address"),
+                    phone=result.get("place_phone"),
+                    confidence=result.get("confidence", 0.0),
+                    resolution_tier="place_id_finder_agentic",
+                )
+
+            _log("Agentic finder did not find place_id, reason: %s",
+                 result.get("reasoning", "unknown") if result else "no result")
+
+        except ImportError as exc:
+            _log("WARNING: receipt_agent import failed, falling back to simple search: %s", exc)
+            logger.warning("receipt_agent agentic import failed", exc_info=True)
+            # Fall through to simple search below
+        except RuntimeError as exc:
+            # Handle "no running event loop" error in Lambda
+            if "no running event loop" in str(exc) or "cannot be called from a running event loop" in str(exc):
+                _log("Event loop issue, trying asyncio.run(): %s", exc)
+                try:
+                    # pylint: disable=import-outside-toplevel
+                    from receipt_agent.agents.place_id_finder import (
+                        create_place_id_finder_graph,
+                        run_place_id_finder,
+                    )
+
+                    def embed_fn(texts: List[str]) -> List[List[float]]:
+                        if not self.openai_client or not texts:
+                            return []
+                        from receipt_chroma.embedding.openai.realtime import (  # pylint: disable=import-outside-toplevel
+                            embed_texts,
+                        )
+                        return embed_texts(
+                            client=self.openai_client,
+                            texts=texts,
+                            model="text-embedding-3-small",
+                        )
+
+                    graph, state_holder = create_place_id_finder_graph(
+                        dynamo_client=self.dynamo,
+                        chroma_client=lines_client,
+                        embed_fn=embed_fn,
+                        places_api=self.places_client,
+                    )
+
+                    result = asyncio.run(
+                        run_place_id_finder(
+                            graph=graph,
+                            state_holder=state_holder,
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            callbacks=langsmith_callbacks,
+                        )
+                    )
+
+                    if result and result.get("found") and result.get("place_id"):
+                        return MerchantResult(
+                            place_id=result["place_id"],
+                            merchant_name=result.get("place_name"),
+                            address=result.get("place_address"),
+                            phone=result.get("place_phone"),
+                            confidence=result.get("confidence", 0.0),
+                            resolution_tier="place_id_finder_agentic",
+                        )
+                except Exception as inner_exc:  # pylint: disable=broad-exception-caught
+                    _log("Agentic fallback also failed: %s", inner_exc)
+            else:
+                _log("RuntimeError in agentic finder: %s", exc)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            _log("Error running agentic Place ID Finder: %s", exc)
+            logger.exception("Agentic Place ID Finder failed")
+
+        # Fallback to simple search if agentic approach fails
+        _log("Tier 2: Falling back to simple Place ID Finder search")
+        try:
             # pylint: disable=import-outside-toplevel
             from receipt_agent.agents.place_id_finder.tools import (
                 place_id_finder as place_id_finder_module,
@@ -677,8 +955,8 @@ class MerchantResolver:
             _log("WARNING: receipt_agent import failed: %s", exc)
             logger.warning("receipt_agent import failed", exc_info=True)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            _log("Error running Place ID Finder: %s", exc)
-            logger.exception("Place ID Finder failed")
+            _log("Error running simple Place ID Finder: %s", exc)
+            logger.exception("Simple Place ID Finder failed")
 
         return MerchantResult()
 

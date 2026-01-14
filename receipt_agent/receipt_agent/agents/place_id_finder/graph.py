@@ -386,6 +386,7 @@ async def run_place_id_finder(
     receipt_id: int,
     line_embeddings: Optional[dict[str, list[float]]] = None,
     word_embeddings: Optional[dict[str, list[float]]] = None,
+    callbacks: Optional[list] = None,
 ) -> dict:
     """
     Run the place ID finder workflow for a receipt.
@@ -397,6 +398,7 @@ async def run_place_id_finder(
         receipt_id: Receipt ID
         line_embeddings: Pre-loaded line embeddings (optional)
         word_embeddings: Pre-loaded word embeddings (optional)
+        callbacks: Optional Langsmith callbacks for parent trace context
 
     Returns:
         Place ID result dict
@@ -435,20 +437,28 @@ async def run_place_id_finder(
     # Run the workflow
     try:
         # Configure LangSmith tracing if available
-        config = {
+        config: dict[str, Any] = {
             "recursion_limit": 100,  # Increased to prevent early termination
             "configurable": {
                 "thread_id": f"{image_id}#{receipt_id}",  # Unique thread ID for this receipt
             },
         }
 
-        # Add LangSmith metadata if tracing is enabled
+        # Add LangSmith metadata and callbacks if tracing is enabled
         if os.environ.get("LANGCHAIN_TRACING_V2") == "true":
             config["metadata"] = {
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "workflow": "place_id_finder",
             }
+            # Use project name from environment (same as parent trace)
+            project_name = os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
+            config["run_name"] = "place_id_finder_agent"
+            config["tags"] = ["place_id_finder", "tier2"]
+
+        # Pass callbacks for parent trace context (enables nested traces)
+        if callbacks:
+            config["callbacks"] = callbacks
 
         _ = await graph.ainvoke(initial_state, config=config)
 

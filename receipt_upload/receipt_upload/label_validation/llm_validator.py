@@ -434,6 +434,25 @@ Consider:
 3. Mathematical consistency (do amounts add up correctly?)
 4. Merchant patterns (same merchant evidence is most reliable)
 
+## Required Output Format
+
+You MUST respond with a JSON object containing a "decisions" array:
+```json
+{{
+  "decisions": [
+    {{"index": 0, "decision": "VALID", "label": "MERCHANT_NAME", "confidence": "high", "reasoning": "..."}},
+    {{"index": 1, "decision": "INVALID", "label": "LINE_TOTAL", "confidence": "medium", "reasoning": "..."}}
+  ]
+}}
+```
+
+Field requirements:
+- index: integer matching the pending label number [0-{len(pending_labels) - 1}]
+- decision: one of "VALID", "INVALID", or "NEEDS_REVIEW"
+- label: one of the valid labels from definitions above
+- confidence: one of "high", "medium", or "low"
+- reasoning: brief explanation string
+
 IMPORTANT:
 - Use ONLY labels from the definitions above
 - Every pending label MUST have a decision

@@ -5,6 +5,8 @@ validation.
 Combines:
 1. OCR parsing and storage (from process_ocr_results.py)
 2. Merchant validation and embedding (from embed_from_ndjson)
+
+Updated: 2026-01-14 - Fixed entity serialization: use asdict() and **unpacking instead of to_dict/from_dict
 """
 
 import json
@@ -264,8 +266,6 @@ def _process_single_record(
                 chroma_http_endpoint=os.environ.get("CHROMA_HTTP_ENDPOINT"),
                 google_places_api_key=os.environ.get("GOOGLE_PLACES_API_KEY"),
                 openai_api_key=os.environ.get("OPENAI_API_KEY"),
-                lines_queue_url=os.environ.get("CHROMADB_LINES_QUEUE_URL"),
-                words_queue_url=os.environ.get("CHROMADB_WORDS_QUEUE_URL"),
             )
 
             # Process each receipt for merchant resolution and embeddings

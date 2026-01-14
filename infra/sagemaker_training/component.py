@@ -544,7 +544,7 @@ def handler(event, context):
     - job_name: Unique name for the training job (required)
     - instance_type: SageMaker instance type (default: ml.g5.xlarge)
     - instance_count: Number of instances (default: 1)
-    - use_spot: Whether to use spot instances (default: True)
+    - use_spot: Whether to use spot instances (default: False)
     - max_runtime_hours: Maximum runtime in hours (default: 24)
     - hyperparameters: Dict of training hyperparameters
     """
@@ -555,7 +555,7 @@ def handler(event, context):
 
     instance_type = event.get("instance_type", "ml.g5.xlarge")
     instance_count = event.get("instance_count", 1)
-    use_spot = event.get("use_spot", True)
+    use_spot = event.get("use_spot", False)  # Default to on-demand for reliability
     max_runtime_hours = event.get("max_runtime_hours", 24)
 
     # Default hyperparameters

@@ -464,9 +464,9 @@ class UploadImages(ComponentResource):
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
                 "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)
-                "LANGCHAIN_PROJECT": "receipt-validation-jan-12",
+                "LANGCHAIN_PROJECT": "receipt-validation-jan-14-parallel-fix",
                 "OPENROUTER_API_KEY": openrouter_api_key,
-                "LANGCHAIN_LABEL_PROJECT": "receipt-validation-jan-12",
+                "LANGCHAIN_LABEL_PROJECT": "receipt-validation-jan-14-parallel-fix",
                 # EFS configuration for ChromaDB read-only access
                 "CHROMA_ROOT": (
                     "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma"
