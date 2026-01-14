@@ -134,13 +134,7 @@ public final class OCRWorker {
         self.dynamo = dynamo
         self.sotoFactory = sotoFactory
         var logger = Logger(label: "receipt.ocr.worker")
-        switch config.logLevel.lowercased() {
-        case "trace": logger.logLevel = .trace
-        case "debug": logger.logLevel = .debug
-        case "warn": logger.logLevel = .warning
-        case "error": logger.logLevel = .error
-        default: logger.logLevel = .info
-        }
+        logger.logLevel = .from(string: config.logLevel)
         self.logger = logger
     }
 
@@ -148,21 +142,32 @@ public final class OCRWorker {
         let factory = SotoAWSFactory(config: config)
         let s3Client = SotoS3Client(s3: factory.makeS3())
 
+        // Set up logger for model operations
+        var modelLogger = Logger(label: "receipt.ocr.model")
+        modelLogger.logLevel = .from(string: config.logLevel)
+
         // Download LayoutLM model if configured
         var layoutLMBundlePath: URL? = nil
         #if os(macOS)
         if let bucket = config.layoutLMModelS3Bucket,
            let key = config.layoutLMModelS3Key,
            !bucket.isEmpty, !key.isEmpty {
-            var logger = Logger(label: "receipt.ocr.model")
-            logger.logLevel = .info
-            let downloader = ModelDownloader(s3: s3Client, logger: logger)
+            modelLogger.info("layoutlm_download_start bucket=\(bucket) key=\(key)")
+            let downloader = ModelDownloader(s3: s3Client, logger: modelLogger)
             layoutLMBundlePath = try await downloader.ensureModelDownloaded(
                 bucket: bucket,
                 key: key,
                 localCachePath: config.layoutLMLocalCachePath
             )
+            modelLogger.info("layoutlm_download_complete path=\(layoutLMBundlePath?.path ?? "nil")")
+        } else {
+            // Log why LayoutLM is disabled
+            let bucketStatus = config.layoutLMModelS3Bucket.map { $0.isEmpty ? "empty" : "set" } ?? "nil"
+            let keyStatus = config.layoutLMModelS3Key.map { $0.isEmpty ? "empty" : "set" } ?? "nil"
+            modelLogger.info("layoutlm_skipped bucket=\(bucketStatus) key=\(keyStatus) reason=missing_config")
         }
+        #else
+        modelLogger.info("layoutlm_skipped reason=not_macos")
         #endif
 
         #if os(macOS)
