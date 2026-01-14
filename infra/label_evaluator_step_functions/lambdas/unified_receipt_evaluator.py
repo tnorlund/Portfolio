@@ -204,12 +204,13 @@ async def unified_receipt_evaluator(
 
         # 2. Create the ROOT receipt trace (one per receipt)
         # This is the parent trace that all child operations will link to
+        # NOTE: Must use "ReceiptEvaluation" name for Spark analytics compatibility
         receipt_trace = create_receipt_trace(
             execution_arn=execution_arn,
             image_id=image_id,
             receipt_id=receipt_id,
             merchant_name=merchant_name,
-            name="UnifiedReceiptEvaluation",
+            name="ReceiptEvaluation",
             inputs={
                 "data_s3_key": data_s3_key,
                 "merchant_name": merchant_name,

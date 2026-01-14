@@ -222,13 +222,25 @@ class LangSmithSparkProcessor:
             DataFrame with step timing statistics.
         """
         # Step names we care about
+        # Includes both old multi-Lambda and new unified architecture names
         step_names = [
+            # Root trace (both architectures)
             "ReceiptEvaluation",
+            # Old multi-Lambda architecture
             "EvaluateLabels",
             "EvaluateCurrencyLabels",
             "EvaluateMetadataLabels",
             "ValidateFinancialMath",
             "LLMReview",
+            # New unified architecture child traces
+            "load_patterns",
+            "build_visual_lines",
+            "setup_llm",
+            "phase1_concurrent_evaluations",
+            "apply_phase1_corrections",
+            "phase2_financial_validation",
+            "phase3_llm_review",
+            "upload_results",
         ]
 
         steps = df.filter(F.col("name").isin(step_names))
@@ -263,14 +275,21 @@ class LangSmithSparkProcessor:
         - Label type (currency, metadata, financial)
         - Decision (VALID, INVALID, NEEDS_REVIEW)
 
+        Supports two formats:
+        1. Old multi-Lambda: Separate EvaluateCurrencyLabels, EvaluateMetadataLabels,
+           ValidateFinancialMath traces with outputs.decisions = {VALID, INVALID, ...}
+        2. New unified: ReceiptEvaluation trace with outputs.decisions = {
+               currency: {VALID, ...}, metadata: {VALID, ...}, financial: {VALID, ...}
+           }
+
         Args:
             df: DataFrame with parsed metadata.
 
         Returns:
             DataFrame with decision analysis.
         """
-        # Filter to evaluator steps that have decisions
-        evaluators = df.filter(
+        # Format 1: Old multi-Lambda architecture (separate traces per evaluator)
+        old_evaluators = df.filter(
             F.col("name").isin(
                 [
                     "EvaluateCurrencyLabels",
@@ -280,15 +299,13 @@ class LangSmithSparkProcessor:
             )
         )
 
-        # Extract decision counts from outputs JSON
-        with_decisions = evaluators.withColumn(
+        old_with_decisions = old_evaluators.withColumn(
             "decisions_count",
             F.get_json_object(F.col("outputs"), "$.decisions"),
         )
 
-        # Extract decision counts directly from the decisions object
-        result = (
-            with_decisions.withColumn(
+        old_result = (
+            old_with_decisions.withColumn(
                 "valid_count",
                 F.coalesce(
                     F.get_json_object(
@@ -317,13 +334,101 @@ class LangSmithSparkProcessor:
             )
         )
 
-        # Map step name to label type
-        result = result.withColumn(
+        old_result = old_result.withColumn(
             "label_type",
             F.when(F.col("name") == "EvaluateCurrencyLabels", "currency")
             .when(F.col("name") == "EvaluateMetadataLabels", "metadata")
             .when(F.col("name") == "ValidateFinancialMath", "financial")
             .otherwise("unknown"),
+        )
+
+        # Format 2: New unified architecture (ReceiptEvaluation with nested decisions)
+        unified_receipts = df.filter(F.col("name") == "ReceiptEvaluation")
+
+        # Extract nested decision counts for each label type
+        # Structure: outputs.decisions.currency.VALID, etc.
+        unified_currency = unified_receipts.select(
+            F.col("metadata_merchant_name"),
+            F.lit("currency").alias("label_type"),
+            F.coalesce(
+                F.get_json_object(
+                    F.col("outputs"), "$.decisions.currency.VALID"
+                ).cast("int"),
+                F.lit(0),
+            ).alias("valid_count"),
+            F.coalesce(
+                F.get_json_object(
+                    F.col("outputs"), "$.decisions.currency.INVALID"
+                ).cast("int"),
+                F.lit(0),
+            ).alias("invalid_count"),
+            F.coalesce(
+                F.get_json_object(
+                    F.col("outputs"), "$.decisions.currency.NEEDS_REVIEW"
+                ).cast("int"),
+                F.lit(0),
+            ).alias("needs_review_count"),
+        )
+
+        unified_metadata = unified_receipts.select(
+            F.col("metadata_merchant_name"),
+            F.lit("metadata").alias("label_type"),
+            F.coalesce(
+                F.get_json_object(
+                    F.col("outputs"), "$.decisions.metadata.VALID"
+                ).cast("int"),
+                F.lit(0),
+            ).alias("valid_count"),
+            F.coalesce(
+                F.get_json_object(
+                    F.col("outputs"), "$.decisions.metadata.INVALID"
+                ).cast("int"),
+                F.lit(0),
+            ).alias("invalid_count"),
+            F.coalesce(
+                F.get_json_object(
+                    F.col("outputs"), "$.decisions.metadata.NEEDS_REVIEW"
+                ).cast("int"),
+                F.lit(0),
+            ).alias("needs_review_count"),
+        )
+
+        unified_financial = unified_receipts.select(
+            F.col("metadata_merchant_name"),
+            F.lit("financial").alias("label_type"),
+            F.coalesce(
+                F.get_json_object(
+                    F.col("outputs"), "$.decisions.financial.VALID"
+                ).cast("int"),
+                F.lit(0),
+            ).alias("valid_count"),
+            F.coalesce(
+                F.get_json_object(
+                    F.col("outputs"), "$.decisions.financial.INVALID"
+                ).cast("int"),
+                F.lit(0),
+            ).alias("invalid_count"),
+            F.coalesce(
+                F.get_json_object(
+                    F.col("outputs"), "$.decisions.financial.NEEDS_REVIEW"
+                ).cast("int"),
+                F.lit(0),
+            ).alias("needs_review_count"),
+        )
+
+        # Combine old and new format results
+        old_selected = old_result.select(
+            "metadata_merchant_name",
+            "label_type",
+            "valid_count",
+            "invalid_count",
+            "needs_review_count",
+        )
+
+        result = (
+            old_selected.unionByName(unified_currency)
+            .unionByName(unified_metadata)
+            .unionByName(unified_financial)
         )
 
         # Aggregate by merchant and label type
