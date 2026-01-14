@@ -5,7 +5,6 @@ import uuid
 from datetime import datetime
 
 import boto3
-from receipt_upload.utils import send_message_to_sqs
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import OCRJobType, OCRStatus
@@ -16,6 +15,7 @@ TABLE_NAME = os.environ["DYNAMO_TABLE_NAME"]
 OCR_QUEUE = os.environ["OCR_JOB_QUEUE_URL"]
 
 s3 = boto3.client("s3")
+sqs = boto3.client("sqs")
 dynamo = DynamoClient(TABLE_NAME)
 
 
@@ -53,8 +53,9 @@ def handler(event, _):
     dynamo.add_ocr_job(job)
 
     # 3. push message onto the job queue
-    send_message_to_sqs(
-        OCR_QUEUE, json.dumps({"job_id": job.job_id, "image_id": job.image_id})
+    sqs.send_message(
+        QueueUrl=OCR_QUEUE,
+        MessageBody=json.dumps({"job_id": job.job_id, "image_id": job.image_id}),
     )
 
     return {

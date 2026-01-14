@@ -1405,13 +1405,8 @@ layers_to_build = [
         "python_versions": ["3.12"],
         "needs_pillow": False,
     },
-    {
-        "package_dir": "receipt_upload",
-        "name": "receipt-upload",
-        "description": "Upload layer for receipt-upload",
-        "python_versions": ["3.12"],
-        "needs_pillow": False,  # Not needed - no image processing in upload lambdas
-    },
+    # NOTE: receipt-upload layer removed - upload_receipt Lambda now uses container deployment
+    # See infra/upload_images/container_upload/Dockerfile
 ]
 
 # Create Lambda layers using the fast approach
@@ -1452,12 +1447,10 @@ if _in_pulumi_context:
     # Access the built layers by name
     dynamo_layer = lambda_layers["receipt-dynamo"]
     dynamo_stream_layer = lambda_layers["receipt-dynamo-stream"]
-    upload_layer = lambda_layers["receipt-upload"]
 
     # Export the layer ARNs for reference
     pulumi.export("dynamo_layer_arn", dynamo_layer.arn)
     pulumi.export("dynamo_stream_layer_arn", dynamo_stream_layer.arn)
-    pulumi.export("upload_layer_arn", upload_layer.arn)
 else:
     # Create dummy objects when skipping or not in Pulumi context
     class DummyLayer:
@@ -1467,4 +1460,3 @@ else:
 
     dynamo_layer = DummyLayer("receipt-dynamo")  # type: ignore
     dynamo_stream_layer = DummyLayer("receipt-dynamo-stream")  # type: ignore
-    upload_layer = DummyLayer("receipt-upload")  # type: ignore

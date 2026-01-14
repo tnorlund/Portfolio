@@ -9,10 +9,8 @@ layers:
     version: 1  # Update this to the desired version number
     description: "DynamoDB layer for receipt-dynamo operations"
 
-  # Upload and OCR processing layer
-  receipt-upload:
-    version: 1  # Update this to the desired version number
-    description: "Upload layer for receipt-upload OCR operations"
+  # NOTE: receipt-upload layer removed - upload_receipt Lambda now uses container deployment
+  # See infra/upload_images/container_upload/Dockerfile
 
 # Global settings
 settings:
@@ -37,8 +35,6 @@ stack_overrides:
   prod:
     # Production versions - use stable versions
     receipt-dynamo:
-      version: 1
-    receipt-upload:
       version: 1
 
 # Notes:
