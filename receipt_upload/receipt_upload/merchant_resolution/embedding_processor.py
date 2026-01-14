@@ -222,11 +222,20 @@ def _run_lines_pipeline_worker(
         try:
             from langsmith import Client, tracing_context
             import logging
+            import os
             log = logging.getLogger(__name__)
-            log.info("[LINES_WORKER] Setting up tracing context with headers")
 
-            # Pass headers directly to tracing_context - it handles reconstruction
-            with tracing_context(parent=langsmith_headers):
+            # Get project name to ensure child traces go to same project
+            project = os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
+            log.info("[LINES_WORKER] Setting up tracing: project=%s, headers=%s",
+                     project, list(langsmith_headers.keys()))
+
+            # Pass headers directly to tracing_context with explicit project and enabled
+            with tracing_context(
+                parent=langsmith_headers,
+                project_name=project,
+                enabled=True,
+            ):
                 result = _do_lines_work()
 
             # CRITICAL: Flush traces before process exits
@@ -392,11 +401,20 @@ def _run_words_pipeline_worker(
         try:
             from langsmith import Client, tracing_context
             import logging
+            import os
             log = logging.getLogger(__name__)
-            log.info("[WORDS_WORKER] Setting up tracing context with headers")
 
-            # Pass headers directly to tracing_context - it handles reconstruction
-            with tracing_context(parent=langsmith_headers):
+            # Get project name to ensure child traces go to same project
+            project = os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
+            log.info("[WORDS_WORKER] Setting up tracing: project=%s, headers=%s",
+                     project, list(langsmith_headers.keys()))
+
+            # Pass headers directly to tracing_context with explicit project and enabled
+            with tracing_context(
+                parent=langsmith_headers,
+                project_name=project,
+                enabled=True,
+            ):
                 result = _do_words_work()
 
             # CRITICAL: Flush traces before process exits
