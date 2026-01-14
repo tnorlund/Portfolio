@@ -1,4 +1,5 @@
 import Foundation
+import Logging
 
 public struct Config {
     public let ocrJobQueueURL: String
@@ -93,8 +94,17 @@ public extension Config {
         layoutLMLocalCachePath: String? = nil,
         pulumi: PulumiLoading = PulumiLoader()
     ) throws -> Config {
+        var logger = Logger(label: "receipt.ocr.config")
+        let envLogLevel = ProcessInfo.processInfo.environment["LOG_LEVEL"] ?? "info"
+        switch envLogLevel.lowercased() {
+        case "trace": logger.logLevel = .trace
+        case "debug": logger.logLevel = .debug
+        case "warn": logger.logLevel = .warning
+        case "error": logger.logLevel = .error
+        default: logger.logLevel = .info
+        }
+
         let endpointURL: URL? = localstackEndpoint.flatMap { URL(string: $0) }
-        let logLevel = ProcessInfo.processInfo.environment["LOG_LEVEL"] ?? "info"
 
         func value(_ key: String, explicit: String?, from outputs: [String: Any]) -> String? {
             if let v = explicit, !v.isEmpty { return v }
@@ -104,8 +114,11 @@ public extension Config {
 
         let outputs: [String: Any]
         if let env = env {
+            logger.debug("config_load_pulumi_start env=\(env)")
             outputs = (try? pulumi.loadOutputs(env: env)) ?? [:]
+            logger.debug("config_load_pulumi_complete output_count=\(outputs.count)")
         } else {
+            logger.debug("config_load_no_env skipping Pulumi outputs")
             outputs = [:]
         }
 
@@ -124,13 +137,22 @@ public extension Config {
         let modelKey = value("layoutlm_model_s3_key", explicit: layoutLMModelS3Key, from: outputs)
         let cachePath = layoutLMLocalCachePath ?? ".models/layoutlm"
 
+        // Log LayoutLM configuration status
+        if let bucket = modelBucket, let key = modelKey {
+            logger.info("config_layoutlm_enabled bucket=\(bucket) key=\(key)")
+        } else {
+            let bucketSource = layoutLMModelS3Bucket != nil ? "cli" : (outputs["layoutlm_model_s3_bucket"] != nil ? "pulumi" : "missing")
+            let keySource = layoutLMModelS3Key != nil ? "cli" : (outputs["layoutlm_model_s3_key"] != nil ? "pulumi" : "missing")
+            logger.info("config_layoutlm_disabled bucket_source=\(bucketSource) key_source=\(keySource)")
+        }
+
         return Config(
             ocrJobQueueURL: ocrJobQueueURL,
             ocrResultsQueueURL: ocrResultsQueueURL,
             dynamoTableName: dynamoTableName,
             region: region,
             localstackEndpoint: endpointURL,
-            logLevel: logLevel,
+            logLevel: envLogLevel,
             layoutLMModelS3Bucket: modelBucket,
             layoutLMModelS3Key: modelKey,
             layoutLMLocalCachePath: cachePath
