@@ -371,7 +371,7 @@ class LightweightLabelValidator:
             return ValidationResult(
                 decision=ValidationDecision.AUTO_INVALID,
                 confidence=1.0 - confidence,  # Confidence in INVALID decision
-                consensus_label=predicted_label,
+                consensus_label=None,  # We know what it's NOT, not what it IS
                 matching_count=len(similar_words),
                 reason=f"{1.0 - confidence:.0%} of similar words rejected {predicted_label}",
             )
