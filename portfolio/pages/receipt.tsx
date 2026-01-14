@@ -27,6 +27,7 @@ import {
   ChromaLogo,
   GoogleMapsLogo
 } from "../components/ui/Logos";
+import QueryLabelTransform from "../components/ui/QueryLabelTransform";
 
 interface ReceiptPageProps {
   uploadDiagramChars: string[];
@@ -474,6 +475,13 @@ M1LK 2%           1    $4.4g`}</code>
 
 
 
+
+      <ClientOnly>
+        <QueryLabelTransform
+          query="How much did I spend on milk?"
+          transformed='Which receipts have "milk" as PRODUCT_NAME? What is the LINE_TOTAL and/or UNIT_PRICE?'
+        />
+      </ClientOnly>
 
 
 
