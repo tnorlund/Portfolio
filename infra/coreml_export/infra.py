@@ -259,13 +259,12 @@ class CoreMLExportComponent(ComponentResource):
                         {
                             "Version": "2012-10-17",
                             "Statement": [
-                                # DynamoDB: Read Job, Write CoreMLExportJob
+                                # DynamoDB: Read Job (Query GSI2), Write CoreMLExportJob
                                 {
                                     "Effect": "Allow",
                                     "Action": [
                                         "dynamodb:GetItem",
                                         "dynamodb:Query",
-                                        "dynamodb:Scan",
                                         "dynamodb:PutItem",
                                     ],
                                     "Resource": [
