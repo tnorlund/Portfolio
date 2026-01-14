@@ -215,23 +215,28 @@ def _run_lines_pipeline_worker(
             client.close()
 
     # Execute with LangSmith tracing context if headers provided
-    # tracing_context(parent=...) propagates the parent to ALL nested @traceable functions
+    # tracing_context(parent=...) can accept headers directly for distributed tracing
+    # CRITICAL: Must flush traces before process exits - each process has its own
+    # background thread for sending traces to LangSmith
     if langsmith_headers:
         try:
-            from langsmith import RunTree, tracing_context
-            import os
+            from langsmith import Client, tracing_context
             import logging
             log = logging.getLogger(__name__)
-            log.info("[LINES_WORKER] Headers received: %s", list(langsmith_headers.keys()))
-            log.info("[LINES_WORKER] LANGCHAIN_API_KEY set: %s", bool(os.environ.get('LANGCHAIN_API_KEY')))
-            parent_rt = RunTree.from_headers(langsmith_headers)
-            log.info("[LINES_WORKER] Parent RunTree created: id=%s, name=%s", parent_rt.id, parent_rt.name)
-            with tracing_context(parent=parent_rt):
-                log.info("[LINES_WORKER] Inside tracing_context, calling _do_lines_work")
-                return _do_lines_work()
+            log.info("[LINES_WORKER] Setting up tracing context with headers")
+
+            # Pass headers directly to tracing_context - it handles reconstruction
+            with tracing_context(parent=langsmith_headers):
+                result = _do_lines_work()
+
+            # CRITICAL: Flush traces before process exits
+            # Each child process has its own LangSmith client and background thread
+            log.info("[LINES_WORKER] Flushing traces before process exit")
+            Client().flush()
+            return result
         except Exception as e:
             import logging
-            logging.getLogger(__name__).exception("[LINES_WORKER] ERROR setting up tracing: %s", e)
+            logging.getLogger(__name__).exception("[LINES_WORKER] ERROR in tracing: %s", e)
     return _do_lines_work()
 
 
@@ -380,23 +385,28 @@ def _run_words_pipeline_worker(
             client.close()
 
     # Execute with LangSmith tracing context if headers provided
-    # tracing_context(parent=...) propagates the parent to ALL nested @traceable functions
+    # tracing_context(parent=...) can accept headers directly for distributed tracing
+    # CRITICAL: Must flush traces before process exits - each process has its own
+    # background thread for sending traces to LangSmith
     if langsmith_headers:
         try:
-            from langsmith import RunTree, tracing_context
-            import os
+            from langsmith import Client, tracing_context
             import logging
             log = logging.getLogger(__name__)
-            log.info("[WORDS_WORKER] Headers received: %s", list(langsmith_headers.keys()))
-            log.info("[WORDS_WORKER] LANGCHAIN_API_KEY set: %s", bool(os.environ.get('LANGCHAIN_API_KEY')))
-            parent_rt = RunTree.from_headers(langsmith_headers)
-            log.info("[WORDS_WORKER] Parent RunTree created: id=%s, name=%s", parent_rt.id, parent_rt.name)
-            with tracing_context(parent=parent_rt):
-                log.info("[WORDS_WORKER] Inside tracing_context, calling _do_words_work")
-                return _do_words_work()
+            log.info("[WORDS_WORKER] Setting up tracing context with headers")
+
+            # Pass headers directly to tracing_context - it handles reconstruction
+            with tracing_context(parent=langsmith_headers):
+                result = _do_words_work()
+
+            # CRITICAL: Flush traces before process exits
+            # Each child process has its own LangSmith client and background thread
+            log.info("[WORDS_WORKER] Flushing traces before process exit")
+            Client().flush()
+            return result
         except Exception as e:
             import logging
-            logging.getLogger(__name__).exception("[WORDS_WORKER] ERROR setting up tracing: %s", e)
+            logging.getLogger(__name__).exception("[WORDS_WORKER] ERROR in tracing: %s", e)
     return _do_words_work()
 
 
