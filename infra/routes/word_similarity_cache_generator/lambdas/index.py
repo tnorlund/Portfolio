@@ -19,15 +19,6 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import boto3
-
-# Initialize onnxruntime logging before importing chromadb to avoid crash
-# See: https://github.com/microsoft/onnxruntime/issues/11329
-try:
-    import onnxruntime
-    onnxruntime.set_default_logger_severity(3)  # WARNING level
-except ImportError:
-    pass
-
 import chromadb
 
 from receipt_chroma.s3 import download_snapshot_atomic
@@ -492,7 +483,7 @@ def handler(_event, _context):
                 return None
 
         results = []
-        max_workers = len(work_items)  # One worker per receipt for maximum parallelism
+        max_workers = 25
         timing.parallel_workers = max_workers
 
         logger.info("Fetching receipt details with %d parallel workers", max_workers)
