@@ -17,6 +17,8 @@ from pulumi import AssetArchive, FileArchive
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "handler")
 # Get the route name from the directory name
 ROUTE_NAME = os.path.basename(os.path.dirname(__file__))
+# S3 bucket names can't have underscores, so use hyphens
+BUCKET_NAME_PREFIX = ROUTE_NAME.replace("_", "-")
 # Get the DynamoDB table name
 DYNAMODB_TABLE_NAME = dynamodb_table.name
 
@@ -26,10 +28,10 @@ is_production = stack == "prod"
 
 # Create dedicated S3 bucket for the cache
 cache_bucket = aws.s3.Bucket(
-    f"{ROUTE_NAME}-cache-bucket",
+    f"{BUCKET_NAME_PREFIX}-cache-bucket",
     force_destroy=not is_production,  # Prevent accidental data loss in prod
     tags={
-        "Name": f"{ROUTE_NAME}-cache-bucket",
+        "Name": f"{BUCKET_NAME_PREFIX}-cache-bucket",
         "Purpose": "ImageDetailsAPICache",
         "Environment": stack,
         "ManagedBy": "Pulumi",
