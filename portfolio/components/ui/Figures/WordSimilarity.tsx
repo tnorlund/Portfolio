@@ -68,13 +68,12 @@ function solveCardPosition(
     maxY: containerHeight - rotatedBounds.height / 2 - padding,
   };
 
-  // For X, allow significant horizontal spread for visual variety
-  // Cards positioned via center point, so we need enough range to see the spread
-  // Use 15% of container width as max offset from center (±75px for 500px container)
-  const horizontalSpread = containerWidth * 0.15;
+  // For X, spread cards across 100% of container width
+  // Account for rotated card bounds so cards stay within container
+  const rotatedHalfWidth = rotatedBounds.width / 2;
   const safeZoneX = {
-    minX: containerWidth / 2 - horizontalSpread,
-    maxX: containerWidth / 2 + horizontalSpread,
+    minX: rotatedHalfWidth + padding,
+    maxX: containerWidth - rotatedHalfWidth - padding,
   };
 
   // If card is too tall, center it vertically
@@ -86,12 +85,9 @@ function solveCardPosition(
   // Clamp target Y to safe zone
   const clampedY = Math.max(safeZoneY.minY, Math.min(safeZoneY.maxY, targetY));
 
-  // Calculate X position - random within safe zone
+  // Calculate X position - random within full safe zone width
   const xRange = safeZoneX.maxX - safeZoneX.minX;
-  const centerX = containerWidth / 2;
-  // Use full range for horizontal spread
-  const xOffset = (r2 - 0.5) * xRange;
-  const x = centerX + xOffset;
+  const x = safeZoneX.minX + r2 * xRange;
 
   // Add small random Y offset within safe bounds
   const yRange = safeZoneY.maxY - safeZoneY.minY;
@@ -431,12 +427,14 @@ const WordSimilarity: React.FC = () => {
           // Get measured dimensions or use estimates
           let cardDims = cardDimensions[receiptKey];
           const hasMeasuredDimensions = !!cardDims;
+          // Responsive card width: 200px on mobile, scales with container on desktop
+          const cardWidth = windowWidth <= 768
+            ? 200
+            : Math.min(effectiveContainerWidth * 0.35, 400);
           if (!cardDims) {
             // Initial estimate for first render
-            const cardWidthPercent = 0.85;
-            const estimatedWidth = effectiveContainerWidth * cardWidthPercent;
             const estimatedAspectRatio = 3.5;
-            cardDims = { width: estimatedWidth, height: estimatedWidth / estimatedAspectRatio };
+            cardDims = { width: cardWidth, height: cardWidth / estimatedAspectRatio };
           }
 
           const receiptComponent = renderCroppedReceipt(receiptData);
@@ -478,7 +476,7 @@ const WordSimilarity: React.FC = () => {
                 position: "absolute",
                 top: `${y}px`,
                 left: `${x}px`,
-                width: "85%",
+                width: `${cardWidth}px`,
                 zIndex,
                 transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
                 transformOrigin: "center center",

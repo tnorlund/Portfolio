@@ -67,6 +67,8 @@ interface ReceiptQueueProps {
   formatSupport: { supportsWebP: boolean; supportsAVIF: boolean } | null;
   isTransitioning: boolean;
   isPoolExhausted: boolean;
+  shouldAnimate: boolean;
+  fadeDelay?: number;
 }
 
 // Generate stable random positions for queue items based on receipt ID only
@@ -92,8 +94,16 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
   formatSupport,
   isTransitioning,
   isPoolExhausted,
+  shouldAnimate,
+  fadeDelay = 50,
 }) => {
   const maxVisible = 6; // Show up to 6 receipts in the visual queue
+  const [imagesLoaded, setImagesLoaded] = useState<Set<number>>(new Set());
+
+  // Track when images load for staggered animation
+  const handleImageLoad = useCallback((idx: number) => {
+    setImagesLoaded((prev) => new Set(prev).add(idx));
+  }, []);
 
   // Build visible receipts array - handles looping when pool is exhausted
   const visibleReceipts = useMemo(() => {
@@ -142,6 +152,10 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
         // Use position-based key to handle duplicate receipts when looping
         const queueKey = `${receipt.receipt_id}-queue-${idx}`;
 
+        // Animation state: drop in from above with staggered delay
+        const isImageLoaded = imagesLoaded.has(idx);
+        const showItem = shouldAnimate && isImageLoaded;
+
         return (
           <div
             key={queueKey}
@@ -149,8 +163,10 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
             style={{
               top: `${stackOffset}px`,
               left: `${10 + leftOffset}px`,
-              transform: `rotate(${rotation}deg)`,
+              transform: `rotate(${rotation}deg) translateY(${showItem ? 0 : -50}px)`,
+              opacity: showItem ? 1 : 0,
               zIndex,
+              transition: `transform 0.6s ease-out ${shouldAnimate ? idx * fadeDelay : 0}ms, opacity 0.6s ease-out ${shouldAnimate ? idx * fadeDelay : 0}ms, top 0.4s ease, left 0.4s ease`,
             }}
           >
             {imageUrl && (
@@ -165,6 +181,7 @@ const ReceiptQueue: React.FC<ReceiptQueueProps> = ({
                   display: "block",
                 }}
                 sizes="100px"
+                onLoad={() => handleImageLoad(idx)}
               />
             )}
           </div>
@@ -515,6 +532,7 @@ const LayoutLMBatchVisualization: React.FC = () => {
     supportsAVIF: boolean;
   } | null>(null);
   const [isPoolExhausted, setIsPoolExhausted] = useState(false);
+  const [startQueueAnimation, setStartQueueAnimation] = useState(false);
 
   const animationRef = useRef<number | null>(null);
   const isAnimatingRef = useRef(false);
@@ -532,6 +550,13 @@ const LayoutLMBatchVisualization: React.FC = () => {
   useEffect(() => {
     detectImageFormatSupport().then(setFormatSupport);
   }, []);
+
+  // Start queue animation when in view and receipts are loaded
+  useEffect(() => {
+    if (inView && receipts.length > 0 && !startQueueAnimation) {
+      setStartQueueAnimation(true);
+    }
+  }, [inView, receipts.length, startQueueAnimation]);
 
   // Fetch a batch of receipts and append to queue (with deduplication)
   const fetchMoreReceipts = useCallback(async () => {
@@ -821,6 +846,8 @@ const LayoutLMBatchVisualization: React.FC = () => {
           formatSupport={formatSupport}
           isTransitioning={isTransitioning}
           isPoolExhausted={isPoolExhausted}
+          shouldAnimate={startQueueAnimation}
+          fadeDelay={50}
         />
 
         <div className={styles.centerColumn}>
