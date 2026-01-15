@@ -622,6 +622,26 @@ const WordSimilarity: React.FC = () => {
   );
 };
 
+// Generate SVG path for a pie slice from 12 o'clock, filling clockwise
+const getPieSlicePath = (progress: number, cx: number, cy: number, r: number): string => {
+  if (progress <= 0) return '';
+  if (progress >= 100) return `M ${cx} ${cy} m -${r} 0 a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 -${r * 2} 0`;
+
+  const angle = (progress / 100) * 2 * Math.PI;
+  // Start at 12 o'clock (-π/2)
+  const startAngle = -Math.PI / 2;
+  const endAngle = startAngle + angle;
+
+  const x1 = cx + r * Math.cos(startAngle);
+  const y1 = cy + r * Math.sin(startAngle);
+  const x2 = cx + r * Math.cos(endAngle);
+  const y2 = cy + r * Math.sin(endAngle);
+
+  const largeArcFlag = progress > 50 ? 1 : 0;
+
+  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+};
+
 /**
  * Component that displays the timing breakdown for cache generation.
  */
@@ -629,6 +649,46 @@ const TimingBreakdown: React.FC<{
   timing: MilkSimilarityTiming;
   windowWidth: number;
 }> = ({ timing, windowWidth }) => {
+  const [progress, setProgress] = useState(0);
+  const [hasAnimated, setHasAnimated] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Animation duration - scale down for reasonable viewing (e.g., 33s -> 3.3s)
+  const animationDuration = Math.min(timing.total_ms / 10, 5000); // Cap at 5 seconds
+
+  // Intersection observer to trigger animation when visible
+  useEffect(() => {
+    if (hasAnimated) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !hasAnimated) {
+          setHasAnimated(true);
+          const startTime = performance.now();
+
+          const animate = (currentTime: number) => {
+            const elapsed = currentTime - startTime;
+            const newProgress = Math.min((elapsed / animationDuration) * 100, 100);
+            setProgress(newProgress);
+
+            if (newProgress < 100) {
+              requestAnimationFrame(animate);
+            }
+          };
+
+          requestAnimationFrame(animate);
+        }
+      },
+      { threshold: 0.3 }
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [animationDuration, hasAnimated]);
+
   const formatMs = (ms: number): string => {
     if (ms >= 1000) {
       return `${(ms / 1000).toFixed(2)}s`;
@@ -656,116 +716,154 @@ const TimingBreakdown: React.FC<{
     steps.push({ name: "Other", ms: otherTime, color: "var(--color-red)" });
   }
 
+  // Calculate cumulative percentages for each step
+  const stepsWithCumulative = steps.map((step, index) => {
+    const cumulativeMs = steps.slice(0, index + 1).reduce((sum, s) => sum + s.ms, 0);
+    const cumulativePercent = (cumulativeMs / timing.total_ms) * 100;
+    const startPercent = index === 0 ? 0 : (steps.slice(0, index).reduce((sum, s) => sum + s.ms, 0) / timing.total_ms) * 100;
+    return { ...step, cumulativePercent, startPercent };
+  });
+
+  // Current displayed time based on progress
+  const displayedTime = (progress / 100) * timing.total_ms;
+
   return (
     <div
+      ref={containerRef}
       style={{
         width: "100%",
         padding: "1rem",
         backgroundColor: "var(--code-background)",
         borderRadius: "8px",
         fontSize: windowWidth <= 768 ? "0.75rem" : "0.85rem",
+        boxSizing: "border-box",
       }}
     >
       <div style={{ fontWeight: 600, marginBottom: "0.75rem", color: "var(--text-color)" }}>
-        Cache Generation: {formatMs(timing.total_ms)}
+        Document Retrieval: {formatMs(displayedTime)}
       </div>
 
       {/* Progress bar visualization */}
       <div
         style={{
-          display: "flex",
+          position: "relative",
           width: "100%",
           height: "24px",
+          marginBottom: "0.75rem",
           borderRadius: "4px",
           overflow: "hidden",
-          marginBottom: "0.75rem",
         }}
       >
-        {steps.map((step) => {
-          const widthPercent = (step.ms / timing.total_ms) * 100;
-          if (widthPercent < 0.5) return null;
-          return (
-            <div
-              key={step.name}
-              title={`${step.name}: ${formatMs(step.ms)} (${calculatePercent(step.ms)})`}
-              style={{
-                width: `${widthPercent}%`,
-                backgroundColor: step.color,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "var(--background-color)",
-                fontSize: "0.7rem",
-                fontWeight: 500,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                minWidth: widthPercent > 8 ? "auto" : "0",
-              }}
-            >
-              {widthPercent > 15 && step.name}
-            </div>
-          );
-        })}
+        {/* Background (unfilled) */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: "var(--background-color)",
+            borderRadius: "4px",
+          }}
+        />
+        {/* Colored segments */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            display: "flex",
+            width: "100%",
+            height: "100%",
+            clipPath: `inset(0 ${100 - progress}% 0 0)`,
+          }}
+        >
+          {stepsWithCumulative.map((step) => {
+            const widthPercent = (step.ms / timing.total_ms) * 100;
+
+            return (
+              <div
+                key={step.name}
+                title={`${step.name}: ${formatMs(step.ms)} (${calculatePercent(step.ms)})`}
+                style={{
+                  width: `${widthPercent}%`,
+                  height: "100%",
+                  backgroundColor: step.color,
+                  flexShrink: 0,
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
 
       {/* Legend */}
       <div
         style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "0.5rem 1rem",
-          marginBottom: timing.dynamo_details ? "0.75rem" : "0",
+          display: "grid",
+          gridTemplateColumns: windowWidth <= 768 ? "repeat(3, 1fr)" : "repeat(auto-fit, minmax(140px, auto))",
+          gap: windowWidth <= 768 ? "0.25rem 0.5rem" : "0.5rem 1.5rem",
         }}
       >
-        {steps.map((step) => (
-          <div
-            key={step.name}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.25rem",
-              color: "var(--text-color)",
-            }}
-          >
-            <div
-              style={{
-                width: "10px",
-                height: "10px",
-                borderRadius: "2px",
-                backgroundColor: step.color,
-              }}
-            />
-            <span>{step.name}:</span>
-            <span style={{ fontWeight: 500 }}>{formatMs(step.ms)}</span>
-            <span style={{ opacity: 0.7 }}>({calculatePercent(step.ms)})</span>
-          </div>
-        ))}
-      </div>
+        {stepsWithCumulative.map((step, index) => {
+          // Calculate circle fill progress (0-100 within this step)
+          let circleFill = 0;
+          if (progress >= step.cumulativePercent) {
+            circleFill = 100;
+          } else if (progress > step.startPercent) {
+            const segmentProgress = progress - step.startPercent;
+            const segmentSize = step.cumulativePercent - step.startPercent;
+            circleFill = (segmentProgress / segmentSize) * 100;
+          }
 
-      {/* DynamoDB details */}
-      {timing.dynamo_details && (
-        <div
-          style={{
-            borderTop: "1px solid var(--text-color)",
-            paddingTop: "0.5rem",
-            opacity: 0.85,
-            color: "var(--text-color)",
-          }}
-        >
-          <div style={{ fontWeight: 500, marginBottom: "0.25rem" }}>
-            DynamoDB ({timing.parallel_workers} parallel workers, {timing.dynamo_details.count} receipts):
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem 1.5rem" }}>
-            <span>Avg: {formatMs(timing.dynamo_details.avg_ms)}</span>
-            <span>Min: {formatMs(timing.dynamo_details.min_ms)}</span>
-            <span>Max: {formatMs(timing.dynamo_details.max_ms)}</span>
-            <span>Sequential: {formatMs(timing.dynamo_details.sequential_ms)}</span>
-            <span style={{ fontWeight: 500 }}>
-              Speedup: {timing.dynamo_details.speedup}x
-            </span>
-          </div>
-        </div>
-      )}
+          // Check if previous steps are complete (for opacity)
+          const previousStepsComplete = index === 0 || progress >= stepsWithCumulative[index - 1].cumulativePercent;
+          const isActive = progress > step.startPercent && progress < step.cumulativePercent;
+          const isComplete = progress >= step.cumulativePercent;
+
+          const circleSize = windowWidth <= 768 ? 10 : 14;
+
+          return (
+            <div
+              key={step.name}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: windowWidth <= 768 ? "0.25rem" : "0.5rem",
+                color: "var(--text-color)",
+                opacity: isComplete ? 1 : isActive ? 1 : previousStepsComplete ? 0.6 : 0.3,
+                transition: "opacity 0.15s ease",
+              }}
+            >
+              <svg
+                width={circleSize}
+                height={circleSize}
+                viewBox="0 0 14 14"
+                style={{ flexShrink: 0 }}
+              >
+                {/* Background circle (unfilled outline) */}
+                <circle
+                  cx="7"
+                  cy="7"
+                  r="6"
+                  fill="none"
+                  stroke={step.color}
+                  strokeWidth="1.5"
+                  opacity={isComplete || isActive ? "0.3" : "0.5"}
+                />
+                {/* Pie slice fill - grows clockwise from 12 o'clock */}
+                {circleFill > 0 && (
+                  <path
+                    d={getPieSlicePath(circleFill, 7, 7, 6)}
+                    fill={step.color}
+                  />
+                )}
+              </svg>
+              <span style={{ fontSize: windowWidth <= 768 ? "0.7rem" : "0.85rem", fontWeight: 500 }}>{step.name}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
