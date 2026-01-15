@@ -366,7 +366,6 @@ const WordSimilarity: React.FC = () => {
               width: `${imageWidthPercent}%`,
               height: "auto",
               transform: `translate(-${shiftLeftPercent}%, -${shiftTopPercent}%)`,
-              boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06)",
             }}
             onLoad={handleImageLoad(receiptKey)}
             onError={(e) => {
@@ -491,50 +490,82 @@ const WordSimilarity: React.FC = () => {
           style={{
             width: "100%",
             borderCollapse: "collapse",
-            fontSize: windowWidth <= 768 ? "0.75rem" : "0.875rem",
+            fontSize: windowWidth <= 768 ? "0.8rem" : "0.9rem",
           }}
         >
           <thead>
-            <tr style={{ backgroundColor: "#f5f5f5", borderBottom: "2px solid #ddd" }}>
-              <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600 }}>Merchant</th>
-              <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600 }}>Product</th>
-              <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600 }}>Size</th>
-              <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600 }}>Count</th>
-              <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600 }}>Avg Price</th>
-              <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600 }}>Total</th>
+            <tr style={{ backgroundColor: "var(--code-background)", borderBottom: "2px solid var(--text-color)" }}>
+              <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600, color: "var(--text-color)" }}>Merchant</th>
+              <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600, color: "var(--text-color)" }}>Product</th>
+              {windowWidth > 768 && <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600, color: "var(--text-color)" }}>Size</th>}
+              {windowWidth > 768 && <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600, color: "var(--text-color)" }}>Count</th>}
+              {windowWidth > 768 && <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600, color: "var(--text-color)" }}>Avg Price</th>}
+              <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600, color: "var(--text-color)" }}>Total</th>
             </tr>
           </thead>
           <tbody>
-            {data.summary_table.map((row, index) => (
+            {(() => {
+              // Calculate max total per merchant for group ordering
+              const merchantMaxTotal = new Map<string, number>();
+              data.summary_table.forEach((row) => {
+                const current = merchantMaxTotal.get(row.merchant) || 0;
+                merchantMaxTotal.set(row.merchant, Math.max(current, row.total || 0));
+              });
+
+              const sorted = [...data.summary_table].sort((a, b) => {
+                // Primary sort: Merchant groups by their max total (descending)
+                const aMax = merchantMaxTotal.get(a.merchant) || 0;
+                const bMax = merchantMaxTotal.get(b.merchant) || 0;
+                const merchantDiff = bMax - aMax;
+                if (merchantDiff !== 0) return merchantDiff;
+                // Secondary sort: Within merchant, by total descending
+                return (b.total || 0) - (a.total || 0);
+              });
+
+              let lastMerchant = "";
+              return sorted.map((row, index) => {
+                const showMerchant = row.merchant !== lastMerchant;
+                lastMerchant = row.merchant;
+
+                return (
               <tr
                 key={`${row.merchant}-${row.product}-${row.size}`}
                 style={{
-                  backgroundColor: index % 2 === 0 ? "#fff" : "#fafafa",
-                  borderBottom: "1px solid #eee",
+                  backgroundColor: index % 2 === 0 ? "var(--background-color)" : "var(--code-background)",
+                  color: "var(--text-color)",
                 }}
               >
-                <td style={{ padding: "0.5rem", maxWidth: "150px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {row.merchant}
+                <td style={{
+                  padding: "0.5rem",
+                  maxWidth: "150px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontWeight: showMerchant ? 500 : 400,
+                }}>
+                  {showMerchant ? row.merchant : ""}
                 </td>
                 <td style={{ padding: "0.5rem" }}>{row.product}</td>
-                <td style={{ padding: "0.5rem" }}>{row.size}</td>
-                <td style={{ padding: "0.5rem", textAlign: "right" }}>{row.count}</td>
-                <td style={{ padding: "0.5rem", textAlign: "right" }}>
+                {windowWidth > 768 && <td style={{ padding: "0.5rem" }}>{row.size}</td>}
+                {windowWidth > 768 && <td style={{ padding: "0.5rem", textAlign: "right" }}>{row.count}</td>}
+                {windowWidth > 768 && <td style={{ padding: "0.5rem", textAlign: "right" }}>
                   {row.avg_price ? `$${row.avg_price.toFixed(2)}` : "-"}
-                </td>
+                </td>}
                 <td style={{ padding: "0.5rem", textAlign: "right" }}>
                   {row.total ? `$${row.total.toFixed(2)}` : "-"}
                 </td>
               </tr>
-            ))}
+                );
+              });
+            })()}
           </tbody>
           <tfoot>
-            <tr style={{ backgroundColor: "#f5f5f5", borderTop: "2px solid #ddd", fontWeight: 600 }}>
-              <td colSpan={3} style={{ padding: "0.75rem 0.5rem" }}>Total</td>
-              <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>
+            <tr style={{ backgroundColor: "var(--background-color)", borderTop: "2px solid var(--text-color)", fontWeight: 600, color: "var(--text-color)" }}>
+              <td colSpan={windowWidth > 768 ? 3 : 2} style={{ padding: "0.75rem 0.5rem" }}>Total</td>
+              {windowWidth > 768 && <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>
                 {data.summary_table.reduce((sum, row) => sum + row.count, 0)}
-              </td>
-              <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>-</td>
+              </td>}
+              {windowWidth > 768 && <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>-</td>}
               <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>
                 ${data.summary_table.reduce((sum, row) => sum + (row.total || 0), 0).toFixed(2)}
               </td>
