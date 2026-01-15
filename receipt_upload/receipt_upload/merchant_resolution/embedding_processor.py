@@ -172,9 +172,19 @@ def _run_lines_pipeline_worker(
 
             # Create resolver and run merchant resolution
             dynamo = DynamoClient(table_name)
+
+            # Create places client if API key provided
+            places_client = None
+            if google_places_api_key:
+                try:
+                    from receipt_places import PlacesClient
+                    places_client = PlacesClient(api_key=google_places_api_key)
+                except ImportError:
+                    pass
+
             resolver = MerchantResolver(
                 dynamo_client=dynamo,
-                google_places_api_key=google_places_api_key,
+                places_client=places_client,
             )
 
             merchant_result = resolver.resolve(
@@ -329,11 +339,14 @@ def _run_words_pipeline_worker(
             ]
 
             if pending_labels:
-                lightweight_validator = LightweightLabelValidator(client)
-                llm_validator = LLMBatchValidator(dynamo)
+                from receipt_upload.label_validation import ValidationDecision
+
+                lightweight_validator = LightweightLabelValidator(
+                    words_client=client,
+                    word_embeddings=word_embedding_cache,
+                )
 
                 chroma_validated = 0
-                llm_validated = 0
                 llm_needed = []
 
                 for label in pending_labels:
@@ -345,38 +358,105 @@ def _run_words_pipeline_worker(
                     if not word:
                         continue
 
-                    embedding = word_embedding_cache.get((label.line_id, label.word_id))
-                    result = lightweight_validator.validate(
-                        word=word,
-                        label=label,
-                        embedding=embedding,
-                    )
-
-                    if result.decision in ("VALIDATED", "REJECTED"):
-                        dynamo.update_receipt_word_label_validation(
-                            image_id=image_id,
-                            receipt_id=receipt_id,
-                            line_id=label.line_id,
-                            word_id=label.word_id,
-                            label_type=label.label_type,
-                            validation_status=(
-                                ValidationStatus.VALIDATED.value
-                                if result.decision == "VALIDATED"
-                                else ValidationStatus.REJECTED.value
-                            ),
-                            proposed_by=f"chroma_{result.decision.lower()}",
-                        )
-                        chroma_validated += 1
-                    else:
-                        llm_needed.append((word, label, embedding))
-
-                if llm_needed:
-                    llm_results = llm_validator.validate_batch(
-                        [(w, lbl) for w, lbl, _ in llm_needed],
+                    result = lightweight_validator.validate_label(
                         image_id=image_id,
                         receipt_id=receipt_id,
+                        line_id=label.line_id,
+                        word_id=label.word_id,
+                        predicted_label=label.label,
                     )
-                    llm_validated = len(llm_results)
+
+                    if result.decision in (ValidationDecision.AUTO_VALIDATE, ValidationDecision.AUTO_INVALID):
+                        # Update the label object with validation results
+                        label.validation_status = (
+                            ValidationStatus.VALID.value
+                            if result.decision == ValidationDecision.AUTO_VALIDATE
+                            else ValidationStatus.INVALID.value
+                        )
+                        label.label_proposed_by = f"chroma_{result.decision.value}"
+                        dynamo.update_receipt_word_label(label)
+                        chroma_validated += 1
+                    else:
+                        llm_needed.append((word, label))
+
+                # LLM validation for labels that couldn't be auto-validated
+                llm_validated = 0
+                if llm_needed:
+                    # Build words context for LLM
+                    llm_words_context = []
+                    for w in words:
+                        x_center = (w.x_min + w.x_max) / 2 if hasattr(w, 'x_min') else 0
+                        y_center = (w.y_min + w.y_max) / 2 if hasattr(w, 'y_min') else 0
+                        llm_words_context.append({
+                            "text": w.text,
+                            "line_id": w.line_id,
+                            "word_id": w.word_id,
+                            "x": x_center,
+                            "y": y_center,
+                        })
+
+                    # Build pending_labels_data and similar_evidence
+                    pending_labels_data = []
+                    similar_evidence: Dict[str, List[Dict]] = {}
+
+                    for word, label in llm_needed:
+                        word_id_str = f"{label.line_id}_{label.word_id}"
+                        pending_labels_data.append({
+                            "line_id": label.line_id,
+                            "word_id": label.word_id,
+                            "label": label.label,
+                            "word_text": word.text,
+                        })
+
+                        # Get similar evidence for this word
+                        try:
+                            chroma_id = (
+                                f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+                                f"#LINE#{label.line_id:05d}#WORD#{label.word_id:05d}"
+                            )
+                            embedding = word_embedding_cache.get((label.line_id, label.word_id))
+                            if embedding:
+                                similar = lightweight_validator._query_similar_for_label(
+                                    embedding=embedding,
+                                    exclude_id=chroma_id,
+                                    predicted_label=label.label,
+                                    n_results_per_query=5,
+                                )
+                                similar_evidence[word_id_str] = similar
+                            else:
+                                similar_evidence[word_id_str] = []
+                        except Exception as e:
+                            similar_evidence[word_id_str] = []
+
+                    # Call LLM validator
+                    try:
+                        llm_validator = LLMBatchValidator(temperature=0.0, timeout=120)
+                        llm_results = llm_validator.validate_receipt_labels(
+                            pending_labels=pending_labels_data,
+                            words=llm_words_context,
+                            similar_evidence=similar_evidence,
+                            merchant_name=None,  # Not available in worker context
+                        )
+
+                        # Update labels based on LLM results
+                        result_lookup = {r.word_id: r for r in llm_results}
+                        for word, label in llm_needed:
+                            word_id_str = f"{label.line_id}_{label.word_id}"
+                            llm_result = result_lookup.get(word_id_str)
+                            if llm_result and llm_result.decision in ("VALID", "INVALID"):
+                                label.validation_status = (
+                                    ValidationStatus.VALID.value
+                                    if llm_result.decision == "VALID"
+                                    else ValidationStatus.INVALID.value
+                                )
+                                label.label_proposed_by = f"llm_{llm_result.decision.lower()}"
+                                if llm_result.reasoning:
+                                    label.reasoning = llm_result.reasoning
+                                dynamo.update_receipt_word_label(label)
+                                llm_validated += 1
+                    except Exception as e:
+                        import logging
+                        logging.getLogger(__name__).warning(f"LLM validation failed: {e}")
 
                 validation_stats = {
                     "pending_labels": len(pending_labels),
@@ -688,7 +768,7 @@ class MerchantResolvingEmbeddingProcessor:
             executor_class = _get_phase2_executor_class()
             executor_name = executor_class.__name__
             with executor_class(max_workers=2) as executor:
-                _log("Submitting lines and words pipelines to %s", executor_name)
+                _log(f"Submitting lines and words pipelines to {executor_name}")
 
                 lines_future = executor.submit(
                     _run_lines_pipeline_worker,
@@ -743,10 +823,12 @@ class MerchantResolvingEmbeddingProcessor:
                                 SimilarityMatch(
                                     image_id=m["image_id"],
                                     receipt_id=m["receipt_id"],
-                                    merchant_name=m["merchant_name"],
+                                    merchant_name=m.get("merchant_name"),
+                                    normalized_phone=m.get("normalized_phone"),
+                                    normalized_address=m.get("normalized_address"),
                                     embedding_similarity=m["embedding_similarity"],
-                                    metadata_boost=m["metadata_boost"],
-                                    total_confidence=m["total_confidence"],
+                                    metadata_boost=m.get("metadata_boost", 0.0),
+                                    place_id=m.get("place_id"),
                                 )
                                 for m in lines_result["similarity_matches"]
                             ]
