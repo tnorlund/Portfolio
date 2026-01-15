@@ -4,8 +4,6 @@ import os
 import pulumi
 import pulumi_aws as aws
 
-# Import the Lambda Layer
-from infra.components.lambda_layer import dynamo_layer
 from pulumi import AssetArchive, FileArchive, Input, Output
 
 # Import the cache bucket name from the cache generator route
@@ -91,7 +89,6 @@ def create_word_similarity_lambda(
             }
         ),
         handler="index.handler",
-        layers=[dynamo_layer.arn],
         environment={
             "variables": {
                 "S3_CACHE_BUCKET": Output.from_input(cache_bucket_name),

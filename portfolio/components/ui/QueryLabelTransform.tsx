@@ -36,14 +36,17 @@ const QueryLabelTransform = ({
 
     // Trigger animation when in view
     useEffect(() => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        let scrambleInterval: ReturnType<typeof setInterval> | null = null;
+
         if (inView && !showTransformed) {
-            const timer = setTimeout(() => {
+            timer = setTimeout(() => {
                 setShowTransformed(true);
                 setIsScrambling(true);
 
                 // Scramble effect
                 let scrambleCount = 0;
-                const scrambleInterval = setInterval(() => {
+                scrambleInterval = setInterval(() => {
                     const chars = "█▓▒░";
                     setDisplayText(
                         Array.from({ length: transformed.length })
@@ -52,16 +55,25 @@ const QueryLabelTransform = ({
                     );
                     scrambleCount++;
                     if (scrambleCount >= 6) {
-                        clearInterval(scrambleInterval);
+                        if (scrambleInterval) {
+                            clearInterval(scrambleInterval);
+                            scrambleInterval = null;
+                        }
                         setIsScrambling(false);
                         setDisplayText(transformed);
                     }
                 }, 50);
-
-                return () => clearInterval(scrambleInterval);
             }, delay);
-            return () => clearTimeout(timer);
         }
+
+        return () => {
+            if (timer) {
+                clearTimeout(timer);
+            }
+            if (scrambleInterval) {
+                clearInterval(scrambleInterval);
+            }
+        };
     }, [inView, showTransformed, delay, transformed]);
 
     // Container fade in
