@@ -495,11 +495,17 @@ const WordSimilarity: React.FC = () => {
         >
           <thead>
             <tr style={{ backgroundColor: "var(--code-background)", borderBottom: "2px solid var(--text-color)" }}>
-              <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600, color: "var(--text-color)" }}>Merchant</th>
-              <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600, color: "var(--text-color)" }}>Product</th>
-              {windowWidth > 768 && <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600, color: "var(--text-color)" }}>Size</th>}
-              {windowWidth > 768 && <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600, color: "var(--text-color)" }}>Count</th>}
-              {windowWidth > 768 && <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600, color: "var(--text-color)" }}>Avg Price</th>}
+              {windowWidth > 768 ? (
+                <>
+                  <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600, color: "var(--text-color)" }}>Merchant</th>
+                  <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600, color: "var(--text-color)" }}>Product</th>
+                  <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600, color: "var(--text-color)" }}>Size</th>
+                  <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600, color: "var(--text-color)" }}>Count</th>
+                  <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600, color: "var(--text-color)" }}>Avg Price</th>
+                </>
+              ) : (
+                <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600, color: "var(--text-color)" }}>Item</th>
+              )}
               <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600, color: "var(--text-color)" }}>Total</th>
             </tr>
           </thead>
@@ -535,22 +541,45 @@ const WordSimilarity: React.FC = () => {
                   color: "var(--text-color)",
                 }}
               >
-                <td style={{
-                  padding: "0.5rem",
-                  maxWidth: "150px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  fontWeight: showMerchant ? 500 : 400,
-                }}>
-                  {showMerchant ? row.merchant : ""}
-                </td>
-                <td style={{ padding: "0.5rem" }}>{row.product}</td>
-                {windowWidth > 768 && <td style={{ padding: "0.5rem" }}>{row.size}</td>}
-                {windowWidth > 768 && <td style={{ padding: "0.5rem", textAlign: "right" }}>{row.count}</td>}
-                {windowWidth > 768 && <td style={{ padding: "0.5rem", textAlign: "right" }}>
-                  {row.avg_price ? `$${row.avg_price.toFixed(2)}` : "-"}
-                </td>}
+                {windowWidth > 768 ? (
+                  <>
+                    <td style={{
+                      padding: "0.5rem",
+                      maxWidth: "150px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      fontWeight: showMerchant ? 500 : 400,
+                    }}>
+                      {showMerchant ? row.merchant : ""}
+                    </td>
+                    <td style={{ padding: "0.5rem" }}>{row.product}</td>
+                    <td style={{ padding: "0.5rem" }}>{row.size}</td>
+                    <td style={{ padding: "0.5rem", textAlign: "right" }}>{row.count}</td>
+                    <td style={{ padding: "0.5rem", textAlign: "right" }}>
+                      {row.avg_price ? `$${row.avg_price.toFixed(2)}` : "-"}
+                    </td>
+                  </>
+                ) : (
+                  <td style={{ padding: "0.5rem", verticalAlign: "middle", height: "3.5em" }}>
+                    {showMerchant ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.125rem" }}>
+                        <span style={{ fontSize: "0.7rem", lineHeight: "1.2", opacity: 0.7 }}>
+                          {row.merchant}
+                        </span>
+                        <span style={{ paddingLeft: "0.75rem" }}>
+                          {row.product}{row.size ? ` (${row.size})` : ""}
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", height: "100%" }}>
+                        <span style={{ paddingLeft: "0.75rem" }}>
+                          {row.product}{row.size ? ` (${row.size})` : ""}
+                        </span>
+                      </div>
+                    )}
+                  </td>
+                )}
                 <td style={{ padding: "0.5rem", textAlign: "right" }}>
                   {row.total ? `$${row.total.toFixed(2)}` : "-"}
                 </td>
@@ -561,11 +590,7 @@ const WordSimilarity: React.FC = () => {
           </tbody>
           <tfoot>
             <tr style={{ backgroundColor: "var(--background-color)", borderTop: "2px solid var(--text-color)", fontWeight: 600, color: "var(--text-color)" }}>
-              <td colSpan={windowWidth > 768 ? 3 : 2} style={{ padding: "0.75rem 0.5rem" }}>Total</td>
-              {windowWidth > 768 && <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>
-                {data.summary_table.reduce((sum, row) => sum + row.count, 0)}
-              </td>}
-              {windowWidth > 768 && <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>-</td>}
+              <td colSpan={windowWidth > 768 ? 5 : 1} style={{ padding: "0.75rem 0.5rem" }}>Total</td>
               <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>
                 ${data.summary_table.reduce((sum, row) => sum + (row.total || 0), 0).toFixed(2)}
               </td>
