@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../../services/api";
-import { AddressBoundingBox, WordSimilarityResponse } from "../../../types/api";
+import { AddressBoundingBox, MilkSimilarityResponse, MilkReceiptData } from "../../../types/api";
 import {
   detectImageFormatSupport,
   getBestImageUrl,
@@ -21,14 +21,13 @@ function getRotatedBoundingBox(width: number, height: number, rotationDeg: numbe
   const cos = Math.abs(Math.cos(rotationRad));
   const sin = Math.abs(Math.sin(rotationRad));
 
-  // Rotated bounding box dimensions
   const rotatedWidth = width * cos + height * sin;
   const rotatedHeight = width * sin + height * cos;
 
   return { width: rotatedWidth, height: rotatedHeight };
 }
 
-// Generate random transform values with better distribution, constrained to container bounds
+// Generate random transform values with better distribution
 function getRandomTransform(
   seed: number,
   cardWidth: number,
@@ -39,37 +38,26 @@ function getRandomTransform(
 ): { rotation: number; translateX: number; translateY: number } {
   const random = seededRandom(seed);
 
-  // Use multiple random calls to get better distribution
   const r1 = random();
   const r2 = random();
   const r3 = random();
 
-  // Rotation: -15 to 15 degrees with better distribution
   const rotation = (r1 - 0.5) * 30;
-
-  // Calculate rotated bounding box to account for rotation
   const rotatedBounds = getRotatedBoundingBox(cardWidth, cardHeight, rotation);
-
-  // Shadow adds extra space (typically 8-16px on all sides for box-shadow)
   const shadowPadding = 16;
 
-  // Calculate maximum safe translation
   const maxTranslateX = Math.max(0, (containerWidth - rotatedBounds.width) / 2 - shadowPadding);
   const maxTranslateY = Math.max(0, (containerHeight - rotatedBounds.height) / 2 - shadowPadding);
 
-  // Account for card position
   const cardCenterY = topPosition + (cardHeight / 2);
   const rotatedHalfHeight = rotatedBounds.height / 2;
 
-  // Calculate how far the rotated card can move up/down while staying in bounds
   const distanceFromTop = cardCenterY - rotatedHalfHeight;
   const distanceFromBottom = containerHeight - cardCenterY - rotatedHalfHeight;
 
-  // Clamp translateY to keep rotated card within vertical bounds
   const maxTranslateYUp = Math.max(0, Math.min(30, distanceFromTop - shadowPadding));
   const maxTranslateYDown = Math.max(0, Math.min(30, distanceFromBottom - shadowPadding));
 
-  // Translation: constrained to safe bounds
   const translateX = Math.max(-maxTranslateX, Math.min(maxTranslateX, (r2 - 0.5) * maxTranslateX * 2));
   const translateY = Math.max(
     -maxTranslateYUp,
@@ -80,12 +68,12 @@ function getRandomTransform(
 }
 
 /**
- * Component that displays word similarity results from ChromaDB.
- * Shows the original word on the left and similar words stacked on the right,
- * using CSS-only cropping to show word context (target line + adjacent lines).
+ * Component that displays milk product similarity results.
+ * Shows cropped receipt images stacked with random transforms,
+ * and a summary table below with merchant/product/price data.
  */
 const WordSimilarity: React.FC = () => {
-  const [data, setData] = useState<WordSimilarityResponse | null>(null);
+  const [data, setData] = useState<MilkSimilarityResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [formatSupport, setFormatSupport] = useState<{
@@ -93,26 +81,21 @@ const WordSimilarity: React.FC = () => {
     supportsWebP: boolean;
   } | null>(null);
 
-  // Track actual loaded image dimensions for each receipt
   const [imageDimensions, setImageDimensions] = useState<{
     [key: string]: { width: number; height: number };
   }>({});
 
-  // Track card dimensions for bounds checking
   const [cardDimensions, setCardDimensions] = useState<{
-    [key: number]: { width: number; height: number };
+    [key: string]: { width: number; height: number };
   }>({});
 
-  // Track window resize to adjust height on mobile
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== "undefined" ? window.innerWidth : 1024
   );
 
-  // Track actual container width for accurate positioning calculations
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number | null>(null);
 
-  // Measure container dimensions
   const measureContainer = useCallback(() => {
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
@@ -126,26 +109,21 @@ const WordSimilarity: React.FC = () => {
       measureContainer();
     };
 
-    // Initial measurement
     measureContainer();
-
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [measureContainer]);
 
-  // Measure container when data becomes available
   useEffect(() => {
     if (data && !containerWidth) {
       measureContainer();
     }
   }, [data, containerWidth, measureContainer]);
 
-  // Detect image format support
   useEffect(() => {
     detectImageFormatSupport().then(setFormatSupport);
   }, []);
 
-  // Fetch word similarity data
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -164,13 +142,12 @@ const WordSimilarity: React.FC = () => {
     fetchData();
   }, []);
 
-  // Handle image load to get actual dimensions
-  const handleImageLoad = useCallback((receiptId: number) => (e: React.SyntheticEvent<HTMLImageElement>) => {
+  const handleImageLoad = useCallback((receiptKey: string) => (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     if (img.naturalWidth && img.naturalHeight) {
       setImageDimensions((prev) => ({
         ...prev,
-        [receiptId]: {
+        [receiptKey]: {
           width: img.naturalWidth,
           height: img.naturalHeight,
         },
@@ -179,8 +156,7 @@ const WordSimilarity: React.FC = () => {
   }, []);
 
   if (loading) {
-    // Reserve space to prevent layout shift
-    const reservedHeight = windowWidth <= 768 ? 400 : 700;
+    const reservedHeight = windowWidth <= 768 ? 600 : 900;
     return (
       <div
         style={{
@@ -217,74 +193,21 @@ const WordSimilarity: React.FC = () => {
       ? "https://dev.tylernorlund.com"
       : "https://www.tylernorlund.com";
 
-  // Helper function to calculate crop region from bbox or lines
+  // Helper function to calculate crop region from bbox
   const calculateCropRegion = (
-    apiBbox: AddressBoundingBox | undefined,
-    lines: any[] | undefined,
-    receipt: any
+    apiBbox: AddressBoundingBox | null,
+    receipt: MilkReceiptData["receipt"]
   ) => {
-    // If API provides bbox, use it directly
-    if (apiBbox && receipt?.width && receipt?.height) {
-      const leftNorm = apiBbox.tl.x;
-      const rightNorm = apiBbox.tr.x;
-      const topNorm = apiBbox.tl.y;
-      const bottomNorm = apiBbox.bl.y;
-
-      const widthNorm = rightNorm - leftNorm;
-      const heightNorm = topNorm - bottomNorm;
-
-      const cssTopNorm = 1 - topNorm;
-      const cssBottomNorm = 1 - bottomNorm;
-      const cssHeightNorm = cssBottomNorm - cssTopNorm;
-
-      return {
-        leftNorm,
-        rightNorm,
-        widthNorm,
-        topNorm,
-        bottomNorm,
-        heightNorm,
-        cssTopNorm,
-        cssBottomNorm,
-        cssHeightNorm,
-      };
-    }
-
-    // Fallback: Calculate from lines
-    if (!lines || lines.length === 0) {
+    if (!apiBbox || !receipt?.width || !receipt?.height) {
       return null;
     }
 
-    const allX = lines.flatMap((line: any) => [
-      line.top_left.x,
-      line.top_right.x,
-      line.bottom_left.x,
-      line.bottom_right.x,
-    ]);
-    const allYBottom = lines.flatMap((line: any) => [
-      line.bottom_left.y,
-      line.bottom_right.y,
-    ]);
-    const allYTop = lines.flatMap((line: any) => [
-      line.top_left.y,
-      line.top_right.y,
-    ]);
-
-    const minX = Math.min(...allX);
-    const maxX = Math.max(...allX);
-    const minY = Math.min(...allYBottom);
-    const maxY = Math.max(...allYTop);
-
-    const paddingX = (maxX - minX) * 0.05;
-    const paddingY = Math.max((maxY - minY) * 0.05, 0.02);
-
-    const leftNorm = Math.max(0, minX - paddingX);
-    const rightNorm = Math.min(1, maxX + paddingX);
-    const bottomNorm = Math.max(0, minY - paddingY);
-    const topNorm = Math.min(1, maxY + paddingY);
+    const leftNorm = apiBbox.tl.x;
+    const rightNorm = apiBbox.tr.x;
+    const topNorm = apiBbox.tl.y;
+    const bottomNorm = apiBbox.bl.y;
 
     const widthNorm = rightNorm - leftNorm;
-    const heightNorm = topNorm - bottomNorm;
 
     const cssTopNorm = 1 - topNorm;
     const cssBottomNorm = 1 - bottomNorm;
@@ -296,30 +219,24 @@ const WordSimilarity: React.FC = () => {
       widthNorm,
       topNorm,
       bottomNorm,
-      heightNorm,
       cssTopNorm,
       cssBottomNorm,
       cssHeightNorm,
     };
   };
 
-  // Render a single cropped receipt showing word context
+  // Render a single cropped receipt
   const renderCroppedReceipt = (
-    receipt: any,
-    lines: any[],
-    apiBbox: AddressBoundingBox | undefined,
-    receiptId: number,
-    label?: string,
-    noMargin?: boolean,
-    hideLabel?: boolean,
-    hideText?: boolean,
+    receiptData: MilkReceiptData,
+    index: number,
     onDimensionsReady?: (width: number, height: number) => void
   ) => {
-    const cropRegion = calculateCropRegion(apiBbox, lines, receipt);
+    const cropRegion = calculateCropRegion(receiptData.bbox, receiptData.receipt);
     if (!cropRegion) {
       return null;
     }
 
+    const receipt = receiptData.receipt;
     const imageSrc = formatSupport
       ? getBestImageUrl(receipt, formatSupport, "medium")
       : receipt.cdn_medium_s3_key
@@ -332,7 +249,8 @@ const WordSimilarity: React.FC = () => {
       return null;
     }
 
-    const dims = imageDimensions[receiptId];
+    const receiptKey = `${receipt.image_id}-${receipt.receipt_id}`;
+    const dims = imageDimensions[receiptKey];
     const displayWidth = dims?.width ?? receipt.width;
     const displayHeight = dims?.height ?? receipt.height;
     const displayAspectRatio = displayWidth / displayHeight;
@@ -347,7 +265,6 @@ const WordSimilarity: React.FC = () => {
     return (
       <div
         ref={(el) => {
-          // Measure card dimensions once when element is mounted
           if (el && onDimensionsReady) {
             if (!(el as any).__measured) {
               (el as any).__measured = true;
@@ -366,23 +283,9 @@ const WordSimilarity: React.FC = () => {
           borderRadius: "8px",
           overflow: "hidden",
           backgroundColor: "#fff",
-          marginBottom: noMargin ? "0" : "1rem",
           boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
         }}
       >
-        {label && !hideLabel && (
-          <div
-            style={{
-              padding: "0.5rem",
-              backgroundColor: "#f5f5f5",
-              borderBottom: "1px solid #ddd",
-              fontSize: "0.875rem",
-              fontWeight: "500",
-            }}
-          >
-            {label}
-          </div>
-        )}
         <div
           style={{
             position: "relative",
@@ -395,7 +298,7 @@ const WordSimilarity: React.FC = () => {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageSrc}
-            alt={label || "Cropped receipt"}
+            alt={`${receiptData.product} from ${receiptData.merchant}`}
             style={{
               position: "absolute",
               top: 0,
@@ -405,178 +308,174 @@ const WordSimilarity: React.FC = () => {
               transform: `translate(-${shiftLeftPercent}%, -${shiftTopPercent}%)`,
               boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06)",
             }}
-            onLoad={handleImageLoad(receiptId)}
+            onLoad={handleImageLoad(receiptKey)}
             onError={(e) => {
               console.error("WordSimilarity: Image failed to load:", imageSrc, e);
             }}
           />
         </div>
-        {lines && lines.length > 0 && !hideText && (
-          <div
-            style={{
-              padding: "0.75rem",
-              backgroundColor: "#fff",
-            }}
-          >
-            <p style={{ fontSize: "0.875rem", color: "#666", margin: 0 }}>
-              {lines.map((line: any) => line.text).join(" ")}
-            </p>
-          </div>
-        )}
       </div>
     );
   };
+
+  // Take first 8 receipts for visual display
+  const displayReceipts = data.receipts.slice(0, 8);
+  const containerHeight = windowWidth <= 768 ? 400 : 600;
 
   return (
     <div
       style={{
         display: "flex",
-        flexDirection: "row",
-        gap: "1.5rem",
+        flexDirection: "column",
+        gap: "2rem",
         width: "100%",
-        maxWidth: "900px",
+        maxWidth: "1000px",
         margin: "0 auto",
         padding: 0,
       }}
     >
-      {/* Original word on the left */}
+      {/* Receipt images stack */}
       <div
+        ref={containerRef}
         style={{
-          flex: "0 0 45%",
-          minWidth: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
+          position: "relative",
+          width: "100%",
+          maxWidth: "500px",
+          height: `${containerHeight}px`,
+          margin: "0 auto",
+          overflow: "visible",
         }}
       >
-        {renderCroppedReceipt(
-          data.original.receipt,
-          data.original.lines,
-          data.original.bbox,
-          data.original.receipt.receipt_id,
-          `Query: "${data.query_word}"`,
-          false, // noMargin
-          true,  // hideLabel
-          true   // hideText
-        )}
+        {displayReceipts.map((receiptData, index) => {
+          const effectiveContainerWidth = containerWidth ?? 500;
+          const totalCards = displayReceipts.length;
+
+          const targetCenterY = ((index + 1) / (totalCards + 1)) * containerHeight;
+
+          const receiptKey = `${receiptData.receipt.image_id}-${receiptData.receipt.receipt_id}`;
+          let cardDims = cardDimensions[receiptKey];
+          if (!cardDims) {
+            const cardWidthPercent = 0.85;
+            const estimatedWidth = effectiveContainerWidth * cardWidthPercent;
+            const estimatedAspectRatio = 3.5;
+            cardDims = { width: estimatedWidth, height: estimatedWidth / estimatedAspectRatio };
+          }
+
+          const topPosition = targetCenterY - (cardDims.height / 2);
+
+          const receiptComponent = renderCroppedReceipt(
+            receiptData,
+            index,
+            (width, height) => {
+              setCardDimensions(prev => {
+                const existing = prev[receiptKey];
+                if (!existing || existing.width !== width || existing.height !== height) {
+                  return { ...prev, [receiptKey]: { width, height } };
+                }
+                return prev;
+              });
+            }
+          );
+
+          if (!receiptComponent) return null;
+
+          const imageIdHash = receiptData.receipt.image_id
+            ? receiptData.receipt.image_id.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)
+            : 0;
+          const seed = (receiptData.receipt.receipt_id * 7919) + (index * 9973) + (imageIdHash * 1013) + 12345;
+
+          const { rotation, translateX, translateY } = getRandomTransform(
+            seed,
+            cardDims.width,
+            cardDims.height,
+            effectiveContainerWidth,
+            containerHeight,
+            topPosition
+          );
+
+          const zIndex = displayReceipts.length - index;
+          const baseTransform = `translate(${translateX}px, ${translateY}px) rotate(${rotation}deg)`;
+
+          return (
+            <div
+              key={receiptKey}
+              style={{
+                position: "absolute",
+                top: `${topPosition}px`,
+                left: "0px",
+                right: "0px",
+                zIndex,
+                transform: baseTransform,
+                transformOrigin: "center center",
+              }}
+            >
+              {receiptComponent}
+            </div>
+          );
+        })}
       </div>
 
-      {/* Similar words stacked on the right */}
+      {/* Summary table */}
       <div
         style={{
-          flex: "0 0 45%",
-          minWidth: 0,
+          width: "100%",
+          overflowX: "auto",
         }}
       >
-        {/* Stack container */}
-        <div
-          ref={containerRef}
+        <table
           style={{
-            position: "relative",
             width: "100%",
-            height: windowWidth <= 768 ? "400px" : "700px",
-            overflow: "visible",
+            borderCollapse: "collapse",
+            fontSize: windowWidth <= 768 ? "0.75rem" : "0.875rem",
           }}
         >
-          {data.similar.map((similar, index) => {
-            // Distribute cards evenly across the height of the container
-            const containerHeight = windowWidth <= 768 ? 400 : 700;
-
-            // Use measured container width if available
-            const isMobile = windowWidth <= 768;
-            let effectiveContainerWidth: number;
-            if (containerWidth) {
-              effectiveContainerWidth = containerWidth;
-            } else {
-              // Fallback: estimate based on screen size
-              if (isMobile) {
-                const screenWidth = windowWidth;
-                const padding = screenWidth <= 480 ? 16 : 32;
-                const maxContainerWidth = Math.min(screenWidth, 900) - padding * 2;
-                effectiveContainerWidth = maxContainerWidth * 0.45;
-              } else {
-                effectiveContainerWidth = 405; // Desktop: 45% of 900px
-              }
-            }
-
-            const totalCards = data.similar.length;
-
-            // Calculate target center Y position
-            const targetCenterY = ((index + 1) / (totalCards + 1)) * containerHeight;
-
-            // Get card dimensions (use stored or estimate)
-            let cardDims = cardDimensions[similar.receipt.receipt_id];
-            if (!cardDims) {
-              const cardWidthPercent = 0.85;
-              const estimatedWidth = effectiveContainerWidth * cardWidthPercent;
-              const estimatedAspectRatio = 3.5;
-              cardDims = { width: estimatedWidth, height: estimatedWidth / estimatedAspectRatio };
-            }
-
-            // Position card so its center is at targetCenterY
-            const topPosition = targetCenterY - (cardDims.height / 2);
-
-            const receiptComponent = renderCroppedReceipt(
-              similar.receipt,
-              similar.lines,
-              similar.bbox,
-              similar.receipt.receipt_id,
-              `Similar #${index + 1} (distance: ${similar.similarity_distance.toFixed(4)})`,
-              true, // noMargin for stacked cards
-              true, // hideLabel for stacked cards
-              true, // hideText for stacked cards
-              (width, height) => {
-                setCardDimensions(prev => {
-                  const existing = prev[similar.receipt.receipt_id];
-                  if (!existing || existing.width !== width || existing.height !== height) {
-                    return {
-                      ...prev,
-                      [similar.receipt.receipt_id]: { width, height }
-                    };
-                  }
-                  return prev;
-                });
-              }
-            );
-
-            if (!receiptComponent) return null;
-
-            // Generate consistent random values based on receipt ID and index
-            const imageIdHash = similar.receipt.image_id
-              ? similar.receipt.image_id.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)
-              : 0;
-            const seed = (similar.receipt.receipt_id * 7919) + (index * 9973) + (imageIdHash * 1013) + 12345;
-
-            const { rotation, translateX, translateY } = getRandomTransform(
-              seed,
-              cardDims.width,
-              cardDims.height,
-              effectiveContainerWidth,
-              containerHeight,
-              topPosition
-            );
-
-            const zIndex = data.similar.length - index;
-            const baseTransform = `translate(${translateX}px, ${translateY}px) rotate(${rotation}deg)`;
-
-            return (
-              <div
-                key={similar.receipt.receipt_id}
+          <thead>
+            <tr style={{ backgroundColor: "#f5f5f5", borderBottom: "2px solid #ddd" }}>
+              <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600 }}>Merchant</th>
+              <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600 }}>Product</th>
+              <th style={{ padding: "0.75rem 0.5rem", textAlign: "left", fontWeight: 600 }}>Size</th>
+              <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600 }}>Count</th>
+              <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600 }}>Avg Price</th>
+              <th style={{ padding: "0.75rem 0.5rem", textAlign: "right", fontWeight: 600 }}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.summary_table.map((row, index) => (
+              <tr
+                key={`${row.merchant}-${row.product}-${row.size}`}
                 style={{
-                  position: "absolute",
-                  top: `${topPosition}px`,
-                  left: "0px",
-                  right: "0px",
-                  zIndex,
-                  transform: baseTransform,
-                  transformOrigin: "center center",
+                  backgroundColor: index % 2 === 0 ? "#fff" : "#fafafa",
+                  borderBottom: "1px solid #eee",
                 }}
               >
-                {receiptComponent}
-              </div>
-            );
-          })}
-        </div>
+                <td style={{ padding: "0.5rem", maxWidth: "150px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {row.merchant}
+                </td>
+                <td style={{ padding: "0.5rem" }}>{row.product}</td>
+                <td style={{ padding: "0.5rem" }}>{row.size}</td>
+                <td style={{ padding: "0.5rem", textAlign: "right" }}>{row.count}</td>
+                <td style={{ padding: "0.5rem", textAlign: "right" }}>
+                  {row.avg_price ? `$${row.avg_price.toFixed(2)}` : "-"}
+                </td>
+                <td style={{ padding: "0.5rem", textAlign: "right" }}>
+                  {row.total ? `$${row.total.toFixed(2)}` : "-"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ backgroundColor: "#f5f5f5", borderTop: "2px solid #ddd", fontWeight: 600 }}>
+              <td colSpan={3} style={{ padding: "0.75rem 0.5rem" }}>Total</td>
+              <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>
+                {data.summary_table.reduce((sum, row) => sum + row.count, 0)}
+              </td>
+              <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>-</td>
+              <td style={{ padding: "0.75rem 0.5rem", textAlign: "right" }}>
+                ${data.summary_table.reduce((sum, row) => sum + (row.total || 0), 0).toFixed(2)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   );

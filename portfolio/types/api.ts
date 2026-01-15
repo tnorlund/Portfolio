@@ -242,6 +242,39 @@ export interface WordSimilarityResponse {
   cached_at: string;
 }
 
+// Milk product similarity response (line-based search)
+export interface MilkSummaryRow {
+  merchant: string;
+  product: string;
+  size: string;
+  count: number;
+  avg_price: number | null;
+  total: number | null;
+  receipts: Array<{ image_id: string; receipt_id: number }>;
+}
+
+export interface MilkReceiptData {
+  image_id: string;
+  receipt_id: number;
+  product: string;
+  merchant: string;
+  price: string | null;
+  size: string;
+  line_id: number;
+  receipt: Receipt;
+  lines: Line[];
+  bbox: AddressBoundingBox | null;
+}
+
+export interface MilkSimilarityResponse {
+  query_word: string;
+  total_receipts: number;
+  total_items: number;
+  summary_table: MilkSummaryRow[];
+  receipts: MilkReceiptData[];
+  cached_at: string;
+}
+
 export interface TrainingMetricsEpoch {
   epoch: number;
   is_best: boolean;

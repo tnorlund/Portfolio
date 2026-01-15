@@ -9,6 +9,7 @@ import {
   RandomReceiptDetailsResponse,
   AddressSimilarityResponse,
   WordSimilarityResponse,
+  MilkSimilarityResponse,
   TrainingMetricsResponse,
   LayoutLMBatchInferenceResponse,
   LabelEvaluatorResponse,
@@ -203,7 +204,7 @@ const baseApi = {
     return response.json();
   },
 
-  async fetchWordSimilarity(): Promise<WordSimilarityResponse> {
+  async fetchWordSimilarity(): Promise<MilkSimilarityResponse> {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/word_similarity`,

@@ -1,21 +1,25 @@
 """Lambda handler for generating word similarity cache.
 
-Queries ChromaDB for words similar to "milk" and stores results with
-receipt context for visualization.
+Searches ChromaDB lines collection for dairy milk products, fetches
+receipt details with prices using parallel DynamoDB queries, and
+generates a summary table for visualization with receipt images.
 """
 
 import json
 import logging
 import os
-import random
 import shutil
+import statistics
 import tempfile
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+from typing import Optional
 
 import boto3
-from receipt_chroma.data.chroma_client import ChromaClient
-from receipt_chroma.s3 import download_snapshot_atomic
+import chromadb
 
+from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger()
@@ -26,115 +30,298 @@ DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
 CHROMADB_BUCKET = os.environ["CHROMADB_BUCKET"]
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET", CHROMADB_BUCKET)
 CACHE_KEY = "word-similarity-cache/milk.json"
-TARGET_WORD = "milk"
+TARGET_WORD = "MILK"
+
+# Exclusion terms for dairy milk filtering
+DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND"]
+
+# Price ranges for inferring milk sizes
+MILK_SIZE_RANGES = {
+    "RAW WHOLE MILK": [
+        (0, 12.00, "Half Gallon"),
+        (12.00, 25.00, "Gallon"),
+    ],
+    "RAN WHOLE MILK": [  # OCR error for RAW
+        (0, 12.00, "Half Gallon"),
+        (12.00, 25.00, "Gallon"),
+    ],
+    "RAW MILK": [
+        (0, 8.00, "Half Gallon"),
+        (8.00, 25.00, "Gallon"),
+    ],
+    "ORG WHOLE MILK": [
+        (0, 15.00, "Gallon"),
+    ],
+    "ORG FF GRASSFED MILK": [
+        (0, 15.00, "Half Gallon"),
+    ],
+    "ORG FF GRASSED MILK": [
+        (0, 15.00, "Half Gallon"),
+    ],
+    "WHOLE MILK": [
+        (0, 6.00, "Half Gallon"),
+        (6.00, 15.00, "Gallon"),
+    ],
+    "V CRNR WHOLE MILK": [
+        (0, 10.00, "Gallon"),
+    ],
+    "VIT D WHOLE MILK": [
+        (0, 10.00, "Gallon"),
+    ],
+}
 
 # Initialize clients
 s3_client = boto3.client("s3")
 
 
-def calculate_bounding_box_for_word_context(target_word, context_lines):
-    """Calculate a bounding box for word context (target line + neighbors).
+def infer_size(product: str, price: Optional[str]) -> str:
+    """Infer product size based on product name and price."""
+    if not price:
+        return "Unknown"
 
-    Args:
-        target_word: The target ReceiptWord object
-        context_lines: List of ReceiptLine objects around the target word
+    try:
+        price_val = float(str(price).replace("$", "").replace(",", ""))
+    except (ValueError, AttributeError):
+        return "Unknown"
 
-    Returns:
-        dict: Bounding box with keys 'tl', 'tr', 'bl', 'br', each containing
-              {'x': float, 'y': float}, or None if no valid data
+    product_upper = product.upper().strip()
+
+    # Handle common variations
+    if product_upper == "WHOLE MILK" or product == "Whole Milk":
+        product_upper = "WHOLE MILK"
+
+    ranges = MILK_SIZE_RANGES.get(product_upper)
+    if not ranges:
+        return "Unknown"
+
+    for min_price, max_price, size in ranges:
+        if min_price <= price_val < max_price:
+            return size
+
+    return "Unknown"
+
+
+def assemble_visual_lines(words, labels):
+    """Group words into visual lines by y-coordinate proximity."""
+    if not words:
+        return []
+
+    # Build label lookup
+    labels_by_word = defaultdict(list)
+    for label in labels:
+        key = (label.line_id, label.word_id)
+        labels_by_word[key].append(label)
+
+    def get_valid_label(line_id, word_id):
+        history = labels_by_word.get((line_id, word_id), [])
+        valid = [lbl for lbl in history if lbl.validation_status == "VALID"]
+        if valid:
+            valid.sort(key=lambda lbl: str(lbl.timestamp_added), reverse=True)
+            return valid[0]
+        return None
+
+    # Build word contexts with centroids
+    word_contexts = []
+    for word in words:
+        centroid = word.calculate_centroid()
+        label = get_valid_label(word.line_id, word.word_id)
+        word_contexts.append({
+            "word": word,
+            "label": label,
+            "y": centroid[1],
+            "x": centroid[0],
+        })
+
+    # Sort by y descending
+    sorted_contexts = sorted(word_contexts, key=lambda c: -c["y"])
+
+    # Calculate tolerance
+    heights = [
+        w["word"].bounding_box.get("height", 0.02)
+        for w in sorted_contexts
+        if w["word"].bounding_box.get("height")
+    ]
+    if heights:
+        y_tolerance = max(0.01, statistics.median(heights) * 0.75)
+    else:
+        y_tolerance = 0.015
+
+    # Group by y-proximity
+    visual_lines = []
+    current_words = [sorted_contexts[0]]
+    current_y = sorted_contexts[0]["y"]
+
+    for ctx in sorted_contexts[1:]:
+        if abs(ctx["y"] - current_y) <= y_tolerance:
+            current_words.append(ctx)
+            current_y = sum(c["y"] for c in current_words) / len(current_words)
+        else:
+            current_words.sort(key=lambda c: c["x"])
+            visual_lines.append(current_words)
+            current_words = [ctx]
+            current_y = ctx["y"]
+
+    current_words.sort(key=lambda c: c["x"])
+    visual_lines.append(current_words)
+
+    return visual_lines
+
+
+def find_price_on_visual_line(target_line_id, words, labels):
+    """Find LINE_TOTAL or UNIT_PRICE on the same visual line."""
+    visual_lines = assemble_visual_lines(words, labels)
+
+    # Find visual line containing target
+    target_visual_line = None
+    for vl in visual_lines:
+        for ctx in vl:
+            if ctx["word"].line_id == target_line_id:
+                target_visual_line = vl
+                break
+        if target_visual_line:
+            break
+
+    if not target_visual_line:
+        return None, None
+
+    # Look for price labels
+    line_total = None
+    unit_price = None
+
+    for ctx in target_visual_line:
+        if ctx["label"]:
+            if ctx["label"].label == "LINE_TOTAL":
+                line_total = ctx["word"].text
+            elif ctx["label"].label == "UNIT_PRICE":
+                unit_price = ctx["word"].text
+
+    return line_total, unit_price
+
+
+def calculate_product_bbox(target_line_id, words, labels):
+    """Calculate bounding box around product line for cropping.
+
+    Returns bbox in normalized coordinates (0-1) with format:
+    {tl: {x, y}, tr: {x, y}, bl: {x, y}, br: {x, y}}
+    where y=1 is top and y=0 is bottom (receipt coordinate system).
     """
-    if not context_lines:
-        # Fallback to word's own coordinates with padding
-        if not target_word:
-            return None
-        padding = 0.02
-        return {
-            "tl": {
-                "x": max(0, target_word.top_left["x"] - padding),
-                "y": min(1, target_word.top_left["y"] + padding),
-            },
-            "tr": {
-                "x": min(1, target_word.top_right["x"] + padding),
-                "y": min(1, target_word.top_right["y"] + padding),
-            },
-            "bl": {
-                "x": max(0, target_word.bottom_left["x"] - padding),
-                "y": max(0, target_word.bottom_left["y"] - padding),
-            },
-            "br": {
-                "x": min(1, target_word.bottom_right["x"] + padding),
-                "y": max(0, target_word.bottom_right["y"] - padding),
-            },
-        }
+    visual_lines = assemble_visual_lines(words, labels)
 
-    # Collect all corner points from context lines
-    all_x = []
-    all_y = []
+    # Find visual line containing target
+    target_visual_line = None
+    target_visual_line_idx = None
+    for idx, vl in enumerate(visual_lines):
+        for ctx in vl:
+            if ctx["word"].line_id == target_line_id:
+                target_visual_line = vl
+                target_visual_line_idx = idx
+                break
+        if target_visual_line:
+            break
 
-    for line in context_lines:
-        all_x.extend(
-            [
-                line.top_left["x"],
-                line.top_right["x"],
-                line.bottom_left["x"],
-                line.bottom_right["x"],
-            ]
-        )
-        all_y.extend(
-            [
-                line.top_left["y"],
-                line.top_right["y"],
-                line.bottom_left["y"],
-                line.bottom_right["y"],
-            ]
-        )
+    if not target_visual_line:
+        return None
 
-    # Find bounds with small padding
-    padding = 0.01
-    min_x = max(0, min(all_x) - padding)
-    max_x = min(1, max(all_x) + padding)
-    min_y = max(0, min(all_y) - padding)
-    max_y = min(1, max(all_y) + padding)
+    # Get lines to include (target + 1 above + 1 below for context)
+    lines_to_include = []
+    if target_visual_line_idx > 0:
+        lines_to_include.extend(visual_lines[target_visual_line_idx - 1])
+    lines_to_include.extend(target_visual_line)
+    if target_visual_line_idx < len(visual_lines) - 1:
+        lines_to_include.extend(visual_lines[target_visual_line_idx + 1])
 
-    # Create bounding box corners
-    # Note: In OCR coordinates, y=0 is at bottom, so:
-    # - top_left has highest y value
-    # - bottom_left has lowest y value
+    if not lines_to_include:
+        return None
+
+    # Calculate bounding box from all words
+    min_x = min(ctx["word"].bounding_box.get("x", 0) for ctx in lines_to_include)
+    max_x = max(
+        ctx["word"].bounding_box.get("x", 0) + ctx["word"].bounding_box.get("width", 0)
+        for ctx in lines_to_include
+    )
+    # Y coordinates: use top_left.y (top) and bottom_left.y (bottom)
+    max_y = max(ctx["word"].top_left.get("y", 1) for ctx in lines_to_include)
+    min_y = min(ctx["word"].bottom_left.get("y", 0) for ctx in lines_to_include)
+
+    # Add padding (5% on x, variable on y)
+    padding_x = (max_x - min_x) * 0.05
+    padding_y = max((max_y - min_y) * 0.05, 0.02)
+
+    left = max(0, min_x - padding_x)
+    right = min(1, max_x + padding_x)
+    bottom = max(0, min_y - padding_y)
+    top = min(1, max_y + padding_y)
+
     return {
-        "tl": {"x": min_x, "y": max_y},
-        "tr": {"x": max_x, "y": max_y},
-        "bl": {"x": min_x, "y": min_y},
-        "br": {"x": max_x, "y": min_y},
+        "tl": {"x": left, "y": top},
+        "tr": {"x": right, "y": top},
+        "bl": {"x": left, "y": bottom},
+        "br": {"x": right, "y": bottom},
+    }
+
+
+def receipt_to_dict(receipt):
+    """Convert Receipt entity to dict for JSON serialization."""
+    return {
+        "image_id": receipt.image_id,
+        "receipt_id": receipt.receipt_id,
+        "width": receipt.width,
+        "height": receipt.height,
+        "timestamp_added": str(receipt.timestamp_added),
+        "raw_s3_bucket": receipt.raw_s3_bucket,
+        "raw_s3_key": receipt.raw_s3_key,
+        "top_left": receipt.top_left,
+        "top_right": receipt.top_right,
+        "bottom_left": receipt.bottom_left,
+        "bottom_right": receipt.bottom_right,
+        "sha256": receipt.sha256,
+        "cdn_s3_bucket": getattr(receipt, "cdn_s3_bucket", None),
+        "cdn_s3_key": getattr(receipt, "cdn_s3_key", None),
+        "cdn_webp_s3_key": getattr(receipt, "cdn_webp_s3_key", None),
+        "cdn_avif_s3_key": getattr(receipt, "cdn_avif_s3_key", None),
+        "cdn_thumbnail_s3_key": getattr(receipt, "cdn_thumbnail_s3_key", None),
+        "cdn_thumbnail_webp_s3_key": getattr(receipt, "cdn_thumbnail_webp_s3_key", None),
+        "cdn_thumbnail_avif_s3_key": getattr(receipt, "cdn_thumbnail_avif_s3_key", None),
+        "cdn_small_s3_key": getattr(receipt, "cdn_small_s3_key", None),
+        "cdn_small_webp_s3_key": getattr(receipt, "cdn_small_webp_s3_key", None),
+        "cdn_small_avif_s3_key": getattr(receipt, "cdn_small_avif_s3_key", None),
+        "cdn_medium_s3_key": getattr(receipt, "cdn_medium_s3_key", None),
+        "cdn_medium_webp_s3_key": getattr(receipt, "cdn_medium_webp_s3_key", None),
+        "cdn_medium_avif_s3_key": getattr(receipt, "cdn_medium_avif_s3_key", None),
+    }
+
+
+def line_to_dict(line):
+    """Convert ReceiptLine entity to dict for JSON serialization."""
+    return {
+        "image_id": line.image_id,
+        "line_id": line.line_id,
+        "text": line.text,
+        "bounding_box": line.bounding_box,
+        "top_left": line.top_left,
+        "top_right": line.top_right,
+        "bottom_left": line.bottom_left,
+        "bottom_right": line.bottom_right,
+        "angle_degrees": getattr(line, "angle_degrees", 0),
+        "angle_radians": getattr(line, "angle_radians", 0),
+        "confidence": getattr(line, "confidence", 1.0),
     }
 
 
 def handler(_event, _context):
-    """Handle EventBridge scheduled event to generate word similarity cache.
+    """Handle EventBridge scheduled event to generate word similarity cache."""
+    logger.info("Starting milk product cache generation")
 
-    Args:
-        _event: EventBridge event (unused)
-        _context: Lambda context (unused)
-
-    Returns:
-        dict: Status of cache generation
-    """
-    logger.info("Starting word similarity cache generation for '%s'", TARGET_WORD)
-
-    # Create temporary directory for ChromaDB snapshot
     temp_dir = tempfile.mkdtemp()
-    chroma_client = None
 
     try:
-        # Initialize DynamoDB client
         dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME)
 
-        # Download ChromaDB words snapshot from S3
-        logger.info(
-            "Downloading ChromaDB words snapshot from S3: %s/words", CHROMADB_BUCKET
-        )
+        # Step 1: Download ChromaDB lines snapshot
+        logger.info("Downloading ChromaDB lines snapshot from %s", CHROMADB_BUCKET)
         download_result = download_snapshot_atomic(
             bucket=CHROMADB_BUCKET,
-            collection="words",  # Use words collection, not lines
+            collection="lines",
             local_path=temp_dir,
             verify_integrity=True,
         )
@@ -143,276 +330,141 @@ def handler(_event, _context):
             logger.error("Failed to download snapshot: %s", download_result)
             return {
                 "statusCode": 500,
-                "body": json.dumps(
-                    {"error": "Failed to download ChromaDB words snapshot"}
-                ),
+                "body": json.dumps({"error": "Failed to download ChromaDB lines snapshot"}),
             }
 
-        logger.info(
-            "ChromaDB words snapshot downloaded: version_id=%s, local_path=%s",
-            download_result.get("version_id"),
-            temp_dir,
-        )
+        logger.info("Snapshot downloaded successfully")
 
-        # Initialize ChromaDB client in read mode
-        chroma_client = ChromaClient(
-            persist_directory=temp_dir,
-            mode="read",
-        )
+        # Step 2: Search for MILK lines
+        client = chromadb.PersistentClient(path=temp_dir)
+        lines_collection = client.get_collection("lines")
 
-        # Verify that the "words" collection exists
-        available_collections = chroma_client.list_collections()
-        if "words" not in available_collections:
-            logger.error(
-                "Collection 'words' not found in snapshot. Available: %s",
-                available_collections,
-            )
-            return {
-                "statusCode": 500,
-                "body": json.dumps(
-                    {"error": f"Collection 'words' not found. Available: {available_collections}"}
-                ),
-            }
+        all_lines = lines_collection.get(include=["metadatas"])
+        logger.info("Fetched %d lines from ChromaDB", len(all_lines["ids"]))
 
-        logger.info("Collection 'words' found. Total collections: %d", len(available_collections))
+        # Filter for dairy milk
+        matching_lines = []
+        for id_, meta in zip(all_lines["ids"], all_lines["metadatas"]):
+            text = meta.get("text", "")
+            text_upper = text.upper()
 
-        # Step 1: Find words matching "milk" (try lowercase first, then uppercase)
-        logger.info("Searching for '%s' words in ChromaDB", TARGET_WORD)
+            if TARGET_WORD in text_upper:
+                is_excluded = any(term in text_upper for term in DAIRY_EXCLUDE_TERMS)
+                if not is_excluded:
+                    matching_lines.append({
+                        "id": id_,
+                        "text": text,
+                        "image_id": meta.get("image_id"),
+                        "receipt_id": meta.get("receipt_id"),
+                        "line_id": meta.get("line_id"),
+                    })
 
-        # Get collection for direct querying
-        words_collection = chroma_client.get_collection("words")
+        logger.info("Found %d dairy milk lines", len(matching_lines))
 
-        # Try exact match for "milk"
-        milk_results = words_collection.get(
-            where={"text": TARGET_WORD},
-            include=["embeddings", "metadatas"],
-            limit=50,
-        )
+        # Step 3: Deduplicate by image_id
+        by_image = defaultdict(list)
+        for match in matching_lines:
+            by_image[match["image_id"]].append(match)
 
-        # If no results, try uppercase
-        if not milk_results["ids"]:
-            logger.info("No lowercase '%s' found, trying uppercase", TARGET_WORD)
-            milk_results = words_collection.get(
-                where={"text": TARGET_WORD.upper()},
-                include=["embeddings", "metadatas"],
-                limit=50,
-            )
+        logger.info("Found %d unique receipts", len(by_image))
 
-        # If still no results, try title case
-        if not milk_results["ids"]:
-            logger.info("No uppercase found, trying title case")
-            milk_results = words_collection.get(
-                where={"text": TARGET_WORD.title()},
-                include=["embeddings", "metadatas"],
-                limit=50,
-            )
+        # Step 4: Fetch receipt details in parallel
+        work_items = []
+        for image_id, matches in by_image.items():
+            receipt_id = int(matches[0]["receipt_id"])
+            line_id = int(matches[0]["line_id"])
+            product_text = matches[0]["text"]
+            work_items.append((image_id, receipt_id, line_id, product_text))
 
-        if not milk_results["ids"]:
-            logger.warning("No '%s' words found in ChromaDB", TARGET_WORD)
-            return {
-                "statusCode": 200,
-                "body": json.dumps({"message": f"No '{TARGET_WORD}' words found in ChromaDB"}),
-            }
-
-        logger.info("Found %d '%s' words in ChromaDB", len(milk_results["ids"]), TARGET_WORD)
-
-        # Step 2: Select one randomly
-        selected_idx = random.randint(0, len(milk_results["ids"]) - 1)
-        selected_metadata = milk_results["metadatas"][selected_idx]
-
-        # Handle embeddings (may be NumPy arrays)
-        embeddings_raw = milk_results["embeddings"]
-        if embeddings_raw is None or len(embeddings_raw) == 0:
-            logger.error("No embeddings found for selected word")
-            return {
-                "statusCode": 500,
-                "body": json.dumps({"error": "No embedding found for selected word"}),
-            }
-
-        # Convert to list if needed
-        query_embedding = embeddings_raw[selected_idx]
-        if hasattr(query_embedding, "tolist"):
-            query_embedding = query_embedding.tolist()
-
-        logger.info(
-            "Selected seed word: image_id=%s, receipt_id=%s, line_id=%s, word_id=%s",
-            selected_metadata.get("image_id"),
-            selected_metadata.get("receipt_id"),
-            selected_metadata.get("line_id"),
-            selected_metadata.get("word_id"),
-        )
-
-        # Step 3: Get original receipt context
-        logger.info("Loading original receipt context")
-        original_image_id = selected_metadata.get("image_id")
-        original_receipt_id = int(selected_metadata.get("receipt_id", 0))
-        original_line_id = int(selected_metadata.get("line_id", 0))
-        original_word_id = int(selected_metadata.get("word_id", 0))
-
-        original_receipt = dynamo_client.get_receipt_details(
-            original_image_id,
-            original_receipt_id,
-        )
-
-        # Find the target word
-        original_target_word = next(
-            (w for w in original_receipt.words
-             if w.line_id == original_line_id and w.word_id == original_word_id),
-            None
-        )
-
-        # Get context lines (target line and adjacent lines)
-        context_line_ids = {original_line_id - 1, original_line_id, original_line_id + 1}
-        original_context_lines = [
-            line for line in original_receipt.lines
-            if line.line_id in context_line_ids
-        ]
-        original_context_words = [
-            word for word in original_receipt.words
-            if word.line_id in context_line_ids
-        ]
-        original_context_labels = [
-            label for label in original_receipt.labels
-            if label.line_id in context_line_ids
-        ]
-
-        # Calculate bounding box for original
-        original_bbox = calculate_bounding_box_for_word_context(
-            original_target_word, original_context_lines
-        )
-
-        logger.info(
-            "Original context: %d lines, %d words, %d labels",
-            len(original_context_lines),
-            len(original_context_words),
-            len(original_context_labels),
-        )
-
-        # Step 4: Query ChromaDB for similar words
-        logger.info("Querying ChromaDB for similar words")
-        similar_results = chroma_client.query(
-            collection_name="words",
-            query_embeddings=[query_embedding],
-            n_results=12,  # Get extra to filter out self and ensure we have 8
-            include=["metadatas", "distances", "documents"],
-        )
-
-        similar_metadatas = similar_results.get("metadatas", [[]])[0]
-        similar_distances = similar_results.get("distances", [[]])[0]
-        similar_documents = similar_results.get("documents", [[]])[0]
-
-        # Step 5: Process similar words and get receipt context
-        similar_words_data = []
-        seen_receipts = set()
-
-        for metadata, distance, document in zip(
-            similar_metadatas,
-            similar_distances,
-            similar_documents,
-            strict=True,
-        ):
-            if not metadata:
-                continue
-
-            image_id = metadata.get("image_id")
-            receipt_id_str = metadata.get("receipt_id")
-
-            if not image_id or not receipt_id_str:
-                continue
-
+        def process_receipt(work_item):
+            image_id, receipt_id, line_id, product_text = work_item
             try:
-                receipt_id = int(receipt_id_str)
-            except (ValueError, TypeError):
-                continue
-
-            # Skip self (same receipt)
-            if image_id == original_image_id and receipt_id == original_receipt_id:
-                continue
-
-            # Skip duplicates (same receipt already processed)
-            receipt_key = (image_id, receipt_id)
-            if receipt_key in seen_receipts:
-                continue
-            seen_receipts.add(receipt_key)
-
-            try:
-                # Get receipt details
-                similar_receipt = dynamo_client.get_receipt_details(image_id, receipt_id)
-
-                # Find target word
-                similar_line_id = int(metadata.get("line_id", 0))
-                similar_word_id = int(metadata.get("word_id", 0))
-
-                similar_target_word = next(
-                    (w for w in similar_receipt.words
-                     if w.line_id == similar_line_id and w.word_id == similar_word_id),
-                    None
+                details = dynamo_client.get_receipt_details(image_id, receipt_id)
+                line_total, unit_price = find_price_on_visual_line(
+                    line_id, details.words, details.labels
                 )
+                merchant = details.place.merchant_name if details.place else "Unknown"
+                price = line_total or unit_price
+                size = infer_size(product_text, price)
 
-                if not similar_target_word:
-                    logger.warning(
-                        "Target word not found in receipt: image=%s, receipt=%s, line=%s, word=%s",
-                        image_id, receipt_id, similar_line_id, similar_word_id
-                    )
-                    continue
+                # Calculate bounding box for visual cropping
+                bbox = calculate_product_bbox(line_id, details.words, details.labels)
 
-                # Get context lines (target line + adjacent)
-                similar_context_line_ids = {
-                    similar_line_id - 1, similar_line_id, similar_line_id + 1
+                # Convert lines to dict format
+                lines_dict = [line_to_dict(line) for line in details.lines]
+
+                return {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "product": product_text,
+                    "merchant": merchant,
+                    "price": price,
+                    "size": size,
+                    "line_id": line_id,
+                    # Full receipt data for visual display
+                    "receipt": receipt_to_dict(details.receipt),
+                    "lines": lines_dict,
+                    "bbox": bbox,
                 }
-                similar_context_lines = [
-                    line for line in similar_receipt.lines
-                    if line.line_id in similar_context_line_ids
-                ]
-                similar_context_words = [
-                    word for word in similar_receipt.words
-                    if word.line_id in similar_context_line_ids
-                ]
-                similar_context_labels = [
-                    label for label in similar_receipt.labels
-                    if label.line_id in similar_context_line_ids
-                ]
-
-                # Calculate bounding box
-                similar_bbox = calculate_bounding_box_for_word_context(
-                    similar_target_word, similar_context_lines
-                )
-
-                similar_words_data.append({
-                    "receipt": dict(similar_receipt.receipt),
-                    "lines": [dict(line) for line in similar_context_lines],
-                    "words": [dict(word) for word in similar_context_words],
-                    "labels": [dict(label) for label in similar_context_labels],
-                    "target_word": dict(similar_target_word),
-                    "similarity_distance": float(distance),
-                    "bbox": similar_bbox,
-                })
-
-                # Stop once we have 8 similar words
-                if len(similar_words_data) >= 8:
-                    break
-
             except Exception as e:
-                logger.warning(
-                    "Failed to process similar word: image=%s, receipt=%s, error=%s",
-                    image_id, receipt_id, str(e)
-                )
-                continue
+                logger.warning("Error processing %s: %s", image_id, e)
+                return None
 
-        logger.info("Processed %d similar words", len(similar_words_data))
+        results = []
+        max_workers = 25
 
-        # Step 6: Build response structure
+        logger.info("Fetching receipt details with %d parallel workers", max_workers)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(process_receipt, item): item for item in work_items}
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    results.append(result)
+
+        logger.info("Processed %d receipts successfully", len(results))
+
+        # Step 5: Build summary table
+        summary = defaultdict(lambda: {"count": 0, "prices": [], "receipts": []})
+        for r in results:
+            key = (r["merchant"], r["product"], r["size"])
+            summary[key]["count"] += 1
+            summary[key]["receipts"].append({
+                "image_id": r["image_id"],
+                "receipt_id": r["receipt_id"],
+            })
+            if r["price"]:
+                try:
+                    summary[key]["prices"].append(float(r["price"]))
+                except ValueError:
+                    pass
+
+        # Convert to list format
+        summary_table = []
+        for (merchant, product, size), data in sorted(summary.items()):
+            avg_price = None
+            total = None
+            if data["prices"]:
+                avg_price = sum(data["prices"]) / len(data["prices"])
+                total = sum(data["prices"])
+
+            summary_table.append({
+                "merchant": merchant,
+                "product": product,
+                "size": size,
+                "count": data["count"],
+                "avg_price": round(avg_price, 2) if avg_price else None,
+                "total": round(total, 2) if total else None,
+                "receipts": data["receipts"],
+            })
+
+        # Step 6: Build response
         response_data = {
             "query_word": TARGET_WORD,
-            "original": {
-                "receipt": dict(original_receipt.receipt),
-                "lines": [dict(line) for line in original_context_lines],
-                "words": [dict(word) for word in original_context_words],
-                "labels": [dict(label) for label in original_context_labels],
-                "target_word": dict(original_target_word) if original_target_word else None,
-                "bbox": original_bbox,
-            },
-            "similar": similar_words_data,
+            "total_receipts": len(results),
+            "total_items": len(matching_lines),
+            "summary_table": summary_table,
+            "receipts": results,
             "cached_at": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -426,17 +478,17 @@ def handler(_event, _context):
         )
 
         logger.info(
-            "Cache generation complete: query_word=%s, similar_count=%d",
-            TARGET_WORD,
-            len(similar_words_data),
+            "Cache generation complete: %d receipts, %d summary rows",
+            len(results),
+            len(summary_table),
         )
 
         return {
             "statusCode": 200,
             "body": json.dumps({
                 "message": "Cache generated successfully",
-                "query_word": TARGET_WORD,
-                "similar_count": len(similar_words_data),
+                "total_receipts": len(results),
+                "summary_rows": len(summary_table),
             }),
         }
 
@@ -446,18 +498,10 @@ def handler(_event, _context):
             "statusCode": 500,
             "body": json.dumps({"error": str(e)}),
         }
-    finally:
-        # Close ChromaDB client if initialized
-        if chroma_client is not None:
-            try:
-                chroma_client.close()
-                logger.info("Closed ChromaDB client")
-            except Exception:
-                logger.warning("Failed to close ChromaDB client")
 
-        # Cleanup temporary directory
+    finally:
         try:
             shutil.rmtree(temp_dir)
-            logger.info("Cleaned up temporary directory: %s", temp_dir)
-        except Exception as cleanup_error:
-            logger.warning("Failed to cleanup temp directory: %s", cleanup_error)
+            logger.info("Cleaned up temp directory")
+        except Exception as e:
+            logger.warning("Failed to cleanup: %s", e)
