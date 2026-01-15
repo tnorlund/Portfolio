@@ -273,7 +273,7 @@ export default function ReceiptPage({
 
       <p>
         I tried scanning, taking photos, and OCR. None of them worked well. I
-        pointed Tesseract at a CVS receipt. Here's what I got:
+        pointed an old OCR engine at a CVS receipt. Here's what I got:
       </p>
 
       <pre className={styles.codeBlock}>
