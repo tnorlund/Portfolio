@@ -537,17 +537,23 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        LangChain is what asks the questions. LangSmith is how you monitor the
-        answers.
+        LangChain is what asks the questions. LangSmith is how the AI answers.
       </p>
 
       <p>
-        AI is asked all these questions and then I review the answers with AI.
+        AI is asked all these questions and then have AI annotate and evaluate
+        the results. Me an my AI friend learn together!
       </p>
 
       <ClientOnly>
         <CICDLoop />
       </ClientOnly>
+
+      <p>
+        From here on, I practice old-timey engineering. I make a change, test
+        it, and then make another change. Each change produces different
+        metrics, and I use these to plan my next change.
+      </p>
 
       <div style={{ marginBottom: "2rem", textAlign: "center" }}>
         <label htmlFor="file-upload" style={{ display: "inline-block" }}>
