@@ -540,7 +540,7 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <p>
-        Anyway, $XX.XX on milk this year. I might have a problem.
+        Anyway, $800+ on milk this year. I might have a problem.
       </p>
 
       <hr />
