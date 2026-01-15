@@ -269,7 +269,7 @@ export default function ReceiptPage({
         to read them for me so I don't have to.
       </p>
 
-      <h2>Challenge 1: Getting Text Out of the Receipt</h2>
+      <h1>Getting Text Out of the Receipt</h1>
 
       <p>
         I tried scanning, taking photos, and OCR. None of them worked well. I
@@ -321,9 +321,9 @@ M1LK 2%           1    $4.4g`}</code>
 
       <ReceiptStack />
 
-      <h2>Challenge 2: Structuring the Chaos</h2>
+      <h1>Structuring the Chaos</h1>
 
-      <h3>Finding the Store</h3>
+      <h2>Finding the Store</h2>
 
       <p>
         There's no standard format for a receipt. I can say that each store has
@@ -368,7 +368,7 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
 
-      <h3>Defining the Corpus</h3>
+      <h2>Defining the Corpus</h2>
 
       <p>
         Every receipt has the same kinds of words on it, but every store
@@ -406,7 +406,7 @@ M1LK 2%           1    $4.4g`}</code>
         expensive. I needed a better way.
       </p>
 
-      <h3>Making it Faster and Cheaper</h3>
+      <h2>Making it Faster and Cheaper</h2>
 
       <p>
         Here's the problem: asking AI to verify the results 15+ times is slow
@@ -457,7 +457,7 @@ M1LK 2%           1    $4.4g`}</code>
         <AWSFlowDiagram />
       </ClientOnly>
 
-      <h2>Challenge 3: Asking About the $$$ Spent on Milk</h2>
+      <h1>Asking About the $$$ Spent on Milk</h1>
 
       <p>
         The question still stands: "How much did I spend on milk?" When I ask
@@ -480,7 +480,7 @@ M1LK 2%           1    $4.4g`}</code>
         <WordSimilarity />
       </ClientOnly>
 
-      <h2>Challenge 4: So Now What?</h2>
+      <h1>So Now What?</h1>
 
       <p>
         Ok, I over-engineered a milk tracker. But here's the thing: now I have
@@ -537,7 +537,7 @@ M1LK 2%           1    $4.4g`}</code>
 
       <hr />
 
-      <h2>The Boring Details</h2>
+      <h1>The Boring Details</h1>
 
       <p>
         If you're still here, you might want to know what's actually under the
