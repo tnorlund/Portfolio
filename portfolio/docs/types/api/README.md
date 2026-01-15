@@ -11,6 +11,7 @@
 - [AddressBoundingBox](interfaces/AddressBoundingBox.md)
 - [AddressSimilarityResponse](interfaces/AddressSimilarityResponse.md)
 - [BoundingBox](interfaces/BoundingBox.md)
+- [CachedImageDetailsResponse](interfaces/CachedImageDetailsResponse.md)
 - [DatasetMetrics](interfaces/DatasetMetrics.md)
 - [Image](interfaces/Image.md)
 - [ImageCountApiResponse](interfaces/ImageCountApiResponse.md)
@@ -35,6 +36,10 @@
 - [LayoutLMReceiptInference](interfaces/LayoutLMReceiptInference.md)
 - [LayoutLMReceiptWord](interfaces/LayoutLMReceiptWord.md)
 - [Line](interfaces/Line.md)
+- [MilkReceiptData](interfaces/MilkReceiptData.md)
+- [MilkSimilarityResponse](interfaces/MilkSimilarityResponse.md)
+- [MilkSimilarityTiming](interfaces/MilkSimilarityTiming.md)
+- [MilkSummaryRow](interfaces/MilkSummaryRow.md)
 - [Point](interfaces/Point.md)
 - [RandomReceiptDetailsResponse](interfaces/RandomReceiptDetailsResponse.md)
 - [Receipt](interfaces/Receipt.md)
@@ -45,6 +50,7 @@
 - [TrainingMetricsEpoch](interfaces/TrainingMetricsEpoch.md)
 - [TrainingMetricsResponse](interfaces/TrainingMetricsResponse.md)
 - [Word](interfaces/Word.md)
+- [WordSimilarityResponse](interfaces/WordSimilarityResponse.md)
 
 ## Type Aliases
 
