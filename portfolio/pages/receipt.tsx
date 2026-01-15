@@ -10,6 +10,7 @@ import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
   CICDLoop,
+  CodeBuildDiagram,
   DynamoStreamAnimation,
   LabelEvaluatorVisualization,
   LabelValidationTimeline,
@@ -22,6 +23,7 @@ import {
   ScanReceiptBoundingBox,
   StreamBitsRoutingDiagram,
   TrainingMetricsAnimation,
+  UploadDiagram,
   WordSimilarity,
   ZDepthConstrainedParametric,
   ZDepthUnconstrainedParametric
@@ -30,9 +32,13 @@ import {
   ChromaLogo,
   ClaudeLogo,
   CursorLogo,
+  DockerLogo,
+  GithubActionsLogo,
+  GithubLogo,
   GoogleMapsLogo,
   LangChainLogo,
-  LangSmithLogo
+  LangSmithLogo,
+  PulumiLogo
 } from "../components/ui/Logos";
 import QueryLabelTransform from "../components/ui/QueryLabelTransform";
 
@@ -358,18 +364,7 @@ M1LK 2%           1    $4.4g`}</code>
         has built-in support for change data capture.
       </p>
 
-      <ClientOnly>
-        <DynamoStreamAnimation />
-      </ClientOnly>
 
-      <p>
-        Amazon's DynamoDB allows me to consistently write to both DynamoDB and
-        Chroma through serverless Lambda functions.
-      </p>
-
-      <ClientOnly>
-        <StreamBitsRoutingDiagram />
-      </ClientOnly>
 
       <p>
         I embedded the receipts into Chroma so I could retrieve them by
@@ -485,8 +480,6 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
 
-
-
       <ClientOnly>
         <QueryLabelTransform
           query="How much did I spend on milk?"
@@ -582,6 +575,110 @@ M1LK 2%           1    $4.4g`}</code>
           <ClaudeLogo />
         </div>
       </ClientOnly>
+
+      <p>
+        Both these tools allowed me to iterate quickly and learn. I used
+        GitHub and GitHub Actions to experiment quick and cheap while
+        guaranteeing I don't break production.
+      </p>
+
+      <ClientOnly>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: "2rem",
+            flexWrap: "wrap",
+            margin: "2rem 0",
+          }}
+        >
+          <GithubLogo />
+          <GithubActionsLogo />
+        </div>
+      </ClientOnly>
+
+      <p>
+        I no longer want to write code by hand. I want to orchestrate systems
+        that get better while I learn how to use them. I know I'm cooking when
+        I'm spending more time reviewing changes than writing code.
+      </p>
+
+      <p>
+        I've managed my AWS services with Terraform in the past, but I wanted to
+        try something new. I've heard good things about Pulumi, so I gave it a
+        try.
+      </p>
+
+      <ClientOnly>
+        <PulumiLogo />
+      </ClientOnly>
+
+      <p>
+        Pulumi allows me to explain my AWS infrastructure in what I know best:
+        Python. This allows me to use all the tools I'm familiar with and hack
+        new features to speed up development.
+      </p>
+
+      <p>
+        I use many docker containers here, and I used Pulumi to bundle and ship
+        them to AWS so that I can build and deploy them asynchronously.
+      </p>
+
+      <ClientOnly>
+        <DockerLogo />
+      </ClientOnly>
+
+      <ClientOnly>
+        <CodeBuildDiagram chars={codeBuildDiagramChars} />
+      </ClientOnly>
+
+      <p>
+        This keeps my laptop from burning me. It also allows AI to build and
+        deploy the containers to AWS <i>very</i> quickly.
+      </p>
+
+      <p>
+        This was also the first time I really leaned into AWS's event-driven
+        architecture. The first was making sure that the Chroma and DynamoDB
+        databases were in sync.
+      </p>
+
+      <p>
+        DynamoDB offers a change data capture stream that allows me to listen
+        for changes.
+      </p>
+
+      <ClientOnly>
+        <DynamoStreamAnimation />
+      </ClientOnly>
+
+      <p>
+        I these changes are applied to the Chroma database. DynamoDB is
+        serverless, scalabel, and cheap. I can process thousands of changes per
+        second without worrying about scaling.
+      </p>
+
+      <ClientOnly>
+        <StreamBitsRoutingDiagram />
+      </ClientOnly>
+
+      <p>
+        The other event-driven architecture is how I choreographed my laptop to
+        work with AWS. I really leaned into AWS's SQS to build robust systems.
+      </p>
+
+      <ClientOnly>
+        <UploadDiagram chars={uploadDiagramChars} />
+      </ClientOnly>
+
+      <p>
+        I plan on continuing to use this pattern to build more robust systems.
+      </p>
+
+
+
 
       <div style={{ marginBottom: "2rem", textAlign: "center" }}>
         <label htmlFor="file-upload" style={{ display: "inline-block" }}>
