@@ -63,6 +63,11 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
         width: "100%",
         overflow: "hidden",
         padding: "1rem 0",
+        // Fade in/out on left and right edges
+        maskImage:
+          "linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)",
+        WebkitMaskImage:
+          "linear-gradient(to right, transparent 0%, black 10%, black 90%, transparent 100%)",
       }}
     >
       <style>
