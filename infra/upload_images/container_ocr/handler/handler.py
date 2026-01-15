@@ -7,6 +7,7 @@ Combines:
 2. Merchant validation and embedding (from embed_from_ndjson)
 
 Updated: 2026-01-14 - Fixed entity serialization: use asdict() and **unpacking instead of to_dict/from_dict
+Updated: 2026-01-15 - Added chroma_label_validation trace for visibility into Phase 2 parallelism
 """
 
 import json

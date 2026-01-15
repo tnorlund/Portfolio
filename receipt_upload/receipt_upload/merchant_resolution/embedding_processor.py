@@ -349,35 +349,57 @@ def _run_words_pipeline_worker(
                 chroma_validated = 0
                 llm_needed = []
 
-                for label in pending_labels:
-                    word = next(
-                        (w for w in words
-                         if w.line_id == label.line_id and w.word_id == label.word_id),
-                        None,
-                    )
-                    if not word:
-                        continue
-
-                    result = lightweight_validator.validate_label(
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                        line_id=label.line_id,
-                        word_id=label.word_id,
-                        predicted_label=label.label,
-                    )
-
-                    if result.decision in (ValidationDecision.AUTO_VALIDATE, ValidationDecision.AUTO_INVALID):
-                        # Update the label object with validation results
-                        label.validation_status = (
-                            ValidationStatus.VALID.value
-                            if result.decision == ValidationDecision.AUTO_VALIDATE
-                            else ValidationStatus.INVALID.value
+                # Wrap ChromaDB validation loop in a trace for visibility
+                def _run_chroma_validation_loop():
+                    """Run ChromaDB similarity validation for all pending labels."""
+                    nonlocal chroma_validated
+                    for label in pending_labels:
+                        word = next(
+                            (w for w in words
+                             if w.line_id == label.line_id and w.word_id == label.word_id),
+                            None,
                         )
-                        label.label_proposed_by = f"chroma_{result.decision.value}"
-                        dynamo.update_receipt_word_label(label)
-                        chroma_validated += 1
-                    else:
-                        llm_needed.append((word, label))
+                        if not word:
+                            continue
+
+                        result = lightweight_validator.validate_label(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            line_id=label.line_id,
+                            word_id=label.word_id,
+                            predicted_label=label.label,
+                        )
+
+                        if result.decision in (ValidationDecision.AUTO_VALIDATE, ValidationDecision.AUTO_INVALID):
+                            # Update the label object with validation results
+                            label.validation_status = (
+                                ValidationStatus.VALID.value
+                                if result.decision == ValidationDecision.AUTO_VALIDATE
+                                else ValidationStatus.INVALID.value
+                            )
+                            label.label_proposed_by = f"chroma_{result.decision.value}"
+                            dynamo.update_receipt_word_label(label)
+                            chroma_validated += 1
+                        else:
+                            llm_needed.append((word, label))
+
+                # Apply traceable decorator if available
+                try:
+                    from langsmith.run_helpers import traceable
+                    import os
+                    project = os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
+                    traced_loop = traceable(
+                        name="chroma_label_validation",
+                        project_name=project,
+                        metadata={
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                            "pending_count": len(pending_labels),
+                        },
+                    )(_run_chroma_validation_loop)
+                    traced_loop()
+                except ImportError:
+                    _run_chroma_validation_loop()
 
                 # LLM validation for labels that couldn't be auto-validated
                 llm_validated = 0
