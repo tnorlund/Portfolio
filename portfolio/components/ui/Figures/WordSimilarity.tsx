@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../../../services/api";
-import { AddressBoundingBox, MilkSimilarityResponse, MilkReceiptData } from "../../../types/api";
+import { AddressBoundingBox, MilkSimilarityResponse, MilkReceiptData, MilkSimilarityTiming } from "../../../types/api";
 import {
   detectImageFormatSupport,
   getBestImageUrl,
@@ -613,6 +613,159 @@ const WordSimilarity: React.FC = () => {
           </tfoot>
         </table>
       </div>
+
+      {/* Timing breakdown */}
+      {data.timing && (
+        <TimingBreakdown timing={data.timing} windowWidth={windowWidth} />
+      )}
+    </div>
+  );
+};
+
+/**
+ * Component that displays the timing breakdown for cache generation.
+ */
+const TimingBreakdown: React.FC<{
+  timing: MilkSimilarityTiming;
+  windowWidth: number;
+}> = ({ timing, windowWidth }) => {
+  const formatMs = (ms: number): string => {
+    if (ms >= 1000) {
+      return `${(ms / 1000).toFixed(2)}s`;
+    }
+    return `${ms.toFixed(1)}ms`;
+  };
+
+  const calculatePercent = (ms: number): string => {
+    return `${((ms / timing.total_ms) * 100).toFixed(1)}%`;
+  };
+
+  // Build timing steps
+  const steps: Array<{ name: string; ms: number; color: string }> = [
+    { name: "S3 Download", ms: timing.s3_download_ms, color: "#4CAF50" },
+    { name: "ChromaDB Init", ms: timing.chromadb_init_ms, color: "#2196F3" },
+    { name: "ChromaDB Fetch", ms: timing.chromadb_fetch_all_ms, color: "#03A9F4" },
+    { name: "Filter Lines", ms: timing.filter_lines_ms, color: "#00BCD4" },
+    { name: "DynamoDB Queries", ms: timing.dynamo_fetch_total_ms, color: "#FF9800" },
+  ];
+
+  // Calculate "other" time (upload, processing, etc.)
+  const accountedTime = steps.reduce((sum, step) => sum + step.ms, 0);
+  const otherTime = timing.total_ms - accountedTime;
+  if (otherTime > 0) {
+    steps.push({ name: "Other", ms: otherTime, color: "#9E9E9E" });
+  }
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        padding: "1rem",
+        backgroundColor: "var(--code-background)",
+        borderRadius: "8px",
+        fontSize: windowWidth <= 768 ? "0.75rem" : "0.85rem",
+      }}
+    >
+      <div style={{ fontWeight: 600, marginBottom: "0.75rem", color: "var(--text-color)" }}>
+        Cache Generation: {formatMs(timing.total_ms)}
+      </div>
+
+      {/* Progress bar visualization */}
+      <div
+        style={{
+          display: "flex",
+          width: "100%",
+          height: "24px",
+          borderRadius: "4px",
+          overflow: "hidden",
+          marginBottom: "0.75rem",
+        }}
+      >
+        {steps.map((step) => {
+          const widthPercent = (step.ms / timing.total_ms) * 100;
+          if (widthPercent < 0.5) return null;
+          return (
+            <div
+              key={step.name}
+              title={`${step.name}: ${formatMs(step.ms)} (${calculatePercent(step.ms)})`}
+              style={{
+                width: `${widthPercent}%`,
+                backgroundColor: step.color,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#fff",
+                fontSize: "0.7rem",
+                fontWeight: 500,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                minWidth: widthPercent > 8 ? "auto" : "0",
+              }}
+            >
+              {widthPercent > 15 && step.name}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "0.5rem 1rem",
+          marginBottom: timing.dynamo_details ? "0.75rem" : "0",
+        }}
+      >
+        {steps.map((step) => (
+          <div
+            key={step.name}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.25rem",
+              color: "var(--text-color)",
+            }}
+          >
+            <div
+              style={{
+                width: "10px",
+                height: "10px",
+                borderRadius: "2px",
+                backgroundColor: step.color,
+              }}
+            />
+            <span>{step.name}:</span>
+            <span style={{ fontWeight: 500 }}>{formatMs(step.ms)}</span>
+            <span style={{ opacity: 0.7 }}>({calculatePercent(step.ms)})</span>
+          </div>
+        ))}
+      </div>
+
+      {/* DynamoDB details */}
+      {timing.dynamo_details && (
+        <div
+          style={{
+            borderTop: "1px solid var(--text-color)",
+            paddingTop: "0.5rem",
+            opacity: 0.85,
+            color: "var(--text-color)",
+          }}
+        >
+          <div style={{ fontWeight: 500, marginBottom: "0.25rem" }}>
+            DynamoDB ({timing.parallel_workers} parallel workers, {timing.dynamo_details.count} receipts):
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem 1.5rem" }}>
+            <span>Avg: {formatMs(timing.dynamo_details.avg_ms)}</span>
+            <span>Min: {formatMs(timing.dynamo_details.min_ms)}</span>
+            <span>Max: {formatMs(timing.dynamo_details.max_ms)}</span>
+            <span>Sequential: {formatMs(timing.dynamo_details.sequential_ms)}</span>
+            <span style={{ fontWeight: 500 }}>
+              Speedup: {timing.dynamo_details.speedup}x
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -11,8 +11,10 @@ import os
 import shutil
 import statistics
 import tempfile
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -72,6 +74,61 @@ MILK_SIZE_RANGES = {
 
 # Initialize clients
 s3_client = boto3.client("s3")
+
+
+@dataclass
+class TimingStats:
+    """Track timing for each step of the pipeline."""
+
+    s3_download: float = 0.0
+    chromadb_init: float = 0.0
+    chromadb_fetch_all: float = 0.0
+    filter_lines: float = 0.0
+    dynamo_fetch_total: float = 0.0
+    dynamo_fetch_details: list = field(default_factory=list)
+    visual_line_assembly: list = field(default_factory=list)
+    total: float = 0.0
+    parallel_workers: int = 0
+
+    def to_dict(self) -> dict:
+        """Convert to dict for JSON serialization."""
+        result = {
+            "s3_download_ms": round(self.s3_download * 1000, 1),
+            "chromadb_init_ms": round(self.chromadb_init * 1000, 1),
+            "chromadb_fetch_all_ms": round(self.chromadb_fetch_all * 1000, 1),
+            "filter_lines_ms": round(self.filter_lines * 1000, 1),
+            "dynamo_fetch_total_ms": round(self.dynamo_fetch_total * 1000, 1),
+            "total_ms": round(self.total * 1000, 1),
+            "parallel_workers": self.parallel_workers,
+        }
+
+        # Add DynamoDB breakdown if available
+        if self.dynamo_fetch_details:
+            avg_details = sum(self.dynamo_fetch_details) / len(self.dynamo_fetch_details)
+            result["dynamo_details"] = {
+                "avg_ms": round(avg_details * 1000, 1),
+                "min_ms": round(min(self.dynamo_fetch_details) * 1000, 1),
+                "max_ms": round(max(self.dynamo_fetch_details) * 1000, 1),
+                "count": len(self.dynamo_fetch_details),
+            }
+
+            # Calculate speedup from parallelization
+            sequential_time = sum(self.dynamo_fetch_details)
+            if self.dynamo_fetch_total > 0:
+                result["dynamo_details"]["sequential_ms"] = round(sequential_time * 1000, 1)
+                result["dynamo_details"]["speedup"] = round(
+                    sequential_time / self.dynamo_fetch_total, 1
+                )
+
+        if self.visual_line_assembly:
+            avg_visual = sum(self.visual_line_assembly) / len(self.visual_line_assembly)
+            result["visual_line_assembly"] = {
+                "avg_ms": round(avg_visual * 1000, 1),
+                "min_ms": round(min(self.visual_line_assembly) * 1000, 1),
+                "max_ms": round(max(self.visual_line_assembly) * 1000, 1),
+            }
+
+        return result
 
 
 def infer_size(product: str, price: Optional[str]) -> str:
@@ -310,6 +367,8 @@ def handler(_event, _context):
     """Handle EventBridge scheduled event to generate word similarity cache."""
     logger.info("Starting milk product cache generation")
 
+    timing = TimingStats()
+    total_start = time.time()
     temp_dir = tempfile.mkdtemp()
 
     try:
@@ -317,12 +376,14 @@ def handler(_event, _context):
 
         # Step 1: Download ChromaDB lines snapshot
         logger.info("Downloading ChromaDB lines snapshot from %s", CHROMADB_BUCKET)
+        step_start = time.time()
         download_result = download_snapshot_atomic(
             bucket=CHROMADB_BUCKET,
             collection="lines",
             local_path=temp_dir,
             verify_integrity=True,
         )
+        timing.s3_download = time.time() - step_start
 
         if download_result.get("status") != "downloaded":
             logger.error("Failed to download snapshot: %s", download_result)
@@ -331,16 +392,21 @@ def handler(_event, _context):
                 "body": json.dumps({"error": "Failed to download ChromaDB lines snapshot"}),
             }
 
-        logger.info("Snapshot downloaded successfully")
+        logger.info("Snapshot downloaded successfully (%.2fs)", timing.s3_download)
 
         # Step 2: Search for MILK lines
+        step_start = time.time()
         client = chromadb.PersistentClient(path=temp_dir)
         lines_collection = client.get_collection("lines")
+        timing.chromadb_init = time.time() - step_start
 
+        step_start = time.time()
         all_lines = lines_collection.get(include=["metadatas"])
-        logger.info("Fetched %d lines from ChromaDB", len(all_lines["ids"]))
+        timing.chromadb_fetch_all = time.time() - step_start
+        logger.info("Fetched %d lines from ChromaDB (%.2fs)", len(all_lines["ids"]), timing.chromadb_fetch_all)
 
         # Filter for dairy milk
+        step_start = time.time()
         matching_lines = []
         for id_, meta in zip(all_lines["ids"], all_lines["metadatas"]):
             text = meta.get("text", "")
@@ -357,7 +423,8 @@ def handler(_event, _context):
                         "line_id": meta.get("line_id"),
                     })
 
-        logger.info("Found %d dairy milk lines", len(matching_lines))
+        timing.filter_lines = time.time() - step_start
+        logger.info("Found %d dairy milk lines (%.1fms)", len(matching_lines), timing.filter_lines * 1000)
 
         # Step 3: Deduplicate by image_id
         by_image = defaultdict(list)
@@ -376,17 +443,23 @@ def handler(_event, _context):
 
         def process_receipt(work_item):
             image_id, receipt_id, line_id, product_text = work_item
+            timings = {"details": 0, "visual_line": 0}
             try:
+                t0 = time.time()
                 details = dynamo_client.get_receipt_details(image_id, receipt_id)
+                timings["details"] = time.time() - t0
+
+                t0 = time.time()
                 line_total, unit_price = find_price_on_visual_line(
                     line_id, details.words, details.labels
                 )
+                # Calculate bounding box for visual cropping (uses same visual lines)
+                bbox = calculate_product_bbox(line_id, details.words, details.labels)
+                timings["visual_line"] = time.time() - t0
+
                 merchant = details.place.merchant_name if details.place else "Unknown"
                 price = line_total or unit_price
                 size = infer_size(product_text, price)
-
-                # Calculate bounding box for visual cropping
-                bbox = calculate_product_bbox(line_id, details.words, details.labels)
 
                 # Convert lines to dict format
                 lines_dict = [line_to_dict(line) for line in details.lines]
@@ -403,6 +476,7 @@ def handler(_event, _context):
                     "receipt": receipt_to_dict(details.receipt),
                     "lines": lines_dict,
                     "bbox": bbox,
+                    "_timings": timings,
                 }
             except Exception as e:
                 logger.warning("Error processing %s: %s", image_id, e)
@@ -410,17 +484,25 @@ def handler(_event, _context):
 
         results = []
         max_workers = 25
+        timing.parallel_workers = max_workers
 
         logger.info("Fetching receipt details with %d parallel workers", max_workers)
 
+        dynamo_start = time.time()
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(process_receipt, item): item for item in work_items}
             for future in as_completed(futures):
                 result = future.result()
                 if result:
+                    # Extract and record individual timings
+                    if "_timings" in result:
+                        timing.dynamo_fetch_details.append(result["_timings"]["details"])
+                        timing.visual_line_assembly.append(result["_timings"]["visual_line"])
+                        del result["_timings"]  # Remove internal timing data from output
                     results.append(result)
 
-        logger.info("Processed %d receipts successfully", len(results))
+        timing.dynamo_fetch_total = time.time() - dynamo_start
+        logger.info("Processed %d receipts successfully (%.2fs)", len(results), timing.dynamo_fetch_total)
 
         # Step 5: Build summary table
         summary = defaultdict(lambda: {"count": 0, "prices": [], "receipts": []})
@@ -457,6 +539,7 @@ def handler(_event, _context):
             })
 
         # Step 6: Build response
+        timing.total = time.time() - total_start
         response_data = {
             "query_word": TARGET_WORD,
             "total_receipts": len(results),
@@ -464,6 +547,7 @@ def handler(_event, _context):
             "summary_table": summary_table,
             "receipts": results,
             "cached_at": datetime.now(timezone.utc).isoformat(),
+            "timing": timing.to_dict(),
         }
 
         # Step 7: Upload to S3
@@ -476,9 +560,10 @@ def handler(_event, _context):
         )
 
         logger.info(
-            "Cache generation complete: %d receipts, %d summary rows",
+            "Cache generation complete: %d receipts, %d summary rows (total %.2fs)",
             len(results),
             len(summary_table),
+            timing.total,
         )
 
         return {

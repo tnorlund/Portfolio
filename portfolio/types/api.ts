@@ -266,6 +266,29 @@ export interface MilkReceiptData {
   bbox: AddressBoundingBox | null;
 }
 
+export interface MilkSimilarityTiming {
+  s3_download_ms: number;
+  chromadb_init_ms: number;
+  chromadb_fetch_all_ms: number;
+  filter_lines_ms: number;
+  dynamo_fetch_total_ms: number;
+  total_ms: number;
+  parallel_workers: number;
+  dynamo_details?: {
+    avg_ms: number;
+    min_ms: number;
+    max_ms: number;
+    count: number;
+    sequential_ms: number;
+    speedup: number;
+  };
+  visual_line_assembly?: {
+    avg_ms: number;
+    min_ms: number;
+    max_ms: number;
+  };
+}
+
 export interface MilkSimilarityResponse {
   query_word: string;
   total_receipts: number;
@@ -273,6 +296,7 @@ export interface MilkSimilarityResponse {
   summary_table: MilkSummaryRow[];
   receipts: MilkReceiptData[];
   cached_at: string;
+  timing?: MilkSimilarityTiming;
 }
 
 export interface TrainingMetricsEpoch {
