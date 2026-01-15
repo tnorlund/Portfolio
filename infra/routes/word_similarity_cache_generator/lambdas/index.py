@@ -233,12 +233,10 @@ def calculate_product_bbox(target_line_id, words, labels):
     if not lines_to_include:
         return None
 
-    # Calculate bounding box from all words
-    min_x = min(ctx["word"].bounding_box.get("x", 0) for ctx in lines_to_include)
-    max_x = max(
-        ctx["word"].bounding_box.get("x", 0) + ctx["word"].bounding_box.get("width", 0)
-        for ctx in lines_to_include
-    )
+    # Calculate bounding box from all words using normalized coordinates
+    # Use top_left.x and top_right.x for horizontal bounds (normalized 0-1)
+    min_x = min(ctx["word"].top_left.get("x", 0) for ctx in lines_to_include)
+    max_x = max(ctx["word"].top_right.get("x", 1) for ctx in lines_to_include)
     # Y coordinates: use top_left.y (top) and bottom_left.y (bottom)
     max_y = max(ctx["word"].top_left.get("y", 1) for ctx in lines_to_include)
     min_y = min(ctx["word"].bottom_left.get("y", 0) for ctx in lines_to_include)
