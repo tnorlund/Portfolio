@@ -15,6 +15,7 @@ import {
   LabelEvaluatorVisualization,
   LabelValidationTimeline,
   LabelWordCloud,
+  LayoutLMInferenceVisualization,
   PageCurlLetter,
   PhotoReceiptBoundingBox,
   PrecisionRecallDartboard,
@@ -439,6 +440,10 @@ M1LK 2%           1    $4.4g`}</code>
 
       <ClientOnly>
         <TrainingMetricsAnimation />
+      </ClientOnly>
+
+      <ClientOnly>
+        <LayoutLMInferenceVisualization />
       </ClientOnly>
 
       <p>
