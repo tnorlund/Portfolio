@@ -556,7 +556,13 @@ M1LK 2%           1    $4.4g`}</code>
 
       <p>
         If you're still here, you might want to know what's actually under the
-        hood. I couldn't have done this without my friends Cursor and Claude.
+        hood.
+      </p>
+
+      <p>
+        I didn't write most of this code by hand. I orchestrated it. Cursor and
+        Claude did the typing; I did the thinking. I know I'm cooking when I
+        spend more time reviewing changes than writing code.
       </p>
 
       <ClientOnly>
@@ -577,9 +583,8 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        Both these tools allowed me to iterate quickly and learn. I used
-        GitHub and GitHub Actions to experiment quick and cheap while
-        guaranteeing I don't break production.
+        GitHub Actions let me experiment fast: push a change, watch it break,
+        fix it, repeat. Cheap iteration without breaking production.
       </p>
 
       <ClientOnly>
@@ -600,15 +605,9 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        I no longer want to write code by hand. I want to orchestrate systems
-        that get better while I learn how to use them. I know I'm cooking when
-        I'm spending more time reviewing changes than writing code.
-      </p>
-
-      <p>
-        I've managed my AWS services with Terraform in the past, but I wanted to
-        try something new. I've heard good things about Pulumi, so I gave it a
-        try.
+        I've used Terraform before, but this time I tried Pulumi. It lets me
+        define AWS infrastructure in Python, which means I can hack it with
+        tools I already know.
       </p>
 
       <ClientOnly>
@@ -616,14 +615,9 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        Pulumi allows me to explain my AWS infrastructure in what I know best:
-        Python. This allows me to use all the tools I'm familiar with and hack
-        new features to speed up development.
-      </p>
-
-      <p>
-        I use many docker containers here, and I used Pulumi to bundle and ship
-        them to AWS so that I can build and deploy them asynchronously.
+        This project has a lot of docker containers. My Pulumi hack bundles and
+        ships them to AWS CodeBuild, which builds and deploys them without
+        melting my laptop.
       </p>
 
       <ClientOnly>
@@ -635,19 +629,9 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        This keeps my laptop from burning me. It also allows AI to build and
-        deploy the containers to AWS <i>very</i> quickly.
-      </p>
-
-      <p>
-        This was also the first time I really leaned into AWS's event-driven
-        architecture. The first was making sure that the Chroma and DynamoDB
-        databases were in sync.
-      </p>
-
-      <p>
-        DynamoDB offers a change data capture stream that allows me to listen
-        for changes.
+        The other thing I leaned into: event-driven architecture. DynamoDB has
+        a change data capture stream—whenever something changes, I can react
+        to it.
       </p>
 
       <ClientOnly>
@@ -655,9 +639,8 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        I these changes are applied to the Chroma database. DynamoDB is
-        serverless, scalabel, and cheap. I can process thousands of changes per
-        second without worrying about scaling.
+        That's how I keep DynamoDB and Chroma in sync. A change hits Dynamo,
+        a Lambda picks it up, Chroma gets updated. No polling, no cron jobs.
       </p>
 
       <ClientOnly>
@@ -665,8 +648,8 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        The other event-driven architecture is how I choreographed my laptop to
-        work with AWS. I really leaned into AWS's SQS to build robust systems.
+        Same pattern for my laptop talking to AWS. SQS queues everywhere.
+        Things fail, things retry, nothing gets lost.
       </p>
 
       <ClientOnly>
@@ -674,7 +657,15 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        I plan on continuing to use this pattern to build more robust systems.
+        I'll probably keep building this way. It's nice when the system does
+        the work.
+      </p>
+
+      <p>
+        The code is on
+        <a href="https://github.com/tnorlund/Portfolio">GitHub</a>
+        if you want to see how the
+        sausage gets made. Or the milk, I guess.
       </p>
 
 
