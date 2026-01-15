@@ -11,6 +11,7 @@ export { default as PyTorchLogo } from "./PyTorchLogo";
 export { default as NextJSLogo } from "./NextJSLogo";
 export { default as OllamaLogo } from "./ollamaLogo";
 export { default as LangChainLogo } from "./LangChainLogo";
+export { default as LangSmithLogo } from "./LangSmithLogo";
 export { default as DockerLogo } from "./DockerLogo";
 export { default as ChromaLogo } from "./ChromaLogo";
 export { default as ClaudeLogo } from "./ClaudeLogo";

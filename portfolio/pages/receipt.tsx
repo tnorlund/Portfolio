@@ -29,7 +29,8 @@ import {
 import {
   ChromaLogo,
   GoogleMapsLogo,
-  LangChainLogo
+  LangChainLogo,
+  LangSmithLogo
 } from "../components/ui/Logos";
 import QueryLabelTransform from "../components/ui/QueryLabelTransform";
 
@@ -385,15 +386,9 @@ M1LK 2%           1    $4.4g`}</code>
         seen the store before, I can use Google to get the information.
       </p>
 
-      <p>
-        The same technique works for individual words. Here's a search for
-        "milk" - the original word on the left, and similar words from other
-        receipts on the right.
-      </p>
 
-      <ClientOnly>
-        <WordSimilarity />
-      </ClientOnly>
+
+
 
       <h3>Defining the Corpus</h3>
 
@@ -501,6 +496,10 @@ M1LK 2%           1    $4.4g`}</code>
         The computer came back with the answer:
       </p>
 
+      <ClientOnly>
+        <WordSimilarity />
+      </ClientOnly>
+
       <h2>Challenge 4: So now what?</h2>
 
       <p>
@@ -530,17 +529,17 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <ClientOnly>
-        <WordSimilarity />
+        <QuestionMarquee rows={4} speed={25} />
+      </ClientOnly>
+
+      <ClientOnly>
+        <LangSmithLogo />
       </ClientOnly>
 
       <p>
         LangChain is what asks the questions. LangSmith is how you monitor the
         answers.
       </p>
-
-      <ClientOnly>
-        <QuestionMarquee rows={4} speed={25} />
-      </ClientOnly>
 
       <p>
         AI is asked all these questions and then I review the answers with AI.
