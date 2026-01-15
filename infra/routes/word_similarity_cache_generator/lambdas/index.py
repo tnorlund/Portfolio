@@ -400,38 +400,28 @@ def handler(_event, _context):
         lines_collection = client.get_collection("lines")
         timing.chromadb_init = time.time() - step_start
 
-        # Use where_document filter to find lines containing "MILK"
-        # This is much faster than fetching all lines and filtering in Python
         step_start = time.time()
-        milk_lines = lines_collection.get(
-            where_document={"$contains": "MILK"},
-            include=["metadatas"],
-        )
+        all_lines = lines_collection.get(include=["metadatas"])
         timing.chromadb_fetch_all = time.time() - step_start
+        logger.info("Fetched %d lines from ChromaDB (%.2fs)", len(all_lines["ids"]), timing.chromadb_fetch_all)
 
-        logger.info(
-            "where_document filter returned %d candidates (%.2fs)",
-            len(milk_lines["ids"]),
-            timing.chromadb_fetch_all,
-        )
-
-        # Filter out non-dairy milk alternatives
+        # Filter for dairy milk
         step_start = time.time()
         matching_lines = []
-        for id_, meta in zip(milk_lines["ids"], milk_lines["metadatas"]):
+        for id_, meta in zip(all_lines["ids"], all_lines["metadatas"]):
             text = meta.get("text", "")
             text_upper = text.upper()
 
-            # Exclude chocolate milk, coconut milk, almond milk, etc.
-            is_excluded = any(term in text_upper for term in DAIRY_EXCLUDE_TERMS)
-            if not is_excluded:
-                matching_lines.append({
-                    "id": id_,
-                    "text": text,
-                    "image_id": meta.get("image_id"),
-                    "receipt_id": meta.get("receipt_id"),
-                    "line_id": meta.get("line_id"),
-                })
+            if TARGET_WORD in text_upper:
+                is_excluded = any(term in text_upper for term in DAIRY_EXCLUDE_TERMS)
+                if not is_excluded:
+                    matching_lines.append({
+                        "id": id_,
+                        "text": text,
+                        "image_id": meta.get("image_id"),
+                        "receipt_id": meta.get("receipt_id"),
+                        "line_id": meta.get("line_id"),
+                    })
 
         timing.filter_lines = time.time() - step_start
         logger.info("Found %d dairy milk lines (%.1fms)", len(matching_lines), timing.filter_lines * 1000)
