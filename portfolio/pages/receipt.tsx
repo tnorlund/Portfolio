@@ -503,46 +503,42 @@ M1LK 2%           1    $4.4g`}</code>
       <h2>Challenge 4: So now what?</h2>
 
       <p>
-        Ok... I over-engineered the solution. So what? I actually made
-        something useful.
+        Ok, I over-engineered a milk tracker. But here's the thing: now I have
+        a system I can actually break.
       </p>
 
       <p>
-        I made a tool that can understand a question, search for the
-        information, and return the answer. This is a tool that can be used
-        by anyone to answer questions about their receipts.
-      </p>
-
-      <p>
-        This system is commonly called Retrieval-Augmented Generation (RAG).
-        It's a way to use a large language model to answer questions about a
-        specific dataset.
-      </p>
-
-      <p>
-        Now the fun begins. I can now simulate many questions and monitor the
-        responses through LangChain and LangSmith to optimize the system.
+        What if I ask it a weird question? What if the receipt is formatted in
+        a way I've never seen? What if the AI hallucinates a grocery store that
+        doesn't exist? I need to find out.
       </p>
 
       <ClientOnly>
         <LangChainLogo />
       </ClientOnly>
 
+      <p>
+        LangChain lets me wire up the whole pipeline: question in, answer out.
+        But more importantly, it lets me throw hundreds of fake questions at
+        the system to see what breaks.
+      </p>
+
       <ClientOnly>
         <QuestionMarquee rows={4} speed={25} />
       </ClientOnly>
+
+      <p>
+        Some work. Some don't. That's the point.
+      </p>
 
       <ClientOnly>
         <LangSmithLogo />
       </ClientOnly>
 
       <p>
-        LangChain is what asks the questions. LangSmith is how the AI answers.
-      </p>
-
-      <p>
-        AI is asked all these questions and then have AI annotate and evaluate
-        the results. Me an my AI friend learn together!
+        LangSmith records what happened:  which questions worked, whcih failed,
+        and why. I can use AI to annotate bad answers, use AI to evaluate why
+        it went wrong, and plan a new experiment.
       </p>
 
       <ClientOnly>
@@ -550,9 +546,13 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        From here on, I practice old-timey engineering. I make a change, test
-        it, and then make another change. Each change produces different
-        metrics, and I use these to plan my next change.
+        Change something, run the questions, check the results, repeat. It's
+        less "artificial intelligence" and more "arguing with a very fast
+        intern who keeps misreading receipts".
+      </p>
+
+      <p>
+        Anyway, $XX.XX on milk this year. I might have a problem.
       </p>
 
       <div style={{ marginBottom: "2rem", textAlign: "center" }}>
