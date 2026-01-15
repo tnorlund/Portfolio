@@ -70,3 +70,4 @@ export const LabelWordCloud = dynamic(
   () => import("./LabelWordCloud"),
   { ssr: false }
 );
+export { default as QuestionMarquee } from "./QuestionMarquee";

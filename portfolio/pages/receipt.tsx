@@ -16,6 +16,7 @@ import {
   PageCurlLetter,
   PhotoReceiptBoundingBox,
   PrecisionRecallDartboard,
+  QuestionMarquee,
   ReceiptStack,
   ScanReceiptBoundingBox,
   StreamBitsRoutingDiagram,
@@ -498,7 +499,15 @@ M1LK 2%           1    $4.4g`}</code>
         <WordSimilarity />
       </ClientOnly>
 
+      <p>
+        With the ability to search for similar words, I can now simulate many
+        questions and monitor the responses through LangSmith to optimize the
+        system. Here are examples of questions users might ask:
+      </p>
 
+      <ClientOnly>
+        <QuestionMarquee rows={4} speed={25} />
+      </ClientOnly>
 
       <div style={{ marginBottom: "2rem", textAlign: "center" }}>
         <label htmlFor="file-upload" style={{ display: "inline-block" }}>
