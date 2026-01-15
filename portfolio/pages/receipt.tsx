@@ -494,6 +494,10 @@ M1LK 2%           1    $4.4g`}</code>
         />
       </ClientOnly>
 
+      <ClientOnly>
+        <WordSimilarity />
+      </ClientOnly>
+
 
 
       <div style={{ marginBottom: "2rem", textAlign: "center" }}>
