@@ -483,7 +483,7 @@ def handler(_event, _context):
                 return None
 
         results = []
-        max_workers = 25
+        max_workers = len(work_items)  # One worker per receipt for maximum parallelism
         timing.parallel_workers = max_workers
 
         logger.info("Fetching receipt details with %d parallel workers", max_workers)
