@@ -540,7 +540,7 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <p>
-        Anyway, $800+ on milk this year. I might have a problem.
+        Anyway, $800+ on milk last year. I might have a problem.
       </p>
 
       <hr />
@@ -559,22 +559,22 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "row",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: "2rem",
-            flexWrap: "wrap",
-            margin: "2rem 0",
-          }}
-        >
-          <AnimatedInView>
+        <AnimatedInView>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: "2rem",
+              flexWrap: "wrap",
+              margin: "2rem 0",
+            }}
+          >
             <CursorLogo />
             <ClaudeLogo />
-          </AnimatedInView>
-        </div>
+          </div>
+        </AnimatedInView>
       </ClientOnly>
 
       <p>
@@ -583,22 +583,22 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "row",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: "2rem",
-            flexWrap: "wrap",
-            margin: "2rem 0",
-          }}
-        >
-          <AnimatedInView>
+        <AnimatedInView>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: "2rem",
+              flexWrap: "wrap",
+              margin: "2rem 0",
+            }}
+          >
             <GithubLogo />
             <GithubActionsLogo />
-          </AnimatedInView>
-        </div>
+          </div>
+        </AnimatedInView>
       </ClientOnly>
 
       <p>
