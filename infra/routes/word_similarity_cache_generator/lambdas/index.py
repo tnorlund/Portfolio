@@ -19,8 +19,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import boto3
+import chromadb
 
-from receipt_chroma import ChromaClient
 from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo import DynamoClient
 
@@ -395,16 +395,14 @@ def handler(_event, _context):
         logger.info("Snapshot downloaded successfully (%.2fs)", timing.s3_download)
 
         # Step 2: Search for MILK lines
-        # Use ChromaClient with mode="read" to avoid loading embedding functions
         step_start = time.time()
-        with ChromaClient(persist_directory=temp_dir, mode="read") as chroma_client:
-            lines_collection = chroma_client.get_collection("lines")
-            timing.chromadb_init = time.time() - step_start
+        client = chromadb.PersistentClient(path=temp_dir)
+        lines_collection = client.get_collection("lines")
+        timing.chromadb_init = time.time() - step_start
 
-            step_start = time.time()
-            all_lines = lines_collection.get(include=["metadatas"])
-            timing.chromadb_fetch_all = time.time() - step_start
-
+        step_start = time.time()
+        all_lines = lines_collection.get(include=["metadatas"])
+        timing.chromadb_fetch_all = time.time() - step_start
         logger.info("Fetched %d lines from ChromaDB (%.2fs)", len(all_lines["ids"]), timing.chromadb_fetch_all)
 
         # Filter for dairy milk
