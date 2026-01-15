@@ -46,7 +46,6 @@ import QueryLabelTransform from "../components/ui/QueryLabelTransform";
 interface ReceiptPageProps {
   uploadDiagramChars: string[];
   codeBuildDiagramChars: string[];
-  lockingSwimlaneChars: string[];
 }
 
 // Use getStaticProps for static generation - this runs at build time
@@ -63,16 +62,10 @@ export const getStaticProps: GetStaticProps<ReceiptPageProps> = async () => {
     Math.random() > 0.5 ? "1" : "0",
   );
 
-  // Generate chars for LockingSwimlane (8 phases)
-  const lockingSwimlaneChars = Array.from({ length: 120 }, () =>
-    Math.random() > 0.5 ? "1" : "0",
-  );
-
   return {
     props: {
       uploadDiagramChars,
       codeBuildDiagramChars,
-      lockingSwimlaneChars,
     },
   };
 };
@@ -80,7 +73,6 @@ export const getStaticProps: GetStaticProps<ReceiptPageProps> = async () => {
 export default function ReceiptPage({
   uploadDiagramChars,
   codeBuildDiagramChars,
-  lockingSwimlaneChars,
 }: ReceiptPageProps) {
   // Remove client-side generation - now passed as prop from getStaticProps
   // const [uploadDiagramChars, setUploadDiagramChars] = useState<string[]>([]);
