@@ -400,49 +400,38 @@ def handler(_event, _context):
         lines_collection = client.get_collection("lines")
         timing.chromadb_init = time.time() - step_start
 
-        # Use semantic search to find milk-related lines efficiently
-        # This leverages embeddings instead of fetching all lines
+        # Use where_document filter to find lines containing "MILK"
+        # This is much faster than fetching all lines and filtering in Python
         step_start = time.time()
-        query_result = lines_collection.query(
-            query_texts=["milk dairy whole milk organic milk raw milk"],
-            n_results=500,  # Get top 500 semantically similar lines
-            include=["metadatas", "distances"],
+        milk_lines = lines_collection.get(
+            where_document={"$contains": "MILK"},
+            include=["metadatas"],
         )
         timing.chromadb_fetch_all = time.time() - step_start
 
-        # Flatten results (query returns nested lists)
-        candidate_ids = query_result["ids"][0] if query_result["ids"] else []
-        candidate_metas = query_result["metadatas"][0] if query_result["metadatas"] else []
-        candidate_distances = query_result["distances"][0] if query_result["distances"] else []
-
         logger.info(
-            "Semantic search returned %d candidates (%.2fs), distance range: %.3f - %.3f",
-            len(candidate_ids),
+            "where_document filter returned %d candidates (%.2fs)",
+            len(milk_lines["ids"]),
             timing.chromadb_fetch_all,
-            min(candidate_distances) if candidate_distances else 0,
-            max(candidate_distances) if candidate_distances else 0,
         )
 
-        # Filter for dairy milk - still need to verify "MILK" is in text
-        # and exclude non-dairy alternatives
+        # Filter out non-dairy milk alternatives
         step_start = time.time()
         matching_lines = []
-        for id_, meta, distance in zip(candidate_ids, candidate_metas, candidate_distances):
+        for id_, meta in zip(milk_lines["ids"], milk_lines["metadatas"]):
             text = meta.get("text", "")
             text_upper = text.upper()
 
-            # Must contain MILK (semantic search might return close but not exact matches)
-            if TARGET_WORD in text_upper:
-                is_excluded = any(term in text_upper for term in DAIRY_EXCLUDE_TERMS)
-                if not is_excluded:
-                    matching_lines.append({
-                        "id": id_,
-                        "text": text,
-                        "image_id": meta.get("image_id"),
-                        "receipt_id": meta.get("receipt_id"),
-                        "line_id": meta.get("line_id"),
-                        "distance": distance,
-                    })
+            # Exclude chocolate milk, coconut milk, almond milk, etc.
+            is_excluded = any(term in text_upper for term in DAIRY_EXCLUDE_TERMS)
+            if not is_excluded:
+                matching_lines.append({
+                    "id": id_,
+                    "text": text,
+                    "image_id": meta.get("image_id"),
+                    "receipt_id": meta.get("receipt_id"),
+                    "line_id": meta.get("line_id"),
+                })
 
         timing.filter_lines = time.time() - step_start
         logger.info("Found %d dairy milk lines (%.1fms)", len(matching_lines), timing.filter_lines * 1000)
