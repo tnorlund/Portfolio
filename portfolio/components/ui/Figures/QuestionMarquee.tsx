@@ -62,10 +62,7 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
       style={{
         width: "100%",
         overflow: "hidden",
-        padding: "1.5rem 0",
-        background: "linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)",
-        borderRadius: "12px",
-        marginBottom: "2rem",
+        padding: "1rem 0",
       }}
     >
       <style>
@@ -78,7 +75,7 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
               transform: translateX(-50%);
             }
           }
-          
+
           @keyframes scrollRight {
             0% {
               transform: translateX(-50%);
@@ -87,47 +84,35 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
               transform: translateX(0);
             }
           }
-          
+
           .marquee-row {
             display: flex;
             white-space: nowrap;
-            margin: 0.75rem 0;
+            margin: 0.5rem 0;
+            width: fit-content;
           }
-          
+
           .marquee-row-left {
             animation: scrollLeft var(--scroll-speed) linear infinite;
           }
-          
+
           .marquee-row-right {
             animation: scrollRight var(--scroll-speed) linear infinite;
           }
-          
+
           .marquee-row:hover {
             animation-play-state: paused;
           }
-          
+
           .question-pill {
-            display: inline-flex;
-            align-items: center;
-            padding: 0.5rem 1rem;
-            margin: 0 0.5rem;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-            font-size: 0.875rem;
-            color: #495057;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            cursor: default;
-          }
-          
-          .question-pill:hover {
-            transform: scale(1.02);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
-          }
-          
-          .question-icon {
-            margin-right: 0.5rem;
-            color: #6c757d;
+            display: inline-block;
+            padding: 0.4rem 0.8rem;
+            margin: 0 0.4rem;
+            border: 1px solid var(--color-text);
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: var(--color-text);
+            background: var(--color-background);
           }
         `}
       </style>
@@ -143,12 +128,11 @@ const QuestionMarquee: React.FC<QuestionMarqueeProps> = ({
             className={`marquee-row ${isReversed ? "marquee-row-right" : "marquee-row-left"}`}
             style={{
               // @ts-expect-error - CSS custom property
-              "--scroll-speed": `${speed + rowIndex * 5}s`,
+              "--scroll-speed": `${speed + rowIndex * 3}s`,
             }}
           >
             {duplicatedQuestions.map((question, qIndex) => (
               <span key={`${rowIndex}-${qIndex}`} className="question-pill">
-                <span className="question-icon">❓</span>
                 {question}
               </span>
             ))}

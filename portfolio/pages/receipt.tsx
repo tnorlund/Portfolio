@@ -9,6 +9,7 @@ import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
   AWSFlowDiagram,
+  CICDLoop,
   DynamoStreamAnimation,
   LabelEvaluatorVisualization,
   LabelValidationTimeline,
@@ -27,7 +28,8 @@ import {
 } from "../components/ui/Figures";
 import {
   ChromaLogo,
-  GoogleMapsLogo
+  GoogleMapsLogo,
+  LangChainLogo
 } from "../components/ui/Logos";
 import QueryLabelTransform from "../components/ui/QueryLabelTransform";
 
@@ -495,18 +497,57 @@ M1LK 2%           1    $4.4g`}</code>
         />
       </ClientOnly>
 
+      <p>
+        The computer came back with the answer:
+      </p>
+
+      <h2>Challenge 4: So now what?</h2>
+
+      <p>
+        Ok... I over-engineered the solution. So what? I actually made
+        something useful.
+      </p>
+
+      <p>
+        I made a tool that can understand a question, search for the
+        information, and return the answer. This is a tool that can be used
+        by anyone to answer questions about their receipts.
+      </p>
+
+      <p>
+        This system is commonly called Retrieval-Augmented Generation (RAG).
+        It's a way to use a large language model to answer questions about a
+        specific dataset.
+      </p>
+
+      <p>
+        Now the fun begins. I can now simulate many questions and monitor the
+        responses through LangChain and LangSmith to optimize the system.
+      </p>
+
+      <ClientOnly>
+        <LangChainLogo />
+      </ClientOnly>
+
       <ClientOnly>
         <WordSimilarity />
       </ClientOnly>
 
       <p>
-        With the ability to search for similar words, I can now simulate many
-        questions and monitor the responses through LangSmith to optimize the
-        system. Here are examples of questions users might ask:
+        LangChain is what asks the questions. LangSmith is how you monitor the
+        answers.
       </p>
 
       <ClientOnly>
         <QuestionMarquee rows={4} speed={25} />
+      </ClientOnly>
+
+      <p>
+        AI is asked all these questions and then I review the answers with AI.
+      </p>
+
+      <ClientOnly>
+        <CICDLoop />
       </ClientOnly>
 
       <div style={{ marginBottom: "2rem", textAlign: "center" }}>
