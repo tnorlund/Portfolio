@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../../../services/api";
 import { AddressBoundingBox, MilkSimilarityResponse, MilkReceiptData, MilkSimilarityTiming } from "../../../types/api";
+import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   detectImageFormatSupport,
   getBestImageUrl,
@@ -129,6 +130,15 @@ const WordSimilarity: React.FC = () => {
   // Track card elements for ResizeObserver
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
+  // Animation state - similar to ReceiptStack
+  const [stackRef, inView] = useOptimizedInView({
+    threshold: 0.1,
+    triggerOnce: true,
+  });
+  const [startAnimation, setStartAnimation] = useState(false);
+  const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
+  const fadeDelay = 25; // ms delay between each card animation
+
   const measureContainer = useCallback(() => {
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
@@ -215,6 +225,14 @@ const WordSimilarity: React.FC = () => {
     fetchData();
   }, []);
 
+  // Start animation when in view and data is loaded
+  useEffect(() => {
+    if (inView && data?.receipts && data.receipts.length > 0 && !startAnimation) {
+      setStartAnimation(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inView, data?.receipts?.length]);
+
   const handleImageLoad = useCallback((receiptKey: string) => (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     if (img.naturalWidth && img.naturalHeight) {
@@ -225,6 +243,8 @@ const WordSimilarity: React.FC = () => {
           height: img.naturalHeight,
         },
       }));
+      // Track loaded images for animation
+      setLoadedImages((prev) => new Set(prev).add(receiptKey));
     }
   }, []);
 
@@ -406,7 +426,13 @@ const WordSimilarity: React.FC = () => {
     >
       {/* Receipt images stack */}
       <div
-        ref={containerRef}
+        ref={(el) => {
+          // Combine refs: stackRef for inView detection, containerRef for measurements
+          if (typeof stackRef === 'function') {
+            stackRef(el);
+          }
+          (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+        }}
         style={{
           position: "relative",
           width: "100%",
@@ -426,7 +452,6 @@ const WordSimilarity: React.FC = () => {
 
           // Get measured dimensions or use estimates
           let cardDims = cardDimensions[receiptKey];
-          const hasMeasuredDimensions = !!cardDims;
           // Responsive card width: 200px on mobile, scales with container on desktop
           const cardWidth = windowWidth <= 768
             ? 200
@@ -459,8 +484,12 @@ const WordSimilarity: React.FC = () => {
 
           const zIndex = displayReceipts.length - index;
 
+          // Check if this image has loaded for animation
+          const imageLoaded = loadedImages.has(receiptKey);
+          const shouldAnimate = startAnimation && imageLoaded;
+
           // Position card centered at (x, y) with rotation
-          // Use translate(-50%, -50%) to center the card at the calculated position
+          // Animation: start off-screen (translateY -50px) and fade in with staggered delay
           return (
             <div
               key={receiptKey}
@@ -478,11 +507,11 @@ const WordSimilarity: React.FC = () => {
                 left: `${x}px`,
                 width: `${cardWidth}px`,
                 zIndex,
-                transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+                transform: `translate(-50%, ${shouldAnimate ? '-50%' : 'calc(-50% - 50px)'}) rotate(${rotation}deg)`,
                 transformOrigin: "center center",
-                // Fade in once we have measured dimensions
-                opacity: hasMeasuredDimensions ? 1 : 0.8,
-                transition: "opacity 0.2s ease-in-out",
+                opacity: shouldAnimate ? 1 : 0,
+                transition: `transform 0.6s ease-out ${startAnimation ? index * fadeDelay : 0}ms, opacity 0.6s ease-out ${startAnimation ? index * fadeDelay : 0}ms`,
+                willChange: "transform, opacity",
               }}
             >
               {receiptComponent}
