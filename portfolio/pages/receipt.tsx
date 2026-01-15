@@ -664,7 +664,8 @@ M1LK 2%           1    $4.4g`}</code>
 
       <p>
         The code is on
-        <a href="https://github.com/tnorlund/Portfolio">GitHub</a>
+        {" "}
+        <a href="https://github.com/tnorlund/Portfolio">GitHub</a>{" "}
         if you want to see how the
         sausage gets made. Or the milk, I guess.
       </p>
