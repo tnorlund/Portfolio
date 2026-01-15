@@ -19,6 +19,15 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import boto3
+
+# Initialize onnxruntime logging before importing chromadb to avoid crash
+# See: https://github.com/microsoft/onnxruntime/issues/11329
+try:
+    import onnxruntime
+    onnxruntime.set_default_logger_severity(3)  # WARNING level
+except ImportError:
+    pass
+
 import chromadb
 
 from receipt_chroma.s3 import download_snapshot_atomic
