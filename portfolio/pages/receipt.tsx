@@ -495,7 +495,7 @@ M1LK 2%           1    $4.4g`}</code>
         <WordSimilarity />
       </ClientOnly>
 
-      <h2>Challenge 4: So now what?</h2>
+      <h2>Challenge 4: So Now What?</h2>
 
       <p>
         Ok, I over-engineered a milk tracker. But here's the thing: now I have
