@@ -25,7 +25,7 @@ Tracing:
 import logging
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import shutil
 import tempfile
@@ -86,6 +86,26 @@ def _get_traceable():
 def _get_label_validation_project() -> str:
     """Get the Langsmith project name for label validation from env var."""
     return os.environ.get("LANGCHAIN_PROJECT", "receipt-label-validation")
+
+
+def _get_phase2_executor_class() -> Type:
+    """Select executor for Phase 2 pipelines.
+
+    Lambda environments frequently fail to start ProcessPoolExecutor due to
+    missing shared memory and sandbox constraints. Prefer threads in Lambda.
+    """
+    is_lambda = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+    if not is_lambda:
+        return ProcessPoolExecutor
+
+    try:
+        from langsmith.utils import ContextThreadPoolExecutor
+
+        return ContextThreadPoolExecutor
+    except ImportError:
+        from concurrent.futures import ThreadPoolExecutor
+
+        return ThreadPoolExecutor
 
 
 def _log(msg: str) -> None:
@@ -664,9 +684,11 @@ class MerchantResolvingEmbeddingProcessor:
             except Exception as e:
                 _log(f"Could not capture LangSmith context: {e}")
 
-            # Run both pipelines in separate PROCESSES for true parallelism
-            with ProcessPoolExecutor(max_workers=2) as executor:
-                _log("Submitting lines and words pipelines to ProcessPoolExecutor")
+            # Run both pipelines in parallel. Use processes outside Lambda, threads in Lambda.
+            executor_class = _get_phase2_executor_class()
+            executor_name = executor_class.__name__
+            with executor_class(max_workers=2) as executor:
+                _log("Submitting lines and words pipelines to %s", executor_name)
 
                 lines_future = executor.submit(
                     _run_lines_pipeline_worker,
