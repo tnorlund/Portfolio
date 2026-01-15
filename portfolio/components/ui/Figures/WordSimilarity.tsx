@@ -265,6 +265,21 @@ const WordSimilarity: React.FC = () => {
     );
   }
 
+  // Check if data has the new format (receipts array)
+  if (!data.receipts || !Array.isArray(data.receipts)) {
+    return (
+      <div
+        style={{
+          padding: "2rem",
+          textAlign: "center",
+          color: "#999",
+        }}
+      >
+        Waiting for cache update. Please trigger the cache generator Lambda.
+      </div>
+    );
+  }
+
   const baseUrl =
     process.env.NODE_ENV === "development"
       ? "https://dev.tylernorlund.com"
