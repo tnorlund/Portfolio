@@ -34,6 +34,11 @@ export interface ImageDetailsApiResponse {
   receipts: Receipt[];
 }
 
+export interface CachedImageDetailsResponse {
+  images: ImageDetailsApiResponse[];
+  cached_at: string;
+}
+
 export interface ImageCountApiResponse {
   count: number;
 }
@@ -218,6 +223,85 @@ export interface AddressSimilarityResponse {
     address_text?: string;
   }>;
   cached_at: string;
+}
+
+export interface WordSimilarityResponse {
+  query_word: string;
+  original: {
+    receipt: Receipt;
+    lines: Line[];
+    words: Word[];
+    labels: ReceiptWordLabel[];
+    target_word: Word | null;
+    bbox?: AddressBoundingBox;
+  };
+  similar: Array<{
+    receipt: Receipt;
+    lines: Line[];
+    words: Word[];
+    labels: ReceiptWordLabel[];
+    target_word: Word;
+    similarity_distance: number;
+    bbox?: AddressBoundingBox;
+  }>;
+  cached_at: string;
+}
+
+// Milk product similarity response (line-based search)
+export interface MilkSummaryRow {
+  merchant: string;
+  product: string;
+  size: string;
+  count: number;
+  avg_price: number | null;
+  total: number | null;
+  receipts: Array<{ image_id: string; receipt_id: number }>;
+}
+
+export interface MilkReceiptData {
+  image_id: string;
+  receipt_id: number;
+  product: string;
+  merchant: string;
+  price: string | null;
+  size: string;
+  line_id: number;
+  receipt: Receipt;
+  lines: Line[];
+  bbox: AddressBoundingBox | null;
+}
+
+export interface MilkSimilarityTiming {
+  s3_download_ms: number;
+  chromadb_init_ms: number;
+  chromadb_fetch_all_ms: number;
+  filter_lines_ms: number;
+  dynamo_fetch_total_ms: number;
+  total_ms: number;
+  parallel_workers: number;
+  dynamo_details?: {
+    avg_ms: number;
+    min_ms: number;
+    max_ms: number;
+    count: number;
+    sequential_ms: number;
+    speedup: number;
+  };
+  visual_line_assembly?: {
+    avg_ms: number;
+    min_ms: number;
+    max_ms: number;
+  };
+}
+
+export interface MilkSimilarityResponse {
+  query_word: string;
+  total_receipts: number;
+  total_items: number;
+  summary_table: MilkSummaryRow[];
+  receipts: MilkReceiptData[];
+  cached_at: string;
+  timing?: MilkSimilarityTiming;
 }
 
 export interface TrainingMetricsEpoch {

@@ -1182,11 +1182,15 @@ def final_merge_all_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                             )
                             total_precompact_embeddings += len(results["ids"])
 
-            # Close the chunk client
-            close_chromadb_client(chunk_client, collection_name="precompact")
+            # Don't close chunk_client here - _system.stop() corrupts global ChromaDB
+            # state and prevents opening the snapshot later. The temp dir will be
+            # deleted with shutil.rmtree anyway.
+            chunk_client = None
 
-        # Close and persist the compacted client
-        close_chromadb_client(compacted_client, collection_name="compacted")
+        # Don't close compacted_client here - same reason. final_merge_handler needs
+        # to open another ChromaDB (the snapshot) in the same Lambda invocation.
+        # The compacted data is persisted to disk and will be read from compacted_temp_dir.
+        compacted_client = None
 
         compact_duration = time.time() - compact_start
         precompact_total = time.time() - precompact_start

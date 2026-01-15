@@ -119,11 +119,10 @@ const PhotoReceiptBoundingBox: React.FC = () => {
   const svgWidth = firstImage ? firstImage.width : defaultSvgWidth;
   const svgHeight = firstImage ? firstImage.height : defaultSvgHeight;
 
-  // Scale the displayed SVG
-  const maxDisplayWidth = 400;
-  const scaleFactor = Math.min(1, maxDisplayWidth / svgWidth);
-  const displayWidth = svgWidth * scaleFactor;
-  const displayHeight = svgHeight * scaleFactor;
+  // Responsive sizing: let the container dictate the rendered size while preserving aspect ratio.
+  // This avoids hard-capping the figure at 400px and makes it scale naturally in a 2-col grid.
+  const maxDisplayWidth = 520;
+  const aspectRatio = svgWidth / svgHeight;
 
   useEffect(() => {
     if (!inView) {
@@ -137,7 +136,7 @@ const PhotoReceiptBoundingBox: React.FC = () => {
         style={{
           display: "flex",
           justifyContent: "center",
-          minHeight: displayHeight,
+          minHeight: 0,
           alignItems: "center",
         }}
       >
@@ -152,14 +151,15 @@ const PhotoReceiptBoundingBox: React.FC = () => {
         style={{
           display: "flex",
           justifyContent: "center",
-          minHeight: displayHeight,
+          minHeight: 0,
           alignItems: "center",
         }}
       >
         <div
           style={{
-            height: displayHeight,
-            width: displayWidth,
+            width: "100%",
+            maxWidth: maxDisplayWidth,
+            aspectRatio: `${aspectRatio}`,
             borderRadius: "15px",
             overflow: "hidden",
           }}
@@ -169,8 +169,8 @@ const PhotoReceiptBoundingBox: React.FC = () => {
               key={resetKey}
               onClick={() => setResetKey((k) => k + 1)}
               viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-              width={displayWidth}
-              height={displayHeight}
+              style={{ width: "100%", height: "100%", display: "block" }}
+              preserveAspectRatio="xMidYMid meet"
             >
               <defs>
                 <style>

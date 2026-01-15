@@ -3,8 +3,12 @@ import pulumi_aws as aws
 
 # Import cache generator routes first (API routes depend on them)
 import routes.address_similarity_cache_generator.infra  # noqa: F401
+import routes.image_details_cache_generator.infra  # noqa: F401
 import routes.layoutlm_inference_cache_generator.infra  # noqa: F401
+import routes.word_similarity_cache_generator.infra  # noqa: F401
 from routes.address_similarity.infra import address_similarity_lambda
+from routes.image_details_cache.infra import image_details_cache_lambda
+from routes.word_similarity.infra import word_similarity_lambda
 from routes.ai_usage.infra import ai_usage_lambda
 from routes.job_training_metrics.infra import job_training_metrics_lambda
 
@@ -335,6 +339,64 @@ lambda_permission_address_similarity = aws.lambda_.Permission(
     "address_similarity_lambda_permission",
     action="lambda:InvokeFunction",
     function=address_similarity_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
+# /word_similarity
+integration_word_similarity = aws.apigatewayv2.Integration(
+    "word_similarity_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=word_similarity_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_word_similarity = aws.apigatewayv2.Route(
+    "word_similarity_route",
+    api_id=api.id,
+    route_key="GET /word_similarity",
+    target=integration_word_similarity.id.apply(
+        lambda id: f"integrations/{id}"
+    ),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_word_similarity = aws.lambda_.Permission(
+    "word_similarity_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=word_similarity_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
+# /image_details_cache
+integration_image_details_cache = aws.apigatewayv2.Integration(
+    "image_details_cache_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=image_details_cache_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_image_details_cache = aws.apigatewayv2.Route(
+    "image_details_cache_route",
+    api_id=api.id,
+    route_key="GET /image_details_cache",
+    target=integration_image_details_cache.id.apply(
+        lambda id: f"integrations/{id}"
+    ),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_image_details_cache = aws.lambda_.Permission(
+    "image_details_cache_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=image_details_cache_lambda.name,
     principal="apigateway.amazonaws.com",
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )

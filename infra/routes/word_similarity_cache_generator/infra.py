@@ -1,10 +1,12 @@
 import json
 import os
-from pathlib import Path
 from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
+
+# Import the ChromaDB bucket name from the shared chromadb_buckets module
+from chromadb_buckets import bucket_name as chromadb_bucket_name
 
 # Import the DynamoDB table name from the dynamo_db module
 from dynamo_db import dynamodb_table
@@ -13,43 +15,38 @@ from dynamo_db import dynamodb_table
 from infra.components.codebuild_docker_image import CodeBuildDockerImage
 from pulumi import ComponentResource, Input, Output, ResourceOptions
 
-# Reference the directory containing index.py
-HANDLER_DIR = os.path.join(os.path.dirname(__file__), "lambdas")
-# Get the route name from the directory name
-ROUTE_NAME = os.path.basename(os.path.dirname(__file__))
 # Get the DynamoDB table name
 DYNAMODB_TABLE_NAME = dynamodb_table.name
 
 # Get stack configuration
 stack = pulumi.get_stack()
+is_production = stack == "prod"
 
 
-class LayoutLMInferenceCacheGenerator(ComponentResource):
-    """Container-based Lambda for generating LayoutLM inference cache."""
+class WordSimilarityCacheGenerator(ComponentResource):
+    """Container-based Lambda for generating word similarity cache from ChromaDB."""
 
     def __init__(
         self,
         name: str,
         *,
-        layoutlm_training_bucket: Input[str],
-        model_s3_uri: Optional[Input[str]] = None,
-        cache_bucket_name: Optional[Input[str]] = None,
+        chromadb_bucket_name: Input[str],
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
-            f"custom:layoutlm-inference-cache:{name}",
+            f"custom:word-similarity-cache:{name}",
             name,
             None,
             opts,
         )
 
-        # Create dedicated S3 bucket for API cache (separate from training bucket)
+        # Create dedicated S3 bucket for API cache (separate from ChromaDB bucket)
         self.cache_bucket = aws.s3.Bucket(
             f"{name}-cache-bucket",
-            force_destroy=True,  # Allow bucket deletion for dev environments
+            force_destroy=not is_production,  # Prevent accidental data loss in prod
             tags={
                 "Name": f"{name}-cache-bucket",
-                "Purpose": "LayoutLMInferenceAPICache",
+                "Purpose": "WordSimilarityAPICache",
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
@@ -94,14 +91,7 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
         )
 
         # Convert Input[str] to Output[str] for proper resolution
-        layoutlm_training_bucket_output = Output.from_input(
-            layoutlm_training_bucket
-        )
-
-        # Convert model_s3_uri to Output if provided
-        model_s3_uri_output = (
-            Output.from_input(model_s3_uri) if model_s3_uri else None
-        )
+        chromadb_bucket_name_output = Output.from_input(chromadb_bucket_name)
 
         # DynamoDB access policy
         self.dynamodb_policy = aws.iam.RolePolicy(
@@ -131,11 +121,11 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Training bucket read policy (for model artifacts)
-        self.training_s3_policy = aws.iam.RolePolicy(
-            f"{name}-training-s3-policy",
+        # ChromaDB bucket read policy
+        self.chromadb_s3_policy = aws.iam.RolePolicy(
+            f"{name}-chromadb-s3-policy",
             role=self.lambda_role.id,
-            policy=layoutlm_training_bucket_output.apply(
+            policy=chromadb_bucket_name_output.apply(
                 lambda bucket: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -187,34 +177,29 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
         )
 
         # Build Docker image using CodeBuild
-        dockerfile_path = "infra/routes/layoutlm_inference_cache_generator/lambdas/Dockerfile"
+        dockerfile_path = "infra/routes/word_similarity_cache_generator/lambdas/Dockerfile"
         build_context_path = "."  # Project root
 
-        # Create Lambda function name first (needed for CodeBuild)
+        # Create Lambda function name
         lambda_function_name = f"{name}-lambda-{stack}"
 
         # Build Docker image using CodeBuild
-        # Include receipt_layoutlm in source_paths since it's not in default packages
         self.docker_image = CodeBuildDockerImage(
             f"{name}-image",
             dockerfile_path=dockerfile_path,
             build_context_path=build_context_path,
-            source_paths=[
-                "receipt_layoutlm"
-            ],  # Include receipt_layoutlm package
+            source_paths=None,
             lambda_function_name=lambda_function_name,
             lambda_config={
                 "role_arn": self.lambda_role.arn,
-                "timeout": 900,  # 15 minutes (model loading + inference can be slow)
-                "memory_size": 3008,  # Maximum for Lambda (PyTorch needs memory)
-                "ephemeral_storage": 10240,  # 10GB for model download
+                "timeout": 300,  # 5 minutes
+                "memory_size": 2048,  # More memory for ChromaDB operations
+                "ephemeral_storage": 10240,  # 10GB for snapshot download
                 "architectures": ["arm64"],
                 "environment": {
                     "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
+                    "CHROMADB_BUCKET": Output.from_input(chromadb_bucket_name),
                     "S3_CACHE_BUCKET": self.cache_bucket.id,
-                    "LAYOUTLM_TRAINING_BUCKET": layoutlm_training_bucket_output,
-                    # MODEL_S3_URI overrides auto-detection of latest model
-                    **({"MODEL_S3_URI": model_s3_uri_output} if model_s3_uri_output else {}),
                 },
             },
             platform="linux/arm64",
@@ -234,11 +219,11 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # EventBridge schedule to run every 2 minutes
+        # EventBridge schedule to run once per day
         self.schedule = aws.cloudwatch.EventRule(
             f"{name}-schedule",
-            description="Trigger LayoutLM inference cache generation every 2 minutes",
-            schedule_expression="rate(2 minutes)",
+            description="Trigger word similarity cache generation once per day",
+            schedule_expression="rate(1 day)",
             opts=ResourceOptions(parent=self),
         )
 
@@ -272,27 +257,25 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
         )
 
 
-def create_layoutlm_inference_cache_generator(
-    layoutlm_training_bucket: Input[str],
-    model_s3_uri: Optional[Input[str]] = None,
+def create_word_similarity_cache_generator(
+    chromadb_bucket_name: Input[str],
     opts: Optional[ResourceOptions] = None,
-) -> LayoutLMInferenceCacheGenerator:
-    """Factory function to create LayoutLM inference cache generator.
-
-    Args:
-        layoutlm_training_bucket: S3 bucket containing trained models
-        model_s3_uri: Optional S3 URI to a specific model. If not provided,
-                      the lambda will auto-select the most recently modified model.
-        opts: Pulumi resource options
-    """
-    return LayoutLMInferenceCacheGenerator(
-        f"layoutlm-inference-cache-generator-{pulumi.get_stack()}",
-        layoutlm_training_bucket=layoutlm_training_bucket,
-        model_s3_uri=model_s3_uri,
+) -> WordSimilarityCacheGenerator:
+    """Factory function to create word similarity cache generator."""
+    return WordSimilarityCacheGenerator(
+        f"word-similarity-cache-generator-{pulumi.get_stack()}",
+        chromadb_bucket_name=chromadb_bucket_name,
         opts=opts,
     )
 
 
-# Module-level variable to hold the cache bucket name
-# This will be set when the cache generator is created in __main__.py
-cache_bucket_name: Optional[Output[str]] = None
+# Create the component instance using bucket name
+cache_generator = create_word_similarity_cache_generator(
+    chromadb_bucket_name=chromadb_bucket_name,
+)
+
+# Export for backward compatibility
+word_similarity_cache_generator_lambda = cache_generator.lambda_function
+
+# Export cache bucket name for use by API Lambda
+cache_bucket_name = cache_generator.cache_bucket.id

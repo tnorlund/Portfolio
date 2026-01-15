@@ -5,10 +5,50 @@
     align-items: center;
     gap: 1rem; /* Space between logos */
   }
-  
+
   /* When the screen width is below 768px, stack them vertically */
   @media (max-width: 768px) {
     .logos-container {
       flex-direction: column; /* Vertical on mobile */
     }
   }
+
+.figureGrid2x2 {
+  display: grid;
+  /* Force a 2x2 grid even on narrow layouts */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 1rem;
+  row-gap: 2rem;
+  margin: 2rem 0;
+  align-items: start;
+}
+
+.figureGridCell {
+  display: flex;
+  justify-content: center;
+  min-width: 0; /* allow children to shrink instead of forcing column expansion */
+}
+
+.figureGridCell > * {
+  max-width: 100%;
+}
+
+.figureGridCell :global(svg),
+.figureGridCell :global(img),
+.figureGridCell :global(canvas) {
+  max-width: 100%;
+}
+
+.codeBlock {
+  /* Use the global `pre` styling (grey background, padding, monospace), but center and size it nicely */
+  width: fit-content;
+  max-width: 100%;
+  margin: 1.25rem auto;
+}
+
+.codeBlock code {
+  /* Avoid double-padding: global `code` has padding intended for inline code. */
+  padding: 0;
+}
+
+/* No explicit breakpoint needed; the auto-fit grid collapses naturally. */

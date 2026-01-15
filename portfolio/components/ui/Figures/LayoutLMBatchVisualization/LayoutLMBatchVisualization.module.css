@@ -32,8 +32,9 @@
   border: 1px solid #ccc;
   background: var(--background-color);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-  transition: top 0.4s ease, left 0.4s ease, opacity 0.4s ease, transform 0.4s ease;
+  /* Transition is set inline to support staggered animation delays */
   overflow: hidden;
+  will-change: transform, opacity;
 }
 
 .queuedReceipt.flyingOut {

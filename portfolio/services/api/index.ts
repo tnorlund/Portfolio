@@ -1,5 +1,6 @@
 import {
   ImageDetailsApiResponse,
+  CachedImageDetailsResponse,
   LabelValidationCountResponse,
   LabelValidationTimelineResponse,
   MerchantCountsResponse,
@@ -8,6 +9,8 @@ import {
   ImagesApiResponse,
   RandomReceiptDetailsResponse,
   AddressSimilarityResponse,
+  WordSimilarityResponse,
+  MilkSimilarityResponse,
   TrainingMetricsResponse,
   LayoutLMBatchInferenceResponse,
   LabelEvaluatorResponse,
@@ -105,6 +108,28 @@ const baseApi = {
     return response.json();
   },
 
+  async fetchCachedImageDetails(
+    imageType?: string
+  ): Promise<CachedImageDetailsResponse> {
+    const params = new URLSearchParams();
+    if (imageType) {
+      params.set("image_type", imageType);
+    }
+
+    const apiUrl = getAPIUrl();
+    const queryString = params.toString();
+    const url = queryString
+      ? `${apiUrl}/image_details_cache?${queryString}`
+      : `${apiUrl}/image_details_cache`;
+    const response = await fetch(url, fetchConfig);
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
   async fetchReceipts(
     limit: number,
     lastEvaluatedKey?: any
@@ -192,6 +217,20 @@ const baseApi = {
     const apiUrl = getAPIUrl();
     const response = await fetch(
       `${apiUrl}/address_similarity`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchWordSimilarity(): Promise<MilkSimilarityResponse> {
+    const apiUrl = getAPIUrl();
+    const response = await fetch(
+      `${apiUrl}/word_similarity`,
       fetchConfig
     );
     if (!response.ok) {

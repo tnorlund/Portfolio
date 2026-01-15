@@ -152,6 +152,8 @@ function BitStream({
 const StreamBitsRoutingDiagram: React.FC<{
     width?: number;
     height?: number;
+    /** Vertical padding (top + bottom) around the diagram container. */
+    paddingY?: number;
     /** If true, includes extra routes beyond the Mac ⇄ SQS ⇄ Lambda example. */
     showExtraRoutes?: boolean;
     /** If true, renders small labels under nodes (off by default; SVG already has logos). */
@@ -168,6 +170,7 @@ const StreamBitsRoutingDiagram: React.FC<{
 }> = ({
     width = 300,
     height = 300,
+    paddingY = 24,
     showExtraRoutes = false,
     showLabels = false,
     debugShowPhaseOrder = false,
@@ -246,7 +249,13 @@ const StreamBitsRoutingDiagram: React.FC<{
         }, [cycleKey, cyclePauseMs, defaultPhaseMs, launchStepMs, phases, staggerMs]);
 
         return (
-            <div style={{ display: "flex", justifyContent: "center" }}>
+            <div
+                style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    padding: `${paddingY}px 0`,
+                }}
+            >
                 <svg
                     width={width}
                     height={height}
@@ -581,54 +590,54 @@ const StreamBitsRoutingDiagram: React.FC<{
 
                                 return (
                                     <>
-                            <text
-                                x={topClient.x}
-                                y={topClient.y - 22}
-                                textAnchor="middle"
-                                {...LABEL_TEXT_PROPS}
-                            >
-                                Client
-                            </text>
-                            <text
-                                x={mac.x}
-                                y={mac.y - 22}
-                                textAnchor="middle"
-                                {...LABEL_TEXT_PROPS}
-                            >
-                                Mac
-                            </text>
-                            <text
-                                x={bottomClient.x}
-                                y={bottomClient.y - 22}
-                                textAnchor="middle"
-                                {...LABEL_TEXT_PROPS}
-                            >
-                                Client
-                            </text>
-                            <text
-                                x={stream.x}
-                                y={stream.y - 26}
-                                textAnchor="middle"
-                                {...LABEL_TEXT_PROPS}
-                            >
-                                Stream
-                            </text>
-                            <text
-                                x={dynamo.x}
-                                y={dynamo.y - 26}
-                                textAnchor="middle"
-                                {...LABEL_TEXT_PROPS}
-                            >
-                                DynamoDB
-                            </text>
-                            <text
-                                x={lambda.x}
-                                y={lambda.y - 26}
-                                textAnchor="middle"
-                                {...LABEL_TEXT_PROPS}
-                            >
-                                Lambda
-                            </text>
+                                        <text
+                                            x={topClient.x}
+                                            y={topClient.y - 22}
+                                            textAnchor="middle"
+                                            {...LABEL_TEXT_PROPS}
+                                        >
+                                            Client
+                                        </text>
+                                        <text
+                                            x={mac.x}
+                                            y={mac.y - 22}
+                                            textAnchor="middle"
+                                            {...LABEL_TEXT_PROPS}
+                                        >
+                                            Mac
+                                        </text>
+                                        <text
+                                            x={bottomClient.x}
+                                            y={bottomClient.y - 22}
+                                            textAnchor="middle"
+                                            {...LABEL_TEXT_PROPS}
+                                        >
+                                            Client
+                                        </text>
+                                        <text
+                                            x={stream.x}
+                                            y={stream.y - 26}
+                                            textAnchor="middle"
+                                            {...LABEL_TEXT_PROPS}
+                                        >
+                                            Stream
+                                        </text>
+                                        <text
+                                            x={dynamo.x}
+                                            y={dynamo.y - 26}
+                                            textAnchor="middle"
+                                            {...LABEL_TEXT_PROPS}
+                                        >
+                                            DynamoDB
+                                        </text>
+                                        <text
+                                            x={lambda.x}
+                                            y={lambda.y - 26}
+                                            textAnchor="middle"
+                                            {...LABEL_TEXT_PROPS}
+                                        >
+                                            Lambda
+                                        </text>
                                     </>
                                 );
                             })()}
