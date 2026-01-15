@@ -24,10 +24,25 @@ export const useImageDetails = (
     let isMounted = true;
     const load = async () => {
       try {
-        const [details, support] = await Promise.all([
-          api.fetchRandomImageDetails(imageType),
-          detectImageFormatSupport(),
-        ]);
+        // Try to fetch from cache first, then do client-side random selection
+        let details: ImageDetailsApiResponse;
+        try {
+          const cached = await api.fetchCachedImageDetails(imageType);
+          if (cached.images && cached.images.length > 0) {
+            // Client-side random selection from cached pool
+            const randomIndex = Math.floor(Math.random() * cached.images.length);
+            details = cached.images[randomIndex];
+          } else {
+            // Cache is empty, fall back to real-time API
+            details = await api.fetchRandomImageDetails(imageType);
+          }
+        } catch (cacheError) {
+          // Cache fetch failed (e.g., 404), fall back to real-time API
+          details = await api.fetchRandomImageDetails(imageType);
+        }
+
+        const support = await detectImageFormatSupport();
+
         if (isMounted) {
           setImageDetails(details);
           setFormatSupport(support);

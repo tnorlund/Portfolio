@@ -1,5 +1,6 @@
 import {
   ImageDetailsApiResponse,
+  CachedImageDetailsResponse,
   LabelValidationCountResponse,
   LabelValidationTimelineResponse,
   MerchantCountsResponse,
@@ -98,6 +99,28 @@ const baseApi = {
     const url = queryString
       ? `${apiUrl}/random_image_details?${queryString}`
       : `${apiUrl}/random_image_details`;
+    const response = await fetch(url, fetchConfig);
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
+
+  async fetchCachedImageDetails(
+    imageType?: string
+  ): Promise<CachedImageDetailsResponse> {
+    const params = new URLSearchParams();
+    if (imageType) {
+      params.set("image_type", imageType);
+    }
+
+    const apiUrl = getAPIUrl();
+    const queryString = params.toString();
+    const url = queryString
+      ? `${apiUrl}/image_details_cache?${queryString}`
+      : `${apiUrl}/image_details_cache`;
     const response = await fetch(url, fetchConfig);
     if (!response.ok) {
       throw new Error(

@@ -34,6 +34,11 @@ export interface ImageDetailsApiResponse {
   receipts: Receipt[];
 }
 
+export interface CachedImageDetailsResponse {
+  images: ImageDetailsApiResponse[];
+  cached_at: string;
+}
+
 export interface ImageCountApiResponse {
   count: number;
 }
