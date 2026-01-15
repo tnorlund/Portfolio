@@ -392,8 +392,8 @@ const WordSimilarity: React.FC = () => {
     );
   };
 
-  // Take first 8 receipts for visual display
-  const displayReceipts = data.receipts.slice(0, 8);
+  // Show all receipts in visual display
+  const displayReceipts = data.receipts;
   const containerHeight = windowWidth <= 768 ? 400 : 600;
 
   return (
@@ -414,7 +414,6 @@ const WordSimilarity: React.FC = () => {
         style={{
           position: "relative",
           width: "100%",
-          maxWidth: "500px",
           height: `${containerHeight}px`,
           margin: "0 auto",
           overflow: "visible",
