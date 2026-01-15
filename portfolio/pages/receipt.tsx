@@ -28,6 +28,8 @@ import {
 } from "../components/ui/Figures";
 import {
   ChromaLogo,
+  ClaudeLogo,
+  CursorLogo,
   GoogleMapsLogo,
   LangChainLogo,
   LangSmithLogo
@@ -554,6 +556,32 @@ M1LK 2%           1    $4.4g`}</code>
       <p>
         Anyway, $XX.XX on milk this year. I might have a problem.
       </p>
+
+      <hr />
+
+      <h2>The Boring Details</h2>
+
+      <p>
+        If you're still here, you might want to know what's actually under the
+        hood. I couldn't have done this without my friends Cursor and Claude.
+      </p>
+
+      <ClientOnly>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: "2rem",
+            flexWrap: "wrap",
+            margin: "2rem 0",
+          }}
+        >
+          <CursorLogo />
+          <ClaudeLogo />
+        </div>
+      </ClientOnly>
 
       <div style={{ marginBottom: "2rem", textAlign: "center" }}>
         <label htmlFor="file-upload" style={{ display: "inline-block" }}>
