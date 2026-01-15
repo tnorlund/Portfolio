@@ -358,17 +358,8 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-
-        Introducing Chroma. Another database to manage... Thankfully, the
-        existing one, DynamoDB, is a good fit for this use case because it
-        has built-in support for change data capture.
-      </p>
-
-
-
-      <p>
-        I embedded the receipts into Chroma so I could retrieve them by
-        similarity.
+        Introducing Chroma. Another database to manage... I embedded the
+        receipts into Chroma so I could retrieve them by similarity.
       </p>
 
       <ClientOnly>
@@ -382,9 +373,6 @@ M1LK 2%           1    $4.4g`}</code>
         from the stores I've alerady seen to confirm the results. If I haven't
         seen the store before, I can use Google to get the information.
       </p>
-
-
-
 
 
       <h3>Defining the Corpus</h3>
@@ -577,8 +565,10 @@ M1LK 2%           1    $4.4g`}</code>
             margin: "2rem 0",
           }}
         >
-          <CursorLogo />
-          <ClaudeLogo />
+          <AnimatedInView>
+            <CursorLogo />
+            <ClaudeLogo />
+          </AnimatedInView>
         </div>
       </ClientOnly>
 
@@ -599,8 +589,10 @@ M1LK 2%           1    $4.4g`}</code>
             margin: "2rem 0",
           }}
         >
-          <GithubLogo />
-          <GithubActionsLogo />
+          <AnimatedInView>
+            <GithubLogo />
+            <GithubActionsLogo />
+          </AnimatedInView>
         </div>
       </ClientOnly>
 
@@ -611,7 +603,9 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <PulumiLogo />
+        <AnimatedInView>
+          <PulumiLogo />
+        </AnimatedInView>
       </ClientOnly>
 
       <p>
@@ -621,7 +615,9 @@ M1LK 2%           1    $4.4g`}</code>
       </p>
 
       <ClientOnly>
-        <DockerLogo />
+        <AnimatedInView>
+          <DockerLogo />
+        </AnimatedInView>
       </ClientOnly>
 
       <ClientOnly>
