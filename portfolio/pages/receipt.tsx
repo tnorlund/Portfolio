@@ -536,7 +536,7 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        LangSmith records what happened:  which questions worked, whcih failed,
+        LangSmith records what happened:  which questions worked, which failed,
         and why. I can use AI to annotate bad answers, use AI to evaluate why
         it went wrong, and plan a new experiment.
       </p>
