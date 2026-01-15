@@ -640,20 +640,20 @@ const TimingBreakdown: React.FC<{
     return `${((ms / timing.total_ms) * 100).toFixed(1)}%`;
   };
 
-  // Build timing steps
+  // Build timing steps using CSS color variables
   const steps: Array<{ name: string; ms: number; color: string }> = [
-    { name: "S3 Download", ms: timing.s3_download_ms, color: "#4CAF50" },
-    { name: "ChromaDB Init", ms: timing.chromadb_init_ms, color: "#2196F3" },
-    { name: "ChromaDB Fetch", ms: timing.chromadb_fetch_all_ms, color: "#03A9F4" },
-    { name: "Filter Lines", ms: timing.filter_lines_ms, color: "#00BCD4" },
-    { name: "DynamoDB Queries", ms: timing.dynamo_fetch_total_ms, color: "#FF9800" },
+    { name: "S3 Download", ms: timing.s3_download_ms, color: "var(--color-green)" },
+    { name: "ChromaDB Init", ms: timing.chromadb_init_ms, color: "var(--color-blue)" },
+    { name: "ChromaDB Fetch", ms: timing.chromadb_fetch_all_ms, color: "var(--color-purple)" },
+    { name: "Filter Lines", ms: timing.filter_lines_ms, color: "var(--color-yellow)" },
+    { name: "DynamoDB Queries", ms: timing.dynamo_fetch_total_ms, color: "var(--color-orange)" },
   ];
 
   // Calculate "other" time (upload, processing, etc.)
   const accountedTime = steps.reduce((sum, step) => sum + step.ms, 0);
   const otherTime = timing.total_ms - accountedTime;
   if (otherTime > 0) {
-    steps.push({ name: "Other", ms: otherTime, color: "#9E9E9E" });
+    steps.push({ name: "Other", ms: otherTime, color: "var(--color-red)" });
   }
 
   return (
@@ -694,7 +694,7 @@ const TimingBreakdown: React.FC<{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#fff",
+                color: "var(--background-color)",
                 fontSize: "0.7rem",
                 fontWeight: 500,
                 whiteSpace: "nowrap",
