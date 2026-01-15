@@ -45,7 +45,10 @@ export { default as CICDLoop } from "./CICDLoop";
 export { default as CroppedAddressImage } from "./CroppedAddressImage";
 export { default as DynamoStreamAnimation } from "./DynamoStreamAnimation";
 export { default as ImageStack } from "./ImageStack";
-export { default as LayoutLMInferenceVisualization } from "./LayoutLMInferenceCarousel";
+export const LayoutLMInferenceVisualization = dynamic(
+  () => import("./LayoutLMBatchVisualization"),
+  { ssr: false }
+);
 export { default as PageCurlLetter } from "./PageCurlLetter";
 export { default as PrecisionRecallDartboard } from "./PrecisionRecallDartboard";
 export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
