@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../../../services/api";
 import { AddressBoundingBox, MilkSimilarityResponse, MilkReceiptData } from "../../../types/api";
 import {
@@ -27,44 +27,78 @@ function getRotatedBoundingBox(width: number, height: number, rotationDeg: numbe
   return { width: rotatedWidth, height: rotatedHeight };
 }
 
-// Generate random transform values with better distribution
-function getRandomTransform(
+interface CardPosition {
+  x: number;
+  y: number;
+  rotation: number;
+}
+
+interface SafeZone {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+// Constraint-based position solver that guarantees cards stay within bounds
+function solveCardPosition(
   seed: number,
   cardWidth: number,
   cardHeight: number,
   containerWidth: number,
   containerHeight: number,
-  topPosition: number
-): { rotation: number; translateX: number; translateY: number } {
+  targetY: number
+): CardPosition {
   const random = seededRandom(seed);
-
   const r1 = random();
   const r2 = random();
   const r3 = random();
 
+  // Calculate rotation first (±15 degrees)
   const rotation = (r1 - 0.5) * 30;
+
+  // Get the bounding box of the rotated card
   const rotatedBounds = getRotatedBoundingBox(cardWidth, cardHeight, rotation);
-  const shadowPadding = 16;
+  const padding = 4; // Minimal padding from edges
 
-  const maxTranslateX = Math.max(0, (containerWidth - rotatedBounds.width) / 2 - shadowPadding);
-  const maxTranslateY = Math.max(0, (containerHeight - rotatedBounds.height) / 2 - shadowPadding);
+  // Calculate safe zone for Y - where the card center can be placed vertically
+  // Use rotated bounds for Y to prevent vertical overflow
+  const safeZoneY = {
+    minY: rotatedBounds.height / 2 + padding,
+    maxY: containerHeight - rotatedBounds.height / 2 - padding,
+  };
 
-  const cardCenterY = topPosition + (cardHeight / 2);
-  const rotatedHalfHeight = rotatedBounds.height / 2;
+  // For X, allow significant horizontal spread for visual variety
+  // Cards positioned via center point, so we need enough range to see the spread
+  // Use 15% of container width as max offset from center (±75px for 500px container)
+  const horizontalSpread = containerWidth * 0.15;
+  const safeZoneX = {
+    minX: containerWidth / 2 - horizontalSpread,
+    maxX: containerWidth / 2 + horizontalSpread,
+  };
 
-  const distanceFromTop = cardCenterY - rotatedHalfHeight;
-  const distanceFromBottom = containerHeight - cardCenterY - rotatedHalfHeight;
+  // If card is too tall, center it vertically
+  if (safeZoneY.minY >= safeZoneY.maxY) {
+    safeZoneY.minY = containerHeight / 2;
+    safeZoneY.maxY = containerHeight / 2;
+  }
 
-  const maxTranslateYUp = Math.max(0, Math.min(30, distanceFromTop - shadowPadding));
-  const maxTranslateYDown = Math.max(0, Math.min(30, distanceFromBottom - shadowPadding));
+  // Clamp target Y to safe zone
+  const clampedY = Math.max(safeZoneY.minY, Math.min(safeZoneY.maxY, targetY));
 
-  const translateX = Math.max(-maxTranslateX, Math.min(maxTranslateX, (r2 - 0.5) * maxTranslateX * 2));
-  const translateY = Math.max(
-    -maxTranslateYUp,
-    Math.min(maxTranslateYDown, (r3 - 0.5) * (maxTranslateYUp + maxTranslateYDown))
-  );
+  // Calculate X position - random within safe zone
+  const xRange = safeZoneX.maxX - safeZoneX.minX;
+  const centerX = containerWidth / 2;
+  // Use full range for horizontal spread
+  const xOffset = (r2 - 0.5) * xRange;
+  const x = centerX + xOffset;
 
-  return { rotation, translateX, translateY };
+  // Add small random Y offset within safe bounds
+  const yRange = safeZoneY.maxY - safeZoneY.minY;
+  const yOffset = (r3 - 0.5) * Math.min(yRange * 0.15, 30);
+  const y = Math.max(safeZoneY.minY, Math.min(safeZoneY.maxY, clampedY + yOffset));
+
+  return { x, y, rotation };
 }
 
 /**
@@ -96,6 +130,9 @@ const WordSimilarity: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number | null>(null);
 
+  // Track card elements for ResizeObserver
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
   const measureContainer = useCallback(() => {
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
@@ -119,6 +156,46 @@ const WordSimilarity: React.FC = () => {
       measureContainer();
     }
   }, [data, containerWidth, measureContainer]);
+
+  // ResizeObserver to measure actual card dimensions
+  useLayoutEffect(() => {
+    const observer = new ResizeObserver((entries) => {
+      const updates: { [key: string]: { width: number; height: number } } = {};
+
+      entries.forEach((entry) => {
+        const key = entry.target.getAttribute("data-receipt-key");
+        if (key) {
+          const { width, height } = entry.contentRect;
+          if (width > 0 && height > 0) {
+            updates[key] = { width, height };
+          }
+        }
+      });
+
+      if (Object.keys(updates).length > 0) {
+        setCardDimensions((prev) => {
+          // Only update if dimensions actually changed
+          const hasChanges = Object.entries(updates).some(
+            ([key, dims]) =>
+              !prev[key] ||
+              prev[key].width !== dims.width ||
+              prev[key].height !== dims.height
+          );
+          if (hasChanges) {
+            return { ...prev, ...updates };
+          }
+          return prev;
+        });
+      }
+    });
+
+    // Observe all card elements
+    cardRefs.current.forEach((el) => {
+      observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [data]);
 
   useEffect(() => {
     detectImageFormatSupport().then(setFormatSupport);
@@ -226,11 +303,7 @@ const WordSimilarity: React.FC = () => {
   };
 
   // Render a single cropped receipt
-  const renderCroppedReceipt = (
-    receiptData: MilkReceiptData,
-    index: number,
-    onDimensionsReady?: (width: number, height: number) => void
-  ) => {
+  const renderCroppedReceipt = (receiptData: MilkReceiptData) => {
     const cropRegion = calculateCropRegion(receiptData.bbox, receiptData.receipt);
     if (!cropRegion) {
       return null;
@@ -264,19 +337,6 @@ const WordSimilarity: React.FC = () => {
 
     return (
       <div
-        ref={(el) => {
-          if (el && onDimensionsReady) {
-            if (!(el as any).__measured) {
-              (el as any).__measured = true;
-              requestAnimationFrame(() => {
-                const rect = el.getBoundingClientRect();
-                if (rect.width > 0 && rect.height > 0) {
-                  onDimensionsReady(rect.width, rect.height);
-                }
-              });
-            }
-          }
-        }}
         style={{
           width: "100%",
           border: "2px solid #ccc",
@@ -350,63 +410,68 @@ const WordSimilarity: React.FC = () => {
           const effectiveContainerWidth = containerWidth ?? 500;
           const totalCards = displayReceipts.length;
 
+          // Target Y position distributed evenly across container height
           const targetCenterY = ((index + 1) / (totalCards + 1)) * containerHeight;
 
           const receiptKey = `${receiptData.receipt.image_id}-${receiptData.receipt.receipt_id}`;
+
+          // Get measured dimensions or use estimates
           let cardDims = cardDimensions[receiptKey];
+          const hasMeasuredDimensions = !!cardDims;
           if (!cardDims) {
+            // Initial estimate for first render
             const cardWidthPercent = 0.85;
             const estimatedWidth = effectiveContainerWidth * cardWidthPercent;
             const estimatedAspectRatio = 3.5;
             cardDims = { width: estimatedWidth, height: estimatedWidth / estimatedAspectRatio };
           }
 
-          const topPosition = targetCenterY - (cardDims.height / 2);
-
-          const receiptComponent = renderCroppedReceipt(
-            receiptData,
-            index,
-            (width, height) => {
-              setCardDimensions(prev => {
-                const existing = prev[receiptKey];
-                if (!existing || existing.width !== width || existing.height !== height) {
-                  return { ...prev, [receiptKey]: { width, height } };
-                }
-                return prev;
-              });
-            }
-          );
+          const receiptComponent = renderCroppedReceipt(receiptData);
 
           if (!receiptComponent) return null;
 
+          // Generate seed for consistent randomness
           const imageIdHash = receiptData.receipt.image_id
             ? receiptData.receipt.image_id.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)
             : 0;
           const seed = (receiptData.receipt.receipt_id * 7919) + (index * 9973) + (imageIdHash * 1013) + 12345;
 
-          const { rotation, translateX, translateY } = getRandomTransform(
+          // Use constraint-based solver to get position that stays in bounds
+          const { x, y, rotation } = solveCardPosition(
             seed,
             cardDims.width,
             cardDims.height,
             effectiveContainerWidth,
             containerHeight,
-            topPosition
+            targetCenterY
           );
 
           const zIndex = displayReceipts.length - index;
-          const baseTransform = `translate(${translateX}px, ${translateY}px) rotate(${rotation}deg)`;
 
+          // Position card centered at (x, y) with rotation
+          // Use translate(-50%, -50%) to center the card at the calculated position
           return (
             <div
               key={receiptKey}
+              ref={(el) => {
+                if (el) {
+                  cardRefs.current.set(receiptKey, el);
+                } else {
+                  cardRefs.current.delete(receiptKey);
+                }
+              }}
+              data-receipt-key={receiptKey}
               style={{
                 position: "absolute",
-                top: `${topPosition}px`,
-                left: "0px",
-                right: "0px",
+                top: `${y}px`,
+                left: `${x}px`,
+                width: "85%",
                 zIndex,
-                transform: baseTransform,
+                transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
                 transformOrigin: "center center",
+                // Fade in once we have measured dimensions
+                opacity: hasMeasuredDimensions ? 1 : 0.8,
+                transition: "opacity 0.2s ease-in-out",
               }}
             >
               {receiptComponent}
