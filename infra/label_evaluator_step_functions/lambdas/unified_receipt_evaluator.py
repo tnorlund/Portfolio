@@ -575,10 +575,11 @@ async def unified_receipt_evaluator(
 
             # Run geometric evaluation concurrently with LLM calls using to_thread
             geometric_graph = create_compute_only_graph()
+            geometric_config = geometric_trace_ctx.get_langchain_config() if geometric_trace_ctx else None
 
             async def run_geometric() -> dict:
                 return await asyncio.to_thread(
-                    run_compute_only_sync, geometric_graph, geometric_state
+                    run_compute_only_sync, geometric_graph, geometric_state, geometric_config
                 )
 
             # Wait for all evaluations concurrently
