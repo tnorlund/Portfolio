@@ -38,9 +38,21 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.language_models import BaseChatModel
+
+if TYPE_CHECKING:
+    from dataclasses import dataclass as dc
+
+    @dc
+    class TraceContext:
+        """Type stub for tracing.TraceContext (defined in Lambda infra)."""
+        run_tree: Optional[Any]
+        headers: Optional[dict]
+        trace_id: Optional[str]
+        root_run_id: Optional[str]
+
 from pydantic import ValidationError
 from receipt_agent.constants import FINANCIAL_MATH_LABELS
 from receipt_agent.prompts.structured_outputs import (
@@ -775,7 +787,7 @@ async def evaluate_financial_math_async(
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
-    trace_ctx: Optional[Any] = None,  # TraceContext for LangSmith tracing
+    trace_ctx: Optional["TraceContext"] = None,
 ) -> list[dict]:
     """
     Async version of evaluate_financial_math.
