@@ -242,6 +242,57 @@ class TraceContext:
             return self.run_tree.to_headers()
         return self.headers
 
+    def get_langchain_config(self) -> Optional[dict]:
+        """Get a LangChain-compatible config dict for passing to LLM invoke calls.
+
+        This config ensures LLM calls are properly nested under this trace context
+        in LangSmith. Pass this to llm.invoke(prompt, config=config) or
+        llm.ainvoke(prompt, config=config).
+
+        Returns:
+            Dict with 'callbacks' key containing LangSmith callback handler,
+            or None if tracing is not available.
+
+        Example:
+            config = trace_ctx.get_langchain_config()
+            if config:
+                response = llm.invoke(prompt, config=config)
+            else:
+                response = llm.invoke(prompt)
+        """
+        if self.run_tree is None:
+            return None
+
+        try:
+            # Get the headers which contain trace context info
+            headers = self.get_child_headers()
+            if not headers:
+                return None
+
+            # LangChain uses 'callbacks' in config to pass trace context
+            # The LangSmithCallbackHandler can be initialized with parent headers
+            from langsmith.run_helpers import get_current_run_tree, tracing_context
+
+            # Return config that will link to this trace via headers
+            # When passed to invoke(), LangChain will use these headers
+            return {
+                "callbacks": [],  # LangSmith auto-traces when LANGCHAIN_TRACING_V2=true
+                "metadata": {
+                    "langsmith_trace_id": self.trace_id,
+                    "langsmith_parent_run_id": (
+                        self.run_tree.id if self.run_tree else None
+                    ),
+                },
+                "run_id": self.run_tree.id if self.run_tree else None,
+                # Pass headers for trace linking
+                "configurable": {
+                    "langsmith_headers": headers,
+                },
+            }
+        except Exception as e:
+            logger.warning("Failed to create LangChain config: %s", e)
+            return None
+
     def set_outputs(self, outputs: dict) -> None:
         """Set the outputs on the current run tree.
 
