@@ -4,8 +4,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from receipt_dynamo.constants import ChromaDBCollection
-
 from receipt_chroma.compaction.deletions import (
     _build_chromadb_id,
     _delete_line_embedding,
@@ -14,6 +12,8 @@ from receipt_chroma.compaction.deletions import (
     apply_receipt_deletions,
 )
 from receipt_chroma.compaction.models import ReceiptDeletionResult
+
+from receipt_dynamo.constants import ChromaDBCollection
 
 
 class MockLogger:

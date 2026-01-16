@@ -4,6 +4,7 @@ import os
 from shutil import rmtree
 
 import pytest
+
 from receipt_dynamo import (
     DynamoClient,
     Image,

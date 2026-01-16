@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Dict, List
 
 import pytest
+
 from receipt_dynamo.entities.receipt_structure_analysis import (
     ContentPattern,
     ReceiptSection,

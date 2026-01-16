@@ -1,7 +1,6 @@
 """Unit tests for word formatting utilities."""
 
 import pytest
-
 from receipt_chroma.embedding.formatting.word_format import (
     format_word_context_embedding_input,
     get_word_neighbors,

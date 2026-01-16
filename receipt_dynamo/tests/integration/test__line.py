@@ -11,6 +11,7 @@ from uuid import uuid4
 import pytest
 from botocore.exceptions import ClientError
 from pytest_mock import MockerFixture
+
 from receipt_dynamo import DynamoClient, Line
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,

@@ -1,7 +1,6 @@
 """Unit tests for normalization utilities."""
 
 import pytest
-
 from receipt_chroma.embedding.utils.normalize import (
     build_full_address_from_lines,
     build_full_address_from_words,

@@ -1,7 +1,6 @@
 """Unit tests for line formatting utilities."""
 
 import pytest
-
 from receipt_chroma.embedding.formatting.line_format import (
     format_line_context_embedding_input,
     get_line_neighbors,

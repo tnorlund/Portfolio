@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 
 import pytest
+
 from receipt_dynamo.constants import (
     MerchantValidationStatus,
     ValidationMethod,

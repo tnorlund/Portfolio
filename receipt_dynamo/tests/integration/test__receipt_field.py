@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Literal, Optional, Type
 
 import pytest
 from botocore.exceptions import ClientError, ParamValidationError
+
 from receipt_dynamo import DynamoClient, ReceiptField
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,

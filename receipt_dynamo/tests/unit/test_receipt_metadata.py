@@ -2,6 +2,7 @@
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo.constants import MerchantValidationStatus
 from receipt_dynamo.entities.receipt_metadata import (
     ReceiptMetadata,

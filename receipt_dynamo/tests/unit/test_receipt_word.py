@@ -1,5 +1,6 @@
 # pylint: disable=redefined-outer-name
 import pytest
+
 from receipt_dynamo import ReceiptWord, item_to_receipt_word
 
 

@@ -11,12 +11,13 @@ import time
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
+from receipt_places.config import PlacesConfig, get_config
+
 from receipt_dynamo import DynamoClient, PlacesCache
 from receipt_dynamo.data.shared_exceptions import (
     OperationError,
     ReceiptDynamoError,
 )
-from receipt_places.config import PlacesConfig, get_config
 
 logger = logging.getLogger(__name__)
 

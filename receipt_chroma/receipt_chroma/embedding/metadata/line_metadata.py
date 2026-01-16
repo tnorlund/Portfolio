@@ -6,13 +6,13 @@ that will be stored in ChromaDB.
 
 from typing import List, Optional, TypedDict
 
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord
-
 from receipt_chroma.embedding.utils.normalize import (
     build_full_address_from_words,
     normalize_phone,
     normalize_url,
 )
+
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
 
 class LineMetadata(TypedDict, total=False):

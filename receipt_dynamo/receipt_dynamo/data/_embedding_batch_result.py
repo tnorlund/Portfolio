@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,

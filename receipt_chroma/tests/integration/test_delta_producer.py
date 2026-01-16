@@ -6,7 +6,6 @@ from pathlib import Path
 import boto3
 import pytest
 from moto import mock_aws
-
 from receipt_chroma.embedding.delta.producer import produce_embedding_delta
 
 

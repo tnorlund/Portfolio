@@ -11,7 +11,6 @@ from typing import Any, Dict, Optional, Tuple
 
 import boto3
 from botocore.exceptions import ClientError
-
 from receipt_chroma import ChromaClient
 from receipt_chroma.s3.helpers import (
     _cleanup_old_snapshot_versions,

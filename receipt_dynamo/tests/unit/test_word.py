@@ -7,6 +7,7 @@
 import math
 
 import pytest
+
 from receipt_dynamo import Word, item_to_word
 
 

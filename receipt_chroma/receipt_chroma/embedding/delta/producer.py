@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import boto3
-
 from receipt_chroma import ChromaClient
 
 logger = logging.getLogger(__name__)

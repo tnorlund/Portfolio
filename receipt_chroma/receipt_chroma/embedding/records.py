@@ -7,8 +7,6 @@ metadata) aligned with the same schema used for persisted snapshots/deltas.
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, cast
 
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
-
 from receipt_chroma.embedding.formatting.line_format import (
     format_line_context_embedding_input,
     parse_prev_next_from_formatted,
@@ -24,6 +22,8 @@ from receipt_chroma.embedding.metadata.word_metadata import (
     enrich_word_metadata_with_anchors,
     enrich_word_metadata_with_labels,
 )
+
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo import OCRRoutingDecision, item_to_ocr_routing_decision
 from receipt_dynamo.constants import OCRStatus
 

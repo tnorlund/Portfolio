@@ -3,13 +3,13 @@
 from unittest.mock import Mock
 
 import pytest
-from receipt_dynamo.constants import ValidationStatus
-
 from receipt_chroma.embedding.metadata.word_metadata import (
     create_word_metadata,
     enrich_word_metadata_with_anchors,
     enrich_word_metadata_with_labels,
 )
+
+from receipt_dynamo.constants import ValidationStatus
 
 
 class MockReceiptWord:
