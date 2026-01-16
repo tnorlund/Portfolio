@@ -565,11 +565,11 @@ def resume_trace(
         return
 
     try:
-        if _tracing_context is not None:
-            with _tracing_context(parent=child_headers):
-                yield ctx
-        else:
-            yield ctx
+        # NOTE: We intentionally do NOT use _tracing_context here.
+        # Using _tracing_context(parent=child_headers) after child_run.post() causes
+        # LangSmith to create duplicate trace entries with the same run_id,
+        # resulting in "dotted_order appears more than once" errors.
+        yield ctx
     finally:
         if child_run is not None:
             try:
@@ -661,17 +661,12 @@ def child_trace(
         return
 
     try:
-        if _tracing_context is not None:
-            logger.info(
-                "[child_trace] Activating tracing_context with parent=headers"
-            )
-            with _tracing_context(parent=child_headers):
-                yield ctx
-        else:
-            logger.warning(
-                "[child_trace] _tracing_context is None - LangGraph/LLM calls may not be nested"
-            )
-            yield ctx
+        # NOTE: We intentionally do NOT use _tracing_context here.
+        # Using _tracing_context(parent=child_headers) after child.post() causes
+        # LangSmith to create duplicate trace entries with the same run_id,
+        # resulting in "dotted_order appears more than once" errors.
+        # Since we've manually created and posted the trace, we just yield the context.
+        yield ctx
     finally:
         if child is not None:
             try:
@@ -750,11 +745,13 @@ def start_child_trace(
             inputs=inputs or {},
             extra={"metadata": metadata or {}},
         )
-        child.post()
+        # NOTE: Do NOT call child.post() here. We'll call it in end_child_trace.
+        # Calling post() followed by patch() causes LangSmith to create duplicate
+        # dotted_order entries, leading to "dotted_order appears more than once" errors.
 
         child_headers = child.to_headers()
         logger.info(
-            "[start_child_trace] Created child id=%s, trace_id=%s",
+            "[start_child_trace] Created child id=%s, trace_id=%s (not posted yet)",
             child.id,
             child.trace_id,
         )
@@ -786,9 +783,13 @@ def end_child_trace(
         if outputs:
             ctx.run_tree.outputs = outputs
         ctx.run_tree.end()
-        ctx.run_tree.patch()
+        # NOTE: We call post() here, NOT patch(). Since start_child_trace does NOT
+        # call post(), the run doesn't exist in LangSmith yet. We post it now with
+        # all the final data (outputs, end_time). This avoids the "dotted_order
+        # appears more than once" error that occurs when calling post() then patch().
+        ctx.run_tree.post()
         logger.info(
-            "[end_child_trace] Child completed and patched (id=%s)",
+            "[end_child_trace] Child completed and posted (id=%s)",
             ctx.run_tree.id,
         )
     except Exception as e:
@@ -1544,11 +1545,11 @@ def receipt_state_trace(
         return
 
     try:
-        if _tracing_context is not None:
-            with _tracing_context(parent=run_tree_headers):
-                yield ctx
-        else:
-            yield ctx
+        # NOTE: We intentionally do NOT use _tracing_context here.
+        # Using _tracing_context(parent=run_tree_headers) after run_tree.post() causes
+        # LangSmith to create duplicate trace entries with the same run_id,
+        # resulting in "dotted_order appears more than once" errors.
+        yield ctx
     finally:
         if run_tree is not None:
             try:
@@ -1731,17 +1732,11 @@ def state_trace(
         return
 
     try:
-        if _tracing_context is not None:
-            logger.info(
-                "[state_trace] Activating tracing_context with parent=headers"
-            )
-            with _tracing_context(parent=run_tree_headers):
-                yield ctx
-        else:
-            logger.warning(
-                "[state_trace] _tracing_context is None - nested calls may not be linked"
-            )
-            yield ctx
+        # NOTE: We intentionally do NOT use _tracing_context here.
+        # Using _tracing_context(parent=run_tree_headers) after run_tree.post() causes
+        # LangSmith to create duplicate trace entries with the same run_id,
+        # resulting in "dotted_order appears more than once" errors.
+        yield ctx
     finally:
         if run_tree is not None:
             try:

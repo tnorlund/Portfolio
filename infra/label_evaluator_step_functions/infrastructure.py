@@ -329,9 +329,12 @@ class LabelEvaluatorStepFunction(ComponentResource):
         UTILS_DIR = os.path.join(CURRENT_DIR, "lambdas", "utils")
 
         # Common environment for tracing
+        # NOTE: LANGCHAIN_TRACING_V2 is set to "false" to disable LangChain's auto-tracing.
+        # We handle tracing manually via create_receipt_trace, child_trace, etc.
+        # Auto-tracing conflicts with manual traces, causing duplicate dotted_order errors.
         tracing_env = {
             "LANGCHAIN_API_KEY": langchain_api_key,
-            "LANGCHAIN_TRACING_V2": "true",
+            "LANGCHAIN_TRACING_V2": "false",
             "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
             "LANGCHAIN_PROJECT": config.get("langchain_project")
             or "label-evaluator",
