@@ -346,7 +346,7 @@ class JobIdentifierMixin:
         return {"PK": {"S": f"JOB#{self.job_id}"}}
 
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - keep logical grouping
     # Receipt hierarchy
     "ImageIdentifierMixin",
     "ReceiptIdentifierMixin",
