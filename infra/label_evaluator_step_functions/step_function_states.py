@@ -55,7 +55,7 @@ class RuntimeConfig:
     max_concurrency: int = 8
     batch_size: int = 10
     phase1_concurrency: int = 25
-    phase2_concurrency: int = 16
+    phase2_concurrency: int = 4
 
 
 def build_retry_config(
