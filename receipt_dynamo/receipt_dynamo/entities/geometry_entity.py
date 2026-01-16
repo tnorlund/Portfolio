@@ -483,7 +483,9 @@ class GeometryEntity(DynamoDBEntity):
         self._update_bounding_box_from_corners()
 
     def rotate_90_ccw_in_place(
-        self, old_width: float, old_height: float
+        self,
+        _old_width: float,  # noqa: ARG002 - kept for API compatibility
+        _old_height: float,  # noqa: ARG002 - kept for API compatibility
     ) -> None:
         """
         Rotate the entity 90 degrees counter-clockwise in place.
@@ -491,9 +493,10 @@ class GeometryEntity(DynamoDBEntity):
         Special transformation for rotating entire pages. The coordinates
         transform as: new_x = old_y, new_y = -(old_x - 1)
 
-        Args:
-            old_width: Width of original image (unused, kept for API compat)
-            old_height: Height of original image (unused, kept for API compat)
+        Note:
+            The width/height parameters are unused in the current normalized
+            coordinate implementation but kept for API compatibility with
+            the original GeometryMixin.
         """
         import math
 
