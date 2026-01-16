@@ -257,9 +257,14 @@ async def unified_receipt_evaluator(
             root_run_id=receipt_trace.root_run_id,
         )
 
-        # 3. Load patterns
-        patterns = None
-        line_item_patterns = None
+        # 3. Setup phase: Load patterns, build visual lines, and setup LLM concurrently
+        # These three operations have no dependencies on each other
+        from receipt_agent.agents.label_evaluator.word_context import (
+            assemble_visual_lines,
+            build_word_contexts,
+        )
+        from receipt_agent.utils import create_production_invoker
+
         merchant_hash = get_merchant_hash(merchant_name)
         patterns_s3_key = event.get("patterns_s3_key") or (
             f"patterns/{execution_id}/{merchant_hash}.json"
@@ -268,31 +273,110 @@ async def unified_receipt_evaluator(
             "line_item_patterns_s3_key"
         ) or (f"line_item_patterns/{merchant_hash}.json")
 
-        with child_trace("load_patterns", trace_ctx):
-            # Load geometric patterns
-            patterns_data = load_json_from_s3(
+        # Create child traces for parallel operations
+        load_patterns_trace_ctx = start_child_trace(
+            "load_patterns",
+            trace_ctx,
+            metadata={"patterns_s3_key": patterns_s3_key},
+        )
+        build_visual_lines_trace_ctx = start_child_trace(
+            "build_visual_lines",
+            trace_ctx,
+            metadata={"word_count": len(words), "label_count": len(labels)},
+        )
+        setup_llm_trace_ctx = start_child_trace(
+            "setup_llm",
+            trace_ctx,
+            metadata={"temperature": 0.0, "timeout": 120},
+        )
+
+        # Define async functions for parallel execution
+        async def load_patterns_async() -> tuple[dict | None, dict | None]:
+            """Load geometric and line item patterns from S3."""
+            patterns_data = await asyncio.to_thread(
+                load_json_from_s3,
                 s3,
                 batch_bucket,
                 patterns_s3_key,
-                logger=logger,
-                allow_missing=True,
+                logger,
+                True,  # allow_missing
             )
-            if patterns_data:
-                patterns = deserialize_patterns(patterns_data)
-
-            # Load line item patterns
-            line_item_patterns_data = load_json_from_s3(
+            line_item_data = await asyncio.to_thread(
+                load_json_from_s3,
                 s3,
                 batch_bucket,
                 line_item_patterns_s3_key,
-                logger=logger,
-                allow_missing=True,
+                logger,
+                True,  # allow_missing
             )
+            return patterns_data, line_item_data
+
+        async def build_visual_lines_async() -> list:
+            """Build visual lines from words and labels."""
+            word_contexts = await asyncio.to_thread(
+                build_word_contexts, words, labels
+            )
+            return await asyncio.to_thread(
+                assemble_visual_lines, word_contexts
+            )
+
+        async def setup_llm_async():
+            """Create the production LLM invoker."""
+            return await asyncio.to_thread(
+                create_production_invoker,
+                temperature=0.0,
+                timeout=120,
+                circuit_breaker_threshold=5,
+                max_jitter_seconds=0.25,
+            )
+
+        # Initialize results
+        patterns = None
+        line_item_patterns = None
+        patterns_data = None
+        line_item_patterns_data = None
+        visual_lines: list = []
+        llm_invoker = None
+
+        try:
+            # Run all three setup operations concurrently
+            (
+                (patterns_data, line_item_patterns_data),
+                visual_lines,
+                llm_invoker,
+            ) = await asyncio.gather(
+                load_patterns_async(),
+                build_visual_lines_async(),
+                setup_llm_async(),
+            )
+
+            # Deserialize patterns after loading
+            if patterns_data:
+                patterns = deserialize_patterns(patterns_data)
             if line_item_patterns_data:
                 if "patterns" in line_item_patterns_data:
                     line_item_patterns = line_item_patterns_data["patterns"]
                 else:
                     line_item_patterns = line_item_patterns_data
+
+            logger.info(
+                "Setup complete: %d visual lines, patterns=%s, line_item_patterns=%s",
+                len(visual_lines),
+                patterns is not None,
+                line_item_patterns is not None,
+            )
+        finally:
+            # End child traces
+            end_child_trace(load_patterns_trace_ctx, outputs={
+                "has_patterns": patterns_data is not None,
+                "has_line_item_patterns": line_item_patterns_data is not None,
+            })
+            end_child_trace(build_visual_lines_trace_ctx, outputs={
+                "visual_line_count": len(visual_lines),
+            })
+            end_child_trace(setup_llm_trace_ctx, outputs={
+                "invoker_ready": llm_invoker is not None,
+            })
 
         # Create historical spans for pattern computation (from batch Phase 1)
         # These show up in the trace as if they happened during this receipt's evaluation
@@ -413,30 +497,7 @@ async def unified_receipt_evaluator(
                     span_err,
                 )
 
-        # 4. Build visual lines (shared across all evaluations)
-        from receipt_agent.agents.label_evaluator.word_context import (
-            assemble_visual_lines,
-            build_word_contexts,
-        )
-
-        with child_trace("build_visual_lines", trace_ctx):
-            word_contexts = build_word_contexts(words, labels)
-            visual_lines = assemble_visual_lines(word_contexts)
-
-            logger.info("Built %s visual lines", len(visual_lines))
-
-        # 5. Create shared LLM invoker (used by all evaluations)
-        with child_trace("setup_llm", trace_ctx):
-            from receipt_agent.utils import create_production_invoker
-
-            llm_invoker = create_production_invoker(
-                temperature=0.0,
-                timeout=120,
-                circuit_breaker_threshold=5,
-                max_jitter_seconds=0.25,
-            )
-
-        # 6. Phase 1: Run currency, metadata, and geometric evaluations concurrently
+        # 4. Phase 1: Run currency, metadata, and geometric evaluations concurrently
         # Each evaluation gets its own child trace for visibility in LangSmith
         from receipt_agent.agents.label_evaluator.currency_subagent import (
             evaluate_currency_labels_async,
