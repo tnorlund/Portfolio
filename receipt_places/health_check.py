@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class HealthCheckResult:
     """Result of a health check."""
+
     status: str  # "healthy", "degraded", "unhealthy"
     message: str
     details: Dict[str, Any]
@@ -215,6 +216,7 @@ class PlacesAPIHealthChecker:
             # Check table exists and is accessible
             # Use public method to get table description
             import boto3
+
             client = boto3.client("dynamodb")
             table_status = client.describe_table(
                 TableName=self.dynamo.table_name
@@ -228,7 +230,9 @@ class PlacesAPIHealthChecker:
                     "table_name": self.dynamo.table_name,
                     "table_status": table_info["TableStatus"],
                     "item_count": table_info.get("ItemCount", 0),
-                    "gsi_count": len(table_info.get("GlobalSecondaryIndexes", [])),
+                    "gsi_count": len(
+                        table_info.get("GlobalSecondaryIndexes", [])
+                    ),
                 },
             )
 

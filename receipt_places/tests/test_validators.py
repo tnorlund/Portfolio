@@ -3,7 +3,6 @@
 # pylint: disable=redefined-outer-name,unused-variable
 
 import pytest
-
 from receipt_places.types import Geometry, LatLng, Place, Viewport
 from receipt_places.validators import (
     DataQualityError,
@@ -14,7 +13,6 @@ from receipt_places.validators import (
     validate_place_expected_fields,
     validate_place_sanity,
 )
-
 
 # === FIXTURES ===
 
@@ -139,9 +137,7 @@ def test_validate_sanity_viewport_invalid_southwest_northeast():
     geom = Geometry(viewport=viewport)
     place = Place(place_id="123", geometry=geom)
 
-    with pytest.raises(
-        DataQualityError, match="viewport southwest latitude"
-    ):
+    with pytest.raises(DataQualityError, match="viewport southwest latitude"):
         validate_place_sanity(place)
 
 
@@ -155,9 +151,7 @@ def test_validate_sanity_viewport_invalid_longitude():
     geom = Geometry(viewport=viewport)
     place = Place(place_id="123", geometry=geom)
 
-    with pytest.raises(
-        DataQualityError, match="viewport southwest longitude"
-    ):
+    with pytest.raises(DataQualityError, match="viewport southwest longitude"):
         validate_place_sanity(place)
 
 

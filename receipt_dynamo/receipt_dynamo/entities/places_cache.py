@@ -54,7 +54,9 @@ class PlacesCache:
         """
         # Validate search_type
         if self.search_type not in ["ADDRESS", "PHONE", "URL"]:
-            raise ValueError(f"search_type must be one of: ADDRESS, PHONE, URL")
+            raise ValueError(
+                f"search_type must be one of: ADDRESS, PHONE, URL"
+            )
 
         # Validate search_value
         if not self.search_value or not isinstance(self.search_value, str):
@@ -72,7 +74,9 @@ class PlacesCache:
         try:
             datetime.fromisoformat(self.last_updated)
         except (ValueError, TypeError) as e:
-            raise ValueError("last_updated must be a valid ISO format timestamp") from e
+            raise ValueError(
+                "last_updated must be a valid ISO format timestamp"
+            ) from e
 
         # Validate query_count
         if not isinstance(self.query_count, int) or self.query_count < 0:
@@ -101,9 +105,9 @@ class PlacesCache:
             # Create a hash of the original OCR text
             import hashlib
 
-            value_hash = hashlib.md5(value.encode(), usedforsecurity=False).hexdigest()[
-                :8
-            ]
+            value_hash = hashlib.md5(
+                value.encode(), usedforsecurity=False
+            ).hexdigest()[:8]
             # Store hash
             self.value_hash = value_hash
 
@@ -265,7 +269,9 @@ def item_to_places_cache(item: Dict[str, Any]) -> "PlacesCache":
             search_value = item["search_value"]["S"]
         else:
             # Fall back to extracting from SK if search_value is missing
-            padded_value = item["SK"]["S"].split("#")[1]  # Get the value after VALUE#
+            padded_value = item["SK"]["S"].split("#")[
+                1
+            ]  # Get the value after VALUE#
             if search_type == "ADDRESS":
                 # Extract the original value after the hash
                 parts = padded_value.split("_")
@@ -325,4 +331,6 @@ def item_to_places_cache(item: Dict[str, Any]) -> "PlacesCache":
             time_to_live=time_to_live,
         )
     except (json.JSONDecodeError, ValueError, KeyError) as e:
-        raise ValueError(f"Error converting item to PlacesCache: {str(e)}") from e
+        raise ValueError(
+            f"Error converting item to PlacesCache: {str(e)}"
+        ) from e

@@ -449,7 +449,10 @@ class TestDeltaMerging:
         # Create compaction message without delta_s3_prefix
         from datetime import datetime
 
-        from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
+        from receipt_dynamo_stream.models import (
+            StreamMessage,
+            StreamRecordContext,
+        )
 
         compaction_msg = StreamMessage(
             entity_type="COMPACTION_RUN",

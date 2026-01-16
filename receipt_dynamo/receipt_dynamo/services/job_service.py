@@ -129,7 +129,9 @@ class JobService(
         """Get jobs by name using GSI2."""
         return super().get_job_by_name(name, limit, last_evaluated_key)
 
-    def check_job_dependencies(self, job_id: str) -> Tuple[bool, List[Dict[str, Any]]]:
+    def check_job_dependencies(
+        self, job_id: str
+    ) -> Tuple[bool, List[Dict[str, Any]]]:
         """Check if all dependencies for a job are satisfied.
 
         This is a convenience method that uses the dependency operations

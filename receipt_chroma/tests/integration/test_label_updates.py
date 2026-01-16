@@ -144,7 +144,9 @@ class TestLabelUpdates:
         # Should have label fields cleared (removed from metadata)
         metadata = embeddings_data["metadatas"][0]
         assert metadata.get("label_status") is None  # Field removed
-        assert metadata.get("label_TOTAL") is None  # Boolean label field removed
+        assert (
+            metadata.get("label_TOTAL") is None
+        )  # Boolean label field removed
         assert "labels_removed_at" in metadata  # Timestamp added
 
         client.close()
@@ -329,7 +331,10 @@ class TestLabelUpdates:
         # Create an invalid label message (missing required fields)
         from datetime import datetime
 
-        from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
+        from receipt_dynamo_stream.models import (
+            StreamMessage,
+            StreamRecordContext,
+        )
 
         invalid_msg = StreamMessage(
             entity_type="RECEIPT_WORD_LABEL",

@@ -170,7 +170,9 @@ class ReceiptMetadata(SerializationMixin):
             elif field == "phone":
                 # Phone must have at least 7 digits (tolerate missing area
                 # code)
-                phone_digits = "".join(c for c in self.phone_number if c.isdigit())
+                phone_digits = "".join(
+                    c for c in self.phone_number if c.isdigit()
+                )
                 if len(phone_digits) >= MIN_PHONE_DIGITS:
                     high_quality_fields.append(field)
             elif field == "address":
@@ -192,7 +194,8 @@ class ReceiptMetadata(SerializationMixin):
                         meaningful_tokens += 1
                     # 3. It's a word with 3+ letters
                     elif (
-                        len(token_clean) >= MIN_ADDRESS_TOKENS and token_clean.isalpha()
+                        len(token_clean) >= MIN_ADDRESS_TOKENS
+                        and token_clean.isalpha()
                     ):
                         meaningful_tokens += 1
                     # 4. It's a short token (likely abbreviation) but not the
@@ -205,7 +208,11 @@ class ReceiptMetadata(SerializationMixin):
                 # components (e.g., "123 Main").
                 if (
                     meaningful_tokens >= 2
-                    or (len(tokens) == 1 and meaningful_tokens >= 1 and not has_number)
+                    or (
+                        len(tokens) == 1
+                        and meaningful_tokens >= 1
+                        and not has_number
+                    )
                     or (has_number and len(tokens) > 1)
                 ):
                     high_quality_fields.append(field)
@@ -242,13 +249,16 @@ class ReceiptMetadata(SerializationMixin):
             if self.canonical_merchant_name
             else self.merchant_name
         )
-        normalized_merchant_name = merchant_name_to_use.upper().replace(" ", "_")
+        normalized_merchant_name = merchant_name_to_use.upper().replace(
+            " ", "_"
+        )
 
         return {
             "GSI1PK": {"S": f"MERCHANT#{normalized_merchant_name}"},
             "GSI1SK": {
                 "S": (
-                    f"IMAGE#{self.image_id}#RECEIPT" f"#{self.receipt_id:05d}#METADATA"
+                    f"IMAGE#{self.image_id}#RECEIPT"
+                    f"#{self.receipt_id:05d}#METADATA"
                 )
             },
         }
@@ -269,7 +279,8 @@ class ReceiptMetadata(SerializationMixin):
             "GSI2PK": {"S": f"PLACE#{self.place_id}"},
             "GSI2SK": {
                 "S": (
-                    f"IMAGE#{self.image_id}#RECEIPT" f"#{self.receipt_id:05d}#METADATA"
+                    f"IMAGE#{self.image_id}#RECEIPT"
+                    f"#{self.receipt_id:05d}#METADATA"
                 )
             },
         }
@@ -442,7 +453,9 @@ def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
         "merchant_name": EntityFactory.extract_string_field(
             "merchant_name", ""
         ),  # Default to empty string if missing/NULL
-        "matched_fields": EntityFactory.extract_string_list_field("matched_fields"),
+        "matched_fields": EntityFactory.extract_string_list_field(
+            "matched_fields"
+        ),
         "timestamp": EntityFactory.extract_datetime_field("timestamp"),
         "merchant_category": EntityFactory.extract_string_field(
             "merchant_category", ""

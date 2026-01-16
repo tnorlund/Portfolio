@@ -64,7 +64,8 @@ def process_collection_updates(
     # - RECEIPT_LINE: delete the specific line embedding
     deletion_entity_types = {"RECEIPT", "RECEIPT_WORD", "RECEIPT_LINE"}
     entity_deletion_msgs = [
-        m for m in stream_messages
+        m
+        for m in stream_messages
         if m.entity_type in deletion_entity_types and m.event_name == "REMOVE"
     ]
 

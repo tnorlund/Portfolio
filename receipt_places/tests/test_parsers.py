@@ -4,7 +4,6 @@
 
 import pytest
 from pydantic import ValidationError
-
 from receipt_places.parsers import (
     APIError,
     ParseError,
@@ -14,8 +13,10 @@ from receipt_places.parsers import (
     parse_place_search_response,
 )
 from receipt_places.types import Geometry, LatLng, Place
-from receipt_places.validators import DataQualityError, MissingExpectedFieldsError
-
+from receipt_places.validators import (
+    DataQualityError,
+    MissingExpectedFieldsError,
+)
 
 # === FIXTURES ===
 
@@ -246,7 +247,9 @@ def test_parse_candidates_response_api_error():
 
 
 @pytest.mark.unit
-def test_parse_candidates_response_with_expected_fields(valid_candidates_response):
+def test_parse_candidates_response_with_expected_fields(
+    valid_candidates_response,
+):
     """Test parsing candidates with expected fields validation."""
     expected = {"place_id", "name"}
     place = parse_place_candidates_response(

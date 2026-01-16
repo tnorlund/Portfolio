@@ -67,7 +67,9 @@ def test_instance_init_datetime():
 @pytest.mark.unit
 def test_instance_init_invalid_id():
     """Test the Instance constructor with invalid instance_id."""
-    with pytest.raises(ValueError, match="instance_id must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="instance_id must be a non-empty string"
+    ):
         Instance(
             instance_id=None,
             instance_type="g4dn.xlarge",
@@ -84,7 +86,9 @@ def test_instance_init_invalid_id():
 @pytest.mark.unit
 def test_instance_init_invalid_instance_type():
     """Test the Instance constructor with invalid instance_type."""
-    with pytest.raises(ValueError, match="instance_type must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="instance_type must be a non-empty string"
+    ):
         Instance(
             instance_id="i-09ee977b7e1673d46",
             instance_type=None,
@@ -101,7 +105,9 @@ def test_instance_init_invalid_instance_type():
 @pytest.mark.unit
 def test_instance_init_invalid_gpu_count():
     """Test the Instance constructor with invalid gpu_count."""
-    with pytest.raises(ValueError, match="gpu_count must be a non-negative integer"):
+    with pytest.raises(
+        ValueError, match="gpu_count must be a non-negative integer"
+    ):
         Instance(
             instance_id="i-09ee977b7e1673d46",
             instance_type="g4dn.xlarge",

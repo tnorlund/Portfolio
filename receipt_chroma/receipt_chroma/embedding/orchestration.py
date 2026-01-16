@@ -24,15 +24,6 @@ from typing import TYPE_CHECKING, Any
 
 import boto3
 from openai import OpenAI
-from receipt_dynamo.constants import CompactionState
-from receipt_dynamo.entities import (
-    CompactionRun,
-    ReceiptLine,
-    ReceiptPlace,
-    ReceiptWord,
-    ReceiptWordLabel,
-)
-
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.formatting.word_format import (
     format_word_context_embedding_input,
@@ -47,8 +38,18 @@ from receipt_chroma.embedding.records import (
 from receipt_chroma.s3.helpers import upload_delta_tarball
 from receipt_chroma.s3.snapshot import download_snapshot_atomic
 
+from receipt_dynamo.constants import CompactionState
+from receipt_dynamo.entities import (
+    CompactionRun,
+    ReceiptLine,
+    ReceiptPlace,
+    ReceiptWord,
+    ReceiptWordLabel,
+)
+
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
+
     from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger(__name__)

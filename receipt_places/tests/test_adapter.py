@@ -6,7 +6,6 @@ while maintaining data integrity and handling edge cases.
 """
 
 import pytest
-
 from receipt_places.adapter import (
     adapt_v1_geometry_to_legacy,
     adapt_v1_location_to_legacy,
@@ -17,17 +16,27 @@ from receipt_places.adapter import (
     adapt_v1_to_legacy,
     adapt_v1_viewport_to_legacy,
 )
-from receipt_places.types import Candidate, Geometry, LatLng, OpeningHours, Place, PlusCode, Viewport
+from receipt_places.types import (
+    Candidate,
+    Geometry,
+    LatLng,
+    OpeningHours,
+    Place,
+    PlusCode,
+    Viewport,
+)
 from receipt_places.types_v1 import (
-    Location,
     LocalizedText,
+    Location,
+)
+from receipt_places.types_v1 import OpeningHours as OpeningHoursV1
+from receipt_places.types_v1 import (
     OpeningHoursPeriod,
     Photo,
     PlaceV1,
-    PlusCode as PlusCodeV1,
-    OpeningHours as OpeningHoursV1,
-    Viewport as ViewportV1,
 )
+from receipt_places.types_v1 import PlusCode as PlusCodeV1
+from receipt_places.types_v1 import Viewport as ViewportV1
 
 
 class TestLocationAdapter:
@@ -285,15 +294,23 @@ class TestFullPlaceAdapterWithMocks:
         assert legacy_place.geometry is not None
         assert legacy_place.geometry.location is not None
         assert legacy_place.geometry.location.latitude == -33.8688
-        assert legacy_place.formatted_address == "48 Pirrama Rd, Pyrmont NSW 2009, Australia"
+        assert (
+            legacy_place.formatted_address
+            == "48 Pirrama Rd, Pyrmont NSW 2009, Australia"
+        )
         assert legacy_place.rating == 4.5
         assert legacy_place.user_ratings_total == 500
         assert legacy_place.formatted_phone_number == "+61 2 8374 4000"
-        assert legacy_place.website == "https://www.google.com/about/locations/sydney/"
+        assert (
+            legacy_place.website
+            == "https://www.google.com/about/locations/sydney/"
+        )
 
     def test_adapt_place_with_minimal_fields(self) -> None:
         """Test conversion of v1 Place with only required fields."""
-        v1_place = PlaceV1(id="ChIJ...", display_name=LocalizedText(text="Test Place"))
+        v1_place = PlaceV1(
+            id="ChIJ...", display_name=LocalizedText(text="Test Place")
+        )
         legacy_place = adapt_v1_to_legacy(v1_place)
 
         assert legacy_place.place_id == "ChIJ..."

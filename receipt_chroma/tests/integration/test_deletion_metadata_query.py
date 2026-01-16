@@ -24,7 +24,9 @@ from tests.helpers.factories import (
 class MockStreamMessage:
     """Mock StreamMessage for deletion testing."""
 
-    def __init__(self, entity_type: str, entity_data: dict, event_name: str = "REMOVE"):
+    def __init__(
+        self, entity_type: str, entity_data: dict, event_name: str = "REMOVE"
+    ):
         self.entity_type = entity_type
         self.entity_data = entity_data
         self.event_name = event_name
@@ -61,9 +63,21 @@ class TestMetadataBasedDeletion:
                 ],
                 embeddings=[[0.1] * 1536, [0.2] * 1536, [0.3] * 1536],
                 metadatas=[
-                    {"text": "Line 1", "image_id": test_image_id, "receipt_id": receipt_id},
-                    {"text": "Line 2", "image_id": test_image_id, "receipt_id": receipt_id},
-                    {"text": "Line 3", "image_id": test_image_id, "receipt_id": receipt_id},
+                    {
+                        "text": "Line 1",
+                        "image_id": test_image_id,
+                        "receipt_id": receipt_id,
+                    },
+                    {
+                        "text": "Line 2",
+                        "image_id": test_image_id,
+                        "receipt_id": receipt_id,
+                    },
+                    {
+                        "text": "Line 3",
+                        "image_id": test_image_id,
+                        "receipt_id": receipt_id,
+                    },
                 ],
             )
 
@@ -74,14 +88,20 @@ class TestMetadataBasedDeletion:
                 ids=[f"IMAGE#{other_image_id}#RECEIPT#00002#LINE#00001"],
                 embeddings=[[0.9] * 1536],
                 metadatas=[
-                    {"text": "Other Line", "image_id": other_image_id, "receipt_id": 2}
+                    {
+                        "text": "Other Line",
+                        "image_id": other_image_id,
+                        "receipt_id": 2,
+                    }
                 ],
             )
 
             collection = client.get_collection("lines")
             logger = create_mock_logger()
             metrics = create_mock_metrics()
-            dynamo_client = MockDynamoClient()  # Returns empty - simulates deleted entities
+            dynamo_client = (
+                MockDynamoClient()
+            )  # Returns empty - simulates deleted entities
 
             # Verify initial state - 4 embeddings total
             all_before = collection.get()
@@ -105,13 +125,18 @@ class TestMetadataBasedDeletion:
             assert result.error is None
 
             # Verify metadata query metric was recorded
-            metric_calls = [call[0][0] for call in metrics.count.call_args_list]
+            metric_calls = [
+                call[0][0] for call in metrics.count.call_args_list
+            ]
             assert "ReceiptDeletionMetadataQuery" in metric_calls
 
             # Verify only target embeddings were deleted
             all_after = collection.get()
             assert len(all_after["ids"]) == 1
-            assert f"IMAGE#{other_image_id}#RECEIPT#00002#LINE#00001" in all_after["ids"]
+            assert (
+                f"IMAGE#{other_image_id}#RECEIPT#00002#LINE#00001"
+                in all_after["ids"]
+            )
 
             # Verify log message about metadata query
             info_calls = [call for call in logger.info.call_args_list]
@@ -139,9 +164,21 @@ class TestMetadataBasedDeletion:
                 ],
                 embeddings=[[0.1] * 1536, [0.2] * 1536, [0.3] * 1536],
                 metadatas=[
-                    {"text": "Word1", "image_id": test_image_id, "receipt_id": receipt_id},
-                    {"text": "Word2", "image_id": test_image_id, "receipt_id": receipt_id},
-                    {"text": "Word3", "image_id": test_image_id, "receipt_id": receipt_id},
+                    {
+                        "text": "Word1",
+                        "image_id": test_image_id,
+                        "receipt_id": receipt_id,
+                    },
+                    {
+                        "text": "Word2",
+                        "image_id": test_image_id,
+                        "receipt_id": receipt_id,
+                    },
+                    {
+                        "text": "Word3",
+                        "image_id": test_image_id,
+                        "receipt_id": receipt_id,
+                    },
                 ],
             )
 
@@ -186,7 +223,11 @@ class TestMetadataBasedDeletion:
                 ids=[f"IMAGE#{other_image_id}#RECEIPT#00099#LINE#00001"],
                 embeddings=[[0.1] * 1536],
                 metadatas=[
-                    {"text": "Other Line", "image_id": other_image_id, "receipt_id": 99}
+                    {
+                        "text": "Other Line",
+                        "image_id": other_image_id,
+                        "receipt_id": 99,
+                    }
                 ],
             )
 
@@ -230,8 +271,16 @@ class TestMetadataBasedDeletion:
                 ],
                 embeddings=[[0.1] * 1536, [0.2] * 1536],
                 metadatas=[
-                    {"text": "Line 1", "image_id": test_image_id, "receipt_id": receipt_id},
-                    {"text": "Line 2", "image_id": test_image_id, "receipt_id": receipt_id},
+                    {
+                        "text": "Line 1",
+                        "image_id": test_image_id,
+                        "receipt_id": receipt_id,
+                    },
+                    {
+                        "text": "Line 2",
+                        "image_id": test_image_id,
+                        "receipt_id": receipt_id,
+                    },
                 ],
             )
 
@@ -291,8 +340,16 @@ class TestMetadataBasedDeletion:
                     ],
                     embeddings=[[0.1] * 1536, [0.2] * 1536],
                     metadatas=[
-                        {"text": "Line 1", "image_id": image_id, "receipt_id": receipt_id},
-                        {"text": "Line 2", "image_id": image_id, "receipt_id": receipt_id},
+                        {
+                            "text": "Line 1",
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                        },
+                        {
+                            "text": "Line 2",
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                        },
                     ],
                 )
 

@@ -63,7 +63,9 @@ class TestSerializeBoundingBox:
         assert "M" in result
         assert len(result["M"]) == 4
         assert all(key in result["M"] for key in ["x", "y", "width", "height"])
-        assert all("N" in result["M"][key] for key in ["x", "y", "width", "height"])
+        assert all(
+            "N" in result["M"][key] for key in ["x", "y", "width", "height"]
+        )
 
         # Verify specific values are correctly formatted
         assert result["M"]["x"]["N"] == "999.99900000000000000000"
@@ -201,7 +203,9 @@ class TestSerializeConfidence:
 
         for confidence, expected_n in test_cases:
             result = serialize_confidence(confidence)
-            assert result == {"N": expected_n}, f"Failed for confidence {confidence}"
+            assert result == {
+                "N": expected_n
+            }, f"Failed for confidence {confidence}"
 
     @pytest.mark.unit
     def test_serialize_confidence_edge_cases(self):
@@ -341,7 +345,9 @@ class TestBuildBaseItem:
     def test_build_base_item_with_multiple_gsi(self):
         """Test build_base_item with multiple GSI keys."""
         entity = self.MockEntity()
-        result = build_base_item(entity, "TEST_ENTITY", ["gsi1_key", "gsi2_key"])
+        result = build_base_item(
+            entity, "TEST_ENTITY", ["gsi1_key", "gsi2_key"]
+        )
 
         expected = {
             "PK": {"S": "TEST#123"},
@@ -373,7 +379,9 @@ class TestBuildBaseItem:
     def test_build_base_item_missing_gsi_method(self):
         """Test build_base_item gracefully handles missing GSI methods."""
         entity = self.MockEntity()
-        result = build_base_item(entity, "TEST_ENTITY", ["gsi1_key", "nonexistent_gsi"])
+        result = build_base_item(
+            entity, "TEST_ENTITY", ["gsi1_key", "nonexistent_gsi"]
+        )
 
         # Should include gsi1_key but skip nonexistent_gsi
         expected = {

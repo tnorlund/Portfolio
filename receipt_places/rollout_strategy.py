@@ -27,15 +27,17 @@ logger = logging.getLogger(__name__)
 
 class RolloutPhase(Enum):
     """Rollout phase enum."""
+
     BASELINE = "baseline"  # 0% v1, feature flag OFF
-    PHASE_1 = "phase_1"    # 10% v1
-    PHASE_2 = "phase_2"    # 50% v1
-    PHASE_3 = "phase_3"    # 100% v1 (complete)
+    PHASE_1 = "phase_1"  # 10% v1
+    PHASE_2 = "phase_2"  # 50% v1
+    PHASE_3 = "phase_3"  # 100% v1 (complete)
 
 
 @dataclass
 class RolloutConfig:
     """Configuration for gradual rollout."""
+
     current_phase: RolloutPhase = RolloutPhase.BASELINE
     v1_traffic_percentage: float = 0.0  # 0-100%
 
@@ -45,9 +47,15 @@ class RolloutConfig:
     min_dual_write_success: float = 0.99  # 99% success rate required
 
     # Critical rollback thresholds
-    critical_error_rate: float = 0.05  # 5% error rate triggers immediate rollback
-    critical_latency_ms: float = 5000  # 5s p99 latency triggers immediate rollback
-    critical_dual_write_success: float = 0.95  # 95% success rate for critical rollback
+    critical_error_rate: float = (
+        0.05  # 5% error rate triggers immediate rollback
+    )
+    critical_latency_ms: float = (
+        5000  # 5s p99 latency triggers immediate rollback
+    )
+    critical_dual_write_success: float = (
+        0.95  # 95% success rate for critical rollback
+    )
 
     # Phase transition requirements
     observations_required: int = 100  # Minimum records before advancing phase
@@ -73,6 +81,7 @@ class RolloutConfig:
 @dataclass
 class HealthMetrics:
     """Health metrics from a rollout phase."""
+
     phase: RolloutPhase
     observations: int  # Number of receipts processed
     error_rate: float
@@ -83,8 +92,7 @@ class HealthMetrics:
     cache_hit_rate: float
 
     def meets_rollout_requirements(
-        self,
-        config: RolloutConfig
+        self, config: RolloutConfig
     ) -> tuple[bool, list[str]]:
         """
         Check if metrics meet rollout requirements.
@@ -156,7 +164,9 @@ class RolloutManager:
 
         # Thread-safe random decision based on configured percentage
         with self._random_lock:
-            return random.random() < (self.config.v1_traffic_percentage / 100.0)
+            return random.random() < (
+                self.config.v1_traffic_percentage / 100.0
+            )
 
     def advance_phase(self, new_phase: RolloutPhase) -> bool:
         """
@@ -168,8 +178,10 @@ class RolloutManager:
         Returns:
             True if advancement successful, False if health checks failed
         """
-        logger.info(f"Attempting to advance from {self.current_phase.value} "
-                   f"to {new_phase.value}")
+        logger.info(
+            f"Attempting to advance from {self.current_phase.value} "
+            f"to {new_phase.value}"
+        )
 
         # Check if we have metrics for current phase
         if self.current_phase not in self.phase_metrics:
@@ -240,7 +252,10 @@ class RolloutManager:
             return True
 
         # Dual-write failure
-        if metrics.dual_write_success_rate < self.config.critical_dual_write_success:
+        if (
+            metrics.dual_write_success_rate
+            < self.config.critical_dual_write_success
+        ):
             logger.error(
                 f"ROLLBACK TRIGGERED: Dual-write success "
                 f"{metrics.dual_write_success_rate:.2%} below "
@@ -275,7 +290,7 @@ class RolloutManager:
                     "dual_write_success": metrics.dual_write_success_rate,
                 }
                 for phase, metrics in self.phase_metrics.items()
-            }
+            },
         }
 
 

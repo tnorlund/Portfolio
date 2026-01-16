@@ -4,11 +4,11 @@ Tests for PlacesClient with mocked HTTP requests and DynamoDB.
 
 import pytest
 import responses
-
 from receipt_places.cache import CacheManager
 from receipt_places.client import PlacesClient
 from receipt_places.config import PlacesConfig
 from receipt_places.types import Place
+
 from tests.conftest import (
     SAMPLE_DETAILS_RESPONSE,
     SAMPLE_FIND_PLACE_RESPONSE,

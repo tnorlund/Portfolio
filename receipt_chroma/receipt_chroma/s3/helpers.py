@@ -8,7 +8,16 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, TypedDict
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    TypedDict,
+)
 
 import boto3
 from boto3.s3.transfer import TransferConfig
@@ -150,7 +159,9 @@ def _download_single_file_with_retry(
             )
 
             # Verify size if expected_size is provided
-            actual_size = local_file.stat().st_size if local_file.exists() else 0
+            actual_size = (
+                local_file.stat().st_size if local_file.exists() else 0
+            )
             if expected_size and actual_size != expected_size:
                 logger.warning(
                     "Size mismatch for %s: expected %d, got %d",
@@ -190,7 +201,11 @@ def _download_single_file_with_retry(
 
                 return (s3_key, expected_size, None)
             except Exception as fallback_error:
-                return (s3_key, 0, f"Fallback download failed: {fallback_error}")
+                return (
+                    s3_key,
+                    0,
+                    f"Fallback download failed: {fallback_error}",
+                )
 
         except ClientError as e:
             last_error = e
@@ -212,7 +227,11 @@ def _download_single_file_with_retry(
                 )
                 time.sleep(wait_time)
             else:
-                return (s3_key, 0, f"ClientError after {MAX_DOWNLOAD_RETRIES} retries: {e}")
+                return (
+                    s3_key,
+                    0,
+                    f"ClientError after {MAX_DOWNLOAD_RETRIES} retries: {e}",
+                )
 
         except Exception as e:
             last_error = e
@@ -227,9 +246,17 @@ def _download_single_file_with_retry(
                 )
                 time.sleep(wait_time)
             else:
-                return (s3_key, 0, f"Error after {MAX_DOWNLOAD_RETRIES} retries: {e}")
+                return (
+                    s3_key,
+                    0,
+                    f"Error after {MAX_DOWNLOAD_RETRIES} retries: {e}",
+                )
 
-    return (s3_key, 0, f"Failed after {MAX_DOWNLOAD_RETRIES} retries: {last_error}")
+    return (
+        s3_key,
+        0,
+        f"Failed after {MAX_DOWNLOAD_RETRIES} retries: {last_error}",
+    )
 
 
 def download_snapshot_from_s3_parallel(
@@ -380,7 +407,9 @@ def download_snapshot_from_s3_parallel(
         # Verify integrity if requested - check that all files exist with expected sizes
         integrity_errors: List[str] = []
         if verify_integrity:
-            logger.info("Verifying integrity of %d downloaded files", file_count)
+            logger.info(
+                "Verifying integrity of %d downloaded files", file_count
+            )
             for s3_key, local_file, expected_size in files_to_download:
                 if not local_file.exists():
                     integrity_errors.append(f"{s3_key}: file missing")
@@ -403,7 +432,9 @@ def download_snapshot_from_s3_parallel(
                     "snapshot_key": snapshot_key,
                     "integrity_errors": integrity_errors,
                 }
-            logger.info("Integrity verification passed for all %d files", file_count)
+            logger.info(
+                "Integrity verification passed for all %d files", file_count
+            )
 
         elapsed = time.time() - start_time
 
@@ -971,9 +1002,13 @@ def upload_snapshot_compressed(
             s3_key = f"{snapshot_key.rstrip('/')}/snapshot.tar.gz"
             extra_args = {"ContentType": "application/gzip"}
             if metadata:
-                extra_args["Metadata"] = {k: str(v) for k, v in metadata.items()}
+                extra_args["Metadata"] = {
+                    k: str(v) for k, v in metadata.items()
+                }
 
-            s3_client.upload_file(tar_path, bucket, s3_key, ExtraArgs=extra_args)
+            s3_client.upload_file(
+                tar_path, bucket, s3_key, ExtraArgs=extra_args
+            )
 
             # Upload hash file
             hash_key = f"{snapshot_key.rstrip('/')}/.snapshot_hash"
@@ -1057,7 +1092,9 @@ def download_snapshot_compressed(
             s3_key = f"{snapshot_key.rstrip('/')}/snapshot.tar.gz"
 
             logger.info("Downloading compressed snapshot: %s", s3_key)
-            s3_client.download_file(bucket, s3_key, tar_path, Config=TRANSFER_CONFIG)
+            s3_client.download_file(
+                bucket, s3_key, tar_path, Config=TRANSFER_CONFIG
+            )
 
             tar_size = os.path.getsize(tar_path)
             download_time = time.time() - start_time
@@ -1065,7 +1102,11 @@ def download_snapshot_compressed(
                 "Downloaded tarball: %d bytes in %.2fs (%.1f MB/s)",
                 tar_size,
                 download_time,
-                (tar_size / 1024 / 1024) / download_time if download_time > 0 else 0,
+                (
+                    (tar_size / 1024 / 1024) / download_time
+                    if download_time > 0
+                    else 0
+                ),
             )
 
             # Extract tarball
@@ -1079,7 +1120,9 @@ def download_snapshot_compressed(
                 for member in tar.getmembers():
                     # Prevent path traversal attacks
                     member_path = os.path.normpath(member.name)
-                    if member_path.startswith("..") or member_path.startswith("/"):
+                    if member_path.startswith("..") or member_path.startswith(
+                        "/"
+                    ):
                         logger.warning(
                             "Skipping potentially unsafe path: %s", member.name
                         )
@@ -1103,7 +1146,11 @@ def download_snapshot_compressed(
                 total_size,
                 extract_time,
                 total_time,
-                (total_size / 1024 / 1024) / total_time if total_time > 0 else 0,
+                (
+                    (total_size / 1024 / 1024) / total_time
+                    if total_time > 0
+                    else 0
+                ),
             )
 
             return {
@@ -1171,7 +1218,9 @@ def download_snapshot_from_s3_auto(
     tarball_key = f"{snapshot_key.rstrip('/')}/snapshot.tar.gz"
     try:
         s3_client.head_object(Bucket=bucket, Key=tarball_key)
-        logger.info("Found compressed snapshot, using fast download: %s", tarball_key)
+        logger.info(
+            "Found compressed snapshot, using fast download: %s", tarball_key
+        )
         return download_snapshot_compressed(
             bucket=bucket,
             snapshot_key=snapshot_key,

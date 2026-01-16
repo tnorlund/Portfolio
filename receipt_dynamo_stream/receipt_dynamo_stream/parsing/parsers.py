@@ -11,20 +11,20 @@ parsers so stream handlers can remain lightweight.
 import logging
 from typing import Callable, Optional
 
-from receipt_dynamo.entities.receipt import item_to_receipt
-from receipt_dynamo.entities.receipt_line import item_to_receipt_line
-from receipt_dynamo.entities.receipt_place import item_to_receipt_place
-from receipt_dynamo.entities.receipt_word import item_to_receipt_word
-from receipt_dynamo.entities.receipt_word_label import (
-    item_to_receipt_word_label,
-)
-
 from receipt_dynamo_stream.models import ParsedStreamRecord, StreamEntity
 from receipt_dynamo_stream.stream_types import (
     DynamoDBItem,
     DynamoDBStreamRecord,
     MetricsRecorder,
     StreamRecordDynamoDB,
+)
+
+from receipt_dynamo.entities.receipt import item_to_receipt
+from receipt_dynamo.entities.receipt_line import item_to_receipt_line
+from receipt_dynamo.entities.receipt_place import item_to_receipt_place
+from receipt_dynamo.entities.receipt_word import item_to_receipt_word
+from receipt_dynamo.entities.receipt_word_label import (
+    item_to_receipt_word_label,
 )
 
 logger = logging.getLogger(__name__)

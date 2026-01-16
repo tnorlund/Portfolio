@@ -110,7 +110,9 @@ class EmbeddingBatchResult:
 
     def gsi3_key(self) -> Dict[str, Any]:
         return {
-            "GSI3PK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
+            "GSI3PK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
             "GSI3SK": {"S": f"BATCH#{self.batch_id}#STATUS#{self.status}"},
         }
 
@@ -125,7 +127,9 @@ class EmbeddingBatchResult:
             "text": {"S": self.text},
             "status": {"S": self.status},
             "error_message": (
-                {"S": self.error_message} if self.error_message else {"NULL": True}
+                {"S": self.error_message}
+                if self.error_message
+                else {"NULL": True}
             ),
         }
 
@@ -213,7 +217,9 @@ def item_to_embedding_batch_result(
             if idxs:
                 idx = idxs[-1]
                 return sk_parts[idx + 1]
-            raise ValueError(f"SK missing expected key '{key}': {item['SK']['S']}")
+            raise ValueError(
+                f"SK missing expected key '{key}': {item['SK']['S']}"
+            )
 
         image_id = item["image_id"]["S"]
 
@@ -242,4 +248,6 @@ def item_to_embedding_batch_result(
             error_message=error_message,
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to EmbeddingBatchResult: {e}") from e
+        raise ValueError(
+            f"Error converting item to EmbeddingBatchResult: {e}"
+        ) from e

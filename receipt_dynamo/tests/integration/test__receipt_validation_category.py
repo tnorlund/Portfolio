@@ -159,7 +159,9 @@ def test_addReceiptValidationCategory_duplicate_raises(
         EntityAlreadyExistsError,
         match="already exists",
     ):
-        client.add_receipt_validation_category(sample_receipt_validation_category)
+        client.add_receipt_validation_category(
+            sample_receipt_validation_category
+        )
 
     # Clean up
     client._client.delete_item(
@@ -212,7 +214,9 @@ def test_addReceiptValidationCategory_client_errors(
         ),
     )
     with pytest.raises(expected_exception, match=error_match):
-        client.add_receipt_validation_category(sample_receipt_validation_category)
+        client.add_receipt_validation_category(
+            sample_receipt_validation_category
+        )
     mock_put.assert_called_once()
 
 
@@ -371,7 +375,9 @@ def test_addReceiptValidationCategories_with_unprocessed_items_retries(
             # First call: return one unprocessed item
             return {
                 "UnprocessedItems": {
-                    dynamodb_table: [{"PutRequest": {"Item": categories[1].to_item()}}]
+                    dynamodb_table: [
+                        {"PutRequest": {"Item": categories[1].to_item()}}
+                    ]
                 }
             }
         else:
@@ -498,7 +504,9 @@ def test_addReceiptValidationCategories_client_errors(
 
     # Execute and Assert
     with pytest.raises(Exception, match=expected_error_message):
-        client.add_receipt_validation_categories([sample_receipt_validation_category])
+        client.add_receipt_validation_categories(
+            [sample_receipt_validation_category]
+        )
 
 
 @pytest.mark.integration
@@ -669,7 +677,9 @@ def test_updateReceiptValidationCategory_client_errors(
 
     # Execute and Assert
     with pytest.raises(Exception, match=expected_error):
-        client.update_receipt_validation_category(sample_receipt_validation_category)
+        client.update_receipt_validation_category(
+            sample_receipt_validation_category
+        )
 
 
 @pytest.mark.integration
@@ -866,7 +876,9 @@ def test_updateReceiptValidationCategories_invalid_inputs(
     """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
-    mock_transact_write = mocker.patch.object(client._client, "transact_write_items")
+    mock_transact_write = mocker.patch.object(
+        client._client, "transact_write_items"
+    )
 
     # Execute and Assert
     with pytest.raises(OperationError, match=expected_error):
@@ -877,7 +889,9 @@ def test_updateReceiptValidationCategories_invalid_inputs(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 def test_updateReceiptValidationCategories_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_category: ReceiptValidationCategory,
@@ -899,7 +913,9 @@ def test_updateReceiptValidationCategories_client_errors(
     """
     # Setup
     client = DynamoClient(table_name=dynamodb_table)
-    mock_transact_write = mocker.patch.object(client._client, "transact_write_items")
+    mock_transact_write = mocker.patch.object(
+        client._client, "transact_write_items"
+    )
 
     mock_transact_write.side_effect = ClientError(
         {
@@ -945,7 +961,9 @@ def test_deleteReceiptValidationCategory_success(
     assert "Item" in response, "Item was not added to the table."
 
     # Execute
-    client.delete_receipt_validation_category(sample_receipt_validation_category)
+    client.delete_receipt_validation_category(
+        sample_receipt_validation_category
+    )
 
     # Verify it was deleted
     response = client._client.get_item(
@@ -1062,7 +1080,9 @@ def test_deleteReceiptValidationCategory_client_errors(
 
     # Execute and Assert
     with pytest.raises(Exception, match=expected_error):
-        client.delete_receipt_validation_category(sample_receipt_validation_category)
+        client.delete_receipt_validation_category(
+            sample_receipt_validation_category
+        )
 
 
 @pytest.mark.integration
@@ -1251,7 +1271,9 @@ def test_listReceiptValidationCategoriesForReceipt_success(
                 "field_category": {"S": "payment"},
                 "status": {"S": "valid"},
                 "reasoning": {"S": "The payment method is valid"},
-                "result_summary": {"M": {"valid": {"N": "2"}, "invalid": {"N": "0"}}},
+                "result_summary": {
+                    "M": {"valid": {"N": "2"}, "invalid": {"N": "0"}}
+                },
                 "validation_timestamp": {"S": "2023-05-15T13:14:15.678Z"},
                 "metadata": {"M": {"confidence": {"N": "0.9"}}},
             },
@@ -1259,9 +1281,11 @@ def test_listReceiptValidationCategoriesForReceipt_success(
     }
 
     # Execute
-    results, last_evaluated_key = client.list_receipt_validation_categories_for_receipt(
-        receipt_id=receipt_id,
-        image_id=image_id,
+    results, last_evaluated_key = (
+        client.list_receipt_validation_categories_for_receipt(
+            receipt_id=receipt_id,
+            image_id=image_id,
+        )
     )
 
     # Verify
@@ -1280,10 +1304,15 @@ def test_listReceiptValidationCategoriesForReceipt_success(
     mock_query.assert_called_once()
     args, kwargs = mock_query.call_args
     assert "TableName" in kwargs, "Should specify table name"
-    assert kwargs["TableName"] == dynamodb_table, "Should use the correct table name"
-    assert "KeyConditionExpression" in kwargs, "Should have key condition expression"
     assert (
-        "PK = :pkVal AND begins_with(SK, :skPrefix)" in kwargs["KeyConditionExpression"]
+        kwargs["TableName"] == dynamodb_table
+    ), "Should use the correct table name"
+    assert (
+        "KeyConditionExpression" in kwargs
+    ), "Should have key condition expression"
+    assert (
+        "PK = :pkVal AND begins_with(SK, :skPrefix)"
+        in kwargs["KeyConditionExpression"]
     ), "Should have correct key condition"
 
 
@@ -1312,7 +1341,9 @@ def test_listReceiptValidationCategoriesForReceipt_with_pagination(
     # Create sample responses with pagination
     last_evaluated_key = {
         "PK": {"S": f"IMAGE#{image_id}"},
-        "SK": {"S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CATEGORY#some-field"},
+        "SK": {
+            "S": f"RECEIPT#{receipt_id}#ANALYSIS#VALIDATION#CATEGORY#some-field"
+        },
     }
     mock_query.side_effect = [
         {
@@ -1362,7 +1393,9 @@ def test_listReceiptValidationCategoriesForReceipt_with_pagination(
     ), "Second result should match mock data"
 
     # Verify the query parameters for pagination
-    assert mock_query.call_count == 2, "Query should be called twice for pagination"
+    assert (
+        mock_query.call_count == 2
+    ), "Query should be called twice for pagination"
     _, second_call_kwargs = mock_query.call_args_list[1]
     assert (
         "ExclusiveStartKey" in second_call_kwargs
@@ -1394,9 +1427,11 @@ def test_listReceiptValidationCategoriesForReceipt_empty_results(
     mock_query.return_value = {"Items": []}
 
     # Execute
-    results, last_evaluated_key = client.list_receipt_validation_categories_for_receipt(
-        receipt_id=receipt_id,
-        image_id=image_id,
+    results, last_evaluated_key = (
+        client.list_receipt_validation_categories_for_receipt(
+            receipt_id=receipt_id,
+            image_id=image_id,
+        )
     )
 
     # Verify
@@ -1459,7 +1494,9 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
     image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
 
     # Execute and Assert
-    with pytest.raises(EntityValidationError, match="limit must be an integer or None"):
+    with pytest.raises(
+        EntityValidationError, match="limit must be an integer or None"
+    ):
         client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id, image_id=image_id, limit="not-an-integer"  # type: ignore[arg-type]
         )

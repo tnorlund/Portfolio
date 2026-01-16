@@ -80,7 +80,9 @@ class CompactionLock(DynamoDBEntity):
             if isinstance(self.heartbeat, datetime):
                 self.heartbeat = self.heartbeat.isoformat()
             elif not isinstance(self.heartbeat, str):
-                raise ValueError("heartbeat must be datetime, ISO-8601 string, or None")
+                raise ValueError(
+                    "heartbeat must be datetime, ISO-8601 string, or None"
+                )
 
     # ───────────────────────── DynamoDB keys ──────────────────────────
     @property
@@ -96,7 +98,9 @@ class CompactionLock(DynamoDBEntity):
         # Enables "list all active locks by collection and expiry"
         # admin queries
         expires_str = (
-            self.expires if isinstance(self.expires, str) else self.expires.isoformat()
+            self.expires
+            if isinstance(self.expires, str)
+            else self.expires.isoformat()
         )
         return {
             "GSI1PK": {"S": f"LOCK#{self.collection.value}"},
@@ -107,7 +111,9 @@ class CompactionLock(DynamoDBEntity):
     def to_item(self) -> Dict[str, Any]:
         # Ensure datetime fields are converted to ISO strings
         expires_str = (
-            self.expires if isinstance(self.expires, str) else self.expires.isoformat()
+            self.expires
+            if isinstance(self.expires, str)
+            else self.expires.isoformat()
         )
         heartbeat_str = None
         if self.heartbeat:
@@ -124,7 +130,9 @@ class CompactionLock(DynamoDBEntity):
             "owner": {"S": self.owner},
             "expires": {"S": expires_str},
             "collection": {"S": self.collection.value},
-            "heartbeat": ({"S": heartbeat_str} if heartbeat_str else {"NULL": True}),
+            "heartbeat": (
+                {"S": heartbeat_str} if heartbeat_str else {"NULL": True}
+            ),
         }
 
     # ───────────────────────── string repr ────────────────────────────

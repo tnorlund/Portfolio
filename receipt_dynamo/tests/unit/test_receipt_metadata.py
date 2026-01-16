@@ -79,7 +79,8 @@ def test_key_and_gsi_keys(example_receipt_metadata):
 
     gsi1 = m.gsi1_key()
     assert (
-        gsi1["GSI1PK"]["S"] == f"MERCHANT#{m.merchant_name.upper().replace(' ', '_')}"
+        gsi1["GSI1PK"]["S"]
+        == f"MERCHANT#{m.merchant_name.upper().replace(' ', '_')}"
     )
     assert "IMAGE#" in gsi1["GSI1SK"]["S"]
     assert "RECEIPT#" in gsi1["GSI1SK"]["S"]
@@ -263,12 +264,17 @@ def test_address_validation_quality():
         # With default thresholds, 2 fields = MATCHED, but only if quality
         # passes
         if should_pass:
-            assert m.validation_status == MerchantValidationStatus.MATCHED.value, (
-                f"{description}: Address '{address}' should have passed " "validation"
+            assert (
+                m.validation_status == MerchantValidationStatus.MATCHED.value
+            ), (
+                f"{description}: Address '{address}' should have passed "
+                "validation"
             )
         else:
             # If address quality fails, it's effectively only 1 field (phone)
-            assert m.validation_status == MerchantValidationStatus.UNSURE.value, (
+            assert (
+                m.validation_status == MerchantValidationStatus.UNSURE.value
+            ), (
                 f"{description}: Address '{address}' should have failed "
                 "quality validation"
             )

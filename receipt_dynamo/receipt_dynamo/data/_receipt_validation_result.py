@@ -97,7 +97,9 @@ class _ReceiptValidationResult(
         )
 
     @handle_dynamodb_errors("add_receipt_validation_results")
-    def add_receipt_validation_results(self, results: List[ReceiptValidationResult]):
+    def add_receipt_validation_results(
+        self, results: List[ReceiptValidationResult]
+    ):
         """Adds multiple ReceiptValidationResults to DynamoDB in batches.
 
         Args:
@@ -111,14 +113,18 @@ class _ReceiptValidationResult(
         self._validate_entity_list(results, ReceiptValidationResult, "results")
 
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=result.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=result.to_item())
+            )
             for result in results
         ]
 
         self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("update_receipt_validation_result")
-    def update_receipt_validation_result(self, result: ReceiptValidationResult):
+    def update_receipt_validation_result(
+        self, result: ReceiptValidationResult
+    ):
         """Updates an existing ReceiptValidationResult in the database.
 
         Args:
@@ -133,11 +139,15 @@ class _ReceiptValidationResult(
         self._validate_entity(result, ReceiptValidationResult, "result")
         self._update_entity(
             result,
-            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("update_receipt_validation_results")
-    def update_receipt_validation_results(self, results: List[ReceiptValidationResult]):
+    def update_receipt_validation_results(
+        self, results: List[ReceiptValidationResult]
+    ):
         """Updates multiple ReceiptValidationResults in the database.
 
         Args:
@@ -151,7 +161,9 @@ class _ReceiptValidationResult(
         self._update_entities(results, ReceiptValidationResult, "results")
 
     @handle_dynamodb_errors("delete_receipt_validation_result")
-    def delete_receipt_validation_result(self, result: ReceiptValidationResult):
+    def delete_receipt_validation_result(
+        self, result: ReceiptValidationResult
+    ):
         """Deletes a single ReceiptValidationResult.
 
         Args:
@@ -167,7 +179,9 @@ class _ReceiptValidationResult(
         self._delete_entity(result)
 
     @handle_dynamodb_errors("delete_receipt_validation_results")
-    def delete_receipt_validation_results(self, results: List[ReceiptValidationResult]):
+    def delete_receipt_validation_results(
+        self, results: List[ReceiptValidationResult]
+    ):
         """Deletes multiple ReceiptValidationResults in batch.
 
         Args:
@@ -181,7 +195,9 @@ class _ReceiptValidationResult(
         self._validate_entity_list(results, ReceiptValidationResult, "results")
 
         request_items = [
-            WriteRequestTypeDef(DeleteRequest=DeleteRequestTypeDef(Key=result.key))
+            WriteRequestTypeDef(
+                DeleteRequest=DeleteRequestTypeDef(Key=result.key)
+            )
             for result in results
         ]
 
@@ -223,7 +239,8 @@ class _ReceiptValidationResult(
 
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                f"receipt_id must be an integer, got " f"{type(receipt_id).__name__}"
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if not isinstance(image_id, str):
             raise EntityValidationError(
@@ -295,7 +312,9 @@ class _ReceiptValidationResult(
             raise EntityValidationError("limit must be an integer or None")
         if limit is not None and limit <= 0:
             raise EntityValidationError("Invalid value for parameter Limit")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None"
             )
@@ -341,7 +360,8 @@ class _ReceiptValidationResult(
             raise EntityValidationError("receipt_id cannot be None")
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                f"receipt_id must be an integer, got " f"{type(receipt_id).__name__}"
+                f"receipt_id must be an integer, got "
+                f"{type(receipt_id).__name__}"
             )
         if image_id is None:
             raise EntityValidationError("image_id cannot be None")
@@ -362,7 +382,9 @@ class _ReceiptValidationResult(
             raise EntityValidationError("limit must be an integer or None")
         if limit is not None and limit <= 0:
             raise EntityValidationError("Invalid value for parameter Limit")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None"
             )
@@ -374,7 +396,9 @@ class _ReceiptValidationResult(
 
         return self._query_entities(
             index_name=None,
-            key_condition_expression=("#pk = :pk AND begins_with(#sk, :sk_prefix)",),
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -425,7 +449,8 @@ class _ReceiptValidationResult(
 
         if not isinstance(result_type, str):
             raise EntityValidationError(
-                f"result_type must be a string, got " f"{type(result_type).__name__}"
+                f"result_type must be a string, got "
+                f"{type(result_type).__name__}"
             )
         if not result_type:
             raise EntityValidationError("result_type must not be empty")
@@ -433,7 +458,9 @@ class _ReceiptValidationResult(
             raise EntityValidationError("limit must be an integer or None")
         if limit is not None and limit <= 0:
             raise EntityValidationError("Invalid value for parameter Limit")
-        if last_evaluated_key is not None and not isinstance(last_evaluated_key, dict):
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None"
             )
@@ -442,7 +469,9 @@ class _ReceiptValidationResult(
             index_name="GSI1",
             key_condition_expression="#gsi1pk = :pk",
             expression_attribute_names={"#gsi1pk": "GSI1PK"},
-            expression_attribute_values={":pk": {"S": f"RESULT_TYPE#{result_type}"}},
+            expression_attribute_values={
+                ":pk": {"S": f"RESULT_TYPE#{result_type}"}
+            },
             converter_func=item_to_receipt_validation_result,
             limit=limit,
             last_evaluated_key=last_evaluated_key,

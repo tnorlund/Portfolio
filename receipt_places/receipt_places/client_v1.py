@@ -17,14 +17,6 @@ import re
 from typing import Any, Optional, cast
 
 import requests  # type: ignore[import-untyped]
-from tenacity import (
-    RetryError,
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
-
 from receipt_places.adapter import adapt_v1_to_legacy
 from receipt_places.cache import CacheManager
 from receipt_places.config import PlacesConfig, get_config
@@ -33,6 +25,13 @@ from receipt_places.types import Place
 from receipt_places.types_v1 import (
     PlaceV1,
     SearchTextResponse,
+)
+from tenacity import (
+    RetryError,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
 )
 
 logger = logging.getLogger(__name__)
@@ -429,7 +428,9 @@ class PlacesClientV1:
     def search_by_address(
         self,
         address: str,
-        receipt_words: Optional[list[Any]] = None,  # pylint: disable=unused-argument
+        receipt_words: Optional[
+            list[Any]
+        ] = None,  # pylint: disable=unused-argument
     ) -> Optional[Place]:
         """
         Search for a place by address.

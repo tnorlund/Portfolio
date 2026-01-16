@@ -9,7 +9,6 @@ import logging
 from typing import Any
 
 from pydantic import ValidationError
-
 from receipt_places.types import (
     LegacyAutocompleteResponse,
     LegacyCandidatesResponse,
