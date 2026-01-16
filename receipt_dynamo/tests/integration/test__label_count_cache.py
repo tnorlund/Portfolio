@@ -20,6 +20,7 @@ from botocore.exceptions import ClientError
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
+    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
     OperationError,
@@ -181,7 +182,7 @@ class TestLabelCountCacheBasicOperations:
             none_count=0,
             last_updated=datetime.now().isoformat(),
         )
-        with pytest.raises(EntityValidationError, match="already exists"):
+        with pytest.raises(EntityAlreadyExistsError, match="already exists"):
             client.add_label_count_cache(duplicate)
 
 
@@ -399,7 +400,7 @@ class TestLabelCountCacheValidation:
 @pytest.mark.parametrize(
     "error_code,expected_exception",
     [
-        ("ConditionalCheckFailedException", EntityValidationError),
+        ("ConditionalCheckFailedException", EntityAlreadyExistsError),
         ("ValidationException", EntityValidationError),
         ("ResourceNotFoundException", OperationError),
         ("ItemCollectionSizeLimitExceededException", DynamoDBError),
