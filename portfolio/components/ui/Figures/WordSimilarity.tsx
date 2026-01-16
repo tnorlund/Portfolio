@@ -765,6 +765,7 @@ const TimingBreakdown: React.FC<{
         borderRadius: "8px",
         fontSize: windowWidth <= 768 ? "0.75rem" : "0.85rem",
         boxSizing: "border-box",
+        marginBottom: "2rem",
       }}
     >
       <div style={{ fontWeight: 600, marginBottom: "0.75rem", color: "var(--text-color)" }}>
