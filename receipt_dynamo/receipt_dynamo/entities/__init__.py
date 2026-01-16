@@ -7,10 +7,8 @@ TODO: Make this import work with intellisense
 # =============================================================================
 # Base classes and mixins for entity consolidation
 # =============================================================================
-from receipt_dynamo.entities.geometry_entity import (  # noqa: F401
-    GeometryEntity,
-)
-from receipt_dynamo.entities.identifier_mixins import (  # noqa: F401
+from receipt_dynamo.entities.geometry_entity import GeometryEntity
+from receipt_dynamo.entities.identifier_mixins import (
     ImageIdentifierMixin,
     ImageLineIdentifierMixin,
     ImageWordIdentifierMixin,
@@ -19,7 +17,7 @@ from receipt_dynamo.entities.identifier_mixins import (  # noqa: F401
     ReceiptIdentifierMixin,
     WordIdentifierMixin,
 )
-from receipt_dynamo.entities.value_objects import (  # noqa: F401
+from receipt_dynamo.entities.value_objects import (
     Angle,
     BoundingBox,
     CDNVariants,
