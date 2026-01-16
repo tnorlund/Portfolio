@@ -6,7 +6,7 @@
 
 # Interface: LabelEvaluatorWord
 
-Defined in: [types/api.ts:448](https://github.com/tnorlund/Portfolio/blob/8683c822121f90447c715fba564f4ce9b61dafa5/portfolio/types/api.ts#L448)
+Defined in: [types/api.ts:448](https://github.com/tnorlund/Portfolio/blob/52c50b1919a7076aad5a3cf246a741996ceff49c/portfolio/types/api.ts#L448)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:448](https://github.com/tnorlund/Portfolio/blob/8683c8
 
 > **bbox**: `object`
 
-Defined in: [types/api.ts:453](https://github.com/tnorlund/Portfolio/blob/8683c822121f90447c715fba564f4ce9b61dafa5/portfolio/types/api.ts#L453)
+Defined in: [types/api.ts:453](https://github.com/tnorlund/Portfolio/blob/52c50b1919a7076aad5a3cf246a741996ceff49c/portfolio/types/api.ts#L453)
 
 #### height
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:453](https://github.com/tnorlund/Portfolio/blob/8683c8
 
 > **label**: `string` \| `null`
 
-Defined in: [types/api.ts:450](https://github.com/tnorlund/Portfolio/blob/8683c822121f90447c715fba564f4ce9b61dafa5/portfolio/types/api.ts#L450)
+Defined in: [types/api.ts:450](https://github.com/tnorlund/Portfolio/blob/52c50b1919a7076aad5a3cf246a741996ceff49c/portfolio/types/api.ts#L450)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:450](https://github.com/tnorlund/Portfolio/blob/8683c8
 
 > **line\_id**: `number`
 
-Defined in: [types/api.ts:451](https://github.com/tnorlund/Portfolio/blob/8683c822121f90447c715fba564f4ce9b61dafa5/portfolio/types/api.ts#L451)
+Defined in: [types/api.ts:451](https://github.com/tnorlund/Portfolio/blob/52c50b1919a7076aad5a3cf246a741996ceff49c/portfolio/types/api.ts#L451)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:451](https://github.com/tnorlund/Portfolio/blob/8683c8
 
 > **text**: `string`
 
-Defined in: [types/api.ts:449](https://github.com/tnorlund/Portfolio/blob/8683c822121f90447c715fba564f4ce9b61dafa5/portfolio/types/api.ts#L449)
+Defined in: [types/api.ts:449](https://github.com/tnorlund/Portfolio/blob/52c50b1919a7076aad5a3cf246a741996ceff49c/portfolio/types/api.ts#L449)
 
 ***
 
@@ -62,4 +62,4 @@ Defined in: [types/api.ts:449](https://github.com/tnorlund/Portfolio/blob/8683c8
 
 > **word\_id**: `number`
 
-Defined in: [types/api.ts:452](https://github.com/tnorlund/Portfolio/blob/8683c822121f90447c715fba564f4ce9b61dafa5/portfolio/types/api.ts#L452)
+Defined in: [types/api.ts:452](https://github.com/tnorlund/Portfolio/blob/52c50b1919a7076aad5a3cf246a741996ceff49c/portfolio/types/api.ts#L452)
