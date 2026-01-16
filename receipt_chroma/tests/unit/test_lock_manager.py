@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
-from receipt_chroma.lock_manager import LockManager
 
+from receipt_chroma.lock_manager import LockManager
 from receipt_dynamo.constants import ChromaDBCollection
 
 

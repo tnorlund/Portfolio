@@ -11,7 +11,6 @@ from receipt_chroma.embedding.utils.normalize import (
     normalize_phone,
     normalize_url,
 )
-
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
 

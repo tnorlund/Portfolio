@@ -71,10 +71,10 @@ jobs:
               ;;
           esac
 
-          # Lint (warnings only until formatting PR is merged)
-          pip install black isort
-          black --check --line-length=79 ${{ matrix.package }} || echo "::warning::Formatting issues found"
-          isort --check-only ${{ matrix.package }} || echo "::warning::Import order issues found"
+          # Lint (uses versions from pyproject.toml [lint] dependency)
+          pip install -e "${{ matrix.package }}[lint]"
+          black --check --line-length=79 ${{ matrix.package }}
+          isort --check-only --profile=black --line-length=79 ${{ matrix.package }}
 
           # Test
           cd ${{ matrix.package }}

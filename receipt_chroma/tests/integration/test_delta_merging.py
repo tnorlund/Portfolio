@@ -54,9 +54,9 @@ import tarfile
 import tempfile
 
 import pytest
+
 from receipt_chroma import ChromaClient
 from receipt_chroma.compaction.deltas import merge_compaction_deltas
-
 from receipt_dynamo.constants import ChromaDBCollection
 from tests.helpers.factories import (
     create_compaction_run_message,

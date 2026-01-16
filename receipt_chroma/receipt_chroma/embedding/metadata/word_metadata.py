@@ -19,7 +19,6 @@ from receipt_chroma.embedding.utils.normalize import (
     normalize_phone,
     normalize_url,
 )
-
 from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 

@@ -8,6 +8,7 @@ without requiring actual ChromaDB operations or file I/O.
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+
 from receipt_chroma import ChromaClient
 
 

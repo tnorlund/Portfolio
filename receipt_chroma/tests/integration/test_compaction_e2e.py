@@ -13,10 +13,10 @@ import tempfile
 from uuid import uuid4
 
 import pytest
+
 from receipt_chroma import ChromaClient
 from receipt_chroma.compaction import process_collection_updates
 from receipt_chroma.storage import StorageManager, StorageMode
-
 from receipt_dynamo.constants import ChromaDBCollection
 from tests.helpers.factories import (
     create_compaction_run_message,

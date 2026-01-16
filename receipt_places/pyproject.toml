@@ -36,15 +36,22 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
+test = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",
+    "pytest-timeout>=2.1.0,<3.0.0",
+    "pytest-mock>=3.14.0,<4.0.0",
+    "pytest-xdist>=3.6.0,<4.0.0",
     "moto[dynamodb]>=5.0.0",
     "responses>=0.25.0",
+]
+lint = [
+    "black==25.12.0",
+    "isort==6.0.1",
+]
+dev = [
     "ruff>=0.5.0",
-    "black>=25.0.0",
-    "isort>=5.13.0",
     "mypy>=1.10.0",
     "pre-commit>=3.7.0",
     "boto3-stubs[dynamodb]>=1.34.0",
@@ -82,7 +89,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["receipt_places", "receipt_dynamo", "receipt_agent", "receipt_chroma"]
+known-first-party = ["receipt_places", "receipt_dynamo"]
 
 [tool.black]
 line-length = 79
@@ -111,6 +118,7 @@ force_grid_wrap = 0
 use_parentheses = true
 ensure_newline_before_comments = true
 line_length = 79
+known_first_party = ["receipt_places", "receipt_dynamo"]
 
 [tool.mypy]
 python_version = "3.12"

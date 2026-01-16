@@ -7,8 +7,8 @@ from typing import Any, Dict, List, Tuple
 
 import boto3
 from botocore.exceptions import ClientError
-from receipt_chroma.data.chroma_client import ChromaClient
 
+from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_dynamo.constants import ChromaDBCollection
 
 

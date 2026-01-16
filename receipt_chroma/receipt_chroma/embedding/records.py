@@ -22,7 +22,6 @@ from receipt_chroma.embedding.metadata.word_metadata import (
     enrich_word_metadata_with_anchors,
     enrich_word_metadata_with_labels,
 )
-
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 

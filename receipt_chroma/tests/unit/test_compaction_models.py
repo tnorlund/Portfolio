@@ -1,12 +1,12 @@
 """Unit tests for compaction models."""
 
 import pytest
+
 from receipt_chroma.compaction.models import (
     CollectionUpdateResult,
     LabelUpdateResult,
     MetadataUpdateResult,
 )
-
 from receipt_dynamo.constants import ChromaDBCollection
 
 

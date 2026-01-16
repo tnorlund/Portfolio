@@ -8,12 +8,12 @@ import tempfile
 from uuid import uuid4
 
 import pytest
+
 from receipt_chroma import ChromaClient
 from receipt_chroma.compaction.deletions import (
     _delete_receipt_embeddings,
     apply_receipt_deletions,
 )
-
 from receipt_dynamo.constants import ChromaDBCollection
 from tests.helpers.factories import (
     create_mock_logger,

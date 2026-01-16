@@ -8,7 +8,6 @@ from receipt_chroma.data.operations import (
     remove_word_labels,
     update_word_labels,
 )
-
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
 

@@ -12,11 +12,11 @@ import boto3
 import pytest
 import responses
 from moto import mock_aws
+
+from receipt_dynamo import DynamoClient
 from receipt_places.cache import CacheManager
 from receipt_places.client import PlacesClient
 from receipt_places.config import PlacesConfig
-
-from receipt_dynamo import DynamoClient
 
 # DynamoDB table schema that matches receipt_dynamo's PlacesCache
 TABLE_SCHEMA = {

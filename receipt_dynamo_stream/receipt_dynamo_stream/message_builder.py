@@ -14,6 +14,11 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Callable, Iterable, Optional
 
+from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_line import ReceiptLine
+from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_word import ReceiptWord
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo_stream.change_detection import (
     get_chromadb_relevant_changes,
 )
@@ -32,12 +37,6 @@ from receipt_dynamo_stream.stream_types import (
     DynamoDBStreamRecord,
     MetricsRecorder,
 )
-
-from receipt_dynamo.entities.receipt import Receipt
-from receipt_dynamo.entities.receipt_line import ReceiptLine
-from receipt_dynamo.entities.receipt_place import ReceiptPlace
-from receipt_dynamo.entities.receipt_word import ReceiptWord
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 

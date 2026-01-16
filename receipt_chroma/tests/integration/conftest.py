@@ -39,8 +39,8 @@ import tempfile
 import boto3
 import pytest
 from moto import mock_aws
-from receipt_chroma import ChromaClient
 
+from receipt_chroma import ChromaClient
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ChromaDBCollection
 

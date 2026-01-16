@@ -8,7 +8,6 @@ from receipt_chroma.data.operations import (
     remove_receipt_place,
     update_receipt_place,
 )
-
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
 

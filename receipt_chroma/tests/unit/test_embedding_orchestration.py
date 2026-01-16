@@ -10,12 +10,12 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from receipt_chroma.embedding.orchestration import (
     EmbeddingConfig,
     EmbeddingResult,
     create_embeddings_and_compaction_run,
 )
-
 from receipt_dynamo.constants import CompactionState
 
 

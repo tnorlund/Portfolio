@@ -4,7 +4,6 @@ from typing import Any, List, Optional
 
 from receipt_chroma.compaction.models import ReceiptDeletionResult
 from receipt_chroma.data.chroma_client import ChromaClient
-
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
 

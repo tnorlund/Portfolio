@@ -5,6 +5,7 @@ import shutil
 import tempfile
 
 import pytest
+
 from receipt_chroma import ChromaClient
 from receipt_chroma.storage import StorageManager, StorageMode
 

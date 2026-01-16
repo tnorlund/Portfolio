@@ -6,6 +6,7 @@ import os
 from unittest.mock import patch
 
 import pytest
+
 from receipt_places.config import PlacesConfig, get_config
 
 

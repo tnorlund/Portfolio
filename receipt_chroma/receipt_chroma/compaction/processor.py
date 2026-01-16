@@ -9,7 +9,6 @@ from receipt_chroma.compaction.labels import apply_label_updates
 from receipt_chroma.compaction.metadata import apply_place_updates
 from receipt_chroma.compaction.models import CollectionUpdateResult
 from receipt_chroma.data.chroma_client import ChromaClient
-
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
 

@@ -6,8 +6,8 @@ from typing import Literal
 from uuid import uuid4
 
 import pytest
-from receipt_chroma.lock_manager import LockManager
 
+from receipt_chroma.lock_manager import LockManager
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.entities.compaction_lock import CompactionLock

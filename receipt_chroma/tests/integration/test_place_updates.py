@@ -4,9 +4,9 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+
 from receipt_chroma import ChromaClient
 from receipt_chroma.compaction.metadata import apply_place_updates
-
 from receipt_dynamo.constants import ChromaDBCollection
 from tests.helpers.factories import (
     create_mock_logger,
