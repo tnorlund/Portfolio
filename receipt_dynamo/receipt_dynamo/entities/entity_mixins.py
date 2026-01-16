@@ -342,93 +342,6 @@ class SerializationMixin:
 
 
 # =============================================================================
-# Base Entity Validation
-# =============================================================================
-
-
-class BaseEntityMixin:
-    """
-    Base mixin providing common entity functionality.
-
-    This mixin provides:
-    - Generic field validation based on type hints
-    - Standardized __repr__ implementation
-    - Common DynamoDB conversion helpers
-    """
-
-    def validate_string_fields(self, *field_names: str) -> None:
-        """
-        Validate that specified fields are strings if not None.
-
-        Args:
-            *field_names: Names of fields to validate
-
-        Raises:
-            ValueError: If any field is not a string
-        """
-        for field_name in field_names:
-            value = getattr(self, field_name, None)
-            if value is not None and not isinstance(value, str):
-                raise ValueError(f"{field_name} must be a string")
-
-    def validate_int_fields(self, *field_names: str) -> None:
-        """
-        Validate that specified fields are integers if not None.
-
-        Args:
-            *field_names: Names of fields to validate
-
-        Raises:
-            ValueError: If any field is not an integer
-        """
-        for field_name in field_names:
-            value = getattr(self, field_name, None)
-            if value is not None and not isinstance(value, int):
-                raise ValueError(f"{field_name} must be an integer")
-
-    def validate_datetime_fields(self, *field_names: str) -> None:
-        """
-        Validate that specified fields are datetime objects if not None.
-
-        Args:
-            *field_names: Names of fields to validate
-
-        Raises:
-            ValueError: If any field is not a datetime
-        """
-        for field_name in field_names:
-            value = getattr(self, field_name, None)
-            if value is not None and not isinstance(value, datetime):
-                raise ValueError(f"{field_name} must be a datetime object")
-
-    def generate_repr(self, exclude_fields: Optional[Set[str]] = None) -> str:
-        """
-        Generate a standardized __repr__ string for the entity.
-
-        Args:
-            exclude_fields: Set of field names to exclude from repr
-
-        Returns:
-            A formatted repr string
-        """
-        class_name = self.__class__.__name__
-        exclude_fields = exclude_fields or set()
-
-        # Get all attributes that don't start with underscore
-        fields = []
-        for attr_name in sorted(dir(self)):
-            if (
-                not attr_name.startswith("_")
-                and not callable(getattr(self, attr_name))
-                and attr_name not in exclude_fields
-            ):
-                value = getattr(self, attr_name)
-                fields.append(f"{attr_name}={_repr_str(value)}")
-
-        return f"{class_name}({', '.join(fields)})"
-
-
-# =============================================================================
 # CDN Fields
 # =============================================================================
 
@@ -1544,7 +1457,6 @@ __all__ = [
     "HasGeometryAttributes",
     # Core mixins
     "SerializationMixin",
-    "BaseEntityMixin",
     "CDNFieldsMixin",
     # Geometry mixins
     "GeometryMixin",
