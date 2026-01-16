@@ -437,6 +437,10 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
 }) => {
   const { words, width, height } = receipt;
 
+  // Create unique filter ID for this receipt to avoid SVG filter ID collisions
+  // when multiple receipts are rendered simultaneously (e.g., during mobile transitions)
+  const filterId = `scanLineGlow_${receipt.image_id}_${receipt.receipt_id}`;
+
   // Get the best image URL based on format support
   // Use full-size image so dimensions match receipt.width/height
   const imageUrl = useMemo(() => {
@@ -474,10 +478,10 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
             viewBox={`0 0 ${width} ${height}`}
             preserveAspectRatio="none"
           >
-            {/* Gradient definitions for scan lines */}
+            {/* Gradient definitions for scan lines - unique ID per receipt */}
             <defs>
               {/* Glow filter */}
-              <filter id="scanLineGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <filter id={filterId} x="-50%" y="-50%" width="200%" height="200%">
                 <feGaussianBlur stdDeviation="3" result="blur" />
                 <feMerge>
                   <feMergeNode in="blur" />
@@ -583,7 +587,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                 width={width}
                 height={Math.max(height * 0.006, 3)}
                 fill={SCANNER_COLORS.lineItem}
-                filter="url(#scanLineGlow)"
+                filter={`url(#${filterId})`}
               />
             )}
 
@@ -595,7 +599,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                 width={width}
                 height={Math.max(height * 0.006, 3)}
                 fill={SCANNER_COLORS.metadata}
-                filter="url(#scanLineGlow)"
+                filter={`url(#${filterId})`}
               />
             )}
 
@@ -607,7 +611,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                 width={width}
                 height={Math.max(height * 0.006, 3)}
                 fill={SCANNER_COLORS.geometric}
-                filter="url(#scanLineGlow)"
+                filter={`url(#${filterId})`}
               />
             )}
 
@@ -619,7 +623,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                 width={width}
                 height={Math.max(height * 0.006, 3)}
                 fill={SCANNER_COLORS.financial}
-                filter="url(#scanLineGlow)"
+                filter={`url(#${filterId})`}
               />
             )}
 
@@ -631,7 +635,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                 width={width}
                 height={Math.max(height * 0.006, 3)}
                 fill={SCANNER_COLORS.currency}
-                filter="url(#scanLineGlow)"
+                filter={`url(#${filterId})`}
               />
             )}
 
@@ -643,7 +647,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({
                 width={width}
                 height={Math.max(height * 0.006, 3)}
                 fill={SCANNER_COLORS.review}
-                filter="url(#scanLineGlow)"
+                filter={`url(#${filterId})`}
               />
             )}
           </svg>
