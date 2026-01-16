@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 import pytest
+
 from receipt_dynamo import (
     ReceiptChatGPTValidation,
     item_to_receipt_chat_gpt_validation,

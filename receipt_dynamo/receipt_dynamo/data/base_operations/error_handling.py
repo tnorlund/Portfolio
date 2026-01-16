@@ -10,6 +10,7 @@ import time
 from typing import Any, Dict, Optional
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,

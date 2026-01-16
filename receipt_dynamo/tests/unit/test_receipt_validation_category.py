@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 import pytest
+
 from receipt_dynamo import (
     ReceiptValidationCategory,
     item_to_receipt_validation_category,

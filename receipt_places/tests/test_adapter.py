@@ -6,6 +6,7 @@ while maintaining data integrity and handling edge cases.
 """
 
 import pytest
+
 from receipt_places.adapter import (
     adapt_v1_geometry_to_legacy,
     adapt_v1_location_to_legacy,

@@ -3,6 +3,7 @@
 # pylint: disable=redefined-outer-name,unused-variable
 
 import pytest
+
 from receipt_places.types import Geometry, LatLng, Place, Viewport
 from receipt_places.validators import (
     DataQualityError,

@@ -14,6 +14,7 @@ from uuid import uuid4
 import pytest
 from botocore.exceptions import ClientError
 from pytest_mock import MockerFixture
+
 from receipt_dynamo import DynamoClient, OCRJob
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.data.shared_exceptions import (

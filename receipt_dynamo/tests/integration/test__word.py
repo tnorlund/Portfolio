@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 import boto3
 import pytest
 from botocore.exceptions import ClientError
+
 from receipt_dynamo import DynamoClient, Word
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,

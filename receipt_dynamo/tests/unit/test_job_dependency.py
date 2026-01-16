@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo.entities.job_dependency import (
     JobDependency,
     item_to_job_dependency,

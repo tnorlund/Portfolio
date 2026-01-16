@@ -4,6 +4,7 @@
 
 import pytest
 from pydantic import ValidationError
+
 from receipt_places.parsers import (
     APIError,
     ParseError,

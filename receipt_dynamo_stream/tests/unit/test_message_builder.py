@@ -10,6 +10,7 @@ from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+
 from receipt_dynamo_stream.message_builder import (
     _extract_entity_data,
     build_compaction_run_completion_messages,

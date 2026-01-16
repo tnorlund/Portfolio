@@ -16,6 +16,7 @@ from receipt_dynamo.data.shared_exceptions import (
     OperationError,
     ReceiptDynamoError,
 )
+
 from receipt_places.config import PlacesConfig, get_config
 
 logger = logging.getLogger(__name__)

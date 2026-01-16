@@ -18,6 +18,7 @@ from typing import (
 )
 
 from botocore.exceptions import ClientError
+
 from receipt_dynamo.data.shared_exceptions import (
     EntityAlreadyExistsError,
     EntityNotFoundError,

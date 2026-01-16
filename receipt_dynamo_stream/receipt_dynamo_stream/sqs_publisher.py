@@ -15,6 +15,7 @@ from typing import Any, Iterable, Optional
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
+
 from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
 from receipt_dynamo_stream.stream_types import MetricsRecorder
 

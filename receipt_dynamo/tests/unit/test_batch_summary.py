@@ -3,6 +3,7 @@
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.entities.batch_summary import (
     BatchSummary,

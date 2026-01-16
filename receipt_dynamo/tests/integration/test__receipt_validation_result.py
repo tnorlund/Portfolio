@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 from botocore.exceptions import ClientError
 from pytest_mock import MockerFixture
+
 from receipt_dynamo import (
     ReceiptValidationResult,
     item_to_receipt_validation_result,

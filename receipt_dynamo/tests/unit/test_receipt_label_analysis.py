@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 import pytest
+
 from receipt_dynamo.entities.receipt_label_analysis import (
     ReceiptLabelAnalysis,
     item_to_receipt_label_analysis,

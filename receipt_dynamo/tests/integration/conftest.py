@@ -5,6 +5,7 @@ from os.path import dirname, join
 import boto3
 import pytest
 from moto import mock_aws
+
 from receipt_dynamo import (
     Image,
     Letter,

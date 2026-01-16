@@ -7,6 +7,7 @@ from copy import deepcopy
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo import (
     ReceiptValidationResult,
     item_to_receipt_validation_result,

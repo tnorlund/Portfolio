@@ -6,6 +6,7 @@ from typing import Any, Dict, Mapping, Optional
 import pytest
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+
 from receipt_dynamo_stream.parsing.parsers import (
     detect_entity_type,
     parse_entity,
