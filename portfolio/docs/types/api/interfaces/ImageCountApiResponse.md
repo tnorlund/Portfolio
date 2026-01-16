@@ -6,7 +6,7 @@
 
 # Interface: ImageCountApiResponse
 
-Defined in: [types/api.ts:42](https://github.com/tnorlund/Portfolio/blob/4f5288ec2c99a1bdd19a863a556c75d39c6579ff/portfolio/types/api.ts#L42)
+Defined in: [types/api.ts:42](https://github.com/tnorlund/Portfolio/blob/0e88116a8b03c54c1daccec059930599fd81fd87/portfolio/types/api.ts#L42)
 
 ## Properties
 
@@ -14,4 +14,4 @@ Defined in: [types/api.ts:42](https://github.com/tnorlund/Portfolio/blob/4f5288e
 
 > **count**: `number`
 
-Defined in: [types/api.ts:43](https://github.com/tnorlund/Portfolio/blob/4f5288ec2c99a1bdd19a863a556c75d39c6579ff/portfolio/types/api.ts#L43)
+Defined in: [types/api.ts:43](https://github.com/tnorlund/Portfolio/blob/0e88116a8b03c54c1daccec059930599fd81fd87/portfolio/types/api.ts#L43)

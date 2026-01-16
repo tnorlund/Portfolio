@@ -6,7 +6,7 @@
 
 # Interface: LabelValidationKeyframe
 
-Defined in: [types/api.ts:16](https://github.com/tnorlund/Portfolio/blob/4f5288ec2c99a1bdd19a863a556c75d39c6579ff/portfolio/types/api.ts#L16)
+Defined in: [types/api.ts:16](https://github.com/tnorlund/Portfolio/blob/0e88116a8b03c54c1daccec059930599fd81fd87/portfolio/types/api.ts#L16)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:16](https://github.com/tnorlund/Portfolio/blob/4f5288e
 
 > **labels**: `object`
 
-Defined in: [types/api.ts:20](https://github.com/tnorlund/Portfolio/blob/4f5288ec2c99a1bdd19a863a556c75d39c6579ff/portfolio/types/api.ts#L20)
+Defined in: [types/api.ts:20](https://github.com/tnorlund/Portfolio/blob/0e88116a8b03c54c1daccec059930599fd81fd87/portfolio/types/api.ts#L20)
 
 #### Index Signature
 
@@ -26,7 +26,7 @@ Defined in: [types/api.ts:20](https://github.com/tnorlund/Portfolio/blob/4f5288e
 
 > **progress**: `number`
 
-Defined in: [types/api.ts:17](https://github.com/tnorlund/Portfolio/blob/4f5288ec2c99a1bdd19a863a556c75d39c6579ff/portfolio/types/api.ts#L17)
+Defined in: [types/api.ts:17](https://github.com/tnorlund/Portfolio/blob/0e88116a8b03c54c1daccec059930599fd81fd87/portfolio/types/api.ts#L17)
 
 ***
 
@@ -34,7 +34,7 @@ Defined in: [types/api.ts:17](https://github.com/tnorlund/Portfolio/blob/4f5288e
 
 > **records\_processed**: `number`
 
-Defined in: [types/api.ts:19](https://github.com/tnorlund/Portfolio/blob/4f5288ec2c99a1bdd19a863a556c75d39c6579ff/portfolio/types/api.ts#L19)
+Defined in: [types/api.ts:19](https://github.com/tnorlund/Portfolio/blob/0e88116a8b03c54c1daccec059930599fd81fd87/portfolio/types/api.ts#L19)
 
 ***
 
@@ -42,4 +42,4 @@ Defined in: [types/api.ts:19](https://github.com/tnorlund/Portfolio/blob/4f5288e
 
 > **timestamp**: `string`
 
-Defined in: [types/api.ts:18](https://github.com/tnorlund/Portfolio/blob/4f5288ec2c99a1bdd19a863a556c75d39c6579ff/portfolio/types/api.ts#L18)
+Defined in: [types/api.ts:18](https://github.com/tnorlund/Portfolio/blob/0e88116a8b03c54c1daccec059930599fd81fd87/portfolio/types/api.ts#L18)
