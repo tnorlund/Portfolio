@@ -326,9 +326,10 @@ M1LK 2%           1    $4.4g`}</code>
       <h2>Finding the Store</h2>
 
       <p>
-        There's no standard format for a receipt. I can say that each store has
-        their own unique way of structuring the data. I needed to find a way to
-        group the receipts by the store they came from.
+        Every store formats their receipts differently. Fast food has your
+        order number, big and at the top. Target doesn't even have the word
+        "Target" at the top??! I needed a way to figure out which store each
+        receipt came from.
       </p>
 
       <ClientOnly>
@@ -338,10 +339,10 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        I used Google Maps to get more information about the store, but this
-        was slow and expensive. After processing 200 receipts, my $8 Google
-        Cloud bill was not an option. I needed a better way to group the
-        receipts by store without spending exorbitant amounts of money.
+        First idea: Google Maps. Feed it an address, phone number, website,
+        etc. get the store name. This worked! It also cost money. After
+        processing 200 receipt I checked my bill: $8. I had 300 left. I needed
+        a better way to group the receipts by store without wasting another $8.
       </p>
 
       <ClientOnly>
@@ -351,8 +352,10 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        Introducing Chroma. Another database to manage... I embedded the
-        receipts into Chroma so I could retrieve them by similarity.
+        So I added Chroma, a vector database. Great, another database. But
+        Chroma let me do something clever: instead of asking Google "what
+        store is at 123 Main St," I could ask my own receipts "have I seen
+        this address before?"
       </p>
 
       <ClientOnly>
@@ -360,11 +363,10 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        Being able to compare receipts that have the same addresses, phone
-        numbers, websites, etc. allows me to skip Google and confirm the
-        results. When I get a new receipt, I can compare it to the receipts
-        from the stores I've alerady seen to confirm the results. If I haven't
-        seen the store before, I can use Google to get the information.
+        Turns out receipts from the same store look like receipts from the
+        same store. Same address, same phone number, same weird formatting.
+        Now I only hit Google for stores I've genuinely never seen. My bill
+        dropped to cents.
       </p>
 
 
@@ -375,13 +377,11 @@ M1LK 2%           1    $4.4g`}</code>
         formats it differently. I needed a shared vocabulary.
       </p>
 
-      <ClientOnly>
-        <LabelWordCloud />
-      </ClientOnly>
+      <LabelWordCloud />
 
       <p>
         The idea: show AI a receipt, ask it to tag each word with a label, then
-        compare it's answers to other receipts from the same store to see if
+        compare its answers to other receipts from the same store to see if
         the patterns still hold.
       </p>
 
@@ -404,15 +404,19 @@ M1LK 2%           1    $4.4g`}</code>
 
       <p>
         Each pass got a little better. The red shrinks, the green grows. But
-        asking ~4 different AI, 5+ times to to verify the results was slow and
+        asking ~4 different AI, 5+ times to verify the results was slow and
         expensive. I needed a better way.
       </p>
 
       <h2>Making it Faster and Cheaper</h2>
 
       <p>
-        Here's the problem: asking AI to verify the results 15+ times is slow
-        and expensive.
+        I needed to stop paying OpenAI to argue with me about what milk is.
+        The answer, apparently, was to train my own model.
+      </p>
+
+      <p>
+        I don't know how to train a model...
       </p>
 
       <p>
@@ -462,8 +466,12 @@ M1LK 2%           1    $4.4g`}</code>
       <h1>Asking About the $$$ Spent on Milk</h1>
 
       <p>
-        The question still stands: "How much did I spend on milk?" When I ask
-        AI, it looks at our corpus and the quesiton to answer it.
+        The question still stands: "How much did I spend on milk?"
+      </p>
+
+      <p>
+        When I ask, the system transforms my question it can actually search
+        for:
       </p>
 
 
@@ -475,12 +483,18 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        The computer came back with the answer:
+        It digs through the corpus, finds every mention of milk, and adds
+        them up.
       </p>
 
       <ClientOnly>
         <WordSimilarity />
       </ClientOnly>
+
+      <p>
+        $823.89. That's... significantly more than I expected. I knew I liked
+        milk, but I didn't think I "eight hundred dollars a year" liked milk.
+      </p>
 
       <h1>So Now What?</h1>
 
@@ -528,7 +542,7 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        Change something, run the questions, check the results, repeat. It's
+        Change something, ask the questions, check the results, repeat. It's
         less "artificial intelligence" and more "arguing with a very fast
         intern who keeps misreading receipts".
       </p>
