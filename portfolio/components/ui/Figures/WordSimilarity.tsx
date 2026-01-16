@@ -595,7 +595,9 @@ const WordSimilarity: React.FC = () => {
                       {showMerchant ? row.merchant : ""}
                     </td>
                     <td style={{ padding: "0.5rem" }}>{row.product}</td>
-                    <td style={{ padding: "0.5rem" }}>{row.size}</td>
+                    <td style={{ padding: "0.5rem" }}>
+                      {row.size === "Unknown" && row.merchant === "Le Pain Quotidien" ? "Latte" : row.size}
+                    </td>
                     <td style={{ padding: "0.5rem", textAlign: "right" }}>{row.count}</td>
                     <td style={{ padding: "0.5rem", textAlign: "right" }}>
                       {row.avg_price ? `$${row.avg_price.toFixed(2)}` : "-"}
@@ -609,13 +611,13 @@ const WordSimilarity: React.FC = () => {
                           {row.merchant}
                         </span>
                         <span style={{ paddingLeft: "0.75rem" }}>
-                          {row.product}{row.size ? ` (${row.size})` : ""}
+                          {row.product}{row.size ? ` (${row.size === "Unknown" && row.merchant === "Le Pain Quotidien" ? "Latte" : row.size})` : ""}
                         </span>
                       </div>
                     ) : (
                       <div style={{ display: "flex", alignItems: "center", height: "100%" }}>
                         <span style={{ paddingLeft: "0.75rem" }}>
-                          {row.product}{row.size ? ` (${row.size})` : ""}
+                          {row.product}{row.size ? ` (${row.size === "Unknown" && row.merchant === "Le Pain Quotidien" ? "Latte" : row.size})` : ""}
                         </span>
                       </div>
                     )}

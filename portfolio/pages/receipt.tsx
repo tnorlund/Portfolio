@@ -222,6 +222,8 @@ export default function ReceiptPage({
     >
       <Head>
         <title>Receipt | Tyler Norlund</title>
+        <meta property="og:image" content="" />
+        <meta name="twitter:card" content="summary" />
       </Head>
       {/* Upload area overlay when dragging */}
       {dragging && (

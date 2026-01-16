@@ -1,6 +1,6 @@
 import { animated, useSpring } from "@react-spring/web";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useInView } from "react-intersection-observer";
+import { useEffect, useState } from "react";
+import useOptimizedInView from "../../hooks/useOptimizedInView";
 
 interface QueryLabelTransformProps {
     /** The original query to display */
@@ -20,75 +20,99 @@ const QueryLabelTransform = ({
     transformed,
     delay = 800,
 }: QueryLabelTransformProps) => {
-    const [ref, inView] = useInView({
-        threshold: 0.3,
-        triggerOnce: true,  // Only trigger once to avoid race conditions
-        rootMargin: "50px",
-    });
-    const [animationState, setAnimationState] = useState<'idle' | 'scrambling' | 'done'>('idle');
+    const [ref, inView] = useOptimizedInView({ threshold: 0.5, triggerOnce: false });
+    const [showTransformed, setShowTransformed] = useState(false);
     const [displayText, setDisplayText] = useState("");
-    const hasStarted = useRef(false);
-    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const [isScrambling, setIsScrambling] = useState(false);
 
-    // Cleanup interval on unmount
+    // Reset when out of view
     useEffect(() => {
-        return () => {
-            if (intervalRef.current) {
-                clearInterval(intervalRef.current);
-            }
-        };
-    }, []);
-
-    // Run scramble animation
-    const runScramble = useCallback(() => {
-        let count = 0;
-        const chars = "█▓▒░";
-        
-        intervalRef.current = setInterval(() => {
-            setDisplayText(
-                Array.from({ length: transformed.length })
-                    .map(() => chars[Math.floor(Math.random() * chars.length)])
-                    .join("")
-            );
-            count++;
-            if (count >= 8) {
-                if (intervalRef.current) {
-                    clearInterval(intervalRef.current);
-                    intervalRef.current = null;
-                }
-                setDisplayText(transformed);
-                setAnimationState('done');
-            }
-        }, 60);
-    }, [transformed]);
+        if (!inView) {
+            setShowTransformed(false);
+            setDisplayText("");
+            setIsScrambling(false);
+        }
+    }, [inView]);
 
     // Trigger animation when in view
     useEffect(() => {
-        if (inView && !hasStarted.current) {
-            hasStarted.current = true;
-            
-            const timer = setTimeout(() => {
-                setAnimationState('scrambling');
-                runScramble();
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        let scrambleInterval: ReturnType<typeof setInterval> | null = null;
+
+        if (inView && !showTransformed) {
+            timer = setTimeout(() => {
+                setShowTransformed(true);
+                setIsScrambling(true);
+
+                // Scramble effect
+                let scrambleCount = 0;
+                scrambleInterval = setInterval(() => {
+                    const chars = "█▓▒░";
+                    setDisplayText(
+                        Array.from({ length: transformed.length })
+                            .map(() => chars[Math.floor(Math.random() * chars.length)])
+                            .join("")
+                    );
+                    scrambleCount++;
+                    if (scrambleCount >= 6) {
+                        if (scrambleInterval) {
+                            clearInterval(scrambleInterval);
+                            scrambleInterval = null;
+                        }
+                        setIsScrambling(false);
+                        setDisplayText(transformed);
+                    }
+                }, 50);
             }, delay);
-
-            return () => clearTimeout(timer);
         }
-    }, [inView, delay, runScramble]);
 
-    const showTransformed = animationState !== 'idle';
+        return () => {
+            if (timer) {
+                clearTimeout(timer);
+            }
+            if (scrambleInterval) {
+                clearInterval(scrambleInterval);
+            }
+        };
+    }, [inView, showTransformed, delay, transformed]);
 
-    // Transformed line animation
-    const transformedSpring = useSpring({
-        opacity: showTransformed ? 1 : 0,
-        transform: showTransformed ? "translateY(0px)" : "translateY(-10px)",
+    // Container fade in - use api.start pattern for reliable animation
+    const [containerSpring, containerApi] = useSpring(() => ({
+        opacity: 0,
+        transform: "translateY(20px)",
+        config: { tension: 120, friction: 14 },
+    }));
+
+    // Trigger container animation when in view
+    useEffect(() => {
+        if (inView) {
+            containerApi.start({ opacity: 1, transform: "translateY(0px)" });
+        } else {
+            containerApi.set({ opacity: 0, transform: "translateY(20px)" });
+        }
+    }, [inView, containerApi]);
+
+    // Transformed line animation - use api.start pattern
+    const [transformedSpring, transformedApi] = useSpring(() => ({
+        opacity: 0,
+        transform: "translateY(-10px)",
         config: { tension: 150, friction: 16 },
-    });
+    }));
+
+    // Trigger transformed animation when showTransformed changes
+    useEffect(() => {
+        if (showTransformed) {
+            transformedApi.start({ opacity: 1, transform: "translateY(0px)" });
+        } else {
+            transformedApi.set({ opacity: 0, transform: "translateY(-10px)" });
+        }
+    }, [showTransformed, transformedApi]);
 
     return (
-        <div
+        <animated.div
             ref={ref}
             style={{
+                ...containerSpring,
                 background: "var(--code-background)",
                 borderRadius: "4px",
                 padding: "1em",
@@ -142,7 +166,7 @@ const QueryLabelTransform = ({
                     >
                         →
                     </span>
-                    <TransformedText text={displayText} isScrambling={animationState === 'scrambling'} />
+                    <TransformedText text={displayText} isScrambling={isScrambling} />
                     <span
                         style={{
                             display: "inline-block",
@@ -163,7 +187,7 @@ const QueryLabelTransform = ({
           51%, 100% { opacity: 0; }
         }
       `}</style>
-        </div>
+        </animated.div>
     );
 };
 
