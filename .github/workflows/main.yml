@@ -127,17 +127,13 @@ jobs:
 
       - name: Build and test
         working-directory: portfolio
+        env:
+          CI: true
         run: |
           npm ci --prefer-offline
           npm run build
-
-          # Start server and run tests
-          npx serve out -l 3000 &
-          sleep 3
-
           npx playwright install chromium firefox webkit
-          PLAYWRIGHT_BASE_URL=http://localhost:3000 npx playwright test e2e/hydration.spec.ts \
-            --project=chromium --project=firefox --project=webkit
+          npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
