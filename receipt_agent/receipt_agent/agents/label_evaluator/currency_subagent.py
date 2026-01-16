@@ -672,10 +672,11 @@ def evaluate_currency_labels(
             }
         )
 
-    # Log summary
-    decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+    # Log summary - safely handle unexpected decision values
+    decision_counts: dict[str, int] = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
     for r in results:
-        decision_counts[r["llm_review"]["decision"]] += 1
+        decision = r.get("llm_review", {}).get("decision", "OTHER")
+        decision_counts[decision] = decision_counts.get(decision, 0) + 1
     logger.info("Currency evaluation results: %s", decision_counts)
 
     return results
@@ -924,10 +925,11 @@ async def evaluate_currency_labels_async(
             }
         )
 
-    # Log summary
-    decision_counts = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+    # Log summary - safely handle unexpected decision values
+    decision_counts: dict[str, int] = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
     for r in results:
-        decision_counts[r["llm_review"]["decision"]] += 1
+        decision = r.get("llm_review", {}).get("decision", "OTHER")
+        decision_counts[decision] = decision_counts.get(decision, 0) + 1
     logger.info("Currency evaluation results: %s", decision_counts)
 
     return results

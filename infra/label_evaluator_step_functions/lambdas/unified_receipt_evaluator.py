@@ -160,6 +160,11 @@ async def unified_receipt_evaluator(
             deserialize_word,
         )
 
+        # Initialize dynamo_table early for use across all phases
+        dynamo_table = os.environ.get(
+            "DYNAMODB_TABLE_NAME"
+        ) or os.environ.get("RECEIPT_AGENT_DYNAMO_TABLE_NAME")
+
         # 1. Load receipt data from S3 FIRST (before creating trace)
         # We need image_id and receipt_id to create the deterministic trace ID
         logger.info(
@@ -376,16 +381,12 @@ async def unified_receipt_evaluator(
         applied_stats_currency = None
         applied_stats_metadata = None
 
-        if not dry_run:
+        if not dry_run and dynamo_table:
             with child_trace("apply_phase1_corrections", trace_ctx):
                 from receipt_agent.agents.label_evaluator.llm_review import (
                     apply_llm_decisions,
                 )
                 from receipt_dynamo import DynamoClient
-
-                dynamo_table = os.environ.get(
-                    "DYNAMODB_TABLE_NAME"
-                ) or os.environ.get("RECEIPT_AGENT_DYNAMO_TABLE_NAME")
 
                 if dynamo_table:
                     dynamo_client = DynamoClient(table_name=dynamo_table)
@@ -419,79 +420,79 @@ async def unified_receipt_evaluator(
                         )
 
         # 8. Phase 2: Financial validation (needs corrected labels from Phase 1)
+        # Always run evaluation for diagnostics; only skip writes in dry_run mode
         financial_result = None
-        if not dry_run:
+        if dynamo_table:
             with child_trace("phase2_financial_validation", trace_ctx):
                 # Re-fetch labels from DynamoDB to get corrections
                 from receipt_dynamo import DynamoClient
 
-                dynamo_table = os.environ.get(
-                    "DYNAMODB_TABLE_NAME"
-                ) or os.environ.get("RECEIPT_AGENT_DYNAMO_TABLE_NAME")
+                dynamo_client = DynamoClient(table_name=dynamo_table)
 
-                if dynamo_table:
-                    dynamo_client = DynamoClient(table_name=dynamo_table)
-
-                    # Fetch fresh labels
-                    fresh_labels = []
+                # Fetch fresh labels
+                fresh_labels = []
+                page, lek = (
+                    dynamo_client.list_receipt_word_labels_for_receipt(
+                        image_id=image_id, receipt_id=receipt_id
+                    )
+                )
+                fresh_labels.extend(page or [])
+                while lek:
                     page, lek = (
                         dynamo_client.list_receipt_word_labels_for_receipt(
-                            image_id=image_id, receipt_id=receipt_id
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            last_evaluated_key=lek,
                         )
                     )
                     fresh_labels.extend(page or [])
-                    while lek:
-                        page, lek = (
-                            dynamo_client.list_receipt_word_labels_for_receipt(
-                                image_id=image_id,
-                                receipt_id=receipt_id,
-                                last_evaluated_key=lek,
-                            )
+
+                logger.info(
+                    "Fetched %s fresh labels from DynamoDB",
+                    len(fresh_labels),
+                )
+
+                # Rebuild visual lines with fresh labels
+                fresh_word_contexts = build_word_contexts(
+                    words, fresh_labels
+                )
+                fresh_visual_lines = assemble_visual_lines(
+                    fresh_word_contexts
+                )
+
+                # Run financial validation
+                from receipt_agent.agents.label_evaluator.financial_subagent import (
+                    evaluate_financial_math_async,
+                )
+
+                financial_result = (
+                    await evaluate_financial_math_async(
+                        visual_lines=fresh_visual_lines,
+                        llm=llm_invoker,
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        merchant_name=merchant_name,
+                    )
+                )
+
+                # Apply financial corrections (only when not dry_run)
+                if not dry_run and financial_result:
+                    from receipt_agent.agents.label_evaluator.llm_review import (
+                        apply_llm_decisions,
+                    )
+
+                    invalid_financial = [
+                        d
+                        for d in financial_result
+                        if d.get("llm_review", {}).get("decision")
+                        == "INVALID"
+                    ]
+                    if invalid_financial:
+                        apply_llm_decisions(
+                            reviewed_issues=invalid_financial,
+                            dynamo_client=dynamo_client,
+                            execution_id=f"financial-{execution_id}",
                         )
-                        fresh_labels.extend(page or [])
-
-                    logger.info(
-                        "Fetched %s fresh labels from DynamoDB",
-                        len(fresh_labels),
-                    )
-
-                    # Rebuild visual lines with fresh labels
-                    fresh_word_contexts = build_word_contexts(
-                        words, fresh_labels
-                    )
-                    fresh_visual_lines = assemble_visual_lines(
-                        fresh_word_contexts
-                    )
-
-                    # Run financial validation
-                    from receipt_agent.agents.label_evaluator.financial_subagent import (
-                        evaluate_financial_math_async,
-                    )
-
-                    financial_result = (
-                        await evaluate_financial_math_async(
-                            visual_lines=fresh_visual_lines,
-                            llm=llm_invoker,
-                            image_id=image_id,
-                            receipt_id=receipt_id,
-                            merchant_name=merchant_name,
-                        )
-                    )
-
-                    # Apply financial corrections
-                    if financial_result:
-                        invalid_financial = [
-                            d
-                            for d in financial_result
-                            if d.get("llm_review", {}).get("decision")
-                            == "INVALID"
-                        ]
-                        if invalid_financial:
-                            apply_llm_decisions(
-                                reviewed_issues=invalid_financial,
-                                dynamo_client=dynamo_client,
-                                execution_id=f"financial-{execution_id}",
-                            )
 
         # 9. Phase 3: LLM review of flagged geometric issues (if any)
         llm_review_result = None
