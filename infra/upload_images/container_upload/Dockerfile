@@ -19,8 +19,8 @@ FROM dependencies
 ARG CACHE_BUST=unknown
 RUN echo "Cache bust: $CACHE_BUST"
 
-# Copy the handler module
-COPY infra/upload_images/upload_receipt.py ${LAMBDA_TASK_ROOT}/handler.py
+# Copy the handler module (handler.py is in the container_upload directory)
+COPY infra/upload_images/container_upload/handler.py ${LAMBDA_TASK_ROOT}/handler.py
 
 # Set the handler
 CMD ["handler.handler"]
