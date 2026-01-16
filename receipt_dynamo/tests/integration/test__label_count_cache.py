@@ -463,6 +463,9 @@ class TestLabelCountCacheErrorHandling:
     ) -> None:
         """Test that DynamoDB errors are properly handled in get operations."""
         client = DynamoClient(dynamodb_table)
+        # ConditionalCheckFailedException for get operations raises EntityValidationError
+        if error_code == "ConditionalCheckFailedException":
+            expected_exception = EntityValidationError
         with patch.object(
             client._client,
             "get_item",
@@ -505,6 +508,9 @@ class TestLabelCountCacheErrorHandling:
     ) -> None:
         """Test DynamoDB errors in list operations."""
         client = DynamoClient(dynamodb_table)
+        # ConditionalCheckFailedException for list operations raises EntityValidationError
+        if error_code == "ConditionalCheckFailedException":
+            expected_exception = EntityValidationError
         with patch.object(
             client._client,
             "query",
