@@ -28,59 +28,68 @@ function getRotatedBoundingBox(width: number, height: number, rotationDeg: numbe
   return { width: rotatedWidth, height: rotatedHeight };
 }
 
-// Generate random transform values with better distribution, constrained to container bounds
-function getRandomTransform(
+interface CardPosition {
+  x: number;
+  y: number;
+  rotation: number;
+}
+
+// Constraint-based position solver that guarantees cards stay within bounds
+// (Same approach as WordSimilarity component)
+function solveCardPosition(
   seed: number,
   cardWidth: number,
   cardHeight: number,
   containerWidth: number,
   containerHeight: number,
-  topPosition: number
-): { rotation: number; translateX: number; translateY: number } {
+  targetY: number
+): CardPosition {
   const random = seededRandom(seed);
-
-  // Use multiple random calls to get better distribution
   const r1 = random();
   const r2 = random();
   const r3 = random();
 
-  // Rotation: -15 to 15 degrees with better distribution
+  // Calculate rotation first (±15 degrees)
   const rotation = (r1 - 0.5) * 30;
 
-  // Calculate rotated bounding box to account for rotation
+  // Get the bounding box of the rotated card
   const rotatedBounds = getRotatedBoundingBox(cardWidth, cardHeight, rotation);
+  const padding = 4; // Minimal padding from edges
 
-  // Shadow adds extra space (typically 8-16px on all sides for box-shadow)
-  const shadowPadding = 16;
+  // Calculate safe zone for Y - where the card center can be placed vertically
+  // Use rotated bounds for Y to prevent vertical overflow
+  const safeZoneY = {
+    minY: rotatedBounds.height / 2 + padding,
+    maxY: containerHeight - rotatedBounds.height / 2 - padding,
+  };
 
-  // Calculate maximum safe translation
-  // We need to ensure the rotated card + shadow stays within bounds
-  const maxTranslateX = Math.max(0, (containerWidth - rotatedBounds.width) / 2 - shadowPadding);
-  const maxTranslateY = Math.max(0, (containerHeight - rotatedBounds.height) / 2 - shadowPadding);
+  // For X, spread cards across the container width
+  // Account for rotated card bounds so cards stay within container
+  const rotatedHalfWidth = rotatedBounds.width / 2;
+  const safeZoneX = {
+    minX: rotatedHalfWidth + padding,
+    maxX: containerWidth - rotatedHalfWidth - padding,
+  };
 
-  // Also need to account for the card's position from top
-  // The card is positioned at topPosition, so we need to ensure it doesn't go above or below
-  // Account for rotated bounding box height, not just card height
-  const cardCenterY = topPosition + (cardHeight / 2);
-  const rotatedHalfHeight = rotatedBounds.height / 2;
+  // If card is too tall, center it vertically
+  if (safeZoneY.minY >= safeZoneY.maxY) {
+    safeZoneY.minY = containerHeight / 2;
+    safeZoneY.maxY = containerHeight / 2;
+  }
 
-  // Calculate how far the rotated card can move up/down while staying in bounds
-  const distanceFromTop = cardCenterY - rotatedHalfHeight;
-  const distanceFromBottom = containerHeight - cardCenterY - rotatedHalfHeight;
+  // Clamp target Y to safe zone
+  const clampedY = Math.max(safeZoneY.minY, Math.min(safeZoneY.maxY, targetY));
 
-  // Clamp translateY to keep rotated card within vertical bounds
-  // Use smaller range to keep cards closer to their target centers
-  const maxTranslateYUp = Math.max(0, Math.min(30, distanceFromTop - shadowPadding));
-  const maxTranslateYDown = Math.max(0, Math.min(30, distanceFromBottom - shadowPadding));
+  // Calculate X position - random within safe zone width
+  const xRange = safeZoneX.maxX - safeZoneX.minX;
+  const x = safeZoneX.minX + r2 * xRange;
 
-  // Translation: constrained to safe bounds, but keep it smaller for better spacing
-  const translateX = Math.max(-maxTranslateX, Math.min(maxTranslateX, (r2 - 0.5) * maxTranslateX * 2));
-  const translateY = Math.max(
-    -maxTranslateYUp,
-    Math.min(maxTranslateYDown, (r3 - 0.5) * (maxTranslateYUp + maxTranslateYDown))
-  );
+  // Add small random Y offset within safe bounds
+  const yRange = safeZoneY.maxY - safeZoneY.minY;
+  const yOffset = (r3 - 0.5) * Math.min(yRange * 0.15, 30);
+  const y = Math.max(safeZoneY.minY, Math.min(safeZoneY.maxY, clampedY + yOffset));
 
-  return { rotation, translateX, translateY };
+  return { x, y, rotation };
 }
 
 /**
@@ -485,49 +494,27 @@ const AddressSimilaritySideBySide: React.FC = () => {
         >
           {data.similar.map((similar, index) => {
             // Distribute cards evenly across the height of the container
-            // Position each card's center at (n+1)/(N+1) of the container height
             const containerHeight = windowWidth <= 768 ? 400 : 700;
 
             // Use measured container width if available, otherwise calculate responsive estimate
-            const isMobile = windowWidth <= 768;
-            let effectiveContainerWidth: number;
-            if (containerWidth) {
-              effectiveContainerWidth = containerWidth;
-            } else {
-              // Fallback: estimate based on screen size
-              // Right column is 45% of container, which is max 900px on desktop
-              // On mobile, it's 45% of screen width (minus padding)
-              if (isMobile) {
-                const screenWidth = windowWidth;
-                const padding = screenWidth <= 480 ? 16 : 32;
-                const maxContainerWidth = Math.min(screenWidth, 900) - padding * 2;
-                effectiveContainerWidth = maxContainerWidth * 0.45; // 45% of container
-              } else {
-                effectiveContainerWidth = 405; // Desktop: 45% of 900px
-              }
-            }
+            const effectiveContainerWidth = containerWidth ?? (windowWidth <= 768 ? 180 : 405);
 
             const totalCards = data.similar.length;
 
-            // Calculate target center Y position: (index + 1) / (totalCards + 1) of container height
+            // Target Y position distributed evenly across container height
             const targetCenterY = ((index + 1) / (totalCards + 1)) * containerHeight;
 
-            // Get card dimensions (use stored or estimate based on aspect ratio)
-            // Estimate height based on container aspect ratio if not measured yet
+            // Card width: responsive sizing
+            const cardWidth = windowWidth <= 768
+              ? Math.min(effectiveContainerWidth * 0.9, 180)
+              : Math.min(effectiveContainerWidth * 0.85, 350);
+
+            // Get card dimensions (use stored or estimate)
             let cardDims = cardDimensions[similar.receipt.receipt_id];
             if (!cardDims) {
-              // Estimate based on container width - cards should be responsive
-              // Cards take up most of the container width (with some margin)
-              const cardWidthPercent = 0.85; // 85% of container width
-              const estimatedWidth = effectiveContainerWidth * cardWidthPercent;
-              // Use a reasonable default aspect ratio (most address crops are wide)
-              const estimatedAspectRatio = 3.5; // width/height ratio
-              cardDims = { width: estimatedWidth, height: estimatedWidth / estimatedAspectRatio };
+              const estimatedAspectRatio = 3.5;
+              cardDims = { width: cardWidth, height: cardWidth / estimatedAspectRatio };
             }
-
-            // Position card so its center is at targetCenterY
-            // topPosition = targetCenterY - (cardHeight / 2)
-            const topPosition = targetCenterY - (cardDims.height / 2);
 
             const receiptComponent = renderCroppedReceipt(
               similar.receipt,
@@ -539,57 +526,50 @@ const AddressSimilaritySideBySide: React.FC = () => {
               true, // hideLabel for stacked cards
               true, // hideText for stacked cards
               (width, height) => {
-                // Update card dimensions when they're known (only if changed)
                 setCardDimensions(prev => {
                   const existing = prev[similar.receipt.receipt_id];
-                  // Only update if dimensions are different or don't exist
                   if (!existing || existing.width !== width || existing.height !== height) {
                     return {
                       ...prev,
                       [similar.receipt.receipt_id]: { width, height }
                     };
                   }
-                  return prev; // No change, return same object
+                  return prev;
                 });
               }
             );
 
             if (!receiptComponent) return null;
 
-            // Generate consistent random values based on receipt ID and index
-            // Use both receipt_id and index with a large multiplier to ensure variety
-            // Also mix in image_id hash if available for more entropy
-            // Add a constant offset to ensure index 0 also gets varied rotations
+            // Generate seed for consistent randomness
             const imageIdHash = similar.receipt.image_id
-              ? similar.receipt.image_id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+              ? similar.receipt.image_id.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)
               : 0;
             const seed = (similar.receipt.receipt_id * 7919) + (index * 9973) + (imageIdHash * 1013) + 12345;
 
-            const { rotation, translateX, translateY } = getRandomTransform(
+            // Use constraint-based solver to get position that stays in bounds
+            const { x, y, rotation } = solveCardPosition(
               seed,
               cardDims.width,
               cardDims.height,
               effectiveContainerWidth,
               containerHeight,
-              topPosition
+              targetCenterY
             );
 
-            const zIndex = data.similar.length - index; // Higher z-index for cards on top
+            const zIndex = data.similar.length - index;
 
-            // Base transform with random rotation and translation
-            // translateY is already constrained by bounds checking, so we can apply it directly
-            const baseTransform = `translate(${translateX}px, ${translateY}px) rotate(${rotation}deg)`;
-
+            // Position card centered at (x, y) with rotation
             return (
               <div
                 key={similar.receipt.receipt_id}
                 style={{
                   position: "absolute",
-                  top: `${topPosition}px`,
-                  left: "0px",
-                  right: "0px",
+                  top: `${y}px`,
+                  left: `${x}px`,
+                  width: `${cardWidth}px`,
                   zIndex,
-                  transform: baseTransform,
+                  transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
                   transformOrigin: "center center",
                 }}
               >
