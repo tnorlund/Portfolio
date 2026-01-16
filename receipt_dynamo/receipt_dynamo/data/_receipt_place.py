@@ -14,15 +14,12 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from boto3.dynamodb.types import TypeDeserializer
-from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
-    QueryInputTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,

@@ -11,7 +11,6 @@ from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     WriteRequestTypeDef,

@@ -1,11 +1,8 @@
 from typing import Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    DeleteRequestTypeDef,
     DynamoDBBaseOperations,
     FlattenedStandardMixin,
-    PutRequestTypeDef,
-    WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError

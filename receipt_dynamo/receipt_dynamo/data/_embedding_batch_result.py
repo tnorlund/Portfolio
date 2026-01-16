@@ -1,12 +1,9 @@
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
@@ -15,7 +12,6 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    BatchOperationError,
     EntityNotFoundError,
     EntityValidationError,
 )

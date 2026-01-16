@@ -8,10 +8,8 @@ functionality.
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    CommonValidationMixin,
     DynamoDBBaseOperations,
     FlattenedStandardMixin,
-    QueryByTypeMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (

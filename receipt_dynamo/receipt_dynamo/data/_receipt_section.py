@@ -8,19 +8,14 @@ from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
     DynamoDBBaseOperations,
     PutRequestTypeDef,
-    QueryInputTypeDef,
     SingleEntityCRUDMixin,
     TransactionalOperationsMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities.receipt_section import (
     ReceiptSection,

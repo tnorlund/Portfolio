@@ -8,12 +8,8 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word import ReceiptWord

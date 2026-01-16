@@ -253,7 +253,7 @@ def item_to_compaction_run(item: Dict[str, Any]) -> CompactionRun:
         if v and "N" in v:
             try:
                 return int(v["N"])
-            except Exception:
+            except (KeyError, ValueError):
                 return default
         return default
 

@@ -1,15 +1,11 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_metadata.py
-from typing import TYPE_CHECKING, List, Optional, Tuple
-
-from botocore.exceptions import ClientError
+from typing import List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
-    QueryInputTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
@@ -19,9 +15,6 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
 )
 from receipt_dynamo.entities import ReceiptMetadata, item_to_receipt_metadata
-
-if TYPE_CHECKING:
-    pass
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25

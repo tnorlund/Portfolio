@@ -1,21 +1,12 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
-
-from botocore.exceptions import ClientError
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
     SingleEntityCRUDMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
-    ReceiptDynamoError,
 )
 from receipt_dynamo.entities.job_checkpoint import (
     JobCheckpoint,

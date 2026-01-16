@@ -37,7 +37,7 @@ def validate_pinecone_id_format(
             return False
         if parts[7] != f"{word_id:05d}":
             return False
-    except Exception:
+    except (IndexError, ValueError):
         return False
     return True
 

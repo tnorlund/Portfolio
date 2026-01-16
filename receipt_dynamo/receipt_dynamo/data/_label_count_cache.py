@@ -1,6 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
-
-from botocore.exceptions import ClientError
+from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -8,19 +6,11 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    EntityAlreadyExistsError,
-    EntityNotFoundError,
-    EntityValidationError,
-)
+from receipt_dynamo.data.shared_exceptions import EntityValidationError
 from receipt_dynamo.entities.label_count_cache import (
     LabelCountCache,
     item_to_label_count_cache,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 class _LabelCountCache(FlattenedStandardMixin):

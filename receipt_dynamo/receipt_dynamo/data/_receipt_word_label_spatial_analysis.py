@@ -1,6 +1,6 @@
 """Receipt Word Label Spatial Analysis data access operations."""
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,

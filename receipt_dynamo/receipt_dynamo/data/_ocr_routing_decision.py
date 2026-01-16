@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
     FlattenedStandardMixin,
@@ -11,14 +9,8 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities.ocr_routing_decision import (
     OCRRoutingDecision,

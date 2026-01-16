@@ -277,7 +277,7 @@ class SerializationMixin:
                     )
 
             return value
-        except Exception:
+        except (KeyError, TypeError, ValueError):
             # Return default on any deserialization error
             return default
 
