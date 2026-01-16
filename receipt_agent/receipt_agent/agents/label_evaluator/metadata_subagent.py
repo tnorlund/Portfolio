@@ -804,6 +804,9 @@ async def evaluate_metadata_labels_async(
     Returns:
         List of decisions ready for apply_llm_decisions()
     """
+    # Reserved for future tracing integration
+    _ = trace_ctx
+
     # Step 1: Collect metadata words to evaluate
     metadata_words, prefiltered_count = collect_metadata_words(
         visual_lines, place

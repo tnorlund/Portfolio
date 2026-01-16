@@ -727,6 +727,9 @@ async def evaluate_currency_labels_async(
     Returns:
         List of decisions ready for apply_llm_decisions()
     """
+    # Reserved for future tracing integration
+    _ = trace_ctx
+
     # Step 1: Identify line item rows
     line_item_rows = identify_line_item_rows(visual_lines, patterns)
     logger.info("Identified %s line item rows", len(line_item_rows))

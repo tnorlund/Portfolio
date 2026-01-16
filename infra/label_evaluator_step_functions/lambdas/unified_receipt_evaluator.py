@@ -28,6 +28,7 @@ try:
         TRACING_VERSION,
         TraceContext,
         child_trace,
+        create_historical_span,
         create_receipt_trace,
         end_child_trace,
         end_receipt_trace,
@@ -57,6 +58,7 @@ except ImportError:
         TRACING_VERSION,
         TraceContext,
         child_trace,
+        create_historical_span,
         create_receipt_trace,
         end_child_trace,
         end_receipt_trace,
@@ -292,6 +294,125 @@ async def unified_receipt_evaluator(
                 else:
                     line_item_patterns = line_item_patterns_data
 
+        # Create historical spans for pattern computation (from batch Phase 1)
+        # These show up in the trace as if they happened during this receipt's evaluation
+        if line_item_patterns_data:
+            try:
+                discovery_metadata = line_item_patterns_data.get(
+                    "_trace_metadata", {}
+                )
+                discovery_start = discovery_metadata.get("discovery_start_time")
+                discovery_end = discovery_metadata.get("discovery_end_time")
+
+                if discovery_start and discovery_end:
+                    create_historical_span(
+                        parent_ctx=trace_ctx,
+                        name="DiscoverPatterns",
+                        start_time_iso=discovery_start,
+                        end_time_iso=discovery_end,
+                        duration_seconds=discovery_metadata.get(
+                            "discovery_duration_seconds", 0
+                        ),
+                        run_type="chain",
+                        inputs={
+                            "merchant_name": merchant_name,
+                            "llm_model": discovery_metadata.get(
+                                "discovery_llm_model", "unknown"
+                            ),
+                        },
+                        outputs={
+                            "line_item_labels": discovery_metadata.get(
+                                "line_item_labels", []
+                            ),
+                        },
+                        metadata={
+                            "batch_computed": True,
+                        },
+                    )
+                    logger.info(
+                        "Added DiscoverPatterns historical span (%.2fs)",
+                        discovery_metadata.get("discovery_duration_seconds", 0),
+                    )
+            except Exception as span_err:
+                logger.warning(
+                    "Failed to create DiscoverPatterns historical span: %s",
+                    span_err,
+                )
+
+        if patterns_data:
+            try:
+                computation_metadata = patterns_data.get("_trace_metadata", {})
+                computation_start = computation_metadata.get(
+                    "computation_start_time"
+                )
+                computation_end = computation_metadata.get("computation_end_time")
+
+                if computation_start and computation_end:
+                    # Extract pattern names for outputs
+                    constellation_geometry = patterns_data.get(
+                        "constellation_geometry", {}
+                    )
+                    label_pair_geometry = patterns_data.get(
+                        "label_pair_geometry", {}
+                    )
+                    constellation_names = (
+                        list(constellation_geometry.keys())
+                        if constellation_geometry
+                        else []
+                    )
+                    label_pair_names = (
+                        list(label_pair_geometry.keys())
+                        if label_pair_geometry
+                        else []
+                    )
+
+                    create_historical_span(
+                        parent_ctx=trace_ctx,
+                        name="ComputePatterns",
+                        start_time_iso=computation_start,
+                        end_time_iso=computation_end,
+                        duration_seconds=computation_metadata.get(
+                            "computation_duration_seconds", 0
+                        ),
+                        run_type="chain",
+                        inputs={
+                            "merchant_name": merchant_name,
+                            "training_receipt_count": computation_metadata.get(
+                                "training_receipt_count", 0
+                            ),
+                        },
+                        outputs={
+                            "status": computation_metadata.get(
+                                "computation_status", "unknown"
+                            ),
+                            "constellation_patterns": constellation_names,
+                            "constellation_count": len(constellation_names),
+                            "label_pair_patterns": label_pair_names,
+                            "label_pair_count": len(label_pair_names),
+                        },
+                        metadata={
+                            "load_data_duration_seconds": computation_metadata.get(
+                                "load_data_duration_seconds", 0
+                            ),
+                            "compute_patterns_duration_seconds": computation_metadata.get(
+                                "compute_patterns_duration_seconds", 0
+                            ),
+                            "batch_computed": True,
+                        },
+                    )
+                    logger.info(
+                        "Added ComputePatterns historical span "
+                        "(%.2fs, %d constellations, %d label pairs)",
+                        computation_metadata.get("computation_duration_seconds", 0),
+                        len(constellation_names),
+                        len(label_pair_names),
+                    )
+            except Exception as span_err:
+                logger.warning(
+                    "Failed to create ComputePatterns historical span: %s",
+                    span_err,
+                )
+
         # 4. Build visual lines (shared across all evaluations)
         from receipt_agent.agents.label_evaluator.word_context import (
             assemble_visual_lines,
@@ -351,6 +472,11 @@ async def unified_receipt_evaluator(
             inputs={"num_words": len(words), "num_labels": len(labels)},
         )
 
+        # Initialize results before try block for clean finally handling
+        currency_result: list[dict] = []
+        metadata_result: list[dict] = []
+        geometric_result: dict = {"issues_found": 0}
+
         try:
             # Run currency and metadata concurrently (both use LLM)
             currency_task = evaluate_currency_labels_async(
@@ -386,15 +512,17 @@ async def unified_receipt_evaluator(
                 skip_llm_review=True,
             )
 
-            # Run geometric evaluation (sync, but runs concurrently with async tasks)
+            # Run geometric evaluation concurrently with LLM calls using to_thread
             geometric_graph = create_compute_only_graph()
-            geometric_result = run_compute_only_sync(
-                geometric_graph, geometric_state
-            )
 
-            # Wait for concurrent LLM calls
-            currency_result, metadata_result = await asyncio.gather(
-                currency_task, metadata_task
+            async def run_geometric() -> dict:
+                return await asyncio.to_thread(
+                    run_compute_only_sync, geometric_graph, geometric_state
+                )
+
+            # Wait for all evaluations concurrently
+            currency_result, metadata_result, geometric_result = await asyncio.gather(
+                currency_task, metadata_task, run_geometric()
             )
 
             logger.info(
@@ -406,13 +534,13 @@ async def unified_receipt_evaluator(
         finally:
             # End child traces with outputs
             end_child_trace(currency_trace_ctx, outputs={
-                "decisions_count": len(currency_result) if 'currency_result' in dir() else 0,
+                "decisions_count": len(currency_result),
             })
             end_child_trace(metadata_trace_ctx, outputs={
-                "decisions_count": len(metadata_result) if 'metadata_result' in dir() else 0,
+                "decisions_count": len(metadata_result),
             })
             end_child_trace(geometric_trace_ctx, outputs={
-                "issues_found": geometric_result.get("issues_found", 0) if 'geometric_result' in dir() else 0,
+                "issues_found": geometric_result.get("issues_found", 0),
             })
 
         # 7. Apply Phase 1 corrections to DynamoDB
@@ -587,7 +715,6 @@ async def unified_receipt_evaluator(
                     # Gather context for issues using targeted boolean queries
                     issues_with_context = []
                     for issue in geometric_issues[:15]:  # Limit to 15
-                        word_text = issue.get("word_text", "")
                         line_id = issue.get("line_id", 0)
                         word_id = issue.get("word_id", 0)
                         current_label = issue.get("current_label", "")

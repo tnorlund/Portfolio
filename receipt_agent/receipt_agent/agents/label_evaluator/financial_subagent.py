@@ -807,6 +807,9 @@ async def evaluate_financial_math_async(
     Returns:
         List of decisions ready for apply_llm_decisions()
     """
+    # Reserved for future tracing integration
+    _ = trace_ctx
+
     # Step 1: Detect math issues
     math_issues = detect_math_issues(visual_lines)
     logger.info("Detected %d math issues", len(math_issues))

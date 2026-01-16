@@ -429,7 +429,8 @@ class RateLimitedLLMInvoker:
             else:
                 response = await self.llm.ainvoke(messages)
             if self.circuit_breaker:
-                self.circuit_breaker.record_success()
+                async with self._async_lock:
+                    self.circuit_breaker.record_success()
             return response
 
         except OllamaRateLimitError:
@@ -438,7 +439,8 @@ class RateLimitedLLMInvoker:
         except Exception as e:
             if self.circuit_breaker:
                 # This may raise OllamaRateLimitError
-                self.circuit_breaker.record_error(e)
+                async with self._async_lock:
+                    self.circuit_breaker.record_error(e)
             raise
 
     def get_stats(self) -> dict[str, Any]:
