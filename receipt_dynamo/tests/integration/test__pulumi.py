@@ -1,5 +1,6 @@
 import json
 import subprocess
+from unittest.mock import ANY
 
 import pytest
 
@@ -21,6 +22,7 @@ def test_load_env_happy_path(mocker):
     result = load_env("dev")
 
     # Ensure the subprocess was called correctly
+    # Note: cwd is auto-detected based on where Pulumi.yaml is found
     mock_subprocess.assert_called_once_with(
         [
             "pulumi",
@@ -33,6 +35,7 @@ def test_load_env_happy_path(mocker):
         check=True,
         capture_output=True,
         text=True,
+        cwd=ANY,
     )
 
     # Validate the expected output
