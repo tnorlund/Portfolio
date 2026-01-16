@@ -195,7 +195,9 @@ jobs:
           BUCKET=$(pulumi stack output cdn_bucket_name)
           DIST_ID=$(pulumi stack output cdn_distribution_id)
 
-          aws s3 sync ../portfolio/out s3://$BUCKET --delete --cache-control "public, max-age=3600"
+          # IMPORTANT: --exclude "assets/*" preserves images uploaded by receipt processing pipeline
+          # Without this, every deploy would delete all CDN-hosted images
+          aws s3 sync ../portfolio/out s3://$BUCKET --delete --exclude "assets/*" --cache-control "public, max-age=3600"
           aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
