@@ -4,6 +4,33 @@ Entity classes for the receipt_dynamo package.
 TODO: Make this import work with intellisense
 """
 
+# =============================================================================
+# Base classes and mixins for entity consolidation
+# =============================================================================
+from receipt_dynamo.entities.geometry_entity import (  # noqa: F401
+    GeometryEntity,
+)
+from receipt_dynamo.entities.identifier_mixins import (  # noqa: F401
+    ImageIdentifierMixin,
+    ImageLineIdentifierMixin,
+    ImageWordIdentifierMixin,
+    JobIdentifierMixin,
+    LineIdentifierMixin,
+    ReceiptIdentifierMixin,
+    WordIdentifierMixin,
+)
+from receipt_dynamo.entities.value_objects import (  # noqa: F401
+    Angle,
+    BoundingBox,
+    CDNVariants,
+    Corners,
+    Point,
+    S3Location,
+)
+
+# =============================================================================
+# Entity classes
+# =============================================================================
 from receipt_dynamo.entities.ai_usage_metric import (  # noqa: F401
     AIUsageMetric,
     item_to_ai_usage_metric,
@@ -152,6 +179,22 @@ from receipt_dynamo.entities.util import assert_valid_uuid  # noqa: F401
 from receipt_dynamo.entities.word import Word, item_to_word  # noqa: F401
 
 __all__ = [
+    # Base classes and mixins
+    "GeometryEntity",
+    "ImageIdentifierMixin",
+    "ImageLineIdentifierMixin",
+    "ImageWordIdentifierMixin",
+    "JobIdentifierMixin",
+    "LineIdentifierMixin",
+    "ReceiptIdentifierMixin",
+    "WordIdentifierMixin",
+    # Value objects
+    "Angle",
+    "BoundingBox",
+    "CDNVariants",
+    "Corners",
+    "Point",
+    "S3Location",
     # Core entities
     "AIUsageMetric",
     "BatchSummary",
