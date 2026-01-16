@@ -1,6 +1,6 @@
 import { animated, useSpring } from "@react-spring/web";
 import { useEffect, useState } from "react";
-import useOptimizedInView from "../../hooks/useOptimizedInView";
+import { useInView } from "react-intersection-observer";
 
 interface QueryLabelTransformProps {
     /** The original query to display */
@@ -20,7 +20,15 @@ const QueryLabelTransform = ({
     transformed,
     delay = 800,
 }: QueryLabelTransformProps) => {
-    const [ref, inView] = useOptimizedInView({ threshold: 0.5, triggerOnce: false });
+    // Use useInView directly with fallbackInView: false to ensure animation plays
+    // (useOptimizedInView has fallbackInView: true which causes inView to be true
+    // immediately, skipping the animation)
+    const [ref, inView] = useInView({
+        threshold: 0.5,
+        triggerOnce: false,
+        rootMargin: "100px",
+        fallbackInView: false,
+    });
     const [showTransformed, setShowTransformed] = useState(false);
     const [displayText, setDisplayText] = useState("");
     const [isScrambling, setIsScrambling] = useState(false);

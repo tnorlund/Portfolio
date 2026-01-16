@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import { animated, to, useSpring, useTransition } from "@react-spring/web";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
-import { animated, useTransition, useSpring, to } from "@react-spring/web";
 import { api } from "../../../../services/api";
 import {
   LabelEvaluatorReceipt,
