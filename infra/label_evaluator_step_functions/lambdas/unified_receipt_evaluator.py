@@ -164,6 +164,8 @@ async def unified_receipt_evaluator(
             deserialize_place,
             deserialize_patterns,
             deserialize_word,
+            serialize_label,
+            serialize_word,
         )
 
         # Initialize dynamo_table early for use across all phases
@@ -850,9 +852,12 @@ async def unified_receipt_evaluator(
                             for item in issues_with_context
                         ]
 
+                        # Convert objects to dicts for assemble_receipt_text
+                        words_as_dicts = [serialize_word(w) for w in words]
+                        labels_as_dicts = [serialize_label(lbl) for lbl in labels]
                         receipt_text = assemble_receipt_text(
-                            words=words,
-                            labels=labels,
+                            words=words_as_dicts,
+                            labels=labels_as_dicts,
                             highlight_words=highlight_words,
                             max_lines=60,
                         )
