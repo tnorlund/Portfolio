@@ -1,15 +1,12 @@
-name: Main CI/CD Pipeline
+name: CI/CD Pipeline
+
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
-  # Ensure deployment runs even for merge commits
+    branches: [main]
   workflow_dispatch:
 
-# Cancel in-progress runs for the same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -18,580 +15,129 @@ env:
   PYTHONPATH: ${{ github.workspace }}
 
 jobs:
-  # Stage 1: Fast checks (fail fast)
-  fast-checks:
-    name: Format & Lint Checks
+  # ============================================================================
+  # STAGE 1: All tests run in parallel
+  # ============================================================================
+
+  python-tests:
+    name: Python (${{ matrix.package }})
     runs-on: [self-hosted, macOS, ARM64]
-    permissions:
-      contents: write
-      pull-requests: read
-    outputs:
-      receipt_dynamo_changed: ${{ steps.changes.outputs.receipt_dynamo }}
-      receipt_dynamo_stream_changed: ${{ steps.changes.outputs.receipt_dynamo_stream }}
-      receipt_chroma_changed: ${{ steps.changes.outputs.receipt_chroma }}
-      receipt_places_changed: ${{ steps.changes.outputs.receipt_places }}
-      portfolio_changed: ${{ steps.changes.outputs.portfolio }}
-      infra_changed: ${{ steps.changes.outputs.infra }}
-      workflows_changed: ${{ steps.changes.outputs.workflows }}
-      any_code_changed: ${{ steps.changes.outputs.all_code }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0 # Need full history for change detection
-
-      - name: Detect changed files
-        id: changes
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            receipt_dynamo:
-              - 'receipt_dynamo/**'
-              - 'conftest.py'
-              - 'pytest*.ini'
-            receipt_dynamo_stream:
-              - 'receipt_dynamo_stream/**'
-              - 'conftest.py'
-              - 'pytest*.ini'
-            receipt_chroma:
-              - 'receipt_chroma/**'
-              - 'conftest.py'
-              - 'pytest*.ini'
-            receipt_places:
-              - 'receipt_places/**'
-              - 'conftest.py'
-              - 'pytest*.ini'
-            infra:
-              - 'infra/**'
-            portfolio:
-              - 'portfolio/**'
-            scripts:
-              - 'scripts/**'
-            workflows:
-              - '.github/workflows/**'
-            all_code:
-              - '**/*.py'
-              - '**/*.js'
-              - '**/*.ts'
-
-      - name: Set up Python (GitHub-hosted)
-        if: ${{ runner.os != 'macOS' }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.12"
-
-      - name: Use system Python (self-hosted)
-        if: ${{ runner.os == 'macOS' }}
-        run: |
-          echo "Using Python 3.12 on self-hosted runner"
-          # Prioritize Framework Python 3.12 to match workflow requirements
-          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
-            export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
-            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
-          # Fall back to Homebrew Python (but check version)
-          elif [ -f "/opt/homebrew/bin/python3" ]; then
-            HOMEBREW_VERSION=$(/opt/homebrew/bin/python3 --version 2>&1 | grep -o "3\.[0-9]*")
-            if [[ "$HOMEBREW_VERSION" == "3.12" ]]; then
-              export PATH="/opt/homebrew/bin:$PATH"
-              echo "/opt/homebrew/bin" >> $GITHUB_PATH
-            else
-              echo "Warning: Homebrew Python is $HOMEBREW_VERSION, but workflow requires 3.12"
-              echo "Continuing with system Python"
-            fi
-          fi
-          python3 --version
-          which python3
-
-      - name: Install minimal dependencies
-        run: |
-          python3 -m pip install black isort
-
-      - name: Check Python formatting
-        run: |
-          # Check formatting but don't block (we have auto-format on PRs)
-          echo "Checking Python formatting..."
-          black --check --line-length=79 receipt_dynamo receipt_dynamo_stream receipt_chroma receipt_places receipt_upload infra || echo "::warning::Some files need black formatting"
-          # isort configuration is in .isort.cfg
-          isort --check-only receipt_dynamo receipt_dynamo_stream receipt_chroma receipt_places receipt_upload infra || echo "::warning::Some imports need isort formatting"
-
-      - name: Set up Node.js
-        if: steps.changes.outputs.portfolio == 'true'
-        uses: actions/setup-node@v6
-        with:
-          node-version: 20
-          # Skip npm caching on self-hosted runners - disk persists between runs
-          cache: ${{ runner.os != 'macOS' && 'npm' || '' }}
-          cache-dependency-path: "portfolio/package-lock.json"
-
-      - name: Check TypeScript/ESLint
-        if: steps.changes.outputs.portfolio == 'true'
-        working-directory: portfolio
-        run: |
-          npm ci --prefer-offline
-          npm run lint
-          npm run type-check
-
-  # Stage 2: Tests (parallel)
-  test-python:
-    name: Python Tests (${{ matrix.package }})
-    needs: fast-checks
-    runs-on: [self-hosted, macOS, ARM64]
-    if: |
-      needs.fast-checks.outputs.receipt_dynamo_changed == 'true' ||
-      needs.fast-checks.outputs.receipt_dynamo_stream_changed == 'true' ||
-      needs.fast-checks.outputs.receipt_chroma_changed == 'true' ||
-      needs.fast-checks.outputs.receipt_places_changed == 'true' ||
-      needs.fast-checks.outputs.workflows_changed == 'true' ||
-      github.event_name == 'schedule'
     strategy:
+      fail-fast: false
       matrix:
         package: [receipt_dynamo, receipt_dynamo_stream, receipt_chroma, receipt_places]
     steps:
       - uses: actions/checkout@v6
         with:
-          # Force clean checkout on self-hosted runners to prevent stale file issues
           clean: true
 
-      - name: Set up Python (GitHub-hosted)
-        if: ${{ runner.os != 'macOS' }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.12"
-
-      - name: Use system Python (self-hosted)
-        if: ${{ runner.os == 'macOS' }}
+      - name: Setup Python
         run: |
-          echo "Using Python 3.12 on self-hosted runner"
-          # Prioritize Framework Python 3.12 to match workflow requirements
           if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
-            export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
             echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
-          # Fall back to Homebrew Python (but check version)
           elif [ -f "/opt/homebrew/bin/python3" ]; then
-            HOMEBREW_VERSION=$(/opt/homebrew/bin/python3 --version 2>&1 | grep -o "3\.[0-9]*")
-            if [[ "$HOMEBREW_VERSION" == "3.12" ]]; then
-              export PATH="/opt/homebrew/bin:$PATH"
-              echo "/opt/homebrew/bin" >> $GITHUB_PATH
-            else
-              echo "Warning: Homebrew Python is $HOMEBREW_VERSION, but workflow requires 3.12"
-              echo "Continuing with system Python"
-            fi
+            echo "/opt/homebrew/bin" >> $GITHUB_PATH
           fi
-          python3 --version
-          which python3
 
-      - name: Cache pip packages only
-        # Skip caching on self-hosted runners - they persist between runs
-        if: ${{ runner.os != 'macOS' }}
-        uses: actions/cache@v5
-        with:
-          path: |
-            ${{ runner.os == 'macOS' && '~/Library/Caches/pip/http' || '~/.cache/pip/http' }}
-            ${{ runner.os == 'macOS' && '~/Library/Caches/pip/wheels' || '~/.cache/pip/wheels' }}
-          key: ${{ runner.os }}-pip-cache-py312-v3-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-cache-py312-v3-
-
-      - name: Setup virtual environment and install packages
+      - name: Install and test
         run: |
-          # Create isolated virtual environment for this job to prevent collisions
-          VENV_PATH=".venv-${{ matrix.package }}"
-          echo "Creating virtual environment: $VENV_PATH"
+          # Create fresh virtual environment
+          python3 -m venv .venv-${{ matrix.package }}
+          source .venv-${{ matrix.package }}/bin/activate
+          pip install --upgrade pip wheel
 
-          # Always create fresh virtual environment to ensure we test against PR code
-          if [ -d "$VENV_PATH" ]; then
-            echo "Removing existing virtual environment to ensure fresh dependencies..."
-            rm -rf "$VENV_PATH"
-          fi
+          # Install based on package dependencies
+          case "${{ matrix.package }}" in
+            receipt_chroma)
+              pip install -e receipt_dynamo
+              pip install --no-deps -e receipt_dynamo_stream
+              pip install boto3
+              pip install --no-deps -e receipt_chroma
+              pip install boto3 chromadb "openai>=2.8.1,<3.0.0"
+              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout moto
+              ;;
+            receipt_dynamo_stream)
+              pip install -e receipt_dynamo
+              pip install --no-deps -e receipt_dynamo_stream
+              pip install boto3 pytest pytest-mock pytest-cov pytest-xdist pytest-timeout moto
+              ;;
+            receipt_places)
+              pip install -e receipt_dynamo
+              pip install --no-deps -e receipt_places
+              pip install pydantic pydantic-settings structlog boto3 requests tenacity
+              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout moto responses
+              ;;
+            *)
+              pip install -e "${{ matrix.package }}[test]"
+              ;;
+          esac
 
-          python3 -m venv "$VENV_PATH"
-          source "$VENV_PATH/bin/activate"
+          # Lint
+          pip install black isort
+          black --check --line-length=79 ${{ matrix.package }} || echo "::warning::Formatting issues"
+          isort --check-only ${{ matrix.package }} || echo "::warning::Import order issues"
 
-          # Add venv to PATH for subsequent steps
-          echo "$PWD/$VENV_PATH/bin" >> $GITHUB_PATH
-          echo "VIRTUAL_ENV=$PWD/$VENV_PATH" >> $GITHUB_ENV
-
-          # Upgrade pip for faster installs
-          python3 -m pip install --upgrade pip wheel --disable-pip-version-check
-
-          # CRITICAL: Always install packages in editable mode to use PR's source code
-          # Special handling for receipt_chroma which depends on receipt_dynamo and receipt_dynamo_stream
-          if [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
-            echo "Installing receipt_chroma with local receipt_dynamo and receipt_dynamo_stream dependencies..."
-            # First install receipt_dynamo without its test dependencies
-            python3 -m pip install --force-reinstall -e "receipt_dynamo" --disable-pip-version-check
-            # Install receipt_dynamo_stream without dependencies to avoid pip trying to resolve receipt-dynamo from PyPI
-            python3 -m pip install --force-reinstall --no-deps -e "receipt_dynamo_stream" --disable-pip-version-check
-            # Install receipt_dynamo_stream's dependencies manually (excluding receipt-dynamo which is already installed)
-            python3 -m pip install "boto3>=1.34.0" --disable-pip-version-check
-            # Then install receipt_chroma without dependencies to avoid pip trying to resolve receipt-dynamo from PyPI
-            python3 -m pip install --force-reinstall --no-deps -e "receipt_chroma" --disable-pip-version-check
-            # Install receipt_chroma's dependencies manually (excluding receipt_dynamo and receipt_dynamo_stream which are already installed)
-            python3 -m pip install "boto3>=1.34.0" "chromadb>=1.3.5" "openai>=2.8.1,<3.0.0" --disable-pip-version-check
-            # Install test dependencies
-            python3 -m pip install "pytest>=8.3.0,<10.0.0" "pytest-mock>=3.14.0,<4.0.0" "pytest-cov>=6.1.0,<7.0.0" \
-              "pytest-xdist>=3.6.0,<4.0.0" "pytest-timeout>=2.1.0,<3.0.0" "moto>=5.1.0,<6.0.0" \
-              --disable-pip-version-check
-          elif [[ "${{ matrix.package }}" == "receipt_dynamo_stream" ]]; then
-            echo "Installing receipt_dynamo_stream with local receipt_dynamo dependency..."
-            # Install receipt_dynamo first so the dependency is satisfied locally
-            python3 -m pip install --force-reinstall -e "receipt_dynamo" --disable-pip-version-check
-            # Install receipt_dynamo_stream without dependencies to avoid PyPI resolution
-            python3 -m pip install --force-reinstall --no-deps -e "receipt_dynamo_stream" --disable-pip-version-check
-            # Install test dependencies manually
-            python3 -m pip install "boto3>=1.34.0" \
-              "pytest>=8.3.0,<10.0.0" "pytest-mock>=3.14.0,<4.0.0" "pytest-cov>=6.1.0,<7.0.0" \
-              "pytest-xdist>=3.6.0,<4.0.0" "pytest-timeout>=2.1.0,<3.0.0" "moto>=5.1.0,<6.0.0" \
-              --disable-pip-version-check
-          elif [[ "${{ matrix.package }}" == "receipt_places" ]]; then
-            echo "Installing receipt_places with local receipt_dynamo dependency..."
-            # Install receipt_dynamo first so the dependency is satisfied locally
-            python3 -m pip install --force-reinstall -e "receipt_dynamo" --disable-pip-version-check
-            # Install receipt_places without dependencies to avoid PyPI resolution
-            python3 -m pip install --force-reinstall --no-deps -e "receipt_places" --disable-pip-version-check
-            # Install all runtime and test dependencies manually
-            python3 -m pip install "pydantic>=2.0.0" "pydantic-settings>=2.0.0" "structlog>=24.0.0" \
-              "boto3>=1.34.0" "requests>=2.31.0" "tenacity>=8.2.0" \
-              "pytest>=8.3.0,<10.0.0" "pytest-mock>=3.14.0,<4.0.0" "pytest-cov>=6.1.0,<7.0.0" \
-              "pytest-xdist>=3.6.0,<4.0.0" "pytest-timeout>=2.1.0,<3.0.0" "moto>=5.1.0,<6.0.0" \
-              "responses>=0.24.0" \
-              --disable-pip-version-check
-          else
-            # receipt_dynamo package - just install it directly
-            echo "Installing ${{ matrix.package }} from PR source..."
-            python3 -m pip install --force-reinstall -e "${{ matrix.package }}[test]" --disable-pip-version-check
-          fi
-
-          # Verify we're using the correct source code
-          echo "=== Virtual environment packages ==="
-          python3 -m pip list | grep -E "(pinecone|openai|receipt|pytest|moto|boto)" | head -10 || true
-          echo "Python location: $(which python3)"
-          echo "Virtual environment: $VIRTUAL_ENV"
-
-          # Show we're using editable installs from current directory
-          echo "=== Verifying editable installs ==="
-          python3 -m pip show receipt_dynamo 2>/dev/null | grep -E "(Location|Editable)" || echo "receipt_dynamo not found"
-          if [[ "${{ matrix.package }}" != "receipt_dynamo" ]]; then
-            python3 -m pip show ${{ matrix.package }} 2>/dev/null | grep -E "(Location|Editable)" || echo "${{ matrix.package }} not found"
-          fi
-
-      - name: Run tests (all types unified)
-        if: |
-          (matrix.package == 'receipt_dynamo' && needs.fast-checks.outputs.receipt_dynamo_changed == 'true') ||
-          (matrix.package == 'receipt_dynamo_stream' && needs.fast-checks.outputs.receipt_dynamo_stream_changed == 'true') ||
-          (matrix.package == 'receipt_chroma' && needs.fast-checks.outputs.receipt_chroma_changed == 'true') ||
-          (matrix.package == 'receipt_places' && needs.fast-checks.outputs.receipt_places_changed == 'true') ||
-          needs.fast-checks.outputs.workflows_changed == 'true' ||
-          github.event_name == 'schedule'
-        env:
-          SKIP_PERFORMANCE_TESTS: "true"
-        run: |
-          echo "🚀 Running unified test suite for ${{ matrix.package }} with -n auto parallelization"
-
-          # Clean __pycache__ directories to prevent stale .pyc files from causing import issues
-          echo "🧹 Cleaning __pycache__ directories..."
-          find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-
-          # Run all tests together with optimal parallelization
+          # Test
           cd ${{ matrix.package }}
-
-          if [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
-            # receipt_chroma: Run unit tests first (fast feedback), then integration tests
-            echo "🚀 Running receipt_chroma unit tests with optimized timeout..."
-            python -m pytest tests \
-              -n auto \
-              --timeout=30 \
-              --tb=short \
-              --maxfail=5 \
-              --durations=10 \
-              --dist=loadfile \
-              -m "unit and not end_to_end and not slow and not performance" \
-              --cov \
-              --cov-report=term-missing \
-              --cov-report=xml
-
-            echo "🚀 Running receipt_chroma integration tests with extended timeout..."
-            python -m pytest tests \
-              -n auto \
-              --timeout=300 \
-              --tb=short \
-              --maxfail=3 \
-              --durations=10 \
-              --dist=loadfile \
-              -m "integration and not end_to_end and not slow and not performance" \
-              --cov-append \
-              --cov \
-              --cov-report=term-missing \
-              --cov-report=xml
-          elif [[ "${{ matrix.package }}" == "receipt_dynamo_stream" ]]; then
-            # receipt_dynamo_stream: Run unit and integration suites
-            echo "🚀 Running receipt_dynamo_stream unit tests with optimized timeout..."
-            python -m pytest tests/unit \
-              -n auto \
-              --timeout=30 \
-              --tb=short \
-              --maxfail=5 \
-              --durations=10 \
-              --dist=loadfile \
-              --cov \
-              --cov-report=term-missing \
-              --cov-report=xml
-
-            echo "🚀 Running receipt_dynamo_stream integration tests with extended timeout..."
-            python -m pytest tests/integration \
-              -n auto \
-              --timeout=300 \
-              --tb=short \
-              --maxfail=3 \
-              --durations=10 \
-              --dist=loadfile \
-              --cov-append \
-              --cov \
-              --cov-report=term-missing \
-              --cov-report=xml
-          elif [[ "${{ matrix.package }}" == "receipt_places" ]]; then
-            # receipt_places: Run unit tests only (no integration tier)
-            echo "🚀 Running receipt_places unit tests with optimized timeout..."
-            python -m pytest tests \
-              -n auto \
-              --timeout=30 \
-              --tb=short \
-              --maxfail=5 \
-              --durations=10 \
-              --dist=loadfile \
-              -m "unit" \
-              --cov \
-              --cov-report=term-missing \
-              --cov-report=xml
-          else
-            # receipt_dynamo: Run unit tests first (fast feedback), then integration tests
-            echo "🚀 Running receipt_dynamo unit tests with optimized timeout..."
-            python -m pytest tests \
-              -n auto \
-              --timeout=30 \
-              --tb=short \
-              --maxfail=5 \
-              --durations=10 \
-              --dist=loadfile \
-              -m "unit and not end_to_end and not slow and not performance" \
-              --cov \
-              --cov-report=term-missing \
-              --cov-report=xml
-
-            echo "🚀 Running receipt_dynamo integration tests with extended timeout..."
-            python -m pytest tests \
-              -n auto \
-              --timeout=300 \
-              --tb=short \
-              --maxfail=3 \
-              --durations=10 \
-              --dist=loadfile \
-              -m "integration and not end_to_end and not slow and not performance and not unused_in_production" \
-              --cov-append \
-              --cov \
-              --cov-report=term-missing \
-              --cov-report=xml
-          fi
-
+          python -m pytest tests -n auto --timeout=120 --tb=short --maxfail=5 \
+            -m "not end_to_end and not slow and not performance" \
+            --cov --cov-report=xml
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.package }}
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
 
-  test-typescript:
-    name: TypeScript Tests
-    needs: fast-checks
+  typescript-tests:
+    name: TypeScript
     runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          # Skip npm caching on self-hosted runners - disk persists between runs
-          cache: ${{ runner.os != 'macOS' && 'npm' || '' }}
-          cache-dependency-path: "portfolio/package-lock.json"
+          node-version: "22"
 
-      - name: Install and test
+      - name: Lint and test
         working-directory: portfolio
         run: |
           npm ci --prefer-offline
+          npm run lint
+          npm run type-check
           npm run test:ci
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-portfolio
           path: portfolio/coverage
           retention-days: 1
 
-  # Stage 3: Documentation (can run in parallel with tests)
-  docs:
-    name: Generate Documentation
-    needs: fast-checks
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    continue-on-error: true # Don't fail the whole workflow if docs fail
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 20
-          # Docs job runs on GitHub-hosted ubuntu, caching helps
-          cache: "npm"
-          cache-dependency-path: "portfolio/package-lock.json"
-
-      - name: Generate docs
-        working-directory: portfolio
-        run: |
-          npm ci --prefer-offline
-          npm run docs
-
-      - name: Commit documentation
-        continue-on-error: true
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "docs: update TypeDoc documentation [skip ci]"
-          file_pattern: "portfolio/docs/**"
-          skip_dirty_check: false
-          skip_checkout: true
-
-  # Stage 4: Deploy (only on main)
-  deploy:
-    name: Deploy with Pulumi
-    needs: [fast-checks]
-    # Deploy on push to main OR manual trigger (includes merge commits)
-    if: |
-      always() && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: production
+  browser-tests:
+    name: Browser Tests
+    runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python (GitHub-hosted)
-        if: ${{ runner.os != 'macOS' }}
-        uses: actions/setup-python@v4
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
+          node-version: "22"
 
-      - name: Use system Python (self-hosted)
-        if: ${{ runner.os == 'macOS' }}
-        run: |
-          echo "Using Python 3.12 on self-hosted runner"
-          # Prioritize Framework Python 3.12 to match workflow requirements
-          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
-            export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
-            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
-          # Fall back to Homebrew Python (but check version)
-          elif [ -f "/opt/homebrew/bin/python3" ]; then
-            HOMEBREW_VERSION=$(/opt/homebrew/bin/python3 --version 2>&1 | grep -o "3\.[0-9]*")
-            if [[ "$HOMEBREW_VERSION" == "3.12" ]]; then
-              export PATH="/opt/homebrew/bin:$PATH"
-              echo "/opt/homebrew/bin" >> $GITHUB_PATH
-            else
-              echo "Warning: Homebrew Python is $HOMEBREW_VERSION, but workflow requires 3.12"
-              echo "Continuing with system Python"
-            fi
-          fi
-          python3 --version
-          which python3
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 20
-          # Deploy job runs on GitHub-hosted ubuntu, caching helps
-          cache: "npm"
-          cache-dependency-path: "portfolio/package-lock.json"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Next.js app
+      - name: Build and test
         working-directory: portfolio
         run: |
           npm ci --prefer-offline
           npm run build
 
-      - name: Install Python dependencies
-        run: |
-          cd infra
-          python3 -m pip install -e .
+          # Start server and run tests
+          npx serve out -l 3000 &
+          sleep 3
 
-      - name: Deploy with Pulumi
-        run: |
-          cd infra
-          pulumi stack select tnorlund/portfolio/prod
-          pulumi up --yes
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-
-      - name: Get Pulumi outputs
-        id: pulumi-outputs
-        run: |
-          cd infra
-          echo "bucket_name=$(pulumi stack output cdn_bucket_name)" >> $GITHUB_OUTPUT
-          echo "distribution_id=$(pulumi stack output cdn_distribution_id)" >> $GITHUB_OUTPUT
-
-      - name: Sync to S3
-        run: |
-          aws s3 sync portfolio/out s3://${{ steps.pulumi-outputs.outputs.bucket_name }} \
-            --delete \
-            --exclude "assets/*" \
-            --cache-control "public, max-age=3600"
-
-      - name: Invalidate CloudFront
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id ${{ steps.pulumi-outputs.outputs.distribution_id }} \
-            --paths "/*"
-
-  # Stage 5: Browser E2E tests (catch Safari/WebKit hydration issues)
-  browser-tests:
-    name: Browser Tests (Chrome, Firefox, Safari)
-    needs: deploy
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: "portfolio/package-lock.json"
-
-      - name: Install dependencies
-        working-directory: portfolio
-        run: npm ci
-
-      - name: Install Playwright browsers
-        working-directory: portfolio
-        run: npx playwright install --with-deps chromium firefox webkit
-
-      - name: Run Playwright hydration tests against production
-        working-directory: portfolio
-        run: npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
-        env:
-          PLAYWRIGHT_BASE_URL: https://tylernorlund.com
+          npx playwright install chromium firefox webkit
+          PLAYWRIGHT_BASE_URL=http://localhost:3000 npx playwright test e2e/hydration.spec.ts \
+            --project=chromium --project=firefox --project=webkit
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -601,84 +147,115 @@ jobs:
           path: portfolio/playwright-report/
           retention-days: 7
 
-  # Stage 6: Backend E2E tests (only after deploy)
-  e2e-tests:
-    name: End-to-End Tests
+  # ============================================================================
+  # STAGE 2: Deploy (only after ALL tests pass, main branch only)
+  # ============================================================================
+
+  deploy:
+    name: Deploy
+    needs: [python-tests, typescript-tests, browser-tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "portfolio/package-lock.json"
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build portfolio
+        working-directory: portfolio
+        run: |
+          npm ci --prefer-offline
+          npm run build
+
+      - name: Deploy infrastructure
+        run: |
+          cd infra
+          pip install -e .
+          pulumi stack select tnorlund/portfolio/prod
+          pulumi up --yes
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+      - name: Deploy to S3 + CloudFront
+        run: |
+          cd infra
+          BUCKET=$(pulumi stack output cdn_bucket_name)
+          DIST_ID=$(pulumi stack output cdn_distribution_id)
+
+          aws s3 sync ../portfolio/out s3://$BUCKET --delete --cache-control "public, max-age=3600"
+          aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
+
+  # ============================================================================
+  # STAGE 3: Post-deploy smoke tests
+  # ============================================================================
+
+  smoke-tests:
+    name: Smoke Tests
     needs: deploy
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Python (GitHub-hosted)
-        if: ${{ runner.os != 'macOS' }}
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: "3.12"
 
-      - name: Use system Python (self-hosted)
-        if: ${{ runner.os == 'macOS' }}
+      - name: Run backend E2E tests
         run: |
-          echo "Using Python 3.12 on self-hosted runner"
-          # Prioritize Framework Python 3.12 to match workflow requirements
-          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
-            export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:$PATH"
-            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
-          # Fall back to Homebrew Python (but check version)
-          elif [ -f "/opt/homebrew/bin/python3" ]; then
-            HOMEBREW_VERSION=$(/opt/homebrew/bin/python3 --version 2>&1 | grep -o "3\.[0-9]*")
-            if [[ "$HOMEBREW_VERSION" == "3.12" ]]; then
-              export PATH="/opt/homebrew/bin:$PATH"
-              echo "/opt/homebrew/bin" >> $GITHUB_PATH
-            else
-              echo "Warning: Homebrew Python is $HOMEBREW_VERSION, but workflow requires 3.12"
-              echo "Continuing with system Python"
-            fi
-          fi
-          python3 --version
-          which python3
-
-      - name: Install package
-        run: |
-          python3 -m pip install -e "receipt_dynamo[test]"
-
-      - name: Run E2E tests
-        working-directory: receipt_dynamo
-        run: |
+          pip install -e "receipt_dynamo[test]"
+          cd receipt_dynamo
           pytest -m end_to_end --timeout=600 --tb=short
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
-  # Summary job for branch protection
-  ci-success:
-    name: CI Success
-    needs: [fast-checks, test-python, test-typescript]
-    runs-on: [self-hosted, macOS, ARM64]
-    if: always()
+  # ============================================================================
+  # Docs (runs on main, doesn't block anything)
+  # ============================================================================
+
+  docs:
+    name: Generate Docs
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Check all jobs
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "portfolio/package-lock.json"
+
+      - name: Generate and commit docs
+        working-directory: portfolio
         run: |
-          # Check if any required jobs failed (not skipped)
-          if [[ "${{ needs.fast-checks.result }}" == "failure" ||
-                "${{ needs.fast-checks.result }}" == "cancelled" ||
-                "${{ needs.test-python.result }}" == "failure" ||
-                "${{ needs.test-python.result }}" == "cancelled" ||
-                "${{ needs.test-typescript.result }}" == "failure" ||
-                "${{ needs.test-typescript.result }}" == "cancelled" ]]; then
-            echo "❌ One or more jobs failed or were cancelled"
-            echo "fast-checks: ${{ needs.fast-checks.result }}"
-            echo "test-python: ${{ needs.test-python.result }}"
-            echo "test-typescript: ${{ needs.test-typescript.result }}"
-            exit 1
-          fi
+          npm ci --prefer-offline
+          npm run docs
 
-          # Success includes both 'success' and 'skipped' states
-          echo "✅ All CI checks passed!"
-          echo "fast-checks: ${{ needs.fast-checks.result }}"
-          echo "test-python: ${{ needs.test-python.result }}"
-          echo "test-typescript: ${{ needs.test-typescript.result }}"
-
-          echo ""
-          echo "🤖 AI Review: Cursor bot findings will appear on this PR."
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: update TypeDoc documentation [skip ci]"
+          file_pattern: "portfolio/docs/**"
