@@ -333,6 +333,14 @@ class HybridLambdaDeployment(ComponentResource):
                             / "tracing.py"
                         )
                     ),
+                    "utils/sqs_batching.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "utils"
+                            / "sqs_batching.py"
+                        )
+                    ),
                 }
             ),
             handler="stream_processor.lambda_handler",
