@@ -317,10 +317,56 @@ jobs:
           npm run lint
           npm run type-check
 
+  # Browser tests to catch Safari/WebKit hydration issues before merge
+  browser-tests:
+    name: Browser Tests (Chrome, Firefox, Safari)
+    needs: format-check
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: 'portfolio/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: portfolio
+        run: npm ci --prefer-offline
+
+      - name: Install Playwright browsers
+        working-directory: portfolio
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Build and start server
+        working-directory: portfolio
+        run: |
+          npm run build
+          npx serve out -l 3000 &
+          sleep 5
+
+      - name: Run Playwright tests
+        working-directory: portfolio
+        run: npx playwright test --project=chromium --project=firefox --project=webkit
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: portfolio/playwright-report/
+          retention-days: 7
+
   # Status check for branch protection
   pr-status:
     name: PR Status
-    needs: [format-check, quick-tests-python, quick-tests-typescript]
+    needs: [format-check, quick-tests-python, quick-tests-typescript, browser-tests]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -329,6 +375,7 @@ jobs:
           formatted='${{ needs.format-check.outputs.formatted }}'
           python_tests_result='${{ needs.quick-tests-python.result }}'
           typescript_tests_result='${{ needs.quick-tests-typescript.result }}'
+          browser_tests_result='${{ needs.browser-tests.result }}'
 
           echo "=== PR Status Summary ==="
           if [[ "$formatted" == "true" ]]; then
@@ -348,6 +395,12 @@ jobs:
           else
             echo "❌ TypeScript tests failed"
           fi
+
+          if [[ "$browser_tests_result" == "success" ]]; then
+            echo "✅ Browser tests pass (Chrome, Firefox, Safari)"
+          else
+            echo "❌ Browser tests failed"
+          fi
           echo "========================="
 
       - name: Set status
@@ -355,8 +408,9 @@ jobs:
           # Only fail if tests fail, not formatting
           python_result='${{ needs.quick-tests-python.result }}'
           typescript_result='${{ needs.quick-tests-typescript.result }}'
+          browser_result='${{ needs.browser-tests.result }}'
 
-          if [[ "$python_result" == "success" && "$typescript_result" == "success" ]]; then
+          if [[ "$python_result" == "success" && "$typescript_result" == "success" && "$browser_result" == "success" ]]; then
             echo "All critical checks passed!"
             if [[ "${{ needs.format-check.outputs.formatted }}" != "true" ]]; then
               echo "Note: Formatting issues detected but not blocking"
@@ -366,5 +420,6 @@ jobs:
             echo "One or more test suites failed:"
             echo "Python tests: $python_result"
             echo "TypeScript tests: $typescript_result"
+            echo "Browser tests: $browser_result"
             exit 1
           fi

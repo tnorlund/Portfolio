@@ -563,7 +563,45 @@ jobs:
             --distribution-id ${{ steps.pulumi-outputs.outputs.distribution_id }} \
             --paths "/*"
 
-  # Stage 5: E2E tests (only after deploy)
+  # Stage 5: Browser E2E tests (catch Safari/WebKit hydration issues)
+  browser-tests:
+    name: Browser Tests (Chrome, Firefox, Safari)
+    needs: deploy
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "portfolio/package-lock.json"
+
+      - name: Install dependencies
+        working-directory: portfolio
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: portfolio
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Run Playwright tests against production
+        working-directory: portfolio
+        run: npx playwright test --project=chromium --project=firefox --project=webkit
+        env:
+          PLAYWRIGHT_BASE_URL: https://tylernorlund.com
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: portfolio/playwright-report/
+          retention-days: 7
+
+  # Stage 6: Backend E2E tests (only after deploy)
   e2e-tests:
     name: End-to-End Tests
     needs: deploy
