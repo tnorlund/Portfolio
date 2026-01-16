@@ -20,18 +20,22 @@ const QueryLabelTransform = ({
     transformed,
     delay = 800,
 }: QueryLabelTransformProps) => {
-    // Use useInView directly with fallbackInView: false to ensure animation plays
-    // (useOptimizedInView has fallbackInView: true which causes inView to be true
-    // immediately, skipping the animation)
     const [ref, inView] = useInView({
-        threshold: 0.5,
+        threshold: 0.3,
         triggerOnce: false,
-        rootMargin: "100px",
-        fallbackInView: false,
+        rootMargin: "50px",
     });
+    const [hasBeenInView, setHasBeenInView] = useState(false);
     const [showTransformed, setShowTransformed] = useState(false);
     const [displayText, setDisplayText] = useState("");
     const [isScrambling, setIsScrambling] = useState(false);
+
+    // Track when element has been in view (for animation trigger)
+    useEffect(() => {
+        if (inView && !hasBeenInView) {
+            setHasBeenInView(true);
+        }
+    }, [inView, hasBeenInView]);
 
     // Reset when out of view
     useEffect(() => {
@@ -39,6 +43,7 @@ const QueryLabelTransform = ({
             setShowTransformed(false);
             setDisplayText("");
             setIsScrambling(false);
+            setHasBeenInView(false);
         }
     }, [inView]);
 
@@ -47,7 +52,7 @@ const QueryLabelTransform = ({
         let timer: ReturnType<typeof setTimeout> | null = null;
         let scrambleInterval: ReturnType<typeof setInterval> | null = null;
 
-        if (inView && !showTransformed) {
+        if (hasBeenInView && !showTransformed) {
             timer = setTimeout(() => {
                 setShowTransformed(true);
                 setIsScrambling(true);
@@ -82,14 +87,7 @@ const QueryLabelTransform = ({
                 clearInterval(scrambleInterval);
             }
         };
-    }, [inView, showTransformed, delay, transformed]);
-
-    // Container fade in
-    const containerSpring = useSpring({
-        opacity: inView ? 1 : 0,
-        transform: inView ? "translateY(0px)" : "translateY(20px)",
-        config: { tension: 120, friction: 14 },
-    });
+    }, [hasBeenInView, showTransformed, delay, transformed]);
 
     // Transformed line animation
     const transformedSpring = useSpring({
@@ -99,10 +97,9 @@ const QueryLabelTransform = ({
     });
 
     return (
-        <animated.div
+        <div
             ref={ref}
             style={{
-                ...containerSpring,
                 background: "var(--code-background)",
                 borderRadius: "4px",
                 padding: "1em",
@@ -177,7 +174,7 @@ const QueryLabelTransform = ({
           51%, 100% { opacity: 0; }
         }
       `}</style>
-        </animated.div>
+        </div>
     );
 };
 
