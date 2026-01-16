@@ -12,7 +12,6 @@ import boto3
 import pytest
 from botocore.exceptions import ClientError
 from pytest_mock import MockerFixture
-
 from receipt_dynamo import DynamoClient, Image, Letter, Line, Word
 from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
 from receipt_dynamo.data.shared_exceptions import (

@@ -1,6 +1,7 @@
 """Unit tests for OpenAI helper functions."""
 
 import pytest
+
 from receipt_chroma.embedding.openai.helpers import (
     get_unique_receipt_and_image_ids,
 )

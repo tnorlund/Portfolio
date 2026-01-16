@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo import ReceiptWordLabel, item_to_receipt_word_label
 from receipt_dynamo.constants import ValidationStatus
 

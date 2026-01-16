@@ -14,7 +14,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from botocore.exceptions import ClientError
-
 from receipt_dynamo import DynamoClient, ReceiptWord
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.shared_exceptions import (

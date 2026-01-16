@@ -4,7 +4,6 @@
 # pylint: disable=too-many-locals,unused-argument,line-too-long
 
 import pytest
-
 from receipt_dynamo import Image, item_to_image
 
 

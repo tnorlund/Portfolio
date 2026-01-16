@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
-
 from receipt_dynamo.data._job import _Job
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_status import JobStatus

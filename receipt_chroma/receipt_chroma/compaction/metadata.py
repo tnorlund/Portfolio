@@ -2,15 +2,15 @@
 
 from typing import Any, List, Optional
 
+from receipt_dynamo.constants import ChromaDBCollection
+from receipt_dynamo.data.dynamo_client import DynamoClient
+
 from receipt_chroma.compaction.models import MetadataUpdateResult
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.data.operations import (
     remove_receipt_place,
     update_receipt_place,
 )
-
-from receipt_dynamo.constants import ChromaDBCollection
-from receipt_dynamo.data.dynamo_client import DynamoClient
 
 
 def apply_place_updates(

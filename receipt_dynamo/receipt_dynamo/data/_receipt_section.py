@@ -2,7 +2,6 @@
 from typing import TYPE_CHECKING, Optional
 
 from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
     BatchOperationsMixin,
     DeleteRequestTypeDef,

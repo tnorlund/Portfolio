@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo import ReceiptField, item_to_receipt_field
 
 

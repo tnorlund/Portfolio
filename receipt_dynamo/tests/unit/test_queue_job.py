@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo.entities.queue_job import QueueJob, item_to_queue_job
 
 

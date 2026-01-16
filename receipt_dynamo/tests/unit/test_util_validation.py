@@ -1,7 +1,6 @@
 """Unit tests for entity validation utilities."""
 
 import pytest
-
 from receipt_dynamo.entities.util import (
     validate_confidence_range,
     validate_non_negative_int,

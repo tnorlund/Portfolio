@@ -3,7 +3,6 @@
 import json
 
 import pytest
-
 from receipt_dynamo import ReceiptLine, item_to_receipt_line
 
 

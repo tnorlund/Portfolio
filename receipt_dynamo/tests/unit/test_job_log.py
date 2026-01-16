@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
 
 

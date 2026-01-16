@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo.entities.label_count_cache import (
     LabelCountCache,
     item_to_label_count_cache,

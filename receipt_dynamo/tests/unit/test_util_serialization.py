@@ -1,7 +1,6 @@
 """Unit tests for entity serialization utilities."""
 
 import pytest
-
 from receipt_dynamo.entities.util import (
     build_base_item,
     deserialize_bounding_box,

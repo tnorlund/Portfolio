@@ -5,7 +5,6 @@ from typing import Type
 import pytest
 from botocore.exceptions import ClientError
 from pytest_mock import MockerFixture
-
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
