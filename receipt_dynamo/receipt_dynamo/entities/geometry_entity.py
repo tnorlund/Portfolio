@@ -310,10 +310,14 @@ class GeometryEntity(DynamoDBEntity):
             Each corner is (x, y) tuple
 
         Raises:
-            ValueError: If only one of width/height is provided
+            ValueError: If only one of width/height is provided, or if
+                flip_y=True without providing height
         """
         if (width is None) != (height is None):
             raise ValueError("Both width and height must be provided together")
+
+        if flip_y and height is None:
+            raise ValueError("height is required when flip_y=True")
 
         x_scale = float(width) if width else 1.0
         y_scale = float(height) if height else 1.0
@@ -321,8 +325,8 @@ class GeometryEntity(DynamoDBEntity):
         def scale_point(pt: Dict[str, float]) -> Tuple[float, float]:
             x = pt["x"] * x_scale
             y = pt["y"] * y_scale
-            if flip_y and height:
-                y = height - y
+            if flip_y:
+                y = height - y  # type: ignore[operator]
             return (x, y)
 
         return (
