@@ -672,8 +672,19 @@ class GeometryEntity(DynamoDBEntity):
             flip_y: If True, treat Y=0 as top of image
 
         Raises:
-            ValueError: If transform is singular for any corner
+            ValueError: If transform is singular for any corner, or if
+                any dimension parameter is not a positive integer
         """
+        # Validate dimension parameters to prevent division by zero
+        if not isinstance(src_width, int) or src_width <= 0:
+            raise ValueError("src_width must be a positive integer")
+        if not isinstance(src_height, int) or src_height <= 0:
+            raise ValueError("src_height must be a positive integer")
+        if not isinstance(dst_width, int) or dst_width <= 0:
+            raise ValueError("dst_width must be a positive integer")
+        if not isinstance(dst_height, int) or dst_height <= 0:
+            raise ValueError("dst_height must be a positive integer")
+
         corners = [
             self.top_left,
             self.top_right,
