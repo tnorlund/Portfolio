@@ -4,7 +4,6 @@ import uuid
 from datetime import datetime, timezone
 
 import pytest
-
 from receipt_dynamo.entities.dynamodb_utils import (
     parse_dynamodb_map,
     parse_dynamodb_value,

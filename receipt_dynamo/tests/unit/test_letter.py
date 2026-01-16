@@ -7,7 +7,6 @@
 import math
 
 import pytest
-
 from receipt_dynamo import Letter, item_to_letter
 
 

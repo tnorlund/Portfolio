@@ -1,7 +1,6 @@
 # pylint: disable=redefined-outer-name
 """Unit tests for JobResource entity."""
 import pytest
-
 from receipt_dynamo import JobResource, item_to_job_resource
 from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map
 

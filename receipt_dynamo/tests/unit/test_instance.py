@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo.entities.instance import Instance, item_to_instance
 
 # ###############################

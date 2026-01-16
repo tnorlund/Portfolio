@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
-
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.entities.compaction_lock import (
     CompactionLock,

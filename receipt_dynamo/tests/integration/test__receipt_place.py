@@ -14,7 +14,6 @@ from uuid import uuid4
 
 import pytest
 from botocore.exceptions import ClientError
-
 from receipt_dynamo import DynamoClient, ReceiptPlace
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
 from receipt_dynamo.data.shared_exceptions import (

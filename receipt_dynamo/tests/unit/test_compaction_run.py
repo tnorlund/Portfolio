@@ -4,7 +4,6 @@ from datetime import datetime
 from uuid import uuid4
 
 import pytest
-
 from receipt_dynamo.constants import CompactionState
 from receipt_dynamo.entities.compaction_run import (
     CompactionRun,

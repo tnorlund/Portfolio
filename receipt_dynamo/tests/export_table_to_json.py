@@ -2,7 +2,6 @@ import json
 import os
 
 import boto3
-
 from receipt_dynamo import DynamoClient
 
 CURRENT_DIR = os.path.dirname(__file__)

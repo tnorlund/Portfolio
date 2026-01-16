@@ -2,7 +2,6 @@
 from datetime import datetime
 
 import pytest
-
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities import OCRJob, item_to_ocr_job
 

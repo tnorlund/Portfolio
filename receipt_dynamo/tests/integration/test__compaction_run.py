@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import pytest
 from moto import mock_aws
-
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.compaction_run import CompactionRun
 

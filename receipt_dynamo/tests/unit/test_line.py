@@ -7,7 +7,6 @@
 import math
 
 import pytest
-
 from receipt_dynamo import Line, item_to_line
 
 

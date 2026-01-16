@@ -6,7 +6,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 from botocore.exceptions import ParamValidationError
-
 from receipt_dynamo import DynamoClient
 
 

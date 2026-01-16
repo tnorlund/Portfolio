@@ -15,7 +15,6 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from mypy_boto3_dynamodb import DynamoDBClient
-
     from receipt_dynamo.data.base_operations import (
         BatchGetItemInputTypeDef,
     )

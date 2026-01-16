@@ -1,5 +1,4 @@
 import pytest
-
 from receipt_dynamo import JobStatus, item_to_job_status
 
 
