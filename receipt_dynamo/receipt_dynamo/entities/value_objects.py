@@ -410,17 +410,30 @@ class S3Location:
         """Return S3 URI (s3://bucket/key)."""
         return f"s3://{self.bucket}/{self.key}"
 
-    def to_dynamodb(self) -> Dict[str, Dict[str, str]]:
-        """Serialize to DynamoDB format."""
+    def to_dynamodb(self) -> Dict[str, Any]:
+        """
+        Serialize to DynamoDB map format.
+
+        Returns:
+            DynamoDB-formatted map: {"M": {"bucket": {"S": ...}, "key": {"S": ...}}}
+        """
         return {
-            "bucket": {"S": self.bucket},
-            "key": {"S": self.key},
+            "M": {
+                "bucket": {"S": self.bucket},
+                "key": {"S": self.key},
+            }
         }
 
     @classmethod
     def from_dynamodb(cls, item: Dict[str, Any]) -> "S3Location":
-        """Create from DynamoDB format."""
-        return cls(bucket=item["bucket"]["S"], key=item["key"]["S"])
+        """
+        Create from DynamoDB map format.
+
+        Args:
+            item: DynamoDB map: {"M": {"bucket": {"S": ...}, "key": {"S": ...}}}
+        """
+        m = item["M"]
+        return cls(bucket=m["bucket"]["S"], key=m["key"]["S"])
 
 
 @dataclass(frozen=True)
