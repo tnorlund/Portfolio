@@ -20,7 +20,6 @@ from receipt_dynamo.entities.entity_mixins import (
 from receipt_dynamo.entities.receipt_word import EmbeddingStatus
 from receipt_dynamo.entities.util import (
     _repr_str,
-    assert_valid_uuid,
 )
 
 

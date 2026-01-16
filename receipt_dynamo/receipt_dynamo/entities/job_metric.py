@@ -6,8 +6,6 @@ from typing import Any, Dict, Generator, Optional, Tuple, Union
 from receipt_dynamo.entities.dynamodb_utils import (
     dict_to_dynamodb_map,
     parse_dynamodb_map,
-    parse_dynamodb_value,
-    to_dynamodb_value,
 )
 from receipt_dynamo.entities.util import (
     _repr_str,

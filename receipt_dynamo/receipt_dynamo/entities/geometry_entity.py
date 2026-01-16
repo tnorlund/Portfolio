@@ -431,9 +431,7 @@ class GeometryEntity(DynamoDBEntity):
                 )
         else:
             if angle < -90 or angle > 90:
-                raise ValueError(
-                    f"Angle {angle} degrees is outside [-90, 90]"
-                )
+                raise ValueError(f"Angle {angle} degrees is outside [-90, 90]")
             theta = math.radians(angle)
 
         def rotate_point(px: float, py: float) -> Tuple[float, float]:

@@ -7,8 +7,7 @@ This module provides shared functions for:
 - Common validation patterns
 """
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict
 
 
 def parse_dynamodb_map(dynamodb_map: Dict) -> Dict[str, Any]:

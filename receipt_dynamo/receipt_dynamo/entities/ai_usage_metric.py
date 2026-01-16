@@ -5,7 +5,6 @@ AI Usage Metric entity for tracking costs and usage of AI services.
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from .base import DynamoDBEntity
@@ -301,7 +300,7 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
         end_date: Optional[str] = None,
     ) -> List["AIUsageMetric"]:
         """Query usage metrics by service and date range."""
-        key_condition = f"GSI1PK = :pk AND GSI1SK BETWEEN :start AND :end"
+        key_condition = "GSI1PK = :pk AND GSI1SK BETWEEN :start AND :end"
         expression_values = {
             ":pk": {"S": f"AI_USAGE#{service}"},
             ":start": {"S": f"DATE#{start_date}"},

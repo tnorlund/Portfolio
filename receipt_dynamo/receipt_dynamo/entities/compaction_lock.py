@@ -6,7 +6,7 @@ It uses DynamoDB TTL to automatically release locks after a specified time.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from receipt_dynamo.constants import ChromaDBCollection
