@@ -375,7 +375,9 @@ M1LK 2%           1    $4.4g`}</code>
         formats it differently. I needed a shared vocabulary.
       </p>
 
-      <LabelWordCloud />
+      <ClientOnly>
+        <LabelWordCloud />
+      </ClientOnly>
 
       <p>
         The idea: show AI a receipt, ask it to tag each word with a label, then
