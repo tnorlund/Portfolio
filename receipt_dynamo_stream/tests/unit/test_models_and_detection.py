@@ -1,9 +1,9 @@
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-
 from receipt_dynamo_stream import (
     CHROMADB_RELEVANT_FIELDS,
     ChromaDBCollection,

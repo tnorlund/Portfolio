@@ -4,9 +4,9 @@ import dataclasses
 from datetime import datetime
 
 import pytest
+
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-
 from receipt_dynamo_stream.change_detection.detector import (
     CHROMADB_RELEVANT_FIELDS,
     get_chromadb_relevant_changes,

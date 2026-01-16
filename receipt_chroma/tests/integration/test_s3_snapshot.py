@@ -9,8 +9,6 @@ import tempfile
 import boto3
 import pytest
 from moto import mock_aws
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import ChromaDBCollection
 
 from receipt_chroma import ChromaClient, LockManager
 from receipt_chroma.s3 import (
@@ -18,6 +16,8 @@ from receipt_chroma.s3 import (
     initialize_empty_snapshot,
     upload_snapshot_atomic,
 )
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import ChromaDBCollection
 from tests.integration.conftest import reset_chromadb_modules
 
 

@@ -118,7 +118,7 @@ min-public-methods = 1
 [tool.isort]
 profile = "black"
 line_length = 79
-known_first_party = ["receipt_dynamo_stream"]
+known_first_party = ["receipt_dynamo_stream", "receipt_dynamo"]
 
 [tool.mypy]
 python_version = "3.12"

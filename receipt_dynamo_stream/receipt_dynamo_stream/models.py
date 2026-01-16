@@ -14,7 +14,6 @@ from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-
 from receipt_dynamo_stream.stream_types import DynamoDBItem
 
 StreamEntity: TypeAlias = (

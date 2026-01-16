@@ -14,14 +14,13 @@ This enables efficient ChromaDB metadata filtering for RAG queries:
 
 from typing import Any, Dict, List, Optional, TypedDict
 
-from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
-
 from receipt_chroma.embedding.utils.normalize import (
     normalize_address,
     normalize_phone,
     normalize_url,
 )
+from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 
 def _label_field_name(label: str) -> str:

@@ -89,7 +89,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["receipt_places", "receipt_dynamo", "receipt_agent", "receipt_chroma"]
+known-first-party = ["receipt_places", "receipt_dynamo"]
 
 [tool.black]
 line-length = 79
@@ -118,7 +118,7 @@ force_grid_wrap = 0
 use_parentheses = true
 ensure_newline_before_comments = true
 line_length = 79
-known_first_party = ["receipt_places"]
+known_first_party = ["receipt_places", "receipt_dynamo"]
 
 [tool.mypy]
 python_version = "3.12"
