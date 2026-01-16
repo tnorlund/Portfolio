@@ -4,6 +4,9 @@ Entity classes for the receipt_dynamo package.
 TODO: Make this import work with intellisense
 """
 
+# =============================================================================
+# Entity classes
+# =============================================================================
 from receipt_dynamo.entities.ai_usage_metric import (  # noqa: F401
     AIUsageMetric,
     item_to_ai_usage_metric,
@@ -29,6 +32,20 @@ from receipt_dynamo.entities.coreml_export_job import (  # noqa: F401
 from receipt_dynamo.entities.embedding_batch_result import (  # noqa: F401
     EmbeddingBatchResult,
     item_to_embedding_batch_result,
+)
+
+# =============================================================================
+# Base classes and mixins for entity consolidation
+# =============================================================================
+from receipt_dynamo.entities.geometry_entity import GeometryEntity
+from receipt_dynamo.entities.identifier_mixins import (
+    ImageIdentifierMixin,
+    ImageLineIdentifierMixin,
+    ImageWordIdentifierMixin,
+    JobIdentifierMixin,
+    LineIdentifierMixin,
+    ReceiptIdentifierMixin,
+    WordIdentifierMixin,
 )
 from receipt_dynamo.entities.image import Image, item_to_image  # noqa: F401
 from receipt_dynamo.entities.image_details import ImageDetails  # noqa: F401
@@ -149,9 +166,33 @@ from receipt_dynamo.entities.rwl_queue import item_to_queue
 
 # Re-export utility functions needed by other modules
 from receipt_dynamo.entities.util import assert_valid_uuid  # noqa: F401
+from receipt_dynamo.entities.value_objects import (
+    Angle,
+    BoundingBox,
+    CDNVariants,
+    Corners,
+    Point,
+    S3Location,
+)
 from receipt_dynamo.entities.word import Word, item_to_word  # noqa: F401
 
 __all__ = [
+    # Base classes and mixins
+    "GeometryEntity",
+    "ImageIdentifierMixin",
+    "ImageLineIdentifierMixin",
+    "ImageWordIdentifierMixin",
+    "JobIdentifierMixin",
+    "LineIdentifierMixin",
+    "ReceiptIdentifierMixin",
+    "WordIdentifierMixin",
+    # Value objects
+    "Angle",
+    "BoundingBox",
+    "CDNVariants",
+    "Corners",
+    "Point",
+    "S3Location",
     # Core entities
     "AIUsageMetric",
     "BatchSummary",

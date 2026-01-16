@@ -292,7 +292,7 @@ class ReceiptMetadata(SerializationMixin):
         matches across receipts.
         """
         return {
-            "GSI3PK": {"S": f"MERCHANT_VALIDATION"},
+            "GSI3PK": {"S": "MERCHANT_VALIDATION"},
             "GSI3SK": {"S": f"STATUS#{self.validation_status}"},
         }
 

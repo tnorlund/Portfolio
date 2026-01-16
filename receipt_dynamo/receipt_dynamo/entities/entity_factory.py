@@ -16,7 +16,6 @@ from typing import (
     Set,
     Type,
     TypeVar,
-    Union,
     cast,
 )
 

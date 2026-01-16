@@ -1,5 +1,4 @@
 import json
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Generator, Literal, Optional, Tuple
@@ -54,9 +53,7 @@ class PlacesCache:
         """
         # Validate search_type
         if self.search_type not in ["ADDRESS", "PHONE", "URL"]:
-            raise ValueError(
-                f"search_type must be one of: ADDRESS, PHONE, URL"
-            )
+            raise ValueError("search_type must be one of: ADDRESS, PHONE, URL")
 
         # Validate search_value
         if not self.search_value or not isinstance(self.search_value, str):
@@ -86,9 +83,6 @@ class PlacesCache:
         if self.time_to_live is not None:
             if not isinstance(self.time_to_live, int) or self.time_to_live < 0:
                 raise ValueError("time_to_live must be non-negative")
-            now = int(time.time())
-            # if self.time_to_live < now:
-            #     raise ValueError("time_to_live must be in the future")
 
     def _pad_search_value(self, value: str) -> str:
         """Pad the search value to a fixed length.

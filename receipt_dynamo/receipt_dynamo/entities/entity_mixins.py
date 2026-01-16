@@ -266,9 +266,9 @@ class SerializationMixin:
 
             # Type validation if specified
             if field_type is not None and value is not None:
-                if field_type == dict and isinstance(value, dict):
+                if field_type is dict and isinstance(value, dict):
                     return value
-                elif field_type == list and isinstance(value, list):
+                elif field_type is list and isinstance(value, list):
                     return value
                 elif not isinstance(value, field_type):
                     raise TypeError(
@@ -277,7 +277,7 @@ class SerializationMixin:
                     )
 
             return value
-        except Exception as e:
+        except Exception:
             # Return default on any deserialization error
             return default
 
