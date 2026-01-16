@@ -11,6 +11,11 @@ from receipt_dynamo.entities.entity_mixins import (
     GeometryValidationUtilsMixin,
     WarpTransformMixin,
 )
+from receipt_dynamo.entities.entity_factory import (
+    EntityFactory,
+    create_geometry_extractors,
+    create_image_receipt_pk_parser,
+)
 from receipt_dynamo.entities.util import (
     _repr_str,
 )
@@ -289,13 +294,6 @@ def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:
             "word_id": int(parts[5]),
             "letter_id": int(parts[7]),
         }
-
-    # Import EntityFactory and related functions
-    from .entity_factory import (
-        EntityFactory,
-        create_geometry_extractors,
-        create_image_receipt_pk_parser,
-    )
 
     # Type-safe extractors for all fields
     custom_extractors = {

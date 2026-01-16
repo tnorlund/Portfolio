@@ -571,10 +571,6 @@ class CommonValidationMixin:
     like UUID validation, ID checks, and pagination key validation.
     """
 
-    # Declare expected attributes for type checker
-    if TYPE_CHECKING:
-        from ..shared_exceptions import EntityValidationError
-
     def _validate_image_id(
         self, image_id: Optional[str], param_name: str = "image_id"
     ) -> None:
@@ -588,9 +584,6 @@ class CommonValidationMixin:
         Raises:
             EntityValidationError: If image_id is None or invalid
         """
-        from ...entities.util import assert_valid_uuid
-        from ..shared_exceptions import EntityValidationError
-
         if image_id is None:
             raise EntityValidationError(f"{param_name} cannot be None")
         assert_valid_uuid(image_id)
@@ -608,8 +601,6 @@ class CommonValidationMixin:
         Raises:
             EntityValidationError: If receipt_id is None or invalid
         """
-        from ..shared_exceptions import EntityValidationError
-
         if receipt_id is None:
             raise EntityValidationError(f"{param_name} cannot be None")
         if not isinstance(receipt_id, int) or receipt_id <= 0:
@@ -629,8 +620,6 @@ class CommonValidationMixin:
         Raises:
             EntityValidationError: If last_evaluated_key is invalid
         """
-        from ..shared_exceptions import EntityValidationError
-
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
                 raise EntityValidationError(

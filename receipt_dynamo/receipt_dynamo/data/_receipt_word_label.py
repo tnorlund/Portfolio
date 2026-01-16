@@ -13,10 +13,17 @@ from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.base_operations import (
     DynamoDBBaseOperations,
     FlattenedStandardMixin,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
 )
@@ -98,15 +105,6 @@ class _ReceiptWordLabel(
         self, error: ClientError, receipt_word_label: ReceiptWordLabel
     ):
         """Handle errors specific to add_receipt_word_label"""
-        from receipt_dynamo.data.shared_exceptions import (
-            DynamoDBError,
-            DynamoDBServerError,
-            DynamoDBThroughputError,
-            DynamoDBValidationError,
-            EntityAlreadyExistsError,
-            EntityValidationError,
-        )
-
         error_code = error.response.get("Error", {}).get("Code", "")
         if error_code == "ConditionalCheckFailedException":
             raise EntityAlreadyExistsError(
@@ -158,11 +156,6 @@ class _ReceiptWordLabel(
         # Custom validation for add operation with specific error messages
         self._validate_receipt_word_labels_for_add(receipt_word_labels)
 
-        from receipt_dynamo.data.base_operations import (
-            PutRequestTypeDef,
-            WriteRequestTypeDef,
-        )
-
         request_items = [
             WriteRequestTypeDef(
                 PutRequest=PutRequestTypeDef(Item=label.to_item())
@@ -173,14 +166,6 @@ class _ReceiptWordLabel(
 
     def _handle_add_receipt_word_labels_error(self, error: ClientError):
         """Handle errors specific to add_receipt_word_labels"""
-        from receipt_dynamo.data.shared_exceptions import (
-            DynamoDBError,
-            DynamoDBServerError,
-            DynamoDBThroughputError,
-            DynamoDBValidationError,
-            EntityValidationError,
-        )
-
         error_code = error.response.get("Error", {}).get("Code", "")
         if error_code == "ProvisionedThroughputExceededException":
             raise DynamoDBThroughputError(

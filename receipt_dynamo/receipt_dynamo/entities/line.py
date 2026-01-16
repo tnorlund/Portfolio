@@ -12,6 +12,11 @@ from receipt_dynamo.entities.entity_mixins import (
     GeometryValidationUtilsMixin,
     SerializationMixin,
 )
+from receipt_dynamo.entities.entity_factory import (
+    EntityFactory,
+    create_geometry_extractors,
+    create_image_receipt_pk_parser,
+)
 from receipt_dynamo.entities.util import (
     assert_valid_uuid,
 )
@@ -205,12 +210,6 @@ def item_to_line(item: Dict[str, Any]) -> Line:
     Raises:
         ValueError: If required fields are missing or have invalid format.
     """
-    from receipt_dynamo.entities.entity_factory import (
-        EntityFactory,
-        create_geometry_extractors,
-        create_image_receipt_pk_parser,
-    )
-
     required_keys = {
         "PK",
         "SK",

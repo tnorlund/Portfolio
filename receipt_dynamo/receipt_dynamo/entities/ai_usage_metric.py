@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from .base import DynamoDBEntity
+from .entity_factory import EntityFactory
 from .entity_mixins import SerializationMixin
 
 
@@ -245,8 +246,6 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
     @classmethod
     def from_dynamodb_item(cls, item: Dict) -> "AIUsageMetric":
         """Create instance from DynamoDB item using type-safe EntityFactory."""
-        from receipt_dynamo.entities.entity_factory import EntityFactory
-
         # Type-safe extractors for all fields
         custom_extractors = {
             "service": EntityFactory.extract_string_field("service"),

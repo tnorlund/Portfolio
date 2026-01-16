@@ -11,7 +11,7 @@ codebase easier to navigate. It includes:
 
 from datetime import datetime
 from decimal import Decimal
-from math import atan2, pi
+from math import atan2, cos, degrees, pi, radians, sin
 from typing import (
     Any,
     Dict,
@@ -962,13 +962,11 @@ class GeometryMixin:
             ValueError: If the angle is outside the allowed range of -90 to 90
                 degrees (or -π/2 to π/2 radians).
         """
-        import math
-
         # Convert angle to radians if needed
         if use_radians:
             theta = angle
             # Check range: -π/2 to π/2
-            if theta < -math.pi / 2 or theta > math.pi / 2:
+            if theta < -pi / 2 or theta > pi / 2:
                 raise ValueError(
                     f"Angle {theta} radians is outside the allowed range "
                     f"[-π/2, π/2]"
@@ -980,7 +978,7 @@ class GeometryMixin:
                     f"Angle {angle} degrees is outside the allowed range "
                     f"[-90, 90]"
                 )
-            theta = math.radians(angle)
+            theta = radians(angle)
 
         # Rotate all corner points
         def rotate_point(
@@ -988,8 +986,8 @@ class GeometryMixin:
         ) -> Tuple[float, float]:
             """Rotate a point around an origin by theta radians."""
             tx, ty = px - ox, py - oy
-            rx = tx * math.cos(theta) - ty * math.sin(theta)
-            ry = tx * math.sin(theta) + ty * math.cos(theta)
+            rx = tx * cos(theta) - ty * sin(theta)
+            ry = tx * sin(theta) + ty * cos(theta)
             return rx + ox, ry + oy
 
         # Rotate corners
@@ -1033,7 +1031,7 @@ class GeometryMixin:
         self.bounding_box["height"] = max(ys) - min(ys)
 
         # Update angle attributes
-        self.angle_degrees += angle if not use_radians else math.degrees(angle)
+        self.angle_degrees += angle if not use_radians else degrees(angle)
         self.angle_radians += theta
 
         # Normalize angles to [-180, 180] degrees and [-π, π] radians
@@ -1042,10 +1040,10 @@ class GeometryMixin:
         while self.angle_degrees < -180:
             self.angle_degrees += 360
 
-        while self.angle_radians > math.pi:
-            self.angle_radians -= 2 * math.pi
-        while self.angle_radians < -math.pi:
-            self.angle_radians += 2 * math.pi
+        while self.angle_radians > pi:
+            self.angle_radians -= 2 * pi
+        while self.angle_radians < -pi:
+            self.angle_radians += 2 * pi
 
     def warp_affine(
         self,
@@ -1108,14 +1106,12 @@ class GeometryMixin:
 
         # Update angle based on the transformation
         # The angle is affected by the linear part of the transformation
-        import math
-
         # Calculate how a horizontal unit vector is transformed
         dx, dy = transform_point(1, 0)
         origin_x, origin_y = transform_point(0, 0)
-        new_angle = math.atan2(dy - origin_y, dx - origin_x)
+        new_angle = atan2(dy - origin_y, dx - origin_x)
         self.angle_radians = new_angle
-        self.angle_degrees = math.degrees(new_angle)
+        self.angle_degrees = degrees(new_angle)
 
     def warp_affine_normalized_forward(
         self,
@@ -1235,10 +1231,8 @@ class GeometryMixin:
         self.bounding_box["height"] = max(ys) - min(ys)
 
         # Update angle - add 90 degrees
-        import math
-
         self.angle_degrees += 90
-        self.angle_radians += math.pi / 2
+        self.angle_radians += pi / 2
 
     def shear(
         self,

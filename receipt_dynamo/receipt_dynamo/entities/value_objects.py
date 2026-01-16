@@ -20,6 +20,9 @@ Classes:
 """
 
 from dataclasses import dataclass
+from math import degrees as math_degrees
+from math import pi
+from math import radians as math_radians
 from typing import Any, Dict, Optional
 
 from receipt_dynamo.entities.util import _format_float
@@ -344,16 +347,12 @@ class Angle:
     @classmethod
     def from_degrees(cls, degrees: float) -> "Angle":
         """Create from degrees, computing radians automatically."""
-        import math
-
-        return cls(degrees=degrees, radians=math.radians(degrees))
+        return cls(degrees=degrees, radians=math_radians(degrees))
 
     @classmethod
     def from_radians(cls, radians: float) -> "Angle":
         """Create from radians, computing degrees automatically."""
-        import math
-
-        return cls(degrees=math.degrees(radians), radians=radians)
+        return cls(degrees=math_degrees(radians), radians=radians)
 
     def normalized(self) -> "Angle":
         """
@@ -362,8 +361,6 @@ class Angle:
         Returns:
             New Angle instance with normalized values
         """
-        import math
-
         deg = self.degrees
         while deg > 180:
             deg -= 360
@@ -371,10 +368,10 @@ class Angle:
             deg += 360
 
         rad = self.radians
-        while rad > math.pi:
-            rad -= 2 * math.pi
-        while rad < -math.pi:
-            rad += 2 * math.pi
+        while rad > pi:
+            rad -= 2 * pi
+        while rad < -pi:
+            rad += 2 * pi
 
         return Angle(degrees=deg, radians=rad)
 

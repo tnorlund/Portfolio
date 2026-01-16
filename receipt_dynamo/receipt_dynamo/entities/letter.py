@@ -6,6 +6,11 @@ from receipt_dynamo.entities.entity_mixins import (
     GeometrySerializationMixin,
     GeometryValidationMixin,
 )
+from receipt_dynamo.entities.entity_factory import (
+    EntityFactory,
+    create_geometry_extractors,
+    create_image_receipt_pk_parser,
+)
 from receipt_dynamo.entities.util import (
     assert_valid_uuid,
     build_base_item,
@@ -231,12 +236,6 @@ def item_to_letter(item: Dict[str, Any]) -> Letter:
     Raises:
         ValueError: If required fields are missing or have invalid format.
     """
-    from receipt_dynamo.entities.entity_factory import (
-        EntityFactory,
-        create_geometry_extractors,
-        create_image_receipt_pk_parser,
-    )
-
     required_keys = {
         "PK",
         "SK",

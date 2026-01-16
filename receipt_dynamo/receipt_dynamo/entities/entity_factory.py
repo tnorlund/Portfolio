@@ -20,6 +20,11 @@ from typing import (
 )
 
 from .entity_mixins import SerializationMixin
+from .util import (
+    deserialize_bounding_box,
+    deserialize_confidence,
+    deserialize_coordinate_point,
+)
 
 T = TypeVar("T")
 
@@ -206,12 +211,6 @@ class EntityFactory(SerializationMixin):
         Returns:
             Dictionary of geometry field values
         """
-        from .util import (
-            deserialize_bounding_box,
-            deserialize_confidence,
-            deserialize_coordinate_point,
-        )
-
         return {
             "bounding_box": deserialize_bounding_box(item["bounding_box"]),
             "top_right": deserialize_coordinate_point(item["top_right"]),

@@ -1,4 +1,5 @@
 # infra/lambda_layer/python/dynamo/data/_receipt.py
+import warnings
 from typing import Any, Dict, Optional
 
 from receipt_dynamo.data.base_operations import (
@@ -455,8 +456,6 @@ class _Receipt(
                 does not exist.
             Exception: For underlying DynamoDB errors
         """
-        import warnings
-
         warnings.warn(
             "list_receipt_and_words is deprecated. Use get_receipt() and "
             "list_receipt_words_from_receipt() instead.",

@@ -31,7 +31,7 @@ Usage:
 """
 
 from dataclasses import dataclass
-from math import atan2, pi
+from math import atan2, cos, degrees, pi, radians, sin
 from typing import Any, Dict, Optional, Tuple
 
 from receipt_dynamo.entities.base import DynamoDBEntity
@@ -422,23 +422,21 @@ class GeometryEntity(DynamoDBEntity):
         Raises:
             ValueError: If angle is outside [-90, 90] degrees
         """
-        import math
-
         if use_radians:
             theta = angle
-            if theta < -math.pi / 2 or theta > math.pi / 2:
+            if theta < -pi / 2 or theta > pi / 2:
                 raise ValueError(
                     f"Angle {theta} radians is outside [-pi/2, pi/2]"
                 )
         else:
             if angle < -90 or angle > 90:
                 raise ValueError(f"Angle {angle} degrees is outside [-90, 90]")
-            theta = math.radians(angle)
+            theta = radians(angle)
 
         def rotate_point(px: float, py: float) -> Tuple[float, float]:
             tx, ty = px - origin_x, py - origin_y
-            rx = tx * math.cos(theta) - ty * math.sin(theta)
-            ry = tx * math.sin(theta) + ty * math.cos(theta)
+            rx = tx * cos(theta) - ty * sin(theta)
+            ry = tx * sin(theta) + ty * cos(theta)
             return rx + origin_x, ry + origin_y
 
         for corner in [
@@ -450,7 +448,7 @@ class GeometryEntity(DynamoDBEntity):
             corner["x"], corner["y"] = rotate_point(corner["x"], corner["y"])
 
         self._update_bounding_box_from_corners()
-        self.angle_degrees += angle if not use_radians else math.degrees(angle)
+        self.angle_degrees += angle if not use_radians else degrees(angle)
         self.angle_radians += theta
         self._normalize_angles()
 
@@ -490,7 +488,6 @@ class GeometryEntity(DynamoDBEntity):
             new_x = old_y
             new_y = 1 - old_x
         """
-        import math
 
         def rotate_90_ccw(px: float, py: float) -> Tuple[float, float]:
             return py, -(px - 1)
@@ -505,7 +502,7 @@ class GeometryEntity(DynamoDBEntity):
 
         self._update_bounding_box_from_corners()
         self.angle_degrees += 90
-        self.angle_radians += math.pi / 2
+        self.angle_radians += pi / 2
 
     def warp_affine(
         self,
@@ -527,7 +524,6 @@ class GeometryEntity(DynamoDBEntity):
         Args:
             a, b, c, d, e, f: Affine transformation coefficients
         """
-        import math
 
         def transform_point(px: float, py: float) -> Tuple[float, float]:
             nx = a * px + b * py + c
@@ -549,9 +545,9 @@ class GeometryEntity(DynamoDBEntity):
         # Update angle based on transformation of unit vector
         dx, dy = transform_point(1, 0)
         origin_x, origin_y = transform_point(0, 0)
-        new_angle = math.atan2(dy - origin_y, dx - origin_x)
+        new_angle = atan2(dy - origin_y, dx - origin_x)
         self.angle_radians = new_angle
-        self.angle_degrees = math.degrees(new_angle)
+        self.angle_degrees = degrees(new_angle)
 
     def _update_bounding_box_from_corners(self) -> None:
         """Recalculate bounding box from corner points."""
@@ -574,16 +570,14 @@ class GeometryEntity(DynamoDBEntity):
 
     def _normalize_angles(self) -> None:
         """Normalize angles to standard ranges."""
-        import math
-
         while self.angle_degrees > 180:
             self.angle_degrees -= 360
         while self.angle_degrees < -180:
             self.angle_degrees += 360
-        while self.angle_radians > math.pi:
-            self.angle_radians -= 2 * math.pi
-        while self.angle_radians < -math.pi:
-            self.angle_radians += 2 * math.pi
+        while self.angle_radians > pi:
+            self.angle_radians -= 2 * pi
+        while self.angle_radians < -pi:
+            self.angle_radians += 2 * pi
 
     # =========================================================================
     # PERSPECTIVE TRANSFORMS

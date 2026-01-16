@@ -19,10 +19,14 @@ Differences from ReceiptMetadata:
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
+
+from boto3.dynamodb.types import TypeDeserializer
 
 from receipt_dynamo.constants import ValidationMethod
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
@@ -384,14 +388,10 @@ class ReceiptPlace(SerializationMixin):
 
         # Complex fields (JSON/Maps)
         if self.address_components:
-            import json
-
             item["address_components"] = {
                 "S": json.dumps(self.address_components)
             }
         if self.hours_data:
-            import json
-
             item["hours_data"] = {"S": json.dumps(self.hours_data)}
 
         return item
@@ -423,11 +423,6 @@ def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
     Returns:
         ReceiptPlace instance
     """
-    import json
-    from decimal import Decimal
-
-    from boto3.dynamodb.types import TypeDeserializer
-
     # First, deserialize from DynamoDB JSON format to Python types
     deserializer = TypeDeserializer()
     deserialized = {k: deserializer.deserialize(v) for k, v in item.items()}

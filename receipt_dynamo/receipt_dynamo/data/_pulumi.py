@@ -1,5 +1,6 @@
 import json
 import subprocess
+from pathlib import Path
 from typing import Any, Dict
 
 
@@ -15,8 +16,6 @@ def load_env(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
     Returns:
         dict: A dictionary of key-value pairs from the Pulumi stack outputs.
     """
-    from pathlib import Path
-
     try:
         # Find the directory containing Pulumi.yaml
         if working_dir:
@@ -68,8 +67,6 @@ def load_secrets(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
     Returns:
         dict: A dictionary of key-value pairs from the Pulumi stack secrets.
     """
-    from pathlib import Path
-
     try:
         # Find the directory containing Pulumi.yaml
         if working_dir:

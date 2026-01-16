@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -15,12 +17,6 @@ from receipt_dynamo.entities.receipt_word_label_spatial_analysis import (
     item_to_receipt_word_label_spatial_analysis,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        PutRequestTypeDef,
-        WriteRequestTypeDef,
-    )
 
 
 class _ReceiptWordLabelSpatialAnalysis(
@@ -73,11 +69,6 @@ class _ReceiptWordLabelSpatialAnalysis(
             spatial_analyses,
             ReceiptWordLabelSpatialAnalysis,
             "spatial_analyses",
-        )
-
-        from receipt_dynamo.data.base_operations import (
-            PutRequestTypeDef,
-            WriteRequestTypeDef,
         )
 
         request_items = [
