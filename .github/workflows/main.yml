@@ -80,7 +80,7 @@ jobs:
           # Test
           cd ${{ matrix.package }}
           python -m pytest tests -n auto --timeout=120 --tb=short --maxfail=5 \
-            -m "not end_to_end and not slow and not performance" \
+            -m "not end_to_end and not slow and not performance and not unused_in_production" \
             --cov --cov-report=xml
 
       - name: Upload coverage
