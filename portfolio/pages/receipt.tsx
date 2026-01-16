@@ -492,7 +492,7 @@ M1LK 2%           1    $4.4g`}</code>
       </ClientOnly>
 
       <p>
-        $823.89. That's... significantly more than I expected. I knew I liked
+        $847.86. That's... significantly more than I expected. I knew I liked
         milk, but I didn't think I "eight hundred dollars a year" liked milk.
       </p>
 
