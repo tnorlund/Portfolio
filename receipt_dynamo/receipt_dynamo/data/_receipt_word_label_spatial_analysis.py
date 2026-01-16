@@ -1,4 +1,4 @@
-"""Receipt Word Label Spatial Analysis data access using base operations framework."""
+"""Receipt Word Label Spatial Analysis data access operations."""
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -27,7 +27,7 @@ class _ReceiptWordLabelSpatialAnalysis(
     FlattenedStandardMixin,
 ):
     """
-    A class used to access receipt word label spatial analysis entities in DynamoDB.
+    Access receipt word label spatial analysis entities in DynamoDB.
 
     This class provides methods to store and retrieve spatial relationship data
     between valid receipt word labels, supporting label validation workflows
@@ -222,7 +222,7 @@ class _ReceiptWordLabelSpatialAnalysis(
             )
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                f"receipt_id must be an int, got {type(receipt_id).__name__}"
             )
         if not isinstance(line_id, int):
             raise EntityValidationError(
@@ -281,7 +281,7 @@ class _ReceiptWordLabelSpatialAnalysis(
             last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]]:
+            Tuple[List[ReceiptWordLabelSpatialAnalysis], dict | None]:
                 The spatial analyses for the receipt and last evaluated key
 
         Raises:
@@ -294,7 +294,7 @@ class _ReceiptWordLabelSpatialAnalysis(
             )
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                f"receipt_id must be an int, got {type(receipt_id).__name__}"
             )
         if receipt_id <= 0:
             raise EntityValidationError("receipt_id must be positive")
@@ -341,7 +341,7 @@ class _ReceiptWordLabelSpatialAnalysis(
             last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]]:
+            Tuple[List[ReceiptWordLabelSpatialAnalysis], dict | None]:
                 The spatial analyses and last evaluated key
 
         Raises:
@@ -388,7 +388,7 @@ class _ReceiptWordLabelSpatialAnalysis(
             last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]]:
+            Tuple[List[ReceiptWordLabelSpatialAnalysis], dict | None]:
                 The spatial analyses for the image and last evaluated key
 
         Raises:
@@ -441,7 +441,7 @@ class _ReceiptWordLabelSpatialAnalysis(
             last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]]:
+            Tuple[List[ReceiptWordLabelSpatialAnalysis], dict | None]:
                 The spatial analyses and last evaluated key
 
         Raises:

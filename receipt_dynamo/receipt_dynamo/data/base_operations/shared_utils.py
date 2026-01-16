@@ -82,7 +82,8 @@ def build_query_params(
         filter_expression: Optional filter expression
         exclusive_start_key: Optional start key for pagination
         limit: Optional query limit
-        scan_index_forward: Optional sort order flag (True=ascending, False=descending)
+        scan_index_forward: Optional sort order flag (True=ascending,
+            False=descending)
 
     Returns:
         Dictionary of query parameters

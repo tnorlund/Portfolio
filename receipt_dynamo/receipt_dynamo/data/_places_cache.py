@@ -72,8 +72,9 @@ class _PlacesCache(
         """
         Puts a PlacesCache item unconditionally, allowing overwrites.
 
-        This method allows refreshing expired or stale cache entries without
-        waiting for DynamoDB TTL cleanup. Use this instead of add_places_cache()
+        This method allows refreshing expired or stale cache entries
+        without waiting for DynamoDB TTL cleanup. Use this instead of
+        add_places_cache()
         when you want to update an existing entry or when the TTL may have
         expired.
 

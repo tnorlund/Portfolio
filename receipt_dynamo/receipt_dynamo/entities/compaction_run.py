@@ -3,7 +3,8 @@ DynamoDB entity to track a per-run Chroma compaction of delta DBs.
 
 Use cases:
 - Correlate separate lines/words delta merges under a single run_id
-- Track state and timings for each collection (pending → processing → completed/failed)
+- Track state and timings for each collection
+  (pending → processing → completed/failed)
 - Provide a simple way to know when both collections are finished
 """
 
@@ -136,15 +137,15 @@ class CompactionRun(DynamoDBEntity):
         ):
             raise ValueError("words_merged_vectors must be a non-negative int")
 
-    # ───────────────────────── DynamoDB keys ──────────────────────────
+    # ───────────────────── DynamoDB keys ─────────────────────
     @property
     def key(self) -> Dict[str, Any]:
-        # Align keys with receipt design: partition by image, sort by receipt/run
+        # Align keys with receipt design: partition by image,
+        # sort by receipt/run
+        sk = f"RECEIPT#{self.receipt_id:05d}#COMPACTION_RUN#{self.run_id}"
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {
-                "S": f"RECEIPT#{self.receipt_id:05d}#COMPACTION_RUN#{self.run_id}"
-            },
+            "SK": {"S": sk},
         }
 
     def gsi1_key(self) -> Dict[str, Any]:
@@ -201,9 +202,12 @@ class CompactionRun(DynamoDBEntity):
         return (
             "CompactionRun("
             f"run_id={_repr_str(self.run_id)}, "
-            f"image_id={_repr_str(self.image_id)}, receipt_id={_repr_str(self.receipt_id)}, "
-            f"lines_state={_repr_str(self.lines_state)}, words_state={_repr_str(self.words_state)}, "
-            f"lines_merged_vectors={self.lines_merged_vectors}, words_merged_vectors={self.words_merged_vectors}"
+            f"image_id={_repr_str(self.image_id)}, "
+            f"receipt_id={_repr_str(self.receipt_id)}, "
+            f"lines_state={_repr_str(self.lines_state)}, "
+            f"words_state={_repr_str(self.words_state)}, "
+            f"lines_merged_vectors={self.lines_merged_vectors}, "
+            f"words_merged_vectors={self.words_merged_vectors}"
             ")"
         )
 

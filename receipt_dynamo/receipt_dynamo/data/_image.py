@@ -258,19 +258,23 @@ class _Image(FlattenedStandardMixin):
         last_evaluated_key: Optional[Dict] = None,
         receipt_count: Optional[int] = None,
     ) -> Tuple[List[Image], Optional[Dict]]:
-        """Lists images from the database by type, optionally filtered by exact receipt count.
+        """Lists images from the database by type.
+
+        Optionally filtered by exact receipt count.
 
         Args:
             image_type: The type of images to retrieve
             limit: Maximum number of items to return
             last_evaluated_key: Pagination key from previous query
-            receipt_count: If provided, only return images with this exact receipt count
+            receipt_count: If provided, only return images with this
+                exact receipt count
 
         Returns:
             Tuple of (images_list, next_pagination_key)
 
-        When receipt_count is provided, returns only images with that exact count.
-        When receipt_count is None, returns all images ordered by receipt count (descending).
+        When receipt_count is provided, returns only images with that
+        exact count. When receipt_count is None, returns all images
+        ordered by receipt count (descending).
         """
         # Validate image type
         if not isinstance(image_type, ImageType):
@@ -312,7 +316,7 @@ class _Image(FlattenedStandardMixin):
                 last_evaluated_key=last_evaluated_key,
             )
         else:
-            # Query all images of this type, sorted by receipt count (descending)
+            # Query all images of this type, sorted by receipt count
             return self._query_entities(
                 index_name="GSI3",
                 key_condition_expression="#t = :val",

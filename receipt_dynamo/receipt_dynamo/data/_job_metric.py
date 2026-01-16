@@ -58,13 +58,14 @@ class _JobMetric(
 
     @handle_dynamodb_errors("add_job_metrics")
     def add_job_metrics(self, job_metrics: List[JobMetric]) -> None:
-        """Adds multiple job metrics to the database in a single batch operation.
+        """Adds multiple job metrics in a single batch operation.
 
-        This is more efficient than calling add_job_metric multiple times
-        as it uses DynamoDB's batch_write_item to write up to 25 items per call.
+        This is more efficient than calling add_job_metric multiple
+        times as it uses DynamoDB's batch_write_item to write up to
+        25 items per call.
 
         Args:
-            job_metrics (List[JobMetric]): The job metrics to add to the database
+            job_metrics (List[JobMetric]): The job metrics to add
 
         Raises:
             EntityValidationError: When job_metrics is None or not a list

@@ -37,8 +37,9 @@ from receipt_dynamo.entities.receipt_place import item_to_receipt_place
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
 
-# Maximum retry attempts for unprocessed items in batch operations
-# With exponential backoff (2^n seconds, max 32s), this allows up to ~13 minutes of retries
+# Maximum retry attempts for unprocessed items in batch operations.
+# With exponential backoff (2^n seconds, max 32s), this allows up to
+# ~13 minutes of retries.
 MAX_BATCH_RETRIES = 10
 
 # Type deserializer for converting DynamoDB JSON format to Python types
@@ -50,7 +51,8 @@ def _deserialize_item(dynamo_item: Dict[str, Any]) -> Dict[str, Any]:
     Deserialize a DynamoDB item from low-level client format to Python types.
 
     The low-level boto3 client returns items in DynamoDB JSON format
-    (e.g., {"S": "value"}, {"N": "123"}). This function converts to native Python types.
+    (e.g., {"S": "value"}, {"N": "123"}). This function converts to
+    native Python types.
 
     Args:
         dynamo_item: Item in DynamoDB JSON format from low-level client
@@ -103,16 +105,16 @@ class _ReceiptPlace(FlattenedStandardMixin):
         Retrieves multiple ReceiptPlace items by indices.
     get_receipt_places(...) -> List[ReceiptPlace]:
         Retrieves multiple ReceiptPlace items using batch get.
-    list_receipt_places(...) -> Tuple[List[ReceiptPlace], dict | None]:
+    list_receipt_places(...)
         Lists ReceiptPlace records with pagination.
-    get_receipt_places_by_merchant(...) -> Tuple[List[ReceiptPlace], dict | None]:
+    get_receipt_places_by_merchant(...)
         Retrieves ReceiptPlace records by merchant name (GSI1).
-    list_receipt_places_with_place_id(...) -> Tuple[List[ReceiptPlace], dict | None]:
+    list_receipt_places_with_place_id(...)
         Retrieves ReceiptPlace records by place_id (GSI2).
-    get_receipt_places_by_status(...) -> Tuple[List[ReceiptPlace], dict | None]:
+    get_receipt_places_by_status(...)
         Retrieves ReceiptPlace records by validation status (GSI3).
-    get_receipt_places_by_confidence(...) -> Tuple[List[ReceiptPlace], dict | None]:
-        Retrieves ReceiptPlace records by confidence score (GSI3 range queries).
+    get_receipt_places_by_confidence(...)
+        Retrieves ReceiptPlace records by confidence (GSI3 range).
     """
 
     @handle_dynamodb_errors("add_receipt_place")
@@ -430,9 +432,12 @@ class _ReceiptPlace(FlattenedStandardMixin):
             # Log warning if max retries exceeded
             if unprocessed.get(self.table_name):
                 logger = __import__("logging").getLogger(__name__)
+                unprocessed_count = len(
+                    unprocessed.get(self.table_name, [])
+                )
                 logger.warning(
-                    f"Max batch retries ({MAX_BATCH_RETRIES}) exceeded for "
-                    f"get_receipt_places_by_ids. {len(unprocessed.get(self.table_name, []))} "
+                    f"Max batch retries ({MAX_BATCH_RETRIES}) exceeded "
+                    f"for get_receipt_places_by_ids. {unprocessed_count} "
                     "items remain unprocessed."
                 )
         return [item_to_receipt_place(result) for result in results]
@@ -517,7 +522,8 @@ class _ReceiptPlace(FlattenedStandardMixin):
             raise EntityValidationError("merchant_name cannot be None")
         if not isinstance(merchant_name, str):
             raise EntityValidationError("merchant_name must be a string")
-        # Use same normalization as entity gsi1_key: uppercase, replace special chars, strip underscores
+        # Use same normalization as entity gsi1_key: uppercase,
+        # replace special chars, strip underscores
         normalized_merchant_name = merchant_name.upper()
         normalized_merchant_name = re.sub(
             r"[^A-Z0-9]+", "_", normalized_merchant_name
@@ -610,14 +616,16 @@ class _ReceiptPlace(FlattenedStandardMixin):
         """
         Retrieves ReceiptPlace records by validation status (GSI3).
 
-        Uses GSI3 to query places by validation status, with optional pagination.
-        Note: GSI3SK now includes confidence for range queries, so we query for all
-        confidence values and filter by status.
+        Uses GSI3 to query places by validation status, with optional
+        pagination. Note: GSI3SK now includes confidence for range
+        queries, so we query for all confidence values and filter by
+        status.
 
         Parameters
         ----------
         validation_status : str
-            The validation status to filter by (MATCHED, UNSURE, NO_MATCH).
+            The validation status to filter by (MATCHED, UNSURE,
+            NO_MATCH).
         limit : int, optional
             Maximum number of records to retrieve.
         last_evaluated_key : dict, optional
@@ -626,8 +634,8 @@ class _ReceiptPlace(FlattenedStandardMixin):
         Returns
         -------
         Tuple[List[ReceiptPlace], dict | None]
-            A tuple containing the list of ReceiptPlace records and the last
-            evaluated key.
+            A tuple containing the list of ReceiptPlace records and
+            the last evaluated key.
 
         Raises
         ------
@@ -636,14 +644,17 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         Performance Notes
         -----------------
-        This query uses a FilterExpression to match status, which means DynamoDB
-        evaluates the status filter after the key condition. Items that don't match
-        the filter still consume read capacity. This is a known tradeoff of the GSI3
-        design where confidence is prioritized in the sort key for range queries.
+        This query uses a FilterExpression to match status, which
+        means DynamoDB evaluates the status filter after the key
+        condition. Items that don't match the filter still consume
+        read capacity. This is a known tradeoff of the GSI3 design
+        where confidence is prioritized in the sort key for range
+        queries.
 
-        For use cases where status queries are critical, consider restructuring GSI3SK
-        to put status before confidence, at the cost of less efficient confidence range
-        queries. This design prioritizes confidence-based quality control queries.
+        For use cases where status queries are critical, consider
+        restructuring GSI3SK to put status before confidence, at the
+        cost of less efficient confidence range queries. This design
+        prioritizes confidence-based quality control queries.
         """
         if not validation_status:
             raise EntityValidationError("validation_status cannot be empty")
@@ -662,7 +673,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         return self._query_entities(
             index_name="GSI3",
-            key_condition_expression="GSI3PK = :pk AND begins_with(GSI3SK, :sk_prefix)",
+            key_condition_expression=(
+                "GSI3PK = :pk AND begins_with(GSI3SK, :sk_prefix)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": "PLACE_VALIDATION"},

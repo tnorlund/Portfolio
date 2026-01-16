@@ -164,9 +164,10 @@ class FlattenedStandardMixin:
                     Put={
                         "TableName": self.table_name,
                         "Item": entity.to_item(),
-                        # Guard on full composite key to allow multiple items under same PK
+                        # Guard on full composite key for uniqueness
                         "ConditionExpression": (
-                            "attribute_not_exists(PK) and attribute_not_exists(SK)"
+                            "attribute_not_exists(PK) and "
+                            "attribute_not_exists(SK)"
                         ),
                     }
                 )

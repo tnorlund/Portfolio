@@ -161,7 +161,8 @@ class ReceiptWordLabel:
             dict: The GSI3 key for the receipt word label.
         """
         # Ensure validation_status is a string value, not an Enum
-        # This is important because if it's an Enum, str() gives "ValidationStatus.INVALID"
+        # This is important because if it's an Enum, str() gives
+        # "ValidationStatus.INVALID"
         # instead of just "INVALID"
         status_value = (
             self.validation_status.value

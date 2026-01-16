@@ -232,12 +232,13 @@ class _Job(
         Args:
             name (str): The name of the job(s) to retrieve.
             limit (int, optional): Maximum number of jobs to return.
-            last_evaluated_key (dict, optional): Pagination key from previous query.
+            last_evaluated_key (dict, optional): Pagination key from
+                previous query.
 
         Returns:
             tuple[list[Job], dict | None]: A tuple containing:
                 - A list of Job objects with the specified name.
-                - The LastEvaluatedKey for pagination, or None if no more pages.
+                - The LastEvaluatedKey for pagination, or None.
 
         Raises:
             EntityValidationError: If parameters are invalid.
@@ -256,7 +257,8 @@ class _Job(
                 for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
             ):
                 raise EntityValidationError(
-                    "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys"
+                    "LastEvaluatedKey must contain PK, SK, GSI2PK, "
+                    "and GSI2SK keys"
                 )
 
         return self._query_entities(

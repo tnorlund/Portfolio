@@ -159,7 +159,8 @@ class _Receipt(
             )
             for receipt in receipts
         ]
-        self._transact_write_with_chunking(transact_items)  # type: ignore[arg-type]
+        # type: ignore[arg-type]
+        self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("get_receipt")
     def get_receipt(self, image_id: str, receipt_id: int) -> Receipt:

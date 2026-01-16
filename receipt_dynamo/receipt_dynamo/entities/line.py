@@ -142,7 +142,7 @@ class Line(
                 "angle_degrees",
                 "angle_radians",
                 "confidence",
-                # Prevent auto-serialization of helper property used for GSI injection
+                # Prevent auto-serialization of helper property for GSI
                 "gsi1_key",
             },
         )

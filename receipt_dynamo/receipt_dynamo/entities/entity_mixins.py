@@ -832,18 +832,20 @@ class GeometryMixin:
     ]:
         """Calculates the four corners in image coordinates.
 
-        Converts normalized coordinates (0-1) to pixel coordinates if width/height
-        are provided. Optionally flips Y coordinates for image coordinate systems
-        where Y=0 is at the top.
+        Converts normalized coordinates (0-1) to pixel coordinates if
+        width/height are provided. Optionally flips Y coordinates for
+        image coordinate systems where Y=0 is at the top.
 
         Args:
-            width: The width of the image to scale coordinates. Defaults to None.
-            height: The height of the image to scale coordinates. Defaults to None.
+            width: The width of the image to scale coordinates.
+                Defaults to None.
+            height: The height of the image to scale coordinates.
+                Defaults to None.
             flip_y: Whether to flip the y coordinate. Defaults to False.
 
         Returns:
-            Tuple of four corner coordinates: (top_left, top_right, bottom_left, bottom_right)
-            Each corner is a (x, y) tuple.
+            Tuple of four corner coordinates: (top_left, top_right,
+            bottom_left, bottom_right). Each corner is a (x, y) tuple.
 
         Raises:
             ValueError: If only one of width or height is provided.

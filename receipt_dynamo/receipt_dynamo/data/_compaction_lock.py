@@ -123,11 +123,12 @@ class _CompactionLock(FlattenedStandardMixin):
                 existing_lock = self.get_compaction_lock(lock_id, collection)
                 if existing_lock is None:
                     raise EntityNotFoundError(
-                        f"Lock '{lock_id}' for collection '{collection.value}' not found"
+                        f"Lock '{lock_id}' for collection "
+                        f"'{collection.value}' not found"
                     ) from e
                 raise EntityValidationError(
-                    f"Cannot delete lock '{lock_id}' for collection '{collection.value}' - "
-                    f"owned by {existing_lock.owner}"
+                    f"Cannot delete lock '{lock_id}' for collection "
+                    f"'{collection.value}' - owned by {existing_lock.owner}"
                 ) from e
             raise
 
@@ -241,7 +242,8 @@ class _CompactionLock(FlattenedStandardMixin):
         Lists all active (non-expired) compaction locks.
 
         Args:
-            collection: Optional collection filter. If None, returns locks from all collections.
+            collection: Optional collection filter. If None, returns
+                locks from all collections.
             limit: Maximum number of locks to return
             last_evaluated_key: Pagination token
 

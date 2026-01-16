@@ -66,7 +66,7 @@ class Point:
             scale: Total length for formatting
 
         Returns:
-            DynamoDB-formatted map: {"M": {"x": {"N": "..."}, "y": {"N": "..."}}}
+            DynamoDB-formatted map with x and y numeric values.
         """
         return {
             "M": {
@@ -415,7 +415,7 @@ class S3Location:
         Serialize to DynamoDB map format.
 
         Returns:
-            DynamoDB-formatted map: {"M": {"bucket": {"S": ...}, "key": {"S": ...}}}
+            DynamoDB-formatted map with bucket and key string values.
         """
         return {
             "M": {
@@ -430,7 +430,7 @@ class S3Location:
         Create from DynamoDB map format.
 
         Args:
-            item: DynamoDB map: {"M": {"bucket": {"S": ...}, "key": {"S": ...}}}
+            item: DynamoDB map with bucket and key string values.
         """
         m = item["M"]
         return cls(bucket=m["bucket"]["S"], key=m["key"]["S"])

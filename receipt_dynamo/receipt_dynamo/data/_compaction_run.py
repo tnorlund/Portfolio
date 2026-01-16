@@ -45,7 +45,7 @@ class _CompactionRun(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("update_compaction_run")
     def update_compaction_run(self, run: CompactionRun) -> None:
-        """Replace the compaction run record (full PUT with existence check)."""
+        """Replace the compaction run record (full PUT with check)."""
         if run is None:
             raise EntityValidationError("run cannot be None")
         if not isinstance(run, CompactionRun):
@@ -124,7 +124,7 @@ class _CompactionRun(FlattenedStandardMixin):
     def mark_compaction_run_started(
         self, image_id: str, receipt_id: int, run_id: str, collection: str
     ) -> None:
-        """Mark a collection state as PROCESSING and set started_at timestamp."""
+        """Mark a collection state as PROCESSING and set started_at."""
         run = self.get_compaction_run(image_id, receipt_id, run_id)
         if run is None:
             raise EntityNotFoundError("CompactionRun not found")
@@ -146,10 +146,11 @@ class _CompactionRun(FlattenedStandardMixin):
         collection: str,
         merged_vectors: int = 0,
     ) -> None:
-        """Mark a collection state as COMPLETED and set finished_at + merged count.
+        """Mark a collection state as COMPLETED and set finished_at.
 
-        Uses atomic UpdateExpression to update only specific fields, preventing race conditions
-        when both lines and words collection updates happen simultaneously.
+        Uses atomic UpdateExpression to update only specific fields,
+        preventing race conditions when both lines and words collection
+        updates happen simultaneously.
         """
         pk = f"IMAGE#{image_id}"
         sk = f"RECEIPT#{receipt_id:05d}#COMPACTION_RUN#{run_id}"
@@ -205,8 +206,9 @@ class _CompactionRun(FlattenedStandardMixin):
     ) -> None:
         """Mark a collection state as FAILED with error text.
 
-        Uses atomic UpdateExpression to update only specific fields, preventing race conditions
-        when both lines and words collection updates happen simultaneously.
+        Uses atomic UpdateExpression to update only specific fields,
+        preventing race conditions when both lines and words collection
+        updates happen simultaneously.
         """
         pk = f"IMAGE#{image_id}"
         sk = f"RECEIPT#{receipt_id:05d}#COMPACTION_RUN#{run_id}"

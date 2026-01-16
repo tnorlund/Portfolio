@@ -135,7 +135,8 @@ class Job:
                     normalized[k] = v + "/"
                 else:
                     normalized[k] = v
-            # Replace with normalized copy to avoid mutating the input dict elsewhere
+            # Replace with normalized copy to avoid mutating the input
+            # dict elsewhere
             self.storage = normalized
 
         # Validate optional results map
@@ -296,13 +297,13 @@ class Job:
         )
 
     def storage_prefix(self, key: str) -> Optional[str]:
-        """Returns a storage prefix by key (e.g., 'run_root_prefix', 'best_prefix')."""
+        """Returns a storage prefix by key (e.g., 'run_root_prefix')."""
         return (
             (self.storage or {}).get(key) if self.storage is not None else None
         )
 
     def s3_uri_for_prefix(self, key: str) -> Optional[str]:
-        """Builds an s3:// URI for a named prefix if bucket and prefix are set."""
+        """Builds an s3:// URI for a named prefix if both are set."""
         bucket = self.storage_bucket()
         prefix = self.storage_prefix(key)
         if bucket and prefix:
@@ -311,7 +312,8 @@ class Job:
 
     def best_dir_uri(self) -> Optional[str]:
         """Returns the s3:// URI to the best checkpoint directory if known."""
-        # Prefer explicit best_prefix; otherwise derive from run_root_prefix if available
+        # Prefer explicit best_prefix; otherwise derive from
+        # run_root_prefix if available
         explicit = self.s3_uri_for_prefix("best_prefix")
         if explicit:
             return explicit
@@ -322,7 +324,7 @@ class Job:
         return None
 
     def publish_dir_uri(self) -> Optional[str]:
-        """Returns the s3:// URI where the publishable model bundle should live, if set."""
+        """Returns the s3:// URI where the publishable model lives."""
         return self.s3_uri_for_prefix("publish_model_prefix")
 
 

@@ -47,19 +47,22 @@ class SpatialRelationship:
 @dataclass(eq=True, unsafe_hash=False)
 class ReceiptWordLabelSpatialAnalysis:
     """
-    Represents spatial analysis results for a receipt word label stored in DynamoDB.
+    Spatial analysis results for a receipt word label stored in DynamoDB.
 
-    This entity stores Metric 2 (Inter-Label Spatial Relationships) from the
-    comprehensive spatial analysis system. For each valid receipt word label,
-    it captures the spatial relationships to all other valid labels on the same receipt.
+    This entity stores Metric 2 (Inter-Label Spatial Relationships) from
+    the comprehensive spatial analysis system. For each valid receipt
+    word label, it captures the spatial relationships to all other valid
+    labels on the same receipt.
 
-    The spatial relationships include distance and angle measurements that can be used
-    for validating new labels by checking if they follow expected spatial patterns
-    relative to existing validated labels.
+    The spatial relationships include distance and angle measurements
+    that can be used for validating new labels by checking if they
+    follow expected spatial patterns relative to existing validated
+    labels.
 
     GSI Design:
     - GSI1: Cross-receipt label analysis (SPATIAL_ANALYSIS#<label>)
-    - GSI2: Receipt-based validation (IMAGE#<image_id>#RECEIPT#<receipt_id>#SPATIAL)
+    - GSI2: Receipt-based validation
+        (IMAGE#<image_id>#RECEIPT#<receipt_id>#SPATIAL)
 
     Attributes:
         image_id (str): UUID identifying the associated image.
@@ -67,10 +70,11 @@ class ReceiptWordLabelSpatialAnalysis:
         line_id (int): Number identifying the line containing the word.
         word_id (int): Number identifying the word.
         from_label (str): The label assigned to this word.
-        from_position (Dict[str, float]): Position of this word (x, y coordinates).
-        spatial_relationships (List[SpatialRelationship]): All relationships to other valid labels.
-        timestamp_added (str): ISO formatted timestamp when analysis was computed.
-        analysis_version (str): Version of the spatial analysis algorithm used.
+        from_position (Dict[str, float]): Position (x, y coordinates).
+        spatial_relationships (List[SpatialRelationship]): All
+            relationships to other valid labels.
+        timestamp_added (str): ISO timestamp when analysis was computed.
+        analysis_version (str): Version of the analysis algorithm used.
     """
 
     image_id: str
@@ -135,7 +139,7 @@ class ReceiptWordLabelSpatialAnalysis:
 
     @property
     def key(self) -> Dict[str, Any]:
-        """Generates the primary key for the receipt word label spatial analysis.
+        """Generates the primary key for spatial analysis.
 
         Returns:
             dict: The primary key for the spatial analysis.
@@ -151,35 +155,40 @@ class ReceiptWordLabelSpatialAnalysis:
         }
 
     def gsi1_key(self) -> Dict[str, Any]:
-        """Generate the GSI1 key for finding spatial analyses by label type.
+        """Generate the GSI1 key for finding analyses by label type.
 
         GSI1PK: SPATIAL_ANALYSIS#<label>
-        GSI1SK: IMAGE#<image_id>#RECEIPT#<receipt_id>#TIMESTAMP#<timestamp>
+        GSI1SK: IMAGE#<image_id>#RECEIPT#<receipt_id>#TIMESTAMP#<ts>
         """
+        gsi1_sk = (
+            f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            f"#TIMESTAMP#{self.timestamp_added}"
+        )
         return {
             "GSI1PK": {"S": f"SPATIAL_ANALYSIS#{self.from_label}"},
-            "GSI1SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#TIMESTAMP#{self.timestamp_added}"
-            },
+            "GSI1SK": {"S": gsi1_sk},
         }
 
     def gsi2_key(self) -> Dict[str, Any]:
-        """Generate the GSI2 key for finding all spatial analyses for a receipt.
+        """Generate the GSI2 key for finding analyses for a receipt.
 
         GSI2PK: IMAGE#<image_id>#RECEIPT#<receipt_id>#SPATIAL
         GSI2SK: LABEL#<label>#LINE#<line_id>#WORD#<word_id>
         """
+        gsi2_pk = (
+            f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#SPATIAL"
+        )
+        gsi2_sk = (
+            f"LABEL#{self.from_label}#LINE#{self.line_id:05d}"
+            f"#WORD#{self.word_id:05d}"
+        )
         return {
-            "GSI2PK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#SPATIAL"
-            },
-            "GSI2SK": {
-                "S": f"LABEL#{self.from_label}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
-            },
+            "GSI2PK": {"S": gsi2_pk},
+            "GSI2SK": {"S": gsi2_sk},
         }
 
     def to_item(self) -> Dict[str, Any]:
-        """Converts the ReceiptWordLabelSpatialAnalysis object to a DynamoDB item.
+        """Converts the object to a DynamoDB item.
 
         Returns:
             dict: A dictionary representing the object as a DynamoDB item.

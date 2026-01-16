@@ -306,7 +306,8 @@ class GeometryEntity(DynamoDBEntity):
             flip_y: If True, flip Y coordinates (for image coord systems)
 
         Returns:
-            Tuple of four corners: (top_left, top_right, bottom_left, bottom_right)
+            Tuple of four corners: (top_left, top_right, bottom_left,
+            bottom_right)
             Each corner is (x, y) tuple
 
         Raises:
@@ -662,7 +663,8 @@ class GeometryEntity(DynamoDBEntity):
         This method solves for (X, Y) given (x_new, y_new).
 
         Args:
-            a, b, c, d, e, f, g, h: Perspective coefficients from original transform
+            a, b, c, d, e, f, g, h: Perspective coefficients from
+                original transform
             src_width: Original image width in pixels
             src_height: Original image height in pixels
             dst_width: Warped image width in pixels

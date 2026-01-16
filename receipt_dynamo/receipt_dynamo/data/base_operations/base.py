@@ -144,7 +144,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
         Args:
             entity: The entity to put
-            condition_expression: Condition expression for the operation (optional)
+            condition_expression: Condition expression (optional)
             **kwargs: Additional arguments for put_item
         """
         item = entity.to_item()
@@ -173,7 +173,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
         Args:
             entity: The entity to delete
-            condition_expression: Condition expression for the operation (optional)
+            condition_expression: Condition expression (optional)
             **kwargs: Additional arguments for delete_item
         """
         # Build delete_item parameters
