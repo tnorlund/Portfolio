@@ -89,7 +89,9 @@ class _BatchSummary(
             ValueError: If batch_summaries is None, not a list, or
             contains invalid BatchSummary objects.
         """
-        self._validate_entity_list(batch_summaries, BatchSummary, "batch_summaries")
+        self._validate_entity_list(
+            batch_summaries, BatchSummary, "batch_summaries"
+        )
         request_items = [
             WriteRequestTypeDef(
                 PutRequest=PutRequestTypeDef(Item=batch_summary.to_item())
@@ -113,11 +115,15 @@ class _BatchSummary(
         self._validate_entity(batch_summary, BatchSummary, "batch_summary")
         self._update_entity(
             batch_summary,
-            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("update_batch_summaries")
-    def update_batch_summaries(self, batch_summaries: List[BatchSummary]) -> None:
+    def update_batch_summaries(
+        self, batch_summaries: List[BatchSummary]
+    ) -> None:
         """
         Updates multiple BatchSummary records in DynamoDB using transactions.
 
@@ -129,7 +135,9 @@ class _BatchSummary(
             ValueError: If batch_summaries is None, not a list, or
             contains invalid BatchSummary objects.
         """
-        self._validate_entity_list(batch_summaries, BatchSummary, "batch_summaries")
+        self._validate_entity_list(
+            batch_summaries, BatchSummary, "batch_summaries"
+        )
         # Create transactional update items
         transact_items = [
             TransactWriteItemTypeDef(
@@ -160,11 +168,15 @@ class _BatchSummary(
         self._validate_entity(batch_summary, BatchSummary, "batch_summary")
         self._delete_entity(
             batch_summary,
-            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("delete_batch_summaries")
-    def delete_batch_summaries(self, batch_summaries: List[BatchSummary]) -> None:
+    def delete_batch_summaries(
+        self, batch_summaries: List[BatchSummary]
+    ) -> None:
         """Deletes multiple BatchSummary records from DynamoDB using
         transactions.
 
@@ -176,7 +188,9 @@ class _BatchSummary(
             ValueError: If batch_summaries is None, not a list, or
             contains invalid BatchSummary objects.
         """
-        self._validate_entity_list(batch_summaries, BatchSummary, "batch_summaries")
+        self._validate_entity_list(
+            batch_summaries, BatchSummary, "batch_summaries"
+        )
         # Create transactional delete items
         transact_items = [
             TransactWriteItemTypeDef(
@@ -219,7 +233,9 @@ class _BatchSummary(
         )
 
         if result is None:
-            raise EntityNotFoundError(f"BatchSummary with ID {batch_id} does not exist")
+            raise EntityNotFoundError(
+                f"BatchSummary with ID {batch_id} does not exist"
+            )
 
         return result
 
@@ -246,7 +262,9 @@ class _BatchSummary(
         return self.get_batch_summaries_by_keys(keys)
 
     @handle_dynamodb_errors("get_batch_summaries_by_keys")
-    def get_batch_summaries_by_keys(self, keys: List[dict]) -> List[BatchSummary]:
+    def get_batch_summaries_by_keys(
+        self, keys: List[dict]
+    ) -> List[BatchSummary]:
         """
         Retrieves a list of BatchSummary records from DynamoDB by keys.
         """
@@ -279,7 +297,9 @@ class _BatchSummary(
             # Handle unprocessed keys
             unprocessed = response.get("UnprocessedKeys", {})
             while unprocessed.get(self.table_name, {}).get("Keys"):
-                response = self._client.batch_get_item(RequestItems=unprocessed)
+                response = self._client.batch_get_item(
+                    RequestItems=unprocessed
+                )
                 results.extend(response["Responses"].get(self.table_name, []))
                 unprocessed = response.get("UnprocessedKeys", {})
 
@@ -389,7 +409,9 @@ class _BatchSummary(
             raise EntityValidationError("Limit must be a positive integer")
         return self._query_entities(
             index_name="GSI1",
-            key_condition_expression=("GSI1PK = :pk AND begins_with(GSI1SK, :prefix)"),
+            key_condition_expression=(
+                "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)"
+            ),
             expression_attribute_names={"#batch_type": "batch_type"},
             expression_attribute_values={
                 ":pk": {"S": f"STATUS#{status_str}"},

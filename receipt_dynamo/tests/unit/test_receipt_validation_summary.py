@@ -53,7 +53,10 @@ def example_validation_summary():
 def test_validation_summary_init_valid(example_validation_summary):
     """Test initialization with valid parameters"""
     assert example_validation_summary.receipt_id == 1
-    assert example_validation_summary.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert (
+        example_validation_summary.image_id
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
     assert example_validation_summary.overall_status == "valid"
     assert (
         example_validation_summary.overall_reasoning
@@ -64,7 +67,10 @@ def test_validation_summary_init_valid(example_validation_summary):
     assert "business_identity" in example_validation_summary.field_summary
     assert "address_verification" in example_validation_summary.field_summary
 
-    assert example_validation_summary.validation_timestamp == "2023-05-15T10:30:00"
+    assert (
+        example_validation_summary.validation_timestamp
+        == "2023-05-15T10:30:00"
+    )
     assert example_validation_summary.version == "1.0.0"
 
     # Check metadata structure
@@ -72,15 +78,22 @@ def test_validation_summary_init_valid(example_validation_summary):
     assert "processing_metrics" in example_validation_summary.metadata
     assert "processing_history" in example_validation_summary.metadata
 
-    assert example_validation_summary.metadata["source_info"]["model"] == "test-model"
     assert (
-        example_validation_summary.metadata["processing_metrics"]["execution_time_ms"]
+        example_validation_summary.metadata["source_info"]["model"]
+        == "test-model"
+    )
+    assert (
+        example_validation_summary.metadata["processing_metrics"][
+            "execution_time_ms"
+        ]
         == 150
     )
     assert len(example_validation_summary.metadata["processing_history"]) == 1
 
     assert example_validation_summary.timestamp_added == "2023-05-15T10:30:00"
-    assert example_validation_summary.timestamp_updated == "2023-05-15T10:30:00"
+    assert (
+        example_validation_summary.timestamp_updated == "2023-05-15T10:30:00"
+    )
 
 
 @pytest.mark.unit
@@ -114,14 +127,21 @@ def test_add_processing_metric(example_validation_summary):
     example_validation_summary.add_processing_metric("api_calls", 3)
 
     assert (
-        example_validation_summary.metadata["processing_metrics"]["validation_time_ms"]
+        example_validation_summary.metadata["processing_metrics"][
+            "validation_time_ms"
+        ]
         == 250
     )
-    assert example_validation_summary.metadata["processing_metrics"]["api_calls"] == 3
+    assert (
+        example_validation_summary.metadata["processing_metrics"]["api_calls"]
+        == 3
+    )
 
     # Existing metrics should still be there
     assert (
-        example_validation_summary.metadata["processing_metrics"]["execution_time_ms"]
+        example_validation_summary.metadata["processing_metrics"][
+            "execution_time_ms"
+        ]
         == 150
     )
 
@@ -167,7 +187,10 @@ def test_metadata_persistence_in_item_conversion(example_validation_summary):
 
     # Verify the metadata was preserved
     assert reconstructed.metadata["processing_metrics"]["token_count"] == 1250
-    assert reconstructed.metadata["processing_metrics"]["execution_time_ms"] == 150
+    assert (
+        reconstructed.metadata["processing_metrics"]["execution_time_ms"]
+        == 150
+    )
 
     # Verify history was preserved
     history = reconstructed.metadata["processing_history"]
@@ -270,7 +293,9 @@ def test_validation_summary_init_invalid_field_summary():
 @pytest.mark.unit
 def test_validation_summary_init_invalid_validation_timestamp():
     """Test initialization with invalid validation_timestamp"""
-    with pytest.raises(ValueError, match="validation_timestamp must be a string"):
+    with pytest.raises(
+        ValueError, match="validation_timestamp must be a string"
+    ):
         ReceiptValidationSummary(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -384,7 +409,10 @@ def test_to_item(example_validation_summary):
     assert item["GSI3SK"]["S"] == "TIMESTAMP#2023-05-15T10:30:00"
     assert item["TYPE"]["S"] == "RECEIPT_VALIDATION_SUMMARY"
     assert item["overall_status"]["S"] == "valid"
-    assert item["overall_reasoning"]["S"] == "Receipt validation passed all checks"
+    assert (
+        item["overall_reasoning"]["S"]
+        == "Receipt validation passed all checks"
+    )
     assert item["validation_timestamp"]["S"] == "2023-05-15T10:30:00"
     assert item["version"]["S"] == "1.0.0"
 
@@ -417,12 +445,16 @@ def test_from_item(example_validation_summary):
     assert summary.receipt_id == example_validation_summary.receipt_id
     assert summary.image_id == example_validation_summary.image_id
     assert summary.overall_status == example_validation_summary.overall_status
-    assert summary.overall_reasoning == example_validation_summary.overall_reasoning
+    assert (
+        summary.overall_reasoning
+        == example_validation_summary.overall_reasoning
+    )
 
     # Verify complex fields
     assert summary.field_summary == example_validation_summary.field_summary
     assert (
-        summary.validation_timestamp == example_validation_summary.validation_timestamp
+        summary.validation_timestamp
+        == example_validation_summary.validation_timestamp
     )
     assert summary.version == example_validation_summary.version
 
@@ -432,8 +464,13 @@ def test_from_item(example_validation_summary):
     assert "processing_history" in summary.metadata
 
     # Verify timestamps
-    assert summary.timestamp_added == example_validation_summary.timestamp_added
-    assert summary.timestamp_updated == example_validation_summary.timestamp_updated
+    assert (
+        summary.timestamp_added == example_validation_summary.timestamp_added
+    )
+    assert (
+        summary.timestamp_updated
+        == example_validation_summary.timestamp_updated
+    )
 
 
 @pytest.mark.unit
@@ -495,7 +532,9 @@ def test_itemToReceiptValidationSummary(example_validation_summary):
                         },
                     }
                 },
-                "source_information": {"M": {"package_version": {"S": "0.1.0"}}},
+                "source_information": {
+                    "M": {"package_version": {"S": "0.1.0"}}
+                },
                 "source_info": {"M": {}},
                 "version": {"S": "0.1.0"},
                 "processing_history": {
@@ -504,7 +543,9 @@ def test_itemToReceiptValidationSummary(example_validation_summary):
                             "M": {
                                 "action": {"S": "created"},
                                 "version": {"S": "0.1.0"},
-                                "timestamp": {"S": "2025-03-19T08:43:08.877848"},
+                                "timestamp": {
+                                    "S": "2025-03-19T08:43:08.877848"
+                                },
                             }
                         },
                         {
@@ -513,7 +554,9 @@ def test_itemToReceiptValidationSummary(example_validation_summary):
                                 "warning_count": {"N": "0"},
                                 "error_count": {"N": "0"},
                                 "version": {"S": "0.1.0"},
-                                "timestamp": {"S": "2025-03-19T08:43:08.877865"},
+                                "timestamp": {
+                                    "S": "2025-03-19T08:43:08.877865"
+                                },
                             }
                         },
                     ]
@@ -526,7 +569,9 @@ def test_itemToReceiptValidationSummary(example_validation_summary):
         "overall_status": {"S": "valid"},
         "GSI3SK": {"S": "TIMESTAMP#2025-03-19T08:43:08.877826"},
         "TYPE": {"S": "RECEIPT_VALIDATION_SUMMARY"},
-        "GSI2SK": {"S": "IMAGE#aabbf168-7a61-483b-97c7-e711de91ce5f#RECEIPT#00001"},
+        "GSI2SK": {
+            "S": "IMAGE#aabbf168-7a61-483b-97c7-e711de91ce5f#RECEIPT#00001"
+        },
         "GSI2PK": {"S": "RECEIPT"},
         "GSI1PK": {"S": "ANALYSIS_TYPE"},
         "GSI3PK": {"S": "VALIDATION_STATUS#valid"},

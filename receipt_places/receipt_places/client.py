@@ -10,14 +10,6 @@ import re
 from typing import Any, cast
 
 import requests  # type: ignore[import-untyped]  # types-requests in dev dependencies
-from tenacity import (
-    RetryError,
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
-
 from receipt_places.cache import CacheManager
 from receipt_places.config import PlacesConfig, get_config
 from receipt_places.parsers import (
@@ -29,6 +21,13 @@ from receipt_places.parsers import (
     parse_place_search_response,
 )
 from receipt_places.types import Place
+from tenacity import (
+    RetryError,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -240,7 +239,9 @@ class PlacesClient:
 
                 # Get full details
                 if not place.place_id:
-                    logger.error("Phone search returned place without place_id")
+                    logger.error(
+                        "Phone search returned place without place_id"
+                    )
                     return None
                 details = self.get_place_details(place.place_id)
                 if not details:

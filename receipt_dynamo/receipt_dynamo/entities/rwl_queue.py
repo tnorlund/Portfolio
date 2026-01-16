@@ -51,7 +51,9 @@ class Queue:
         elif isinstance(self.created_at, str):
             pass  # Already a string
         else:
-            raise ValueError("created_at must be a datetime object or a string")
+            raise ValueError(
+                "created_at must be a datetime object or a string"
+            )
 
         if (
             not isinstance(self.max_concurrent_jobs, int)

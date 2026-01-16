@@ -59,8 +59,11 @@ class _CompletionBatchResult(
         This class is deprecated and not used in production. Consider removing
         if no longer needed for historical data access.
     """
+
     @handle_dynamodb_errors("add_completion_batch_result")
-    def add_completion_batch_result(self, result: CompletionBatchResult) -> None:
+    def add_completion_batch_result(
+        self, result: CompletionBatchResult
+    ) -> None:
         """Add a new completion batch result to DynamoDB.
 
         Args:
@@ -71,7 +74,9 @@ class _CompletionBatchResult(
             EntityValidationError: If result parameters are invalid
         """
         self._validate_entity(result, CompletionBatchResult, "result")
-        self._add_entity(result, condition_expression="attribute_not_exists(PK)")
+        self._add_entity(
+            result, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_completion_batch_results")
     def add_completion_batch_results(
@@ -88,20 +93,30 @@ class _CompletionBatchResult(
         """
         self._validate_entity_list(results, CompletionBatchResult, "results")
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=result.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=result.to_item())
+            )
             for result in results
         ]
         self._batch_write_with_retry(request_items)
 
     @handle_dynamodb_errors("update_completion_batch_result")
-    def update_completion_batch_result(self, result: CompletionBatchResult) -> None:
+    def update_completion_batch_result(
+        self, result: CompletionBatchResult
+    ) -> None:
         self._validate_entity(result, CompletionBatchResult, "result")
-        self._update_entity(result, condition_expression="attribute_exists(PK)")
+        self._update_entity(
+            result, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_completion_batch_result")
-    def delete_completion_batch_result(self, result: CompletionBatchResult) -> None:
+    def delete_completion_batch_result(
+        self, result: CompletionBatchResult
+    ) -> None:
         self._validate_entity(result, CompletionBatchResult, "result")
-        self._delete_entity(result, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            result, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("get_completion_batch_result")
     def get_completion_batch_result(
@@ -184,7 +199,9 @@ class _CompletionBatchResult(
             index_name="GSI1",
             key_condition_expression="GSI1PK = :pk",
             expression_attribute_names=None,
-            expression_attribute_values={":pk": {"S": f"LABEL_TARGET#{label_target}"}},
+            expression_attribute_values={
+                ":pk": {"S": f"LABEL_TARGET#{label_target}"}
+            },
             converter_func=item_to_completion_batch_result,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -198,7 +215,9 @@ class _CompletionBatchResult(
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
         if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be a positive integer")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
         if last_evaluated_key:
             validate_last_evaluated_key(last_evaluated_key)
 
@@ -206,7 +225,9 @@ class _CompletionBatchResult(
             index_name="GSI3",
             key_condition_expression="GSI3PK = :pk",
             expression_attribute_names=None,
-            expression_attribute_values={":pk": {"S": f"RECEIPT#{receipt_id}"}},
+            expression_attribute_values={
+                ":pk": {"S": f"RECEIPT#{receipt_id}"}
+            },
             converter_func=item_to_completion_batch_result,
             limit=limit,
             last_evaluated_key=last_evaluated_key,

@@ -59,7 +59,9 @@ class _OCRJob(
         self._validate_entity_list(ocr_jobs, OCRJob, "ocr_jobs")
         # Create write request items for batch operation
         request_items = [
-            WriteRequestTypeDef(PutRequest=PutRequestTypeDef(Item=job.to_item()))
+            WriteRequestTypeDef(
+                PutRequest=PutRequestTypeDef(Item=job.to_item())
+            )
             for job in ocr_jobs
         ]
         self._batch_write_with_retry(request_items)
@@ -75,7 +77,9 @@ class _OCRJob(
         self._validate_entity(ocr_job, OCRJob, "ocr_job")
         self._update_entity(
             ocr_job,
-            condition_expression=("attribute_exists(PK) AND attribute_exists(SK)"),
+            condition_expression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
         )
 
     @handle_dynamodb_errors("get_ocr_job")
@@ -104,7 +108,8 @@ class _OCRJob(
 
         if result is None:
             raise EntityNotFoundError(
-                f"OCR job with image_id={image_id}, job_id={job_id} " "does not exist"
+                f"OCR job with image_id={image_id}, job_id={job_id} "
+                "does not exist"
             )
 
         return result
@@ -121,7 +126,9 @@ class _OCRJob(
             EntityValidationError: If ocr_job parameters are invalid
         """
         self._validate_entity(ocr_job, OCRJob, "ocr_job")
-        self._delete_entity(ocr_job, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            ocr_job, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_ocr_jobs")
     def delete_ocr_jobs(self, ocr_jobs: list[OCRJob]):
@@ -169,7 +176,9 @@ class _OCRJob(
         """
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
 
         return self._query_by_type(
             entity_type="OCR_JOB",
@@ -204,7 +213,9 @@ class _OCRJob(
             raise EntityValidationError("Status must be a OCRStatus instance.")
         if last_evaluated_key is not None:
             if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError("LastEvaluatedKey must be a dictionary")
+                raise EntityValidationError(
+                    "LastEvaluatedKey must be a dictionary"
+                )
 
         return self._query_entities(
             index_name="GSI1",

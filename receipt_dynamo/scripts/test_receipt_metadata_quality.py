@@ -29,7 +29,10 @@ class TestReceiptMetadataFieldQuality:
         )
 
         # Should be MATCHED with 3 high-quality fields
-        assert metadata.validation_status == MerchantValidationStatus.MATCHED.value
+        assert (
+            metadata.validation_status
+            == MerchantValidationStatus.MATCHED.value
+        )
         assert len(metadata._get_high_quality_matched_fields()) == 3
 
     def test_low_quality_name_field(self):
@@ -48,7 +51,10 @@ class TestReceiptMetadataFieldQuality:
         )
 
         # Should be MATCHED with only 2 high-quality fields (address, phone)
-        assert metadata.validation_status == MerchantValidationStatus.MATCHED.value
+        assert (
+            metadata.validation_status
+            == MerchantValidationStatus.MATCHED.value
+        )
         high_quality = metadata._get_high_quality_matched_fields()
         assert len(high_quality) == 2
         assert "name" not in high_quality
@@ -71,7 +77,9 @@ class TestReceiptMetadataFieldQuality:
         )
 
         # Should be UNSURE with only 1 high-quality field (name)
-        assert metadata.validation_status == MerchantValidationStatus.UNSURE.value
+        assert (
+            metadata.validation_status == MerchantValidationStatus.UNSURE.value
+        )
         high_quality = metadata._get_high_quality_matched_fields()
         assert len(high_quality) == 1
         assert "name" in high_quality
@@ -93,7 +101,9 @@ class TestReceiptMetadataFieldQuality:
         )
 
         # Should be UNSURE with only 1 high-quality field (name)
-        assert metadata.validation_status == MerchantValidationStatus.UNSURE.value
+        assert (
+            metadata.validation_status == MerchantValidationStatus.UNSURE.value
+        )
         high_quality = metadata._get_high_quality_matched_fields()
         assert len(high_quality) == 1
         assert "name" in high_quality
@@ -115,7 +125,10 @@ class TestReceiptMetadataFieldQuality:
         )
 
         # Should be NO_MATCH with 0 high-quality fields
-        assert metadata.validation_status == MerchantValidationStatus.NO_MATCH.value
+        assert (
+            metadata.validation_status
+            == MerchantValidationStatus.NO_MATCH.value
+        )
         assert len(metadata._get_high_quality_matched_fields()) == 0
 
     def test_mixed_quality_fields(self):
@@ -134,7 +147,10 @@ class TestReceiptMetadataFieldQuality:
         )
 
         # Should be MATCHED with 2 high-quality fields (name, phone)
-        assert metadata.validation_status == MerchantValidationStatus.MATCHED.value
+        assert (
+            metadata.validation_status
+            == MerchantValidationStatus.MATCHED.value
+        )
         high_quality = metadata._get_high_quality_matched_fields()
         assert len(high_quality) == 2
         assert "name" in high_quality
@@ -157,7 +173,9 @@ class TestReceiptMetadataFieldQuality:
         )
 
         # Should be UNSURE with 1 high-quality field (has 11 digits)
-        assert metadata.validation_status == MerchantValidationStatus.UNSURE.value
+        assert (
+            metadata.validation_status == MerchantValidationStatus.UNSURE.value
+        )
         high_quality = metadata._get_high_quality_matched_fields()
         assert len(high_quality) == 1
         assert "phone" in high_quality
@@ -178,7 +196,10 @@ class TestReceiptMetadataFieldQuality:
         )
 
         # Should be NO_MATCH with 0 high-quality fields
-        assert metadata.validation_status == MerchantValidationStatus.NO_MATCH.value
+        assert (
+            metadata.validation_status
+            == MerchantValidationStatus.NO_MATCH.value
+        )
         assert len(metadata._get_high_quality_matched_fields()) == 0
 
     def test_future_field_types(self):
@@ -202,7 +223,10 @@ class TestReceiptMetadataFieldQuality:
         )
 
         # Should be MATCHED - unknown fields are kept as-is
-        assert metadata.validation_status == MerchantValidationStatus.MATCHED.value
+        assert (
+            metadata.validation_status
+            == MerchantValidationStatus.MATCHED.value
+        )
         high_quality = metadata._get_high_quality_matched_fields()
         assert len(high_quality) == 3
         assert "email" in high_quality  # Future fields preserved

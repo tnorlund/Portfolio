@@ -114,7 +114,9 @@ class _Letter(FlattenedStandardMixin):
         self._update_entities(letters, Letter, "letters")
 
     @handle_dynamodb_errors("delete_letter")
-    def delete_letter(self, image_id: str, line_id: int, word_id: int, letter_id: int):
+    def delete_letter(
+        self, image_id: str, line_id: int, word_id: int, letter_id: int
+    ):
         """Deletes a letter from the database
 
         Args:
@@ -154,7 +156,9 @@ class _Letter(FlattenedStandardMixin):
         self._delete_entities(letters)
 
     @handle_dynamodb_errors("delete_letters_from_word")
-    def delete_letters_from_word(self, image_id: str, line_id: int, word_id: int):
+    def delete_letters_from_word(
+        self, image_id: str, line_id: int, word_id: int
+    ):
         """Deletes all letters from a word
 
         Args:
@@ -188,7 +192,9 @@ class _Letter(FlattenedStandardMixin):
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
-            sort_key=(f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"),
+            sort_key=(
+                f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+            ),
             entity_class=Letter,
             converter_func=item_to_letter,
         )
@@ -237,7 +243,9 @@ class _Letter(FlattenedStandardMixin):
             while unprocessed.get(self.table_name, {}).get(
                 "Keys"
             ):  # type: ignore[call-overload]
-                response = self._client.batch_get_item(RequestItems=unprocessed)
+                response = self._client.batch_get_item(
+                    RequestItems=unprocessed
+                )
                 batch_items = response["Responses"].get(self.table_name, [])
                 results.extend(batch_items)
                 unprocessed = response.get("UnprocessedKeys", {})
@@ -286,11 +294,15 @@ class _Letter(FlattenedStandardMixin):
         # original query
         letters, _ = self._query_entities(
             index_name=None,  # Main table query
-            key_condition_expression=("PK = :pkVal AND begins_with(SK, :skPrefix)"),
+            key_condition_expression=(
+                "PK = :pkVal AND begins_with(SK, :skPrefix)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pkVal": {"S": f"IMAGE#{image_id}"},
-                ":skPrefix": {"S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"},
+                ":skPrefix": {
+                    "S": f"LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#"
+                },
             },
             converter_func=item_to_letter,
             limit=None,

@@ -326,7 +326,11 @@ def test_addReceiptValidationResults_with_unprocessed_items_retries(
             return {
                 "UnprocessedItems": {
                     dynamodb_table: [
-                        {"PutRequest": {"Item": validation_results[0].to_item()}}
+                        {
+                            "PutRequest": {
+                                "Item": validation_results[0].to_item()
+                            }
+                        }
                     ]
                 }
             }
@@ -362,7 +366,9 @@ ADD_RESULTS_VALIDATION_SCENARIOS = [
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("invalid_input,error_match", ADD_RESULTS_VALIDATION_SCENARIOS)
+@pytest.mark.parametrize(
+    "invalid_input,error_match", ADD_RESULTS_VALIDATION_SCENARIOS
+)
 def test_addReceiptValidationResults_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_input: Any,
@@ -376,7 +382,9 @@ def test_addReceiptValidationResults_invalid_parameters(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 def test_addReceiptValidationResults_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
@@ -456,7 +464,9 @@ def test_updateReceiptValidationResult_success(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("invalid_input,error_match", UPDATE_VALIDATION_SCENARIOS)
+@pytest.mark.parametrize(
+    "invalid_input,error_match", UPDATE_VALIDATION_SCENARIOS
+)
 def test_updateReceiptValidationResult_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_input: Any,
@@ -499,7 +509,9 @@ def test_updateReceiptValidationResult_client_errors(
         ),
     )
     with pytest.raises(expected_exception, match=error_match):
-        client.update_receipt_validation_result(sample_receipt_validation_result)
+        client.update_receipt_validation_result(
+            sample_receipt_validation_result
+        )
     mock_put.assert_called_once()
 
 
@@ -634,7 +646,9 @@ def test_updateReceiptValidationResults_invalid_inputs(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 def test_updateReceiptValidationResults_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
@@ -725,7 +739,9 @@ DELETE_VALIDATION_SCENARIOS = [
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("invalid_input,error_match", DELETE_VALIDATION_SCENARIOS)
+@pytest.mark.parametrize(
+    "invalid_input,error_match", DELETE_VALIDATION_SCENARIOS
+)
 def test_deleteReceiptValidationResult_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_input: Any,
@@ -768,7 +784,9 @@ def test_deleteReceiptValidationResult_client_errors(
         ),
     )
     with pytest.raises(expected_exception, match=error_match):
-        client.delete_receipt_validation_result(sample_receipt_validation_result)
+        client.delete_receipt_validation_result(
+            sample_receipt_validation_result
+        )
     mock_delete.assert_called_once()
 
 
@@ -858,7 +876,9 @@ def test_deleteReceiptValidationResults_invalid_parameters(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 def test_deleteReceiptValidationResults_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
@@ -1125,7 +1145,9 @@ def test_getReceiptValidationResult_invalid_parameters(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 def test_getReceiptValidationResult_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt_validation_result: ReceiptValidationResult,
@@ -1282,7 +1304,9 @@ def test_listReceiptValidationResults_with_pagination(
     ]
 
     # Act - Get first page with limit of 3
-    page1_results, pagination_key1 = client.list_receipt_validation_results(limit=3)
+    page1_results, pagination_key1 = client.list_receipt_validation_results(
+        limit=3
+    )
 
     # Check pagination info from first page
     assert pagination_key1 is not None
@@ -1365,7 +1389,9 @@ def test_listReceiptValidationResults_with_negative_limit(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 def test_listReceiptValidationResults_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     mocker: MockerFixture,
@@ -1479,7 +1505,9 @@ def test_listReceiptValidationResultsByType_success(
     mock_query.return_value = info_response
 
     # Act - Get results of type "info"
-    info_results, _ = client.list_receipt_validation_results_by_type(result_type="info")
+    info_results, _ = client.list_receipt_validation_results_by_type(
+        result_type="info"
+    )
 
     # Assert
     assert len(info_results) == 1
@@ -1571,8 +1599,10 @@ def test_listReceiptValidationResultsByType_pagination(
     ]
 
     # Act - Get first page with limit of 3
-    page1_results, pagination_key1 = client.list_receipt_validation_results_by_type(
-        result_type="error", limit=3
+    page1_results, pagination_key1 = (
+        client.list_receipt_validation_results_by_type(
+            result_type="error", limit=3
+        )
     )
 
     # Check pagination info from first page
@@ -1580,8 +1610,10 @@ def test_listReceiptValidationResultsByType_pagination(
     assert len(page1_results) == 3
 
     # Get second page
-    page2_results, pagination_key2 = client.list_receipt_validation_results_by_type(
-        result_type="error", limit=3, last_evaluated_key=pagination_key1
+    page2_results, pagination_key2 = (
+        client.list_receipt_validation_results_by_type(
+            result_type="error", limit=3, last_evaluated_key=pagination_key1
+        )
     )
 
     # Check pagination info from second page
@@ -1589,8 +1621,10 @@ def test_listReceiptValidationResultsByType_pagination(
     assert len(page2_results) == 3
 
     # Get third page
-    page3_results, pagination_key3 = client.list_receipt_validation_results_by_type(
-        result_type="error", limit=3, last_evaluated_key=pagination_key2
+    page3_results, pagination_key3 = (
+        client.list_receipt_validation_results_by_type(
+            result_type="error", limit=3, last_evaluated_key=pagination_key2
+        )
     )
 
     # Check pagination info from third page
@@ -1598,8 +1632,10 @@ def test_listReceiptValidationResultsByType_pagination(
     assert len(page3_results) == 3
 
     # Get fourth page (should be last with just 1 item)
-    page4_results, pagination_key4 = client.list_receipt_validation_results_by_type(
-        result_type="error", limit=3, last_evaluated_key=pagination_key3
+    page4_results, pagination_key4 = (
+        client.list_receipt_validation_results_by_type(
+            result_type="error", limit=3, last_evaluated_key=pagination_key3
+        )
     )
 
     # Check pagination info from fourth page
@@ -1679,11 +1715,15 @@ def test_listReceiptValidationResultsByType_with_negative_limit(
     with pytest.raises(
         EntityValidationError, match="Invalid value for parameter Limit"
     ):
-        client.list_receipt_validation_results_by_type(result_type="error", limit=-1)
+        client.list_receipt_validation_results_by_type(
+            result_type="error", limit=-1
+        )
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 def test_listReceiptValidationResultsByType_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     mocker: MockerFixture,
@@ -1730,13 +1770,19 @@ def test_listReceiptValidationResultsForField_success(
     mock_query.return_value = {
         "Items": [
             {
-                "PK": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
+                "PK": {
+                    "S": f"IMAGE#{sample_receipt_validation_result.image_id}"
+                },
                 "SK": {
                     "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
                 },
-                "receipt_id": {"N": str(sample_receipt_validation_result.receipt_id)},
+                "receipt_id": {
+                    "N": str(sample_receipt_validation_result.receipt_id)
+                },
                 "image_id": {"S": sample_receipt_validation_result.image_id},
-                "field_name": {"S": sample_receipt_validation_result.field_name},
+                "field_name": {
+                    "S": sample_receipt_validation_result.field_name
+                },
                 "result_index": {"N": "0"},
                 "type": {"S": sample_receipt_validation_result.type},
                 "message": {"S": sample_receipt_validation_result.message},
@@ -1745,13 +1791,17 @@ def test_listReceiptValidationResultsForField_success(
                 "expected_value": {
                     "S": sample_receipt_validation_result.expected_value
                 },
-                "actual_value": {"S": sample_receipt_validation_result.actual_value},
+                "actual_value": {
+                    "S": sample_receipt_validation_result.actual_value
+                },
                 "validation_timestamp": {
                     "S": sample_receipt_validation_result.validation_timestamp
                 },
                 "metadata": {
                     "M": {
-                        "source_info": {"M": {"model": {"S": "validation-v1"}}},
+                        "source_info": {
+                            "M": {"model": {"S": "validation-v1"}}
+                        },
                         "confidence": {"N": "0.92"},
                     }
                 },
@@ -1815,13 +1865,19 @@ def test_listReceiptValidationResultsForField_with_pagination(
     first_response = {
         "Items": [
             {
-                "PK": {"S": f"IMAGE#{sample_receipt_validation_result.image_id}"},
+                "PK": {
+                    "S": f"IMAGE#{sample_receipt_validation_result.image_id}"
+                },
                 "SK": {
                     "S": f"RECEIPT#{sample_receipt_validation_result.receipt_id:05d}#ANALYSIS#VALIDATION#CATEGORY#{sample_receipt_validation_result.field_name}#RESULT#0"
                 },
-                "receipt_id": {"N": str(sample_receipt_validation_result.receipt_id)},
+                "receipt_id": {
+                    "N": str(sample_receipt_validation_result.receipt_id)
+                },
                 "image_id": {"S": sample_receipt_validation_result.image_id},
-                "field_name": {"S": sample_receipt_validation_result.field_name},
+                "field_name": {
+                    "S": sample_receipt_validation_result.field_name
+                },
                 "result_index": {"N": "0"},
                 "type": {"S": sample_receipt_validation_result.type},
                 "message": {"S": sample_receipt_validation_result.message},
@@ -1830,13 +1886,17 @@ def test_listReceiptValidationResultsForField_with_pagination(
                 "expected_value": {
                     "S": sample_receipt_validation_result.expected_value
                 },
-                "actual_value": {"S": sample_receipt_validation_result.actual_value},
+                "actual_value": {
+                    "S": sample_receipt_validation_result.actual_value
+                },
                 "validation_timestamp": {
                     "S": sample_receipt_validation_result.validation_timestamp
                 },
                 "metadata": {
                     "M": {
-                        "source_info": {"M": {"model": {"S": "validation-v1"}}},
+                        "source_info": {
+                            "M": {"model": {"S": "validation-v1"}}
+                        },
                         "confidence": {"N": "0.92"},
                     }
                 },
@@ -1873,7 +1933,9 @@ def test_listReceiptValidationResultsForField_with_pagination(
                 "validation_timestamp": {"S": result2.validation_timestamp},
                 "metadata": {
                     "M": {
-                        "source_info": {"M": {"model": {"S": "validation-v1"}}},
+                        "source_info": {
+                            "M": {"model": {"S": "validation-v1"}}
+                        },
                         "confidence": {"N": "0.92"},
                     }
                 },
@@ -1915,7 +1977,10 @@ def test_listReceiptValidationResultsForField_with_pagination(
     assert "#pk = :pk AND begins_with(#sk, :sk_prefix)" in str(
         mock_query.call_args_list[1]
     )
-    assert second_call_args["ExclusiveStartKey"] == first_response["LastEvaluatedKey"]
+    assert (
+        second_call_args["ExclusiveStartKey"]
+        == first_response["LastEvaluatedKey"]
+    )
 
 
 @pytest.mark.integration
@@ -2015,7 +2080,9 @@ def test_listReceiptValidationResultsForField_invalid_parameters(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 def test_listReceiptValidationResultsForField_client_errors(
     dynamodb_table: Literal["MyMockedTable"],
     mocker: MockerFixture,

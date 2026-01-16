@@ -841,14 +841,18 @@ def test_gsi_queries_with_multiple_mixed_records(
         client.add_receipt_metadata(metadata)
 
     # Query by merchant - should return exactly 3 ReceiptPlace records
-    places_by_merchant, _ = client.get_receipt_places_by_merchant(shared_merchant)
+    places_by_merchant, _ = client.get_receipt_places_by_merchant(
+        shared_merchant
+    )
     assert len(places_by_merchant) == 3
     for p in places_by_merchant:
         assert isinstance(p, ReceiptPlace)
         assert p.merchant_name == shared_merchant
 
     # Query by place_id - should return exactly 3 ReceiptPlace records
-    places_by_place_id, _ = client.list_receipt_places_with_place_id(shared_place_id)
+    places_by_place_id, _ = client.list_receipt_places_with_place_id(
+        shared_place_id
+    )
     assert len(places_by_place_id) == 3
     for p in places_by_place_id:
         assert isinstance(p, ReceiptPlace)

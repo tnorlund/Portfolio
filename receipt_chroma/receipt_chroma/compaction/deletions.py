@@ -147,7 +147,10 @@ def apply_receipt_deletions(
                 metrics.count(
                     "EmbeddingDeletionError",
                     1,
-                    {"collection": collection.value, "entity_type": entity_type},
+                    {
+                        "collection": collection.value,
+                        "entity_type": entity_type,
+                    },
                 )
             results.append(
                 ReceiptDeletionResult(
@@ -192,7 +195,9 @@ def _delete_word_embedding(
             collection=collection.value,
         )
         if metrics:
-            metrics.count("WordEmbeddingDeleted", 1, {"collection": collection.value})
+            metrics.count(
+                "WordEmbeddingDeleted", 1, {"collection": collection.value}
+            )
         return ReceiptDeletionResult(
             image_id=image_id,
             receipt_id=receipt_id,
@@ -242,7 +247,9 @@ def _delete_line_embedding(
             collection=collection.value,
         )
         if metrics:
-            metrics.count("LineEmbeddingDeleted", 1, {"collection": collection.value})
+            metrics.count(
+                "LineEmbeddingDeleted", 1, {"collection": collection.value}
+            )
         return ReceiptDeletionResult(
             image_id=image_id,
             receipt_id=receipt_id,

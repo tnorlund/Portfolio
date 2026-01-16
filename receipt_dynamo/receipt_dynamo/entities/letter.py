@@ -14,7 +14,9 @@ from receipt_dynamo.entities.util import (
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class Letter(GeometryMixin, GeometrySerializationMixin, GeometryValidationMixin):
+class Letter(
+    GeometryMixin, GeometrySerializationMixin, GeometryValidationMixin
+):
     """Represents a single letter extracted from an image for DynamoDB.
 
     This class encapsulates letter-related information such as its unique

@@ -8,7 +8,6 @@ from typing import Any, cast
 import boto3
 import pytest
 from moto import mock_aws
-
 from receipt_dynamo_stream import (
     ChromaDBCollection,
     FieldChange,

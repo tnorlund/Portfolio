@@ -103,12 +103,17 @@ class ReceiptLine(
                 )
                 raise ValueError(error_message)
         else:
-            raise ValueError("embedding_status must be an EmbeddingStatus or a string")
+            raise ValueError(
+                "embedding_status must be an EmbeddingStatus or a string"
+            )
 
         # Validate is_noise field
         if not isinstance(self.is_noise, bool):
             raise ValueError(
-                ("is_noise must be a boolean, got " f"{type(self.is_noise).__name__}")
+                (
+                    "is_noise must be a boolean, got "
+                    f"{type(self.is_noise).__name__}"
+                )
             )
 
     @property
@@ -121,7 +126,9 @@ class ReceiptLine(
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}"},
+            "SK": {
+                "S": f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}"
+            },
         }
 
     def gsi1_key(self) -> Dict[str, Any]:
@@ -146,7 +153,9 @@ class ReceiptLine(
         Enables efficient querying by image_id + receipt_id.
         """
         return {
-            "GSI3PK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"},
+            "GSI3PK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
             "GSI3SK": {"S": "LINE"},
         }
 

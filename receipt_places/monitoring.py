@@ -21,7 +21,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MetricsSnapshot:
     """Snapshot of system metrics at a point in time."""
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    timestamp: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
     # Dual-write metrics
     metadata_writes: int = 0
@@ -153,8 +156,9 @@ class MetricsCollector:
         total_receipt_place_errors = sum(
             s.receipt_place_write_errors for s in self.snapshots
         )
-        total_api_calls = sum(s.api_calls_legacy + s.api_calls_v1
-                             for s in self.snapshots)
+        total_api_calls = sum(
+            s.api_calls_legacy + s.api_calls_v1 for s in self.snapshots
+        )
         total_api_errors = sum(s.api_errors for s in self.snapshots)
 
         elapsed_seconds = time.time() - self._start_time
@@ -166,31 +170,35 @@ class MetricsCollector:
                 "metadata_writes": total_metadata_writes,
                 "metadata_errors": total_metadata_errors,
                 "metadata_success_rate": (
-                    total_metadata_writes / max(total_metadata_writes +
-                                               total_metadata_errors, 1)
+                    total_metadata_writes
+                    / max(total_metadata_writes + total_metadata_errors, 1)
                 ),
                 "receipt_place_writes": total_receipt_place_writes,
                 "receipt_place_errors": total_receipt_place_errors,
                 "receipt_place_success_rate": (
-                    total_receipt_place_writes /
-                    max(total_receipt_place_writes + total_receipt_place_errors, 1)
+                    total_receipt_place_writes
+                    / max(
+                        total_receipt_place_writes
+                        + total_receipt_place_errors,
+                        1,
+                    )
                 ),
             },
             "api": {
-                "legacy_calls": sum(s.api_calls_legacy for s in self.snapshots),
+                "legacy_calls": sum(
+                    s.api_calls_legacy for s in self.snapshots
+                ),
                 "v1_calls": sum(s.api_calls_v1 for s in self.snapshots),
                 "total_calls": total_api_calls,
                 "errors": total_api_errors,
-                "error_rate": (
-                    total_api_errors / max(total_api_calls, 1)
-                ),
+                "error_rate": (total_api_errors / max(total_api_calls, 1)),
             },
             "cache": {
                 "hits": sum(s.cache_hits for s in self.snapshots),
                 "misses": sum(s.cache_misses for s in self.snapshots),
                 "avg_hit_rate": (
-                    sum(s.cache_hit_rate for s in self.snapshots) /
-                    max(len(self.snapshots), 1)
+                    sum(s.cache_hit_rate for s in self.snapshots)
+                    / max(len(self.snapshots), 1)
                 ),
             },
         }
@@ -212,20 +220,26 @@ class MetricsCollector:
 
         print("\nDual-Write Metrics:")
         dw = summary["dual_write"]
-        print(f"  ReceiptMetadata: {dw['metadata_writes']} writes, "
-              f"{dw['metadata_errors']} errors "
-              f"({dw['metadata_success_rate']:.1%} success)")
-        print(f"  ReceiptPlace: {dw['receipt_place_writes']} writes, "
-              f"{dw['receipt_place_errors']} errors "
-              f"({dw['receipt_place_success_rate']:.1%} success)")
+        print(
+            f"  ReceiptMetadata: {dw['metadata_writes']} writes, "
+            f"{dw['metadata_errors']} errors "
+            f"({dw['metadata_success_rate']:.1%} success)"
+        )
+        print(
+            f"  ReceiptPlace: {dw['receipt_place_writes']} writes, "
+            f"{dw['receipt_place_errors']} errors "
+            f"({dw['receipt_place_success_rate']:.1%} success)"
+        )
 
         print("\nAPI Metrics:")
         api = summary["api"]
         print(f"  Legacy API: {api['legacy_calls']} calls")
         print(f"  v1 API: {api['v1_calls']} calls")
-        print(f"  Total: {api['total_calls']} calls, "
-              f"{api['errors']} errors "
-              f"({api['error_rate']:.2%} error rate)")
+        print(
+            f"  Total: {api['total_calls']} calls, "
+            f"{api['errors']} errors "
+            f"({api['error_rate']:.2%} error rate)"
+        )
 
         print("\nCache Metrics:")
         cache = summary["cache"]

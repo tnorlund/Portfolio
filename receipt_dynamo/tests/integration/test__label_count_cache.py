@@ -20,6 +20,7 @@ from botocore.exceptions import ClientError
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
+    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
     OperationError,
@@ -116,7 +117,9 @@ class TestLabelCountCacheBasicOperations:
         """Test successful addition of a label count cache with TTL."""
         client = DynamoClient(dynamodb_table)
         client.add_label_count_cache(example_label_count_cache_with_ttl)
-        result = client.get_label_count_cache(example_label_count_cache_with_ttl.label)
+        result = client.get_label_count_cache(
+            example_label_count_cache_with_ttl.label
+        )
         assert result == example_label_count_cache_with_ttl
 
     def test_get_label_count_cache_success(
@@ -181,7 +184,7 @@ class TestLabelCountCacheBasicOperations:
             none_count=0,
             last_updated=datetime.now().isoformat(),
         )
-        with pytest.raises(EntityValidationError, match="already exists"):
+        with pytest.raises(EntityAlreadyExistsError, match="already exists"):
             client.add_label_count_cache(duplicate)
 
 
@@ -232,7 +235,9 @@ class TestLabelCountCacheBatchOperations:
     ) -> None:
         """Test that adding an empty list raises OperationError."""
         client = DynamoClient(dynamodb_table)
-        with pytest.raises(OperationError, match="Parameter validation failed"):
+        with pytest.raises(
+            OperationError, match="Parameter validation failed"
+        ):
             client.add_label_count_caches([])
 
 
@@ -347,7 +352,9 @@ class TestLabelCountCacheValidation:
     ) -> None:
         """Test that adding None list raises EntityValidationError."""
         client = DynamoClient(dynamodb_table)
-        with pytest.raises(EntityValidationError, match="items cannot be None"):
+        with pytest.raises(
+            EntityValidationError, match="items cannot be None"
+        ):
             client.add_label_count_caches(None)  # type: ignore
 
     def test_add_label_count_caches_not_list_raises_error(
@@ -399,7 +406,7 @@ class TestLabelCountCacheValidation:
 @pytest.mark.parametrize(
     "error_code,expected_exception",
     [
-        ("ConditionalCheckFailedException", EntityValidationError),
+        ("ConditionalCheckFailedException", EntityAlreadyExistsError),
         ("ValidationException", EntityValidationError),
         ("ResourceNotFoundException", OperationError),
         ("ItemCollectionSizeLimitExceededException", DynamoDBError),
@@ -462,6 +469,9 @@ class TestLabelCountCacheErrorHandling:
     ) -> None:
         """Test that DynamoDB errors are properly handled in get operations."""
         client = DynamoClient(dynamodb_table)
+        # ConditionalCheckFailedException for get operations raises EntityValidationError
+        if error_code == "ConditionalCheckFailedException":
+            expected_exception = EntityValidationError
         with patch.object(
             client._client,
             "get_item",
@@ -504,6 +514,9 @@ class TestLabelCountCacheErrorHandling:
     ) -> None:
         """Test DynamoDB errors in list operations."""
         client = DynamoClient(dynamodb_table)
+        # ConditionalCheckFailedException for list operations raises EntityValidationError
+        if error_code == "ConditionalCheckFailedException":
+            expected_exception = EntityValidationError
         with patch.object(
             client._client,
             "query",

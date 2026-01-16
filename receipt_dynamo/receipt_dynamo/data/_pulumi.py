@@ -30,7 +30,10 @@ def load_env(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
                 # Fall back to current working directory
                 pulumi_dir = Path.cwd()
 
-        if not pulumi_dir.exists() or not (pulumi_dir / "Pulumi.yaml").exists():
+        if (
+            not pulumi_dir.exists()
+            or not (pulumi_dir / "Pulumi.yaml").exists()
+        ):
             return {}
 
         result = subprocess.run(
@@ -80,7 +83,10 @@ def load_secrets(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
                 # Fall back to current working directory
                 pulumi_dir = Path.cwd()
 
-        if not pulumi_dir.exists() or not (pulumi_dir / "Pulumi.yaml").exists():
+        if (
+            not pulumi_dir.exists()
+            or not (pulumi_dir / "Pulumi.yaml").exists()
+        ):
             return {}
 
         result = subprocess.run(

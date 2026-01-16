@@ -14,6 +14,8 @@ class DynamoDBEntity:
         return asdict(self)
 
     @staticmethod
-    def validate_keys(item: Dict[str, Any], required_keys: Iterable[str]) -> set[str]:
+    def validate_keys(
+        item: Dict[str, Any], required_keys: Iterable[str]
+    ) -> set[str]:
         """Return any missing required keys."""
         return set(required_keys) - set(item.keys())

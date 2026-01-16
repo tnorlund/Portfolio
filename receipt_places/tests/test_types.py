@@ -4,7 +4,6 @@
 
 import pytest
 from pydantic import ValidationError
-
 from receipt_places.types import (
     Candidate,
     Geometry,
@@ -20,7 +19,6 @@ from receipt_places.types import (
     Prediction,
     Viewport,
 )
-
 
 # === FIXTURES ===
 
@@ -89,9 +87,7 @@ def test_latlng_valid(example_latlng):
 @pytest.mark.parametrize("bad_lat", [-91.0, 91.0, 100.0])
 def test_latlng_invalid_latitude(bad_lat):
     """Test that invalid latitude raises ValueError."""
-    with pytest.raises(
-        ValidationError, match="latitude out of range"
-    ):
+    with pytest.raises(ValidationError, match="latitude out of range"):
         LatLng(latitude=bad_lat, longitude=0.0)
 
 
@@ -99,9 +95,7 @@ def test_latlng_invalid_latitude(bad_lat):
 @pytest.mark.parametrize("bad_lng", [-181.0, 181.0, 200.0])
 def test_latlng_invalid_longitude(bad_lng):
     """Test that invalid longitude raises ValueError."""
-    with pytest.raises(
-        ValidationError, match="longitude out of range"
-    ):
+    with pytest.raises(ValidationError, match="longitude out of range"):
         LatLng(latitude=0.0, longitude=bad_lng)
 
 

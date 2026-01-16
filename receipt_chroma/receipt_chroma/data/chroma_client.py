@@ -326,13 +326,17 @@ class ChromaClient:
             # processes or use proper test isolation fixtures.
             # See GitHub issue #5868 and conftest.py for test setup details.
             if self._client is not None:
-                if self.use_persistent_client and hasattr(self._client, "_system"):
+                if self.use_persistent_client and hasattr(
+                    self._client, "_system"
+                ):
                     try:
                         self._client._system.stop()  # pylint: disable=protected-access
                         logger.info(
                             "Called _system.stop() to close ChromaDB connections"
                         )
-                    except Exception as e:  # pylint: disable=broad-exception-caught
+                    except (
+                        Exception
+                    ) as e:  # pylint: disable=broad-exception-caught
                         logger.warning("Error calling _system.stop(): %s", e)
 
                 self._client = None

@@ -515,7 +515,9 @@ def test_line_to_item(example_line):
     item = example_line.to_item()
     assert item["PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
     assert item["SK"] == {"S": "LINE#00001"}
-    assert item["GSI1PK"] == {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"}
+    assert item["GSI1PK"] == {
+        "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    }
     assert item["GSI1SK"] == {"S": "LINE#00001"}
     assert item["TYPE"] == {"S": "LINE"}
     assert item["text"] == {"S": "Test"}
@@ -754,7 +756,8 @@ def test_line_rotate_limited_range(angle, use_radians, should_raise):
                     for k in ["x", "y"]
                 )
                 or any(
-                    line.top_left[k] != orig_corners["top_left"][k] for k in ["x", "y"]
+                    line.top_left[k] != orig_corners["top_left"][k]
+                    for k in ["x", "y"]
                 )
                 or any(
                     line.bottom_right[k] != orig_corners["bottom_right"][k]
@@ -765,7 +768,9 @@ def test_line_rotate_limited_range(angle, use_radians, should_raise):
                     for k in ["x", "y"]
                 )
             )
-            assert corners_changed, "Expected corners to change after valid rotation."
+            assert (
+                corners_changed
+            ), "Expected corners to change after valid rotation."
         else:
             assert line.top_right == orig_corners["top_right"]
             assert line.top_left == orig_corners["top_left"]
@@ -1371,16 +1376,26 @@ def test_line_calculate_corners_with_scaling(normalized_line):
     corners = normalized_line.calculate_corners(width=1000, height=800)
 
     # Should scale to pixel coordinates
-    assert corners[0] == pytest.approx((100.0, 720.0))  # top_left: 0.1*1000, 0.9*800
-    assert corners[1] == pytest.approx((900.0, 720.0))  # top_right: 0.9*1000, 0.9*800
-    assert corners[2] == pytest.approx((100.0, 640.0))  # bottom_left: 0.1*1000, 0.8*800
-    assert corners[3] == pytest.approx((900.0, 640.0))  # bottom_right: 0.9*1000, 0.8*800
+    assert corners[0] == pytest.approx(
+        (100.0, 720.0)
+    )  # top_left: 0.1*1000, 0.9*800
+    assert corners[1] == pytest.approx(
+        (900.0, 720.0)
+    )  # top_right: 0.9*1000, 0.9*800
+    assert corners[2] == pytest.approx(
+        (100.0, 640.0)
+    )  # bottom_left: 0.1*1000, 0.8*800
+    assert corners[3] == pytest.approx(
+        (900.0, 640.0)
+    )  # bottom_right: 0.9*1000, 0.8*800
 
 
 @pytest.mark.unit
 def test_line_calculate_corners_with_flip_y(normalized_line):
     """Test calculate_corners with Y-axis flip for image coordinate systems."""
-    corners = normalized_line.calculate_corners(width=1000, height=800, flip_y=True)
+    corners = normalized_line.calculate_corners(
+        width=1000, height=800, flip_y=True
+    )
 
     # With flip_y, y_pixel = height - (y_normalized * height)
     # top_left: y = 800 - (0.9 * 800) = 800 - 720 = 80
@@ -1396,10 +1411,14 @@ def test_line_calculate_corners_requires_both_dimensions():
     """Test that calculate_corners raises error if only one dimension provided."""
     line = create_test_line()
 
-    with pytest.raises(ValueError, match="Both width and height must be provided"):
+    with pytest.raises(
+        ValueError, match="Both width and height must be provided"
+    ):
         line.calculate_corners(width=1000)
 
-    with pytest.raises(ValueError, match="Both width and height must be provided"):
+    with pytest.raises(
+        ValueError, match="Both width and height must be provided"
+    ):
         line.calculate_corners(height=800)
 
 
@@ -1454,4 +1473,6 @@ def test_line_calculate_corners_tilted_line():
 
     # Verify the tilt is preserved in pixel coordinates
     # Top-right Y should be lower than top-left Y (after flip)
-    assert corners[1][1] < corners[0][1]  # TR.y < TL.y (after flip, lower Y = higher in image)
+    assert (
+        corners[1][1] < corners[0][1]
+    )  # TR.y < TL.y (after flip, lower Y = higher in image)

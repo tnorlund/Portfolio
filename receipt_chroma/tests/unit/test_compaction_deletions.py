@@ -4,15 +4,15 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from receipt_chroma.compaction.deletions import (
     _build_chromadb_id,
-    _delete_word_embedding,
     _delete_line_embedding,
     _delete_receipt_embeddings,
+    _delete_word_embedding,
     apply_receipt_deletions,
 )
 from receipt_chroma.compaction.models import ReceiptDeletionResult
+
 from receipt_dynamo.constants import ChromaDBCollection
 
 
@@ -88,7 +88,9 @@ class MockDynamoClient:
 class MockReceiptWord:
     """Mock ReceiptWord for testing."""
 
-    def __init__(self, image_id: str, receipt_id: int, line_id: int, word_id: int):
+    def __init__(
+        self, image_id: str, receipt_id: int, line_id: int, word_id: int
+    ):
         self.image_id = image_id
         self.receipt_id = receipt_id
         self.line_id = line_id
@@ -107,7 +109,9 @@ class MockReceiptLine:
 class MockStreamMessage:
     """Mock StreamMessage for testing."""
 
-    def __init__(self, entity_type: str, entity_data: dict, event_name: str = "REMOVE"):
+    def __init__(
+        self, entity_type: str, entity_data: dict, event_name: str = "REMOVE"
+    ):
         self.entity_type = entity_type
         self.entity_data = entity_data
         self.event_name = event_name
@@ -165,7 +169,10 @@ class TestDeleteWordEmbedding:
         assert result.image_id == "img-123"
         assert result.receipt_id == 1
         assert result.error is None
-        assert "IMAGE#img-123#RECEIPT#00001#LINE#00002#WORD#00003" in collection.deleted_ids
+        assert (
+            "IMAGE#img-123#RECEIPT#00001#LINE#00002#WORD#00003"
+            in collection.deleted_ids
+        )
 
     def test_delete_word_wrong_collection(self):
         """Test word deletion skips LINES collection."""
@@ -216,7 +223,9 @@ class TestDeleteLineEmbedding:
         assert result.image_id == "img-123"
         assert result.receipt_id == 1
         assert result.error is None
-        assert "IMAGE#img-123#RECEIPT#00001#LINE#00002" in collection.deleted_ids
+        assert (
+            "IMAGE#img-123#RECEIPT#00001#LINE#00002" in collection.deleted_ids
+        )
 
     def test_delete_line_wrong_collection(self):
         """Test line deletion skips WORDS collection."""

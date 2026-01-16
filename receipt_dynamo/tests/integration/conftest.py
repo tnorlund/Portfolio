@@ -106,7 +106,9 @@ def dynamodb_table():
                 },
                 {
                     "IndexName": "GSITYPE",
-                    "KeySchema": [{"AttributeName": "TYPE", "KeyType": "HASH"}],
+                    "KeySchema": [
+                        {"AttributeName": "TYPE", "KeyType": "HASH"}
+                    ],
                     "Projection": {"ProjectionType": "ALL"},
                     "ProvisionedThroughput": {
                         "ReadCapacityUnits": 5,
@@ -117,7 +119,9 @@ def dynamodb_table():
         )
 
         # Wait for the table to be created
-        dynamodb.meta.client.get_waiter("table_exists").wait(TableName=table_name)
+        dynamodb.meta.client.get_waiter("table_exists").wait(
+            TableName=table_name
+        )
 
         # Yield the table name so your tests can reference it
         yield table_name
@@ -189,8 +193,12 @@ def expected_results(request):
     words = [Word(**word) for word in results.get("words", [])]
     letters = [Letter(**letter) for letter in results.get("letters", [])]
     receipts = [Receipt(**rcpt) for rcpt in results.get("receipts", [])]
-    receipt_lines = [ReceiptLine(**rl) for rl in results.get("receipt_lines", [])]
-    receipt_words = [ReceiptWord(**rw) for rw in results.get("receipt_words", [])]
+    receipt_lines = [
+        ReceiptLine(**rl) for rl in results.get("receipt_lines", [])
+    ]
+    receipt_words = [
+        ReceiptWord(**rw) for rw in results.get("receipt_words", [])
+    ]
     receipt_letters = [
         ReceiptLetter(**rltr) for rltr in results.get("receipt_letters", [])
     ]

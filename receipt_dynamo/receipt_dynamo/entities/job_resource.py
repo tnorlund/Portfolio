@@ -77,21 +77,27 @@ class JobResource:
             not isinstance(self.resource_type, str)
             or self.resource_type.lower() not in valid_resource_types
         ):
-            raise ValueError(f"resource_type must be one of {valid_resource_types}")
+            raise ValueError(
+                f"resource_type must be one of {valid_resource_types}"
+            )
         self.resource_type = self.resource_type.lower()
 
         # Handle allocated_at conversion
         if isinstance(self.allocated_at, datetime):
             self.allocated_at = self.allocated_at.isoformat()
         elif not isinstance(self.allocated_at, str):
-            raise ValueError("allocated_at must be a datetime object or a string")
+            raise ValueError(
+                "allocated_at must be a datetime object or a string"
+            )
 
         # Handle released_at conversion
         if self.released_at is not None:
             if isinstance(self.released_at, datetime):
                 self.released_at = self.released_at.isoformat()
             elif not isinstance(self.released_at, str):
-                raise ValueError("released_at must be a datetime object or a string")
+                raise ValueError(
+                    "released_at must be a datetime object or a string"
+                )
 
         valid_statuses = ["allocated", "released", "failed", "pending"]
         if (
@@ -162,7 +168,9 @@ class JobResource:
             item["released_at"] = {"S": self.released_at}
 
         if self.resource_config:
-            item["resource_config"] = {"M": dict_to_dynamodb_map(self.resource_config)}
+            item["resource_config"] = {
+                "M": dict_to_dynamodb_map(self.resource_config)
+            }
 
         return item
 
@@ -268,7 +276,9 @@ def item_to_job_resource(item: Dict[str, Any]) -> JobResource:
         status = item["status"]["S"]
 
         released_at = item.get("released_at", {}).get("S", None)
-        gpu_count = int(item["gpu_count"]["N"]) if "gpu_count" in item else None
+        gpu_count = (
+            int(item["gpu_count"]["N"]) if "gpu_count" in item else None
+        )
 
         resource_config = None
         if "resource_config" in item:

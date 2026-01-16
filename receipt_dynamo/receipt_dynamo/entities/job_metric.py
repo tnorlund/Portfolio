@@ -200,7 +200,9 @@ class JobMetric:
         """
         # Convert value to string if it's a dict since dicts aren't hashable
         value_for_hash = (
-            json.dumps(self.value) if isinstance(self.value, dict) else self.value
+            json.dumps(self.value)
+            if isinstance(self.value, dict)
+            else self.value
         )
 
         return hash(

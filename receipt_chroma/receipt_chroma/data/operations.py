@@ -250,7 +250,9 @@ def update_receipt_place(
                     elapsed_seconds=elapsed_time,
                 )
         except Exception as e:
-            logger.error("Failed to update ChromaDB place metadata", error=str(e))
+            logger.error(
+                "Failed to update ChromaDB place metadata", error=str(e)
+            )
 
             if OBSERVABILITY_AVAILABLE and metrics:
                 metrics.count(
@@ -426,9 +428,7 @@ def remove_receipt_place(
                     elapsed_seconds=elapsed_time,
                 )
                 if metrics:
-                    metrics.timer(
-                        "CompactionPlaceRemovalTime", elapsed_time
-                    )
+                    metrics.timer("CompactionPlaceRemovalTime", elapsed_time)
                     metrics.count(
                         "CompactionPlaceRemovedRecords", len(matching_ids)
                     )
@@ -439,7 +439,9 @@ def remove_receipt_place(
                     elapsed_seconds=elapsed_time,
                 )
         except Exception as e:
-            logger.error("Failed to remove ChromaDB place metadata", error=str(e))
+            logger.error(
+                "Failed to remove ChromaDB place metadata", error=str(e)
+            )
             return 0
     else:
         logger.warning(
@@ -628,7 +630,9 @@ def update_word_labels(
                     updated_metadata[field_name] = False
                 # PENDING status: remove the field (not yet validated)
                 elif status == "PENDING" and field_name in updated_metadata:
-                    updated_metadata[field_name] = None  # ChromaDB removes None
+                    updated_metadata[field_name] = (
+                        None  # ChromaDB removes None
+                    )
         else:
             updated_metadata.update(reconstructed_metadata)
 
@@ -642,7 +646,8 @@ def update_word_labels(
 
         # Count validated labels (boolean fields that are True)
         valid_count = sum(
-            1 for key, val in updated_metadata.items()
+            1
+            for key, val in updated_metadata.items()
             if key.startswith("label_") and val is True
         )
 
@@ -729,7 +734,10 @@ def remove_word_labels(
 
         # Also remove any other fields starting with "label_" (legacy cleanup)
         for key in list(updated_metadata.keys()):
-            if key.startswith("label_") and updated_metadata.get(key) is not None:
+            if (
+                key.startswith("label_")
+                and updated_metadata.get(key) is not None
+            ):
                 updated_metadata[key] = None
 
         # Add removal timestamp

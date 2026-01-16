@@ -57,7 +57,9 @@ def test_embedding_batch_result_repr(example_embedding_batch_result):
 
 @pytest.mark.unit
 def test_embedding_batch_result_str(example_embedding_batch_result):
-    assert str(example_embedding_batch_result) == repr(example_embedding_batch_result)
+    assert str(example_embedding_batch_result) == repr(
+        example_embedding_batch_result
+    )
 
 
 # === ITERATION ===
@@ -121,7 +123,9 @@ def test_embedding_batch_result_invalid_field(field, value, expected_error):
 
 @pytest.mark.unit
 def test_receipt_id_must_be_positive():
-    with pytest.raises(ValueError, match="receipt_id must be greater than zero"):
+    with pytest.raises(
+        ValueError, match="receipt_id must be greater than zero"
+    ):
         EmbeddingBatchResult(
             batch_id="dc7e61ba-5722-43a2-8e99-9df9f54287a9",
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",

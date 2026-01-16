@@ -128,7 +128,9 @@ class ReceiptChatGPTValidation(SerializationMixin):
             original_status=item["original_status"]["S"],
             revised_status=item["revised_status"]["S"],
             reasoning=item["reasoning"]["S"],
-            corrections=SerializationMixin._dynamo_to_python(item["corrections"]),
+            corrections=SerializationMixin._dynamo_to_python(
+                item["corrections"]
+            ),
             prompt=item["prompt"]["S"],
             response=item["response"]["S"],
             timestamp=timestamp,

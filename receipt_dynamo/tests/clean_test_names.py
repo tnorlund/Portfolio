@@ -21,7 +21,9 @@ def find_test_functions_in_file(file_path: str) -> List[str]:
             source = f.read()
         tree = ast.parse(source)
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+            if isinstance(node, ast.FunctionDef) and node.name.startswith(
+                "test_"
+            ):
                 test_functions.append(node.name)
     except (SyntaxError, UnicodeDecodeError):
         pass
@@ -88,7 +90,8 @@ def call_openai_api(prompt: str) -> dict:
         mapping = json.loads(content)
     except json.JSONDecodeError as e:
         raise ValueError(
-            "OpenAI API did not return valid JSON. Response content: " + content
+            "OpenAI API did not return valid JSON. Response content: "
+            + content
         ) from e
     return mapping  # type: ignore[no-any-return]
 
@@ -109,7 +112,9 @@ def rename_test_functions_in_file(file_path: str, mapping: dict):
     # Build a regex to match function definitions that start with one of the
     # keys.
     pattern = re.compile(
-        r"^(\s*)def\s+(" + "|".join(map(re.escape, mapping.keys())) + r")(\s*\(.*)?:"
+        r"^(\s*)def\s+("
+        + "|".join(map(re.escape, mapping.keys()))
+        + r")(\s*\(.*)?:"
     )
 
     for line in lines:

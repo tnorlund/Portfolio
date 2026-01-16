@@ -86,8 +86,12 @@ class LabelHygieneResult:
             "gpt_agreed": {"BOOL": self.gpt_agreed},
             "source_batch_id": {"S": self.source_batch_id or ""},
             "example_ids": {"SS": self.example_ids},
-            "image_id": {"S": self.image_id},  # Include image_id in serialization
-            "receipt_id": {"N": self.receipt_id},  # Include receipt_id in serialization
+            "image_id": {
+                "S": self.image_id
+            },  # Include image_id in serialization
+            "receipt_id": {
+                "N": self.receipt_id
+            },  # Include receipt_id in serialization
             "timestamp": {"S": self.timestamp.isoformat()},
         }
 
@@ -188,4 +192,6 @@ def item_to_label_hygiene_result(item: Dict[str, Any]) -> LabelHygieneResult:
             receipt_id,  # Pass receipt_id to constructor
         )
     except Exception as e:
-        raise ValueError(f"Error converting item to LabelHygieneResult: {e}") from e
+        raise ValueError(
+            f"Error converting item to LabelHygieneResult: {e}"
+        ) from e

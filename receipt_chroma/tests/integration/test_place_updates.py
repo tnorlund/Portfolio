@@ -9,8 +9,8 @@ from receipt_chroma.compaction.metadata import apply_place_updates
 
 from receipt_dynamo.constants import ChromaDBCollection
 from tests.helpers.factories import (
-    create_place_message,
     create_mock_logger,
+    create_place_message,
     create_receipt_lines_in_dynamodb,
     create_receipt_words_in_dynamodb,
 )
@@ -402,7 +402,10 @@ class TestPlaceUpdates:
         # Create an invalid place message (missing required fields)
         from datetime import datetime
 
-        from receipt_dynamo_stream.models import StreamMessage, StreamRecordContext
+        from receipt_dynamo_stream.models import (
+            StreamMessage,
+            StreamRecordContext,
+        )
 
         invalid_msg = StreamMessage(
             entity_type="RECEIPT_PLACE",

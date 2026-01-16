@@ -1,5 +1,6 @@
 import json
 import subprocess
+from unittest.mock import ANY
 
 import pytest
 
@@ -21,6 +22,7 @@ def test_load_env_happy_path(mocker):
     result = load_env("dev")
 
     # Ensure the subprocess was called correctly
+    # Note: cwd is auto-detected based on where Pulumi.yaml is found
     mock_subprocess.assert_called_once_with(
         [
             "pulumi",
@@ -33,6 +35,7 @@ def test_load_env_happy_path(mocker):
         check=True,
         capture_output=True,
         text=True,
+        cwd=ANY,
     )
 
     # Validate the expected output
@@ -50,12 +53,16 @@ def test_load_env_empty_outputs(mocker):
     has no outputs.
     """
     mock_subprocess = mocker.patch("subprocess.run")
-    mock_subprocess.return_value.stdout = json.dumps({})  # Simulate empty stack output
+    mock_subprocess.return_value.stdout = json.dumps(
+        {}
+    )  # Simulate empty stack output
 
     result = load_env("dev")
 
     assert isinstance(result, dict)
-    assert result == {}, "Expected an empty dictionary when stack has no outputs"
+    assert (
+        result == {}
+    ), "Expected an empty dictionary when stack has no outputs"
 
 
 def test_load_env_nonexistent_stack(mocker):
@@ -76,7 +83,9 @@ def test_load_env_nonexistent_stack(mocker):
     result = load_env("dev")
 
     assert isinstance(result, dict)
-    assert result == {}, "Expected an empty dictionary when stack selection fails"
+    assert (
+        result == {}
+    ), "Expected an empty dictionary when stack selection fails"
 
 
 @pytest.mark.integration
