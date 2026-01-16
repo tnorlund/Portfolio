@@ -513,10 +513,14 @@ class CDNVariants:
 
     def to_dynamodb(self) -> Dict[str, Any]:
         """
-        Serialize all CDN fields to DynamoDB format.
+        Serialize present CDN fields to DynamoDB format.
+
+        Only includes fields with non-None values. Fields that are None
+        are omitted entirely (not written as {"NULL": True}) to preserve
+        compatibility with attribute_not_exists() condition checks.
 
         Returns:
-            Dict with all cdn_*_s3_key fields in DynamoDB format
+            Dict with cdn_*_s3_key fields that have values, in DynamoDB format
         """
         field_mapping = {
             "cdn_s3_key": self.original,
@@ -534,7 +538,9 @@ class CDNVariants:
         }
         result: Dict[str, Any] = {}
         for field_name, value in field_mapping.items():
-            result[field_name] = {"S": value} if value else {"NULL": True}
+            # Use explicit is not None check to allow empty strings
+            if value is not None:
+                result[field_name] = {"S": value}
         return result
 
     @classmethod
