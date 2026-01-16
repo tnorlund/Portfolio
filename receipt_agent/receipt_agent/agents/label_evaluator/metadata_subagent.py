@@ -33,7 +33,7 @@ import logging
 import re
 import string
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 from langchain_core.language_models import BaseChatModel
 from pydantic import ValidationError
@@ -771,6 +771,7 @@ async def evaluate_metadata_labels_async(
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
+    trace_ctx: Optional[Any] = None,  # TraceContext for LangSmith tracing
 ) -> list[dict]:
     """
     Async version of evaluate_metadata_labels.
@@ -785,6 +786,7 @@ async def evaluate_metadata_labels_async(
         image_id: Image ID for output format
         receipt_id: Receipt ID for output format
         merchant_name: Merchant name for context
+        trace_ctx: Optional TraceContext for LangSmith tracing (from start_child_trace)
 
     Returns:
         List of decisions ready for apply_llm_decisions()

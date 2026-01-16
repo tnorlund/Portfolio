@@ -635,6 +635,115 @@ def child_trace(
                 )
 
 
+def start_child_trace(
+    name: str,
+    parent_ctx: TraceContext,
+    run_type: str = "chain",
+    metadata: Optional[dict] = None,
+    inputs: Optional[dict] = None,
+) -> TraceContext:
+    """Create a child trace without context manager (for async parallelism).
+
+    Use this when you need to create multiple child traces that run
+    concurrently with asyncio.gather(). Call end_child_trace() when done.
+
+    Args:
+        name: Name for this child span
+        parent_ctx: Parent TraceContext
+        run_type: Type of run
+        metadata: Optional metadata
+        inputs: Optional inputs to capture in the trace
+
+    Returns:
+        TraceContext for the child span (call end_child_trace when done)
+
+    Example:
+        # Create traces for parallel work
+        currency_ctx = start_child_trace("currency_eval", parent_ctx)
+        metadata_ctx = start_child_trace("metadata_eval", parent_ctx)
+
+        # Run async tasks with their trace contexts
+        results = await asyncio.gather(
+            evaluate_currency_async(..., trace_ctx=currency_ctx),
+            evaluate_metadata_async(..., trace_ctx=metadata_ctx),
+        )
+
+        # End the traces
+        end_child_trace(currency_ctx, outputs={"count": len(results[0])})
+        end_child_trace(metadata_ctx, outputs={"count": len(results[1])})
+    """
+    logger.info(
+        "[start_child_trace v%s] Creating child '%s' (has_langsmith=%s, parent_run_tree=%s)",
+        TRACING_VERSION,
+        name,
+        HAS_LANGSMITH,
+        parent_ctx.run_tree is not None,
+    )
+
+    if not HAS_LANGSMITH or parent_ctx.run_tree is None:
+        logger.warning(
+            "[start_child_trace] No LangSmith or no parent run_tree - returning empty context"
+        )
+        return TraceContext(headers=parent_ctx.headers)
+
+    if not hasattr(parent_ctx.run_tree, "create_child"):
+        logger.warning(
+            "[start_child_trace] Parent run_tree has no create_child method"
+        )
+        return TraceContext(headers=parent_ctx.headers)
+
+    try:
+        child = parent_ctx.run_tree.create_child(
+            name=name,
+            run_type=run_type,
+            inputs=inputs or {},
+            extra={"metadata": metadata or {}},
+        )
+        child.post()
+
+        child_headers = child.to_headers()
+        logger.info(
+            "[start_child_trace] Created child id=%s, trace_id=%s",
+            child.id,
+            child.trace_id,
+        )
+        return TraceContext(
+            run_tree=child,
+            headers=child_headers,
+            trace_id=parent_ctx.trace_id,
+            root_run_id=parent_ctx.root_run_id,
+        )
+    except Exception as e:
+        logger.warning("Failed to create child trace: %s", e)
+        return TraceContext(headers=parent_ctx.headers)
+
+
+def end_child_trace(
+    ctx: TraceContext,
+    outputs: Optional[dict] = None,
+) -> None:
+    """End a child trace created with start_child_trace().
+
+    Args:
+        ctx: TraceContext from start_child_trace()
+        outputs: Optional outputs to record
+    """
+    if ctx.run_tree is None:
+        return
+
+    try:
+        if outputs:
+            ctx.run_tree.outputs = outputs
+        ctx.run_tree.end()
+        ctx.run_tree.patch()
+        logger.info(
+            "[end_child_trace] Child completed and patched (id=%s)",
+            ctx.run_tree.id,
+        )
+    except Exception as e:
+        logger.warning("Failed to finalize child trace: %s", e, exc_info=True)
+
+
 def log_trace_event(
     ctx: TraceContext,
     event_name: str,

@@ -29,8 +29,10 @@ try:
         TraceContext,
         child_trace,
         create_receipt_trace,
+        end_child_trace,
         end_receipt_trace,
         flush_langsmith_traces,
+        start_child_trace,
     )
 
     from utils.s3_helpers import (
@@ -56,8 +58,10 @@ except ImportError:
         TraceContext,
         child_trace,
         create_receipt_trace,
+        end_child_trace,
         end_receipt_trace,
         flush_langsmith_traces,
+        start_child_trace,
     )
 
     sys.path.insert(
@@ -312,21 +316,42 @@ async def unified_receipt_evaluator(
             )
 
         # 6. Phase 1: Run currency, metadata, and geometric evaluations concurrently
-        with child_trace("phase1_concurrent_evaluations", trace_ctx):
-            from receipt_agent.agents.label_evaluator.currency_subagent import (
-                evaluate_currency_labels_async,
-            )
-            from receipt_agent.agents.label_evaluator.metadata_subagent import (
-                evaluate_metadata_labels_async,
-            )
-            from receipt_agent.agents.label_evaluator import (
-                create_compute_only_graph,
-                run_compute_only_sync,
-            )
-            from receipt_agent.agents.label_evaluator.state import (
-                EvaluatorState,
-            )
+        # Each evaluation gets its own child trace for visibility in LangSmith
+        from receipt_agent.agents.label_evaluator.currency_subagent import (
+            evaluate_currency_labels_async,
+        )
+        from receipt_agent.agents.label_evaluator.metadata_subagent import (
+            evaluate_metadata_labels_async,
+        )
+        from receipt_agent.agents.label_evaluator import (
+            create_compute_only_graph,
+            run_compute_only_sync,
+        )
+        from receipt_agent.agents.label_evaluator.state import (
+            EvaluatorState,
+        )
 
+        # Create child traces for parallel evaluations (visible as siblings in LangSmith)
+        currency_trace_ctx = start_child_trace(
+            "currency_evaluation",
+            trace_ctx,
+            metadata={"image_id": image_id, "receipt_id": receipt_id},
+            inputs={"merchant_name": merchant_name, "num_visual_lines": len(visual_lines)},
+        )
+        metadata_trace_ctx = start_child_trace(
+            "metadata_evaluation",
+            trace_ctx,
+            metadata={"image_id": image_id, "receipt_id": receipt_id},
+            inputs={"merchant_name": merchant_name, "has_place": place is not None},
+        )
+        geometric_trace_ctx = start_child_trace(
+            "geometric_evaluation",
+            trace_ctx,
+            metadata={"image_id": image_id, "receipt_id": receipt_id},
+            inputs={"num_words": len(words), "num_labels": len(labels)},
+        )
+
+        try:
             # Run currency and metadata concurrently (both use LLM)
             currency_task = evaluate_currency_labels_async(
                 visual_lines=visual_lines,
@@ -335,6 +360,7 @@ async def unified_receipt_evaluator(
                 image_id=image_id,
                 receipt_id=receipt_id,
                 merchant_name=merchant_name,
+                trace_ctx=currency_trace_ctx,
             )
 
             metadata_task = evaluate_metadata_labels_async(
@@ -344,6 +370,7 @@ async def unified_receipt_evaluator(
                 image_id=image_id,
                 receipt_id=receipt_id,
                 merchant_name=merchant_name,
+                trace_ctx=metadata_trace_ctx,
             )
 
             # Geometric evaluation is sync (no LLM) - run in parallel with LLM calls
@@ -376,6 +403,17 @@ async def unified_receipt_evaluator(
                 len(metadata_result),
                 geometric_result.get("issues_found", 0),
             )
+        finally:
+            # End child traces with outputs
+            end_child_trace(currency_trace_ctx, outputs={
+                "decisions_count": len(currency_result) if 'currency_result' in dir() else 0,
+            })
+            end_child_trace(metadata_trace_ctx, outputs={
+                "decisions_count": len(metadata_result) if 'metadata_result' in dir() else 0,
+            })
+            end_child_trace(geometric_trace_ctx, outputs={
+                "issues_found": geometric_result.get("issues_found", 0) if 'geometric_result' in dir() else 0,
+            })
 
         # 7. Apply Phase 1 corrections to DynamoDB
         applied_stats_currency = None
@@ -423,7 +461,7 @@ async def unified_receipt_evaluator(
         # Always run evaluation for diagnostics; only skip writes in dry_run mode
         financial_result = None
         if dynamo_table:
-            with child_trace("phase2_financial_validation", trace_ctx):
+            with child_trace("phase2_financial_validation", trace_ctx) as financial_ctx:
                 # Re-fetch labels from DynamoDB to get corrections
                 from receipt_dynamo import DynamoClient
 
@@ -472,6 +510,7 @@ async def unified_receipt_evaluator(
                         image_id=image_id,
                         receipt_id=receipt_id,
                         merchant_name=merchant_name,
+                        trace_ctx=financial_ctx,
                     )
                 )
 
