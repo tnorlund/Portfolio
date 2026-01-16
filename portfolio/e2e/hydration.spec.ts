@@ -113,19 +113,23 @@ test.describe('Hydration', () => {
 
     // Navigate to resume
     await page.click('button:has-text("Résumé")');
+    await expect(page).toHaveURL(/\/resume/);
     await expect(page.locator('#__next')).not.toBeEmpty();
-    // Wait for resume page content to load
-    await expect(page.locator('header h1')).toBeVisible();
+    // Wait for resume-specific content (not shared header)
+    await expect(page.locator('.resume-box').first()).toBeVisible();
 
     // Navigate back to home
     await page.click('header h1 a');
+    await expect(page).toHaveURL(/\/$/);
     await expect(page.locator('#__next')).not.toBeEmpty();
+    // Wait for homepage-specific content (navigation buttons)
     await expect(page.locator('button:has-text("Receipt")')).toBeVisible();
 
     // Navigate to receipt
     await page.click('button:has-text("Receipt")');
+    await expect(page).toHaveURL(/\/receipt/);
     await expect(page.locator('#__next')).not.toBeEmpty();
-    // Wait for receipt page content
+    // Wait for receipt-specific content
     await expect(page.locator('h1', { hasText: 'Introduction' })).toBeVisible({ timeout: 15000 });
 
     expect(pageErrors, 'Navigation should not cause JavaScript errors').toEqual([]);
