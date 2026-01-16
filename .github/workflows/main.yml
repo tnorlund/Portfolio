@@ -71,8 +71,8 @@ jobs:
               ;;
           esac
 
-          # Lint (fail on formatting issues) - versions pinned to match pyproject.toml
-          pip install "black==25.12.0" "isort==6.0.1"
+          # Lint (uses versions from pyproject.toml [lint] dependency)
+          pip install -e "${{ matrix.package }}[lint]"
           black --check --line-length=79 ${{ matrix.package }}
           isort --check-only --profile=black --line-length=79 ${{ matrix.package }}
 
