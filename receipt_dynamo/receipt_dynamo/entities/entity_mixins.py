@@ -1117,17 +1117,17 @@ class GeometryMixin:
 
     def warp_affine_normalized_forward(
         self,
-        a: float,
-        b: float,
+        _a: float,
+        _b: float,
         c: float,
-        d: float,
-        e: float,
+        _d: float,
+        _e: float,
         f: float,
         src_width: float,
         src_height: float,
         dst_width: float,
         dst_height: float,
-        flip_y: bool = False,
+        _flip_y: bool = False,
     ) -> None:
         """Applies a normalized forward affine transformation to the entity.
 
@@ -1142,13 +1142,14 @@ class GeometryMixin:
         - y_offset = f * (bounding_box.height / (src_height * dst_height))
 
         Args:
-            a, b, c, d, e, f: The affine transformation coefficients
+            _a, _b, c, _d, _e, f: The affine transformation coefficients.
+                Only c and f are used; others kept for API compatibility.
             src_width: Source image width
             src_height: Source image height
             dst_width: Destination image width
             dst_height: Destination image height
-            flip_y: Whether to flip Y coordinates (not used in current
-                implementation)
+            _flip_y: Whether to flip Y coordinates (not used in current
+                implementation, kept for API compatibility)
         """
         # Calculate the scaled offsets based on bounding box and image
         # dimensions
@@ -1172,7 +1173,7 @@ class GeometryMixin:
         self.bounding_box["y"] += y_offset
 
     def rotate_90_ccw_in_place(
-        self, old_width: float, old_height: float
+        self, _old_width: float, _old_height: float
     ) -> None:
         """
         Rotates the entity 90 degrees counter-clockwise in place.
@@ -1187,8 +1188,10 @@ class GeometryMixin:
         This accounts for the coordinate system change when rotating a page.
 
         Args:
-            old_width: The width of the original image/page
-            old_height: The height of the original image/page
+            _old_width: The width of the original image/page (kept for API
+                compatibility)
+            _old_height: The height of the original image/page (kept for API
+                compatibility)
         """
 
         # Transform all corner points according to 90 degree CCW rotation

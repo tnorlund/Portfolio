@@ -214,7 +214,7 @@ def dynamo_to_python(dynamo_value):
     if "BS" in dynamo_value:  # Binary Set
         return set(dynamo_value["BS"])
     # Handle any other type by returning the first value
-    for key, value in dynamo_value.items():
+    for value in dynamo_value.values():
         return value
     return None
 

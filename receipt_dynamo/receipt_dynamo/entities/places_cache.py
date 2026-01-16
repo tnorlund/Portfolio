@@ -1,3 +1,4 @@
+import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -5,7 +6,7 @@ from typing import Any, Dict, Generator, Literal, Optional, Tuple
 
 from receipt_dynamo.entities.util import normalize_address
 
-SEARCH_TYPES = Literal["ADDRESS", "PHONE", "URL"]
+SearchTypes = Literal["ADDRESS", "PHONE", "URL"]
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -34,7 +35,7 @@ class PlacesCache:
     _MAX_PHONE_LENGTH = 30  # International format with extra padding
     _MAX_URL_LENGTH = 100  # Standard URLs with some padding
 
-    search_type: SEARCH_TYPES
+    search_type: SearchTypes
     search_value: str
     place_id: str
     places_response: Dict[str, Any]
@@ -97,8 +98,6 @@ class PlacesCache:
 
         if self.search_type == "ADDRESS":
             # Create a hash of the original OCR text
-            import hashlib
-
             value_hash = hashlib.md5(
                 value.encode(), usedforsecurity=False
             ).hexdigest()[:8]

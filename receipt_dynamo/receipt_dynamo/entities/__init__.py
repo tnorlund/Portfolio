@@ -156,7 +156,7 @@ from receipt_dynamo.entities.receipt_word_label import (  # noqa: F401
     ReceiptWordLabel,
     item_to_receipt_word_label,
 )
-from receipt_dynamo.entities.receipt_word_label_spatial_analysis import (  # noqa: F401
+from receipt_dynamo.entities.receipt_word_label_spatial_analysis import (
     ReceiptWordLabelSpatialAnalysis,
     SpatialRelationship,
     item_to_receipt_word_label_spatial_analysis,

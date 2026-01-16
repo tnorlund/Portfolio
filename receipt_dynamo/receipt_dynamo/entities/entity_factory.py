@@ -29,7 +29,6 @@ class DynamoDBItemExtractor(Protocol):
 
     def __call__(self, item: Dict[str, Any]) -> Any:
         """Extract a field value from a DynamoDB item."""
-        ...
 
 
 KeyParser = Callable[[str], Dict[str, Any]]
