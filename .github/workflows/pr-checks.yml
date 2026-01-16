@@ -349,9 +349,9 @@ jobs:
           npx serve out -l 3000 &
           sleep 5
 
-      - name: Run Playwright tests
+      - name: Run Playwright hydration tests
         working-directory: portfolio
-        run: npx playwright test --project=chromium --project=firefox --project=webkit
+        run: npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:3000
 

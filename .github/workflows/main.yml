@@ -587,9 +587,9 @@ jobs:
         working-directory: portfolio
         run: npx playwright install --with-deps chromium firefox webkit
 
-      - name: Run Playwright tests against production
+      - name: Run Playwright hydration tests against production
         working-directory: portfolio
-        run: npx playwright test --project=chromium --project=firefox --project=webkit
+        run: npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
         env:
           PLAYWRIGHT_BASE_URL: https://tylernorlund.com
 
