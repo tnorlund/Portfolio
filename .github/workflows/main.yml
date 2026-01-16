@@ -71,10 +71,10 @@ jobs:
               ;;
           esac
 
-          # Lint
+          # Lint (fail the job if formatting issues are found)
           pip install black isort
-          black --check --line-length=79 ${{ matrix.package }} || echo "::warning::Formatting issues"
-          isort --check-only ${{ matrix.package }} || echo "::warning::Import order issues"
+          black --check --line-length=79 ${{ matrix.package }}
+          isort --check-only ${{ matrix.package }}
 
           # Test
           cd ${{ matrix.package }}
