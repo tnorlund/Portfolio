@@ -117,6 +117,6 @@ def load_secrets(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
             return extracted
 
         return result_data if isinstance(result_data, dict) else {}
-    except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
         # Return an empty dictionary on failure
         return {}

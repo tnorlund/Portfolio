@@ -181,7 +181,7 @@ class ReceiptMetadata(SerializationMixin):
                 meaningful_tokens: float = 0.0
                 has_number = False
 
-                for i, token in enumerate(tokens):
+                for token in tokens:
                     token_clean = token.rstrip(".,;:")
 
                     # Count as meaningful if:

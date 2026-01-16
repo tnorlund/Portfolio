@@ -608,11 +608,11 @@ class CDNVariants:
         """
         if size == "original":
             return self.avif or self.webp or self.original
-        elif size == "thumbnail":
+        if size == "thumbnail":
             return self.thumbnail_avif or self.thumbnail_webp or self.thumbnail
-        elif size == "small":
+        if size == "small":
             return self.small_avif or self.small_webp or self.small
-        elif size == "medium":
+        if size == "medium":
             return self.medium_avif or self.medium_webp or self.medium
         return None
 

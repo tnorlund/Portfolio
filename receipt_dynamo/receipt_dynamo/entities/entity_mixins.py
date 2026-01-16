@@ -268,9 +268,9 @@ class SerializationMixin:
             if field_type is not None and value is not None:
                 if field_type is dict and isinstance(value, dict):
                     return value
-                elif field_type is list and isinstance(value, list):
+                if field_type is list and isinstance(value, list):
                     return value
-                elif not isinstance(value, field_type):
+                if not isinstance(value, field_type):
                     raise TypeError(
                         f"Expected {field_type.__name__} for field "
                         f"{field_name}, got {type(value).__name__}"

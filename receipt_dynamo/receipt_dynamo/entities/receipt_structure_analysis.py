@@ -1068,8 +1068,7 @@ def item_to_receipt_structure_analysis(
                 # If this is a plain dictionary (legacy format)
                 sections.append(ReceiptSection.from_dict(section_dict))
         except (TypeError, ValueError):
-            # Log the error and continue with other sections
-            # TODO: Use proper logging instead of print
+            # Skip invalid sections and continue with others
             continue
 
     # Extract overall reasoning

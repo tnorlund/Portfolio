@@ -472,11 +472,11 @@ class _Receipt(
         # Use the recommended alternative methods
         try:
             receipt = self.get_receipt(image_id, receipt_id)
-        except EntityNotFoundError:
+        except EntityNotFoundError as exc:
             raise EntityNotFoundError(
                 f"receipt with receipt_id={receipt_id} and "
                 f"image_id={image_id} does not exist"
-            )
+            ) from exc
 
         words = self.list_receipt_words_from_receipt(image_id, receipt_id)
 

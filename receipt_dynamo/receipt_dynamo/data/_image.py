@@ -315,20 +315,17 @@ class _Image(FlattenedStandardMixin):
                 limit=limit,
                 last_evaluated_key=last_evaluated_key,
             )
-        else:
-            # Query all images of this type, sorted by receipt count
-            return self._query_entities(
-                index_name="GSI3",
-                key_condition_expression="#t = :val",
-                expression_attribute_names={"#t": "GSI3PK"},
-                expression_attribute_values={
-                    ":val": {"S": f"IMAGE#{image_type}"}
-                },
-                converter_func=item_to_image,
-                limit=limit,
-                last_evaluated_key=last_evaluated_key,
-                scan_index_forward=False,  # Sort descending by receipt count
-            )
+        # Query all images of this type, sorted by receipt count
+        return self._query_entities(
+            index_name="GSI3",
+            key_condition_expression="#t = :val",
+            expression_attribute_names={"#t": "GSI3PK"},
+            expression_attribute_values={":val": {"S": f"IMAGE#{image_type}"}},
+            converter_func=item_to_image,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+            scan_index_forward=False,  # Sort descending by receipt count
+        )
 
     def _query_by_type(
         self,

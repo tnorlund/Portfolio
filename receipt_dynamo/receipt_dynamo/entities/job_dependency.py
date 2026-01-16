@@ -214,7 +214,7 @@ def item_to_job_dependency(item: Dict[str, Any]) -> JobDependency:
         # Extract required fields
         dependent_job_id = item["dependent_job_id"]["S"]
         dependency_job_id = item["dependency_job_id"]["S"]
-        type = item["type"]["S"]
+        dependency_type = item["type"]["S"]
         created_at = item["created_at"]["S"]
 
         # Extract optional fields
@@ -223,7 +223,7 @@ def item_to_job_dependency(item: Dict[str, Any]) -> JobDependency:
         return JobDependency(
             dependent_job_id=dependent_job_id,
             dependency_job_id=dependency_job_id,
-            type=type,
+            type=dependency_type,
             created_at=created_at,
             condition=condition,
         )

@@ -266,28 +266,27 @@ class _CompactionLock(FlattenedStandardMixin):
                 limit=limit,
                 last_evaluated_key=last_evaluated_key,
             )
-        else:
-            # Query all collections and combine results
-            all_locks = []
-            for coll in ChromaDBCollection:
-                locks, _ = self._query_entities(
-                    index_name="GSI1",
-                    key_condition_expression="GSI1PK = :pk AND GSI1SK > :sk",
-                    expression_attribute_names=None,
-                    expression_attribute_values={
-                        ":pk": {"S": f"LOCK#{coll.value}"},
-                        ":sk": {"S": f"EXPIRES#{now}"},
-                    },
-                    converter_func=item_to_compaction_lock,
-                    limit=None,  # Get all for this collection
-                )
-                all_locks.extend(locks)
+        # Query all collections and combine results
+        all_locks = []
+        for coll in ChromaDBCollection:
+            locks, _ = self._query_entities(
+                index_name="GSI1",
+                key_condition_expression="GSI1PK = :pk AND GSI1SK > :sk",
+                expression_attribute_names=None,
+                expression_attribute_values={
+                    ":pk": {"S": f"LOCK#{coll.value}"},
+                    ":sk": {"S": f"EXPIRES#{now}"},
+                },
+                converter_func=item_to_compaction_lock,
+                limit=None,  # Get all for this collection
+            )
+            all_locks.extend(locks)
 
-            # Apply limit if specified
-            if limit is not None:
-                all_locks = all_locks[:limit]
+        # Apply limit if specified
+        if limit is not None:
+            all_locks = all_locks[:limit]
 
-            return all_locks, None  # No pagination for combined results
+        return all_locks, None  # No pagination for combined results
 
     @handle_dynamodb_errors("cleanup_expired_locks")
     def cleanup_expired_locks(self) -> int:

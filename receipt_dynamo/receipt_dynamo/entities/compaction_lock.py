@@ -57,12 +57,12 @@ class CompactionLock(DynamoDBEntity):
                 # Try to convert string to enum
                 try:
                     self.collection = ChromaDBCollection(self.collection)
-                except ValueError:
+                except ValueError as exc:
                     valid_values = [c.value for c in ChromaDBCollection]
                     raise ValueError(
                         f"ChromaDBCollection must be one of: "
                         f"{valid_values}, got: {self.collection}"
-                    )
+                    ) from exc
             else:
                 raise ValueError(
                     f"collection must be ChromaDBCollection or str, "
@@ -166,12 +166,12 @@ def item_to_compaction_lock(item: Dict[str, Any]) -> "CompactionLock":
     # Validate collection value
     try:
         collection = ChromaDBCollection(collection_value)
-    except ValueError:
+    except ValueError as exc:
         valid_values = [c.value for c in ChromaDBCollection]
         raise ValueError(
             f"Invalid collection in item: {collection_value}. "
             f"Must be one of: {valid_values}"
-        )
+        ) from exc
 
     return CompactionLock(
         lock_id=lock_id,

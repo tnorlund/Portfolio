@@ -29,7 +29,9 @@ class _AIUsageMetric(FlattenedStandardMixin):
         self._validate_entity(metric, AIUsageMetric, "metric")
         # Convert metric to entity format that works with _add_entity
         temp_metric = type(
-            "TempMetric", (), {"to_item": lambda: metric.to_dynamodb_item()}
+            "TempMetric",
+            (),
+            {"to_item": staticmethod(metric.to_dynamodb_item)},
         )()
         self._add_entity(temp_metric)
 
@@ -133,5 +135,5 @@ class _AIUsageMetric(FlattenedStandardMixin):
             primary_key=f"AI_USAGE#{service}#{model}",
             sort_key=f"USAGE#{timestamp}#{request_id}",
             entity_class=AIUsageMetric,
-            converter_func=lambda item: AIUsageMetric.from_dynamodb_item(item),
+            converter_func=AIUsageMetric.from_dynamodb_item,
         )
