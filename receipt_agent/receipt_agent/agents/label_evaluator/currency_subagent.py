@@ -33,22 +33,23 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
 from langchain_core.language_models import BaseChatModel
-
-if TYPE_CHECKING:
-    from dataclasses import dataclass as dc
-
-    @dc
-    class TraceContext:
-        """Type stub for tracing.TraceContext (defined in Lambda infra)."""
-        run_tree: Optional[Any]
-        headers: Optional[dict]
-        trace_id: Optional[str]
-        root_run_id: Optional[str]
-
+from langsmith.run_trees import RunTree
 from pydantic import ValidationError
+
+
+@dataclass
+class TraceContext:
+    """Context for LangSmith tracing, wrapping a RunTree with trace metadata."""
+
+    run_tree: Optional[RunTree] = None
+    headers: Optional[dict] = None
+    trace_id: Optional[str] = None
+    root_run_id: Optional[str] = None
+
+
 from receipt_agent.constants import LINE_ITEM_EVALUATION_LABELS
 from receipt_agent.prompts.structured_outputs import (
     CurrencyEvaluationResponse,
@@ -706,7 +707,7 @@ async def evaluate_currency_labels_async(
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
-    trace_ctx: Optional["TraceContext"] = None,
+    trace_ctx: Optional[TraceContext] = None,
 ) -> list[dict]:
     """
     Async version of evaluate_currency_labels.
