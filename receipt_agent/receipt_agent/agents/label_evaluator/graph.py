@@ -1221,7 +1221,9 @@ async def run_compute_only(
         graph: Compiled compute-only workflow graph
         state: Pre-populated EvaluatorState with words, labels,
             other_receipt_data
-        config: Optional LangChain config dict (for callbacks/tracing)
+        config: Optional LangChain config dict (for callbacks/tracing).
+            If config contains 'configurable.langsmith_headers', the graph
+            trace will be nested under the parent trace.
 
     Returns:
         Evaluation result dict with issues found
@@ -1239,11 +1241,43 @@ async def run_compute_only(
                 "thread_id": f"{state.image_id}#{state.receipt_id}"
             },
         }
-        # Merge in provided config (e.g., callbacks for tracing)
-        if config:
-            invoke_config.update(config)
 
-        final_state = await graph.ainvoke(state, config=invoke_config)
+        # Extract parent headers for tracing context
+        parent_headers = None
+        if config and "configurable" in config:
+            parent_headers = config["configurable"].get("langsmith_headers")
+
+        # Merge other config options (but not configurable, to preserve thread_id)
+        if config:
+            for key, value in config.items():
+                if key == "configurable":
+                    # Merge configurable but preserve thread_id
+                    for ck, cv in value.items():
+                        if ck != "langsmith_headers":  # Skip headers, handled separately
+                            invoke_config["configurable"][ck] = cv
+                else:
+                    invoke_config[key] = value
+
+        # Use tracing_context to nest graph trace under parent
+        async def invoke_with_tracing():
+            return await graph.ainvoke(state, config=invoke_config)
+
+        if parent_headers:
+            try:
+                from langsmith.run_helpers import tracing_context
+
+                logger.info(
+                    "Using tracing_context with parent headers for %s#%s",
+                    state.image_id,
+                    state.receipt_id,
+                )
+                with tracing_context(parent=parent_headers):
+                    final_state = await invoke_with_tracing()
+            except ImportError:
+                logger.warning("tracing_context not available, running without parent trace")
+                final_state = await invoke_with_tracing()
+        else:
+            final_state = await invoke_with_tracing()
 
         # LangGraph returns a dict
         issues_found = final_state.get("issues_found", [])
