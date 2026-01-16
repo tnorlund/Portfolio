@@ -343,7 +343,7 @@ M1LK 2%           1    $4.4g`}</code>
       <p>
         First idea: Google Maps. Feed it an address, phone number, website,
         etc. get the store name. This worked! It also cost money. After
-        processing 200 receipt I checked my bill: $8. I had 300 left. I needed
+        processing 200 receipts I checked my bill: $8. I had 300 left. I needed
         a better way to group the receipts by store without wasting another $8.
       </p>
 
