@@ -277,7 +277,6 @@ class _ReceiptWordLabel(
         receipt_id: int,
         line_id: int,
         word_id: int,
-        *,
         label: str,
     ) -> ReceiptWordLabel:
         """Retrieves a receipt word label from the database
@@ -511,7 +510,6 @@ class _ReceiptWordLabel(
         receipt_id: int,
         line_id: int,
         word_id: int,
-        *,
         limit: int | None = None,
         last_evaluated_key: dict[str, Any] | None = None,
     ) -> tuple[list[ReceiptWordLabel], dict[str, Any] | None]:

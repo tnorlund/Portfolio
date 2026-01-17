@@ -1176,9 +1176,9 @@ def test_list_receipts_with_pagination(
 @pytest.mark.parametrize(
     "invalid_limit,error_match",
     [
-        ("not-an-int", "Limit must be an integer"),
-        (0, "Limit must be greater than 0"),
-        (-1, "Limit must be greater than 0"),
+        ("not-an-int", "limit must be an integer"),
+        (0, "limit must be greater than 0"),
+        (-1, "limit must be greater than 0"),
     ],
 )
 def test_list_receipts_invalid_limit(
@@ -1284,8 +1284,8 @@ def test_list_receipt_details_empty_results(
 @pytest.mark.parametrize(
     "invalid_limit,error_match",
     [
-        (-1, "Limit must be greater than 0"),
-        (0, "Limit must be greater than 0"),
+        (-1, "limit must be greater than 0"),
+        (0, "limit must be greater than 0"),
     ],
 )
 def test_list_receipt_details_invalid_limit(
@@ -1311,7 +1311,7 @@ def test_list_receipt_details_invalid_last_evaluated_key(
     client = DynamoClient(dynamodb_table)
 
     with pytest.raises(
-        EntityValidationError, match="LastEvaluatedKey must be a dictionary"
+        EntityValidationError, match="last_evaluated_key must be a dictionary"
     ):
         # type: ignore
         client.list_receipt_details(last_evaluated_key="invalid")

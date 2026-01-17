@@ -6,7 +6,10 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import EntityValidationError
+from receipt_dynamo.data.shared_exceptions import (
+    EntityValidationError,
+    OperationError,
+)
 from receipt_dynamo.entities.label_count_cache import (
     LabelCountCache,
     item_to_label_count_cache,
@@ -34,8 +37,10 @@ class _LabelCountCache(FlattenedStandardMixin):
             isinstance(item, LabelCountCache) for item in items
         ):
             raise EntityValidationError(
-                "items must be a list of LabelCountCache objects.f"
+                "items must be a list of LabelCountCache objects."
             )
+        if not items:
+            raise OperationError("Parameter validation failed")
         request_items = [
             WriteRequestTypeDef(
                 PutRequest=PutRequestTypeDef(Item=item.to_item())
@@ -87,6 +92,7 @@ class _LabelCountCache(FlattenedStandardMixin):
         limit: int | None = None,
         last_evaluated_key: Dict | None = None,
     ) -> tuple[list[LabelCountCache], dict[str, Any] | None]:
+        self._validate_pagination_params(limit, last_evaluated_key)
         return self._query_by_type(
             entity_type="LABEL_COUNT_CACHE",
             converter_func=item_to_label_count_cache,

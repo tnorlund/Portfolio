@@ -12,10 +12,10 @@ from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
 
 def validate_last_evaluated_key(lek: dict[str, Any]) -> None:
-    """Validate that a LastEvaluatedKey has the required DynamoDB format.
+    """Validate that a last_evaluated_key has the required DynamoDB format.
 
     Args:
-        lek: The LastEvaluatedKey dictionary to validate.
+        lek: The last_evaluated_key dictionary to validate.
 
     Raises:
         EntityValidationError: If the key format is invalid or missing
@@ -24,12 +24,12 @@ def validate_last_evaluated_key(lek: dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
+            f"last_evaluated_key must contain keys: {required_keys}"
         )
     for key in required_keys:
         if not isinstance(lek[key], dict) or "S" not in lek[key]:
             raise EntityValidationError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
+                f"last_evaluated_key[{key}] must be a dict containing a key 'S'"
             )
 
 
@@ -85,20 +85,20 @@ def validate_pagination_params(
     """
     if limit is not None:
         if not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
+            raise EntityValidationError("limit must be an integer")
         if limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
+            raise EntityValidationError("limit must be greater than 0")
 
     if last_evaluated_key is not None:
         if not isinstance(last_evaluated_key, dict):
             raise EntityValidationError(
-                "LastEvaluatedKey must be a dictionary"
+                "last_evaluated_key must be a dictionary"
             )
-        # Validate DynamoDB LastEvaluatedKey structure
+        # Validate DynamoDB last_evaluated_key structure
         required_keys = {"PK", "SK"}
         if not required_keys.issubset(last_evaluated_key.keys()):
             raise EntityValidationError(
-                f"LastEvaluatedKey must contain keys: {required_keys}"
+                f"last_evaluated_key must contain keys: {required_keys}"
             )
 
         # Optional: Validate proper DynamoDB attribute value format
@@ -109,7 +109,7 @@ def validate_pagination_params(
                     or "S" not in last_evaluated_key[key]
                 ):
                     raise EntityValidationError(
-                        f"LastEvaluatedKey[{key}] must be a dict "
+                        f"last_evaluated_key[{key}] must be a dict "
                         f"containing a key 'S'"
                     )
 

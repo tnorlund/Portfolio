@@ -316,15 +316,14 @@ class TestLabelCountCacheListOperations:
     def test_list_label_count_caches_with_zero_limit(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_caches: List[LabelCountCache],
     ) -> None:
-        """Test listing label count caches with zero limit."""
+        """Test listing label count caches with zero limit raises error."""
         client = DynamoClient(dynamodb_table)
-        client.add_label_count_caches(example_label_count_caches)
 
-        results, last_key = client.list_label_count_caches(limit=0)
-        assert results == []
-        assert last_key is None
+        with pytest.raises(
+            EntityValidationError, match="limit must be greater than 0"
+        ):
+            client.list_label_count_caches(limit=0)
 
 
 class TestLabelCountCacheValidation:
@@ -366,7 +365,7 @@ class TestLabelCountCacheValidation:
         client = DynamoClient(dynamodb_table)
         with pytest.raises(
             EntityValidationError,
-            match="items must be a list of LabelCountCache objects.f",
+            match="items must be a list of LabelCountCache objects.",
         ):
             client.add_label_count_caches("not-a-list")  # type: ignore
 
@@ -379,7 +378,7 @@ class TestLabelCountCacheValidation:
         client = DynamoClient(dynamodb_table)
         with pytest.raises(
             EntityValidationError,
-            match="items must be a list of LabelCountCache objects.f",
+            match="items must be a list of LabelCountCache objects.",
         ):
             client.add_label_count_caches(
                 [example_label_count_cache, "not-a-cache"]  # type: ignore
