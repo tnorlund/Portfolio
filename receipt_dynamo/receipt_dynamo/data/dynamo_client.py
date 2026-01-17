@@ -118,13 +118,22 @@ class DynamoClient(
 ):
     """A class used to represent a DynamoDB client."""
 
-    def __init__(self, table_name: str, region: str = "us-east-1"):
+    def __init__(
+        self,
+        table_name: str,
+        region: str = "us-east-1",
+        max_pool_connections: int | None = None,
+    ):
         """Initializes a DynamoClient instance.
 
         Args:
             table_name (str): The name of the DynamoDB table.
             region (str, optional): The AWS region where the DynamoDB table is
                 located. Defaults to "us-east-1".
+            max_pool_connections (int, optional): Maximum number of connections
+                in the connection pool. Defaults to None (uses boto3 default
+                of 10). Increase this when using parallel workers to avoid
+                "Connection pool is full" warnings.
 
         Attributes:
             _client (DynamoDBClient): The Boto3 DynamoDB client.
@@ -132,8 +141,15 @@ class DynamoClient(
         """
         super().__init__()
 
+        # Build boto3 config if custom options provided
+        boto3_config = None
+        if max_pool_connections is not None:
+            from botocore.config import Config
+
+            boto3_config = Config(max_pool_connections=max_pool_connections)
+
         self._client: DynamoDBClient = boto3.client(
-            "dynamodb", region_name=region
+            "dynamodb", region_name=region, config=boto3_config
         )
         self.table_name = table_name
         # Ensure the table already exists
