@@ -41,35 +41,16 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         image_type (ImageType): The type of image.
     """
 
+    # Required fields
     image_id: str
     width: int
     height: int
     timestamp_added: str | datetime
     raw_s3_bucket: str
     raw_s3_key: str
-    sha256: Optional[str] = None
-    cdn_s3_bucket: Optional[str] = None
-    cdn_s3_key: Optional[str] = None
-    cdn_webp_s3_key: Optional[str] = None
-    cdn_avif_s3_key: Optional[str] = None
-    # Thumbnail versions
-    cdn_thumbnail_s3_key: Optional[str] = None
-    cdn_thumbnail_webp_s3_key: Optional[str] = None
-    cdn_thumbnail_avif_s3_key: Optional[str] = None
-    # Small versions
-    cdn_small_s3_key: Optional[str] = None
-    cdn_small_webp_s3_key: Optional[str] = None
-    cdn_small_avif_s3_key: Optional[str] = None
-    # Medium versions
-    cdn_medium_s3_key: Optional[str] = None
-    cdn_medium_webp_s3_key: Optional[str] = None
-    cdn_medium_avif_s3_key: Optional[str] = None
+    # Optional fields (CDN fields inherited from CDNFieldsMixin)
     image_type: ImageType | str = ImageType.SCAN
     receipt_count: Optional[int] = None  # Only for query filtering
-
-    # CDN field lists for CDNFieldsMixin
-    CDN_BASIC_FIELDS = ["cdn_s3_key", "cdn_webp_s3_key", "cdn_avif_s3_key"]
-    CDN_SIZE_FIELDS = ["thumbnail", "small", "medium"]
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -89,13 +70,9 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         if self.raw_s3_key and not isinstance(self.raw_s3_key, str):
             raise ValueError("raw_s3_key must be a string")
 
+        # Use CDNFieldsMixin to validate sha256 and all CDN fields
         if self.sha256 and not isinstance(self.sha256, str):
             raise ValueError("sha256 must be a string")
-
-        if self.cdn_s3_bucket and not isinstance(self.cdn_s3_bucket, str):
-            raise ValueError("cdn_s3_bucket must be a string")
-
-        # Use CDNFieldsMixin to validate all CDN fields
         self.validate_cdn_fields()
 
         if isinstance(self.image_type, ImageType):
@@ -210,24 +187,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             f"timestamp_added={self.timestamp_added}, "
             f"raw_s3_bucket={_repr_str(self.raw_s3_bucket)}, "
             f"raw_s3_key={_repr_str(self.raw_s3_key)}, "
-            f"sha256={_repr_str(self.sha256)}, "
-            f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
-            f"cdn_s3_key={_repr_str(self.cdn_s3_key)}, "
-            f"cdn_webp_s3_key={_repr_str(self.cdn_webp_s3_key)}, "
-            f"cdn_avif_s3_key={_repr_str(self.cdn_avif_s3_key)}, "
-            f"cdn_thumbnail_s3_key={_repr_str(self.cdn_thumbnail_s3_key)}, "
-            f"cdn_thumbnail_webp_s3_key="
-            f"{_repr_str(self.cdn_thumbnail_webp_s3_key)}, "
-            f"cdn_thumbnail_avif_s3_key="
-            f"{_repr_str(self.cdn_thumbnail_avif_s3_key)}, "
-            f"cdn_small_s3_key={_repr_str(self.cdn_small_s3_key)}, "
-            f"cdn_small_webp_s3_key={_repr_str(self.cdn_small_webp_s3_key)}, "
-            f"cdn_small_avif_s3_key={_repr_str(self.cdn_small_avif_s3_key)}, "
-            f"cdn_medium_s3_key={_repr_str(self.cdn_medium_s3_key)}, "
-            f"cdn_medium_webp_s3_key="
-            f"{_repr_str(self.cdn_medium_webp_s3_key)}, "
-            f"cdn_medium_avif_s3_key="
-            f"{_repr_str(self.cdn_medium_avif_s3_key)}, "
+            f"{self._get_cdn_repr_fields()}, "
             f"image_type={_repr_str(self.image_type)}, "
             f"receipt_count={_repr_str(self.receipt_count)}"
             ")"

@@ -12,6 +12,7 @@ and ReceiptTextGeometryEntity base classes. See text_geometry_entity.py and
 receipt_text_geometry_entity.py for geometry operations.
 """
 
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import (
@@ -24,6 +25,8 @@ from typing import (
     TypeVar,
     Union,
 )
+
+from receipt_dynamo.entities.util import _repr_str
 
 
 T = TypeVar("T")
@@ -336,27 +339,46 @@ class SerializationMixin:
 # =============================================================================
 
 
+@dataclass(kw_only=True)
 class CDNFieldsMixin:
     """
-    Mixin that provides CDN S3 key validation and serialization.
+    Mixin that provides CDN S3 key fields, validation, and serialization.
 
-    Expects the implementing class to have these CDN fields as attributes:
-    - cdn_s3_bucket
-    - cdn_s3_key
-    - cdn_webp_s3_key
-    - cdn_avif_s3_key
-    - cdn_thumbnail_s3_key
-    - cdn_thumbnail_webp_s3_key
-    - cdn_thumbnail_avif_s3_key
-    - cdn_small_s3_key
-    - cdn_small_webp_s3_key
-    - cdn_small_avif_s3_key
-    - cdn_medium_s3_key (optional)
-    - cdn_medium_webp_s3_key (optional)
-    - cdn_medium_avif_s3_key (optional)
+    This mixin defines all CDN-related fields as dataclass fields with
+    kw_only=True, allowing subclasses to define their own required fields
+    before these optional CDN fields.
+
+    Fields:
+        sha256: SHA256 hash of the image
+        cdn_s3_bucket: S3 bucket for CDN-hosted image
+        cdn_s3_key: S3 key for original CDN image
+        cdn_webp_s3_key: S3 key for WebP version
+        cdn_avif_s3_key: S3 key for AVIF version
+        cdn_thumbnail_*: Thumbnail size variants
+        cdn_small_*: Small size variants
+        cdn_medium_*: Medium size variants
     """
 
-    # Define CDN field groups
+    # CDN fields - all optional with None defaults
+    sha256: Optional[str] = None
+    cdn_s3_bucket: Optional[str] = None
+    cdn_s3_key: Optional[str] = None
+    cdn_webp_s3_key: Optional[str] = None
+    cdn_avif_s3_key: Optional[str] = None
+    # Thumbnail versions
+    cdn_thumbnail_s3_key: Optional[str] = None
+    cdn_thumbnail_webp_s3_key: Optional[str] = None
+    cdn_thumbnail_avif_s3_key: Optional[str] = None
+    # Small versions
+    cdn_small_s3_key: Optional[str] = None
+    cdn_small_webp_s3_key: Optional[str] = None
+    cdn_small_avif_s3_key: Optional[str] = None
+    # Medium versions
+    cdn_medium_s3_key: Optional[str] = None
+    cdn_medium_webp_s3_key: Optional[str] = None
+    cdn_medium_avif_s3_key: Optional[str] = None
+
+    # Define CDN field groups for iteration
     CDN_BASIC_FIELDS = [
         "cdn_s3_bucket",
         "cdn_s3_key",
@@ -427,6 +449,33 @@ class CDNFieldsMixin:
                 item[field_name] = {"S": value} if value else {"NULL": True}
 
         return item
+
+    def _get_cdn_repr_fields(self) -> str:
+        """
+        Return formatted string of CDN fields for __repr__.
+
+        Returns:
+            String with all CDN fields formatted for repr output
+        """
+        return (
+            f"sha256={_repr_str(self.sha256)}, "
+            f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
+            f"cdn_s3_key={_repr_str(self.cdn_s3_key)}, "
+            f"cdn_webp_s3_key={_repr_str(self.cdn_webp_s3_key)}, "
+            f"cdn_avif_s3_key={_repr_str(self.cdn_avif_s3_key)}, "
+            f"cdn_thumbnail_s3_key={_repr_str(self.cdn_thumbnail_s3_key)}, "
+            f"cdn_thumbnail_webp_s3_key="
+            f"{_repr_str(self.cdn_thumbnail_webp_s3_key)}, "
+            f"cdn_thumbnail_avif_s3_key="
+            f"{_repr_str(self.cdn_thumbnail_avif_s3_key)}, "
+            f"cdn_small_s3_key={_repr_str(self.cdn_small_s3_key)}, "
+            f"cdn_small_webp_s3_key={_repr_str(self.cdn_small_webp_s3_key)}, "
+            f"cdn_small_avif_s3_key={_repr_str(self.cdn_small_avif_s3_key)}, "
+            f"cdn_medium_s3_key={_repr_str(self.cdn_medium_s3_key)}, "
+            f"cdn_medium_webp_s3_key="
+            f"{_repr_str(self.cdn_medium_webp_s3_key)}, "
+            f"cdn_medium_avif_s3_key={_repr_str(self.cdn_medium_avif_s3_key)}"
+        )
 
 
 # =============================================================================

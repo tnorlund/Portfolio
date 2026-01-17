@@ -12,15 +12,15 @@ from receipt_dynamo import Image, item_to_image
 def example_image():
     """Provides a sample Image for testing."""
     return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
+        cdn_s3_key="cdn_key",
     )
 
 
@@ -28,12 +28,12 @@ def example_image():
 def example_image_no_sha():
     """Provides a sample Image for testing."""
     return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
         cdn_s3_bucket="cdn_bucket",
         cdn_s3_key="cdn_key",
     )
@@ -43,13 +43,13 @@ def example_image_no_sha():
 def example_image_no_cdn_bucket():
     """Provides a sample Image for testing."""
     return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        sha256="abc123",
         cdn_s3_key="cdn_key",
     )
 
@@ -58,14 +58,14 @@ def example_image_no_cdn_bucket():
 def example_image_no_cdn_key():
     """Provides a sample Image for testing."""
     return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
     )
 
 
@@ -496,128 +496,29 @@ def test_image_iter(example_image):
 @pytest.mark.unit
 def test_image_eq():
     """Test the Image.__eq__() method"""
+    base_args = {
+        "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "width": 10,
+        "height": 20,
+        "timestamp_added": "2021-01-01T00:00:00",
+        "raw_s3_bucket": "bucket",
+        "raw_s3_key": "key",
+        "sha256": "abc123",
+        "cdn_s3_bucket": "cdn_bucket",
+        "cdn_s3_key": "cdn_key",
+    }
 
-    i1 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )
-    i2 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )
-    i3 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed4",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different id
-    i4 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        20,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different width
-    i5 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        30,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different height
-    i6 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:01",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different timestamp
-    i7 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "Bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different raw_s3_bucket
-    i8 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "Key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different raw_s3_key
-    i9 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc124",
-        "cdn_bucket",
-        "cdn_key",
-    )  # different sha256
-    i10 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "Cdn_bucket",
-        "cdn_key",
-    )  # different cdn_bucket
-    i11 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "Cdn_key",
-    )  # different cdn_key
+    i1 = Image(**base_args)
+    i2 = Image(**base_args)
+    i3 = Image(**{**base_args, "image_id": "3f52804b-2fad-4e00-92c8-b593da3a8ed4"})
+    i4 = Image(**{**base_args, "width": 20})
+    i5 = Image(**{**base_args, "height": 30})
+    i6 = Image(**{**base_args, "timestamp_added": "2021-01-01T00:00:01"})
+    i7 = Image(**{**base_args, "raw_s3_bucket": "Bucket"})
+    i8 = Image(**{**base_args, "raw_s3_key": "Key"})
+    i9 = Image(**{**base_args, "sha256": "abc124"})
+    i10 = Image(**{**base_args, "cdn_s3_bucket": "Cdn_bucket"})
+    i11 = Image(**{**base_args, "cdn_s3_key": "Cdn_key"})
 
     assert i1 == i2, "Should be equal"
     assert i1 != i3, "Comparing different ids"

@@ -54,6 +54,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             CDN-hosted receipt image.
     """
 
+    # Required fields
     image_id: str
     receipt_id: int
     width: int
@@ -65,27 +66,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
     top_right: Dict[str, Any]
     bottom_left: Dict[str, Any]
     bottom_right: Dict[str, Any]
-    sha256: Optional[str] = None
-    cdn_s3_bucket: Optional[str] = None
-    cdn_s3_key: Optional[str] = None
-    cdn_webp_s3_key: Optional[str] = None
-    cdn_avif_s3_key: Optional[str] = None
-    # Thumbnail versions
-    cdn_thumbnail_s3_key: Optional[str] = None
-    cdn_thumbnail_webp_s3_key: Optional[str] = None
-    cdn_thumbnail_avif_s3_key: Optional[str] = None
-    # Small versions
-    cdn_small_s3_key: Optional[str] = None
-    cdn_small_webp_s3_key: Optional[str] = None
-    cdn_small_avif_s3_key: Optional[str] = None
-    # Medium versions
-    cdn_medium_s3_key: Optional[str] = None
-    cdn_medium_webp_s3_key: Optional[str] = None
-    cdn_medium_avif_s3_key: Optional[str] = None
-
-    # CDN field lists for CDNFieldsMixin
-    CDN_BASIC_FIELDS = ["cdn_s3_key", "cdn_webp_s3_key", "cdn_avif_s3_key"]
-    CDN_SIZE_FIELDS = ["thumbnail", "small", "medium"]
+    # Optional CDN fields inherited from CDNFieldsMixin
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -110,13 +91,9 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
         assert_valid_point(self.bottom_left)
         assert_valid_point(self.bottom_right)
 
+        # Use CDNFieldsMixin to validate sha256 and all CDN fields
         if self.sha256 and not isinstance(self.sha256, str):
             raise ValueError("sha256 must be a string")
-
-        if self.cdn_s3_bucket and not isinstance(self.cdn_s3_bucket, str):
-            raise ValueError("cdn_s3_bucket must be a string")
-
-        # Use CDNFieldsMixin to validate all CDN fields
         self.validate_cdn_fields()
 
     @property
@@ -240,23 +217,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             f"top_right={self.top_right}, "
             f"bottom_left={self.bottom_left}, "
             f"bottom_right={self.bottom_right}, "
-            f"sha256={_repr_str(self.sha256)}, "
-            f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
-            f"cdn_s3_key={_repr_str(self.cdn_s3_key)}, "
-            f"cdn_webp_s3_key={_repr_str(self.cdn_webp_s3_key)}, "
-            f"cdn_avif_s3_key={_repr_str(self.cdn_avif_s3_key)}, "
-            f"cdn_thumbnail_s3_key={_repr_str(self.cdn_thumbnail_s3_key)}, "
-            f"cdn_thumbnail_webp_s3_key="
-            f"{_repr_str(self.cdn_thumbnail_webp_s3_key)}, "
-            f"cdn_thumbnail_avif_s3_key="
-            f"{_repr_str(self.cdn_thumbnail_avif_s3_key)}, "
-            f"cdn_small_s3_key={_repr_str(self.cdn_small_s3_key)}, "
-            f"cdn_small_webp_s3_key={_repr_str(self.cdn_small_webp_s3_key)}, "
-            f"cdn_small_avif_s3_key={_repr_str(self.cdn_small_avif_s3_key)}, "
-            f"cdn_medium_s3_key={_repr_str(self.cdn_medium_s3_key)}, "
-            f"cdn_medium_webp_s3_key="
-            f"{_repr_str(self.cdn_medium_webp_s3_key)}, "
-            f"cdn_medium_avif_s3_key={_repr_str(self.cdn_medium_avif_s3_key)}"
+            f"{self._get_cdn_repr_fields()}"
             ")"
         )
 
