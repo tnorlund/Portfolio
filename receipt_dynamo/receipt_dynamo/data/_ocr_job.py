@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     TransactWriteItemTypeDef,
@@ -21,10 +20,7 @@ if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 
-class _OCRJob(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _OCRJob(FlattenedStandardMixin):
     @handle_dynamodb_errors("add_ocr_job")
     def add_ocr_job(self, ocr_job: OCRJob):
         """Adds an OCR job to the database

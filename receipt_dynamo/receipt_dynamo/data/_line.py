@@ -1,7 +1,6 @@
 from typing import Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
@@ -10,10 +9,7 @@ from receipt_dynamo.entities import item_to_line
 from receipt_dynamo.entities.line import Line
 
 
-class _Line(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _Line(FlattenedStandardMixin):
     """
     A class used to represent a Line in the database.
 

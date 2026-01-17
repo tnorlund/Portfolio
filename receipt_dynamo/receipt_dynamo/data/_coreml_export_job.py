@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from receipt_dynamo.constants import CoreMLExportStatus
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     WriteRequestTypeDef,
@@ -22,10 +21,7 @@ if TYPE_CHECKING:
     pass
 
 
-class _CoreMLExportJob(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _CoreMLExportJob(FlattenedStandardMixin):
     @handle_dynamodb_errors("add_coreml_export_job")
     def add_coreml_export_job(self, export_job: CoreMLExportJob) -> None:
         """Adds a CoreML export job to the database.

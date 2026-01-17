@@ -8,7 +8,6 @@ functionality.
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
@@ -36,10 +35,7 @@ else:
     )
 
 
-class _ReceiptStructureAnalysis(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _ReceiptStructureAnalysis(FlattenedStandardMixin):
     """
     .. deprecated::
         This class is deprecated and not used in production. Consider removing

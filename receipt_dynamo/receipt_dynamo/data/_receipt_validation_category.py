@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     WriteRequestTypeDef,
@@ -21,10 +20,7 @@ if TYPE_CHECKING:
     pass
 
 
-class _ReceiptValidationCategory(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _ReceiptValidationCategory(FlattenedStandardMixin):
     """
     .. deprecated::
         This class is deprecated and not used in production. Consider removing

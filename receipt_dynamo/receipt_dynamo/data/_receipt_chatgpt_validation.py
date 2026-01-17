@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, Optional
 
 from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
@@ -25,10 +24,7 @@ if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 
-class _ReceiptChatGPTValidation(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _ReceiptChatGPTValidation(FlattenedStandardMixin):
     """
     .. deprecated::
         This class is deprecated and not used in production. Consider removing

@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     WriteRequestTypeDef,
@@ -44,10 +43,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _CompletionBatchResult(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _CompletionBatchResult(FlattenedStandardMixin):
     """
     .. deprecated::
         This class is deprecated and not used in production. Consider removing

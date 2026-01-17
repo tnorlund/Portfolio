@@ -4,7 +4,6 @@ from typing import Any, Dict, Optional
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     TransactWriteItemTypeDef,
@@ -38,10 +37,7 @@ from receipt_dynamo.entities.receipt_word_label import (
 from ._receipt_details_processor import process_receipt_details_query
 
 
-class _Receipt(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _Receipt(FlattenedStandardMixin):
     @handle_dynamodb_errors("add_receipt")
     def add_receipt(self, receipt: Receipt):
         """Adds a receipt to the database

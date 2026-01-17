@@ -2,7 +2,6 @@
 from typing import TYPE_CHECKING, Optional
 
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
@@ -18,10 +17,7 @@ if TYPE_CHECKING:
     pass
 
 
-class _ReceiptLetter(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _ReceiptLetter(FlattenedStandardMixin):
     """
     A class providing methods to interact with "ReceiptLetter" entities in
     DynamoDB.

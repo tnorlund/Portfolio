@@ -1,10 +1,16 @@
 """
 Base class for DynamoDB operations.
 
+.. deprecated::
+    DynamoDBBaseOperations is deprecated. Use FlattenedStandardMixin instead,
+    which provides all functionality in a single class without deep
+    inheritance chains or MRO conflicts.
+
 This module provides the core base class that all DynamoDB data access
 classes should inherit from, providing common functionality and error handling.
 """
 
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -36,6 +42,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
     """
     Base class for all DynamoDB operations with common functionality.
 
+    .. deprecated::
+        Use FlattenedStandardMixin instead.
+
     This class provides centralized error handling, validation, and common
     operation patterns that are shared across all entity data access classes.
 
@@ -43,6 +52,16 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
     - table_name: str - The DynamoDB table name
     - _client: DynamoDBClient - The boto3 DynamoDB client instance
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        warnings.warn(
+            "DynamoDBBaseOperations is deprecated. "
+            "Use FlattenedStandardMixin instead, which provides all "
+            "functionality without MRO conflicts.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     # Declare protocol-required attributes for type checker
     if TYPE_CHECKING:

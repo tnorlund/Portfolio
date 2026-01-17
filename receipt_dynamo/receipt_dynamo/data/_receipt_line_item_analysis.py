@@ -8,7 +8,6 @@ functionality.
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
@@ -35,10 +34,7 @@ else:
     )
 
 
-class _ReceiptLineItemAnalysis(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _ReceiptLineItemAnalysis(FlattenedStandardMixin):
     """
     A class used to access receipt line item analyses in DynamoDB.
 

@@ -11,7 +11,6 @@ from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.data.base_operations import (
     BatchGetItemInputTypeDef,
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
@@ -48,10 +47,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _BatchSummary(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _BatchSummary(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("add_batch_summary")
     def add_batch_summary(self, batch_summary: BatchSummary) -> None:
