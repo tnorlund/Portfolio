@@ -191,11 +191,11 @@ def test_delete_receipt_letter_client_errors(
 
     with pytest.raises(expected_exception, match=error_match):
         client.delete_receipt_letter(
-            sample_receipt_letter.image_id,
-            sample_receipt_letter.receipt_id,
-            sample_receipt_letter.line_id,
-            sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,
+            image_id=sample_receipt_letter.image_id,
+            receipt_id=sample_receipt_letter.receipt_id,
+            line_id=sample_receipt_letter.line_id,
+            word_id=sample_receipt_letter.word_id,
+            letter_id=sample_receipt_letter.letter_id,
         )
 
     mock_delete.assert_called_once()
@@ -226,11 +226,11 @@ def test_get_receipt_letter_client_errors(
 
     with pytest.raises(expected_exception, match=error_match):
         client.get_receipt_letter(
-            sample_receipt_letter.receipt_id,
-            sample_receipt_letter.image_id,
-            sample_receipt_letter.line_id,
-            sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,
+            receipt_id=sample_receipt_letter.receipt_id,
+            image_id=sample_receipt_letter.image_id,
+            line_id=sample_receipt_letter.line_id,
+            word_id=sample_receipt_letter.word_id,
+            letter_id=sample_receipt_letter.letter_id,
         )
 
     mock_get.assert_called_once()
@@ -568,7 +568,11 @@ def test_get_receipt_letter_parameter_validation(
 
     with pytest.raises(expected_error, match=error_match):
         client.get_receipt_letter(
-            receipt_id, image_id, line_id, word_id, letter_id
+            receipt_id=receipt_id,
+            image_id=image_id,
+            line_id=line_id,
+            word_id=word_id,
+            letter_id=letter_id,
         )
 
 
@@ -829,11 +833,11 @@ def test_delete_receipt_letter_conditional_check_failed(
         EntityNotFoundError, match="(does not exist|not found)"
     ):
         client.delete_receipt_letter(
-            sample_receipt_letter.image_id,
-            sample_receipt_letter.receipt_id,
-            sample_receipt_letter.line_id,
-            sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,
+            image_id=sample_receipt_letter.image_id,
+            receipt_id=sample_receipt_letter.receipt_id,
+            line_id=sample_receipt_letter.line_id,
+            word_id=sample_receipt_letter.word_id,
+            letter_id=sample_receipt_letter.letter_id,
         )
 
     mock_delete.assert_called_once()
@@ -858,11 +862,11 @@ def test_add_receipt_letter_success(
 
     # Assert
     retrieved = client.get_receipt_letter(
-        sample_receipt_letter.receipt_id,
-        sample_receipt_letter.image_id,
-        sample_receipt_letter.line_id,
-        sample_receipt_letter.word_id,
-        sample_receipt_letter.letter_id,
+        receipt_id=sample_receipt_letter.receipt_id,
+        image_id=sample_receipt_letter.image_id,
+        line_id=sample_receipt_letter.line_id,
+        word_id=sample_receipt_letter.word_id,
+        letter_id=sample_receipt_letter.letter_id,
     )
     assert retrieved == sample_receipt_letter
 
@@ -900,11 +904,11 @@ def test_update_receipt_letter_success(
 
     # Verify
     retrieved = client.get_receipt_letter(
-        sample_receipt_letter.receipt_id,
-        sample_receipt_letter.image_id,
-        sample_receipt_letter.line_id,
-        sample_receipt_letter.word_id,
-        sample_receipt_letter.letter_id,
+        receipt_id=sample_receipt_letter.receipt_id,
+        image_id=sample_receipt_letter.image_id,
+        line_id=sample_receipt_letter.line_id,
+        word_id=sample_receipt_letter.word_id,
+        letter_id=sample_receipt_letter.letter_id,
     )
     assert retrieved.text == "Z"
     assert retrieved.confidence == 0.99
@@ -922,11 +926,11 @@ def test_delete_receipt_letter_success(
 
     # Delete
     client.delete_receipt_letter(
-        sample_receipt_letter.image_id,
-        sample_receipt_letter.receipt_id,
-        sample_receipt_letter.line_id,
-        sample_receipt_letter.word_id,
-        sample_receipt_letter.letter_id,
+        image_id=sample_receipt_letter.image_id,
+        receipt_id=sample_receipt_letter.receipt_id,
+        line_id=sample_receipt_letter.line_id,
+        word_id=sample_receipt_letter.word_id,
+        letter_id=sample_receipt_letter.letter_id,
     )
 
     # Verify
@@ -934,11 +938,11 @@ def test_delete_receipt_letter_success(
         EntityNotFoundError, match="ReceiptLetter with.*not found"
     ):
         client.get_receipt_letter(
-            sample_receipt_letter.receipt_id,
-            sample_receipt_letter.image_id,
-            sample_receipt_letter.line_id,
-            sample_receipt_letter.word_id,
-            sample_receipt_letter.letter_id,
+            receipt_id=sample_receipt_letter.receipt_id,
+            image_id=sample_receipt_letter.image_id,
+            line_id=sample_receipt_letter.line_id,
+            word_id=sample_receipt_letter.word_id,
+            letter_id=sample_receipt_letter.letter_id,
         )
 
 
@@ -955,7 +959,13 @@ def test_get_receipt_letter_not_found(
         EntityNotFoundError,
         match="ReceiptLetter with.*not found",
     ):
-        client.get_receipt_letter(999, unique_image_id, 999, 999, 999)
+        client.get_receipt_letter(
+            receipt_id=999,
+            image_id=unique_image_id,
+            line_id=999,
+            word_id=999,
+            letter_id=999,
+        )
 
 
 # -------------------------------------------------------------------
@@ -1002,11 +1012,11 @@ def test_add_receipt_letters_success(
     # Verify all were added
     for letter in letters:
         retrieved = client.get_receipt_letter(
-            letter.receipt_id,
-            letter.image_id,
-            letter.line_id,
-            letter.word_id,
-            letter.letter_id,
+            receipt_id=letter.receipt_id,
+            image_id=letter.image_id,
+            line_id=letter.line_id,
+            word_id=letter.word_id,
+            letter_id=letter.letter_id,
         )
         assert retrieved == letter
 
@@ -1069,11 +1079,11 @@ def test_update_receipt_letters_success(
     # Verify updates
     for letter in letters:
         retrieved = client.get_receipt_letter(
-            letter.receipt_id,
-            letter.image_id,
-            letter.line_id,
-            letter.word_id,
-            letter.letter_id,
+            receipt_id=letter.receipt_id,
+            image_id=letter.image_id,
+            line_id=letter.line_id,
+            word_id=letter.word_id,
+            letter_id=letter.letter_id,
         )
         assert retrieved.text == letter.text
         assert retrieved.confidence == 0.99
@@ -1122,11 +1132,11 @@ def test_delete_receipt_letters_success(
     for letter in letters:
         with pytest.raises(EntityNotFoundError):
             client.get_receipt_letter(
-                letter.receipt_id,
-                letter.image_id,
-                letter.line_id,
-                letter.word_id,
-                letter.letter_id,
+                receipt_id=letter.receipt_id,
+                image_id=letter.image_id,
+                line_id=letter.line_id,
+                word_id=letter.word_id,
+                letter_id=letter.letter_id,
             )
 
 
@@ -1302,11 +1312,11 @@ def test_receipt_letter_with_unicode_text(
 
     client.add_receipt_letter(unicode_letter)
     result = client.get_receipt_letter(
-        unicode_letter.receipt_id,
-        unicode_letter.image_id,
-        unicode_letter.line_id,
-        unicode_letter.word_id,
-        unicode_letter.letter_id,
+        receipt_id=unicode_letter.receipt_id,
+        image_id=unicode_letter.image_id,
+        line_id=unicode_letter.line_id,
+        word_id=unicode_letter.word_id,
+        letter_id=unicode_letter.letter_id,
     )
     assert result == unicode_letter
 
@@ -1343,11 +1353,11 @@ def test_receipt_letter_with_extreme_coordinates(
 
     client.add_receipt_letter(extreme_letter)
     result = client.get_receipt_letter(
-        extreme_letter.receipt_id,
-        extreme_letter.image_id,
-        extreme_letter.line_id,
-        extreme_letter.word_id,
-        extreme_letter.letter_id,
+        receipt_id=extreme_letter.receipt_id,
+        image_id=extreme_letter.image_id,
+        line_id=extreme_letter.line_id,
+        word_id=extreme_letter.word_id,
+        letter_id=extreme_letter.letter_id,
     )
     assert result == extreme_letter
 
@@ -1405,11 +1415,11 @@ def test_large_batch_operations(
     for i in [0, 25, 50, 75, 99]:
         letter = letters[i]
         result = client.get_receipt_letter(
-            letter.receipt_id,
-            letter.image_id,
-            letter.line_id,
-            letter.word_id,
-            letter.letter_id,
+            receipt_id=letter.receipt_id,
+            image_id=letter.image_id,
+            line_id=letter.line_id,
+            word_id=letter.word_id,
+            letter_id=letter.letter_id,
         )
         assert result.text == letter.text
 
@@ -1421,11 +1431,11 @@ def test_large_batch_operations(
     # Verify updates
     letter = letters[50]
     result = client.get_receipt_letter(
-        letter.receipt_id,
-        letter.image_id,
-        letter.line_id,
-        letter.word_id,
-        letter.letter_id,
+        receipt_id=letter.receipt_id,
+        image_id=letter.image_id,
+        line_id=letter.line_id,
+        word_id=letter.word_id,
+        letter_id=letter.letter_id,
     )
     assert result.text == letter.text.lower()
 
@@ -1435,9 +1445,9 @@ def test_large_batch_operations(
     # Verify deletion
     with pytest.raises(EntityNotFoundError):
         client.get_receipt_letter(
-            letter.receipt_id,
-            letter.image_id,
-            letter.line_id,
-            letter.word_id,
-            letter.letter_id,
+            receipt_id=letter.receipt_id,
+            image_id=letter.image_id,
+            line_id=letter.line_id,
+            word_id=letter.word_id,
+            letter_id=letter.letter_id,
         )

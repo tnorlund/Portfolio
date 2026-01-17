@@ -172,7 +172,6 @@ class _ReceiptLetter(FlattenedStandardMixin):
         receipt_id: int,
         line_id: int,
         word_id: int,
-        *,
         letter_id: int,
     ) -> None:
         """
@@ -254,7 +253,6 @@ class _ReceiptLetter(FlattenedStandardMixin):
         image_id: str,
         line_id: int,
         word_id: int,
-        *,
         letter_id: int,
     ) -> ReceiptLetter:
         """
