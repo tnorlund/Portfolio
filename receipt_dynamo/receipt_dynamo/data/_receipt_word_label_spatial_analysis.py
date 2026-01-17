@@ -99,7 +99,9 @@ class _ReceiptWordLabelSpatialAnalysis(
             ReceiptWordLabelSpatialAnalysis,
             "spatial_analysis",
         )
-        self._update_entity(spatial_analysis, condition_expression="attribute_exists(PK)")
+        self._update_entity(
+            spatial_analysis, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("update_receipt_word_label_spatial_analyses")
     def update_receipt_word_label_spatial_analyses(
@@ -138,7 +140,9 @@ class _ReceiptWordLabelSpatialAnalysis(
             ReceiptWordLabelSpatialAnalysis,
             "spatial_analysis",
         )
-        self._delete_entity(spatial_analysis, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            spatial_analysis, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_word_label_spatial_analyses")
     def delete_receipt_word_label_spatial_analyses(

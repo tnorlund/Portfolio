@@ -266,7 +266,9 @@ class _JobCheckpoint(FlattenedStandardMixin):
             metrics={},
             is_best=False,
         )
-        self._delete_entity(checkpoint, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            checkpoint, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("list_all_job_checkpoints")
     def list_all_job_checkpoints(

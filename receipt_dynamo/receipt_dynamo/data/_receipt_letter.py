@@ -130,7 +130,9 @@ class _ReceiptLetter(FlattenedStandardMixin):
             raise EntityValidationError(
                 "receipt_letter must be an instance of ReceiptLetter"
             )
-        self._update_entity(receipt_letter, condition_expression="attribute_exists(PK)")
+        self._update_entity(
+            receipt_letter, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("update_receipt_letters")
     def update_receipt_letters(
@@ -170,6 +172,7 @@ class _ReceiptLetter(FlattenedStandardMixin):
         receipt_id: int,
         line_id: int,
         word_id: int,
+        *,
         letter_id: int,
     ) -> None:
         """
@@ -251,6 +254,7 @@ class _ReceiptLetter(FlattenedStandardMixin):
         image_id: str,
         line_id: int,
         word_id: int,
+        *,
         letter_id: int,
     ) -> ReceiptLetter:
         """

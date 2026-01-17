@@ -5,7 +5,7 @@ deleting, and querying batch summary data, including support for pagination
 and GSI lookups by status.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.data.base_operations import (
@@ -16,9 +16,6 @@ from receipt_dynamo.data.base_operations import (
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
-)
-from receipt_dynamo.data.base_operations.shared_utils import (
-    validate_last_evaluated_key,
 )
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,

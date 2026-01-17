@@ -390,6 +390,7 @@ def _extract_operation_context(
 
 def exponential_backoff_retry(
     func,
+    *,
     max_retries: int = 3,
     base_delay: float = 0.1,
     max_delay: float = 2.0,

@@ -161,7 +161,9 @@ class _ReceiptStructureAnalysis(FlattenedStandardMixin):
             Exception: If the analysis cannot be deleted from DynamoDB.
         """
         self._validate_entity(analysis, ReceiptStructureAnalysis, "analysis")
-        self._delete_entity(analysis, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            analysis, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_structure_analyses")
     def delete_receipt_structure_analyses(

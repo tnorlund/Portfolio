@@ -593,6 +593,7 @@ class TextGeometryEntity(DynamoDBEntity):
         self.angle_degrees += 90
         self.angle_radians += pi / 2
 
+    # pylint: disable=too-many-positional-arguments
     def warp_affine_normalized_forward(
         self,
         _a: float,
@@ -649,6 +650,7 @@ class TextGeometryEntity(DynamoDBEntity):
         self.bounding_box["x"] += x_offset
         self.bounding_box["y"] += y_offset
 
+    # pylint: disable=too-many-positional-arguments
     def warp_affine(
         self,
         a: float,
@@ -729,6 +731,7 @@ class TextGeometryEntity(DynamoDBEntity):
     # From: WarpTransformMixin
     # =========================================================================
 
+    # pylint: disable=too-many-positional-arguments
     def warp_transform(
         self,
         a: float,
@@ -774,6 +777,7 @@ class TextGeometryEntity(DynamoDBEntity):
             flip_y,
         )
 
+    # pylint: disable=too-many-positional-arguments
     def inverse_perspective_transform(
         self,
         a: float,

@@ -197,6 +197,7 @@ class _EmbeddingBatchResult(
         image_id: str,
         receipt_id: int,
         line_id: int,
+        *,
         word_id: int,
     ) -> EmbeddingBatchResult:
         """

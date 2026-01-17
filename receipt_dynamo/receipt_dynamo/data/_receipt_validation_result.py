@@ -175,7 +175,9 @@ class _ReceiptValidationResult(FlattenedStandardMixin):
             Exception: If the result cannot be deleted from DynamoDB.
         """
         self._validate_entity(result, ReceiptValidationResult, "result")
-        self._delete_entity(result, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            result, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_validation_results")
     def delete_receipt_validation_results(
@@ -319,6 +321,7 @@ class _ReceiptValidationResult(FlattenedStandardMixin):
         receipt_id: int,
         image_id: str,
         field_name: str,
+        *,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[ReceiptValidationResult], Optional[Dict]]:

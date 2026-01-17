@@ -126,6 +126,11 @@ class SerializationMixin:
         Returns:
             DynamoDB attribute dict like {"S": "text"} or {"N": "123"}
         """
+        # pylint: disable=too-many-return-statements
+        # Maps Python types to DynamoDB type markers. Each Python type (None,
+        # str, bool, int, float, datetime, list, dict, set) requires a
+        # different DynamoDB representation, making multiple returns inherent
+        # to this type dispatch.
         if value is None:
             return {"NULL": True}
         if isinstance(value, str):
@@ -164,6 +169,7 @@ class SerializationMixin:
             }
         # Fallback to string representation
         return {"S": str(value)}
+        # pylint: enable=too-many-return-statements
 
     def _python_to_dynamo(self, value: Any) -> Dict[str, Any]:
         """
@@ -182,6 +188,10 @@ class SerializationMixin:
         This is a static method to maintain compatibility with entities
         using the _dynamo_to_python naming convention.
         """
+        # pylint: disable=too-many-return-statements
+        # DynamoDB has 9 distinct type markers (NULL, S, N, BOOL, M, L, SS, NS,
+        # BS). Each requires different handling, making multiple returns
+        # inherent to this type dispatch logic.
         if "NULL" in dynamo_value:
             return None
         if "S" in dynamo_value:
@@ -212,6 +222,7 @@ class SerializationMixin:
             return dynamo_value["BS"]
         # Convert any other type to string
         return str(dynamo_value)
+        # pylint: enable=too-many-return-statements
 
     @classmethod
     def safe_deserialize_field(

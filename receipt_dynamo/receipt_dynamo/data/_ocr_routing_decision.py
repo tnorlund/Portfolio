@@ -35,7 +35,8 @@ class _OCRRoutingDecision(FlattenedStandardMixin):
                 "OCRRoutingDecision"
             )
         self._add_entity(
-            ocr_routing_decision, condition_expression="attribute_not_exists(PK)"
+            ocr_routing_decision,
+            condition_expression="attribute_not_exists(PK)",
         )
 
     @handle_dynamodb_errors("add_ocr_routing_decisions")
@@ -75,7 +76,10 @@ class _OCRRoutingDecision(FlattenedStandardMixin):
                 "OCRRoutingDecision"
             )
 
-        self._update_entity(ocr_routing_decision, condition_expression="attribute_exists(PK)")
+        self._update_entity(
+            ocr_routing_decision,
+            condition_expression="attribute_exists(PK)",
+        )
 
     @handle_dynamodb_errors("get_ocr_routing_decision")
     def get_ocr_routing_decision(
@@ -110,7 +114,10 @@ class _OCRRoutingDecision(FlattenedStandardMixin):
                 "ocr_routing_decision must be an instance of "
                 "OCRRoutingDecision"
             )
-        self._delete_entity(ocr_routing_decision, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            ocr_routing_decision,
+            condition_expression="attribute_exists(PK)",
+        )
 
     def delete_ocr_routing_decisions(
         self, ocr_routing_decisions: list[OCRRoutingDecision]

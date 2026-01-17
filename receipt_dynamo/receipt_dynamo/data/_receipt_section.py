@@ -132,7 +132,9 @@ class _ReceiptSection(FlattenedStandardMixin):
         self._validate_entity(
             receipt_section, ReceiptSection, "receipt_section"
         )
-        self._update_entity(receipt_section, condition_expression="attribute_exists(PK)")
+        self._update_entity(
+            receipt_section, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("update_receipt_sections")
     def update_receipt_sections(

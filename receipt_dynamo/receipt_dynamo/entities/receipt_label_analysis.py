@@ -277,89 +277,7 @@ class ReceiptLabelAnalysis:
         receipt_id = int(sk_parts[1])
 
         # Extract labels
-        labels = []
-        if "labels" in item and "L" in item["labels"]:
-            for label_item in item["labels"]["L"]:
-                if "M" in label_item:
-                    label_dict: Dict[str, Any] = {}
-
-                    if (
-                        "label_type" in label_item["M"]
-                        and "S" in label_item["M"]["label_type"]
-                    ):
-                        label_dict["label_type"] = (
-                            label_item["M"]["label_type"]["S"]
-                        )
-
-                    if (
-                        "line_id" in label_item["M"]
-                        and "N" in label_item["M"]["line_id"]
-                    ):
-                        label_dict["line_id"] = int(
-                            label_item["M"]["line_id"]["N"]
-                        )
-
-                    if (
-                        "word_id" in label_item["M"]
-                        and "N" in label_item["M"]["word_id"]
-                    ):
-                        label_dict["word_id"] = int(
-                            label_item["M"]["word_id"]["N"]
-                        )
-
-                    if (
-                        "text" in label_item["M"]
-                        and "S" in label_item["M"]["text"]
-                    ):
-                        label_dict["text"] = label_item["M"]["text"]["S"]
-
-                    if (
-                        "reasoning" in label_item["M"]
-                        and "S" in label_item["M"]["reasoning"]
-                    ):
-                        label_dict["reasoning"] = (
-                            label_item["M"]["reasoning"]["S"]
-                        )
-
-                    # Extract bounding_box if present
-                    if (
-                        "bounding_box" in label_item["M"]
-                        and "M" in label_item["M"]["bounding_box"]
-                    ):
-                        bbox: Dict[str, Any] = {}
-                        bbox_item = label_item["M"]["bounding_box"]["M"]
-
-                        for corner in [
-                            "top_left",
-                            "top_right",
-                            "bottom_left",
-                            "bottom_right",
-                        ]:
-                            has_corner = corner in bbox_item
-                            if has_corner and "M" in bbox_item[corner]:
-                                point: Dict[str, Any] = {}
-                                if (
-                                    "x" in bbox_item[corner]["M"]
-                                    and "N" in bbox_item[corner]["M"]["x"]
-                                ):
-                                    point["x"] = float(
-                                        bbox_item[corner]["M"]["x"]["N"]
-                                    )
-                                if (
-                                    "y" in bbox_item[corner]["M"]
-                                    and "N" in bbox_item[corner]["M"]["y"]
-                                ):
-                                    point["y"] = float(
-                                        bbox_item[corner]["M"]["y"]["N"]
-                                    )
-
-                                if point:
-                                    bbox[corner] = point
-
-                        if bbox:
-                            label_dict["bounding_box"] = bbox
-
-                    labels.append(label_dict)
+        labels = _parse_labels_list(item)
 
         # Extract timestamp_added
         timestamp_added = (
@@ -399,6 +317,72 @@ class ReceiptLabelAnalysis:
             overall_reasoning=overall_reasoning,
             metadata=metadata,
         )
+
+
+def _parse_labels_list(item: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Parse labels list from DynamoDB item format."""
+    labels = []
+    if "labels" not in item or "L" not in item["labels"]:
+        return labels
+
+    for label_item in item["labels"]["L"]:
+        if "M" in label_item:
+            label_dict = _parse_single_label(label_item["M"])
+            if label_dict:
+                labels.append(label_dict)
+    return labels
+
+
+def _parse_single_label(label_map: Dict[str, Any]) -> Dict[str, Any]:
+    """Parse a single label from DynamoDB map format."""
+    label_dict: Dict[str, Any] = {}
+
+    # Extract string fields
+    if "label_type" in label_map and "S" in label_map["label_type"]:
+        label_dict["label_type"] = label_map["label_type"]["S"]
+    if "text" in label_map and "S" in label_map["text"]:
+        label_dict["text"] = label_map["text"]["S"]
+    if "reasoning" in label_map and "S" in label_map["reasoning"]:
+        label_dict["reasoning"] = label_map["reasoning"]["S"]
+
+    # Extract numeric fields
+    if "line_id" in label_map and "N" in label_map["line_id"]:
+        label_dict["line_id"] = int(label_map["line_id"]["N"])
+    if "word_id" in label_map and "N" in label_map["word_id"]:
+        label_dict["word_id"] = int(label_map["word_id"]["N"])
+
+    # Extract bounding_box if present
+    if "bounding_box" in label_map and "M" in label_map["bounding_box"]:
+        bbox = _parse_bounding_box(label_map["bounding_box"]["M"])
+        if bbox:
+            label_dict["bounding_box"] = bbox
+
+    return label_dict
+
+
+def _parse_bounding_box(bbox_map: Dict[str, Any]) -> Dict[str, Any]:
+    """Parse bounding box corners from DynamoDB map format."""
+    bbox: Dict[str, Any] = {}
+    corners = ["top_left", "top_right", "bottom_left", "bottom_right"]
+
+    for corner in corners:
+        if corner in bbox_map and "M" in bbox_map[corner]:
+            point = _parse_corner_point(bbox_map[corner]["M"])
+            if point:
+                bbox[corner] = point
+    return bbox
+
+
+def _parse_corner_point(
+    point_map: Dict[str, Any],
+) -> Optional[Dict[str, float]]:
+    """Parse a corner point (x, y) from DynamoDB map format."""
+    point: Dict[str, float] = {}
+    if "x" in point_map and "N" in point_map["x"]:
+        point["x"] = float(point_map["x"]["N"])
+    if "y" in point_map and "N" in point_map["y"]:
+        point["y"] = float(point_map["y"]["N"])
+    return point if point else None
 
 
 def item_to_receipt_label_analysis(

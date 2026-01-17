@@ -85,33 +85,20 @@ class ReceiptLineItemAnalysis:
         if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
 
-        if isinstance(self.timestamp_added, datetime):
-            self.timestamp_added = self.timestamp_added.isoformat()
-        elif isinstance(self.timestamp_added, str):
-            pass  # Already a string
-        else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
+        # Validate and convert timestamps
+        self.timestamp_added = self._validate_timestamp(
+            self.timestamp_added, "timestamp_added"
+        )
+        if self.timestamp_updated is not None:
+            self.timestamp_updated = self._validate_timestamp(
+                self.timestamp_updated, "timestamp_updated"
             )
 
-        # Store timestamp_updated if provided
-        if self.timestamp_updated is not None:
-            if isinstance(self.timestamp_updated, datetime):
-                self.timestamp_updated = self.timestamp_updated.isoformat()
-            elif isinstance(self.timestamp_updated, str):
-                pass  # Already a string
-            else:
-                raise ValueError(
-                    "timestamp_updated must be a datetime object or a string"
-                )
-
-        # Validate and process items
+        # Validate required fields
         if not isinstance(self.items, list):
             raise ValueError("items must be a list")
-
         if not isinstance(self.reasoning, str):
             raise ValueError("reasoning must be a string")
-
         if not isinstance(self.version, str):
             raise ValueError("version must be a string")
 
@@ -130,14 +117,27 @@ class ReceiptLineItemAnalysis:
         else:
             self.total_found = len(self.items)
 
-        # Process discrepancies
+        # Initialize optional collection fields with defaults
+        self._init_optional_fields()
+
+    def _validate_timestamp(
+        self, value: Union[datetime, str], field_name: str
+    ) -> str:
+        """Validate and convert a timestamp to ISO format string."""
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, str):
+            return value
+        raise ValueError(f"{field_name} must be a datetime object or a string")
+
+    def _init_optional_fields(self) -> None:
+        """Initialize optional collection fields with defaults."""
         if self.discrepancies is not None:
             if not isinstance(self.discrepancies, list):
                 raise ValueError("discrepancies must be a list")
         else:
             self.discrepancies = []
 
-        # Process metadata
         if self.metadata is not None:
             if not isinstance(self.metadata, dict):
                 raise ValueError("metadata must be a dictionary")
@@ -148,7 +148,6 @@ class ReceiptLineItemAnalysis:
                 "source_information": {},
             }
 
-        # Process word_labels
         if self.word_labels is not None:
             if not isinstance(self.word_labels, dict):
                 raise ValueError("word_labels must be a dictionary")
@@ -242,65 +241,44 @@ class ReceiptLineItemAnalysis:
         item["discrepancies"] = {"L": discrepancies_list}
 
         # Add word_labels if present
-        if self.word_labels:
-            word_labels_dynamo: Dict[str, Any] = {}
-            for (line_id, word_id), label_info in self.word_labels.items():
-                key = f"{line_id}:{word_id}"
-                word_labels_dynamo[key] = {
-                    "M": self._convert_dict_to_dynamo(label_info)
-                }
-            word_labels_value: Dict[str, Any] = {"M": word_labels_dynamo}
-            item["word_labels"] = word_labels_value
-        else:
-            item["word_labels"] = {"NULL": True}
+        item["word_labels"] = self._serialize_word_labels()
 
-        # Add financial fields if present
-        if self.subtotal is not None:
-            subtotal_value: Dict[str, str] = {"S": str(self.subtotal)}
-            item["subtotal"] = subtotal_value
-        else:
-            item["subtotal"] = {"NULL": True}
-
-        if self.tax is not None:
-            tax_value: Dict[str, str] = {"S": str(self.tax)}
-            item["tax"] = tax_value
-        else:
-            item["tax"] = {"NULL": True}
-
-        if self.total is not None:
-            total_value: Dict[str, str] = {"S": str(self.total)}
-            item["total"] = total_value
-        else:
-            item["total"] = {"NULL": True}
-
-        if self.fees is not None:
-            fees_value: Dict[str, str] = {"S": str(self.fees)}
-            item["fees"] = fees_value
-        else:
-            item["fees"] = {"NULL": True}
-
-        if self.discounts is not None:
-            discounts_value: Dict[str, str] = {"S": str(self.discounts)}
-            item["discounts"] = discounts_value
-        else:
-            item["discounts"] = {"NULL": True}
-
-        if self.tips is not None:
-            tips_value: Dict[str, str] = {"S": str(self.tips)}
-            item["tips"] = tips_value
-        else:
-            item["tips"] = {"NULL": True}
+        # Add financial fields
+        financial_fields = (
+            "subtotal", "tax", "total", "fees", "discounts", "tips"
+        )
+        for field_name in financial_fields:
+            item[field_name] = self._serialize_optional_decimal(
+                getattr(self, field_name)
+            )
 
         # Add metadata if present
-        if self.metadata:
-            metadata_value: Dict[str, Any] = {
-                "M": self._convert_dict_to_dynamo(self.metadata)
-            }
-            item["metadata"] = metadata_value
-        else:
-            item["metadata"] = {"NULL": True}
+        item["metadata"] = (
+            {"M": self._convert_dict_to_dynamo(self.metadata)}
+            if self.metadata
+            else {"NULL": True}
+        )
 
         return item
+
+    def _serialize_word_labels(self) -> Dict[str, Any]:
+        """Serialize word_labels to DynamoDB format."""
+        if not self.word_labels:
+            return {"NULL": True}
+        word_labels_dynamo: Dict[str, Any] = {}
+        for (line_id, word_id), label_info in self.word_labels.items():
+            key = f"{line_id}:{word_id}"
+            word_labels_dynamo[key] = {
+                "M": self._convert_dict_to_dynamo(label_info)
+            }
+        return {"M": word_labels_dynamo}
+
+    @staticmethod
+    def _serialize_optional_decimal(value: Any) -> Dict[str, Any]:
+        """Serialize an optional Decimal to DynamoDB format."""
+        if value is not None:
+            return {"S": str(value)}
+        return {"NULL": True}
 
     def _convert_item_to_dynamo(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """Converts a line item dictionary to DynamoDB format.

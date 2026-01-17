@@ -210,7 +210,9 @@ class _ReceiptMetadata(
         self._validate_entity(
             receipt_metadata, ReceiptMetadata, "receipt_metadata"
         )
-        self._delete_entity(receipt_metadata, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            receipt_metadata, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_metadatas")
     def delete_receipt_metadatas(

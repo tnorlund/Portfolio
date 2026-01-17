@@ -231,7 +231,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
             If receipt_place is invalid.
         """
         self._validate_entity(receipt_place, ReceiptPlace, "receipt_place")
-        self._delete_entity(receipt_place, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            receipt_place, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_places")
     def delete_receipt_places(

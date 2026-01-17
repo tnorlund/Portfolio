@@ -47,6 +47,7 @@ class EntityFactory(SerializationMixin):
     """
 
     @classmethod
+    # pylint: disable=too-many-positional-arguments
     def create_entity(
         cls,
         entity_class: Type[T],

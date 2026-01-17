@@ -57,7 +57,9 @@ class _Letter(FlattenedStandardMixin):
             ValueError: When a letter with the same ID already exists
         """
         self._validate_entity(letter, Letter, "letter")
-        self._add_entity(letter, condition_expression="attribute_not_exists(PK)")
+        self._add_entity(
+            letter, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_letters")
     def add_letters(self, letters: List[Letter]):
@@ -83,7 +85,9 @@ class _Letter(FlattenedStandardMixin):
             ValueError: When the letter does not exist
         """
         self._validate_entity(letter, Letter, "letter")
-        self._update_entity(letter, condition_expression="attribute_exists(PK)")
+        self._update_entity(
+            letter, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("update_letters")
     def update_letters(self, letters: List[Letter]):
@@ -137,7 +141,9 @@ class _Letter(FlattenedStandardMixin):
             angle_radians=0.0,
             confidence=0.5,
         )
-        self._delete_entity(temp_letter, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            temp_letter, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_letters")
     def delete_letters(self, letters: List[Letter]):

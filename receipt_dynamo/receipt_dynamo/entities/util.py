@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from typing import Any, Dict, Type, Union
@@ -141,7 +142,7 @@ def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
     )
 
 
-def shear_point(  # pylint: disable=too-many-arguments
+def shear_point(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     px: float,
     py: float,
     pivot_x: float,
@@ -474,7 +475,8 @@ def validate_metadata_field(metadata: Any) -> Dict[str, Any]:
     receipt_validation_category, etc.).
 
     Args:
-        metadata: The metadata value to validate (can be None, dict, or invalid)
+        metadata: The metadata value to validate
+            (can be None, dict, or invalid)
 
     Returns:
         Validated metadata dict (empty dict if None was passed)
@@ -499,7 +501,8 @@ def validate_iso_timestamp(
     Args:
         value: The timestamp value (can be datetime, str, or None)
         field_name: Name of the field for error messages
-        default_now: If True and value is None, return current time as ISO string
+        default_now: If True and value is None, return current time
+            as ISO string
 
     Returns:
         ISO format timestamp string
@@ -507,8 +510,6 @@ def validate_iso_timestamp(
     Raises:
         ValueError: If value is not a valid datetime, ISO string, or None
     """
-    from datetime import datetime
-
     if value is None:
         if default_now:
             return datetime.now().isoformat()

@@ -31,11 +31,11 @@ def validate_pinecone_id_format(
         return False
     # Validate numeric segments
     try:
-        if parts[3] != f"{receipt_id:05d}":
-            return False
-        if parts[5] != f"{line_id:05d}":
-            return False
-        if parts[7] != f"{word_id:05d}":
+        if (
+            parts[3] != f"{receipt_id:05d}"
+            or parts[5] != f"{line_id:05d}"
+            or parts[7] != f"{word_id:05d}"
+        ):
             return False
     except (IndexError, ValueError):
         return False

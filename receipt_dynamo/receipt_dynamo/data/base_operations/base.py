@@ -290,6 +290,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         primary_key: str,
         sort_key: str,
         entity_class: Type[Any],
+        *,
         converter_func: Optional[Any] = None,
         consistent_read: bool = False,
     ) -> Optional[Any]:
@@ -351,6 +352,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             initial_backoff,
         )
 
+    # pylint: disable=too-many-positional-arguments
     def _query_entities(
         self,
         index_name: Optional[str],
@@ -358,6 +360,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         expression_attribute_names: Optional[Dict[str, str]],
         expression_attribute_values: Dict[str, Any],
         converter_func: Any,
+        *,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict] = None,
         scan_index_forward: bool = True,

@@ -1,8 +1,9 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_category.py
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
+from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_value
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
 from receipt_dynamo.entities.util import (
     assert_valid_uuid,
@@ -148,6 +149,62 @@ class ReceiptValidationCategory(SerializationMixin):
         )
 
 
+def _find_sk_value_after(sk_parts: List[str], key: str) -> Optional[str]:
+    """Find the value after a key in SK parts."""
+    for i, part in enumerate(sk_parts):
+        if part == key and i + 1 < len(sk_parts):
+            return sk_parts[i + 1]
+    return None
+
+
+def _extract_receipt_id(item: Dict[str, Any], sk_parts: List[str]) -> int:
+    """Extract receipt_id from SK or item attributes."""
+    receipt_id_str = _find_sk_value_after(sk_parts, "RECEIPT")
+
+    if receipt_id_str is not None:
+        try:
+            return int(receipt_id_str.lstrip("0") or "0")
+        except ValueError:
+            return int(receipt_id_str)
+
+    if "receipt_id" in item:
+        return (
+            int(item["receipt_id"]["N"])
+            if "N" in item["receipt_id"]
+            else item["receipt_id"]
+        )
+    raise ValueError("Could not extract receipt_id from item")
+
+
+def _extract_image_id(item: Dict[str, Any]) -> str:
+    """Extract image_id from PK or item attributes."""
+    pk_parts = item["PK"]["S"].split("#")
+    if len(pk_parts) > 1:
+        return pk_parts[1]
+
+    if "image_id" in item:
+        return (
+            item["image_id"]["S"]
+            if "S" in item["image_id"]
+            else item["image_id"]
+        )
+    raise ValueError("Could not extract image_id from item")
+
+
+def _extract_field_category(
+    item: Dict[str, Any], sk_parts: List[str]
+) -> str:
+    """Extract field_category from item or SK."""
+    if "field_category" in item:
+        return item["field_category"]["S"]
+
+    # Try SK pattern: CATEGORY#<field_name>#<category>
+    for i, part in enumerate(sk_parts):
+        if part == "CATEGORY" and i + 2 < len(sk_parts):
+            return sk_parts[i + 2]
+    return "general"
+
+
 def item_to_receipt_validation_category(
     item: Dict[str, Any],
 ) -> ReceiptValidationCategory:
@@ -159,121 +216,38 @@ def item_to_receipt_validation_category(
     Returns:
         ReceiptValidationCategory: The converted object.
     """
-    # Safely extract SK parts
     sk_parts = item["SK"]["S"].split("#")
 
-    # Get receipt_id from SK safely
-    receipt_id = None
-    for i, part in enumerate(sk_parts):
-        if part == "RECEIPT" and i + 1 < len(sk_parts):
-            receipt_id = sk_parts[i + 1]
-            break
+    receipt_id = _extract_receipt_id(item, sk_parts)
+    image_id = _extract_image_id(item)
 
-    # If receipt_id not found in SK, look for it as a separate attribute
-    if receipt_id is None:
-        if "receipt_id" in item:
-            receipt_id = (
-                int(item["receipt_id"]["N"])
-                if "N" in item["receipt_id"]
-                else item["receipt_id"]
-            )
-        else:
-            raise ValueError("Could not extract receipt_id from item")
-    else:
-        # Convert to integer (removing any leading zeros like in "00001")
-        try:
-            receipt_id = int(receipt_id.lstrip("0"))
-        except ValueError:
-            receipt_id = int(receipt_id)
-
-    # Get image_id safely
-    image_id = (
-        item["PK"]["S"].split("#")[1]
-        if len(item["PK"]["S"].split("#")) > 1
-        else None
-    )
-    if image_id is None and "image_id" in item:
-        image_id = (
-            item["image_id"]["S"]
-            if "S" in item["image_id"]
-            else item["image_id"]
-        )
-    if image_id is None:
-        raise ValueError("Could not extract image_id from item")
-
-    # Get field_name safely
-    field_name = None
-    # Try to find field_name after "CATEGORY#" in SK if it exists
-    for i, part in enumerate(sk_parts):
-        if part == "CATEGORY" and i + 1 < len(sk_parts):
-            field_name = sk_parts[i + 1]
-            break
-
-    # If not found in SK, try direct attribute
+    # Extract field_name from SK or attribute
+    field_name = _find_sk_value_after(sk_parts, "CATEGORY")
     if field_name is None:
-        if "field_name" in item:
-            field_name = (
-                item["field_name"]["S"]
-                if "S" in item["field_name"]
-                else item["field_name"]
-            )
-        else:
-            # Use a default or extract from another part of the item
-            field_name = "unknown"
+        field_name = (
+            item["field_name"]["S"]
+            if "field_name" in item and "S" in item["field_name"]
+            else "unknown"
+        )
 
-    # Get field_category safely - first try from the direct attribute
-    if "field_category" in item:
-        field_category = item["field_category"]["S"]
-    else:
-        # Try to extract from SK if it follows a pattern like
-        # CATEGORY#<field_name>#<category>
-        field_category = None
-        for i, part in enumerate(sk_parts):
-            if part == "CATEGORY" and i + 2 < len(sk_parts):
-                # Try to get the category after the field_name
-                field_category = sk_parts[i + 2]
-                break
+    field_category = _extract_field_category(item, sk_parts)
 
-        # If still not found, use a default value
-        if field_category is None:
-            field_category = "general"
+    # Extract simple string fields with defaults
+    status = item.get("status", {}).get("S", "unknown")
+    reasoning = item.get("reasoning", {}).get("S", "No reasoning provided")
+    validation_timestamp = item.get("validation_timestamp", {}).get(
+        "S", datetime.now().isoformat()
+    )
 
-    # Get status safely
-    if "status" in item:
-        status = item["status"]["S"]
-    else:
-        # Use a default status
-        status = "unknown"
-
-    # Get reasoning safely
-    if "reasoning" in item:
-        reasoning = item["reasoning"]["S"]
-    else:
-        # Use a default reasoning
-        reasoning = "No reasoning provided"
-
-    # Get result_summary safely
-    result_summary: Dict[str, Any]
-    if "result_summary" in item:
-        result_summary = SerializationMixin._dynamo_to_python(item["result_summary"])
-    else:
-        # Use an empty dictionary as default
-        result_summary = {}
-
-    # Get validation_timestamp safely
-    if "validation_timestamp" in item:
-        validation_timestamp = item["validation_timestamp"]["S"]
-    else:
-        # Use current timestamp as default
-        validation_timestamp = datetime.now().isoformat()
-
-    # Get metadata safely
-    metadata: Dict[str, Any]
-    if "metadata" in item:
-        metadata = SerializationMixin._dynamo_to_python(item["metadata"])
-    else:
-        # Use an empty dictionary as default
-        metadata = {}
+    # Extract complex fields using public parse function
+    result_summary: Dict[str, Any] = (
+        parse_dynamodb_value(item["result_summary"])
+        if "result_summary" in item
+        else {}
+    )
+    metadata: Dict[str, Any] = (
+        parse_dynamodb_value(item["metadata"]) if "metadata" in item else {}
+    )
 
     return ReceiptValidationCategory(
         receipt_id=receipt_id,

@@ -201,7 +201,9 @@ class _ReceiptWordLabel(
         self._validate_entity(
             receipt_word_label, ReceiptWordLabel, "ReceiptWordLabel"
         )
-        self._update_entity(receipt_word_label, condition_expression="attribute_exists(PK)")
+        self._update_entity(
+            receipt_word_label, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("update_receipt_word_labels")
     def update_receipt_word_labels(
@@ -234,7 +236,9 @@ class _ReceiptWordLabel(
         self._validate_entity(
             receipt_word_label, ReceiptWordLabel, "ReceiptWordLabel"
         )
-        self._delete_entity(receipt_word_label, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            receipt_word_label, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_word_labels")
     def delete_receipt_word_labels(
@@ -275,6 +279,7 @@ class _ReceiptWordLabel(
         receipt_id: int,
         line_id: int,
         word_id: int,
+        *,
         label: str,
     ) -> ReceiptWordLabel:
         """Retrieves a receipt word label from the database
@@ -508,6 +513,7 @@ class _ReceiptWordLabel(
         receipt_id: int,
         line_id: int,
         word_id: int,
+        *,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:

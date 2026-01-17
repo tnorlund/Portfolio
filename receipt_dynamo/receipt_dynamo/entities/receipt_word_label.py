@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Dict, Generator, Optional, Tuple
 
 from receipt_dynamo.constants import ValidationStatus

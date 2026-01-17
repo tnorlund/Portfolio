@@ -58,6 +58,10 @@ def parse_dynamodb_value(value: Dict) -> Any:
     Returns:
         The parsed Python value
     """
+    # pylint: disable=too-many-return-statements
+    # DynamoDB has 10 distinct type markers (S, N, M, L, BOOL, NULL, B, SS,
+    # NS, BS). Each requires different handling, making multiple returns
+    # inherent to this logic.
     if "M" in value:
         return parse_dynamodb_map(value["M"])
     if "L" in value:
@@ -82,6 +86,7 @@ def parse_dynamodb_value(value: Dict) -> Any:
     if "BS" in value:
         return set(value["BS"])
     return None
+    # pylint: enable=too-many-return-statements
 
 
 def dict_to_dynamodb_map(d: Dict) -> Dict:
@@ -110,6 +115,10 @@ def to_dynamodb_value(value: Any) -> Dict[str, Any]:
     Returns:
         A DynamoDB value in the format {"S": "value"} or {"N": "123"}
     """
+    # pylint: disable=too-many-return-statements
+    # Maps Python types to DynamoDB type markers. Each Python type (dict, list,
+    # str, bool, int, float, None, bytes, set) requires a different DynamoDB
+    # representation, making multiple returns inherent to this type dispatch.
     if isinstance(value, dict):
         return {"M": dict_to_dynamodb_map(value)}
     if isinstance(value, list):
@@ -135,6 +144,7 @@ def to_dynamodb_value(value: Any) -> Dict[str, Any]:
 
     # Fallback to string representation
     return {"S": str(value)}
+    # pylint: enable=too-many-return-statements
 
 
 def validate_required_keys(

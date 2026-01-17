@@ -531,6 +531,7 @@ class FlattenedStandardMixin:
 
         return key
 
+    # pylint: disable=too-many-positional-arguments
     def _query_entities(
         self,
         index_name: Optional[str],
@@ -538,6 +539,7 @@ class FlattenedStandardMixin:
         expression_attribute_names: Optional[Dict[str, str]],
         expression_attribute_values: Dict[str, Any],
         converter_func: Callable[[Dict[str, Any]], T],
+        *,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
         filter_expression: Optional[str] = None,
@@ -553,10 +555,10 @@ class FlattenedStandardMixin:
                 self.table_name,
                 key_condition_expression,
                 expression_attribute_values,
-                index_name,
-                expression_attribute_names,
-                filter_expression,
-                current_last_key,
+                index_name=index_name,
+                expression_attribute_names=expression_attribute_names,
+                filter_expression=filter_expression,
+                exclusive_start_key=current_last_key,
                 limit=None,  # Will be set separately below
                 scan_index_forward=scan_index_forward,
             )
@@ -634,6 +636,7 @@ class FlattenedStandardMixin:
         parent_key_prefix: str,
         child_key_prefix: str,
         converter_func: Callable[[Dict[str, Any]], T],
+        *,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[T], Optional[Dict[str, Any]]]:
@@ -693,6 +696,7 @@ class FlattenedStandardMixin:
         receipt_id: int,
         sk_suffix: str,
         converter_func: Callable[[Dict[str, Any]], T],
+        *,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[T], Optional[Dict[str, Any]]]:
@@ -746,7 +750,9 @@ class FlattenedStandardMixin:
         sk_prefix: str,
         converter_func: Callable[[Dict[str, Any]], T],
     ) -> List[T]:
-        """Query entities by image_id with SK prefix on main table (no pagination).
+        """Query entities by image_id with SK prefix on main table.
+
+        This helper returns results without pagination.
 
         This is a common pattern for listing entities that belong to a
         specific image using a SK prefix pattern.
@@ -780,6 +786,7 @@ class FlattenedStandardMixin:
         job_id: str,
         sk_prefix: str,
         converter_func: Callable[[Dict[str, Any]], T],
+        *,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
         scan_index_forward: Optional[bool] = None,
@@ -791,7 +798,8 @@ class FlattenedStandardMixin:
 
         Args:
             job_id: The job ID (UUID)
-            sk_prefix: The SK prefix to match (e.g., "CHECKPOINT#", "RESOURCE#")
+            sk_prefix: The SK prefix to match
+                (e.g., "CHECKPOINT#", "RESOURCE#")
             converter_func: Function to convert DynamoDB items to entities
             limit: Maximum number of items to return
             last_evaluated_key: Key for pagination

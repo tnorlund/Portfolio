@@ -144,6 +144,7 @@ class _CompactionRun(FlattenedStandardMixin):
         receipt_id: int,
         run_id: str,
         collection: str,
+        *,
         merged_vectors: int = 0,
     ) -> None:
         """Mark a collection state as COMPLETED and set finished_at.
@@ -201,6 +202,7 @@ class _CompactionRun(FlattenedStandardMixin):
         image_id: str,
         receipt_id: int,
         run_id: str,
+        *,
         collection: str,
         error: str,
     ) -> None:

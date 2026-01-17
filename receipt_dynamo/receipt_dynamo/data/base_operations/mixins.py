@@ -532,6 +532,7 @@ class QueryByParentMixin:
         parent_pk: str,
         child_sk_prefix: str,
         converter_func: "Callable[[Dict[str, Any]], Any]",
+        *,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
         filter_expression: Optional[str] = None,

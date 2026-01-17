@@ -118,6 +118,7 @@ def build_query_params(
     table_name: str,
     key_condition_expression: str,
     expression_attribute_values: Dict[str, Any],
+    *,
     index_name: Optional[str] = None,
     expression_attribute_names: Optional[Dict[str, str]] = None,
     filter_expression: Optional[str] = None,
@@ -225,7 +226,8 @@ def validate_batch_get_keys(
 
     Args:
         keys: List of key dictionaries to validate
-        entity_type: The expected entity type in the SK (e.g., "LETTER", "WORD")
+        entity_type: The expected entity type in the SK
+            (e.g., "LETTER", "WORD")
         pk_prefix: Expected prefix for PK (default: "IMAGE#")
         sk_prefix: Expected prefix for SK (default: "LINE#")
 

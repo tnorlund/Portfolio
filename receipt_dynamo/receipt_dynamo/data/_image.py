@@ -57,7 +57,9 @@ class _Image(FlattenedStandardMixin):
     def add_image(self, image: Image) -> None:
         """Adds an Image item to the database."""
         self._validate_entity(image, Image, "image")
-        self._add_entity(image, condition_expression="attribute_not_exists(PK)")
+        self._add_entity(
+            image, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_images")
     def add_images(self, images: List[Image]) -> None:

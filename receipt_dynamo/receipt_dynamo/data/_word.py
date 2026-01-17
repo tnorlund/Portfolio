@@ -131,7 +131,9 @@ class _Word(FlattenedStandardMixin):
             angle_radians=0.0,
             confidence=0.01,
         )
-        self._delete_entity(temp_word, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            temp_word, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_words")
     def delete_words(self, words: List[Word]):

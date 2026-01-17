@@ -191,7 +191,9 @@ class _JobDependency(FlattenedStandardMixin):
             ClientError: If a DynamoDB error occurs.
         """
         self._validate_entity(job_dependency, JobDependency, "job_dependency")
-        self._delete_entity(job_dependency, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            job_dependency, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_all_dependencies")
     def delete_all_dependencies(self, dependent_job_id: str):

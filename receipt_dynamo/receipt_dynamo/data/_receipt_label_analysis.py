@@ -120,7 +120,10 @@ class _ReceiptLabelAnalysis(FlattenedStandardMixin):
             ReceiptLabelAnalysis,
             "receipt_label_analysis",
         )
-        self._update_entity(receipt_label_analysis, condition_expression="attribute_exists(PK)")
+        self._update_entity(
+            receipt_label_analysis,
+            condition_expression="attribute_exists(PK)",
+        )
 
     @handle_dynamodb_errors("update_receipt_label_analyses")
     def update_receipt_label_analyses(
@@ -161,7 +164,10 @@ class _ReceiptLabelAnalysis(FlattenedStandardMixin):
             ReceiptLabelAnalysis,
             "receipt_label_analysis",
         )
-        self._delete_entity(receipt_label_analysis, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            receipt_label_analysis,
+            condition_expression="attribute_exists(PK)",
+        )
 
     @handle_dynamodb_errors("delete_receipt_label_analyses")
     def delete_receipt_label_analyses(

@@ -182,7 +182,9 @@ class _ReceiptValidationCategory(FlattenedStandardMixin):
             Exception: If the category cannot be deleted from DynamoDB.
         """
         self._validate_entity(category, ReceiptValidationCategory, "category")
-        self._delete_entity(category, condition_expression="attribute_exists(PK)")
+        self._delete_entity(
+            category, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_validation_categories")
     def delete_receipt_validation_categories(

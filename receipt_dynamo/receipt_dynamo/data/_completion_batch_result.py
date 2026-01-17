@@ -97,6 +97,7 @@ class _CompletionBatchResult(FlattenedStandardMixin):
         receipt_id: int,
         line_id: int,
         word_id: int,
+        *,
         label: str,
     ) -> CompletionBatchResult:
         result = self._get_entity(
