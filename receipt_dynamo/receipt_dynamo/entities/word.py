@@ -268,7 +268,7 @@ class Word(TextGeometryEntity):
         )
 
     def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
-        """Override to include entity-specific ID fields in hash computation."""
+        """Include entity-specific ID fields in hash computation."""
         return self._get_base_geometry_hash_fields() + (
             self.image_id,
             self.line_id,
@@ -280,14 +280,14 @@ class Word(TextGeometryEntity):
             ),
         )
 
+    def __hash__(self) -> int:
+        """Return hash based on geometry fields."""
+        return hash(self._get_geometry_hash_fields())
+
     def __repr__(self) -> str:
         """Returns a string representation of the Word object."""
         geometry_fields = self._get_geometry_repr_fields()
         return f"Word(" f"word_id={self.word_id}, " f"{geometry_fields}" f")"
-
-
-# Re-enable __hash__ after dataclass sets it to None
-Word.__hash__ = lambda self: hash(self._get_geometry_hash_fields())  # type: ignore
 
 
 def item_to_word(item: Dict[str, Any]) -> Word:

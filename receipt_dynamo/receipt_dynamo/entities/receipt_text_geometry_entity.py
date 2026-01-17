@@ -67,8 +67,8 @@ class ReceiptTextGeometryEntity(TextGeometryEntity):
             valid_values = [s.value for s in EmbeddingStatus]
             if self.embedding_status not in valid_values:
                 raise ValueError(
-                    f"embedding_status must be one of: {', '.join(valid_values)}\n"
-                    f"Got: {self.embedding_status}"
+                    f"embedding_status must be one of: "
+                    f"{', '.join(valid_values)}\nGot: {self.embedding_status}"
                 )
         else:
             raise ValueError(
@@ -78,7 +78,8 @@ class ReceiptTextGeometryEntity(TextGeometryEntity):
         # Validate is_noise
         if not isinstance(self.is_noise, bool):
             raise ValueError(
-                f"is_noise must be a boolean, got {type(self.is_noise).__name__}"
+                f"is_noise must be a boolean, got "
+                f"{type(self.is_noise).__name__}"
             )
 
     def _get_receipt_fields_for_serialization(self) -> Dict[str, Any]:

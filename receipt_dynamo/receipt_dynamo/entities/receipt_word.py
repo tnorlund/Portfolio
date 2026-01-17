@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from math import atan2
 from typing import Any, Dict, Optional, Tuple
 
-from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.receipt_text_geometry_entity import (
     ReceiptTextGeometryEntity,
 )
@@ -272,11 +271,9 @@ class ReceiptWord(ReceiptTextGeometryEntity):
             self.is_noise,
         )
 
-
-# Re-enable __hash__ after dataclass sets it to None
-ReceiptWord.__hash__ = lambda self: hash(  # type: ignore
-    self._get_geometry_hash_fields()
-)
+    def __hash__(self) -> int:
+        """Return hash based on geometry fields."""
+        return hash(self._get_geometry_hash_fields())
 
 
 def item_to_receipt_word(item: Dict[str, Any]) -> ReceiptWord:

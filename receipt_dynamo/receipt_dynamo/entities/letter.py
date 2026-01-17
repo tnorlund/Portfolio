@@ -163,7 +163,7 @@ class Letter(TextGeometryEntity):
         )
 
     def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
-        """Override to include entity-specific ID fields in hash computation."""
+        """Include entity-specific ID fields in hash computation."""
         return self._get_base_geometry_hash_fields() + (
             self.image_id,
             self.line_id,
@@ -171,9 +171,9 @@ class Letter(TextGeometryEntity):
             self.letter_id,
         )
 
-
-# Re-enable __hash__ after dataclass sets it to None
-Letter.__hash__ = lambda self: hash(self._get_geometry_hash_fields())  # type: ignore
+    def __hash__(self) -> int:
+        """Return hash based on geometry fields."""
+        return hash(self._get_geometry_hash_fields())
 
 
 def item_to_letter(item: Dict[str, Any]) -> Letter:

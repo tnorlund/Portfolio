@@ -106,11 +106,15 @@ class Line(TextGeometryEntity):
         )
 
     def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
-        """Override to include entity-specific ID fields in hash computation."""
+        """Include entity-specific ID fields in hash computation."""
         return self._get_base_geometry_hash_fields() + (
             self.image_id,
             self.line_id,
         )
+
+    def __hash__(self) -> int:
+        """Return hash based on geometry fields."""
+        return hash(self._get_geometry_hash_fields())
 
     def __repr__(self) -> str:
         """Returns a string representation of the Line object."""
@@ -122,10 +126,6 @@ class Line(TextGeometryEntity):
             f"{geometry_fields}"
             f")"
         )
-
-
-# Re-enable __hash__ after dataclass sets it to None
-Line.__hash__ = lambda self: hash(self._get_geometry_hash_fields())  # type: ignore
 
 
 def item_to_line(item: Dict[str, Any]) -> Line:
