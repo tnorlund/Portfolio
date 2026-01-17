@@ -208,18 +208,24 @@ class ReceiptMetadata(SerializationMixin):
                     elif len(tokens) > 1 and token_clean.isalpha():
                         meaningful_tokens += 0.5  # Count as half
 
-                # Consider valid if there are at least two meaningful tokens,
-                # a single descriptive token, or a street number with other
-                # components (e.g., "123 Main").
-                if (
-                    meaningful_tokens >= 2
-                    or (
-                        len(tokens) == 1
-                        and meaningful_tokens >= 1
-                        and not has_number
-                    )
-                    or (has_number and len(tokens) > 1)
-                ):
+                # Consider valid if:
+                # - At least 2 meaningful tokens (e.g., "123 Main St")
+                # - A single descriptive word (e.g., "Downtown")
+                # - A street number with other components (e.g., "123 Main")
+                has_enough_tokens = meaningful_tokens >= 2
+                is_single_descriptive = (
+                    len(tokens) == 1
+                    and meaningful_tokens >= 1
+                    and not has_number
+                )
+                has_number_with_context = has_number and len(tokens) > 1
+                is_valid_address = (
+                    has_enough_tokens
+                    or is_single_descriptive
+                    or has_number_with_context
+                )
+
+                if is_valid_address:
                     high_quality_fields.append(field)
             else:
                 # Unknown fields are kept as-is (future-proofing)

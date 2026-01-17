@@ -63,9 +63,10 @@ if TYPE_CHECKING:
 
 
 # Mixin Composition Pattern:
-# DynamoClient uses multiple inheritance to compose single-purpose data accessor
-# mixins. Each mixin (e.g., _Image, _Receipt, _Job) handles CRUD operations for
-# one entity type, inheriting shared functionality from FlattenedStandardMixin.
+# DynamoClient uses multiple inheritance to compose single-purpose data
+# accessor mixins. Each mixin (e.g., _Image, _Receipt, _Job) handles CRUD
+# operations for one entity type, inheriting shared functionality from
+# FlattenedStandardMixin.
 # This pattern provides:
 # - Clean separation of concerns (one mixin per entity)
 # - Code reuse through FlattenedStandardMixin base methods

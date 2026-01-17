@@ -2,13 +2,18 @@
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from botocore.exceptions import ClientError
+
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
     PutRequestTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import EntityValidationError
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    EntityValidationError,
+)
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 if TYPE_CHECKING:
@@ -66,10 +71,10 @@ class _AIUsageMetric(FlattenedStandardMixin):
 
         try:
             self._batch_write_with_retry(request_items)
-        except Exception:
-            # If batch write fails, assume all metrics failed
-            # This simplifies error handling compared to the original
-            # complex logic
+        except (ClientError, DynamoDBError):
+            # If batch write fails, assume all metrics failed.
+            # This simplifies error handling - callers can retry the
+            # returned failed metrics.
             failed_metrics = metrics.copy()
 
         return failed_metrics
