@@ -437,9 +437,8 @@ class FlattenedStandardMixin:
                                 last_processed_item, index_name
                             )
                             return entities[:limit], next_key
-                        else:
-                            # No more items anywhere
-                            return entities[:limit], None
+                        # No more items anywhere
+                        return entities[:limit], None
 
             # Check for more pages
             current_last_key = response.get("LastEvaluatedKey")
