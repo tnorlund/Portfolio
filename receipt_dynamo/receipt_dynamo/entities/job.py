@@ -39,6 +39,19 @@ class Job:
             Expected keys: best_f1, best_epoch, train_runtime, total_flos.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "name",
+        "description",
+        "created_at",
+        "created_by",
+        "status",
+        "priority",
+        "job_config",
+    }
+
     job_id: str
     name: str
     description: str
@@ -315,6 +328,81 @@ class Job:
         """Returns the s3:// URI where the publishable model lives."""
         return self.s3_uri_for_prefix("publish_model_prefix")
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "Job":
+        """Converts a DynamoDB item to a Job object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            Job: The Job object represented by the DynamoDB item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+
+        try:
+            # Parse job_id from the PK
+            job_id = item["PK"]["S"].split("#")[1]
+
+            # Extract basic string fields
+            name = item["name"]["S"]
+            description = item["description"]["S"]
+            created_at = item["created_at"]["S"]
+            created_by = item["created_by"]["S"]
+            status = item["status"]["S"]
+            priority = item["priority"]["S"]
+
+            # Parse job_config from DynamoDB map
+            job_config = parse_dynamodb_map(item["job_config"]["M"])
+
+            # Parse optional fields
+            estimated_duration = (
+                int(item["estimated_duration"]["N"])
+                if "estimated_duration" in item
+                else None
+            )
+
+            # Parse tags if present
+            tags: Optional[Dict[str, Any]] = None
+            if "tags" in item and "M" in item["tags"]:
+                tags = {k: v["S"] for k, v in item["tags"]["M"].items()}
+
+            # Parse optional storage map
+            storage: Optional[Dict[str, Any]] = None
+            if "storage" in item and "M" in item["storage"]:
+                storage = parse_dynamodb_map(item["storage"]["M"])
+
+            # Parse optional results map
+            results: Optional[Dict[str, Any]] = None
+            if "results" in item and "M" in item["results"]:
+                results = parse_dynamodb_map(item["results"]["M"])
+
+            return cls(
+                job_id=job_id,
+                name=name,
+                description=description,
+                created_at=created_at,
+                created_by=created_by,
+                status=status,
+                priority=priority,
+                job_config=job_config,
+                estimated_duration=estimated_duration,
+                tags=tags,
+                storage=storage,
+                results=results,
+            )
+        except KeyError as e:
+            raise ValueError(f"Error converting item to Job: {e}") from e
+
 
 def item_to_job(item: Dict[str, Any]) -> Job:
     """Converts a DynamoDB item to a Job object.
@@ -328,76 +416,4 @@ def item_to_job(item: Dict[str, Any]) -> Job:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "name",
-        "description",
-        "created_at",
-        "created_by",
-        "status",
-        "priority",
-        "job_config",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-
-    try:
-        # Parse job_id from the PK
-        job_id = item["PK"]["S"].split("#")[1]
-
-        # Extract basic string fields
-        name = item["name"]["S"]
-        description = item["description"]["S"]
-        created_at = item["created_at"]["S"]
-        created_by = item["created_by"]["S"]
-        status = item["status"]["S"]
-        priority = item["priority"]["S"]
-
-        # Parse job_config from DynamoDB map
-        job_config = parse_dynamodb_map(item["job_config"]["M"])
-
-        # Parse optional fields
-        estimated_duration = (
-            int(item["estimated_duration"]["N"])
-            if "estimated_duration" in item
-            else None
-        )
-
-        # Parse tags if present
-        tags: Optional[Dict[str, Any]] = None
-        if "tags" in item and "M" in item["tags"]:
-            tags = {k: v["S"] for k, v in item["tags"]["M"].items()}
-
-        # Parse optional storage map
-        storage: Optional[Dict[str, Any]] = None
-        if "storage" in item and "M" in item["storage"]:
-            storage = parse_dynamodb_map(item["storage"]["M"])
-
-        # Parse optional results map
-        results: Optional[Dict[str, Any]] = None
-        if "results" in item and "M" in item["results"]:
-            results = parse_dynamodb_map(item["results"]["M"])
-
-        return Job(
-            job_id=job_id,
-            name=name,
-            description=description,
-            created_at=created_at,
-            created_by=created_by,
-            status=status,
-            priority=priority,
-            job_config=job_config,
-            estimated_duration=estimated_duration,
-            tags=tags,
-            storage=storage,
-            results=results,
-        )
-    except KeyError as e:
-        raise ValueError(f"Error converting item to Job: {e}") from e
+    return Job.from_item(item)

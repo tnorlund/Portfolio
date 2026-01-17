@@ -28,6 +28,14 @@ class InstanceJob:
             GPU, etc.)
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "assigned_at",
+        "status",
+    }
+
     instance_id: str
     job_id: str
     assigned_at: str
@@ -176,6 +184,60 @@ class InstanceJob:
         )
 
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "InstanceJob":
+        """Converts a DynamoDB item to an InstanceJob object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            InstanceJob: The InstanceJob object represented by the DynamoDB
+                item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+
+        try:
+            # Parse instance_id and job_id from the PK and SK
+            instance_id = item["PK"]["S"].split("#")[1]
+            job_id = item["SK"]["S"].split("#")[1]
+
+            # Extract basic fields
+            assigned_at = item["assigned_at"]["S"]
+            status = item["status"]["S"]
+
+            # Parse resource_utilization from DynamoDB map if present
+            resource_utilization = None
+            if (
+                "resource_utilization" in item
+                and "M" in item["resource_utilization"]
+            ):
+                resource_utilization = parse_dynamodb_map(
+                    item["resource_utilization"]["M"]
+                )
+
+            return cls(
+                instance_id=instance_id,
+                job_id=job_id,
+                assigned_at=assigned_at,
+                status=status,
+                resource_utilization=resource_utilization,
+            )
+        except KeyError as e:
+            raise ValueError(
+                f"Error converting item to InstanceJob: {e}"
+            ) from e
+
+
 def item_to_instance_job(item: Dict[str, Any]) -> InstanceJob:
     """Converts a DynamoDB item to an InstanceJob object.
 
@@ -188,46 +250,4 @@ def item_to_instance_job(item: Dict[str, Any]) -> InstanceJob:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "assigned_at",
-        "status",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-
-    try:
-        # Parse instance_id and job_id from the PK and SK
-        instance_id = item["PK"]["S"].split("#")[1]
-        job_id = item["SK"]["S"].split("#")[1]
-
-        # Extract basic fields
-        assigned_at = item["assigned_at"]["S"]
-        status = item["status"]["S"]
-
-        # Parse resource_utilization from DynamoDB map if present
-        resource_utilization = None
-        if (
-            "resource_utilization" in item
-            and "M" in item["resource_utilization"]
-        ):
-            resource_utilization = parse_dynamodb_map(
-                item["resource_utilization"]["M"]
-            )
-
-        return InstanceJob(
-            instance_id=instance_id,
-            job_id=job_id,
-            assigned_at=assigned_at,
-            status=status,
-            resource_utilization=resource_utilization,
-        )
-    except KeyError as e:
-        raise ValueError(f"Error converting item to InstanceJob: {e}") from e
+    return InstanceJob.from_item(item)

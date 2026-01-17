@@ -27,6 +27,13 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
     - GSI2SK: "COST#{date}#{service}"
     """
 
+    REQUIRED_KEYS = {
+        "service",
+        "model",
+        "operation",
+        "timestamp",
+    }
+
     service: str  # "openai", "anthropic", "google_places"
     model: str  # "gpt-3.5-turbo", "claude-3-opus", etc.
     operation: str  # "completion", "embedding", "place_lookup", "code_review"
@@ -272,23 +279,31 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
             ),
         }
 
-        required_keys = {
-            "service",
-            "model",
-            "operation",
-            "timestamp",
-        }
-
         # No field mappings needed - using snake_case consistently
         field_mappings = {}
 
         return EntityFactory.create_entity(
             entity_class=cls,
             item=item,
-            required_keys=required_keys,
+            required_keys=cls.REQUIRED_KEYS,
             field_mappings=field_mappings,
             custom_extractors=custom_extractors,
         )
+
+    @classmethod
+    def from_item(cls, item: Dict) -> "AIUsageMetric":
+        """Converts a DynamoDB item to an AIUsageMetric object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            AIUsageMetric: The AIUsageMetric object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        return cls.from_dynamodb_item(item)
 
     @classmethod
     def query_by_service_date(

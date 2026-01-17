@@ -29,6 +29,13 @@ class ReceiptLabelAnalysis:
             history.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "labels",
+        "timestamp_added",
+    }
+
     image_id: str
     receipt_id: int
     labels: List[Dict[str, Any]]
@@ -238,6 +245,158 @@ class ReceiptLabelAnalysis:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "ReceiptLabelAnalysis":
+        """Converts a DynamoDB item to a ReceiptLabelAnalysis object.
+
+        Args:
+            item: A DynamoDB item representing a ReceiptLabelAnalysis.
+
+        Returns:
+            ReceiptLabelAnalysis: A ReceiptLabelAnalysis object.
+
+        Raises:
+            ValueError: If the item is not a valid ReceiptLabelAnalysis item.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            raise ValueError(f"Item is missing required keys: {missing_keys}")
+
+        # Extract image_id and receipt_id from PK and SK
+        image_id = item["PK"]["S"].replace("IMAGE#", "")
+        sk_parts = item["SK"]["S"].split("#")
+
+        if (
+            len(sk_parts) < 4
+            or sk_parts[0] != "RECEIPT"
+            or sk_parts[2] != "ANALYSIS"
+            or sk_parts[3] != "LABELS"
+        ):
+            raise ValueError("Invalid SK format for ReceiptLabelAnalysis")
+
+        receipt_id = int(sk_parts[1])
+
+        # Extract labels
+        labels = []
+        if "labels" in item and "L" in item["labels"]:
+            for label_item in item["labels"]["L"]:
+                if "M" in label_item:
+                    label_dict: Dict[str, Any] = {}
+
+                    if (
+                        "label_type" in label_item["M"]
+                        and "S" in label_item["M"]["label_type"]
+                    ):
+                        label_dict["label_type"] = label_item["M"]["label_type"][
+                            "S"
+                        ]
+
+                    if (
+                        "line_id" in label_item["M"]
+                        and "N" in label_item["M"]["line_id"]
+                    ):
+                        label_dict["line_id"] = int(
+                            label_item["M"]["line_id"]["N"]
+                        )
+
+                    if (
+                        "word_id" in label_item["M"]
+                        and "N" in label_item["M"]["word_id"]
+                    ):
+                        label_dict["word_id"] = int(
+                            label_item["M"]["word_id"]["N"]
+                        )
+
+                    if (
+                        "text" in label_item["M"]
+                        and "S" in label_item["M"]["text"]
+                    ):
+                        label_dict["text"] = label_item["M"]["text"]["S"]
+
+                    if (
+                        "reasoning" in label_item["M"]
+                        and "S" in label_item["M"]["reasoning"]
+                    ):
+                        label_dict["reasoning"] = label_item["M"]["reasoning"]["S"]
+
+                    # Extract bounding_box if present
+                    if (
+                        "bounding_box" in label_item["M"]
+                        and "M" in label_item["M"]["bounding_box"]
+                    ):
+                        bbox: Dict[str, Any] = {}
+                        bbox_item = label_item["M"]["bounding_box"]["M"]
+
+                        for corner in [
+                            "top_left",
+                            "top_right",
+                            "bottom_left",
+                            "bottom_right",
+                        ]:
+                            if corner in bbox_item and "M" in bbox_item[corner]:
+                                point: Dict[str, Any] = {}
+                                if (
+                                    "x" in bbox_item[corner]["M"]
+                                    and "N" in bbox_item[corner]["M"]["x"]
+                                ):
+                                    point["x"] = float(
+                                        bbox_item[corner]["M"]["x"]["N"]
+                                    )
+                                if (
+                                    "y" in bbox_item[corner]["M"]
+                                    and "N" in bbox_item[corner]["M"]["y"]
+                                ):
+                                    point["y"] = float(
+                                        bbox_item[corner]["M"]["y"]["N"]
+                                    )
+
+                                if point:
+                                    bbox[corner] = point
+
+                        if bbox:
+                            label_dict["bounding_box"] = bbox
+
+                    labels.append(label_dict)
+
+        # Extract timestamp_added
+        timestamp_added = (
+            datetime.fromisoformat(item["timestamp_added"]["S"])
+            if "timestamp_added" in item and "S" in item["timestamp_added"]
+            else datetime.now()
+        )
+
+        # Extract version
+        version = (
+            item["version"]["S"]
+            if "version" in item and "S" in item["version"]
+            else "1.0"
+        )
+
+        # Extract overall_reasoning
+        overall_reasoning = (
+            item["overall_reasoning"]["S"]
+            if "overall_reasoning" in item and "S" in item["overall_reasoning"]
+            else ""
+        )
+
+        # Extract metadata
+        metadata = None
+        if "metadata" in item and "S" in item["metadata"]:
+            try:
+                metadata = json.loads(item["metadata"]["S"])
+            except json.JSONDecodeError:
+                metadata = None
+
+        return cls(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            labels=labels,
+            timestamp_added=timestamp_added,
+            version=version,
+            overall_reasoning=overall_reasoning,
+            metadata=metadata,
+        )
+
 
 def item_to_receipt_label_analysis(
     item: Dict[str, Any],
@@ -253,140 +412,4 @@ def item_to_receipt_label_analysis(
     Raises:
         ValueError: If the item is not a valid ReceiptLabelAnalysis item.
     """
-    if "PK" not in item or "SK" not in item:
-        raise ValueError("Item must have PK and SK attributes")
-
-    # Extract image_id and receipt_id from PK and SK
-    image_id = item["PK"]["S"].replace("IMAGE#", "")
-    sk_parts = item["SK"]["S"].split("#")
-
-    if (
-        len(sk_parts) < 4
-        or sk_parts[0] != "RECEIPT"
-        or sk_parts[2] != "ANALYSIS"
-        or sk_parts[3] != "LABELS"
-    ):
-        raise ValueError("Invalid SK format for ReceiptLabelAnalysis")
-
-    receipt_id = int(sk_parts[1])
-
-    # Extract labels
-    labels = []
-    if "labels" in item and "L" in item["labels"]:
-        for label_item in item["labels"]["L"]:
-            if "M" in label_item:
-                label_dict: Dict[str, Any] = {}
-
-                if (
-                    "label_type" in label_item["M"]
-                    and "S" in label_item["M"]["label_type"]
-                ):
-                    label_dict["label_type"] = label_item["M"]["label_type"][
-                        "S"
-                    ]
-
-                if (
-                    "line_id" in label_item["M"]
-                    and "N" in label_item["M"]["line_id"]
-                ):
-                    label_dict["line_id"] = int(
-                        label_item["M"]["line_id"]["N"]
-                    )
-
-                if (
-                    "word_id" in label_item["M"]
-                    and "N" in label_item["M"]["word_id"]
-                ):
-                    label_dict["word_id"] = int(
-                        label_item["M"]["word_id"]["N"]
-                    )
-
-                if (
-                    "text" in label_item["M"]
-                    and "S" in label_item["M"]["text"]
-                ):
-                    label_dict["text"] = label_item["M"]["text"]["S"]
-
-                if (
-                    "reasoning" in label_item["M"]
-                    and "S" in label_item["M"]["reasoning"]
-                ):
-                    label_dict["reasoning"] = label_item["M"]["reasoning"]["S"]
-
-                # Extract bounding_box if present
-                if (
-                    "bounding_box" in label_item["M"]
-                    and "M" in label_item["M"]["bounding_box"]
-                ):
-                    bbox: Dict[str, Any] = {}
-                    bbox_item = label_item["M"]["bounding_box"]["M"]
-
-                    for corner in [
-                        "top_left",
-                        "top_right",
-                        "bottom_left",
-                        "bottom_right",
-                    ]:
-                        if corner in bbox_item and "M" in bbox_item[corner]:
-                            point: Dict[str, Any] = {}
-                            if (
-                                "x" in bbox_item[corner]["M"]
-                                and "N" in bbox_item[corner]["M"]["x"]
-                            ):
-                                point["x"] = float(
-                                    bbox_item[corner]["M"]["x"]["N"]
-                                )
-                            if (
-                                "y" in bbox_item[corner]["M"]
-                                and "N" in bbox_item[corner]["M"]["y"]
-                            ):
-                                point["y"] = float(
-                                    bbox_item[corner]["M"]["y"]["N"]
-                                )
-
-                            if point:
-                                bbox[corner] = point
-
-                    if bbox:
-                        label_dict["bounding_box"] = bbox
-
-                labels.append(label_dict)
-
-    # Extract timestamp_added
-    timestamp_added = (
-        datetime.fromisoformat(item["timestamp_added"]["S"])
-        if "timestamp_added" in item and "S" in item["timestamp_added"]
-        else datetime.now()
-    )
-
-    # Extract version
-    version = (
-        item["version"]["S"]
-        if "version" in item and "S" in item["version"]
-        else "1.0"
-    )
-
-    # Extract overall_reasoning
-    overall_reasoning = (
-        item["overall_reasoning"]["S"]
-        if "overall_reasoning" in item and "S" in item["overall_reasoning"]
-        else ""
-    )
-
-    # Extract metadata
-    metadata = None
-    if "metadata" in item and "S" in item["metadata"]:
-        try:
-            metadata = json.loads(item["metadata"]["S"])
-        except json.JSONDecodeError:
-            metadata = None
-
-    return ReceiptLabelAnalysis(
-        image_id=image_id,
-        receipt_id=receipt_id,
-        labels=labels,
-        timestamp_added=timestamp_added,
-        version=version,
-        overall_reasoning=overall_reasoning,
-        metadata=metadata,
-    )
+    return ReceiptLabelAnalysis.from_item(item)

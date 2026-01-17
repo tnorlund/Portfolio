@@ -38,6 +38,8 @@ class JobMetric:
             recorded.
     """
 
+    REQUIRED_KEYS = {"PK", "SK", "job_id", "metric_name", "timestamp", "value"}
+
     job_id: str
     metric_name: str
     timestamp: str
@@ -215,6 +217,86 @@ class JobMetric:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "JobMetric":
+        """Converts a DynamoDB item to a JobMetric object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            JobMetric: The JobMetric object represented by the DynamoDB item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = (
+                item.keys()
+                - cls.REQUIRED_KEYS
+                - {
+                    "GSI1PK",
+                    "GSI1SK",
+                    "GSI2PK",
+                    "GSI2SK",
+                    "unit",
+                    "step",
+                    "epoch",
+                    "TYPE",
+                }
+            )
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+
+        try:
+            job_id = item["job_id"]["S"]
+            metric_name = item["metric_name"]["S"]
+            timestamp = item["timestamp"]["S"]
+
+            # Parse value based on its type
+            value: Union[int, float, Dict[str, Any]]
+            if "N" in item["value"]:
+                try:
+                    value = int(item["value"]["N"])
+                except ValueError:
+                    value = float(item["value"]["N"])
+            elif "M" in item["value"]:
+                value = parse_dynamodb_map(item["value"]["M"])
+            elif "S" in item["value"]:
+                # Try to parse from JSON string
+                try:
+                    value = json.loads(item["value"]["S"])
+                except json.JSONDecodeError:
+                    value = item["value"]["S"]
+            else:
+                raise ValueError(f"Unsupported value format: {item['value']}")
+
+            # Parse unit, step, and epoch if present
+            unit = item.get("unit", {}).get("S") if "unit" in item else None
+
+            step = None
+            if "step" in item and "N" in item["step"]:
+                step = int(item["step"]["N"])
+
+            epoch = None
+            if "epoch" in item and "N" in item["epoch"]:
+                epoch = int(item["epoch"]["N"])
+
+            return cls(
+                job_id=job_id,
+                metric_name=metric_name,
+                timestamp=timestamp,
+                value=value,
+                unit=unit,
+                step=step,
+                epoch=epoch,
+            )
+        except (KeyError, ValueError) as e:
+            raise ValueError(f"Error parsing item: {str(e)}") from e
+
 
 def item_to_job_metric(item: Dict[str, Any]) -> JobMetric:
     """Converts a DynamoDB item to a JobMetric object.
@@ -228,70 +310,4 @@ def item_to_job_metric(item: Dict[str, Any]) -> JobMetric:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {"PK", "SK", "job_id", "metric_name", "timestamp", "value"}
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = (
-            item.keys()
-            - required_keys
-            - {
-                "GSI1PK",
-                "GSI1SK",
-                "GSI2PK",
-                "GSI2SK",
-                "unit",
-                "step",
-                "epoch",
-                "TYPE",
-            }
-        )
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-
-    try:
-        job_id = item["job_id"]["S"]
-        metric_name = item["metric_name"]["S"]
-        timestamp = item["timestamp"]["S"]
-
-        # Parse value based on its type
-        value: Union[int, float, Dict[str, Any]]
-        if "N" in item["value"]:
-            try:
-                value = int(item["value"]["N"])
-            except ValueError:
-                value = float(item["value"]["N"])
-        elif "M" in item["value"]:
-            value = parse_dynamodb_map(item["value"]["M"])
-        elif "S" in item["value"]:
-            # Try to parse from JSON string
-            try:
-                value = json.loads(item["value"]["S"])
-            except json.JSONDecodeError:
-                value = item["value"]["S"]
-        else:
-            raise ValueError(f"Unsupported value format: {item['value']}")
-
-        # Parse unit, step, and epoch if present
-        unit = item.get("unit", {}).get("S") if "unit" in item else None
-
-        step = None
-        if "step" in item and "N" in item["step"]:
-            step = int(item["step"]["N"])
-
-        epoch = None
-        if "epoch" in item and "N" in item["epoch"]:
-            epoch = int(item["epoch"]["N"])
-
-        return JobMetric(
-            job_id=job_id,
-            metric_name=metric_name,
-            timestamp=timestamp,
-            value=value,
-            unit=unit,
-            step=step,
-            epoch=epoch,
-        )
-    except (KeyError, ValueError) as e:
-        raise ValueError(f"Error parsing item: {str(e)}") from e
+    return JobMetric.from_item(item)

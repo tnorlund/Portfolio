@@ -30,6 +30,16 @@ class PlacesCache:
         value_hash (str): Hash of the original search value (for addresses)
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "search_type",
+        "place_id",
+        "places_response",
+        "last_updated",
+        "query_count",
+    }
+
     # Maximum field lengths based on Google Places API
     _MAX_ADDRESS_LENGTH = 400  # Allow for future growth beyond current 315 max
     _MAX_PHONE_LENGTH = 30  # International format with extra padding
@@ -226,104 +236,101 @@ class PlacesCache:
             base += f", time_to_live={self.time_to_live}"
         return base + ")"
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "PlacesCache":
+        """Converts a DynamoDB item to a PlacesCache object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            PlacesCache: The PlacesCache object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not all(key in item for key in cls.REQUIRED_KEYS):
+            raise ValueError("Item is missing required keys")
+
+        try:
+            places_response = json.loads(item["places_response"]["S"])
+            search_type = item["search_type"]["S"]
+
+            # Try to get the original search_value first
+            if "search_value" in item and "S" in item["search_value"]:
+                search_value = item["search_value"]["S"]
+            else:
+                # Fall back to extracting from SK if search_value is missing
+                padded_value = item["SK"]["S"].split("#")[1]
+                if search_type == "ADDRESS":
+                    # Extract the original value after the hash
+                    parts = padded_value.split("_")
+                    if len(parts) >= 2:
+                        search_value = parts[1].lstrip("_").replace("_", " ")
+                    else:
+                        search_value = padded_value.lstrip("_").replace(
+                            "_", " "
+                        )
+                elif search_type == "PHONE":
+                    search_value = padded_value.lstrip("_")
+                    search_value = "".join(
+                        c for c in search_value if c.isdigit() or c in "()+-"
+                    )
+                elif search_type == "URL":
+                    search_value = padded_value.lstrip("_")
+                else:
+                    raise ValueError(f"Invalid search type: {search_type}")
+
+            # Extract normalized value and hash if they exist
+            normalized_value = None
+            value_hash = None
+
+            if "normalized_value" in item and "S" in item["normalized_value"]:
+                normalized_value = item["normalized_value"]["S"]
+            elif search_type == "ADDRESS":
+                parts = item["SK"]["S"].split("#")[1].split("_")
+                if len(parts) >= 2:
+                    value_hash = parts[0]
+
+            if "value_hash" in item and "S" in item["value_hash"]:
+                value_hash = item["value_hash"]["S"]
+
+            if "time_to_live" in item and "N" in item["time_to_live"]:
+                time_to_live = int(item["time_to_live"]["N"])
+            else:
+                time_to_live = None
+
+            place_id = item["place_id"]["S"]
+            last_updated = item["last_updated"]["S"]
+            query_count = int(item["query_count"]["N"])
+
+            return cls(
+                search_type=search_type,
+                search_value=search_value,
+                place_id=place_id,
+                places_response=places_response,
+                last_updated=last_updated,
+                query_count=query_count,
+                normalized_value=normalized_value,
+                value_hash=value_hash,
+                time_to_live=time_to_live,
+            )
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            raise ValueError(
+                f"Error converting item to PlacesCache: {str(e)}"
+            ) from e
+
 
 def item_to_places_cache(item: Dict[str, Any]) -> "PlacesCache":
-    """
-    Convert a DynamoDB item to a PlacesCache object.
+    """Converts a DynamoDB item to a PlacesCache object.
 
     Args:
-        item (Dict): The DynamoDB item
+        item (dict): The DynamoDB item to convert.
 
     Returns:
-        PlacesCache: The converted item
+        PlacesCache: The PlacesCache object.
 
     Raises:
-        ValueError: If the item is missing required keys or has invalid data
+        ValueError: When the item format is invalid.
     """
-    required_keys = [
-        "PK",
-        "SK",
-        "search_type",
-        "place_id",
-        "places_response",
-        "last_updated",
-        "query_count",
-    ]
-
-    if not all(key in item for key in required_keys):
-        raise ValueError("Item is missing required keys")
-
-    try:
-        places_response = json.loads(item["places_response"]["S"])
-        search_type = item["search_type"]["S"]
-
-        # Try to get the original search_value first
-        if "search_value" in item and "S" in item["search_value"]:
-            search_value = item["search_value"]["S"]
-        else:
-            # Fall back to extracting from SK if search_value is missing
-            padded_value = item["SK"]["S"].split("#")[
-                1
-            ]  # Get the value after VALUE#
-            if search_type == "ADDRESS":
-                # Extract the original value after the hash
-                parts = padded_value.split("_")
-                if len(parts) >= 2:  # We have hash and original value
-                    # The original value is after the hash, strip padding
-                    search_value = parts[1].lstrip("_").replace("_", " ")
-                else:
-                    # Fallback for old format
-                    search_value = padded_value.lstrip("_").replace("_", " ")
-            elif search_type == "PHONE":
-                # For phone numbers, strip padding and normalize
-                search_value = padded_value.lstrip("_")
-                # Keep only digits and basic formatting
-                search_value = "".join(
-                    c for c in search_value if c.isdigit() or c in "()+-"
-                )
-            elif search_type == "URL":
-                # For URLs, strip padding and keep underscores (they're part
-                # of the URL)
-                search_value = padded_value.lstrip("_")
-            else:
-                raise ValueError(f"Invalid search type: {search_type}")
-
-        # Extract normalized value and hash if they exist
-        normalized_value = None
-        value_hash = None
-
-        if "normalized_value" in item and "S" in item["normalized_value"]:
-            normalized_value = item["normalized_value"]["S"]
-        elif search_type == "ADDRESS":
-            # Try to extract from SK if not in item
-            parts = item["SK"]["S"].split("#")[1].split("_")
-            if len(parts) >= 2:
-                value_hash = parts[0]
-
-        if "value_hash" in item and "S" in item["value_hash"]:
-            value_hash = item["value_hash"]["S"]
-
-        if "time_to_live" in item and "N" in item["time_to_live"]:
-            time_to_live = int(item["time_to_live"]["N"])
-        else:
-            time_to_live = None
-
-        place_id = item["place_id"]["S"]
-        last_updated = item["last_updated"]["S"]
-        query_count = int(item["query_count"]["N"])
-
-        return PlacesCache(
-            search_type=search_type,
-            search_value=search_value,
-            place_id=place_id,
-            places_response=places_response,
-            last_updated=last_updated,
-            query_count=query_count,
-            normalized_value=normalized_value,
-            value_hash=value_hash,
-            time_to_live=time_to_live,
-        )
-    except (json.JSONDecodeError, ValueError, KeyError) as e:
-        raise ValueError(
-            f"Error converting item to PlacesCache: {str(e)}"
-        ) from e
+    return PlacesCache.from_item(item)

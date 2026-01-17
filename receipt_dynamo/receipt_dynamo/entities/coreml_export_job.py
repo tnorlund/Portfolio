@@ -36,6 +36,16 @@ class CoreMLExportJob:
         error_message: Error message if export failed.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "job_id",
+        "model_s3_uri",
+        "created_at",
+        "status",
+    }
+
     export_id: str
     job_id: str
     model_s3_uri: str
@@ -251,114 +261,120 @@ class CoreMLExportJob:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "CoreMLExportJob":
+        """Converts a DynamoDB item to a CoreMLExportJob object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            CoreMLExportJob: The CoreMLExportJob object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}"
+                f"\nadditional keys: {additional_keys}"
+            )
+        try:
+            export_id = item["PK"]["S"].split("#")[1]
+            job_id = item["job_id"]["S"]
+            model_s3_uri = item["model_s3_uri"]["S"]
+            created_at = datetime.fromisoformat(item["created_at"]["S"])
+            status = item["status"]["S"]
+
+            quantize = (
+                item["quantize"]["S"]
+                if "quantize" in item and "S" in item["quantize"]
+                else None
+            )
+
+            output_s3_prefix = (
+                item["output_s3_prefix"]["S"]
+                if "output_s3_prefix" in item and "S" in item["output_s3_prefix"]
+                else None
+            )
+
+            updated_at = (
+                datetime.fromisoformat(item["updated_at"]["S"])
+                if "updated_at" in item and "S" in item["updated_at"]
+                else None
+            )
+
+            completed_at = (
+                datetime.fromisoformat(item["completed_at"]["S"])
+                if "completed_at" in item and "S" in item["completed_at"]
+                else None
+            )
+
+            mlpackage_s3_uri = (
+                item["mlpackage_s3_uri"]["S"]
+                if "mlpackage_s3_uri" in item and "S" in item["mlpackage_s3_uri"]
+                else None
+            )
+
+            bundle_s3_uri = (
+                item["bundle_s3_uri"]["S"]
+                if "bundle_s3_uri" in item and "S" in item["bundle_s3_uri"]
+                else None
+            )
+
+            model_size_bytes = (
+                int(item["model_size_bytes"]["N"])
+                if "model_size_bytes" in item and "N" in item["model_size_bytes"]
+                else None
+            )
+
+            export_duration_seconds = (
+                float(item["export_duration_seconds"]["N"])
+                if "export_duration_seconds" in item
+                and "N" in item["export_duration_seconds"]
+                else None
+            )
+
+            error_message = (
+                item["error_message"]["S"]
+                if "error_message" in item and "S" in item["error_message"]
+                else None
+            )
+
+            return cls(
+                export_id=export_id,
+                job_id=job_id,
+                model_s3_uri=model_s3_uri,
+                created_at=created_at,
+                status=status,
+                quantize=quantize,
+                output_s3_prefix=output_s3_prefix,
+                updated_at=updated_at,
+                completed_at=completed_at,
+                mlpackage_s3_uri=mlpackage_s3_uri,
+                bundle_s3_uri=bundle_s3_uri,
+                model_size_bytes=model_size_bytes,
+                export_duration_seconds=export_duration_seconds,
+                error_message=error_message,
+            )
+        except Exception as e:
+            raise ValueError(
+                f"Error converting item to CoreMLExportJob: {e}"
+            ) from e
+
 
 def item_to_coreml_export_job(item: Dict[str, Any]) -> CoreMLExportJob:
     """Converts a DynamoDB item to a CoreMLExportJob object.
 
     Args:
-        item: The DynamoDB item to convert.
+        item (dict): The DynamoDB item to convert.
 
     Returns:
-        The CoreMLExportJob object.
+        CoreMLExportJob: The CoreMLExportJob object.
 
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "job_id",
-        "model_s3_uri",
-        "created_at",
-        "status",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}"
-            f"\nadditional keys: {additional_keys}"
-        )
-    try:
-        export_id = item["PK"]["S"].split("#")[1]
-        job_id = item["job_id"]["S"]
-        model_s3_uri = item["model_s3_uri"]["S"]
-        created_at = datetime.fromisoformat(item["created_at"]["S"])
-        status = item["status"]["S"]
-
-        quantize = (
-            item["quantize"]["S"]
-            if "quantize" in item and "S" in item["quantize"]
-            else None
-        )
-
-        output_s3_prefix = (
-            item["output_s3_prefix"]["S"]
-            if "output_s3_prefix" in item and "S" in item["output_s3_prefix"]
-            else None
-        )
-
-        updated_at = (
-            datetime.fromisoformat(item["updated_at"]["S"])
-            if "updated_at" in item and "S" in item["updated_at"]
-            else None
-        )
-
-        completed_at = (
-            datetime.fromisoformat(item["completed_at"]["S"])
-            if "completed_at" in item and "S" in item["completed_at"]
-            else None
-        )
-
-        mlpackage_s3_uri = (
-            item["mlpackage_s3_uri"]["S"]
-            if "mlpackage_s3_uri" in item and "S" in item["mlpackage_s3_uri"]
-            else None
-        )
-
-        bundle_s3_uri = (
-            item["bundle_s3_uri"]["S"]
-            if "bundle_s3_uri" in item and "S" in item["bundle_s3_uri"]
-            else None
-        )
-
-        model_size_bytes = (
-            int(item["model_size_bytes"]["N"])
-            if "model_size_bytes" in item and "N" in item["model_size_bytes"]
-            else None
-        )
-
-        export_duration_seconds = (
-            float(item["export_duration_seconds"]["N"])
-            if "export_duration_seconds" in item
-            and "N" in item["export_duration_seconds"]
-            else None
-        )
-
-        error_message = (
-            item["error_message"]["S"]
-            if "error_message" in item and "S" in item["error_message"]
-            else None
-        )
-
-        return CoreMLExportJob(
-            export_id=export_id,
-            job_id=job_id,
-            model_s3_uri=model_s3_uri,
-            created_at=created_at,
-            status=status,
-            quantize=quantize,
-            output_s3_prefix=output_s3_prefix,
-            updated_at=updated_at,
-            completed_at=completed_at,
-            mlpackage_s3_uri=mlpackage_s3_uri,
-            bundle_s3_uri=bundle_s3_uri,
-            model_size_bytes=model_size_bytes,
-            export_duration_seconds=export_duration_seconds,
-            error_message=error_message,
-        )
-    except Exception as e:
-        raise ValueError(
-            f"Error converting item to CoreMLExportJob: {e}"
-        ) from e
+    return CoreMLExportJob.from_item(item)

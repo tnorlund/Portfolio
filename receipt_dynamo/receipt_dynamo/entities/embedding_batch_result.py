@@ -44,6 +44,16 @@ def validate_pinecone_id_format(
 
 @dataclass(eq=True, unsafe_hash=False)
 class EmbeddingBatchResult:
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "pinecone_id",
+        "text",
+        "error_message",
+        "status",
+        "image_id",
+    }
+
     batch_id: str
     image_id: str
     receipt_id: int
@@ -180,74 +190,89 @@ class EmbeddingBatchResult:
         )
 
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "EmbeddingBatchResult":
+        """Converts a DynamoDB item to an EmbeddingBatchResult object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            EmbeddingBatchResult: The EmbeddingBatchResult object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+        try:
+            # Extract batch_id from PK
+            batch_id = item["PK"]["S"].split("#", 1)[1]
+
+            # Split SK into parts for flexible parsing
+            sk_parts: List[str] = item["SK"]["S"].split("#")
+
+            # Helper to find the value after a given key in SK
+            def sk_value(key: str) -> str:
+                # Find all positions of the key and use the last one to avoid
+                # prefix collisions
+                idxs = [i for i, part in enumerate(sk_parts) if part == key]
+                if idxs:
+                    idx = idxs[-1]
+                    return sk_parts[idx + 1]
+                raise ValueError(
+                    f"SK missing expected key '{key}': {item['SK']['S']}"
+                )
+
+            image_id = item["image_id"]["S"]
+
+            # Dynamically parse IDs
+            receipt_id = int(sk_value("RECEIPT"))
+            line_id = int(sk_value("LINE"))
+            word_id = int(sk_value("WORD"))
+            pinecone_id = item["pinecone_id"]["S"]
+            text = item["text"]["S"]
+            status = item["status"]["S"]
+
+            if "error_message" in item and "S" in item["error_message"]:
+                error_message = item["error_message"]["S"]
+            else:
+                error_message = None
+
+            return cls(
+                batch_id=batch_id,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                line_id=line_id,
+                word_id=word_id,
+                pinecone_id=pinecone_id,
+                status=status,
+                text=text,
+                error_message=error_message,
+            )
+        except Exception as e:
+            raise ValueError(
+                f"Error converting item to EmbeddingBatchResult: {e}"
+            ) from e
+
+
 def item_to_embedding_batch_result(
     item: Dict[str, Any],
 ) -> EmbeddingBatchResult:
+    """Converts a DynamoDB item to an EmbeddingBatchResult object.
+
+    Args:
+        item (dict): The DynamoDB item to convert.
+
+    Returns:
+        EmbeddingBatchResult: The EmbeddingBatchResult object.
+
+    Raises:
+        ValueError: When the item format is invalid.
     """
-    Converts an item from DynamoDB to an EmbeddingBatchResult object.
-    """
-    required_keys = {
-        "PK",
-        "SK",
-        "pinecone_id",
-        "text",
-        "error_message",
-        "status",
-        "image_id",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-    try:
-        # Extract batch_id from PK
-        batch_id = item["PK"]["S"].split("#", 1)[1]
-
-        # Split SK into parts for flexible parsing
-        sk_parts: List[str] = item["SK"]["S"].split("#")
-
-        # Helper to find the value after a given key in SK
-        def sk_value(key: str) -> str:
-            # Find all positions of the key and use the last one to avoid
-            # prefix collisions
-            idxs = [i for i, part in enumerate(sk_parts) if part == key]
-            if idxs:
-                idx = idxs[-1]
-                return sk_parts[idx + 1]
-            raise ValueError(
-                f"SK missing expected key '{key}': {item['SK']['S']}"
-            )
-
-        image_id = item["image_id"]["S"]
-
-        # Dynamically parse IDs
-        receipt_id = int(sk_value("RECEIPT"))
-        line_id = int(sk_value("LINE"))
-        word_id = int(sk_value("WORD"))
-        pinecone_id = item["pinecone_id"]["S"]
-        text = item["text"]["S"]
-        status = item["status"]["S"]
-
-        if "error_message" in item and "S" in item["error_message"]:
-            error_message = item["error_message"]["S"]
-        else:
-            error_message = None
-
-        return EmbeddingBatchResult(
-            batch_id=batch_id,
-            image_id=image_id,
-            receipt_id=receipt_id,
-            line_id=line_id,
-            word_id=word_id,
-            pinecone_id=pinecone_id,
-            status=status,
-            text=text,
-            error_message=error_message,
-        )
-    except Exception as e:
-        raise ValueError(
-            f"Error converting item to EmbeddingBatchResult: {e}"
-        ) from e
+    return EmbeddingBatchResult.from_item(item)

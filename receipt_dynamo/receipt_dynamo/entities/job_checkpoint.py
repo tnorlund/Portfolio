@@ -34,6 +34,19 @@ class JobCheckpoint:
         is_best (bool): Whether this is the best checkpoint for the job so far.
     """
 
+    REQUIRED_KEYS = {
+        "job_id",
+        "timestamp",
+        "s3_bucket",
+        "s3_key",
+        "size_bytes",
+        "step",
+        "epoch",
+        "model_state",
+        "optimizer_state",
+        "is_best",
+    }
+
     job_id: str
     timestamp: str
     s3_bucket: str
@@ -216,6 +229,48 @@ class JobCheckpoint:
         """
         return dict_to_dynamodb_map(data)
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "JobCheckpoint":
+        """Converts a DynamoDB item to a JobCheckpoint object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            JobCheckpoint: The JobCheckpoint object represented by the
+                DynamoDB item.
+
+        Raises:
+            ValueError: If the DynamoDB item cannot be converted to a
+                JobCheckpoint.
+        """
+        try:
+            metrics: Dict[str, Any] = {}
+            if "metrics" in item and "M" in item["metrics"]:
+                metrics = parse_dynamodb_map(item["metrics"]["M"])
+
+            size_bytes = int(item["size_bytes"]["N"])
+            step = int(item["step"]["N"])
+            epoch = int(item["epoch"]["N"])
+
+            return cls(
+                job_id=item["job_id"]["S"],
+                timestamp=item["timestamp"]["S"],
+                s3_bucket=item["s3_bucket"]["S"],
+                s3_key=item["s3_key"]["S"],
+                size_bytes=size_bytes,
+                step=step,
+                epoch=epoch,
+                model_state=item["model_state"]["BOOL"],
+                optimizer_state=item["optimizer_state"]["BOOL"],
+                metrics=metrics,
+                is_best=item["is_best"]["BOOL"],
+            )
+        except (KeyError, ValueError) as e:
+            raise ValueError(
+                f"Error converting item to JobCheckpoint: {e}"
+            ) from e
+
 
 def item_to_job_checkpoint(item: Dict[str, Any]) -> JobCheckpoint:
     """Converts a DynamoDB item to a JobCheckpoint object.
@@ -231,27 +286,4 @@ def item_to_job_checkpoint(item: Dict[str, Any]) -> JobCheckpoint:
         ValueError: If the DynamoDB item cannot be converted to a
             JobCheckpoint.
     """
-    try:
-        metrics: Dict[str, Any] = {}
-        if "metrics" in item and "M" in item["metrics"]:
-            metrics = parse_dynamodb_map(item["metrics"]["M"])
-
-        size_bytes = int(item["size_bytes"]["N"])
-        step = int(item["step"]["N"])
-        epoch = int(item["epoch"]["N"])
-
-        return JobCheckpoint(
-            job_id=item["job_id"]["S"],
-            timestamp=item["timestamp"]["S"],
-            s3_bucket=item["s3_bucket"]["S"],
-            s3_key=item["s3_key"]["S"],
-            size_bytes=size_bytes,
-            step=step,
-            epoch=epoch,
-            model_state=item["model_state"]["BOOL"],
-            optimizer_state=item["optimizer_state"]["BOOL"],
-            metrics=metrics,
-            is_best=item["is_best"]["BOOL"],
-        )
-    except (KeyError, ValueError) as e:
-        raise ValueError(f"Error converting item to JobCheckpoint: {e}") from e
+    return JobCheckpoint.from_item(item)

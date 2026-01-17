@@ -26,6 +26,8 @@ class QueueJob:
             are processed first).
     """
 
+    REQUIRED_KEYS = {"PK", "SK", "TYPE", "enqueued_at", "priority", "position"}
+
     queue_name: str
     job_id: str
     enqueued_at: datetime | str
@@ -151,6 +153,49 @@ class QueueJob:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "QueueJob":
+        """Converts a DynamoDB item to a QueueJob object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            QueueJob: The QueueJob object represented by the DynamoDB item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+
+        try:
+            # Parse queue_name from the PK
+            queue_name = item["PK"]["S"].split("#")[1]
+
+            # Parse job_id from the SK
+            job_id = item["SK"]["S"].split("#")[1]
+
+            # Extract fields
+            enqueued_at = item["enqueued_at"]["S"]
+            priority = item["priority"]["S"]
+            position = int(item["position"]["N"])
+
+            return cls(
+                queue_name=queue_name,
+                job_id=job_id,
+                enqueued_at=enqueued_at,
+                priority=priority,
+                position=position,
+            )
+        except (KeyError, IndexError) as e:
+            raise ValueError(f"Error converting item to QueueJob: {e}") from e
+
 
 def item_to_queue_job(item: Dict[str, Any]) -> QueueJob:
     """Converts a DynamoDB item to a QueueJob object.
@@ -164,33 +209,4 @@ def item_to_queue_job(item: Dict[str, Any]) -> QueueJob:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {"PK", "SK", "TYPE", "enqueued_at", "priority", "position"}
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-
-    try:
-        # Parse queue_name from the PK
-        queue_name = item["PK"]["S"].split("#")[1]
-
-        # Parse job_id from the SK
-        job_id = item["SK"]["S"].split("#")[1]
-
-        # Extract fields
-        enqueued_at = item["enqueued_at"]["S"]
-        priority = item["priority"]["S"]
-        position = int(item["position"]["N"])
-
-        return QueueJob(
-            queue_name=queue_name,
-            job_id=job_id,
-            enqueued_at=enqueued_at,
-            priority=priority,
-            position=position,
-        )
-    except (KeyError, IndexError) as e:
-        raise ValueError(f"Error converting item to QueueJob: {e}") from e
+    return QueueJob.from_item(item)

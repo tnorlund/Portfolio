@@ -441,12 +441,12 @@ def test_itemToReceiptLabelAnalysis_valid_input():
 def test_itemToReceiptLabelAnalysis_missing_keys():
     """Test that item_to_receipt_label_analysis raises ValueError with missing keys."""
     with pytest.raises(
-        ValueError, match="Item must have PK and SK attributes"
+        ValueError, match="Item is missing required keys"
     ):
         item_to_receipt_label_analysis({})
 
     with pytest.raises(
-        ValueError, match="Item must have PK and SK attributes"
+        ValueError, match="Item is missing required keys"
     ):
         item_to_receipt_label_analysis({"PK": {"S": "IMAGE#test"}})
 
@@ -454,7 +454,12 @@ def test_itemToReceiptLabelAnalysis_missing_keys():
 @pytest.mark.unit
 def test_itemToReceiptLabelAnalysis_invalid_format():
     """Test that item_to_receipt_label_analysis raises ValueError with invalid SK format."""
-    item = {"PK": {"S": "IMAGE#test_image_123"}, "SK": {"S": "INVALID_FORMAT"}}
+    item = {
+        "PK": {"S": "IMAGE#test_image_123"},
+        "SK": {"S": "INVALID_FORMAT"},
+        "labels": {"L": []},
+        "timestamp_added": {"S": "2023-01-01T00:00:00"},
+    }
 
     with pytest.raises(
         ValueError, match="Invalid SK format for ReceiptLabelAnalysis"
@@ -467,7 +472,9 @@ def test_itemToReceiptLabelAnalysis_with_defaults():
     """Test that item_to_receipt_label_analysis provides default values."""
     item = {
         "PK": {"S": "IMAGE#test_image_123"},
-        "SK": {"S": "RECEIPT#456#ANALYSIS#LABELS#1.0"},
+        "SK": {"S": "RECEIPT#00456#ANALYSIS#LABELS"},
+        "labels": {"L": []},
+        "timestamp_added": {"S": "2023-01-01T00:00:00"},
     }
 
     result = item_to_receipt_label_analysis(item)

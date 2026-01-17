@@ -477,6 +477,48 @@ class CDNFieldsMixin:
             f"cdn_medium_avif_s3_key={_repr_str(self.cdn_medium_avif_s3_key)}"
         )
 
+    @classmethod
+    def _cdn_fields_from_item(cls, item: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extract CDN fields from a DynamoDB item.
+
+        Args:
+            item: DynamoDB item dictionary
+
+        Returns:
+            Dictionary of CDN field names to values for entity construction
+        """
+        return {
+            "sha256": item.get("sha256", {}).get("S"),
+            "cdn_s3_bucket": item.get("cdn_s3_bucket", {}).get("S"),
+            "cdn_s3_key": item.get("cdn_s3_key", {}).get("S"),
+            "cdn_webp_s3_key": item.get("cdn_webp_s3_key", {}).get("S"),
+            "cdn_avif_s3_key": item.get("cdn_avif_s3_key", {}).get("S"),
+            "cdn_thumbnail_s3_key": item.get(
+                "cdn_thumbnail_s3_key", {}
+            ).get("S"),
+            "cdn_thumbnail_webp_s3_key": item.get(
+                "cdn_thumbnail_webp_s3_key", {}
+            ).get("S"),
+            "cdn_thumbnail_avif_s3_key": item.get(
+                "cdn_thumbnail_avif_s3_key", {}
+            ).get("S"),
+            "cdn_small_s3_key": item.get("cdn_small_s3_key", {}).get("S"),
+            "cdn_small_webp_s3_key": item.get(
+                "cdn_small_webp_s3_key", {}
+            ).get("S"),
+            "cdn_small_avif_s3_key": item.get(
+                "cdn_small_avif_s3_key", {}
+            ).get("S"),
+            "cdn_medium_s3_key": item.get("cdn_medium_s3_key", {}).get("S"),
+            "cdn_medium_webp_s3_key": item.get(
+                "cdn_medium_webp_s3_key", {}
+            ).get("S"),
+            "cdn_medium_avif_s3_key": item.get(
+                "cdn_medium_avif_s3_key", {}
+            ).get("S"),
+        }
+
 
 # =============================================================================
 # Exports

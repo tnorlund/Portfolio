@@ -38,6 +38,18 @@ class OCRRoutingDecision(DynamoDBEntity):
         status (str): Status of the OCR routing decision.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "s3_bucket",
+        "s3_key",
+        "created_at",
+        "updated_at",
+        "receipt_count",
+        "status",
+    }
+
     image_id: str
     job_id: str
     s3_bucket: str
@@ -132,9 +144,40 @@ class OCRRoutingDecision(DynamoDBEntity):
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "OCRRoutingDecision":
+        """Converts a DynamoDB item to an OCRRoutingDecision object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            OCRRoutingDecision: The OCRRoutingDecision object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        # OCRRoutingDecision-specific extractors (in addition to common OCR
+        # extractors)
+        custom_extractors = {
+            **create_ocr_job_extractors(),
+            "receipt_count": EntityFactory.extract_int_field("receipt_count"),
+        }
+
+        return EntityFactory.create_entity(
+            entity_class=cls,
+            item=item,
+            required_keys=cls.REQUIRED_KEYS,
+            key_parsers={
+                "PK": create_image_receipt_pk_parser(),
+                "SK": create_ocr_job_sk_parser(),
+            },
+            custom_extractors=custom_extractors,
+        )
+
 
 def item_to_ocr_routing_decision(item: Dict[str, Any]) -> OCRRoutingDecision:
-    """Converts a DynamoDB item to a OCRRoutingDecision object.
+    """Converts a DynamoDB item to an OCRRoutingDecision object.
 
     Args:
         item (dict): The DynamoDB item to convert.
@@ -145,32 +188,4 @@ def item_to_ocr_routing_decision(item: Dict[str, Any]) -> OCRRoutingDecision:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "s3_bucket",
-        "s3_key",
-        "created_at",
-        "updated_at",
-        "receipt_count",
-        "status",
-    }
-
-    # OCRRoutingDecision-specific extractors (in addition to common OCR
-    # extractors)
-    custom_extractors = {
-        **create_ocr_job_extractors(),
-        "receipt_count": EntityFactory.extract_int_field("receipt_count"),
-    }
-
-    return EntityFactory.create_entity(
-        entity_class=OCRRoutingDecision,
-        item=item,
-        required_keys=required_keys,
-        key_parsers={
-            "PK": create_image_receipt_pk_parser(),
-            "SK": create_ocr_job_sk_parser(),
-        },
-        custom_extractors=custom_extractors,
-    )
+    return OCRRoutingDecision.from_item(item)

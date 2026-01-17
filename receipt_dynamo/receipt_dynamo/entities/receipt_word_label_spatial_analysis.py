@@ -77,6 +77,16 @@ class ReceiptWordLabelSpatialAnalysis:
         analysis_version (str): Version of the analysis algorithm used.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "from_label",
+        "from_position",
+        "spatial_relationships",
+        "timestamp_added",
+        "analysis_version",
+    }
+
     image_id: str
     receipt_id: int
     line_id: int
@@ -298,6 +308,81 @@ class ReceiptWordLabelSpatialAnalysis:
             )
         )
 
+    @classmethod
+    def from_item(
+        cls, item: Dict[str, Any]
+    ) -> "ReceiptWordLabelSpatialAnalysis":
+        """Converts a DynamoDB item to a ReceiptWordLabelSpatialAnalysis object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            ReceiptWordLabelSpatialAnalysis: The spatial analysis object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            raise ValueError(
+                f"Invalid item format. Missing keys: {missing_keys}"
+            )
+
+        # Parse the SK to extract identifiers
+        sk = item["SK"]["S"]
+        parts = sk.split("#")
+        if (
+            len(parts) != 7
+            or parts[0] != "RECEIPT"
+            or parts[2] != "LINE"
+            or parts[4] != "WORD"
+            or parts[6] != "SPATIAL_ANALYSIS"
+        ):
+            raise ValueError(f"Invalid SK format: {sk}")
+
+        receipt_id = int(parts[1])
+        line_id = int(parts[3])
+        word_id = int(parts[5])
+
+        # Parse the PK to extract image_id
+        pk = item["PK"]["S"]
+        if not pk.startswith("IMAGE#"):
+            raise ValueError(f"Invalid PK format: {pk}")
+        image_id = pk[6:]  # Remove "IMAGE#" prefix
+
+        # Parse from_position
+        from_position = {
+            "x": float(item["from_position"]["M"]["x"]["N"]),
+            "y": float(item["from_position"]["M"]["y"]["N"]),
+        }
+
+        # Parse spatial relationships
+        spatial_relationships = []
+        for rel_item in item["spatial_relationships"]["L"]:
+            rel_data = rel_item["M"]
+            spatial_relationships.append(
+                SpatialRelationship(
+                    to_label=rel_data["to_label"]["S"],
+                    to_line_id=int(rel_data["to_line_id"]["N"]),
+                    to_word_id=int(rel_data["to_word_id"]["N"]),
+                    distance=float(rel_data["distance"]["N"]),
+                    angle=float(rel_data["angle"]["N"]),
+                )
+            )
+
+        return cls(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=word_id,
+            from_label=item["from_label"]["S"],
+            from_position=from_position,
+            spatial_relationships=spatial_relationships,
+            timestamp_added=item["timestamp_added"]["S"],
+            analysis_version=item["analysis_version"]["S"],
+        )
+
 
 def item_to_receipt_word_label_spatial_analysis(
     item: Dict[str, Any],
@@ -313,70 +398,4 @@ def item_to_receipt_word_label_spatial_analysis(
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "from_label",
-        "from_position",
-        "spatial_relationships",
-        "timestamp_added",
-        "analysis_version",
-    }
-
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        raise ValueError(f"Invalid item format. Missing keys: {missing_keys}")
-
-    # Parse the SK to extract identifiers
-    sk = item["SK"]["S"]
-    parts = sk.split("#")
-    if (
-        len(parts) != 7
-        or parts[0] != "RECEIPT"
-        or parts[2] != "LINE"
-        or parts[4] != "WORD"
-        or parts[6] != "SPATIAL_ANALYSIS"
-    ):
-        raise ValueError(f"Invalid SK format: {sk}")
-
-    receipt_id = int(parts[1])
-    line_id = int(parts[3])
-    word_id = int(parts[5])
-
-    # Parse the PK to extract image_id
-    pk = item["PK"]["S"]
-    if not pk.startswith("IMAGE#"):
-        raise ValueError(f"Invalid PK format: {pk}")
-    image_id = pk[6:]  # Remove "IMAGE#" prefix
-
-    # Parse from_position
-    from_position = {
-        "x": float(item["from_position"]["M"]["x"]["N"]),
-        "y": float(item["from_position"]["M"]["y"]["N"]),
-    }
-
-    # Parse spatial relationships
-    spatial_relationships = []
-    for rel_item in item["spatial_relationships"]["L"]:
-        rel_data = rel_item["M"]
-        spatial_relationships.append(
-            SpatialRelationship(
-                to_label=rel_data["to_label"]["S"],
-                to_line_id=int(rel_data["to_line_id"]["N"]),
-                to_word_id=int(rel_data["to_word_id"]["N"]),
-                distance=float(rel_data["distance"]["N"]),
-                angle=float(rel_data["angle"]["N"]),
-            )
-        )
-
-    return ReceiptWordLabelSpatialAnalysis(
-        image_id=image_id,
-        receipt_id=receipt_id,
-        line_id=line_id,
-        word_id=word_id,
-        from_label=item["from_label"]["S"],
-        from_position=from_position,
-        spatial_relationships=spatial_relationships,
-        timestamp_added=item["timestamp_added"]["S"],
-        analysis_version=item["analysis_version"]["S"],
-    )
+    return ReceiptWordLabelSpatialAnalysis.from_item(item)

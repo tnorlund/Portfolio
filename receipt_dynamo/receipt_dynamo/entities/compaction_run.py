@@ -58,6 +58,15 @@ class CompactionRun(DynamoDBEntity):
     updated_at: Optional[str | datetime]
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "lines_delta_prefix",
+        "words_delta_prefix",
+        "created_at",
+    }
+
     run_id: str
     image_id: str
     receipt_id: int
@@ -211,68 +220,95 @@ class CompactionRun(DynamoDBEntity):
             ")"
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "CompactionRun":
+        """Converts a DynamoDB item to a CompactionRun object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            CompactionRun: The CompactionRun object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        missing = DynamoDBEntity.validate_keys(item, cls.REQUIRED_KEYS)
+        if missing:
+            raise ValueError(f"CompactionRun item missing keys: {missing}")
+
+        try:
+            # Parse keys: PK=IMAGE#<image_id>,
+            # SK=RECEIPT#<id>#COMPACTION_RUN#<run_id>
+            pk = item["PK"]["S"]
+            if not pk.startswith("IMAGE#"):
+                raise ValueError(f"Invalid PK for CompactionRun: {pk}")
+            image_id = pk.split("#", 1)[1]
+
+            sk = item["SK"]["S"]
+            parts = sk.split("#")
+            if (
+                len(parts) < 4
+                or parts[0] != "RECEIPT"
+                or parts[2] != "COMPACTION_RUN"
+            ):
+                raise ValueError(f"Invalid SK for CompactionRun: {sk}")
+            try:
+                receipt_id = int(parts[1])
+            except ValueError as e:
+                raise ValueError(f"Invalid receipt_id in SK: {sk}") from e
+            run_id = parts[3]
+
+            def _get_s(name: str, default: str = "") -> str:
+                v = item.get(name)
+                if v and "S" in v:
+                    return v["S"]
+                return default
+
+            def _get_n(name: str, default: int = 0) -> int:
+                v = item.get(name)
+                if v and "N" in v:
+                    try:
+                        return int(v["N"])
+                    except (KeyError, ValueError):
+                        return default
+                return default
+
+            return cls(
+                run_id=run_id,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                lines_delta_prefix=_get_s("lines_delta_prefix"),
+                words_delta_prefix=_get_s("words_delta_prefix"),
+                lines_state=_get_s("lines_state", "PENDING"),
+                words_state=_get_s("words_state", "PENDING"),
+                lines_started_at=_get_s("lines_started_at") or None,
+                lines_finished_at=_get_s("lines_finished_at") or None,
+                words_started_at=_get_s("words_started_at") or None,
+                words_finished_at=_get_s("words_finished_at") or None,
+                lines_error=_get_s("lines_error"),
+                words_error=_get_s("words_error"),
+                lines_merged_vectors=_get_n("lines_merged_vectors", 0),
+                words_merged_vectors=_get_n("words_merged_vectors", 0),
+                created_at=_get_s("created_at"),
+                updated_at=_get_s("updated_at") or None,
+            )
+        except Exception as e:
+            raise ValueError(
+                f"Error converting item to CompactionRun: {e}"
+            ) from e
+
 
 def item_to_compaction_run(item: Dict[str, Any]) -> CompactionRun:
-    """Create a CompactionRun from a DynamoDB item."""
-    required = {
-        "PK",
-        "SK",
-        "TYPE",
-        "lines_delta_prefix",
-        "words_delta_prefix",
-        "created_at",
-    }
-    missing = DynamoDBEntity.validate_keys(item, required)
-    if missing:
-        raise ValueError(f"CompactionRun item missing keys: {missing}")
+    """Converts a DynamoDB item to a CompactionRun object.
 
-    # Parse keys: PK=IMAGE#<image_id>, SK=RECEIPT#<id>#COMPACTION_RUN#<run_id>
-    pk = item["PK"]["S"]
-    if not pk.startswith("IMAGE#"):
-        raise ValueError(f"Invalid PK for CompactionRun: {pk}")
-    image_id = pk.split("#", 1)[1]
+    Args:
+        item (dict): The DynamoDB item to convert.
 
-    sk = item["SK"]["S"]
-    parts = sk.split("#")
-    if len(parts) < 4 or parts[0] != "RECEIPT" or parts[2] != "COMPACTION_RUN":
-        raise ValueError(f"Invalid SK for CompactionRun: {sk}")
-    try:
-        receipt_id = int(parts[1])
-    except ValueError as e:
-        raise ValueError(f"Invalid receipt_id in SK: {sk}") from e
-    run_id = parts[3]
+    Returns:
+        CompactionRun: The CompactionRun object.
 
-    def _get_s(name: str, default: str = "") -> str:
-        v = item.get(name)
-        if v and "S" in v:
-            return v["S"]
-        return default
-
-    def _get_n(name: str, default: int = 0) -> int:
-        v = item.get(name)
-        if v and "N" in v:
-            try:
-                return int(v["N"])
-            except (KeyError, ValueError):
-                return default
-        return default
-
-    return CompactionRun(
-        run_id=run_id,
-        image_id=image_id,
-        receipt_id=receipt_id,
-        lines_delta_prefix=_get_s("lines_delta_prefix"),
-        words_delta_prefix=_get_s("words_delta_prefix"),
-        lines_state=_get_s("lines_state", "PENDING"),
-        words_state=_get_s("words_state", "PENDING"),
-        lines_started_at=_get_s("lines_started_at") or None,
-        lines_finished_at=_get_s("lines_finished_at") or None,
-        words_started_at=_get_s("words_started_at") or None,
-        words_finished_at=_get_s("words_finished_at") or None,
-        lines_error=_get_s("lines_error"),
-        words_error=_get_s("words_error"),
-        lines_merged_vectors=_get_n("lines_merged_vectors", 0),
-        words_merged_vectors=_get_n("words_merged_vectors", 0),
-        created_at=_get_s("created_at"),
-        updated_at=_get_s("updated_at") or None,
-    )
+    Raises:
+        ValueError: When the item format is invalid.
+    """
+    return CompactionRun.from_item(item)

@@ -33,6 +33,14 @@ class ReceiptField:
             added.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "words",
+        "reasoning",
+        "timestamp_added",
+    }
+
     field_type: str
     image_id: str
     receipt_id: int
@@ -195,6 +203,67 @@ class ReceiptField:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "ReceiptField":
+        """Converts a DynamoDB item to a ReceiptField object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            ReceiptField: The ReceiptField object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+        try:
+            # Parse SK to get image_id and receipt_id
+            sk_parts = item["SK"]["S"].split("#")
+            image_id = sk_parts[1]
+            receipt_id = int(sk_parts[3])
+
+            # Parse PK to get field_type
+            field_type = item["PK"]["S"].split("#")[1]
+
+            # Convert words from DynamoDB format to list of dicts
+            words = []
+            for word_item in item["words"]["L"]:
+                word_dict: Dict[str, Any] = {}
+                for key, value in word_item["M"].items():
+                    if isinstance(value, dict):
+                        if "S" in value:
+                            word_dict[key] = value["S"]
+                        elif "N" in value:
+                            word_dict[key] = int(value["N"])
+                        else:
+                            raise ValueError(
+                                f"Unsupported DynamoDB type in word field: "
+                                f"{value}"
+                            )
+                    else:
+                        word_dict[key] = value
+                words.append(word_dict)
+
+            return cls(
+                field_type=field_type,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                words=words,
+                reasoning=item["reasoning"]["S"],
+                timestamp_added=item["timestamp_added"]["S"],
+            )
+        except Exception as e:
+            raise ValueError(
+                f"Error converting item to ReceiptField: {e}"
+            ) from e
+
 
 def item_to_receipt_field(item: Dict[str, Any]) -> ReceiptField:
     """Converts a DynamoDB item to a ReceiptField object.
@@ -208,54 +277,4 @@ def item_to_receipt_field(item: Dict[str, Any]) -> ReceiptField:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "words",
-        "reasoning",
-        "timestamp_added",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-    try:
-        # Parse SK to get image_id and receipt_id
-        sk_parts = item["SK"]["S"].split("#")
-        image_id = sk_parts[1]
-        receipt_id = int(sk_parts[3])
-
-        # Parse PK to get field_type
-        field_type = item["PK"]["S"].split("#")[1]
-
-        # Convert words from DynamoDB format to list of dicts
-        words = []
-        for word_item in item["words"]["L"]:
-            word_dict: Dict[str, Any] = {}
-            for key, value in word_item["M"].items():
-                if isinstance(value, dict):
-                    if "S" in value:
-                        word_dict[key] = value["S"]
-                    elif "N" in value:
-                        word_dict[key] = int(value["N"])
-                    else:
-                        raise ValueError(
-                            f"Unsupported DynamoDB type in word field: {value}"
-                        )
-                else:
-                    word_dict[key] = value
-            words.append(word_dict)
-
-        return ReceiptField(
-            field_type=field_type,
-            image_id=image_id,
-            receipt_id=receipt_id,
-            words=words,
-            reasoning=item["reasoning"]["S"],
-            timestamp_added=item["timestamp_added"]["S"],
-        )
-    except Exception as e:
-        raise ValueError(f"Error converting item to ReceiptField: {e}") from e
+    return ReceiptField.from_item(item)

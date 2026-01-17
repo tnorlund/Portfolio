@@ -42,6 +42,17 @@ class ReceiptLineItemAnalysis:
             The timestamp when the analysis was last updated.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "items",
+        "reasoning",
+        "timestamp_added",
+        "version",
+        "total_found",
+    }
+
     image_id: str
     receipt_id: int
     timestamp_added: Union[datetime, str]
@@ -574,6 +585,104 @@ class ReceiptLineItemAnalysis:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "ReceiptLineItemAnalysis":
+        """Converts a DynamoDB item to a ReceiptLineItemAnalysis object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            ReceiptLineItemAnalysis:
+                The ReceiptLineItemAnalysis object
+                represented by the DynamoDB item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                "Invalid item format\nmissing keys: "
+                f"{missing_keys}\nadditional keys: {additional_keys}"
+            )
+        try:
+            # Extract primary identifiers
+            image_id = item["PK"]["S"].split("#")[1]
+            receipt_parts = item["SK"]["S"].split("#")
+            receipt_id = int(receipt_parts[1])
+
+            # Extract required fields
+            timestamp_added = item["timestamp_added"]["S"]
+            timestamp_updated = item.get("timestamp_updated", {}).get("S")
+            reasoning = item["reasoning"]["S"]
+            version = item["version"]["S"]
+            total_found = int(item["total_found"]["N"])
+
+            # Convert items from DynamoDB format
+            items = [
+                _convert_dynamo_to_item(item_dict)
+                for item_dict in item["items"]["L"]
+            ]
+
+            # Extract optional financial fields
+            subtotal = item.get("subtotal", {}).get("S")
+            tax = item.get("tax", {}).get("S")
+            total = item.get("total", {}).get("S")
+            fees = item.get("fees", {}).get("S")
+            discounts = item.get("discounts", {}).get("S")
+            tips = item.get("tips", {}).get("S")
+
+            # Extract discrepancies
+            discrepancies = [
+                discrepancy["S"]
+                for discrepancy in item.get("discrepancies", {}).get("L", [])
+            ]
+
+            # Extract metadata
+            metadata = (
+                _convert_dynamo_to_dict(item.get("metadata", {}).get("M", {}))
+                if "metadata" in item and item["metadata"].get("M")
+                else None
+            )
+
+            # Extract word_labels
+            word_labels: Optional[Dict[Tuple[int, int], Dict[str, Any]]] = None
+            if "word_labels" in item and item["word_labels"].get("M"):
+                word_labels = {}
+                word_labels_dynamo = item["word_labels"]["M"]
+                for key, value in word_labels_dynamo.items():
+                    line_id, word_id = map(int, key.split(":"))
+                    if word_labels is not None:  # Type guard for mypy
+                        word_labels[(line_id, word_id)] = _convert_dynamo_to_dict(
+                            value["M"]
+                        )
+
+            return cls(
+                image_id=image_id,
+                receipt_id=receipt_id,
+                timestamp_added=timestamp_added,
+                timestamp_updated=timestamp_updated,
+                items=items,
+                reasoning=reasoning,
+                version=version,
+                total_found=total_found,
+                subtotal=subtotal,
+                tax=tax,
+                total=total,
+                fees=fees,
+                discounts=discounts,
+                tips=tips,
+                discrepancies=discrepancies,
+                metadata=metadata,
+                word_labels=word_labels,
+            )
+        except KeyError as e:
+            raise ValueError(
+                f"Error converting item to ReceiptLineItemAnalysis: {e}"
+            ) from e
+
 
 def item_to_receipt_line_item_analysis(
     item: Dict[str, Any],
@@ -591,98 +700,7 @@ def item_to_receipt_line_item_analysis(
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "items",
-        "reasoning",
-        "timestamp_added",
-        "version",
-        "total_found",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            "Invalid item format\nmissing keys: "
-            f"{missing_keys}\nadditional keys: {additional_keys}"
-        )
-    try:
-        # Extract primary identifiers
-        image_id = item["PK"]["S"].split("#")[1]
-        receipt_parts = item["SK"]["S"].split("#")
-        receipt_id = int(receipt_parts[1])
-
-        # Extract required fields
-        timestamp_added = item["timestamp_added"]["S"]
-        timestamp_updated = item.get("timestamp_updated", {}).get("S")
-        reasoning = item["reasoning"]["S"]
-        version = item["version"]["S"]
-        total_found = int(item["total_found"]["N"])
-
-        # Convert items from DynamoDB format
-        items = [
-            _convert_dynamo_to_item(item_dict)
-            for item_dict in item["items"]["L"]
-        ]
-
-        # Extract optional financial fields
-        subtotal = item.get("subtotal", {}).get("S")
-        tax = item.get("tax", {}).get("S")
-        total = item.get("total", {}).get("S")
-        fees = item.get("fees", {}).get("S")
-        discounts = item.get("discounts", {}).get("S")
-        tips = item.get("tips", {}).get("S")
-
-        # Extract discrepancies
-        discrepancies = [
-            discrepancy["S"]
-            for discrepancy in item.get("discrepancies", {}).get("L", [])
-        ]
-
-        # Extract metadata
-        metadata = (
-            _convert_dynamo_to_dict(item.get("metadata", {}).get("M", {}))
-            if "metadata" in item and item["metadata"].get("M")
-            else None
-        )
-
-        # Extract word_labels
-        word_labels: Optional[Dict[Tuple[int, int], Dict[str, Any]]] = None
-        if "word_labels" in item and item["word_labels"].get("M"):
-            word_labels = {}
-            word_labels_dynamo = item["word_labels"]["M"]
-            for key, value in word_labels_dynamo.items():
-                line_id, word_id = map(int, key.split(":"))
-                if word_labels is not None:  # Type guard for mypy
-                    word_labels[(line_id, word_id)] = _convert_dynamo_to_dict(
-                        value["M"]
-                    )
-
-        return ReceiptLineItemAnalysis(
-            image_id=image_id,
-            receipt_id=receipt_id,
-            timestamp_added=timestamp_added,
-            timestamp_updated=timestamp_updated,
-            items=items,
-            reasoning=reasoning,
-            version=version,
-            total_found=total_found,
-            subtotal=subtotal,
-            tax=tax,
-            total=total,
-            fees=fees,
-            discounts=discounts,
-            tips=tips,
-            discrepancies=discrepancies,
-            metadata=metadata,
-            word_labels=word_labels,
-        )
-    except KeyError as e:
-        raise ValueError(
-            f"Error converting item to ReceiptLineItemAnalysis: {e}"
-        ) from e
+    return ReceiptLineItemAnalysis.from_item(item)
 
 
 def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:

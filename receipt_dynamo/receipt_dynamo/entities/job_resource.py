@@ -36,6 +36,19 @@ class JobResource:
             resource allocation.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "job_id",
+        "resource_id",
+        "instance_id",
+        "instance_type",
+        "resource_type",
+        "allocated_at",
+        "status",
+    }
+
     job_id: str
     resource_id: str
     instance_id: str
@@ -231,6 +244,65 @@ class JobResource:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "JobResource":
+        """Converts a DynamoDB item to a JobResource object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            JobResource: The JobResource object represented by the DynamoDB
+                item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+
+        try:
+            job_id = item["job_id"]["S"]
+            resource_id = item["resource_id"]["S"]
+            instance_id = item["instance_id"]["S"]
+            instance_type = item["instance_type"]["S"]
+            resource_type = item["resource_type"]["S"]
+            allocated_at = item["allocated_at"]["S"]
+            status = item["status"]["S"]
+
+            released_at = item.get("released_at", {}).get("S", None)
+            gpu_count = (
+                int(item["gpu_count"]["N"]) if "gpu_count" in item else None
+            )
+
+            resource_config = None
+            if "resource_config" in item:
+                resource_config = parse_dynamodb_map(
+                    item["resource_config"]["M"]
+                )
+
+            return cls(
+                job_id=job_id,
+                resource_id=resource_id,
+                instance_id=instance_id,
+                instance_type=instance_type,
+                resource_type=resource_type,
+                allocated_at=allocated_at,
+                status=status,
+                gpu_count=gpu_count,
+                released_at=released_at,
+                resource_config=resource_config,
+            )
+        except (KeyError, ValueError) as e:
+            raise ValueError(
+                f"Error converting item to JobResource: {e}"
+            ) from e
+
 
 def item_to_job_resource(item: Dict[str, Any]) -> JobResource:
     """Converts a DynamoDB item to a JobResource object.
@@ -244,55 +316,4 @@ def item_to_job_resource(item: Dict[str, Any]) -> JobResource:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "job_id",
-        "resource_id",
-        "instance_id",
-        "instance_type",
-        "resource_type",
-        "allocated_at",
-        "status",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-
-    try:
-        job_id = item["job_id"]["S"]
-        resource_id = item["resource_id"]["S"]
-        instance_id = item["instance_id"]["S"]
-        instance_type = item["instance_type"]["S"]
-        resource_type = item["resource_type"]["S"]
-        allocated_at = item["allocated_at"]["S"]
-        status = item["status"]["S"]
-
-        released_at = item.get("released_at", {}).get("S", None)
-        gpu_count = (
-            int(item["gpu_count"]["N"]) if "gpu_count" in item else None
-        )
-
-        resource_config = None
-        if "resource_config" in item:
-            resource_config = parse_dynamodb_map(item["resource_config"]["M"])
-
-        return JobResource(
-            job_id=job_id,
-            resource_id=resource_id,
-            instance_id=instance_id,
-            instance_type=instance_type,
-            resource_type=resource_type,
-            allocated_at=allocated_at,
-            status=status,
-            gpu_count=gpu_count,
-            released_at=released_at,
-            resource_config=resource_config,
-        )
-    except (KeyError, ValueError) as e:
-        raise ValueError(f"Error converting item to JobResource: {e}") from e
+    return JobResource.from_item(item)

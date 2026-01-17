@@ -33,6 +33,13 @@ class ReceiptWordLabel:
             added.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "reasoning",
+        "timestamp_added",
+    }
+
     image_id: str
     receipt_id: int
     line_id: int
@@ -341,6 +348,78 @@ class ReceiptWordLabel:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "ReceiptWordLabel":
+        """Converts a DynamoDB item to a ReceiptWordLabel object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            ReceiptWordLabel: The ReceiptWordLabel object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                "Invalid item format\n"
+                f"missing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+        try:
+            sk_parts = item["SK"]["S"].split("#")
+            image_id = item["PK"]["S"].split("#")[1]
+            receipt_id = int(sk_parts[1])
+            line_id = int(sk_parts[3])
+            word_id = int(sk_parts[5])
+            label = sk_parts[7]
+            reasoning = (
+                item["reasoning"]["S"] if "S" in item["reasoning"] else None
+            )
+            timestamp_added = item["timestamp_added"]["S"]
+            validation_status = None
+            if "validation_status" in item:
+                # Check if the value is NULL (None in DynamoDB)
+                if "NULL" in item["validation_status"]:
+                    validation_status = None
+                # Check if it's a string value
+                elif "S" in item["validation_status"]:
+                    validation_status = item["validation_status"]["S"]
+
+            label_consolidated_from = None
+            if "label_consolidated_from" in item:
+                if "NULL" in item["label_consolidated_from"]:
+                    label_consolidated_from = None
+                elif "S" in item["label_consolidated_from"]:
+                    label_consolidated_from = item["label_consolidated_from"]["S"]
+
+            label_proposed_by = None
+            if "label_proposed_by" in item:
+                if "NULL" in item["label_proposed_by"]:
+                    label_proposed_by = None
+                elif "S" in item["label_proposed_by"]:
+                    label_proposed_by = item["label_proposed_by"]["S"]
+
+            return cls(
+                image_id=image_id,
+                receipt_id=receipt_id,
+                line_id=line_id,
+                word_id=word_id,
+                label=label,
+                reasoning=reasoning,
+                timestamp_added=timestamp_added,
+                validation_status=validation_status,
+                label_consolidated_from=label_consolidated_from,
+                label_proposed_by=label_proposed_by,
+            )
+        except Exception as e:
+            raise ValueError(
+                f"Error converting item to ReceiptWordLabel: {e}"
+            ) from e
+
 
 def item_to_receipt_word_label(item: Dict[str, Any]) -> ReceiptWordLabel:
     """Converts a DynamoDB item to a ReceiptWordLabel object.
@@ -354,67 +433,4 @@ def item_to_receipt_word_label(item: Dict[str, Any]) -> ReceiptWordLabel:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "reasoning",
-        "timestamp_added",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            "Invalid item format\n"
-            f"missing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-    try:
-        sk_parts = item["SK"]["S"].split("#")
-        image_id = item["PK"]["S"].split("#")[1]
-        receipt_id = int(sk_parts[1])
-        line_id = int(sk_parts[3])
-        word_id = int(sk_parts[5])
-        label = sk_parts[7]
-        reasoning = (
-            item["reasoning"]["S"] if "S" in item["reasoning"] else None
-        )
-        timestamp_added = item["timestamp_added"]["S"]
-        validation_status = None
-        if "validation_status" in item:
-            # Check if the value is NULL (None in DynamoDB)
-            if "NULL" in item["validation_status"]:
-                validation_status = None
-            # Check if it's a string value
-            elif "S" in item["validation_status"]:
-                validation_status = item["validation_status"]["S"]
-
-        label_consolidated_from = None
-        if "label_consolidated_from" in item:
-            if "NULL" in item["label_consolidated_from"]:
-                label_consolidated_from = None
-            elif "S" in item["label_consolidated_from"]:
-                label_consolidated_from = item["label_consolidated_from"]["S"]
-
-        label_proposed_by = None
-        if "label_proposed_by" in item:
-            if "NULL" in item["label_proposed_by"]:
-                label_proposed_by = None
-            elif "S" in item["label_proposed_by"]:
-                label_proposed_by = item["label_proposed_by"]["S"]
-
-        return ReceiptWordLabel(
-            image_id=image_id,
-            receipt_id=receipt_id,
-            line_id=line_id,
-            word_id=word_id,
-            label=label,
-            reasoning=reasoning,
-            timestamp_added=timestamp_added,
-            validation_status=validation_status,
-            label_consolidated_from=label_consolidated_from,
-            label_proposed_by=label_proposed_by,
-        )
-    except Exception as e:
-        raise ValueError(
-            f"Error converting item to ReceiptWordLabel: {e}"
-        ) from e
+    return ReceiptWordLabel.from_item(item)

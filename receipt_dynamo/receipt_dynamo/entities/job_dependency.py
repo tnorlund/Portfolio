@@ -27,6 +27,16 @@ class JobDependency:
         created_at (str): The timestamp when the dependency was created.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "dependent_job_id",
+        "dependency_job_id",
+        "type",
+        "created_at",
+    }
+
     dependent_job_id: str
     dependency_job_id: str
     type: str
@@ -177,6 +187,52 @@ class JobDependency:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "JobDependency":
+        """Converts a DynamoDB item to a JobDependency object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            JobDependency: The JobDependency object represented by the
+                DynamoDB item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            message = (
+                "Invalid item format\n"
+                f"missing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+            raise ValueError(message)
+
+        try:
+            # Extract required fields
+            dependent_job_id = item["dependent_job_id"]["S"]
+            dependency_job_id = item["dependency_job_id"]["S"]
+            dependency_type = item["type"]["S"]
+            created_at = item["created_at"]["S"]
+
+            # Extract optional fields
+            condition = item.get("condition", {}).get("S")
+
+            return cls(
+                dependent_job_id=dependent_job_id,
+                dependency_job_id=dependency_job_id,
+                type=dependency_type,
+                created_at=created_at,
+                condition=condition,
+            )
+        except KeyError as e:
+            raise ValueError(
+                f"Error converting item to JobDependency: {e}"
+            ) from e
+
 
 def item_to_job_dependency(item: Dict[str, Any]) -> JobDependency:
     """Converts a DynamoDB item to a JobDependency object.
@@ -191,41 +247,4 @@ def item_to_job_dependency(item: Dict[str, Any]) -> JobDependency:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "dependent_job_id",
-        "dependency_job_id",
-        "type",
-        "created_at",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        message = (
-            "Invalid item format\n"
-            f"missing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-        raise ValueError(message)
-
-    try:
-        # Extract required fields
-        dependent_job_id = item["dependent_job_id"]["S"]
-        dependency_job_id = item["dependency_job_id"]["S"]
-        dependency_type = item["type"]["S"]
-        created_at = item["created_at"]["S"]
-
-        # Extract optional fields
-        condition = item.get("condition", {}).get("S")
-
-        return JobDependency(
-            dependent_job_id=dependent_job_id,
-            dependency_job_id=dependency_job_id,
-            type=dependency_type,
-            created_at=created_at,
-            condition=condition,
-        )
-    except KeyError as e:
-        raise ValueError(f"Error converting item to JobDependency: {e}") from e
+    return JobDependency.from_item(item)

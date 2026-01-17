@@ -122,6 +122,16 @@ class ReceiptPlace(SerializationMixin):
         places_api_version (str): API version ("v1" or "legacy").
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "image_id",
+        "receipt_id",
+        "place_id",
+        "merchant_name",
+    }
+
     # === Identity (Required) ===
     image_id: str
     receipt_id: int
@@ -419,103 +429,118 @@ class ReceiptPlace(SerializationMixin):
             f")"
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "ReceiptPlace":
+        """Converts a DynamoDB item to a ReceiptPlace object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            ReceiptPlace: The ReceiptPlace object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        # First, deserialize from DynamoDB JSON format to Python types
+        deserializer = TypeDeserializer()
+        deserialized = {k: deserializer.deserialize(v) for k, v in item.items()}
+
+        # Filter out computed fields
+        filtered_item = {
+            k: v for k, v in deserialized.items() if k not in COMPUTED_FIELDS
+        }
+
+        # Parse complex fields that were JSON-serialized
+        if "address_components" in filtered_item and isinstance(
+            filtered_item["address_components"], str
+        ):
+            try:
+                filtered_item["address_components"] = json.loads(
+                    filtered_item["address_components"]
+                )
+            except (json.JSONDecodeError, TypeError):
+                filtered_item["address_components"] = {}
+
+        if "hours_data" in filtered_item and isinstance(
+            filtered_item["hours_data"], str
+        ):
+            try:
+                filtered_item["hours_data"] = json.loads(
+                    filtered_item["hours_data"]
+                )
+            except (json.JSONDecodeError, TypeError):
+                filtered_item["hours_data"] = {}
+
+        # Parse timestamp if it's a string
+        if "timestamp" in filtered_item and isinstance(
+            filtered_item["timestamp"], str
+        ):
+            filtered_item["timestamp"] = datetime.fromisoformat(
+                filtered_item["timestamp"]
+            )
+
+        # Convert receipt_id: boto3 deserializes numbers as Decimal, need int
+        if "receipt_id" in filtered_item:
+            if isinstance(filtered_item["receipt_id"], Decimal):
+                filtered_item["receipt_id"] = int(filtered_item["receipt_id"])
+            elif isinstance(filtered_item["receipt_id"], str):
+                try:
+                    filtered_item["receipt_id"] = int(
+                        filtered_item["receipt_id"]
+                    )
+                except (ValueError, TypeError):
+                    pass
+
+        # Handle None values for string fields that should be empty strings
+        for attr_name in [
+            "merchant_category",
+            "formatted_address",
+            "short_address",
+            "phone_number",
+            "phone_intl",
+            "website",
+            "maps_url",
+            "business_status",
+            "plus_code",
+            "validated_by",
+            "reasoning",
+            "places_api_version",
+        ]:
+            if attr_name in filtered_item and filtered_item[attr_name] is None:
+                filtered_item[attr_name] = ""
+
+        # Convert Decimal numbers to float for floating point fields
+        for attr_name in [
+            "latitude",
+            "longitude",
+            "confidence",
+            "viewport_ne_lat",
+            "viewport_ne_lng",
+            "viewport_sw_lat",
+            "viewport_sw_lng",
+        ]:
+            if attr_name in filtered_item:
+                value = filtered_item[attr_name]
+                if isinstance(value, (str, int, Decimal)):
+                    try:
+                        filtered_item[attr_name] = float(value)
+                    except (ValueError, TypeError):
+                        filtered_item.pop(attr_name, None)
+
+        return cls(**filtered_item)
+
 
 def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
-    """
-    Create ReceiptPlace from DynamoDB item.
-
-    Handles low-level client format with type annotations.
-
-    Handles DynamoDB JSON format items like {'S': 'value'}, {'N': '123'}, etc.
+    """Converts a DynamoDB item to a ReceiptPlace object.
 
     Args:
-        item: Dict from DynamoDB in low-level client format
+        item (dict): The DynamoDB item to convert.
 
     Returns:
-        ReceiptPlace instance
+        ReceiptPlace: The ReceiptPlace object.
+
+    Raises:
+        ValueError: When the item format is invalid.
     """
-    # First, deserialize from DynamoDB JSON format to Python types
-    deserializer = TypeDeserializer()
-    deserialized = {k: deserializer.deserialize(v) for k, v in item.items()}
-
-    # Filter out computed fields
-    filtered_item = {
-        k: v for k, v in deserialized.items() if k not in COMPUTED_FIELDS
-    }
-
-    # Parse complex fields that were JSON-serialized
-    if "address_components" in filtered_item and isinstance(
-        filtered_item["address_components"], str
-    ):
-        try:
-            filtered_item["address_components"] = json.loads(
-                filtered_item["address_components"]
-            )
-        except (json.JSONDecodeError, TypeError):
-            filtered_item["address_components"] = {}
-
-    if "hours_data" in filtered_item and isinstance(
-        filtered_item["hours_data"], str
-    ):
-        try:
-            filtered_item["hours_data"] = json.loads(
-                filtered_item["hours_data"]
-            )
-        except (json.JSONDecodeError, TypeError):
-            filtered_item["hours_data"] = {}
-
-    # Parse timestamp if it's a string
-    if "timestamp" in filtered_item and isinstance(
-        filtered_item["timestamp"], str
-    ):
-        filtered_item["timestamp"] = datetime.fromisoformat(
-            filtered_item["timestamp"]
-        )
-
-    # Convert receipt_id: boto3 deserializes numbers as Decimal, need int
-    if "receipt_id" in filtered_item:
-        if isinstance(filtered_item["receipt_id"], Decimal):
-            filtered_item["receipt_id"] = int(filtered_item["receipt_id"])
-        elif isinstance(filtered_item["receipt_id"], str):
-            try:
-                filtered_item["receipt_id"] = int(filtered_item["receipt_id"])
-            except (ValueError, TypeError):
-                pass
-
-    # Handle None values for string fields that should be empty strings
-    for attr_name in [
-        "merchant_category",
-        "formatted_address",
-        "short_address",
-        "phone_number",
-        "phone_intl",
-        "website",
-        "maps_url",
-        "business_status",
-        "plus_code",
-        "validated_by",
-        "reasoning",
-        "places_api_version",
-    ]:
-        if attr_name in filtered_item and filtered_item[attr_name] is None:
-            filtered_item[attr_name] = ""
-
-    # Convert Decimal numbers to float for floating point fields
-    for attr_name in [
-        "latitude",
-        "longitude",
-        "confidence",
-        "viewport_ne_lat",
-        "viewport_ne_lng",
-        "viewport_sw_lat",
-        "viewport_sw_lng",
-    ]:
-        if attr_name in filtered_item:
-            value = filtered_item[attr_name]
-            if isinstance(value, (str, int, Decimal)):
-                try:
-                    filtered_item[attr_name] = float(value)
-                except (ValueError, TypeError):
-                    filtered_item.pop(attr_name, None)
-
-    return ReceiptPlace(**filtered_item)
+    return ReceiptPlace.from_item(item)

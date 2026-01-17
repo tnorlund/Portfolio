@@ -440,6 +440,13 @@ class ReceiptStructureAnalysis:
     in a receipt and the reasoning behind the analysis.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "sections",
+        "overall_reasoning",
+    }
+
     def __init__(
         self,
         receipt_id: int,
@@ -912,6 +919,318 @@ class ReceiptStructureAnalysis:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "ReceiptStructureAnalysis":
+        """Convert a DynamoDB item to a ReceiptStructureAnalysis.
+
+        Args:
+            item: The DynamoDB item
+
+        Returns:
+            ReceiptStructureAnalysis: The structure analysis object
+
+        Raises:
+            ValueError: If required data is missing or invalid
+        """
+        if not item:
+            raise ValueError(
+                "Cannot create ReceiptStructureAnalysis from empty item"
+            )
+
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            raise ValueError(f"Item is missing required keys: {missing_keys}")
+
+        receipt_id = (
+            item["SK"].get("S", "").split("#")[1] if "SK" in item else None
+        )
+        if receipt_id is None:
+            raise ValueError(
+                "receipt_id is required but was not found in item"
+            )
+
+        image_id = (
+            item["PK"].get("S", "").split("#")[1] if "PK" in item else None
+        )
+        if image_id is None:
+            raise ValueError("image_id is required but was not found in item")
+
+        # Extract sections (as list of dicts converted to ReceiptSection)
+        sections = []
+        sections_attr = item.get("sections", {"L": []})
+        sections_list = (
+            sections_attr.get("L", [])
+            if isinstance(sections_attr, dict)
+            else sections_attr
+        )
+
+        for section_dict in sections_list:
+            try:
+                # Extract the section data from the DynamoDB Map format
+                if isinstance(section_dict, dict) and "M" in section_dict:
+                    section_data: Dict[str, Any] = {}
+                    section_map = section_dict["M"]
+
+                    # Extract basic section properties
+                    section_data["name"] = section_map.get("name", {}).get(
+                        "S", ""
+                    )
+
+                    # Extract line_ids
+                    line_ids = []
+                    line_ids_attr = section_map.get("line_ids", {}).get("L", [])
+                    for line_id in line_ids_attr:
+                        if isinstance(line_id, dict) and "N" in line_id:
+                            line_ids.append(int(line_id["N"]))
+                    section_data["line_ids"] = line_ids
+
+                    # Extract reasoning
+                    section_data["reasoning"] = section_map.get(
+                        "reasoning", {}
+                    ).get("S", "")
+
+                    # Extract start_line and end_line
+                    start_line_attr = section_map.get("start_line", {}).get(
+                        "N", "0"
+                    )
+                    section_data["start_line"] = (
+                        int(start_line_attr) if start_line_attr else 0
+                    )
+
+                    end_line_attr = section_map.get("end_line", {}).get(
+                        "N", "0"
+                    )
+                    section_data["end_line"] = (
+                        int(end_line_attr) if end_line_attr else 0
+                    )
+
+                    # Extract and process spatial patterns
+                    spatial_patterns = []
+                    spatial_patterns_attr = section_map.get(
+                        "spatial_patterns", {}
+                    ).get("L", [])
+                    for sp in spatial_patterns_attr:
+                        if isinstance(sp, dict) and "M" in sp:
+                            sp_map = sp["M"]
+                            pattern_type = sp_map.get("pattern_type", {}).get(
+                                "S", ""
+                            )
+                            description = sp_map.get("description", {}).get(
+                                "S", ""
+                            )
+
+                            # Extract metadata
+                            sp_metadata: Dict[str, Any] = {}
+                            metadata_attr = sp_map.get("metadata", {}).get(
+                                "M", {}
+                            )
+                            for k, v in metadata_attr.items():
+                                sp_metadata[k] = v.get("S", "")
+
+                            spatial_patterns.append(
+                                {
+                                    "pattern_type": pattern_type,
+                                    "description": description,
+                                    "metadata": sp_metadata,
+                                }
+                            )
+                    section_data["spatial_patterns"] = spatial_patterns
+
+                    # Extract and process content patterns
+                    content_patterns = []
+                    content_patterns_attr = section_map.get(
+                        "content_patterns", {}
+                    ).get("L", [])
+                    for cp in content_patterns_attr:
+                        if isinstance(cp, dict) and "M" in cp:
+                            cp_map = cp["M"]
+                            pattern_type = cp_map.get("pattern_type", {}).get(
+                                "S", ""
+                            )
+                            description = cp_map.get("description", {}).get(
+                                "S", ""
+                            )
+
+                            # Extract examples
+                            examples = []
+                            examples_attr = cp_map.get("examples", {}).get(
+                                "L", []
+                            )
+                            for ex in examples_attr:
+                                if isinstance(ex, dict) and "S" in ex:
+                                    examples.append(ex["S"])
+
+                            # Extract metadata
+                            cp_metadata: Dict[str, Any] = {}
+                            metadata_attr = cp_map.get("metadata", {}).get(
+                                "M", {}
+                            )
+                            for k, v in metadata_attr.items():
+                                cp_metadata[k] = v.get("S", "")
+
+                            content_patterns.append(
+                                {
+                                    "pattern_type": pattern_type,
+                                    "description": description,
+                                    "examples": examples,
+                                    "metadata": cp_metadata,
+                                }
+                            )
+                    section_data["content_patterns"] = content_patterns
+
+                    # Extract metadata
+                    section_metadata: Dict[str, Any] = {}
+                    metadata_attr = section_map.get("metadata", {}).get("M", {})
+                    for k, v in metadata_attr.items():
+                        section_metadata[k] = v.get("S", "")
+                    section_data["metadata"] = section_metadata
+
+                    sections.append(ReceiptSection.from_dict(section_data))
+                else:
+                    # If this is a plain dictionary (legacy format)
+                    sections.append(ReceiptSection.from_dict(section_dict))
+            except (TypeError, ValueError):
+                # Skip invalid sections and continue with others
+                continue
+
+        # Extract overall reasoning
+        overall_reasoning_attr = item.get("overall_reasoning", {"S": ""})
+        overall_reasoning = (
+            overall_reasoning_attr.get("S", "")
+            if isinstance(overall_reasoning_attr, dict)
+            else str(overall_reasoning_attr)
+        )
+
+        # Extract version
+        version_attr = item.get("version", {"S": "1.0.0"})
+        version = (
+            version_attr.get("S", "1.0.0")
+            if isinstance(version_attr, dict)
+            else str(version_attr)
+        )
+
+        # Extract timestamps
+        timestamp_added = None
+        timestamp_added_attr = item.get("timestamp_added")
+        if timestamp_added_attr:
+            timestamp_str = (
+                timestamp_added_attr.get("S", "")
+                if isinstance(timestamp_added_attr, dict)
+                else str(timestamp_added_attr)
+            )
+            try:
+                timestamp_added = datetime.fromisoformat(timestamp_str)
+            except (ValueError, TypeError):
+                timestamp_added = datetime.now()
+
+        timestamp_updated = None
+        timestamp_updated_attr = item.get("timestamp_updated")
+        if timestamp_updated_attr:
+            timestamp_str = (
+                timestamp_updated_attr.get("S", "")
+                if isinstance(timestamp_updated_attr, dict)
+                else str(timestamp_updated_attr)
+            )
+            try:
+                timestamp_updated = datetime.fromisoformat(timestamp_str)
+            except (ValueError, TypeError):
+                pass  # Leave as None if conversion fails
+
+        # Extract processing metrics
+        processing_metrics: Dict[str, Any] = {}
+        metrics_attr = item.get("processing_metrics")
+        if metrics_attr and isinstance(metrics_attr, dict):
+            if "M" in metrics_attr:
+                metrics_map = metrics_attr["M"]
+                for k, v in metrics_map.items():
+                    if isinstance(v, dict):
+                        if "N" in v:
+                            processing_metrics[k] = int(v["N"])
+                        elif "S" in v:
+                            processing_metrics[k] = v["S"]
+                        elif "L" in v:
+                            processing_metrics[k] = [
+                                li.get("S", "") for li in v["L"]
+                            ]
+                        elif "M" in v:
+                            processing_metrics[k] = {
+                                sub_k: (
+                                    int(sub_v.get("N", 0))
+                                    if "N" in sub_v
+                                    else sub_v.get("S", "")
+                                )
+                                for sub_k, sub_v in v["M"].items()
+                            }
+                    else:
+                        processing_metrics[k] = v
+            else:
+                processing_metrics = metrics_attr
+
+        # Extract source info
+        source_info: Dict[str, Any] = {}
+        source_info_attr = item.get("source_info")
+        if source_info_attr and isinstance(source_info_attr, dict):
+            if "M" in source_info_attr:
+                source_map = source_info_attr["M"]
+                for k, v in source_map.items():
+                    if isinstance(v, dict) and "S" in v:
+                        source_info[k] = v["S"]
+                    else:
+                        source_info[k] = str(v)
+            else:
+                source_info = source_info_attr
+
+        # Extract processing history
+        processing_history = []
+        history_attr = item.get("processing_history")
+        if history_attr and isinstance(history_attr, dict):
+            if "L" in history_attr:
+                for entry in history_attr["L"]:
+                    if isinstance(entry, dict) and "M" in entry:
+                        entry_map = entry["M"]
+                        entry_data = {
+                            "event": entry_map.get("event", {}).get("S", ""),
+                            "timestamp": entry_map.get("timestamp", {}).get(
+                                "S", ""
+                            ),
+                            "details": entry_map.get("details", {}).get(
+                                "S", ""
+                            ),
+                        }
+                        processing_history.append(entry_data)
+                    else:
+                        processing_history.append(entry)
+            else:
+                processing_history = history_attr
+
+        # Extract metadata
+        overall_metadata: Dict[str, Any] = {}
+        metadata_attr = item.get("metadata")
+        if metadata_attr and isinstance(metadata_attr, dict):
+            if "M" in metadata_attr:
+                meta_map = metadata_attr["M"]
+                for k, v in meta_map.items():
+                    if isinstance(v, dict) and "S" in v:
+                        overall_metadata[k] = v["S"]
+                    else:
+                        overall_metadata[k] = str(v)
+            else:
+                overall_metadata = metadata_attr
+
+        return cls(
+            receipt_id=receipt_id,
+            image_id=image_id,
+            sections=sections,
+            overall_reasoning=overall_reasoning,
+            version=version,
+            metadata=overall_metadata,
+            timestamp_added=timestamp_added,
+            timestamp_updated=timestamp_updated,
+            processing_metrics=processing_metrics,
+            source_info=source_info,
+            processing_history=processing_history,
+        )
+
 
 def item_to_receipt_structure_analysis(
     item: Dict[str, Any],
@@ -928,281 +1247,4 @@ def item_to_receipt_structure_analysis(
     Raises:
         ValueError: If required data is missing or invalid
     """
-    if not item:
-        raise ValueError(
-            "Cannot create ReceiptStructureAnalysis from empty item"
-        )
-
-    receipt_id = (
-        item["SK"].get("S", "").split("#")[1] if "SK" in item else None
-    )
-    if receipt_id is None:
-        raise ValueError("receipt_id is required but was not found in item")
-
-    image_id = item["PK"].get("S", "").split("#")[1] if "PK" in item else None
-    if image_id is None:
-        raise ValueError("image_id is required but was not found in item")
-
-    # Extract sections (as list of dicts converted to ReceiptSection objects)
-    sections = []
-    sections_attr = item.get("sections", {"L": []})
-    sections_list = (
-        sections_attr.get("L", [])
-        if isinstance(sections_attr, dict)
-        else sections_attr
-    )
-
-    for section_dict in sections_list:
-        try:
-            # Extract the section data from the DynamoDB Map format
-            if isinstance(section_dict, dict) and "M" in section_dict:
-                section_data: Dict[str, Any] = {}
-                section_map = section_dict["M"]
-
-                # Extract basic section properties
-                section_data["name"] = section_map.get("name", {}).get("S", "")
-
-                # Extract line_ids
-                line_ids = []
-                line_ids_attr = section_map.get("line_ids", {}).get("L", [])
-                for line_id in line_ids_attr:
-                    if isinstance(line_id, dict) and "N" in line_id:
-                        line_ids.append(int(line_id["N"]))
-                section_data["line_ids"] = line_ids
-
-                # Extract reasoning
-                section_data["reasoning"] = section_map.get(
-                    "reasoning", {}
-                ).get("S", "")
-
-                # Extract start_line and end_line
-                start_line_attr = section_map.get("start_line", {}).get(
-                    "N", "0"
-                )
-                section_data["start_line"] = (
-                    int(start_line_attr) if start_line_attr else 0
-                )
-
-                end_line_attr = section_map.get("end_line", {}).get("N", "0")
-                section_data["end_line"] = (
-                    int(end_line_attr) if end_line_attr else 0
-                )
-
-                # Extract and process spatial patterns
-                spatial_patterns = []
-                spatial_patterns_attr = section_map.get(
-                    "spatial_patterns", {}
-                ).get("L", [])
-                for sp in spatial_patterns_attr:
-                    if isinstance(sp, dict) and "M" in sp:
-                        sp_map = sp["M"]
-                        pattern_type = sp_map.get("pattern_type", {}).get(
-                            "S", ""
-                        )
-                        description = sp_map.get("description", {}).get(
-                            "S", ""
-                        )
-
-                        # Extract metadata
-                        sp_metadata: Dict[str, Any] = {}
-                        metadata_attr = sp_map.get("metadata", {}).get("M", {})
-                        for k, v in metadata_attr.items():
-                            sp_metadata[k] = v.get("S", "")
-
-                        spatial_patterns.append(
-                            {
-                                "pattern_type": pattern_type,
-                                "description": description,
-                                "metadata": sp_metadata,
-                            }
-                        )
-                section_data["spatial_patterns"] = spatial_patterns
-
-                # Extract and process content patterns
-                content_patterns = []
-                content_patterns_attr = section_map.get(
-                    "content_patterns", {}
-                ).get("L", [])
-                for cp in content_patterns_attr:
-                    if isinstance(cp, dict) and "M" in cp:
-                        cp_map = cp["M"]
-                        pattern_type = cp_map.get("pattern_type", {}).get(
-                            "S", ""
-                        )
-                        description = cp_map.get("description", {}).get(
-                            "S", ""
-                        )
-
-                        # Extract examples
-                        examples = []
-                        examples_attr = cp_map.get("examples", {}).get("L", [])
-                        for ex in examples_attr:
-                            if isinstance(ex, dict) and "S" in ex:
-                                examples.append(ex["S"])
-
-                        # Extract metadata
-                        cp_metadata: Dict[str, Any] = {}
-                        metadata_attr = cp_map.get("metadata", {}).get("M", {})
-                        for k, v in metadata_attr.items():
-                            cp_metadata[k] = v.get("S", "")
-
-                        content_patterns.append(
-                            {
-                                "pattern_type": pattern_type,
-                                "description": description,
-                                "examples": examples,
-                                "metadata": cp_metadata,
-                            }
-                        )
-                section_data["content_patterns"] = content_patterns
-
-                # Extract metadata
-                section_metadata: Dict[str, Any] = {}
-                metadata_attr = section_map.get("metadata", {}).get("M", {})
-                for k, v in metadata_attr.items():
-                    section_metadata[k] = v.get("S", "")
-                section_data["metadata"] = section_metadata
-
-                sections.append(ReceiptSection.from_dict(section_data))
-            else:
-                # If this is a plain dictionary (legacy format)
-                sections.append(ReceiptSection.from_dict(section_dict))
-        except (TypeError, ValueError):
-            # Skip invalid sections and continue with others
-            continue
-
-    # Extract overall reasoning
-    overall_reasoning_attr = item.get("overall_reasoning", {"S": ""})
-    overall_reasoning = (
-        overall_reasoning_attr.get("S", "")
-        if isinstance(overall_reasoning_attr, dict)
-        else str(overall_reasoning_attr)
-    )
-
-    # Extract version
-    version_attr = item.get("version", {"S": "1.0.0"})
-    version = (
-        version_attr.get("S", "1.0.0")
-        if isinstance(version_attr, dict)
-        else str(version_attr)
-    )
-
-    # Extract timestamps
-    timestamp_added = None
-    timestamp_added_attr = item.get("timestamp_added")
-    if timestamp_added_attr:
-        timestamp_str = (
-            timestamp_added_attr.get("S", "")
-            if isinstance(timestamp_added_attr, dict)
-            else str(timestamp_added_attr)
-        )
-        try:
-            timestamp_added = datetime.fromisoformat(timestamp_str)
-        except (ValueError, TypeError):
-            timestamp_added = datetime.now()
-
-    timestamp_updated = None
-    timestamp_updated_attr = item.get("timestamp_updated")
-    if timestamp_updated_attr:
-        timestamp_str = (
-            timestamp_updated_attr.get("S", "")
-            if isinstance(timestamp_updated_attr, dict)
-            else str(timestamp_updated_attr)
-        )
-        try:
-            timestamp_updated = datetime.fromisoformat(timestamp_str)
-        except (ValueError, TypeError):
-            pass  # Leave as None if conversion fails
-
-    # Extract processing metrics
-    processing_metrics: Dict[str, Any] = {}
-    metrics_attr = item.get("processing_metrics")
-    if metrics_attr and isinstance(metrics_attr, dict):
-        if "M" in metrics_attr:
-            metrics_map = metrics_attr["M"]
-            for k, v in metrics_map.items():
-                if isinstance(v, dict):
-                    if "N" in v:
-                        processing_metrics[k] = int(v["N"])
-                    elif "S" in v:
-                        processing_metrics[k] = v["S"]
-                    elif "L" in v:
-                        processing_metrics[k] = [
-                            item.get("S", "") for item in v["L"]
-                        ]
-                    elif "M" in v:
-                        processing_metrics[k] = {
-                            sub_k: (
-                                int(sub_v.get("N", 0))
-                                if "N" in sub_v
-                                else sub_v.get("S", "")
-                            )
-                            for sub_k, sub_v in v["M"].items()
-                        }
-                else:
-                    processing_metrics[k] = v
-        else:
-            processing_metrics = metrics_attr
-
-    # Extract source info
-    source_info: Dict[str, Any] = {}
-    source_info_attr = item.get("source_info")
-    if source_info_attr and isinstance(source_info_attr, dict):
-        if "M" in source_info_attr:
-            source_map = source_info_attr["M"]
-            for k, v in source_map.items():
-                if isinstance(v, dict) and "S" in v:
-                    source_info[k] = v["S"]
-                else:
-                    source_info[k] = str(v)
-        else:
-            source_info = source_info_attr
-
-    # Extract processing history
-    processing_history = []
-    history_attr = item.get("processing_history")
-    if history_attr and isinstance(history_attr, dict):
-        if "L" in history_attr:
-            for entry in history_attr["L"]:
-                if isinstance(entry, dict) and "M" in entry:
-                    entry_map = entry["M"]
-                    entry_data = {
-                        "event": entry_map.get("event", {}).get("S", ""),
-                        "timestamp": entry_map.get("timestamp", {}).get(
-                            "S", ""
-                        ),
-                        "details": entry_map.get("details", {}).get("S", ""),
-                    }
-                    processing_history.append(entry_data)
-                else:
-                    processing_history.append(entry)
-        else:
-            processing_history = history_attr
-
-    # Extract metadata
-    overall_metadata: Dict[str, Any] = {}
-    metadata_attr = item.get("metadata")
-    if metadata_attr and isinstance(metadata_attr, dict):
-        if "M" in metadata_attr:
-            meta_map = metadata_attr["M"]
-            for k, v in meta_map.items():
-                if isinstance(v, dict) and "S" in v:
-                    overall_metadata[k] = v["S"]
-                else:
-                    overall_metadata[k] = str(v)
-        else:
-            overall_metadata = metadata_attr
-
-    return ReceiptStructureAnalysis(
-        receipt_id=receipt_id,
-        image_id=image_id,
-        sections=sections,
-        overall_reasoning=overall_reasoning,
-        version=version,
-        metadata=overall_metadata,
-        timestamp_added=timestamp_added,
-        timestamp_updated=timestamp_updated,
-        processing_metrics=processing_metrics,
-        source_info=source_info,
-        processing_history=processing_history,
-    )
+    return ReceiptStructureAnalysis.from_item(item)

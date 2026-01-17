@@ -24,6 +24,14 @@ class JobLog:
         exception (str, optional): Exception details if applicable.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "log_level",
+        "message",
+    }
+
     job_id: str
     timestamp: str
     log_level: str
@@ -157,6 +165,53 @@ class JobLog:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "JobLog":
+        """Converts a DynamoDB item to a JobLog object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            JobLog: The JobLog object represented by the DynamoDB item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+
+        try:
+            # Parse job_id from the PK
+            job_id = item["PK"]["S"].split("#")[1]
+
+            # Parse timestamp from the SK
+            timestamp = item["SK"]["S"].split("#")[1]
+
+            # Extract required fields
+            log_level = item["log_level"]["S"]
+            message = item["message"]["S"]
+
+            # Extract optional fields
+            source = item.get("source", {}).get("S")
+            exception = item.get("exception", {}).get("S")
+
+            return cls(
+                job_id=job_id,
+                timestamp=timestamp,
+                log_level=log_level,
+                message=message,
+                source=source,
+                exception=exception,
+            )
+        except KeyError as e:
+            raise ValueError(f"Error converting item to JobLog: {e}") from e
+
 
 def item_to_job_log(item: Dict[str, Any]) -> JobLog:
     """Converts a DynamoDB item to a JobLog object.
@@ -170,43 +225,4 @@ def item_to_job_log(item: Dict[str, Any]) -> JobLog:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "log_level",
-        "message",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-
-    try:
-        # Parse job_id from the PK
-        job_id = item["PK"]["S"].split("#")[1]
-
-        # Parse timestamp from the SK
-        timestamp = item["SK"]["S"].split("#")[1]
-
-        # Extract required fields
-        log_level = item["log_level"]["S"]
-        message = item["message"]["S"]
-
-        # Extract optional fields
-        source = item.get("source", {}).get("S")
-        exception = item.get("exception", {}).get("S")
-
-        return JobLog(
-            job_id=job_id,
-            timestamp=timestamp,
-            log_level=log_level,
-            message=message,
-            source=source,
-            exception=exception,
-        )
-    except KeyError as e:
-        raise ValueError(f"Error converting item to JobLog: {e}") from e
+    return JobLog.from_item(item)

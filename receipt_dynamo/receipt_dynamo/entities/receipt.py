@@ -54,6 +54,20 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             CDN-hosted receipt image.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "width",
+        "height",
+        "timestamp_added",
+        "raw_s3_bucket",
+        "raw_s3_key",
+        "top_left",
+        "top_right",
+        "bottom_left",
+        "bottom_right",
+    }
+
     # Required fields
     image_id: str
     receipt_id: int
@@ -256,6 +270,57 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "Receipt":
+        """Converts a DynamoDB item to a Receipt object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            Receipt: The Receipt object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                "Invalid item format\n"
+                f"missing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+        try:
+            return cls(
+                image_id=item["PK"]["S"].split("#")[1],
+                receipt_id=int(item["SK"]["S"].split("#")[1]),
+                width=int(item["width"]["N"]),
+                height=int(item["height"]["N"]),
+                timestamp_added=item["timestamp_added"]["S"],
+                raw_s3_bucket=item["raw_s3_bucket"]["S"],
+                raw_s3_key=item["raw_s3_key"]["S"],
+                top_left={
+                    key: float(value["N"])
+                    for key, value in item["top_left"]["M"].items()
+                },
+                top_right={
+                    key: float(value["N"])
+                    for key, value in item["top_right"]["M"].items()
+                },
+                bottom_left={
+                    key: float(value["N"])
+                    for key, value in item["bottom_left"]["M"].items()
+                },
+                bottom_right={
+                    key: float(value["N"])
+                    for key, value in item["bottom_right"]["M"].items()
+                },
+                **cls._cdn_fields_from_item(item),
+            )
+        except Exception as e:
+            raise ValueError(f"Error converting item to Receipt: {e}") from e
+
 
 def item_to_receipt(item: Dict[str, Any]) -> Receipt:
     """Converts a DynamoDB item to a Receipt object.
@@ -269,140 +334,4 @@ def item_to_receipt(item: Dict[str, Any]) -> Receipt:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "width",
-        "height",
-        "timestamp_added",
-        "raw_s3_bucket",
-        "raw_s3_key",
-        "top_left",
-        "top_right",
-        "bottom_left",
-        "bottom_right",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            "Invalid item format\n"
-            f"missing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-    try:
-        return Receipt(
-            image_id=item["PK"]["S"].split("#")[1],
-            receipt_id=int(item["SK"]["S"].split("#")[1]),
-            width=int(item["width"]["N"]),
-            height=int(item["height"]["N"]),
-            timestamp_added=item["timestamp_added"]["S"],
-            raw_s3_bucket=item["raw_s3_bucket"]["S"],
-            raw_s3_key=item["raw_s3_key"]["S"],
-            top_left={
-                key: float(value["N"])
-                for key, value in item["top_left"]["M"].items()
-            },
-            top_right={
-                key: float(value["N"])
-                for key, value in item["top_right"]["M"].items()
-            },
-            bottom_left={
-                key: float(value["N"])
-                for key, value in item["bottom_left"]["M"].items()
-            },
-            bottom_right={
-                key: float(value["N"])
-                for key, value in item["bottom_right"]["M"].items()
-            },
-            sha256=(
-                item["sha256"]["S"]
-                if "sha256" in item and "S" in item["sha256"]
-                else None
-            ),
-            cdn_s3_bucket=(
-                item["cdn_s3_bucket"]["S"]
-                if "cdn_s3_bucket" in item and "S" in item["cdn_s3_bucket"]
-                else None
-            ),
-            cdn_s3_key=(
-                item["cdn_s3_key"]["S"]
-                if "cdn_s3_key" in item and "S" in item["cdn_s3_key"]
-                else None
-            ),
-            cdn_webp_s3_key=(
-                item["cdn_webp_s3_key"]["S"]
-                if (
-                    "cdn_webp_s3_key" in item
-                    and "S" in item["cdn_webp_s3_key"]
-                )
-                else None
-            ),
-            cdn_avif_s3_key=(
-                item["cdn_avif_s3_key"]["S"]
-                if (
-                    "cdn_avif_s3_key" in item
-                    and "S" in item["cdn_avif_s3_key"]
-                )
-                else None
-            ),
-            # Thumbnail versions
-            cdn_thumbnail_s3_key=(
-                item["cdn_thumbnail_s3_key"]["S"]
-                if "cdn_thumbnail_s3_key" in item
-                and "S" in item["cdn_thumbnail_s3_key"]
-                else None
-            ),
-            cdn_thumbnail_webp_s3_key=(
-                item["cdn_thumbnail_webp_s3_key"]["S"]
-                if "cdn_thumbnail_webp_s3_key" in item
-                and "S" in item["cdn_thumbnail_webp_s3_key"]
-                else None
-            ),
-            cdn_thumbnail_avif_s3_key=(
-                item["cdn_thumbnail_avif_s3_key"]["S"]
-                if "cdn_thumbnail_avif_s3_key" in item
-                and "S" in item["cdn_thumbnail_avif_s3_key"]
-                else None
-            ),
-            # Small versions
-            cdn_small_s3_key=(
-                item["cdn_small_s3_key"]["S"]
-                if "cdn_small_s3_key" in item
-                and "S" in item["cdn_small_s3_key"]
-                else None
-            ),
-            cdn_small_webp_s3_key=(
-                item["cdn_small_webp_s3_key"]["S"]
-                if "cdn_small_webp_s3_key" in item
-                and "S" in item["cdn_small_webp_s3_key"]
-                else None
-            ),
-            cdn_small_avif_s3_key=(
-                item["cdn_small_avif_s3_key"]["S"]
-                if "cdn_small_avif_s3_key" in item
-                and "S" in item["cdn_small_avif_s3_key"]
-                else None
-            ),
-            # Medium versions
-            cdn_medium_s3_key=(
-                item["cdn_medium_s3_key"]["S"]
-                if "cdn_medium_s3_key" in item
-                and "S" in item["cdn_medium_s3_key"]
-                else None
-            ),
-            cdn_medium_webp_s3_key=(
-                item["cdn_medium_webp_s3_key"]["S"]
-                if "cdn_medium_webp_s3_key" in item
-                and "S" in item["cdn_medium_webp_s3_key"]
-                else None
-            ),
-            cdn_medium_avif_s3_key=(
-                item["cdn_medium_avif_s3_key"]["S"]
-                if "cdn_medium_avif_s3_key" in item
-                and "S" in item["cdn_medium_avif_s3_key"]
-                else None
-            ),
-        )
-    except Exception as e:
-        raise ValueError(f"Error converting item to Receipt: {e}") from e
+    return Receipt.from_item(item)

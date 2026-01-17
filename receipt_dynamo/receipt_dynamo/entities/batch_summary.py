@@ -13,6 +13,17 @@ from receipt_dynamo.entities.util import (
 
 @dataclass(eq=True, unsafe_hash=False)
 class BatchSummary:
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "batch_type",
+        "openai_batch_id",
+        "submitted_at",
+        "status",
+        "result_file_id",
+        "receipt_refs",
+    }
+
     batch_id: str
     batch_type: str | BatchType
     openai_batch_id: str
@@ -140,6 +151,52 @@ class BatchSummary:
         )
 
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "BatchSummary":
+        """Converts a DynamoDB item to a BatchSummary object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            BatchSummary: The BatchSummary object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+        try:
+            batch_id = item["PK"]["S"].split("#")[1]
+            batch_type = item["batch_type"]["S"]
+            openai_batch_id = item["openai_batch_id"]["S"]
+            submitted_at = datetime.fromisoformat(item["submitted_at"]["S"])
+            status = item["status"]["S"]
+            result_file_id = item["result_file_id"]["S"]
+            receipt_refs = [
+                (ref["M"]["image_id"]["S"], int(ref["M"]["receipt_id"]["N"]))
+                for ref in item["receipt_refs"]["L"]
+            ]
+            return cls(
+                batch_id=batch_id,
+                batch_type=batch_type,
+                openai_batch_id=openai_batch_id,
+                submitted_at=submitted_at,
+                status=status,
+                result_file_id=result_file_id,
+                receipt_refs=receipt_refs,
+            )
+        except Exception as e:
+            raise ValueError(
+                f"Error converting item to BatchSummary: {e}"
+            ) from e
+
+
 def item_to_batch_summary(item: Dict[str, Any]) -> BatchSummary:
     """Converts a DynamoDB item to a BatchSummary object.
 
@@ -152,42 +209,4 @@ def item_to_batch_summary(item: Dict[str, Any]) -> BatchSummary:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "batch_type",
-        "openai_batch_id",
-        "submitted_at",
-        "status",
-        "result_file_id",
-        "receipt_refs",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-    try:
-        batch_id = item["PK"]["S"].split("#")[1]
-        batch_type = item["batch_type"]["S"]
-        openai_batch_id = item["openai_batch_id"]["S"]
-        submitted_at = datetime.fromisoformat(item["submitted_at"]["S"])
-        status = item["status"]["S"]
-        result_file_id = item["result_file_id"]["S"]
-        receipt_refs = [
-            (ref["M"]["image_id"]["S"], int(ref["M"]["receipt_id"]["N"]))
-            for ref in item["receipt_refs"]["L"]
-        ]
-        return BatchSummary(
-            batch_id=batch_id,
-            batch_type=batch_type,
-            openai_batch_id=openai_batch_id,
-            submitted_at=submitted_at,
-            status=status,
-            result_file_id=result_file_id,
-            receipt_refs=receipt_refs,
-        )
-    except Exception as e:
-        raise ValueError(f"Error converting item to BatchSummary: {e}") from e
+    return BatchSummary.from_item(item)

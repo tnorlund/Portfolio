@@ -22,6 +22,18 @@ class OCRJob:
     Represents an OCR job in DynamoDB.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "s3_bucket",
+        "s3_key",
+        "created_at",
+        "status",
+        "job_type",
+        "receipt_id",
+    }
+
     image_id: str
     job_id: str
     s3_bucket: str
@@ -157,9 +169,40 @@ class OCRJob:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "OCRJob":
+        """Converts a DynamoDB item to an OCRJob object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            OCRJob: The OCRJob object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        # OCRJob-specific extractors (in addition to common OCR extractors)
+        custom_extractors = {
+            **create_ocr_job_extractors(),
+            "job_type": EntityFactory.extract_string_field("job_type"),
+            "receipt_id": EntityFactory.extract_int_field("receipt_id"),
+        }
+
+        return EntityFactory.create_entity(
+            entity_class=cls,
+            item=item,
+            required_keys=cls.REQUIRED_KEYS,
+            key_parsers={
+                "PK": create_image_receipt_pk_parser(),
+                "SK": create_ocr_job_sk_parser(),
+            },
+            custom_extractors=custom_extractors,
+        )
+
 
 def item_to_ocr_job(item: Dict[str, Any]) -> OCRJob:
-    """Converts a DynamoDB item to a OCRJob object.
+    """Converts a DynamoDB item to an OCRJob object.
 
     Args:
         item (dict): The DynamoDB item to convert.
@@ -170,32 +213,4 @@ def item_to_ocr_job(item: Dict[str, Any]) -> OCRJob:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "s3_bucket",
-        "s3_key",
-        "created_at",
-        "status",
-        "job_type",
-        "receipt_id",
-    }
-
-    # OCRJob-specific extractors (in addition to common OCR extractors)
-    custom_extractors = {
-        **create_ocr_job_extractors(),
-        "job_type": EntityFactory.extract_string_field("job_type"),
-        "receipt_id": EntityFactory.extract_int_field("receipt_id"),
-    }
-
-    return EntityFactory.create_entity(
-        entity_class=OCRJob,
-        item=item,
-        required_keys=required_keys,
-        key_parsers={
-            "PK": create_image_receipt_pk_parser(),
-            "SK": create_ocr_job_sk_parser(),
-        },
-        custom_extractors=custom_extractors,
-    )
+    return OCRJob.from_item(item)

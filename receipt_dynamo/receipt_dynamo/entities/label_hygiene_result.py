@@ -7,6 +7,21 @@ from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 @dataclass(eq=True, unsafe_hash=False)
 class LabelHygieneResult:
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "alias",
+        "canonical_label",
+        "reasoning",
+        "gpt_agreed",
+        "source_batch_id",
+        "example_ids",
+        "image_id",
+        "receipt_id",
+        "timestamp",
+    }
+
     hygiene_id: str
     alias: str
     canonical_label: str
@@ -142,56 +157,65 @@ class LabelHygieneResult:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "LabelHygieneResult":
+        """Converts a DynamoDB item to a LabelHygieneResult object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            LabelHygieneResult: The LabelHygieneResult object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+        try:
+            hygiene_id = item["PK"]["S"].split("#")[1]
+            alias = item["alias"]["S"]
+            canonical_label = item["canonical_label"]["S"]
+            reasoning = item["reasoning"]["S"]
+            gpt_agreed = item["gpt_agreed"]["BOOL"]
+            source_batch_id = item["source_batch_id"]["S"]
+            example_ids = item["example_ids"]["SS"]
+            image_id = item["image_id"]["S"]
+            receipt_id = int(item["receipt_id"]["N"])
+            timestamp = datetime.fromisoformat(item["timestamp"]["S"])
+            return cls(
+                hygiene_id,
+                alias,
+                canonical_label,
+                reasoning,
+                gpt_agreed,
+                source_batch_id,
+                example_ids,
+                timestamp,
+                image_id,
+                receipt_id,
+            )
+        except Exception as e:
+            raise ValueError(
+                f"Error converting item to LabelHygieneResult: {e}"
+            ) from e
+
 
 def item_to_label_hygiene_result(item: Dict[str, Any]) -> LabelHygieneResult:
+    """Converts a DynamoDB item to a LabelHygieneResult object.
+
+    Args:
+        item (dict): The DynamoDB item to convert.
+
+    Returns:
+        LabelHygieneResult: The LabelHygieneResult object.
+
+    Raises:
+        ValueError: When the item format is invalid.
     """
-    Converts an item from DynamoDB to a LabelHygieneResult object.
-    """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "alias",
-        "canonical_label",
-        "reasoning",
-        "gpt_agreed",
-        "source_batch_id",
-        "example_ids",
-        "image_id",  # Added image_id to required keys
-        "receipt_id",  # Added receipt_id to required keys
-        "timestamp",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-    try:
-        hygiene_id = item["PK"]["S"].split("#")[1]
-        alias = item["alias"]["S"]
-        canonical_label = item["canonical_label"]["S"]
-        reasoning = item["reasoning"]["S"]
-        gpt_agreed = item["gpt_agreed"]["BOOL"]
-        source_batch_id = item["source_batch_id"]["S"]
-        example_ids = item["example_ids"]["SS"]
-        image_id = item["image_id"]["S"]
-        receipt_id = int(item["receipt_id"]["N"])
-        timestamp = datetime.fromisoformat(item["timestamp"]["S"])
-        return LabelHygieneResult(
-            hygiene_id,
-            alias,
-            canonical_label,
-            reasoning,
-            gpt_agreed,
-            source_batch_id,
-            example_ids,
-            timestamp,
-            image_id,  # Pass image_id to constructor
-            receipt_id,  # Pass receipt_id to constructor
-        )
-    except Exception as e:
-        raise ValueError(
-            f"Error converting item to LabelHygieneResult: {e}"
-        ) from e
+    return LabelHygieneResult.from_item(item)

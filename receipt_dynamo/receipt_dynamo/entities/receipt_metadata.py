@@ -64,6 +64,15 @@ class ReceiptMetadata(SerializationMixin):
             representative business in the cluster.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "place_id",
+        "merchant_name",
+        "timestamp",
+    }
+
     image_id: str
     receipt_id: int
     place_id: str
@@ -438,61 +447,79 @@ class ReceiptMetadata(SerializationMixin):
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "ReceiptMetadata":
+        """Converts a DynamoDB item to a ReceiptMetadata object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            ReceiptMetadata: The ReceiptMetadata object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        # Type-safe extractors
+        custom_extractors = {
+            "place_id": EntityFactory.extract_string_field("place_id", ""),
+            "merchant_name": EntityFactory.extract_string_field(
+                "merchant_name", ""
+            ),
+            "matched_fields": EntityFactory.extract_string_list_field(
+                "matched_fields"
+            ),
+            "timestamp": EntityFactory.extract_datetime_field("timestamp"),
+            "merchant_category": EntityFactory.extract_string_field(
+                "merchant_category", ""
+            ),
+            "address": EntityFactory.extract_string_field("address", ""),
+            "phone_number": EntityFactory.extract_string_field(
+                "phone_number", ""
+            ),
+            "validated_by": EntityFactory.extract_string_field(
+                "validated_by", ""
+            ),
+            "reasoning": EntityFactory.extract_string_field("reasoning", ""),
+            "canonical_place_id": EntityFactory.extract_string_field(
+                "canonical_place_id", ""
+            ),
+            "canonical_merchant_name": EntityFactory.extract_string_field(
+                "canonical_merchant_name", ""
+            ),
+            "canonical_address": EntityFactory.extract_string_field(
+                "canonical_address", ""
+            ),
+            "canonical_phone_number": EntityFactory.extract_string_field(
+                "canonical_phone_number", ""
+            ),
+            "validation_status": EntityFactory.extract_string_field(
+                "validation_status", ""
+            ),
+        }
+
+        return EntityFactory.create_entity(
+            entity_class=cls,
+            item=item,
+            required_keys=cls.REQUIRED_KEYS,
+            key_parsers={
+                "PK": create_image_receipt_pk_parser(),
+                "SK": create_image_receipt_sk_parser(),
+            },
+            custom_extractors=custom_extractors,
+        )
+
 
 def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
-    """Create ReceiptMetadata from DynamoDB item using EntityFactory."""
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "place_id",
-        "merchant_name",
-        "timestamp",
-    }
+    """Converts a DynamoDB item to a ReceiptMetadata object.
 
-    # Type-safe extractors
-    custom_extractors = {
-        "place_id": EntityFactory.extract_string_field(
-            "place_id", ""
-        ),  # Default to empty string if missing/NULL
-        "merchant_name": EntityFactory.extract_string_field(
-            "merchant_name", ""
-        ),  # Default to empty string if missing/NULL
-        "matched_fields": EntityFactory.extract_string_list_field(
-            "matched_fields"
-        ),
-        "timestamp": EntityFactory.extract_datetime_field("timestamp"),
-        "merchant_category": EntityFactory.extract_string_field(
-            "merchant_category", ""
-        ),
-        "address": EntityFactory.extract_string_field("address", ""),
-        "phone_number": EntityFactory.extract_string_field("phone_number", ""),
-        "validated_by": EntityFactory.extract_string_field("validated_by", ""),
-        "reasoning": EntityFactory.extract_string_field("reasoning", ""),
-        "canonical_place_id": EntityFactory.extract_string_field(
-            "canonical_place_id", ""
-        ),
-        "canonical_merchant_name": EntityFactory.extract_string_field(
-            "canonical_merchant_name", ""
-        ),
-        "canonical_address": EntityFactory.extract_string_field(
-            "canonical_address", ""
-        ),
-        "canonical_phone_number": EntityFactory.extract_string_field(
-            "canonical_phone_number", ""
-        ),
-        "validation_status": EntityFactory.extract_string_field(
-            "validation_status", ""
-        ),  # Default to empty string if missing/NULL
-    }
+    Args:
+        item (dict): The DynamoDB item to convert.
 
-    return EntityFactory.create_entity(
-        entity_class=ReceiptMetadata,
-        item=item,
-        required_keys=required_keys,
-        key_parsers={
-            "PK": create_image_receipt_pk_parser(),
-            "SK": create_image_receipt_sk_parser(),
-        },
-        custom_extractors=custom_extractors,
-    )
+    Returns:
+        ReceiptMetadata: The ReceiptMetadata object.
+
+    Raises:
+        ValueError: When the item format is invalid.
+    """
+    return ReceiptMetadata.from_item(item)

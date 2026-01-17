@@ -28,6 +28,14 @@ class JobStatus:
         instance_id (str): The ID of the instance that updated the status.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "status",
+        "updated_at",
+    }
+
     job_id: str
     status: str
     updated_at: str
@@ -180,6 +188,61 @@ class JobStatus:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "JobStatus":
+        """Converts a DynamoDB item to a JobStatus object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            JobStatus: The JobStatus object represented by the DynamoDB item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+
+        try:
+            # Parse job_id from the PK
+            job_id = item["PK"]["S"].split("#")[1]
+
+            # Extract basic fields
+            status = item["status"]["S"]
+            updated_at = item["updated_at"]["S"]
+
+            # Parse optional fields
+            progress = (
+                float(item["progress"]["N"]) if "progress" in item else None
+            )
+            message = item["message"]["S"] if "message" in item else None
+            updated_by = (
+                item["updated_by"]["S"] if "updated_by" in item else None
+            )
+            instance_id = (
+                item["instance_id"]["S"] if "instance_id" in item else None
+            )
+
+            return cls(
+                job_id=job_id,
+                status=status,
+                updated_at=updated_at,
+                progress=progress,
+                message=message,
+                updated_by=updated_by,
+                instance_id=instance_id,
+            )
+        except KeyError as e:
+            raise ValueError(
+                f"Error converting item to JobStatus: {e}"
+            ) from e
+
 
 def item_to_job_status(item: Dict[str, Any]) -> JobStatus:
     """Converts a DynamoDB item to a JobStatus object.
@@ -193,45 +256,4 @@ def item_to_job_status(item: Dict[str, Any]) -> JobStatus:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "status",
-        "updated_at",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-
-    try:
-        # Parse job_id from the PK
-        job_id = item["PK"]["S"].split("#")[1]
-
-        # Extract basic fields
-        status = item["status"]["S"]
-        updated_at = item["updated_at"]["S"]
-
-        # Parse optional fields
-        progress = float(item["progress"]["N"]) if "progress" in item else None
-        message = item["message"]["S"] if "message" in item else None
-        updated_by = item["updated_by"]["S"] if "updated_by" in item else None
-        instance_id = (
-            item["instance_id"]["S"] if "instance_id" in item else None
-        )
-
-        return JobStatus(
-            job_id=job_id,
-            status=status,
-            updated_at=updated_at,
-            progress=progress,
-            message=message,
-            updated_by=updated_by,
-            instance_id=instance_id,
-        )
-    except KeyError as e:
-        raise ValueError(f"Error converting item to JobStatus: {e}") from e
+    return JobStatus.from_item(item)

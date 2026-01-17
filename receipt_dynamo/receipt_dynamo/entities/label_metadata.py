@@ -12,6 +12,14 @@ from receipt_dynamo.entities.util import (
 
 @dataclass(eq=True, unsafe_hash=False)
 class LabelMetadata:
+    REQUIRED_KEYS = {
+        "status",
+        "aliases",
+        "description",
+        "schema_version",
+        "last_updated",
+    }
+
     label: str
     status: str
     aliases: List[str]
@@ -122,53 +130,74 @@ class LabelMetadata:
     def __str__(self) -> str:
         return self.__repr__()
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "LabelMetadata":
+        """Converts a DynamoDB item to a LabelMetadata object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            LabelMetadata: The LabelMetadata object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+
+        try:
+            label = item["PK"]["S"].split("#")[1]
+            status = item["status"]["S"]
+            aliases = item["aliases"]["SS"]
+            description = item["description"]["S"]
+            schema_version = int(item["schema_version"]["N"])
+            last_updated = datetime.fromisoformat(item["last_updated"]["S"])
+            lt = item.get("label_target")
+            label_target = (
+                lt.get("S") if isinstance(lt, dict) and "S" in lt else None
+            )
+            receipt_refs = (
+                [
+                    (r["M"]["image_id"]["S"], int(r["M"]["receipt_id"]["N"]))
+                    for r in item["receipt_refs"]["L"]
+                ]
+                if "receipt_refs" in item
+                and item["receipt_refs"] != {"NULL": True}
+                else None
+            )
+
+            return cls(
+                label=label,
+                status=status,
+                aliases=aliases,
+                description=description,
+                schema_version=schema_version,
+                last_updated=last_updated,
+                label_target=label_target,
+                receipt_refs=receipt_refs,
+            )
+        except Exception as e:
+            raise ValueError(
+                f"Error converting item to LabelMetadata: {e}"
+            ) from e
+
 
 def item_to_label_metadata(item: Dict[str, Any]) -> LabelMetadata:
-    required_keys = {
-        "status",
-        "aliases",
-        "description",
-        "schema_version",
-        "last_updated",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
+    """Converts a DynamoDB item to a LabelMetadata object.
 
-    try:
-        label = item["PK"]["S"].split("#")[1]
-        status = item["status"]["S"]
-        aliases = item["aliases"]["SS"]
-        description = item["description"]["S"]
-        schema_version = int(item["schema_version"]["N"])
-        last_updated = datetime.fromisoformat(item["last_updated"]["S"])
-        lt = item.get("label_target")
-        label_target = (
-            lt.get("S") if isinstance(lt, dict) and "S" in lt else None
-        )
-        receipt_refs = (
-            [
-                (r["M"]["image_id"]["S"], int(r["M"]["receipt_id"]["N"]))
-                for r in item["receipt_refs"]["L"]
-            ]
-            if "receipt_refs" in item
-            and item["receipt_refs"] != {"NULL": True}
-            else None
-        )
+    Args:
+        item (dict): The DynamoDB item to convert.
 
-        return LabelMetadata(
-            label=label,
-            status=status,
-            aliases=aliases,
-            description=description,
-            schema_version=schema_version,
-            last_updated=last_updated,
-            label_target=label_target,
-            receipt_refs=receipt_refs,
-        )
-    except Exception as e:
-        raise ValueError(f"Error converting item to LabelMetadata: {e}") from e
+    Returns:
+        LabelMetadata: The LabelMetadata object.
+
+    Raises:
+        ValueError: When the item format is invalid.
+    """
+    return LabelMetadata.from_item(item)

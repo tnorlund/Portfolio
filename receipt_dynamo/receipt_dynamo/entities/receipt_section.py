@@ -33,6 +33,14 @@ class ReceiptSection:
         model_source (str): The model or pipeline that identified this section.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "section_type",
+        "line_ids",
+        "created_at",
+    }
+
     receipt_id: int
     image_id: str
     section_type: str | SectionType
@@ -137,50 +145,56 @@ class ReceiptSection:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "ReceiptSection":
+        """Converts a DynamoDB item to a ReceiptSection object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            ReceiptSection: The ReceiptSection object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - set(item.keys())
+            raise ValueError(f"Item is missing required keys: {missing_keys}")
+
+        try:
+            image_id = item["PK"]["S"].split("#")[1]
+            sk_parts = item["SK"]["S"].split("#")
+            receipt_id = int(sk_parts[1])
+
+            # Extract other attributes
+            section_type = item["section_type"]["S"]
+            line_ids = [int(li["N"]) for li in item["line_ids"]["L"]]
+            created_at = datetime.fromisoformat(item["created_at"]["S"])
+
+            return cls(
+                receipt_id=receipt_id,
+                image_id=image_id,
+                section_type=section_type,
+                line_ids=line_ids,
+                created_at=created_at,
+            )
+        except (KeyError, IndexError, ValueError) as e:
+            raise ValueError(
+                f"Error converting item to ReceiptSection: {e}"
+            ) from e
+
 
 def item_to_receipt_section(item: Dict[str, Any]) -> ReceiptSection:
-    """
-    Convert a DynamoDB item to a ReceiptSection object.
+    """Converts a DynamoDB item to a ReceiptSection object.
 
     Args:
         item (dict): The DynamoDB item to convert.
 
     Returns:
-        ReceiptSection: The converted ReceiptSection object.
+        ReceiptSection: The ReceiptSection object.
 
     Raises:
-        ValueError: If the item is not a valid ReceiptSection.
+        ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "section_type",
-        "line_ids",
-        "created_at",
-    }
-
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - set(item.keys())
-        raise ValueError(f"Item is missing required keys: {missing_keys}")
-
-    try:
-        image_id = item["PK"]["S"].split("#")[1]
-        sk_parts = item["SK"]["S"].split("#")
-        receipt_id = int(sk_parts[1])
-
-        # Extract other attributes
-        section_type = item["section_type"]["S"]
-        line_ids = [int(li["N"]) for li in item["line_ids"]["L"]]
-        created_at = datetime.fromisoformat(item["created_at"]["S"])
-
-        return ReceiptSection(
-            receipt_id=receipt_id,
-            image_id=image_id,
-            section_type=section_type,
-            line_ids=line_ids,
-            created_at=created_at,
-        )
-    except (KeyError, IndexError, ValueError) as e:
-        raise ValueError(
-            f"Error converting item to ReceiptSection: {e}"
-        ) from e
+    return ReceiptSection.from_item(item)

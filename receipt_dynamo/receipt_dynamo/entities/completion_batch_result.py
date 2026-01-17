@@ -17,6 +17,15 @@ class CompletionBatchResult:
     A completion batch result is a result of a completion batch.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "original_label",
+        "gpt_suggested_label",
+        "status",
+        "validated_at",
+    }
+
     batch_id: str
     image_id: str
     receipt_id: int
@@ -183,54 +192,70 @@ class CompletionBatchResult:
         )
 
 
+    @classmethod
+    def from_item(cls, item: Dict[str, Any]) -> "CompletionBatchResult":
+        """Converts a DynamoDB item to a CompletionBatchResult object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            CompletionBatchResult: The CompletionBatchResult object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+        try:
+            batch_id = item["PK"]["S"].split("#")[1]
+            sk_parts = item["SK"]["S"].split("#")
+            receipt_id = int(sk_parts[2])
+            line_id = int(sk_parts[4])
+            word_id = int(sk_parts[6])
+            original_label = sk_parts[8]
+            gpt_suggested_label = (
+                item["gpt_suggested_label"]["S"]
+                if item["gpt_suggested_label"]["S"]
+                else None
+            )
+            status = item["status"]["S"]
+            validated_at = datetime.fromisoformat(item["validated_at"]["S"])
+            image_id = item["GSI3PK"]["S"].split("#")[1]
+            return cls(
+                batch_id=batch_id,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                line_id=line_id,
+                word_id=word_id,
+                original_label=original_label,
+                gpt_suggested_label=gpt_suggested_label,
+                status=status,
+                validated_at=validated_at,
+            )
+        except Exception as e:
+            raise ValueError(
+                f"Error converting item to CompletionBatchResult: {e}"
+            ) from e
+
+
 def item_to_completion_batch_result(
     item: Dict[str, Any],
 ) -> CompletionBatchResult:
+    """Converts a DynamoDB item to a CompletionBatchResult object.
+
+    Args:
+        item (dict): The DynamoDB item to convert.
+
+    Returns:
+        CompletionBatchResult: The CompletionBatchResult object.
+
+    Raises:
+        ValueError: When the item format is invalid.
     """
-    Converts an item from DynamoDB to a CompletionBatchResult object.
-    """
-    required_keys = {
-        "PK",
-        "SK",
-        "original_label",
-        "gpt_suggested_label",
-        "status",
-        "validated_at",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-    try:
-        batch_id = item["PK"]["S"].split("#")[1]  # From PK="BATCH#{batch_id}"
-        sk_parts = item["SK"]["S"].split("#")
-        receipt_id = int(sk_parts[2])
-        line_id = int(sk_parts[4])
-        word_id = int(sk_parts[6])
-        original_label = sk_parts[8]
-        gpt_suggested_label = (
-            item["gpt_suggested_label"]["S"]
-            if item["gpt_suggested_label"]["S"]
-            else None
-        )
-        status = item["status"]["S"]
-        validated_at = datetime.fromisoformat(item["validated_at"]["S"])
-        image_id = item["GSI3PK"]["S"].split("#")[1]
-        return CompletionBatchResult(
-            batch_id=batch_id,
-            image_id=image_id,
-            receipt_id=receipt_id,
-            line_id=line_id,
-            word_id=word_id,
-            original_label=original_label,
-            gpt_suggested_label=gpt_suggested_label,
-            status=status,
-            validated_at=validated_at,
-        )
-    except Exception as e:
-        raise ValueError(
-            f"Error converting item to CompletionBatchResult: {e}"
-        ) from e
+    return CompletionBatchResult.from_item(item)
