@@ -137,9 +137,19 @@ class FlattenedStandardMixin:
         self,
         limit: Optional[int],
         last_evaluated_key: Optional[Dict[str, Any]],
+        validate_attribute_format: bool = False,
     ) -> None:
-        """Validate pagination parameters."""
-        validate_pagination_params(limit, last_evaluated_key)
+        """Validate pagination parameters.
+
+        Args:
+            limit: Maximum number of items to return
+            last_evaluated_key: Key to start from for pagination
+            validate_attribute_format: If True, validates that LEK values
+                have proper DynamoDB attribute format (e.g., {"S": "value"})
+        """
+        validate_pagination_params(
+            limit, last_evaluated_key, validate_attribute_format
+        )
 
     def _validate_job_id(self, job_id: str) -> None:
         """Validate a job ID.
