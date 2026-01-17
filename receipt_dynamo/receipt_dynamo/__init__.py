@@ -1,5 +1,8 @@
 """DynamoDB utility package for receipt data."""
 
+# pylint: disable=duplicate-code
+# Re-exports from submodules are intentionally duplicated for public API
+
 __version__ = "0.2.0"
 
 # =============================================================================

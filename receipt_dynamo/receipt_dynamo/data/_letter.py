@@ -125,21 +125,17 @@ class _Letter(FlattenedStandardMixin):
         # Validate UUID
         assert_valid_uuid(image_id)
         # Create a temporary Letter object with just the keys for deletion
+        from receipt_dynamo.data.base_operations.shared_utils import (
+            DEFAULT_GEOMETRY_FIELDS,
+        )
+
         temp_letter = Letter(
             image_id=image_id,
             line_id=line_id,
             word_id=word_id,
             letter_id=letter_id,
             text="X",  # Single character required
-            # Required geometry fields
-            bounding_box={"x": 0, "y": 0, "width": 0, "height": 0},
-            top_right={"x": 0, "y": 0},
-            top_left={"x": 0, "y": 0},
-            bottom_right={"x": 0, "y": 0},
-            bottom_left={"x": 0, "y": 0},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
+            **DEFAULT_GEOMETRY_FIELDS,
         )
         self._delete_entity(
             temp_letter, condition_expression="attribute_exists(PK)"

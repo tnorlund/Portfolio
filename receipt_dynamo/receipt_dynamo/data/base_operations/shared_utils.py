@@ -6,9 +6,21 @@ base operations classes to eliminate code duplication.
 """
 
 import time
-from typing import Any
+from typing import Any, Dict
 
 from receipt_dynamo.data.shared_exceptions import EntityValidationError
+
+# Default geometry values for creating temporary entities (e.g., for deletion)
+DEFAULT_GEOMETRY_FIELDS: Dict[str, Any] = {
+    "bounding_box": {"x": 0, "y": 0, "width": 0, "height": 0},
+    "top_left": {"x": 0, "y": 0},
+    "top_right": {"x": 0, "y": 0},
+    "bottom_left": {"x": 0, "y": 0},
+    "bottom_right": {"x": 0, "y": 0},
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 0.5,
+}
 
 
 def validate_last_evaluated_key(lek: dict[str, Any]) -> None:
