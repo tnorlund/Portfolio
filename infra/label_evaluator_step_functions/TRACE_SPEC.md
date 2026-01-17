@@ -541,3 +541,86 @@ The following items are noted for future cleanup but don't block functionality:
 2. **Virtual spans (ComputePatterns/DiscoverPatterns)** - `evaluate_labels.py` creates virtual
    child spans from metadata which show negative durations in analytics. Consider removing these
    since Phase 1 pattern computation is already traced separately.
+
+---
+
+## Phase 6: Trace Finalization Fix (2026-01-17)
+
+### 6.1 Problem Discovered
+
+Despite Phases 1-5 being marked complete, traces were showing as **"pending"** in LangSmith instead
+of **"success"**. Parent traces showed 0.00s duration in the UI while child traces appeared correct.
+
+### 6.2 Root Cause Analysis
+
+Comparing the current code to known good commit `1d92db34c` revealed an **inconsistency**:
+
+| API | post() | end() | patch() |
+|-----|--------|-------|---------|
+| `child_trace()` context manager | ✅ on create | ✅ in finally | ✅ in finally |
+| `start_child_trace()` + `end_child_trace()` | ✅ on start | ✅ on end | ❌ NOT called |
+
+The function-based API (`end_child_trace`, `end_receipt_trace`) had explicit comments saying
+"Do NOT call patch()" to avoid "dotted_order appears more than once" errors. However, the
+context manager **does** call `patch()`.
+
+**Hypothesis**: Without `patch()`, traces remain in "pending" status because the final state
+isn't sent to LangSmith.
+
+### 6.3 Fix Applied
+
+Added `patch()` calls to both `end_child_trace()` and `end_receipt_trace()` to align with
+the context manager behavior:
+
+```python
+# end_child_trace() - tracing.py:774
+ctx.run_tree.end()
+ctx.run_tree.patch()  # ADDED
+logger.info("[end_child_trace] Child ended and patched (id=%s)", ctx.run_tree.id)
+
+# end_receipt_trace() - tracing.py:1178
+trace_info.run_tree.end()
+trace_info.run_tree.patch()  # ADDED
+logger.info("Receipt trace ended and patched (image_id=%s, receipt_id=%s)", ...)
+```
+
+### 6.4 Additional Fix: Skip OpenRouter Free Tier
+
+Step function executions were taking 30+ minutes (was 10 minutes) due to rate limit cascades:
+- Ollama: 429 (too many concurrent requests)
+- OpenRouter Free: 429 (rate limit exceeded)
+- OpenRouter Paid: response length limit exceeded
+
+**Fix**: Modified `create_resilient_llm()` in `receipt_agent/utils/llm_factory.py` to skip
+the free tier entirely:
+
+```
+Old: Ollama → OpenRouter Free → OpenRouter Paid
+New: Ollama → OpenRouter Paid (free tier skipped)
+```
+
+### 6.5 Verification Test
+
+**Project**: `trace-fix-verification-001`
+**Date**: 2026-01-17
+**Config**: 3 receipts from mcdonalds
+
+**Expected Results**:
+- [ ] All traces show status: "success" (not "pending")
+- [ ] Parent traces show non-zero duration
+- [ ] Step function completes in ~10 minutes (not 30+)
+- [ ] 0 orphaned traces
+
+**Actual Results**: _(to be filled after test)_
+- [ ] Trace status: ___
+- [ ] Parent duration: ___
+- [ ] Execution time: ___
+- [ ] Orphaned traces: ___
+
+### 6.6 Commits
+
+1. `c243e9fa7` - fix: Add patch() calls to finalize LangSmith traces
+2. `9227d87a2` - fix: Disable Spark dynamic allocation and reduce executor count
+3. `285a4b5a9` - fix: Support both LangGraph and ReceiptEvaluation trace names
+4. `ecd829f5d` - perf: Skip OpenRouter free tier in ResilientLLM fallback
+5. `0d53e8422` - feat: Add LangSmith trace query debug script
