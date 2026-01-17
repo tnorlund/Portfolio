@@ -1,7 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
 from receipt_dynamo.data.base_operations import (
-    SingleEntityCRUDMixin,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -13,9 +13,6 @@ from receipt_dynamo.entities.job_checkpoint import (
     item_to_job_checkpoint,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -32,9 +29,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _JobCheckpoint(
-    SingleEntityCRUDMixin,
-):
+class _JobCheckpoint(FlattenedStandardMixin):
     """
     A class used to represent a JobCheckpoint in the database.
 

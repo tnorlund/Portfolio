@@ -1,8 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     TransactWriteItemTypeDef,
@@ -16,11 +15,6 @@ from receipt_dynamo.data.shared_exceptions import (
 from receipt_dynamo.entities.job import Job, item_to_job
 from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
 from receipt_dynamo.entities.util import assert_valid_uuid
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -36,10 +30,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _Job(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _Job(FlattenedStandardMixin):
     """
     A class used to represent a Job in the database.
 

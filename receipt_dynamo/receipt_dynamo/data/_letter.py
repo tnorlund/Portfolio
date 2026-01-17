@@ -77,7 +77,7 @@ class _Letter(FlattenedStandardMixin):
             ValueError: When validation fails or letters cannot be added
         """
         self._validate_entity_list(letters, Letter, "letters")
-        self._add_entities_batch(letters, Letter, "letters")
+        self._add_entities(letters, Letter, "letters")
 
     @handle_dynamodb_errors("update_letter")
     def update_letter(self, letter: Letter):

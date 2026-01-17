@@ -429,9 +429,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
             # Log warning if max retries exceeded
             if unprocessed.get(self.table_name):
                 logger = __import__("logging").getLogger(__name__)
-                unprocessed_count = len(
-                    unprocessed.get(self.table_name, [])
-                )
+                unprocessed_count = len(unprocessed.get(self.table_name, []))
                 logger.warning(
                     f"Max batch retries ({MAX_BATCH_RETRIES}) exceeded "
                     f"for get_receipt_places_by_ids. {unprocessed_count} "

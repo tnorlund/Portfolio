@@ -76,7 +76,7 @@ class _Word(FlattenedStandardMixin):
             ValueError: When validation fails or words cannot be added
         """
         self._validate_entity_list(words, Word, "words")
-        self._add_entities_batch(words, Word, "words")
+        self._add_entities(words, Word, "words")
 
     @handle_dynamodb_errors("update_word")
     def update_word(self, word: Word):

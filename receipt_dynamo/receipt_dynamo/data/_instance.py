@@ -1,11 +1,8 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-# Runtime imports needed by the class methods
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
-    QueryByParentMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
@@ -19,15 +16,8 @@ from receipt_dynamo.entities.instance_job import (
     item_to_instance_job,
 )
 
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
-
-class _Instance(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-    QueryByParentMixin,
-):
+class _Instance(FlattenedStandardMixin):
     """Class for interacting with instance-related data in DynamoDB."""
 
     @handle_dynamodb_errors("add_instance")

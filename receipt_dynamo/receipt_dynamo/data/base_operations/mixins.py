@@ -1,11 +1,17 @@
 """
 Mixin classes for common DynamoDB operations.
 
+.. deprecated::
+    These mixins are deprecated. Use FlattenedStandardMixin instead,
+    which provides all functionality in a single class without deep
+    inheritance chains or MRO conflicts.
+
 This module provides reusable mixins that can be composed to create
 data access classes with common CRUD functionality.
 """
 
 import time
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -25,9 +31,22 @@ if TYPE_CHECKING:
     from mypy_boto3_dynamodb import DynamoDBClient
 
 
+def _emit_deprecation_warning(mixin_name: str) -> None:
+    """Emit a deprecation warning for old mixins."""
+    warnings.warn(
+        f"{mixin_name} is deprecated. Use FlattenedStandardMixin instead, "
+        "which provides all functionality without MRO conflicts.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
+
 class SingleEntityCRUDMixin:
     """
     Mixin providing single entity CRUD operations.
+
+    .. deprecated::
+        Use FlattenedStandardMixin instead.
 
     Requires the using class to implement DynamoOperationsProtocol:
     - table_name: str
@@ -36,6 +55,10 @@ class SingleEntityCRUDMixin:
     This mixin adds add, update, and delete functionality for single entities
     with consistent validation and error handling.
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _emit_deprecation_warning("SingleEntityCRUDMixin")
 
     # Declare expected attributes for type checker
     if TYPE_CHECKING:
@@ -130,6 +153,9 @@ class BatchOperationsMixin:
     """
     Mixin providing batch operation functionality.
 
+    .. deprecated::
+        Use FlattenedStandardMixin instead.
+
     Requires the using class to implement DynamoOperationsProtocol:
     - table_name: str
     - _client: DynamoDBClient
@@ -137,6 +163,10 @@ class BatchOperationsMixin:
     This mixin adds batch write operations with automatic retry logic
     and chunking for large datasets.
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _emit_deprecation_warning("BatchOperationsMixin")
 
     # Declare expected attributes for type checker
     if TYPE_CHECKING:
@@ -257,6 +287,9 @@ class TransactionalOperationsMixin:
     """
     Mixin providing transactional operation functionality.
 
+    .. deprecated::
+        Use FlattenedStandardMixin instead.
+
     Requires the using class to implement DynamoOperationsProtocol:
     - table_name: str
     - _client: DynamoDBClient
@@ -264,6 +297,10 @@ class TransactionalOperationsMixin:
     This mixin adds transactional write operations with automatic chunking
     for operations that exceed DynamoDB's 25-item transaction limit.
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _emit_deprecation_warning("TransactionalOperationsMixin")
 
     # Declare expected attributes for type checker
     if TYPE_CHECKING:
@@ -417,10 +454,17 @@ class QueryByTypeMixin:
     """
     Mixin for querying entities by TYPE using GSITYPE index.
 
+    .. deprecated::
+        Use FlattenedStandardMixin instead.
+
     This mixin provides a standardized way to query all entities of a specific
     type using the GSITYPE global secondary index, reducing code duplication
     across data access classes.
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _emit_deprecation_warning("QueryByTypeMixin")
 
     # Declare expected attributes for type checker
     if TYPE_CHECKING:
@@ -479,10 +523,17 @@ class QueryByParentMixin:
     """
     Mixin for querying child entities by parent ID.
 
+    .. deprecated::
+        Use FlattenedStandardMixin instead.
+
     This mixin provides a standardized way to query child entities that belong
     to a parent entity using PK/SK prefix matching, reducing code duplication
     for hierarchical queries.
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _emit_deprecation_warning("QueryByParentMixin")
 
     # Declare expected attributes for type checker
     if TYPE_CHECKING:
@@ -558,5 +609,3 @@ class QueryByParentMixin:
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )
-
-

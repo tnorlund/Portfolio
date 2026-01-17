@@ -252,9 +252,7 @@ class ReceiptPlace(SerializationMixin):
         normalized_name = self.merchant_name.upper()
         normalized_name = re.sub(r"[^A-Z0-9]+", "_", normalized_name)
         normalized_name = normalized_name.strip("_")
-        sk = (
-            f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#PLACE"
-        )
+        sk = f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#PLACE"
         return {
             "GSI1PK": {"S": f"MERCHANT#{normalized_name}"},
             "GSI1SK": {"S": sk},
@@ -263,9 +261,7 @@ class ReceiptPlace(SerializationMixin):
     @property
     def gsi2_key(self) -> dict[str, dict[str, str]]:
         """Get GSI2 key (query by place_id)."""
-        sk = (
-            f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#PLACE"
-        )
+        sk = f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#PLACE"
         return {
             "GSI2PK": {"S": f"PLACE#{self.place_id}"},
             "GSI2SK": {"S": sk},

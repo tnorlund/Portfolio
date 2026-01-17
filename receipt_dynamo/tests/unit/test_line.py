@@ -30,7 +30,7 @@ def example_line():
         bottom_left={"x": 10.0, "y": 22.0},
         angle_degrees=1.0,
         angle_radians=5.0,
-        confidence=0.90
+        confidence=0.90,
     )
 
 
@@ -95,7 +95,7 @@ def test_line_init_invalid_uuid():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         Line(
@@ -114,7 +114,7 @@ def test_line_init_invalid_uuid():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -137,7 +137,7 @@ def test_line_init_invalid_id():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(ValueError, match="line_id must be positive"):
         Line(
@@ -156,7 +156,7 @@ def test_line_init_invalid_id():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -179,7 +179,7 @@ def test_line_init_invalid_text():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -200,7 +200,7 @@ def test_line_init_invalid_bounding_box():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(
         ValueError,
@@ -217,7 +217,7 @@ def test_line_init_invalid_bounding_box():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -240,7 +240,7 @@ def test_line_init_invalid_top_left():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(ValueError, match="point must contain the key 'y'"):
         Line(
@@ -259,7 +259,7 @@ def test_line_init_invalid_top_left():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -282,7 +282,7 @@ def test_line_init_invalid_top_right():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(ValueError, match="point must contain the key 'y'"):
         Line(
@@ -301,7 +301,7 @@ def test_line_init_invalid_top_right():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -324,7 +324,7 @@ def test_line_init_invalid_bottom_left():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(ValueError, match="point must contain the key 'y'"):
         Line(
@@ -343,7 +343,7 @@ def test_line_init_invalid_bottom_left():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -366,7 +366,7 @@ def test_line_init_invalid_bottom_right():
             bottom_left=1,
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(ValueError, match="point must contain the key 'y'"):
         Line(
@@ -385,7 +385,7 @@ def test_line_init_invalid_bottom_right():
             bottom_left={"x": 15.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -411,7 +411,7 @@ def test_line_init_invalid_angle():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees="1.0",
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(
         ValueError,
@@ -433,7 +433,7 @@ def test_line_init_invalid_angle():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians="5.0",
-            confidence=0.90
+            confidence=0.90,
         )
 
 

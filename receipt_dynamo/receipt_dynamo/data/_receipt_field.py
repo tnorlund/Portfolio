@@ -1,9 +1,8 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_field.py
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
@@ -19,9 +18,6 @@ from receipt_dynamo.entities.receipt_field import (
     ReceiptField,
     item_to_receipt_field,
 )
-
-if TYPE_CHECKING:
-    pass
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -40,10 +36,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _ReceiptField(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _ReceiptField(FlattenedStandardMixin):
     """
     A class providing methods to interact with "ReceiptField" entities in
     DynamoDB.

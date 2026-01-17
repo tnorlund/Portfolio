@@ -5,11 +5,13 @@ This refactored version reduces code from ~944 lines to ~300 lines
 functionality.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
-    QueryByParentMixin,
+    PutRequestTypeDef,
+    QueryInputTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -20,19 +22,6 @@ from receipt_dynamo.entities.receipt_label_analysis import (
     ReceiptLabelAnalysis,
     item_to_receipt_label_analysis,
 )
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
-else:
-    from receipt_dynamo.data.base_operations import (
-        PutRequestTypeDef,
-        QueryInputTypeDef,
-        WriteRequestTypeDef,
-    )
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -48,10 +37,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _ReceiptLabelAnalysis(
-    FlattenedStandardMixin,
-    QueryByParentMixin,
-):
+class _ReceiptLabelAnalysis(FlattenedStandardMixin):
     """
     A class used to access receipt label analyses in DynamoDB.
 

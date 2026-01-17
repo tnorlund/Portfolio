@@ -161,9 +161,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
         if self.extracted_data is None:
             return {"NULL": True}
         return {
-            "M": {
-                k: {"S": str(v)} for k, v in self.extracted_data.items()
-            }
+            "M": {k: {"S": str(v)} for k, v in self.extracted_data.items()}
         }
 
     def to_item(self) -> Dict[str, Any]:

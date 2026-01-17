@@ -1,8 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -14,9 +13,6 @@ from receipt_dynamo.entities.util import assert_valid_uuid
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 _BATCH_SIZE = 25
-
-if TYPE_CHECKING:
-    pass
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -33,10 +29,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _JobMetric(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-):
+class _JobMetric(FlattenedStandardMixin):
     @handle_dynamodb_errors("add_job_metric")
     def add_job_metric(self, job_metric: JobMetric):
         """Adds a job metric to the database

@@ -1,11 +1,8 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    QueryByTypeMixin,
-    SingleEntityCRUDMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
@@ -19,16 +16,8 @@ from receipt_dynamo.entities.receipt_validation_summary import (
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
-if TYPE_CHECKING:
-    pass
 
-
-class _ReceiptValidationSummary(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    QueryByTypeMixin,
-):
+class _ReceiptValidationSummary(FlattenedStandardMixin):
     """
     .. deprecated::
         This class is deprecated and not used in production. Consider removing

@@ -1,9 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -12,11 +10,6 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 from receipt_dynamo.entities.queue_job import QueueJob, item_to_queue_job
 from receipt_dynamo.entities.rwl_queue import Queue, item_to_queue
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -47,11 +40,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
         )
 
 
-class _Queue(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-):
+class _Queue(FlattenedStandardMixin):
     """Queue-related operations for the DynamoDB client."""
 
     @handle_dynamodb_errors("add_queue")
@@ -86,7 +75,7 @@ class _Queue(
             return
 
         # Use the mixin's batch operation method directly
-        self._add_entities_batch(queues, Queue, "queues")
+        self._add_entities(queues, Queue, "queues")
 
     @handle_dynamodb_errors("update_queue")
     def update_queue(self, queue: Queue) -> None:

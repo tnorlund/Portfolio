@@ -1,15 +1,12 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_section.py
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteRequestTypeDef,
-    DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
@@ -22,19 +19,11 @@ from receipt_dynamo.entities.receipt_section import (
     item_to_receipt_section,
 )
 
-if TYPE_CHECKING:
-    pass
-
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
 
 
-class _ReceiptSection(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
-):
+class _ReceiptSection(FlattenedStandardMixin):
     """
     .. deprecated::
         This class is deprecated and not used in production. Consider removing

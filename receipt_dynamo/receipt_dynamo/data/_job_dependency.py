@@ -1,9 +1,8 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteRequestTypeDef,
-    SingleEntityCRUDMixin,
+    FlattenedStandardMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
@@ -16,16 +15,8 @@ from receipt_dynamo.entities.job_dependency import (
     item_to_job_dependency,
 )
 
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
 
-
-class _JobDependency(
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-):
+class _JobDependency(FlattenedStandardMixin):
     """
     Provides methods for accessing job dependency data in DynamoDB.
 

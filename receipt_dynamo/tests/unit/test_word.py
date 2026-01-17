@@ -92,7 +92,7 @@ def test_word_init_invalid_uuid():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(ValueError, match="uuid must be a valid UUID"):
         Word(
@@ -107,7 +107,7 @@ def test_word_init_invalid_uuid():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -127,7 +127,7 @@ def test_word_init_invalid_line_id():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(ValueError, match="line_id must be non-negative"):
         Word(
@@ -142,7 +142,7 @@ def test_word_init_invalid_line_id():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -162,7 +162,7 @@ def test_word_init_invalid_id():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(ValueError, match="word_id must be non-negative"):
         Word(
@@ -177,7 +177,7 @@ def test_word_init_invalid_id():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -197,7 +197,7 @@ def test_word_init_invalid_text():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -217,7 +217,7 @@ def test_word_init_invalid_bounding_box():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(
         ValueError, match="bounding_box must contain the key 'x'"
@@ -234,7 +234,7 @@ def test_word_init_invalid_bounding_box():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -254,7 +254,7 @@ def test_word_init_invalid_corners():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(ValueError, match="point must contain the key 'x'"):
         Word(
@@ -269,7 +269,7 @@ def test_word_init_invalid_corners():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -291,7 +291,7 @@ def test_word_init_invalid_angle():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees="bad",
             angle_radians=5.0,
-            confidence=0.90
+            confidence=0.90,
         )
     with pytest.raises(
         ValueError, match="angle_radians must be float or int, got"
@@ -308,7 +308,7 @@ def test_word_init_invalid_angle():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians="bad",
-            confidence=0.90
+            confidence=0.90,
         )
 
 
@@ -330,7 +330,7 @@ def test_word_init_invalid_confidence():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence="bad"
+            confidence="bad",
         )
     word = Word(
         image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -344,7 +344,7 @@ def test_word_init_invalid_confidence():
         bottom_left={"x": 10.0, "y": 22.0},
         angle_degrees=1.0,
         angle_radians=5.0,
-        confidence=1
+        confidence=1,
     )
     assert word.confidence == 1.0
     with pytest.raises(
@@ -362,7 +362,7 @@ def test_word_init_invalid_confidence():
             bottom_left={"x": 10.0, "y": 22.0},
             angle_degrees=1.0,
             angle_radians=5.0,
-            confidence=1.1
+            confidence=1.1,
         )
 
 
@@ -1250,7 +1250,7 @@ def test_word_hash(example_word):
         bottom_left={"x": 10.0, "y": 22.0},
         angle_degrees=1.0,
         angle_radians=5.0,
-        confidence=0.90
+        confidence=0.90,
     )
     word_set = {example_word, duplicate_word, different_word}
     assert len(word_set) == 2
