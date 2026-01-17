@@ -51,6 +51,17 @@ class BatchType(str, Enum):
     LINE_EMBEDDING = "LINE_EMBEDDING"
 
 
+class JobStatus(str, Enum):
+    """Status for Job and JobStatus entities."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    INTERRUPTED = "interrupted"
+
+
 class LabelStatus(str, Enum):
     """Status assigned to a canonical label."""
 

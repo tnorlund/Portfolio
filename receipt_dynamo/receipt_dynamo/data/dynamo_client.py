@@ -62,6 +62,17 @@ if TYPE_CHECKING:
     from mypy_boto3_dynamodb import DynamoDBClient
 
 
+# Mixin Composition Pattern:
+# DynamoClient uses multiple inheritance to compose single-purpose data
+# accessor mixins. Each mixin (e.g., _Image, _Receipt, _Job) handles CRUD
+# operations for one entity type, inheriting shared functionality from
+# FlattenedStandardMixin.
+# This pattern provides:
+# - Clean separation of concerns (one mixin per entity)
+# - Code reuse through FlattenedStandardMixin base methods
+# - A unified client interface for all DynamoDB operations
+# The high ancestor count is intentional and well-structured.
+# pylint: disable=too-many-ancestors
 class DynamoClient(
     _Image,
     _Line,

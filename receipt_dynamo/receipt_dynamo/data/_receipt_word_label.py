@@ -5,18 +5,27 @@ This refactored version reduces code from ~969 lines to ~310 lines
 functionality.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.data.base_operations.shared_utils import (
+    validate_last_evaluated_key,
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
 )
@@ -25,26 +34,6 @@ from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        BatchGetItemInputTypeDef,
-        QueryInputTypeDef,
-    )
-
-
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
-    required_keys = {"PK", "SK"}
-    if not required_keys.issubset(lek.keys()):
-        raise EntityValidationError(
-            f"last_evaluated_key must contain keys: {required_keys}"
-        )
-    for key in required_keys:
-        if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise EntityValidationError(
-                f"last_evaluated_key[{key}] must be a dict containing a key "
-                f"'S'"
-            )
 
 
 class _ReceiptWordLabel(
@@ -58,7 +47,7 @@ class _ReceiptWordLabel(
     """
 
     def _validate_receipt_word_labels_for_add(
-        self, receipt_word_labels: List[ReceiptWordLabel]
+        self, receipt_word_labels: list[ReceiptWordLabel]
     ) -> None:
         """Custom validation for add operation with specific error messages"""
         if receipt_word_labels is None:
@@ -92,21 +81,14 @@ class _ReceiptWordLabel(
         self._validate_entity(
             receipt_word_label, ReceiptWordLabel, "receipt_word_label"
         )
-        self._add_entity(receipt_word_label)
+        self._add_entity(
+            receipt_word_label, condition_expression="attribute_not_exists(PK)"
+        )
 
     def _handle_add_receipt_word_label_error(
         self, error: ClientError, receipt_word_label: ReceiptWordLabel
     ):
         """Handle errors specific to add_receipt_word_label"""
-        from receipt_dynamo.data.shared_exceptions import (
-            DynamoDBError,
-            DynamoDBServerError,
-            DynamoDBThroughputError,
-            DynamoDBValidationError,
-            EntityAlreadyExistsError,
-            EntityValidationError,
-        )
-
         error_code = error.response.get("Error", {}).get("Code", "")
         if error_code == "ConditionalCheckFailedException":
             raise EntityAlreadyExistsError(
@@ -143,12 +125,12 @@ class _ReceiptWordLabel(
 
     @handle_dynamodb_errors("add_receipt_word_labels")
     def add_receipt_word_labels(
-        self, receipt_word_labels: List[ReceiptWordLabel]
+        self, receipt_word_labels: list[ReceiptWordLabel]
     ):
         """Adds a list of receipt word labels to the database
 
         Args:
-            receipt_word_labels (List[ReceiptWordLabel]): The receipt word
+            receipt_word_labels (list[ReceiptWordLabel]): The receipt word
                 labels to add to the database
 
         Raises:
@@ -157,11 +139,6 @@ class _ReceiptWordLabel(
         """
         # Custom validation for add operation with specific error messages
         self._validate_receipt_word_labels_for_add(receipt_word_labels)
-
-        from receipt_dynamo.data.base_operations import (
-            PutRequestTypeDef,
-            WriteRequestTypeDef,
-        )
 
         request_items = [
             WriteRequestTypeDef(
@@ -173,14 +150,6 @@ class _ReceiptWordLabel(
 
     def _handle_add_receipt_word_labels_error(self, error: ClientError):
         """Handle errors specific to add_receipt_word_labels"""
-        from receipt_dynamo.data.shared_exceptions import (
-            DynamoDBError,
-            DynamoDBServerError,
-            DynamoDBThroughputError,
-            DynamoDBValidationError,
-            EntityValidationError,
-        )
-
         error_code = error.response.get("Error", {}).get("Code", "")
         if error_code == "ProvisionedThroughputExceededException":
             raise DynamoDBThroughputError(
@@ -216,16 +185,18 @@ class _ReceiptWordLabel(
         self._validate_entity(
             receipt_word_label, ReceiptWordLabel, "ReceiptWordLabel"
         )
-        self._update_entity(receipt_word_label)
+        self._update_entity(
+            receipt_word_label, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("update_receipt_word_labels")
     def update_receipt_word_labels(
-        self, receipt_word_labels: List[ReceiptWordLabel]
+        self, receipt_word_labels: list[ReceiptWordLabel]
     ):
         """Updates multiple receipt word labels in the database
 
         Args:
-            receipt_word_labels (List[ReceiptWordLabel]): The receipt word
+            receipt_word_labels (list[ReceiptWordLabel]): The receipt word
                 labels to update
 
         Raises:
@@ -249,16 +220,18 @@ class _ReceiptWordLabel(
         self._validate_entity(
             receipt_word_label, ReceiptWordLabel, "ReceiptWordLabel"
         )
-        self._delete_entity(receipt_word_label)
+        self._delete_entity(
+            receipt_word_label, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_word_labels")
     def delete_receipt_word_labels(
-        self, receipt_word_labels: List[ReceiptWordLabel]
+        self, receipt_word_labels: list[ReceiptWordLabel]
     ):
         """Deletes multiple receipt word labels from the database
 
         Args:
-            receipt_word_labels (List[ReceiptWordLabel]): The receipt word
+            receipt_word_labels (list[ReceiptWordLabel]): The receipt word
                 labels to delete
 
         Raises:
@@ -307,56 +280,19 @@ class _ReceiptWordLabel(
         Raises:
             ValueError: When the receipt word label does not exist
         """
-        # Check for None values first
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
-        if line_id is None:
-            raise EntityValidationError("line_id cannot be None")
-        if word_id is None:
-            raise EntityValidationError("word_id cannot be None")
+        # Validate parameters
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
         if label is None:
             raise EntityValidationError("label cannot be None")
-
-        # Then check types
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                "receipt_id must be an integer, got "
-                f"{type(receipt_id).__name__}"
-            )
-        if not isinstance(line_id, int):
-            raise EntityValidationError(
-                "line_id must be an integer, got " f"{type(line_id).__name__}"
-            )
-        if not isinstance(word_id, int):
-            raise EntityValidationError(
-                "word_id must be an integer, got " f"{type(word_id).__name__}"
-            )
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                "image_id must be a string, got " f"{type(image_id).__name__}"
-            )
         if not isinstance(label, str):
             raise EntityValidationError(
                 "label must be a string, got " f"{type(label).__name__}"
             )
-
-        # Check for positive integers
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "Receipt ID must be a positive integer."
-            )
-        if line_id <= 0:
-            raise EntityValidationError("Line ID must be a positive integer.")
-        if word_id <= 0:
-            raise EntityValidationError("Word ID must be a positive integer.")
-
-        # Check for non-empty label
         if not label:
             raise EntityValidationError("Label must be a non-empty string.")
-
-        assert_valid_uuid(image_id)
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -378,25 +314,27 @@ class _ReceiptWordLabel(
 
     @handle_dynamodb_errors("get_receipt_word_labels")
     def get_receipt_word_labels(
-        self, keys: List[Tuple[int, int, str]]
-    ) -> List[ReceiptWordLabel]:
-        """Retrieves multiple receipt word labels from the database
+        self, keys: list[tuple[str, int, int, int, str]]
+    ) -> list[ReceiptWordLabel]:
+        """Retrieves multiple receipt word labels from the database.
 
         Args:
-            keys (List[Tuple[int, int, str]]): List of
-                (receipt_id, word_id, image_id) tuples
+            keys: List of (image_id, receipt_id, line_id, word_id, label) tuples
 
         Returns:
-            List[ReceiptWordLabel]: The receipt word labels from the database
+            list[ReceiptWordLabel]: The receipt word labels found in the
+                database. Missing keys are silently omitted (DynamoDB
+                BatchGetItem behavior).
 
         Raises:
-            ValueError: When any key is invalid
+            EntityValidationError: When any key is invalid
         """
         if not isinstance(keys, list):
             raise EntityValidationError("keys must be a list")
-        if not all(isinstance(key, tuple) and len(key) == 3 for key in keys):
+        if not all(isinstance(key, tuple) and len(key) == 5 for key in keys):
             raise EntityValidationError(
-                "keys must be a list of (receipt_id, word_id, image_id) tuples"
+                "keys must be a list of "
+                "(image_id, receipt_id, line_id, word_id, label) tuples"
             )
 
         # Prepare batch get request
@@ -404,44 +342,33 @@ class _ReceiptWordLabel(
             {
                 "PK": {"S": f"IMAGE#{image_id}"},
                 "SK": {
-                    "S": f"RECEIPT#{receipt_id:05d}#WORD#{word_id:05d}#LABEL"
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+                        f"#WORD#{word_id:05d}#LABEL#{label}"
+                    )
                 },
             }
-            for receipt_id, word_id, image_id in keys
+            for image_id, receipt_id, line_id, word_id, label in keys
         ]
 
-        # Process in chunks of 100 (DynamoDB limit)
-        all_labels = []
-        for i in range(0, len(request_keys), 100):
-            chunk = request_keys[i : i + 100]
-
-            batch_get_params: BatchGetItemInputTypeDef = {
-                "RequestItems": {self.table_name: {"Keys": chunk}}
-            }
-
-            response = self._client.batch_get_item(**batch_get_params)
-            items = response.get("Responses", {}).get(self.table_name, [])
-            all_labels.extend(
-                [item_to_receipt_word_label(item) for item in items]
-            )
-
-        return all_labels
+        results = self._batch_get_items(request_keys)
+        return [item_to_receipt_word_label(item) for item in results]
 
     @handle_dynamodb_errors("list_receipt_word_labels")
     def list_receipt_word_labels(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
         """Lists all receipt word labels
 
         Args:
-            limit (Optional[int]): The maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start
+            limit (int | None): The maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): The key to start
                 from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels
+            tuple[list[ReceiptWordLabel], dict[str, Any] | None]: The labels
                 and last evaluated key
         """
         if limit is not None:
@@ -460,18 +387,18 @@ class _ReceiptWordLabel(
     def list_receipt_word_labels_for_image(
         self,
         image_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
         """Lists all receipt word labels for a given image
 
         Args:
             image_id (str): The image ID
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
                 The receipt word labels for the image and last evaluated key
         """
         if not isinstance(image_id, str):
@@ -516,36 +443,23 @@ class _ReceiptWordLabel(
         self,
         image_id: str,
         receipt_id: int,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
         """Lists all receipt word labels for a specific receipt
 
         Args:
             image_id (str): The image ID
             receipt_id (int): The receipt ID
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
                 The receipt word labels for the receipt and last evaluated key
         """
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
-        assert_valid_uuid(image_id)
-
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                f"receipt_id must be an integer, "
-                f"got {type(receipt_id).__name__}"
-            )
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
 
         if limit is not None:
             if not isinstance(limit, int):
@@ -587,9 +501,9 @@ class _ReceiptWordLabel(
         receipt_id: int,
         line_id: int,
         word_id: int,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
         """Lists all receipt word labels for a specific word
 
         Args:
@@ -597,34 +511,18 @@ class _ReceiptWordLabel(
             receipt_id (int): The receipt ID
             line_id (int): The line ID
             word_id (int): The word ID
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
                 The receipt word labels for the specific word and last
                 evaluated key
         """
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
-        assert_valid_uuid(image_id)
-
-        for param_name, param_value in [
-            ("receipt_id", receipt_id),
-            ("line_id", line_id),
-            ("word_id", word_id),
-        ]:
-            if not isinstance(param_value, int):
-                raise EntityValidationError(
-                    f"{param_name} must be an integer, "
-                    f"got {type(param_value).__name__}"
-                )
-            if param_value <= 0:
-                raise EntityValidationError(
-                    f"{param_name} must be a positive integer"
-                )
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
 
         if limit is not None:
             if not isinstance(limit, int):
@@ -665,19 +563,19 @@ class _ReceiptWordLabel(
     def get_receipt_word_labels_by_label(
         self,
         label: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
         """Retrieve receipt word labels by label type using GSI1.
 
         Args:
             label (str): The label type to search for
-            limit (Optional[int]): The maximum number of labels to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start
+            limit (int | None): The maximum number of labels to return
+            last_evaluated_key (dict[str, Any] | None): The key to start
                 the query from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: A tuple
+            tuple[list[ReceiptWordLabel], dict[str, Any] | None]: A tuple
                 containing:
                 - List of ReceiptWordLabel objects
                 - Last evaluated key for pagination (None if no more pages)
@@ -712,19 +610,19 @@ class _ReceiptWordLabel(
     def list_receipt_word_labels_with_status(
         self,
         status: ValidationStatus,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
         """Lists receipt word labels with a specific validation status
 
         Args:
             status (ValidationStatus): The validation status to filter by
-            limit (Optional[int]): The maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start
+            limit (int | None): The maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): The key to start
                 from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels
+            tuple[list[ReceiptWordLabel], dict[str, Any] | None]: The labels
                 and last evaluated key
         """
         if not isinstance(status, ValidationStatus):

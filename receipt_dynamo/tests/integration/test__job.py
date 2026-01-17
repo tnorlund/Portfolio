@@ -535,7 +535,7 @@ def test_updateJob_raises_conditional_check_failed(job_dynamo, sample_job):
     # Try to update without adding first
     with pytest.raises(
         EntityNotFoundError,
-        match="job not found during update_job",
+        match="does not exist",
     ):
         job_dynamo.update_job(sample_job)
 
@@ -579,9 +579,7 @@ def test_deleteJob_raises_value_error_job_not_instance(job_dynamo):
 def test_deleteJob_raises_conditional_check_failed(job_dynamo, sample_job):
     """Test that deleteJob raises ValueError when the job does not exist"""
     # Try to delete without adding first
-    with pytest.raises(
-        EntityNotFoundError, match="job not found during delete_job"
-    ):
+    with pytest.raises(EntityNotFoundError, match="does not exist"):
         job_dynamo.delete_job(sample_job)
 
 

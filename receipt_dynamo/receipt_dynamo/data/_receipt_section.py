@@ -1,45 +1,28 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_section.py
-from typing import TYPE_CHECKING, Optional
 
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteRequestTypeDef,
-    DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    QueryInputTypeDef,
-    SingleEntityCRUDMixin,
-    TransactionalOperationsMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities.receipt_section import (
     ReceiptSection,
     item_to_receipt_section,
 )
 
-if TYPE_CHECKING:
-    pass
-
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
 
 
-class _ReceiptSection(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
-):
+class _ReceiptSection(FlattenedStandardMixin):
     """
     .. deprecated::
         This class is deprecated and not used in production. Consider removing
@@ -99,7 +82,9 @@ class _ReceiptSection(
         self._validate_entity(
             receipt_section, ReceiptSection, "receipt_section"
         )
-        self._add_entity(receipt_section)
+        self._add_entity(
+            receipt_section, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_receipt_sections")
     def add_receipt_sections(
@@ -146,7 +131,9 @@ class _ReceiptSection(
         self._validate_entity(
             receipt_section, ReceiptSection, "receipt_section"
         )
-        self._update_entity(receipt_section)
+        self._update_entity(
+            receipt_section, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("update_receipt_sections")
     def update_receipt_sections(
@@ -363,7 +350,7 @@ class _ReceiptSection(
     @handle_dynamodb_errors("list_receipt_sections")
     def list_receipt_sections(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptSection], dict | None]:
         """

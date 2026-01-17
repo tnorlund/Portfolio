@@ -1,7 +1,7 @@
 # infra/lambda_layer/python/dynamo/data/import_image.py
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
@@ -50,7 +50,7 @@ def import_image(table_name: str, json_path: str) -> None:
         data = json.load(f)
 
     # Convert dictionaries back to entity objects
-    entities: Dict[str, List[Any]] = {
+    entities: dict[str, list[Any]] = {
         "images": [Image(**item) for item in data["images"]],
         "lines": [Line(**item) for item in data["lines"]],
         "words": [Word(**item) for item in data["words"]],

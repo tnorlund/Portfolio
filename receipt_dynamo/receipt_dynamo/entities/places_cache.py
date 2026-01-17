@@ -1,11 +1,12 @@
+import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Literal, Optional, Tuple
+from typing import Any, Generator, Literal
 
 from receipt_dynamo.entities.util import normalize_address
 
-SEARCH_TYPES = Literal["ADDRESS", "PHONE", "URL"]
+SearchTypes = Literal["ADDRESS", "PHONE", "URL"]
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -29,20 +30,30 @@ class PlacesCache:
         value_hash (str): Hash of the original search value (for addresses)
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "search_type",
+        "place_id",
+        "places_response",
+        "last_updated",
+        "query_count",
+    }
+
     # Maximum field lengths based on Google Places API
     _MAX_ADDRESS_LENGTH = 400  # Allow for future growth beyond current 315 max
     _MAX_PHONE_LENGTH = 30  # International format with extra padding
     _MAX_URL_LENGTH = 100  # Standard URLs with some padding
 
-    search_type: SEARCH_TYPES
+    search_type: SearchTypes
     search_value: str
     place_id: str
-    places_response: Dict[str, Any]
+    places_response: dict[str, Any]
     last_updated: str
     query_count: int = 0
-    normalized_value: Optional[str] = None
-    value_hash: Optional[str] = None
-    time_to_live: Optional[int] = None
+    normalized_value: str | None = None
+    value_hash: str | None = None
+    time_to_live: int | None = None
 
     def __post_init__(self):
         """
@@ -97,8 +108,6 @@ class PlacesCache:
 
         if self.search_type == "ADDRESS":
             # Create a hash of the original OCR text
-            import hashlib
-
             value_hash = hashlib.md5(
                 value.encode(), usedforsecurity=False
             ).hexdigest()[:8]
@@ -123,7 +132,7 @@ class PlacesCache:
         raise ValueError(f"Invalid search type: {self.search_type}")
 
     @property
-    def key(self) -> Dict[str, Dict[str, str]]:
+    def key(self) -> dict[str, dict[str, str]]:
         """
         Generate the primary key for DynamoDB.
 
@@ -136,7 +145,7 @@ class PlacesCache:
             "SK": {"S": f"VALUE#{padded_value}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Dict[str, Any]]:
+    def gsi1_key(self) -> dict[str, dict[str, Any]]:
         """
         Generate the GSI1 key for DynamoDB.
 
@@ -148,7 +157,7 @@ class PlacesCache:
             "GSI1SK": {"S": f"PLACE_ID#{self.place_id}"},
         }
 
-    def to_item(self) -> Dict[str, Dict[str, Any]]:
+    def to_item(self) -> dict[str, dict[str, Any]]:
         """
         Convert to a DynamoDB item format.
         Includes all necessary attributes for the base table and GSIs:
@@ -185,12 +194,12 @@ class PlacesCache:
 
         return item
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """
         Returns an iterator over the PlacesCache object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the
+            Generator[tuple[str, Any], None, None]: An iterator over the
                 PlacesCache object's attribute name/value pairs.
         """
         yield "search_type", self.search_type
@@ -227,104 +236,101 @@ class PlacesCache:
             base += f", time_to_live={self.time_to_live}"
         return base + ")"
 
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "PlacesCache":
+        """Converts a DynamoDB item to a PlacesCache object.
 
-def item_to_places_cache(item: Dict[str, Any]) -> "PlacesCache":
-    """
-    Convert a DynamoDB item to a PlacesCache object.
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            PlacesCache: The PlacesCache object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not all(key in item for key in cls.REQUIRED_KEYS):
+            raise ValueError("Item is missing required keys")
+
+        try:
+            places_response = json.loads(item["places_response"]["S"])
+            search_type = item["search_type"]["S"]
+
+            # Try to get the original search_value first
+            if "search_value" in item and "S" in item["search_value"]:
+                search_value = item["search_value"]["S"]
+            else:
+                # Fall back to extracting from SK if search_value is missing
+                padded_value = item["SK"]["S"].split("#")[1]
+                if search_type == "ADDRESS":
+                    # Extract the original value after the hash
+                    parts = padded_value.split("_")
+                    if len(parts) >= 2:
+                        search_value = parts[1].lstrip("_").replace("_", " ")
+                    else:
+                        search_value = padded_value.lstrip("_").replace(
+                            "_", " "
+                        )
+                elif search_type == "PHONE":
+                    search_value = padded_value.lstrip("_")
+                    search_value = "".join(
+                        c for c in search_value if c.isdigit() or c in "()+-"
+                    )
+                elif search_type == "URL":
+                    search_value = padded_value.lstrip("_")
+                else:
+                    raise ValueError(f"Invalid search type: {search_type}")
+
+            # Extract normalized value and hash if they exist
+            normalized_value = None
+            value_hash = None
+
+            if "normalized_value" in item and "S" in item["normalized_value"]:
+                normalized_value = item["normalized_value"]["S"]
+            elif search_type == "ADDRESS":
+                parts = item["SK"]["S"].split("#")[1].split("_")
+                if len(parts) >= 2:
+                    value_hash = parts[0]
+
+            if "value_hash" in item and "S" in item["value_hash"]:
+                value_hash = item["value_hash"]["S"]
+
+            if "time_to_live" in item and "N" in item["time_to_live"]:
+                time_to_live = int(item["time_to_live"]["N"])
+            else:
+                time_to_live = None
+
+            place_id = item["place_id"]["S"]
+            last_updated = item["last_updated"]["S"]
+            query_count = int(item["query_count"]["N"])
+
+            return cls(
+                search_type=search_type,
+                search_value=search_value,
+                place_id=place_id,
+                places_response=places_response,
+                last_updated=last_updated,
+                query_count=query_count,
+                normalized_value=normalized_value,
+                value_hash=value_hash,
+                time_to_live=time_to_live,
+            )
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            raise ValueError(
+                f"Error converting item to PlacesCache: {str(e)}"
+            ) from e
+
+
+def item_to_places_cache(item: dict[str, Any]) -> "PlacesCache":
+    """Converts a DynamoDB item to a PlacesCache object.
 
     Args:
-        item (Dict): The DynamoDB item
+        item (dict): The DynamoDB item to convert.
 
     Returns:
-        PlacesCache: The converted item
+        PlacesCache: The PlacesCache object.
 
     Raises:
-        ValueError: If the item is missing required keys or has invalid data
+        ValueError: When the item format is invalid.
     """
-    required_keys = [
-        "PK",
-        "SK",
-        "search_type",
-        "place_id",
-        "places_response",
-        "last_updated",
-        "query_count",
-    ]
-
-    if not all(key in item for key in required_keys):
-        raise ValueError("Item is missing required keys")
-
-    try:
-        places_response = json.loads(item["places_response"]["S"])
-        search_type = item["search_type"]["S"]
-
-        # Try to get the original search_value first
-        if "search_value" in item and "S" in item["search_value"]:
-            search_value = item["search_value"]["S"]
-        else:
-            # Fall back to extracting from SK if search_value is missing
-            padded_value = item["SK"]["S"].split("#")[
-                1
-            ]  # Get the value after VALUE#
-            if search_type == "ADDRESS":
-                # Extract the original value after the hash
-                parts = padded_value.split("_")
-                if len(parts) >= 2:  # We have hash and original value
-                    # The original value is after the hash, strip padding
-                    search_value = parts[1].lstrip("_").replace("_", " ")
-                else:
-                    # Fallback for old format
-                    search_value = padded_value.lstrip("_").replace("_", " ")
-            elif search_type == "PHONE":
-                # For phone numbers, strip padding and normalize
-                search_value = padded_value.lstrip("_")
-                # Keep only digits and basic formatting
-                search_value = "".join(
-                    c for c in search_value if c.isdigit() or c in "()+-"
-                )
-            elif search_type == "URL":
-                # For URLs, strip padding and keep underscores (they're part
-                # of the URL)
-                search_value = padded_value.lstrip("_")
-            else:
-                raise ValueError(f"Invalid search type: {search_type}")
-
-        # Extract normalized value and hash if they exist
-        normalized_value = None
-        value_hash = None
-
-        if "normalized_value" in item and "S" in item["normalized_value"]:
-            normalized_value = item["normalized_value"]["S"]
-        elif search_type == "ADDRESS":
-            # Try to extract from SK if not in item
-            parts = item["SK"]["S"].split("#")[1].split("_")
-            if len(parts) >= 2:
-                value_hash = parts[0]
-
-        if "value_hash" in item and "S" in item["value_hash"]:
-            value_hash = item["value_hash"]["S"]
-
-        if "time_to_live" in item and "N" in item["time_to_live"]:
-            time_to_live = int(item["time_to_live"]["N"])
-        else:
-            time_to_live = None
-
-        place_id = item["place_id"]["S"]
-        last_updated = item["last_updated"]["S"]
-        query_count = int(item["query_count"]["N"])
-
-        return PlacesCache(
-            search_type=search_type,
-            search_value=search_value,
-            place_id=place_id,
-            places_response=places_response,
-            last_updated=last_updated,
-            query_count=query_count,
-            normalized_value=normalized_value,
-            value_hash=value_hash,
-            time_to_live=time_to_live,
-        )
-    except (json.JSONDecodeError, ValueError, KeyError) as e:
-        raise ValueError(
-            f"Error converting item to PlacesCache: {str(e)}"
-        ) from e
+    return PlacesCache.from_item(item)

@@ -1,9 +1,15 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.entities.base import DynamoDBEntity
+from receipt_dynamo.entities.entity_factory import (
+    EntityFactory,
+    create_image_receipt_pk_parser,
+    create_ocr_job_extractors,
+    create_ocr_job_sk_parser,
+)
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
@@ -26,18 +32,30 @@ class OCRRoutingDecision(DynamoDBEntity):
         s3_bucket (str): S3 bucket containing the image.
         s3_key (str): S3 key for the image.
         created_at (datetime): When the routing decision was created.
-        updated_at (Optional[datetime]): When the routing decision was last
+        updated_at (datetime | None): When the routing decision was last
             updated.
         receipt_count (int): Number of receipts detected.
         status (str): Status of the OCR routing decision.
     """
+
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "s3_bucket",
+        "s3_key",
+        "created_at",
+        "updated_at",
+        "receipt_count",
+        "status",
+    }
 
     image_id: str
     job_id: str
     s3_bucket: str
     s3_key: str
     created_at: datetime
-    updated_at: Optional[datetime]
+    updated_at: datetime | None
     receipt_count: int
     status: str = OCRStatus.PENDING.value
 
@@ -71,19 +89,19 @@ class OCRRoutingDecision(DynamoDBEntity):
         self.status = normalize_enum(self.status, OCRStatus)
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"ROUTING#{self.job_id}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         return {
             "GSI1PK": {"S": f"OCR_ROUTING_DECISION_STATUS#{self.status}"},
             "GSI1SK": {"S": f"ROUTING#{self.job_id}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         return {
             **self.key,
             **self.gsi1_key(),
@@ -126,9 +144,40 @@ class OCRRoutingDecision(DynamoDBEntity):
             )
         )
 
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "OCRRoutingDecision":
+        """Converts a DynamoDB item to an OCRRoutingDecision object.
 
-def item_to_ocr_routing_decision(item: Dict[str, Any]) -> OCRRoutingDecision:
-    """Converts a DynamoDB item to a OCRRoutingDecision object.
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            OCRRoutingDecision: The OCRRoutingDecision object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        # OCRRoutingDecision-specific extractors (in addition to common OCR
+        # extractors)
+        custom_extractors = {
+            **create_ocr_job_extractors(),
+            "receipt_count": EntityFactory.extract_int_field("receipt_count"),
+        }
+
+        return EntityFactory.create_entity(
+            entity_class=cls,
+            item=item,
+            required_keys=cls.REQUIRED_KEYS,
+            key_parsers={
+                "PK": create_image_receipt_pk_parser(),
+                "SK": create_ocr_job_sk_parser(),
+            },
+            custom_extractors=custom_extractors,
+        )
+
+
+def item_to_ocr_routing_decision(item: dict[str, Any]) -> OCRRoutingDecision:
+    """Converts a DynamoDB item to an OCRRoutingDecision object.
 
     Args:
         item (dict): The DynamoDB item to convert.
@@ -139,50 +188,4 @@ def item_to_ocr_routing_decision(item: Dict[str, Any]) -> OCRRoutingDecision:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "s3_bucket",
-        "s3_key",
-        "created_at",
-        "updated_at",
-        "receipt_count",
-        "status",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}"
-            f"\nadditional keys: {additional_keys}"
-        )
-
-    try:
-        sk_parts = item["SK"]["S"].split("#")
-        image_id = item["PK"]["S"].split("#")[1]
-        job_id = sk_parts[1]
-        s3_bucket = item["s3_bucket"]["S"]
-        s3_key = item["s3_key"]["S"]
-        created_at = datetime.fromisoformat(item["created_at"]["S"])
-        updated_at = (
-            datetime.fromisoformat(item["updated_at"]["S"])
-            if "updated_at" in item and "S" in item["updated_at"]
-            else None
-        )
-        receipt_count = int(item["receipt_count"]["N"])
-        status = item["status"]["S"]
-        return OCRRoutingDecision(
-            image_id=image_id,
-            job_id=job_id,
-            s3_bucket=s3_bucket,
-            s3_key=s3_key,
-            created_at=created_at,
-            updated_at=updated_at,
-            receipt_count=receipt_count,
-            status=status,
-        )
-    except Exception as e:
-        raise ValueError(
-            f"Invalid item format\nitem: {item}\nerror: {e}"
-        ) from e
+    return OCRRoutingDecision.from_item(item)

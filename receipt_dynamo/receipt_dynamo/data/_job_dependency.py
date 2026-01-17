@@ -1,11 +1,8 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
-
-from botocore.exceptions import ClientError
+from typing import Dict
 
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
     DeleteRequestTypeDef,
-    SingleEntityCRUDMixin,
+    FlattenedStandardMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
@@ -18,16 +15,8 @@ from receipt_dynamo.entities.job_dependency import (
     item_to_job_dependency,
 )
 
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
 
-
-class _JobDependency(
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-):
+class _JobDependency(FlattenedStandardMixin):
     """
     Provides methods for accessing job dependency data in DynamoDB.
 
@@ -39,11 +28,11 @@ class _JobDependency(
     get_job_dependency(dependent_job_id: str, dependency_job_id: str) ->
         JobDependency
         Gets a job dependency from the database.
-    list_job_dependencies(dependent_job_id: str) -> List[JobDependency]
+    list_job_dependencies(dependent_job_id: str) -> list[JobDependency]
         Lists all dependencies for a specific job.
     delete_job_dependency(job_dependency: JobDependency)
         Deletes a job dependency from the database.
-    delete_job_dependencies(job_dependencies: List[JobDependency])
+    delete_job_dependencies(job_dependencies: list[JobDependency])
         Deletes multiple job dependencies from the database.
     """
 
@@ -109,9 +98,9 @@ class _JobDependency(
     def list_dependencies(
         self,
         dependent_job_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[JobDependency], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[JobDependency], Dict | None]:
         """Lists all dependencies for a specific job.
 
         Args:
@@ -121,7 +110,7 @@ class _JobDependency(
                 from.
 
         Returns:
-            Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the
+            tuple[list[JobDependency], Dict | None]: A tuple containing the
                 list of job dependencies and the last evaluated key.
 
         Raises:
@@ -150,9 +139,9 @@ class _JobDependency(
     def list_dependents(
         self,
         dependency_job_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[JobDependency], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[JobDependency], Dict | None]:
         """Lists all jobs that depend on a specific job.
 
         Args:
@@ -162,7 +151,7 @@ class _JobDependency(
                 from.
 
         Returns:
-            Tuple[List[JobDependency], Optional[Dict]]: A tuple containing the
+            tuple[list[JobDependency], Dict | None]: A tuple containing the
                 list of job dependencies and the last evaluated key.
 
         Raises:
@@ -202,7 +191,9 @@ class _JobDependency(
             ClientError: If a DynamoDB error occurs.
         """
         self._validate_entity(job_dependency, JobDependency, "job_dependency")
-        self._delete_entity(job_dependency)
+        self._delete_entity(
+            job_dependency, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_all_dependencies")
     def delete_all_dependencies(self, dependent_job_id: str):

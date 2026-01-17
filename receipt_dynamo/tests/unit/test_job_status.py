@@ -72,14 +72,16 @@ def test_job_status_init_invalid_id():
 @pytest.mark.unit
 def test_job_status_init_invalid_status():
     """Test the JobStatus constructor with invalid status."""
-    with pytest.raises(ValueError, match="status must be one of"):
+    with pytest.raises(ValueError, match="JobStatus must be one of"):
         JobStatus(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "invalid_status",  # Invalid: not a valid status
             "2021-01-01T00:00:00",
         )
 
-    with pytest.raises(ValueError, match="status must be one of"):
+    with pytest.raises(
+        ValueError, match="JobStatus must be a str or JobStatus"
+    ):
         JobStatus(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             123,  # Invalid: not a string

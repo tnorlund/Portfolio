@@ -1,33 +1,15 @@
 from dataclasses import dataclass
 from math import sqrt
-from typing import Any, Dict
+from typing import Any, ClassVar
 
-from receipt_dynamo.entities.base import DynamoDBEntity
-from receipt_dynamo.entities.entity_mixins import (
-    GeometryHashMixin,
-    GeometryMixin,
-    GeometryReprMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    GeometryValidationUtilsMixin,
-    SerializationMixin,
-)
+from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
 from receipt_dynamo.entities.util import (
-    assert_valid_uuid,
+    build_base_item,
 )
 
 
-@dataclass(eq=True, unsafe_hash=False)
-class Line(
-    GeometryHashMixin,
-    GeometryReprMixin,
-    GeometryValidationUtilsMixin,
-    SerializationMixin,
-    GeometryMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    DynamoDBEntity,
-):
+@dataclass(kw_only=True)
+class Line(TextGeometryEntity):
     """
     Represents a line and its associated metadata stored in a DynamoDB table.
 
@@ -58,44 +40,22 @@ class Line(
         num_chars (int): The number of characters in the line.
     """
 
-    image_id: str
+    # Entity-specific ID fields
     line_id: int
-    text: str
-    bounding_box: Dict[str, Any]
-    top_right: Dict[str, Any]
-    top_left: Dict[str, Any]
-    bottom_right: Dict[str, Any]
-    bottom_left: Dict[str, Any]
-    angle_degrees: float
-    angle_radians: float
-    confidence: float
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
-        assert_valid_uuid(self.image_id)
-
+        # Validate entity-specific ID fields
         if not isinstance(self.line_id, int):
             raise ValueError("line_id must be an integer")
         if self.line_id <= 0:
             raise ValueError("line_id must be positive")
 
-        if not isinstance(self.text, str):
-            raise ValueError("text must be a string")
-
-        # Use validation utils mixin for common validation
-        self._validate_common_geometry_entity_fields()
-
-        # Note: confidence validation in mixin allows <= 0.0, but Line
-        # entities require > 0.0
-        if isinstance(self.confidence, int):
-            self.confidence = float(self.confidence)
-        if not isinstance(self.confidence, float) or not (
-            0 < self.confidence <= 1
-        ):
-            raise ValueError("confidence must be a float between 0 and 1")
+        # Use base class geometry validation
+        self._validate_geometry()
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the line.
 
         Returns:
@@ -106,7 +66,7 @@ class Line(
             "SK": {"S": f"LINE#{self.line_id:05d}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the line.
 
         Returns:
@@ -117,35 +77,17 @@ class Line(
             "GSI1SK": {"S": f"LINE#{self.line_id:05d}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the Line object to a DynamoDB item.
 
         Returns:
             dict: A dictionary representing the Line object as a DynamoDB item.
         """
-        # Use mixin for common geometry fields
-        custom_fields = self._get_geometry_fields()
-
-        return self.build_dynamodb_item(
-            entity_type="LINE",
-            gsi_methods=["gsi1_key"],
-            custom_fields=custom_fields,
-            exclude_fields={
-                "image_id",
-                "line_id",
-                "text",
-                "bounding_box",
-                "top_right",
-                "top_left",
-                "bottom_right",
-                "bottom_left",
-                "angle_degrees",
-                "angle_radians",
-                "confidence",
-                # Prevent auto-serialization of helper property used for GSI injection
-                "gsi1_key",
-            },
-        )
+        return {
+            **build_base_item(self, "LINE"),
+            **self.gsi1_key(),
+            **self._get_geometry_fields(),
+        }
 
     def calculate_diagonal_length(self) -> float:
         """Calculates the length of the diagonal of the line.
@@ -158,27 +100,15 @@ class Line(
             + (self.top_right["y"] - self.bottom_left["y"]) ** 2
         )
 
-    def _get_geometry_hash_fields(self) -> tuple:
-        """Override to include entity-specific ID fields in hash
-        computation."""
-        geometry_fields = (
-            self.text,
-            tuple(self.bounding_box.items()),
-            tuple(self.top_right.items()),
-            tuple(self.top_left.items()),
-            tuple(self.bottom_right.items()),
-            tuple(self.bottom_left.items()),
-            self.angle_degrees,
-            self.angle_radians,
-            self.confidence,
-        )
-        return geometry_fields + (
+    def _get_geometry_hash_fields(self) -> tuple[Any, ...]:
+        """Include entity-specific ID fields in hash computation."""
+        return self._get_base_geometry_hash_fields() + (
             self.image_id,
             self.line_id,
         )
 
     def __hash__(self) -> int:
-        """Returns the hash value of the Line object."""
+        """Return hash (required for dataclass with eq=True, frozen=False)."""
         return hash(self._get_geometry_hash_fields())
 
     def __repr__(self) -> str:
@@ -192,9 +122,37 @@ class Line(
             f")"
         )
 
+    # Use base class required keys (no additional keys needed for Line)
+    REQUIRED_KEYS: ClassVar[set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
 
-def item_to_line(item: Dict[str, Any]) -> Line:
-    """Convert a DynamoDB item to a Line object using type-safe EntityFactory.
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "Line":
+        """Convert a DynamoDB item to a Line object.
+
+        Args:
+            item: The DynamoDB item dictionary to convert.
+
+        Returns:
+            A Line object with all fields properly extracted and validated.
+
+        Raises:
+            ValueError: If required fields are missing or have invalid format.
+        """
+
+        def parse_line_sk(sk: str) -> dict[str, Any]:
+            """Parse SK to extract line_id."""
+            parts = sk.split("#")
+            if len(parts) < 2 or parts[0] != "LINE":
+                raise ValueError(f"Invalid SK format for Line: {sk}")
+            return {"line_id": int(parts[1])}
+
+        return cls._from_item_with_geometry(item, parse_line_sk)
+
+
+def item_to_line(item: dict[str, Any]) -> Line:
+    """Convert a DynamoDB item to a Line object.
+
+    This is a convenience function that delegates to Line.from_item().
 
     Args:
         item: The DynamoDB item dictionary to convert.
@@ -205,56 +163,4 @@ def item_to_line(item: Dict[str, Any]) -> Line:
     Raises:
         ValueError: If required fields are missing or have invalid format.
     """
-    from receipt_dynamo.entities.entity_factory import (
-        EntityFactory,
-        create_geometry_extractors,
-        create_image_receipt_pk_parser,
-    )
-
-    required_keys = {
-        "PK",
-        "SK",
-        "text",
-        "bounding_box",
-        "top_right",
-        "top_left",
-        "bottom_right",
-        "bottom_left",
-        "angle_degrees",
-        "angle_radians",
-        "confidence",
-    }
-
-    # Custom SK parser for LINE#{line_id:05d} pattern
-    def parse_line_sk(sk: str) -> Dict[str, Any]:
-        """Parse the SK to extract line_id."""
-        parts = sk.split("#")
-        if len(parts) < 2 or parts[0] != "LINE":
-            raise ValueError(f"Invalid SK format for Line: {sk}")
-
-        return {"line_id": int(parts[1])}
-
-    # Type-safe extractors for all fields
-    custom_extractors = {
-        "text": EntityFactory.extract_text_field,
-        **create_geometry_extractors(),  # Handles all geometry fields
-    }
-
-    # Use EntityFactory to create the entity with full type safety
-    try:
-        return EntityFactory.create_entity(
-            entity_class=Line,
-            item=item,
-            required_keys=required_keys,
-            key_parsers={
-                "PK": create_image_receipt_pk_parser(),
-                "SK": parse_line_sk,
-            },
-            custom_extractors=custom_extractors,
-        )
-    except ValueError as e:
-        # Check if it's a missing keys error and re-raise as-is
-        if str(e).startswith("Item is missing required keys:"):
-            raise
-        # Otherwise, wrap the error
-        raise ValueError(f"Error converting item to Line: {e}") from e
+    return Line.from_item(item)

@@ -6,7 +6,7 @@ receipt keys (PK=IMAGE#<image_id>, SK=RECEIPT#<id>#COMPACTION_RUN#<run_id>).
 """
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -41,11 +41,11 @@ class _CompactionRun(FlattenedStandardMixin):
             raise EntityValidationError(
                 "run must be an instance of CompactionRun"
             )
-        self._add_entity(run)
+        self._add_entity(run, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("update_compaction_run")
     def update_compaction_run(self, run: CompactionRun) -> None:
-        """Replace the compaction run record (full PUT with existence check)."""
+        """Replace the compaction run record (full PUT with check)."""
         if run is None:
             raise EntityValidationError("run cannot be None")
         if not isinstance(run, CompactionRun):
@@ -62,7 +62,7 @@ class _CompactionRun(FlattenedStandardMixin):
     @handle_dynamodb_errors("get_compaction_run")
     def get_compaction_run(
         self, image_id: str, receipt_id: int, run_id: str
-    ) -> Optional[CompactionRun]:
+    ) -> CompactionRun | None:
         """Fetch a compaction run by primary key (image, receipt, run)."""
         pk = f"IMAGE#{image_id}"
         sk = f"RECEIPT#{receipt_id:05d}#COMPACTION_RUN#{run_id}"
@@ -79,9 +79,9 @@ class _CompactionRun(FlattenedStandardMixin):
         self,
         image_id: str,
         receipt_id: int,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[CompactionRun], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[CompactionRun], dict[str, Any] | None]:
         """List runs for a specific receipt ordered by SK.
 
         Uses PK=IMAGE#<image_id> and begins_with on SK.
@@ -104,9 +104,9 @@ class _CompactionRun(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_recent_compaction_runs")
     def list_recent_compaction_runs(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[CompactionRun], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[CompactionRun], dict[str, Any] | None]:
         """List recent runs using GSI1 (RUNS / CREATED_AT#...)."""
         return self._query_entities(
             index_name="GSI1",
@@ -124,7 +124,7 @@ class _CompactionRun(FlattenedStandardMixin):
     def mark_compaction_run_started(
         self, image_id: str, receipt_id: int, run_id: str, collection: str
     ) -> None:
-        """Mark a collection state as PROCESSING and set started_at timestamp."""
+        """Mark a collection state as PROCESSING and set started_at."""
         run = self.get_compaction_run(image_id, receipt_id, run_id)
         if run is None:
             raise EntityNotFoundError("CompactionRun not found")
@@ -144,12 +144,14 @@ class _CompactionRun(FlattenedStandardMixin):
         receipt_id: int,
         run_id: str,
         collection: str,
+        *,
         merged_vectors: int = 0,
     ) -> None:
-        """Mark a collection state as COMPLETED and set finished_at + merged count.
+        """Mark a collection state as COMPLETED and set finished_at.
 
-        Uses atomic UpdateExpression to update only specific fields, preventing race conditions
-        when both lines and words collection updates happen simultaneously.
+        Uses atomic UpdateExpression to update only specific fields,
+        preventing race conditions when both lines and words collection
+        updates happen simultaneously.
         """
         pk = f"IMAGE#{image_id}"
         sk = f"RECEIPT#{receipt_id:05d}#COMPACTION_RUN#{run_id}"
@@ -200,13 +202,15 @@ class _CompactionRun(FlattenedStandardMixin):
         image_id: str,
         receipt_id: int,
         run_id: str,
+        *,
         collection: str,
         error: str,
     ) -> None:
         """Mark a collection state as FAILED with error text.
 
-        Uses atomic UpdateExpression to update only specific fields, preventing race conditions
-        when both lines and words collection updates happen simultaneously.
+        Uses atomic UpdateExpression to update only specific fields,
+        preventing race conditions when both lines and words collection
+        updates happen simultaneously.
         """
         pk = f"IMAGE#{image_id}"
         sk = f"RECEIPT#{receipt_id:05d}#COMPACTION_RUN#{run_id}"

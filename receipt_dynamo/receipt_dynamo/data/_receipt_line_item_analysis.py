@@ -5,10 +5,9 @@ This refactored version reduces code from ~652 lines to ~210 lines
 functionality.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
@@ -35,10 +34,7 @@ else:
     )
 
 
-class _ReceiptLineItemAnalysis(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _ReceiptLineItemAnalysis(FlattenedStandardMixin):
     """
     A class used to access receipt line item analyses in DynamoDB.
 
@@ -165,7 +161,9 @@ class _ReceiptLineItemAnalysis(
             Exception: If the analysis cannot be deleted from DynamoDB.
         """
         self._validate_entity(analysis, ReceiptLineItemAnalysis, "analysis")
-        self._delete_entity(analysis)
+        self._delete_entity(
+            analysis, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_line_item_analyses")
     def delete_receipt_line_item_analyses(
@@ -240,18 +238,18 @@ class _ReceiptLineItemAnalysis(
     @handle_dynamodb_errors("list_receipt_line_item_analyses")
     def list_receipt_line_item_analyses(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptLineItemAnalysis], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptLineItemAnalysis], dict[str, Any] | None]:
         """Returns ReceiptLineItemAnalyses and the last evaluated key.
 
         Args:
-            limit (Optional[int]): The maximum number of items to return.
-            last_evaluated_key (Optional[Dict[str, Any]]):
+            limit (int | None): The maximum number of items to return.
+            last_evaluated_key (dict[str, Any] | None):
                 The key to start from.
 
         Returns:
-            Tuple[List[ReceiptLineItemAnalysis], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptLineItemAnalysis], dict[str, Any] | None]:
                 The analyses and last evaluated key.
 
         Raises:
@@ -277,14 +275,14 @@ class _ReceiptLineItemAnalysis(
     @handle_dynamodb_errors("list_receipt_line_item_analyses_for_image")
     def list_receipt_line_item_analyses_for_image(
         self, image_id: str
-    ) -> List[ReceiptLineItemAnalysis]:
+    ) -> list[ReceiptLineItemAnalysis]:
         """Returns all ReceiptLineItemAnalyses for a given image.
 
         Args:
             image_id (str): The Image ID to query.
 
         Returns:
-            List[ReceiptLineItemAnalysis]: A list of ReceiptLineItemAnalyses.
+            list[ReceiptLineItemAnalysis]: A list of ReceiptLineItemAnalyses.
 
         Raises:
             ValueError: If the image_id is invalid.

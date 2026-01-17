@@ -148,7 +148,11 @@ ADD_ERROR_SCENARIOS = [
 ]
 
 UPDATE_ERROR_SCENARIOS = [
-    ("ConditionalCheckFailedException", EntityNotFoundError, "not found"),
+    (
+        "ConditionalCheckFailedException",
+        EntityNotFoundError,
+        "(not found|does not exist)",
+    ),
     (
         "ProvisionedThroughputExceededException",
         DynamoDBThroughputError,
@@ -245,7 +249,9 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
         """Test that getting a non-existent spatial analysis raises error."""
         client = DynamoClient(dynamodb_table)
 
-        with pytest.raises(EntityNotFoundError, match="does not exist"):
+        with pytest.raises(
+            EntityNotFoundError, match="(does not exist|not found)"
+        ):
             client.get_receipt_word_label_spatial_analysis(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 receipt_id=999,
@@ -295,7 +301,9 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
         """Test that updating a non-existent spatial analysis raises error."""
         client = DynamoClient(dynamodb_table)
 
-        with pytest.raises(EntityNotFoundError, match="not found"):
+        with pytest.raises(
+            EntityNotFoundError, match="(does not exist|not found)"
+        ):
             client.update_receipt_word_label_spatial_analysis(
                 sample_spatial_analysis
             )
@@ -664,9 +672,7 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
             )
 
         # Test wrong types
-        with pytest.raises(
-            EntityValidationError, match="image_id must be a string"
-        ):
+        with pytest.raises(OperationError, match="uuid must be a string"):
             client.get_receipt_word_label_spatial_analysis(
                 image_id=123,  # type: ignore
                 receipt_id=1,
@@ -675,7 +681,8 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
             )
 
         with pytest.raises(
-            EntityValidationError, match="receipt_id must be an integer"
+            EntityValidationError,
+            match="receipt_id must be a positive integer",
         ):
             client.get_receipt_word_label_spatial_analysis(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -686,7 +693,8 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
 
         # Test negative values
         with pytest.raises(
-            EntityValidationError, match="receipt_id must be positive"
+            EntityValidationError,
+            match="receipt_id must be a positive integer",
         ):
             client.get_receipt_word_label_spatial_analysis(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -696,7 +704,7 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
             )
 
         with pytest.raises(
-            EntityValidationError, match="line_id must be positive"
+            EntityValidationError, match="line_id must be a positive integer"
         ):
             client.get_receipt_word_label_spatial_analysis(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",

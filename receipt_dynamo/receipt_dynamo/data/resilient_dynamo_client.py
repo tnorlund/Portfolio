@@ -3,7 +3,6 @@
 import random
 import threading
 import time
-from typing import List, Optional
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
@@ -17,6 +16,9 @@ class CircuitBreakerState:
     HALF_OPEN = "half_open"
 
 
+# Inherits from DynamoClient which uses mixin composition pattern.
+# See dynamo_client.py for explanation of the intentional high ancestor count.
+# pylint: disable=too-many-ancestors
 class ResilientDynamoClient(DynamoClient):
     """
     DynamoDB client with resilience patterns for production use.
@@ -46,7 +48,7 @@ class ResilientDynamoClient(DynamoClient):
         )
         self.circuit_state = CircuitBreakerState.CLOSED
         self.failure_count = 0
-        self.last_failure_time: Optional[float] = None
+        self.last_failure_time: float | None = None
         self.circuit_lock = threading.Lock()
 
         # Retry configuration
@@ -65,7 +67,7 @@ class ResilientDynamoClient(DynamoClient):
         )
 
         if self.enable_batch_processing:
-            self.metric_queue: List[AIUsageMetric] = []
+            self.metric_queue: list[AIUsageMetric] = []
             self.queue_lock = threading.Lock()
             self.last_flush_time = time.time()
             self.flush_thread = threading.Thread(
@@ -174,7 +176,7 @@ class ResilientDynamoClient(DynamoClient):
             if metrics_to_flush:
                 self._batch_write_metrics_with_retry(metrics_to_flush)
 
-    def _prepare_flush(self) -> Optional[List[AIUsageMetric]]:
+    def _prepare_flush(self) -> list[AIUsageMetric | None]:
         """Prepare metrics for flushing (must be called with lock held).
 
         Returns:
@@ -190,7 +192,7 @@ class ResilientDynamoClient(DynamoClient):
         return metrics_to_flush
 
     def _batch_write_metrics_with_retry(
-        self, metrics: List[AIUsageMetric]
+        self, metrics: list[AIUsageMetric]
     ) -> None:
         """Batch write metrics with retry logic."""
         remaining_metrics = metrics.copy()

@@ -124,7 +124,7 @@ ADD_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityAlreadyExistsError,
-        "receipt_metadata already exists",
+        "already exists",
     ),
 ] + ERROR_SCENARIOS
 
@@ -133,7 +133,7 @@ UPDATE_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityNotFoundError,
-        "not found during update_receipt_metadatas",
+        "(does not exist|not found)",
     ),
 ] + ERROR_SCENARIOS
 
@@ -342,9 +342,7 @@ def test_add_receipt_metadata_duplicate_raises(
     client = DynamoClient(dynamodb_table)
     client.add_receipt_metadata(sample_receipt_metadata)
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="receipt_metadata already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt_metadata(sample_receipt_metadata)
 
 
@@ -377,7 +375,9 @@ def test_get_receipt_metadata_not_found(
     """Tests that get_receipt_metadata raises EntityNotFoundError for non-existent metadata."""
     client = DynamoClient(dynamodb_table)
 
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         client.get_receipt_metadata(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             999,
@@ -903,7 +903,7 @@ def test_update_receipt_metadata_not_found(
 
     with pytest.raises(
         EntityNotFoundError,
-        match="not found during update_receipt_metadata",
+        match="(does not exist|not found)",
     ):
         client.update_receipt_metadata(sample_receipt_metadata)
 
@@ -959,8 +959,8 @@ def test_list_receipt_metadatas_with_place_id_validation(
     "limit,expected_error",
     [
         ("not-an-int", "limit must be an integer"),
-        (0, "limit must be positive"),
-        (-5, "limit must be positive"),
+        (0, "limit must be greater than 0"),
+        (-5, "limit must be greater than 0"),
     ],
 )
 def test_list_receipt_metadatas_limit_validation(

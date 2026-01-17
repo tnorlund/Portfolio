@@ -1,6 +1,8 @@
 """AI Usage Metric data access mixin for DynamoDB operations."""
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
+
+from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -8,7 +10,10 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import EntityValidationError
+from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBError,
+    EntityValidationError,
+)
 from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 
 if TYPE_CHECKING:
@@ -29,14 +34,18 @@ class _AIUsageMetric(FlattenedStandardMixin):
         self._validate_entity(metric, AIUsageMetric, "metric")
         # Convert metric to entity format that works with _add_entity
         temp_metric = type(
-            "TempMetric", (), {"to_item": lambda: metric.to_dynamodb_item()}
+            "TempMetric",
+            (),
+            {"to_item": staticmethod(metric.to_dynamodb_item)},
         )()
-        self._add_entity(temp_metric)
+        self._add_entity(
+            temp_metric, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("batch_add_ai_usage_metrics")
     def batch_put_ai_usage_metrics(
-        self, metrics: List[AIUsageMetric]
-    ) -> List[AIUsageMetric]:
+        self, metrics: list[AIUsageMetric]
+    ) -> list[AIUsageMetric]:
         """
         Store multiple AI usage metrics in DynamoDB using batch write.
 
@@ -64,18 +73,18 @@ class _AIUsageMetric(FlattenedStandardMixin):
 
         try:
             self._batch_write_with_retry(request_items)
-        except Exception:
-            # If batch write fails, assume all metrics failed
-            # This simplifies error handling compared to the original
-            # complex logic
+        except (ClientError, DynamoDBError):
+            # If batch write fails, assume all metrics failed.
+            # This simplifies error handling - callers can retry the
+            # returned failed metrics.
             failed_metrics = metrics.copy()
 
         return failed_metrics
 
     @handle_dynamodb_errors("query_ai_usage_metrics_by_date")
     def query_ai_usage_metrics_by_date(
-        self, date: str, service: Optional[str] = None, limit: int = 100
-    ) -> List[Dict[str, Any]]:
+        self, date: str, service: str | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
         """
         Query AI usage metrics by date with optional service filter.
 
@@ -116,7 +125,7 @@ class _AIUsageMetric(FlattenedStandardMixin):
     @handle_dynamodb_errors("get_ai_usage_metric")
     def get_ai_usage_metric(
         self, service: str, model: str, timestamp: str, request_id: str
-    ) -> Optional[AIUsageMetric]:
+    ) -> AIUsageMetric | None:
         """
         Get a specific AI usage metric.
 
@@ -133,5 +142,5 @@ class _AIUsageMetric(FlattenedStandardMixin):
             primary_key=f"AI_USAGE#{service}#{model}",
             sort_key=f"USAGE#{timestamp}#{request_id}",
             entity_class=AIUsageMetric,
-            converter_func=lambda item: AIUsageMetric.from_dynamodb_item(item),
+            converter_func=AIUsageMetric.from_dynamodb_item,
         )

@@ -6,14 +6,81 @@ base operations classes to eliminate code duplication.
 """
 
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
+# Default geometry values for creating temporary entities (e.g., for deletion)
+DEFAULT_GEOMETRY_FIELDS: Dict[str, Any] = {
+    "bounding_box": {"x": 0, "y": 0, "width": 0, "height": 0},
+    "top_left": {"x": 0, "y": 0},
+    "top_right": {"x": 0, "y": 0},
+    "bottom_left": {"x": 0, "y": 0},
+    "bottom_right": {"x": 0, "y": 0},
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 0.5,
+}
+
+
+def validate_last_evaluated_key(lek: dict[str, Any]) -> None:
+    """Validate that a last_evaluated_key has the required DynamoDB format.
+
+    Args:
+        lek: The last_evaluated_key dictionary to validate.
+
+    Raises:
+        EntityValidationError: If the key format is invalid or missing
+            required fields.
+    """
+    required_keys = {"PK", "SK"}
+    if not required_keys.issubset(lek.keys()):
+        raise EntityValidationError(
+            f"last_evaluated_key must contain keys: {required_keys}"
+        )
+    for key in required_keys:
+        if not isinstance(lek[key], dict) or "S" not in lek[key]:
+            raise EntityValidationError(
+                f"last_evaluated_key[{key}] must be a dict containing a key 'S'"
+            )
+
+
+def validate_status_list_params(
+    status: str,
+    limit: int | None,
+    last_evaluated_key: dict[str, Any] | None,
+) -> None:
+    """
+    Validate parameters for status-based listing methods.
+
+    This eliminates duplicate validation code across data layer classes
+    that have list_*_by_status methods.
+
+    Args:
+        status: The status string to filter by
+        limit: Maximum number of items to return (or None)
+        last_evaluated_key: Pagination key (or None)
+
+    Raises:
+        EntityValidationError: If any parameter is invalid
+    """
+    if not isinstance(status, str):
+        raise EntityValidationError(
+            f"status must be a string, got {type(status).__name__}"
+        )
+    if limit is not None and not isinstance(limit, int):
+        raise EntityValidationError("limit must be an integer or None")
+    if last_evaluated_key is not None and not isinstance(
+        last_evaluated_key, dict
+    ):
+        raise EntityValidationError(
+            "last_evaluated_key must be a dictionary or None"
+        )
+
 
 def validate_pagination_params(
-    limit: Optional[int],
-    last_evaluated_key: Optional[Dict[str, Any]],
+    limit: int | None,
+    last_evaluated_key: dict[str, Any] | None,
     validate_attribute_format: bool = False,
 ) -> None:
     """
@@ -30,20 +97,20 @@ def validate_pagination_params(
     """
     if limit is not None:
         if not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
+            raise EntityValidationError("limit must be an integer")
         if limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
+            raise EntityValidationError("limit must be greater than 0")
 
     if last_evaluated_key is not None:
         if not isinstance(last_evaluated_key, dict):
             raise EntityValidationError(
-                "LastEvaluatedKey must be a dictionary"
+                "last_evaluated_key must be a dictionary"
             )
-        # Validate DynamoDB LastEvaluatedKey structure
+        # Validate DynamoDB last_evaluated_key structure
         required_keys = {"PK", "SK"}
         if not required_keys.issubset(last_evaluated_key.keys()):
             raise EntityValidationError(
-                f"LastEvaluatedKey must contain keys: {required_keys}"
+                f"last_evaluated_key must contain keys: {required_keys}"
             )
 
         # Optional: Validate proper DynamoDB attribute value format
@@ -54,7 +121,7 @@ def validate_pagination_params(
                     or "S" not in last_evaluated_key[key]
                 ):
                     raise EntityValidationError(
-                        f"LastEvaluatedKey[{key}] must be a dict "
+                        f"last_evaluated_key[{key}] must be a dict "
                         f"containing a key 'S'"
                     )
 
@@ -62,14 +129,15 @@ def validate_pagination_params(
 def build_query_params(
     table_name: str,
     key_condition_expression: str,
-    expression_attribute_values: Dict[str, Any],
-    index_name: Optional[str] = None,
-    expression_attribute_names: Optional[Dict[str, str]] = None,
-    filter_expression: Optional[str] = None,
-    exclusive_start_key: Optional[Dict[str, Any]] = None,
-    limit: Optional[int] = None,
-    scan_index_forward: Optional[bool] = None,
-) -> Dict[str, Any]:
+    expression_attribute_values: dict[str, Any],
+    *,
+    index_name: str | None = None,
+    expression_attribute_names: dict[str, str] | None = None,
+    filter_expression: str | None = None,
+    exclusive_start_key: dict[str, Any] | None = None,
+    limit: int | None = None,
+    scan_index_forward: bool | None = None,
+) -> dict[str, Any]:
     """
     Build query parameters for DynamoDB queries.
 
@@ -82,7 +150,8 @@ def build_query_params(
         filter_expression: Optional filter expression
         exclusive_start_key: Optional start key for pagination
         limit: Optional query limit
-        scan_index_forward: Optional sort order flag (True=ascending, False=descending)
+        scan_index_forward: Optional sort order flag (True=ascending,
+            False=descending)
 
     Returns:
         Dictionary of query parameters
@@ -111,7 +180,7 @@ def build_query_params(
 
 def build_get_item_key(
     primary_key: str, sort_key: str
-) -> Dict[str, Dict[str, str]]:
+) -> dict[str, dict[str, str]]:
     """
     Build a DynamoDB key for get_item operations.
 
@@ -126,6 +195,66 @@ def build_get_item_key(
         "PK": {"S": primary_key},
         "SK": {"S": sort_key},
     }
+
+
+def validate_receipt_field_params(
+    receipt_id: int,
+    image_id: str,
+    field_name: str,
+) -> None:
+    """
+    Validate common parameters for receipt field-based operations.
+
+    Args:
+        receipt_id: The receipt ID (must be int)
+        image_id: The image ID (must be str)
+        field_name: The field name (must be str)
+
+    Raises:
+        EntityValidationError: If any parameter is invalid
+    """
+    if not isinstance(receipt_id, int):
+        raise EntityValidationError(
+            f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+        )
+    if not isinstance(image_id, str):
+        raise EntityValidationError(
+            f"image_id must be a string, got {type(image_id).__name__}"
+        )
+    if not isinstance(field_name, str):
+        raise EntityValidationError(
+            f"field_name must be a string, got {type(field_name).__name__}"
+        )
+
+
+def validate_batch_get_keys(
+    keys: list[dict[str, dict[str, str]]],
+    entity_type: str,
+    pk_prefix: str = "IMAGE#",
+    sk_prefix: str = "LINE#",
+) -> None:
+    """
+    Validate keys for batch get operations.
+
+    Args:
+        keys: List of key dictionaries to validate
+        entity_type: The expected entity type in the SK
+            (e.g., "LETTER", "WORD")
+        pk_prefix: Expected prefix for PK (default: "IMAGE#")
+        sk_prefix: Expected prefix for SK (default: "LINE#")
+
+    Raises:
+        EntityValidationError: If any key is invalid
+    """
+    for key in keys:
+        if not {"PK", "SK"}.issubset(key.keys()):
+            raise EntityValidationError("Keys must contain 'PK' and 'SK'")
+        if not key["PK"]["S"].startswith(pk_prefix):
+            raise EntityValidationError(f"PK must start with '{pk_prefix}'")
+        if not key["SK"]["S"].startswith(sk_prefix):
+            raise EntityValidationError(f"SK must start with '{sk_prefix}'")
+        if key["SK"]["S"].split("#")[-2] != entity_type:
+            raise EntityValidationError(f"SK must contain '{entity_type}'")
 
 
 def batch_write_with_retry(

@@ -1,32 +1,14 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, ClassVar, Generator
 
-from receipt_dynamo.entities.base import DynamoDBEntity
-from receipt_dynamo.entities.entity_mixins import (
-    GeometryHashMixin,
-    GeometryMixin,
-    GeometryReprMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    GeometryValidationUtilsMixin,
-    WarpTransformMixin,
-)
+from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
 from receipt_dynamo.entities.util import (
     _repr_str,
 )
 
 
-@dataclass(eq=True, unsafe_hash=False)
-class ReceiptLetter(
-    GeometryHashMixin,
-    GeometryReprMixin,
-    WarpTransformMixin,
-    GeometryValidationUtilsMixin,
-    GeometryMixin,
-    GeometrySerializationMixin,
-    GeometryValidationMixin,
-    DynamoDBEntity,
-):
+@dataclass(kw_only=True)
+class ReceiptLetter(TextGeometryEntity):
     """
     Represents a receipt letter and its associated metadata stored in a
     DynamoDB table.
@@ -63,58 +45,51 @@ class ReceiptLetter(
             0 and 1).
     """
 
+    # Entity-specific ID fields
     receipt_id: int
-    image_id: str
     line_id: int
     word_id: int
     letter_id: int
-    text: str
-    bounding_box: Dict[str, Any]
-    top_right: Dict[str, Any]
-    top_left: Dict[str, Any]
-    bottom_right: Dict[str, Any]
-    bottom_left: Dict[str, Any]
-    angle_degrees: float
-    angle_radians: float
-    confidence: float
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
+        # Validate receipt_id
         if not isinstance(self.receipt_id, int):
             raise ValueError("receipt_id must be an integer")
         if self.receipt_id <= 0:
             raise ValueError("receipt_id must be positive")
 
+        # Validate line_id
         if not isinstance(self.line_id, int):
             raise ValueError("line_id must be an integer")
         if self.line_id < 0:
-            raise ValueError("line_id must be positive")
+            raise ValueError("line_id must be non-negative")
 
+        # Validate word_id
         if not isinstance(self.word_id, int):
             raise ValueError("word_id must be an integer")
         if self.word_id < 0:
-            raise ValueError("word_id must be positive")
+            raise ValueError("word_id must be non-negative")
 
+        # Validate letter_id
         if not isinstance(self.letter_id, int):
             raise ValueError("letter_id must be an integer")
         if self.letter_id < 0:
-            raise ValueError("letter_id must be positive")
+            raise ValueError("letter_id must be non-negative")
 
-        # Use validation utils mixin for common validation
-        # (handles image_id and text)
-        self._validate_common_geometry_entity_fields()
+        # Use base class geometry validation
+        self._validate_geometry()
 
         # Additional validation specific to letter
         if len(self.text) != 1:
             raise ValueError("text must be exactly one character")
 
-        # Note: confidence validation in mixin allows <= 0.0, but receipt
-        # entities require > 0.0
+        # Additional confidence check for receipt entities
         if self.confidence <= 0.0:
             raise ValueError("confidence must be between 0 and 1")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """
         Generates the primary key for the receipt letter.
 
@@ -133,7 +108,7 @@ class ReceiptLetter(
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """
         Converts the ReceiptLetter object to a DynamoDB item.
 
@@ -161,27 +136,18 @@ class ReceiptLetter(
             return False
         return (
             self.receipt_id == other.receipt_id
-            and self.image_id == other.image_id
             and self.line_id == other.line_id
             and self.word_id == other.word_id
             and self.letter_id == other.letter_id
-            and self.text == other.text
-            and self.bounding_box == other.bounding_box
-            and self.top_right == other.top_right
-            and self.top_left == other.top_left
-            and self.bottom_right == other.bottom_right
-            and self.bottom_left == other.bottom_left
-            and self.angle_degrees == other.angle_degrees
-            and self.angle_radians == other.angle_radians
-            and self.confidence == other.confidence
+            and self._geometry_fields_equal(other)
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """
         Returns an iterator over the ReceiptLetter object's attributes.
 
         Yields:
-            Tuple[str, any]: A tuple containing the attribute name and its
+            tuple[str, any]: A tuple containing the attribute name and its
             value.
         """
         yield "image_id", self.image_id
@@ -189,15 +155,7 @@ class ReceiptLetter(
         yield "line_id", self.line_id
         yield "word_id", self.word_id
         yield "letter_id", self.letter_id
-        yield "text", self.text
-        yield "bounding_box", self.bounding_box
-        yield "top_right", self.top_right
-        yield "top_left", self.top_left
-        yield "bottom_right", self.bottom_right
-        yield "bottom_left", self.bottom_left
-        yield "angle_degrees", self.angle_degrees
-        yield "angle_radians", self.angle_radians
-        yield "confidence", self.confidence
+        yield from self._iter_geometry_fields()
 
     def __repr__(self) -> str:
         """
@@ -218,9 +176,8 @@ class ReceiptLetter(
             f")"
         )
 
-    def _get_geometry_hash_fields(self) -> tuple:
-        """Override to include entity-specific ID fields in hash
-        computation."""
+    def _get_geometry_hash_fields(self) -> tuple[Any, ...]:
+        """Include entity-specific ID fields in hash computation."""
         return self._get_base_geometry_hash_fields() + (
             self.receipt_id,
             self.image_id,
@@ -230,87 +187,60 @@ class ReceiptLetter(
         )
 
     def __hash__(self) -> int:
-        """
-        Generates a hash value for the ReceiptLetter object.
-
-        Returns:
-            int: The hash value for the ReceiptLetter object.
-        """
+        """Return hash based on all fields (due to explicit __eq__)."""
         return hash(self._get_geometry_hash_fields())
 
+    # Use base class required keys (no additional keys for ReceiptLetter)
+    REQUIRED_KEYS: ClassVar[set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
 
-def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:
-    """
-    Converts a DynamoDB item to a ReceiptLetter object.
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptLetter":
+        """Convert a DynamoDB item to a ReceiptLetter object.
+
+        Args:
+            item: The DynamoDB item dictionary to convert.
+
+        Returns:
+            A ReceiptLetter object with all fields properly extracted and
+            validated.
+
+        Raises:
+            ValueError: If required fields are missing or have invalid format.
+        """
+
+        def parse_receipt_letter_sk(sk: str) -> dict[str, Any]:
+            """Parse SK to extract receipt_id, line_id, word_id, letter_id."""
+            parts = sk.split("#")
+            if (
+                len(parts) < 8
+                or parts[0] != "RECEIPT"
+                or parts[2] != "LINE"
+                or parts[4] != "WORD"
+                or parts[6] != "LETTER"
+            ):
+                raise ValueError(f"Invalid SK format for ReceiptLetter: {sk}")
+            return {
+                "receipt_id": int(parts[1]),
+                "line_id": int(parts[3]),
+                "word_id": int(parts[5]),
+                "letter_id": int(parts[7]),
+            }
+
+        return cls._from_item_with_geometry(item, parse_receipt_letter_sk)
+
+
+def item_to_receipt_letter(item: dict[str, Any]) -> ReceiptLetter:
+    """Convert a DynamoDB item to a ReceiptLetter object.
+
+    This is a convenience function that delegates to ReceiptLetter.from_item().
 
     Args:
-        item (dict): The DynamoDB item to convert.
+        item: The DynamoDB item dictionary to convert.
 
     Returns:
-        ReceiptLetter: The ReceiptLetter object represented by the DynamoDB
-        item.
+        A ReceiptLetter object with all fields extracted and validated.
 
     Raises:
-        ValueError: When the item format is invalid or required keys are
-        missing.
+        ValueError: If required fields are missing or have invalid format.
     """
-
-    required_keys = {
-        "PK",
-        "SK",
-        "text",
-        "bounding_box",
-        "top_right",
-        "top_left",
-        "bottom_right",
-        "bottom_left",
-        "angle_degrees",
-        "angle_radians",
-        "confidence",
-    }
-
-    # Custom SK parser for RECEIPT#/LINE#/WORD#/LETTER# pattern
-    def parse_receipt_letter_sk(sk: str) -> Dict[str, Any]:
-        """Parse the SK to extract receipt_id, line_id, word_id, and
-        letter_id."""
-        parts = sk.split("#")
-        if (
-            len(parts) < 8
-            or parts[0] != "RECEIPT"
-            or parts[2] != "LINE"
-            or parts[4] != "WORD"
-            or parts[6] != "LETTER"
-        ):
-            raise ValueError(f"Invalid SK format for ReceiptLetter: {sk}")
-
-        return {
-            "receipt_id": int(parts[1]),
-            "line_id": int(parts[3]),
-            "word_id": int(parts[5]),
-            "letter_id": int(parts[7]),
-        }
-
-    # Import EntityFactory and related functions
-    from .entity_factory import (
-        EntityFactory,
-        create_geometry_extractors,
-        create_image_receipt_pk_parser,
-    )
-
-    # Type-safe extractors for all fields
-    custom_extractors = {
-        "text": EntityFactory.extract_text_field,
-        **create_geometry_extractors(),  # Handles all geometry fields
-    }
-
-    # Use EntityFactory to create the entity with full type safety
-    return EntityFactory.create_entity(
-        entity_class=ReceiptLetter,
-        item=item,
-        required_keys=required_keys,
-        key_parsers={
-            "PK": create_image_receipt_pk_parser(),
-            "SK": parse_receipt_letter_sk,
-        },
-        custom_extractors=custom_extractors,
-    )
+    return ReceiptLetter.from_item(item)

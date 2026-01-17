@@ -1,9 +1,8 @@
 # infra/lambda_layer/python/dynamo/data/_receipt.py
-from typing import Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     TransactWriteItemTypeDef,
@@ -16,9 +15,6 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
-from receipt_dynamo.entities.receipt_letter import (
-    item_to_receipt_letter,
-)
 from receipt_dynamo.entities.receipt_line import (
     item_to_receipt_line,
 )
@@ -26,10 +22,7 @@ from receipt_dynamo.entities.receipt_place import (
     item_to_receipt_place,
 )
 from receipt_dynamo.entities.receipt_summary import ReceiptSummaryPage
-from receipt_dynamo.entities.receipt_word import (
-    ReceiptWord,
-    item_to_receipt_word,
-)
+from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
 )
@@ -37,10 +30,7 @@ from receipt_dynamo.entities.receipt_word_label import (
 from ._receipt_details_processor import process_receipt_details_query
 
 
-class _Receipt(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _Receipt(FlattenedStandardMixin):
     @handle_dynamodb_errors("add_receipt")
     def add_receipt(self, receipt: Receipt):
         """Adds a receipt to the database
@@ -159,7 +149,8 @@ class _Receipt(
             )
             for receipt in receipts
         ]
-        self._transact_write_with_chunking(transact_items)  # type: ignore[arg-type]
+        # type: ignore[arg-type]
+        self._transact_write_with_chunking(transact_items)
 
     @handle_dynamodb_errors("get_receipt")
     def get_receipt(self, image_id: str, receipt_id: int) -> Receipt:
@@ -212,17 +203,23 @@ class _Receipt(
     def get_receipt_details(
         self, image_id: str, receipt_id: int
     ) -> ReceiptDetails:
-        """Get a receipt with its details
+        """Get a receipt with its details using optimized GSI4 query.
+
+        This method uses GSI4 which is designed for efficient single-query
+        retrieval of receipt details. By design, GSI4 excludes ReceiptLetters
+        to reduce read costs - letters are rarely needed in most patterns.
 
         Args:
             image_id (str): The ID of the image the receipt belongs to
             receipt_id (int): The ID of the receipt to get
 
         Returns:
-            ReceiptDetails: Dataclass with receipt and related data
+            ReceiptDetails: Dataclass with receipt and related data.
+                Note: letters will be an empty list (excluded from GSI4).
         """
 
         # Custom converter function that handles multiple entity types
+        # Note: RECEIPT_LETTER is not included because GSI4 excludes letters
         def convert_item(item):
             item_type = item.get("TYPE", {}).get("S")
             if item_type == "RECEIPT":
@@ -231,22 +228,20 @@ class _Receipt(
                 return ("line", item_to_receipt_line(item))
             if item_type == "RECEIPT_WORD":
                 return ("word", item_to_receipt_word(item))
-            if item_type == "RECEIPT_LETTER":
-                return ("letter", item_to_receipt_letter(item))
             if item_type == "RECEIPT_WORD_LABEL":
                 return ("label", item_to_receipt_word_label(item))
             if item_type == "RECEIPT_PLACE":
                 return ("place", item_to_receipt_place(item))
             return None
 
-        # Query all items for this receipt
+        # Query GSI4 for all receipt-related items (excluding letters)
+        # GSI4PK: IMAGE#{image_id}#RECEIPT#{receipt_id:05d}
         items, _ = self._query_entities(
-            index_name=None,  # Query main table
-            key_condition_expression="PK = :pk AND begins_with(SK, :sk)",
+            index_name="GSI4",
+            key_condition_expression="GSI4PK = :pk",
             expression_attribute_names=None,
             expression_attribute_values={
-                ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
+                ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"},
             },
             converter_func=convert_item,
             limit=None,  # Get all items
@@ -255,7 +250,7 @@ class _Receipt(
 
         receipt = None
         place = None
-        lines, words, letters, labels = [], [], [], []
+        lines, words, labels = [], [], []
 
         # Process converted items
         for item in items:
@@ -268,8 +263,6 @@ class _Receipt(
                 lines.append(entity)
             elif item_type == "word":
                 words.append(entity)
-            elif item_type == "letter":
-                letters.append(entity)
             elif item_type == "label":
                 labels.append(entity)
             elif item_type == "place":
@@ -286,15 +279,15 @@ class _Receipt(
             receipt=receipt,
             lines=lines,
             words=words,
-            letters=letters,
             labels=labels,
             place=place,
+            # letters excluded by GSI4 design - uses default empty list
         )
 
     @handle_dynamodb_errors("list_receipts")
     def list_receipts(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Receipt], dict | None]:
         """
@@ -378,8 +371,8 @@ class _Receipt(
     @handle_dynamodb_errors("list_receipt_details")
     def list_receipt_details(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
     ) -> ReceiptSummaryPage:
         """List receipts with their words and word labels using GSI2.
 
@@ -430,56 +423,3 @@ class _Receipt(
 
         # Use processor function to handle the complex query logic
         return process_receipt_details_query(self._client, query_params, limit)
-
-    @handle_dynamodb_errors("list_receipt_and_words")
-    def list_receipt_and_words(
-        self, image_id: str, receipt_id: int
-    ) -> tuple[Receipt, list[ReceiptWord]]:
-        """DEPRECATED: List a receipt and its words using GSI3
-
-        This method is deprecated due to GSI3 optimization changes.
-        Use get_receipt() and list_receipt_words_from_receipt() instead.
-
-        Args:
-            image_id (str): The ID of the image to list receipts from
-            receipt_id (int): The ID of the receipt to list words from
-
-        Returns:
-            tuple[Receipt, list[ReceiptWord]]: A tuple containing:
-                - The receipt object
-                - List of receipt words sorted by line_id and word_id
-
-        Raises:
-            ValueError: When input parameters are invalid or if the receipt
-                does not exist.
-            Exception: For underlying DynamoDB errors
-        """
-        import warnings
-
-        warnings.warn(
-            "list_receipt_and_words is deprecated. Use get_receipt() and "
-            "list_receipt_words_from_receipt() instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._validate_image_id(image_id)
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id < 0:
-            raise EntityValidationError("receipt_id must be positive")
-
-        # Use the recommended alternative methods
-        try:
-            receipt = self.get_receipt(image_id, receipt_id)
-        except EntityNotFoundError:
-            raise EntityNotFoundError(
-                f"receipt with receipt_id={receipt_id} and "
-                f"image_id={image_id} does not exist"
-            )
-
-        words = self.list_receipt_words_from_receipt(image_id, receipt_id)
-
-        # Sort words by line_id and word_id
-        words.sort(key=lambda w: (w.line_id, w.word_id))
-
-        return receipt, words

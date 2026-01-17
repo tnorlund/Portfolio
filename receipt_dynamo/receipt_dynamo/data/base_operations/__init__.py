@@ -16,12 +16,9 @@ from .error_handling import (
 from .flattened_mixin import FlattenedStandardMixin
 from .mixins import (
     BatchOperationsMixin,
-    CommonValidationMixin,
     QueryByParentMixin,
     QueryByTypeMixin,
-    SimplifiedAccessorMixin,
     SingleEntityCRUDMixin,
-    StandardAccessorMixin,
     TransactionalOperationsMixin,
 )
 from .types import *
@@ -30,9 +27,7 @@ from .validators import EntityValidator, ValidationMessageGenerator
 __all__ = [
     # Main base class
     "DynamoDBBaseOperations",
-    # Consolidated accessor mixins (recommended)
-    "StandardAccessorMixin",
-    "SimplifiedAccessorMixin",
+    # Flattened mixin (recommended for most accessors)
     "FlattenedStandardMixin",
     # Error handling
     "ErrorHandler",
@@ -42,13 +37,10 @@ __all__ = [
     # Validation
     "EntityValidator",
     "ValidationMessageGenerator",
-    # Original mixins for composable functionality
+    # Composable mixins for custom accessor patterns
     "SingleEntityCRUDMixin",
     "BatchOperationsMixin",
     "TransactionalOperationsMixin",
     "QueryByTypeMixin",
     "QueryByParentMixin",
-    "CommonValidationMixin",
-    # Flattened mixin that respects pylint's max-ancestors limit
-    "FlattenedStandardMixin",
 ]

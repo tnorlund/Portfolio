@@ -1,7 +1,7 @@
 # infra/lambda_layer/python/dynamo/entities/image.py
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.entities.base import DynamoDBEntity
@@ -9,6 +9,7 @@ from receipt_dynamo.entities.entity_mixins import CDNFieldsMixin
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
+    validate_iso_timestamp,
     validate_positive_dimensions,
 )
 
@@ -41,47 +42,37 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         image_type (ImageType): The type of image.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "width",
+        "height",
+        "timestamp_added",
+        "raw_s3_bucket",
+        "raw_s3_key",
+        "image_type",
+    }
+
+    # Required fields
     image_id: str
     width: int
     height: int
     timestamp_added: str | datetime
     raw_s3_bucket: str
     raw_s3_key: str
-    sha256: Optional[str] = None
-    cdn_s3_bucket: Optional[str] = None
-    cdn_s3_key: Optional[str] = None
-    cdn_webp_s3_key: Optional[str] = None
-    cdn_avif_s3_key: Optional[str] = None
-    # Thumbnail versions
-    cdn_thumbnail_s3_key: Optional[str] = None
-    cdn_thumbnail_webp_s3_key: Optional[str] = None
-    cdn_thumbnail_avif_s3_key: Optional[str] = None
-    # Small versions
-    cdn_small_s3_key: Optional[str] = None
-    cdn_small_webp_s3_key: Optional[str] = None
-    cdn_small_avif_s3_key: Optional[str] = None
-    # Medium versions
-    cdn_medium_s3_key: Optional[str] = None
-    cdn_medium_webp_s3_key: Optional[str] = None
-    cdn_medium_avif_s3_key: Optional[str] = None
+    # Optional fields (CDN fields inherited from CDNFieldsMixin)
     image_type: ImageType | str = ImageType.SCAN
-    receipt_count: Optional[int] = None  # Only for query filtering
-
-    # CDN field lists for CDNFieldsMixin
-    CDN_BASIC_FIELDS = ["cdn_s3_key", "cdn_webp_s3_key", "cdn_avif_s3_key"]
-    CDN_SIZE_FIELDS = ["thumbnail", "small", "medium"]
+    receipt_count: int | None = None  # Only for query filtering
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
         assert_valid_uuid(self.image_id)
         validate_positive_dimensions(self.width, self.height)
 
-        if isinstance(self.timestamp_added, datetime):
-            self.timestamp_added = self.timestamp_added.isoformat()
-        elif not isinstance(self.timestamp_added, str):
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+        self.timestamp_added = validate_iso_timestamp(
+            self.timestamp_added, "timestamp_added", default_now=False
+        )
 
         if self.raw_s3_bucket and not isinstance(self.raw_s3_bucket, str):
             raise ValueError("raw_s3_bucket must be a string")
@@ -89,13 +80,9 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         if self.raw_s3_key and not isinstance(self.raw_s3_key, str):
             raise ValueError("raw_s3_key must be a string")
 
+        # Use CDNFieldsMixin to validate sha256 and all CDN fields
         if self.sha256 and not isinstance(self.sha256, str):
             raise ValueError("sha256 must be a string")
-
-        if self.cdn_s3_bucket and not isinstance(self.cdn_s3_bucket, str):
-            raise ValueError("cdn_s3_bucket must be a string")
-
-        # Use CDNFieldsMixin to validate all CDN fields
         self.validate_cdn_fields()
 
         if isinstance(self.image_type, ImageType):
@@ -119,7 +106,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
                 )
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the image.
 
         Returns:
@@ -128,7 +115,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         return {"PK": {"S": f"IMAGE#{self.image_id}"}, "SK": {"S": "IMAGE"}}
 
     @property
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the image.
 
         Returns:
@@ -140,7 +127,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         }
 
     @property
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """Generates the GSI2 key for the image.
 
         Returns:
@@ -152,7 +139,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         }
 
     @property
-    def gsi3_key(self) -> Dict[str, Any]:
+    def gsi3_key(self) -> dict[str, Any]:
         """Generates the GSI3 key for the image.
 
         Returns:
@@ -168,7 +155,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             "GSI3SK": {"S": f"NUM_RECEIPTS#{receipt_count_str}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the Image object to a DynamoDB item.
 
         Returns:
@@ -210,101 +197,66 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             f"timestamp_added={self.timestamp_added}, "
             f"raw_s3_bucket={_repr_str(self.raw_s3_bucket)}, "
             f"raw_s3_key={_repr_str(self.raw_s3_key)}, "
-            f"sha256={_repr_str(self.sha256)}, "
-            f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
-            f"cdn_s3_key={_repr_str(self.cdn_s3_key)}, "
-            f"cdn_webp_s3_key={_repr_str(self.cdn_webp_s3_key)}, "
-            f"cdn_avif_s3_key={_repr_str(self.cdn_avif_s3_key)}, "
-            f"cdn_thumbnail_s3_key={_repr_str(self.cdn_thumbnail_s3_key)}, "
-            f"cdn_thumbnail_webp_s3_key="
-            f"{_repr_str(self.cdn_thumbnail_webp_s3_key)}, "
-            f"cdn_thumbnail_avif_s3_key="
-            f"{_repr_str(self.cdn_thumbnail_avif_s3_key)}, "
-            f"cdn_small_s3_key={_repr_str(self.cdn_small_s3_key)}, "
-            f"cdn_small_webp_s3_key={_repr_str(self.cdn_small_webp_s3_key)}, "
-            f"cdn_small_avif_s3_key={_repr_str(self.cdn_small_avif_s3_key)}, "
-            f"cdn_medium_s3_key={_repr_str(self.cdn_medium_s3_key)}, "
-            f"cdn_medium_webp_s3_key="
-            f"{_repr_str(self.cdn_medium_webp_s3_key)}, "
-            f"cdn_medium_avif_s3_key="
-            f"{_repr_str(self.cdn_medium_avif_s3_key)}, "
+            f"{self._get_cdn_repr_fields()}, "
             f"image_type={_repr_str(self.image_type)}, "
             f"receipt_count={_repr_str(self.receipt_count)}"
             ")"
         )
 
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "Image":
+        """Converts a DynamoDB item to an Image object.
 
-def item_to_image(item: Dict[str, Any]) -> Image:
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            Image: The Image object represented by the DynamoDB item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        missing_keys = DynamoDBEntity.validate_keys(item, cls.REQUIRED_KEYS)
+        if missing_keys:
+            additional_keys = set(item.keys()) - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+
+        try:
+            image_type = item.get("image_type", {}).get("S")
+            return cls(
+                image_id=item["PK"]["S"].split("#")[1],
+                width=int(item["width"]["N"]),
+                height=int(item["height"]["N"]),
+                timestamp_added=datetime.fromisoformat(
+                    item["timestamp_added"]["S"]
+                ),
+                raw_s3_bucket=item["raw_s3_bucket"]["S"],
+                raw_s3_key=item["raw_s3_key"]["S"],
+                image_type=image_type if image_type else ImageType.SCAN.value,
+                receipt_count=(
+                    int(item["receipt_count"]["N"])
+                    if "receipt_count" in item and "N" in item["receipt_count"]
+                    else None
+                ),
+                **cls._cdn_fields_from_item(item),
+            )
+        except KeyError as e:
+            raise ValueError(f"Error converting item to Image: {e}") from e
+
+
+def item_to_image(item: dict[str, Any]) -> Image:
     """Converts a DynamoDB item to an Image object.
+
     Args:
         item (dict): The DynamoDB item to convert.
+
     Returns:
         Image: The Image object represented by the DynamoDB item.
+
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "width",
-        "height",
-        "timestamp_added",
-        "raw_s3_bucket",
-        "raw_s3_key",
-        "image_type",
-    }
-    missing_keys = DynamoDBEntity.validate_keys(item, required_keys)
-    if missing_keys:
-        additional_keys = set(item.keys()) - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-
-    try:
-        image_type = item.get("image_type", {}).get("S")
-        return Image(
-            image_id=item["PK"]["S"].split("#")[1],
-            width=int(item["width"]["N"]),
-            height=int(item["height"]["N"]),
-            timestamp_added=datetime.fromisoformat(
-                item["timestamp_added"]["S"]
-            ),
-            raw_s3_bucket=item["raw_s3_bucket"]["S"],
-            raw_s3_key=item["raw_s3_key"]["S"],
-            sha256=item.get("sha256", {}).get("S"),
-            cdn_s3_bucket=item.get("cdn_s3_bucket", {}).get("S"),
-            cdn_s3_key=item.get("cdn_s3_key", {}).get("S"),
-            cdn_webp_s3_key=item.get("cdn_webp_s3_key", {}).get("S"),
-            cdn_avif_s3_key=item.get("cdn_avif_s3_key", {}).get("S"),
-            cdn_thumbnail_s3_key=item.get("cdn_thumbnail_s3_key", {}).get("S"),
-            cdn_thumbnail_webp_s3_key=item.get(
-                "cdn_thumbnail_webp_s3_key", {}
-            ).get("S"),
-            cdn_thumbnail_avif_s3_key=item.get(
-                "cdn_thumbnail_avif_s3_key", {}
-            ).get("S"),
-            cdn_small_s3_key=item.get("cdn_small_s3_key", {}).get("S"),
-            cdn_small_webp_s3_key=item.get("cdn_small_webp_s3_key", {}).get(
-                "S"
-            ),
-            cdn_small_avif_s3_key=item.get("cdn_small_avif_s3_key", {}).get(
-                "S"
-            ),
-            cdn_medium_s3_key=item.get("cdn_medium_s3_key", {}).get("S"),
-            cdn_medium_webp_s3_key=item.get("cdn_medium_webp_s3_key", {}).get(
-                "S"
-            ),
-            cdn_medium_avif_s3_key=item.get("cdn_medium_avif_s3_key", {}).get(
-                "S"
-            ),
-            image_type=image_type if image_type else ImageType.SCAN.value,
-            receipt_count=(
-                int(item["receipt_count"]["N"])
-                if "receipt_count" in item and "N" in item["receipt_count"]
-                else None
-            ),
-        )
-    except KeyError as e:
-        raise ValueError(f"Error converting item to Image: {e}") from e
+    return Image.from_item(item)

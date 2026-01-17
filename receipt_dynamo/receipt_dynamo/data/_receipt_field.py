@@ -1,9 +1,8 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_field.py
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
@@ -20,14 +19,11 @@ from receipt_dynamo.entities.receipt_field import (
     item_to_receipt_field,
 )
 
-if TYPE_CHECKING:
-    pass
-
 # DynamoDB batch_write_item can only handle up to 25 items per call
 CHUNK_SIZE = 25
 
 
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
+def validate_last_evaluated_key(lek: dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
@@ -40,10 +36,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _ReceiptField(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _ReceiptField(FlattenedStandardMixin):
     """
     A class providing methods to interact with "ReceiptField" entities in
     DynamoDB.
@@ -65,26 +58,26 @@ class _ReceiptField(
     -------
     add_receipt_field(receipt_field: ReceiptField):
         Adds a single ReceiptField item to the database, ensuring unique ID.
-    add_receipt_fields(receipt_fields: List[ReceiptField]):
+    add_receipt_fields(receipt_fields: list[ReceiptField]):
         Adds multiple ReceiptField items to the database in chunks of up to
         25 items.
     update_receipt_field(receipt_field: ReceiptField):
         Updates an existing ReceiptField item in the database.
-    update_receipt_fields(receipt_fields: List[ReceiptField]):
+    update_receipt_fields(receipt_fields: list[ReceiptField]):
         Updates multiple ReceiptField items using transactions.
     delete_receipt_field(receipt_field: ReceiptField):
         Deletes a single ReceiptField item from the database.
-    delete_receipt_fields(receipt_fields: List[ReceiptField]):
+    delete_receipt_fields(receipt_fields: list[ReceiptField]):
         Deletes multiple ReceiptField items using transactions.
     get_receipt_field(field_type: str, image_id: str, receipt_id: int) ->
         ReceiptField:
         Retrieves a single ReceiptField item by its composite key.
-    list_receipt_fields(...) -> Tuple[List[ReceiptField], dict | None]:
+    list_receipt_fields(...) -> tuple[list[ReceiptField], dict | None]:
         Lists ReceiptField records with optional pagination.
-    get_receipt_fields_by_image(...) -> Tuple[List[ReceiptField], dict | None]:
+    get_receipt_fields_by_image(...) -> tuple[list[ReceiptField], dict | None]:
         Retrieves ReceiptField records by image ID.
     get_receipt_fields_by_receipt(...) ->
-        Tuple[List[ReceiptField], dict | None]:
+        tuple[list[ReceiptField], dict | None]:
         Retrieves ReceiptField records by receipt ID.
     """
 
@@ -104,7 +97,9 @@ class _ReceiptField(
             When a receipt field with the same ID already exists.
         """
         self._validate_entity(receipt_field, ReceiptField, "receipt_field")
-        self._add_entity(receipt_field)
+        self._add_entity(
+            receipt_field, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_receipt_fields")
     def add_receipt_fields(self, receipt_fields: list[ReceiptField]) -> None:
@@ -150,7 +145,9 @@ class _ReceiptField(
             When the receipt field does not exist.
         """
         self._validate_entity(receipt_field, ReceiptField, "receipt_field")
-        self._update_entity(receipt_field)
+        self._update_entity(
+            receipt_field, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("update_receipt_fields")
     def update_receipt_fields(
@@ -201,7 +198,9 @@ class _ReceiptField(
             When the receipt field does not exist.
         """
         self._validate_entity(receipt_field, ReceiptField, "receipt_field")
-        self._delete_entity(receipt_field)
+        self._delete_entity(
+            receipt_field, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_fields")
     def delete_receipt_fields(
@@ -293,7 +292,7 @@ class _ReceiptField(
     @handle_dynamodb_errors("list_receipt_fields")
     def list_receipt_fields(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptField], dict | None]:
         """
@@ -342,7 +341,7 @@ class _ReceiptField(
     def get_receipt_fields_by_image(
         self,
         image_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptField], dict | None]:
         """
@@ -398,7 +397,7 @@ class _ReceiptField(
         self,
         image_id: str,
         receipt_id: int,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptField], dict | None]:
         """

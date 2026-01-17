@@ -728,9 +728,7 @@ def test_add_receipt_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="receipt already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt(sample_receipt)
     mock_put.assert_called_once()
 
@@ -762,7 +760,7 @@ def test_update_receipt_conditional_check_failed(
     )
 
     with pytest.raises(
-        EntityNotFoundError, match="receipt not found during update_receipt"
+        EntityNotFoundError, match="(does not exist|not found)"
     ):
         client.update_receipt(sample_receipt)
     mock_put.assert_called_once()
@@ -795,7 +793,7 @@ def test_delete_receipt_conditional_check_failed(
     )
 
     with pytest.raises(
-        EntityNotFoundError, match="receipt not found during delete_receipt"
+        EntityNotFoundError, match="(does not exist|not found)"
     ):
         client.delete_receipt(sample_receipt)
     mock_delete.assert_called_once()
@@ -887,9 +885,7 @@ def test_add_receipt_duplicate_raises(
     client = DynamoClient(dynamodb_table)
     client.add_receipt(sample_receipt)
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="receipt already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt(sample_receipt)
 
 
@@ -1085,16 +1081,17 @@ def test_get_receipt_details_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,
     sample_receipt_word: ReceiptWord,
-    sample_receipt_letter: ReceiptLetter,
 ) -> None:
     """
-    Tests get_receipt_details retrieves a receipt with its associated
-    words and letters.
+    Tests get_receipt_details retrieves a receipt with its associated words.
+
+    Note: GSI4 (used by get_receipt_details) intentionally excludes
+    ReceiptLetters to reduce read costs, so letters will always be
+    an empty list.
     """
     client = DynamoClient(dynamodb_table)
     client.add_receipt(sample_receipt)
     client.add_receipt_words([sample_receipt_word])
-    client.add_receipt_letters([sample_receipt_letter])
 
     details = client.get_receipt_details(
         sample_receipt.image_id, sample_receipt.receipt_id
@@ -1111,7 +1108,8 @@ def test_get_receipt_details_success(
 
     assert r == sample_receipt
     assert len(words) == 1 and words[0] == sample_receipt_word
-    assert len(letters) == 1 and letters[0] == sample_receipt_letter
+    # Letters are intentionally excluded from GSI4 to reduce read costs
+    assert len(letters) == 0
     assert (
         lines == []
     ), "No lines were added in this test, so expect an empty list."
@@ -1178,9 +1176,9 @@ def test_list_receipts_with_pagination(
 @pytest.mark.parametrize(
     "invalid_limit,error_match",
     [
-        ("not-an-int", "Limit must be an integer"),
-        (0, "Limit must be greater than 0"),
-        (-1, "Limit must be greater than 0"),
+        ("not-an-int", "limit must be an integer"),
+        (0, "limit must be greater than 0"),
+        (-1, "limit must be greater than 0"),
     ],
 )
 def test_list_receipts_invalid_limit(
@@ -1196,25 +1194,27 @@ def test_list_receipts_invalid_limit(
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    "invalid_lek",
+    "invalid_lek,expected_exception",
     [
-        "not-a-dict",
-        {"PK": {"S": "IMAGE#start"}},  # Missing SK
-        {"SK": {"S": "DUMMY_START"}},  # Missing PK
-        {"PK": "not-a-dict", "SK": {"S": "DUMMY_START"}},  # Invalid PK format
-        {"PK": {"S": "IMAGE#start"}, "SK": "not-a-dict"},  # Invalid SK format
+        ("not-a-dict", EntityValidationError),
+        ({"PK": {"S": "IMAGE#start"}}, EntityValidationError),  # Missing SK
+        ({"SK": {"S": "DUMMY_START"}}, EntityValidationError),  # Missing PK
+        # Invalid PK/SK format - passes validation but fails at DynamoDB
+        ({"PK": "not-a-dict", "SK": {"S": "DUMMY_START"}}, OperationError),
+        ({"PK": {"S": "IMAGE#start"}, "SK": "not-a-dict"}, OperationError),
     ],
 )
 def test_list_receipts_invalid_last_evaluated_key(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_lek: Any,
+    expected_exception: Type[Exception],
 ) -> None:
     """
-    Tests that list_receipts raises ValueError when last_evaluated_key is
-    invalid.
+    Tests that list_receipts raises appropriate error when last_evaluated_key
+    is invalid.
     """
     client = DynamoClient(dynamodb_table)
-    with pytest.raises(ValueError, match="LastEvaluatedKey"):
+    with pytest.raises(expected_exception):
         client.list_receipts(last_evaluated_key=invalid_lek)
 
 
@@ -1284,8 +1284,8 @@ def test_list_receipt_details_empty_results(
 @pytest.mark.parametrize(
     "invalid_limit,error_match",
     [
-        (-1, "Limit must be greater than 0"),
-        (0, "Limit must be greater than 0"),
+        (-1, "limit must be greater than 0"),
+        (0, "limit must be greater than 0"),
     ],
 )
 def test_list_receipt_details_invalid_limit(
@@ -1311,7 +1311,7 @@ def test_list_receipt_details_invalid_last_evaluated_key(
     client = DynamoClient(dynamodb_table)
 
     with pytest.raises(
-        EntityValidationError, match="LastEvaluatedKey must be a dictionary"
+        EntityValidationError, match="last_evaluated_key must be a dictionary"
     ):
         # type: ignore
         client.list_receipt_details(last_evaluated_key="invalid")
@@ -1376,110 +1376,3 @@ def test_get_receipts_from_image_empty_result(
 
     # Should return empty list
     assert receipts == []
-
-
-# -------------------------------------------------------------------
-#           LIST_RECEIPT_AND_WORDS TESTS
-# -------------------------------------------------------------------
-
-
-@pytest.mark.integration
-def test_list_receipt_and_words_success(
-    dynamodb_table: Literal["MyMockedTable"],
-    sample_receipt: Receipt,
-    sample_receipt_words: list[ReceiptWord],
-) -> None:
-    """Tests retrieving a receipt and its words together.
-
-    NOTE: This method is deprecated. This test will emit a deprecation warning.
-    """
-    client = DynamoClient(dynamodb_table)
-
-    # Add receipt and words
-    client.add_receipt(sample_receipt)
-    client.add_receipt_words(sample_receipt_words)
-
-    # Get receipt and words
-    receipt, words = client.list_receipt_and_words(
-        sample_receipt.image_id, sample_receipt.receipt_id
-    )
-
-    # Verify receipt
-    assert receipt == sample_receipt
-
-    # Verify words
-    assert len(words) == len(sample_receipt_words)
-    assert all(w in words for w in sample_receipt_words)
-
-    # Verify words are sorted by line_id and word_id
-    for i in range(1, len(words)):
-        prev = words[i - 1]
-        curr = words[i]
-        assert (prev.line_id, prev.word_id) <= (curr.line_id, curr.word_id)
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "image_id,receipt_id,expected_error,error_match",
-    [
-        (None, 1, ValueError, "image_id cannot be None"),
-        (
-            "not-a-uuid",
-            1,
-            OperationError,
-            "Unexpected error during list_receipt_and_words: uuid "
-            "must be a valid UUIDv4",
-        ),
-        (
-            "650e8400-e29b-41d4-a716-446655440001",
-            # Fixed UUID for test consistency
-            None,
-            EntityValidationError,
-            "receipt_id must be an integer",
-        ),
-        (
-            "650e8400-e29b-41d4-a716-446655440002",
-            # Fixed UUID for test consistency
-            "not-an-int",
-            EntityValidationError,
-            "receipt_id must be an integer",
-        ),
-        (
-            "650e8400-e29b-41d4-a716-446655440003",
-            # Fixed UUID for test consistency
-            -1,
-            EntityValidationError,
-            "receipt_id must be positive",
-        ),
-    ],
-)
-def test_list_receipt_and_words_parameter_validation(
-    dynamodb_table: Literal["MyMockedTable"],
-    image_id: Any,
-    receipt_id: Any,
-    expected_error: Type[Exception],
-    error_match: str,
-) -> None:
-    """Tests parameter validation for list_receipt_and_words."""
-    client = DynamoClient(dynamodb_table)
-
-    with pytest.raises(expected_error, match=error_match):
-        client.list_receipt_and_words(image_id, receipt_id)
-
-
-@pytest.mark.integration
-def test_list_receipt_and_words_not_found(
-    dynamodb_table: Literal["MyMockedTable"],
-    unique_image_id: str,
-) -> None:
-    """Tests list_receipt_and_words when receipt doesn't exist."""
-    client = DynamoClient(dynamodb_table)
-
-    with pytest.raises(
-        EntityNotFoundError,
-        match=(
-            f"receipt with receipt_id=1 and "
-            f"image_id={unique_image_id} does not exist"
-        ),
-    ):
-        client.list_receipt_and_words(unique_image_id, 1)

@@ -22,7 +22,7 @@ Classes:
     JobIdentifierMixin: For job-related entities
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from receipt_dynamo.entities.util import (
     assert_valid_uuid,
@@ -52,7 +52,7 @@ class ImageIdentifierMixin:
         """
         assert_valid_uuid(self.image_id)
 
-    def _pk_image(self) -> Dict[str, Any]:
+    def _pk_image(self) -> dict[str, Any]:
         """
         Generate IMAGE# partition key for DynamoDB.
 
@@ -336,7 +336,7 @@ class JobIdentifierMixin:
         """
         assert_valid_uuid(self.job_id)
 
-    def _pk_job(self) -> Dict[str, Any]:
+    def _pk_job(self) -> dict[str, Any]:
         """
         Generate JOB# partition key for DynamoDB.
 

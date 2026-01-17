@@ -164,7 +164,9 @@ class TestLabelCountCacheBasicOperations:
     ) -> None:
         """Test that updating a non-existent label count cache raises error."""
         client = DynamoClient(dynamodb_table)
-        with pytest.raises(EntityNotFoundError, match="not found"):
+        with pytest.raises(
+            EntityNotFoundError, match="(does not exist|not found)"
+        ):
             client.update_label_count_cache(example_label_count_cache)
 
     def test_add_duplicate_label_count_cache_raises_error(
@@ -233,10 +235,10 @@ class TestLabelCountCacheBatchOperations:
     def test_add_empty_list_label_count_caches_raises_error(
         self, dynamodb_table: Literal["MyMockedTable"]
     ) -> None:
-        """Test that adding an empty list raises OperationError."""
+        """Test that adding an empty list raises EntityValidationError."""
         client = DynamoClient(dynamodb_table)
         with pytest.raises(
-            OperationError, match="Parameter validation failed"
+            EntityValidationError, match="items cannot be an empty list"
         ):
             client.add_label_count_caches([])
 
@@ -314,15 +316,14 @@ class TestLabelCountCacheListOperations:
     def test_list_label_count_caches_with_zero_limit(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_caches: List[LabelCountCache],
     ) -> None:
-        """Test listing label count caches with zero limit."""
+        """Test listing label count caches with zero limit raises error."""
         client = DynamoClient(dynamodb_table)
-        client.add_label_count_caches(example_label_count_caches)
 
-        results, last_key = client.list_label_count_caches(limit=0)
-        assert results == []
-        assert last_key is None
+        with pytest.raises(
+            EntityValidationError, match="limit must be greater than 0"
+        ):
+            client.list_label_count_caches(limit=0)
 
 
 class TestLabelCountCacheValidation:
@@ -364,7 +365,7 @@ class TestLabelCountCacheValidation:
         client = DynamoClient(dynamodb_table)
         with pytest.raises(
             EntityValidationError,
-            match="items must be a list of LabelCountCache objects.f",
+            match="items must be a list of LabelCountCache objects.",
         ):
             client.add_label_count_caches("not-a-list")  # type: ignore
 
@@ -377,7 +378,7 @@ class TestLabelCountCacheValidation:
         client = DynamoClient(dynamodb_table)
         with pytest.raises(
             EntityValidationError,
-            match="items must be a list of LabelCountCache objects.f",
+            match="items must be a list of LabelCountCache objects.",
         ):
             client.add_label_count_caches(
                 [example_label_count_cache, "not-a-cache"]  # type: ignore

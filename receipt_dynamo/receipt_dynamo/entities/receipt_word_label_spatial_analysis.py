@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
+    validate_iso_timestamp,
     validate_positive_int,
 )
 
@@ -47,19 +48,22 @@ class SpatialRelationship:
 @dataclass(eq=True, unsafe_hash=False)
 class ReceiptWordLabelSpatialAnalysis:
     """
-    Represents spatial analysis results for a receipt word label stored in DynamoDB.
+    Spatial analysis results for a receipt word label stored in DynamoDB.
 
-    This entity stores Metric 2 (Inter-Label Spatial Relationships) from the
-    comprehensive spatial analysis system. For each valid receipt word label,
-    it captures the spatial relationships to all other valid labels on the same receipt.
+    This entity stores Metric 2 (Inter-Label Spatial Relationships) from
+    the comprehensive spatial analysis system. For each valid receipt
+    word label, it captures the spatial relationships to all other valid
+    labels on the same receipt.
 
-    The spatial relationships include distance and angle measurements that can be used
-    for validating new labels by checking if they follow expected spatial patterns
-    relative to existing validated labels.
+    The spatial relationships include distance and angle measurements
+    that can be used for validating new labels by checking if they
+    follow expected spatial patterns relative to existing validated
+    labels.
 
     GSI Design:
     - GSI1: Cross-receipt label analysis (SPATIAL_ANALYSIS#<label>)
-    - GSI2: Receipt-based validation (IMAGE#<image_id>#RECEIPT#<receipt_id>#SPATIAL)
+    - GSI2: Receipt-based validation
+        (IMAGE#<image_id>#RECEIPT#<receipt_id>#SPATIAL)
 
     Attributes:
         image_id (str): UUID identifying the associated image.
@@ -67,19 +71,30 @@ class ReceiptWordLabelSpatialAnalysis:
         line_id (int): Number identifying the line containing the word.
         word_id (int): Number identifying the word.
         from_label (str): The label assigned to this word.
-        from_position (Dict[str, float]): Position of this word (x, y coordinates).
-        spatial_relationships (List[SpatialRelationship]): All relationships to other valid labels.
-        timestamp_added (str): ISO formatted timestamp when analysis was computed.
-        analysis_version (str): Version of the spatial analysis algorithm used.
+        from_position (dict[str, float]): Position (x, y coordinates).
+        spatial_relationships (list[SpatialRelationship]): All
+            relationships to other valid labels.
+        timestamp_added (str): ISO timestamp when analysis was computed.
+        analysis_version (str): Version of the analysis algorithm used.
     """
+
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "from_label",
+        "from_position",
+        "spatial_relationships",
+        "timestamp_added",
+        "analysis_version",
+    }
 
     image_id: str
     receipt_id: int
     line_id: int
     word_id: int
     from_label: str
-    from_position: Dict[str, float]
-    spatial_relationships: List[SpatialRelationship]
+    from_position: dict[str, float]
+    spatial_relationships: list[SpatialRelationship]
     timestamp_added: datetime | str
     analysis_version: str = "1.0"
 
@@ -111,21 +126,10 @@ class ReceiptWordLabelSpatialAnalysis:
                     f"spatial_relationships[{i}] must be a SpatialRelationship"
                 )
 
-        # Convert datetime to string for storage
-        if isinstance(self.timestamp_added, datetime):
-            self.timestamp_added = self.timestamp_added.isoformat()
-        elif isinstance(self.timestamp_added, str):
-            # Validate it's a valid ISO format by trying to parse it
-            try:
-                datetime.fromisoformat(self.timestamp_added)
-            except ValueError as e:
-                raise ValueError(
-                    "timestamp_added string must be in ISO format"
-                ) from e
-        else:
-            raise ValueError(
-                "timestamp_added must be a datetime object or a string"
-            )
+        # Convert datetime to string for storage and validate ISO format
+        self.timestamp_added = validate_iso_timestamp(
+            self.timestamp_added, "timestamp_added", default_now=False
+        )
 
         if (
             not isinstance(self.analysis_version, str)
@@ -134,8 +138,8 @@ class ReceiptWordLabelSpatialAnalysis:
             raise ValueError("analysis_version must be a non-empty string")
 
     @property
-    def key(self) -> Dict[str, Any]:
-        """Generates the primary key for the receipt word label spatial analysis.
+    def key(self) -> dict[str, Any]:
+        """Generates the primary key for spatial analysis.
 
         Returns:
             dict: The primary key for the spatial analysis.
@@ -150,36 +154,41 @@ class ReceiptWordLabelSpatialAnalysis:
             },
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
-        """Generate the GSI1 key for finding spatial analyses by label type.
+    def gsi1_key(self) -> dict[str, Any]:
+        """Generate the GSI1 key for finding analyses by label type.
 
         GSI1PK: SPATIAL_ANALYSIS#<label>
-        GSI1SK: IMAGE#<image_id>#RECEIPT#<receipt_id>#TIMESTAMP#<timestamp>
+        GSI1SK: IMAGE#<image_id>#RECEIPT#<receipt_id>#TIMESTAMP#<ts>
         """
+        gsi1_sk = (
+            f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            f"#TIMESTAMP#{self.timestamp_added}"
+        )
         return {
             "GSI1PK": {"S": f"SPATIAL_ANALYSIS#{self.from_label}"},
-            "GSI1SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#TIMESTAMP#{self.timestamp_added}"
-            },
+            "GSI1SK": {"S": gsi1_sk},
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
-        """Generate the GSI2 key for finding all spatial analyses for a receipt.
+    def gsi2_key(self) -> dict[str, Any]:
+        """Generate the GSI2 key for finding analyses for a receipt.
 
         GSI2PK: IMAGE#<image_id>#RECEIPT#<receipt_id>#SPATIAL
         GSI2SK: LABEL#<label>#LINE#<line_id>#WORD#<word_id>
         """
+        gsi2_pk = (
+            f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#SPATIAL"
+        )
+        gsi2_sk = (
+            f"LABEL#{self.from_label}#LINE#{self.line_id:05d}"
+            f"#WORD#{self.word_id:05d}"
+        )
         return {
-            "GSI2PK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#SPATIAL"
-            },
-            "GSI2SK": {
-                "S": f"LABEL#{self.from_label}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
-            },
+            "GSI2PK": {"S": gsi2_pk},
+            "GSI2SK": {"S": gsi2_sk},
         }
 
-    def to_item(self) -> Dict[str, Any]:
-        """Converts the ReceiptWordLabelSpatialAnalysis object to a DynamoDB item.
+    def to_item(self) -> dict[str, Any]:
+        """Converts the object to a DynamoDB item.
 
         Returns:
             dict: A dictionary representing the object as a DynamoDB item.
@@ -232,7 +241,7 @@ class ReceiptWordLabelSpatialAnalysis:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the object's attributes."""
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
@@ -289,9 +298,84 @@ class ReceiptWordLabelSpatialAnalysis:
             )
         )
 
+    @classmethod
+    def from_item(
+        cls, item: dict[str, Any]
+    ) -> "ReceiptWordLabelSpatialAnalysis":
+        """Converts a DynamoDB item to a spatial analysis object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            ReceiptWordLabelSpatialAnalysis: The spatial analysis object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            raise ValueError(
+                f"Invalid item format. Missing keys: {missing_keys}"
+            )
+
+        # Parse the SK to extract identifiers
+        sk = item["SK"]["S"]
+        parts = sk.split("#")
+        if (
+            len(parts) != 7
+            or parts[0] != "RECEIPT"
+            or parts[2] != "LINE"
+            or parts[4] != "WORD"
+            or parts[6] != "SPATIAL_ANALYSIS"
+        ):
+            raise ValueError(f"Invalid SK format: {sk}")
+
+        receipt_id = int(parts[1])
+        line_id = int(parts[3])
+        word_id = int(parts[5])
+
+        # Parse the PK to extract image_id
+        pk = item["PK"]["S"]
+        if not pk.startswith("IMAGE#"):
+            raise ValueError(f"Invalid PK format: {pk}")
+        image_id = pk[6:]  # Remove "IMAGE#" prefix
+
+        # Parse from_position
+        from_position = {
+            "x": float(item["from_position"]["M"]["x"]["N"]),
+            "y": float(item["from_position"]["M"]["y"]["N"]),
+        }
+
+        # Parse spatial relationships
+        spatial_relationships = []
+        for rel_item in item["spatial_relationships"]["L"]:
+            rel_data = rel_item["M"]
+            spatial_relationships.append(
+                SpatialRelationship(
+                    to_label=rel_data["to_label"]["S"],
+                    to_line_id=int(rel_data["to_line_id"]["N"]),
+                    to_word_id=int(rel_data["to_word_id"]["N"]),
+                    distance=float(rel_data["distance"]["N"]),
+                    angle=float(rel_data["angle"]["N"]),
+                )
+            )
+
+        return cls(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=word_id,
+            from_label=item["from_label"]["S"],
+            from_position=from_position,
+            spatial_relationships=spatial_relationships,
+            timestamp_added=item["timestamp_added"]["S"],
+            analysis_version=item["analysis_version"]["S"],
+        )
+
 
 def item_to_receipt_word_label_spatial_analysis(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> ReceiptWordLabelSpatialAnalysis:
     """Converts a DynamoDB item to a ReceiptWordLabelSpatialAnalysis object.
 
@@ -304,70 +388,4 @@ def item_to_receipt_word_label_spatial_analysis(
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "from_label",
-        "from_position",
-        "spatial_relationships",
-        "timestamp_added",
-        "analysis_version",
-    }
-
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        raise ValueError(f"Invalid item format. Missing keys: {missing_keys}")
-
-    # Parse the SK to extract identifiers
-    sk = item["SK"]["S"]
-    parts = sk.split("#")
-    if (
-        len(parts) != 7
-        or parts[0] != "RECEIPT"
-        or parts[2] != "LINE"
-        or parts[4] != "WORD"
-        or parts[6] != "SPATIAL_ANALYSIS"
-    ):
-        raise ValueError(f"Invalid SK format: {sk}")
-
-    receipt_id = int(parts[1])
-    line_id = int(parts[3])
-    word_id = int(parts[5])
-
-    # Parse the PK to extract image_id
-    pk = item["PK"]["S"]
-    if not pk.startswith("IMAGE#"):
-        raise ValueError(f"Invalid PK format: {pk}")
-    image_id = pk[6:]  # Remove "IMAGE#" prefix
-
-    # Parse from_position
-    from_position = {
-        "x": float(item["from_position"]["M"]["x"]["N"]),
-        "y": float(item["from_position"]["M"]["y"]["N"]),
-    }
-
-    # Parse spatial relationships
-    spatial_relationships = []
-    for rel_item in item["spatial_relationships"]["L"]:
-        rel_data = rel_item["M"]
-        spatial_relationships.append(
-            SpatialRelationship(
-                to_label=rel_data["to_label"]["S"],
-                to_line_id=int(rel_data["to_line_id"]["N"]),
-                to_word_id=int(rel_data["to_word_id"]["N"]),
-                distance=float(rel_data["distance"]["N"]),
-                angle=float(rel_data["angle"]["N"]),
-            )
-        )
-
-    return ReceiptWordLabelSpatialAnalysis(
-        image_id=image_id,
-        receipt_id=receipt_id,
-        line_id=line_id,
-        word_id=word_id,
-        from_label=item["from_label"]["S"],
-        from_position=from_position,
-        spatial_relationships=spatial_relationships,
-        timestamp_added=item["timestamp_added"]["S"],
-        analysis_version=item["analysis_version"]["S"],
-    )
+    return ReceiptWordLabelSpatialAnalysis.from_item(item)

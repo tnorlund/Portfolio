@@ -6,7 +6,7 @@ import pytest
 from botocore.exceptions import ClientError
 from pytest_mock import MockerFixture
 
-from receipt_dynamo.data._job_resource import validate_last_evaluated_key
+from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -156,7 +156,7 @@ def test_addJobResource_raises_conditional_check_failed(
     # Try to add it again
     with pytest.raises(
         EntityAlreadyExistsError,
-        match="job_resource already exists",
+        match="already exists",
     ):
         job_resource_dynamo.add_job_resource(sample_job_resource)
 
@@ -182,7 +182,7 @@ def test_addJobResource_raises_resource_not_found(
 
     with pytest.raises(
         OperationError,
-        match="DynamoDB resource not found during add_job_resource",
+        match="DynamoDB resource not found",
     ):
         job_resource_dynamo.add_job_resource(sample_job_resource)
     mock_put.assert_called_once()

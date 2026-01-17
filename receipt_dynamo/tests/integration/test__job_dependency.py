@@ -141,7 +141,7 @@ def test_addJobDependency_raises_resource_not_found(
     # Attempt to add the job dependency
     with pytest.raises(
         OperationError,
-        match="DynamoDB resource not found during add_job_dependency",
+        match="DynamoDB resource not found",
     ):
         job_dependency_dynamo.add_job_dependency(sample_job_dependency)
 
@@ -197,7 +197,9 @@ def test_getJobDependency_raises_value_error_dependency_not_found(
     Test that getJobDependency raises EntityNotFoundError when the job dependency is
     not found.
     """
-    with pytest.raises(EntityNotFoundError, match="not found"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         job_dependency_dynamo.get_job_dependency(
             dependent_job_id="non-existent-job",
             dependency_job_id="another-non-existent-job",
@@ -453,7 +455,9 @@ def test_deleteJobDependency_success(
     job_dependency_dynamo.delete_job_dependency(sample_job_dependency)
 
     # Verify it was deleted
-    with pytest.raises(EntityNotFoundError, match="not found"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         job_dependency_dynamo.get_job_dependency(
             dependent_job_id=sample_job_dependency.dependent_job_id,
             dependency_job_id=sample_job_dependency.dependency_job_id,
@@ -498,7 +502,7 @@ def test_deleteJobDependency_raises_conditional_check_failed(
     # Try to delete a job dependency that doesn't exist
     with pytest.raises(
         EntityNotFoundError,
-        match="jobdependency not found during delete_job_dependency",
+        match="does not exist",
     ):
         job_dependency_dynamo.delete_job_dependency(sample_job_dependency)
 

@@ -1,9 +1,8 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     TransactWriteItemTypeDef,
@@ -18,13 +17,10 @@ from receipt_dynamo.entities.ocr_job import OCRJob, item_to_ocr_job
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
+    pass
 
 
-class _OCRJob(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _OCRJob(FlattenedStandardMixin):
     @handle_dynamodb_errors("add_ocr_job")
     def add_ocr_job(self, ocr_job: OCRJob):
         """Adds an OCR job to the database
@@ -159,8 +155,8 @@ class _OCRJob(
     @handle_dynamodb_errors("list_ocr_jobs")
     def list_ocr_jobs(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
     ) -> tuple[list[OCRJob], dict | None]:
         """Lists all OCR jobs from the database
 
@@ -191,7 +187,7 @@ class _OCRJob(
     def get_ocr_jobs_by_status(
         self,
         status: OCRStatus,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[OCRJob], dict | None]:
         """Gets OCR jobs by status from the database

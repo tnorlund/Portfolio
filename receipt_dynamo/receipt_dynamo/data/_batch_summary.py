@@ -5,13 +5,11 @@ deleting, and querying batch summary data, including support for pagination
 and GSI lookups by status.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.data.base_operations import (
-    BatchGetItemInputTypeDef,
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
@@ -30,28 +28,10 @@ from receipt_dynamo.entities.batch_summary import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
+    pass
 
 
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
-    required_keys = {"PK", "SK"}
-    if not required_keys.issubset(lek.keys()):
-        raise EntityValidationError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
-    for key in required_keys:
-        if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise EntityValidationError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
-            )
-
-
-class _BatchSummary(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _BatchSummary(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("add_batch_summary")
     def add_batch_summary(self, batch_summary: BatchSummary) -> None:
@@ -76,13 +56,13 @@ class _BatchSummary(
     @handle_dynamodb_errors("add_batch_summaries")
     def add_batch_summaries(
         self,
-        batch_summaries: List[BatchSummary],
+        batch_summaries: list[BatchSummary],
     ) -> None:
         """
         Adds multiple BatchSummary records to DynamoDB in batches.
 
         Args:
-            batch_summaries (List[BatchSummary]):
+            batch_summaries (list[BatchSummary]):
                 A list of BatchSummary instances to add.
 
         Raises:
@@ -122,13 +102,13 @@ class _BatchSummary(
 
     @handle_dynamodb_errors("update_batch_summaries")
     def update_batch_summaries(
-        self, batch_summaries: List[BatchSummary]
+        self, batch_summaries: list[BatchSummary]
     ) -> None:
         """
         Updates multiple BatchSummary records in DynamoDB using transactions.
 
         Args:
-            batch_summaries (List[BatchSummary]):
+            batch_summaries (list[BatchSummary]):
                 A list of BatchSummary instances to update.
 
         Raises:
@@ -175,13 +155,13 @@ class _BatchSummary(
 
     @handle_dynamodb_errors("delete_batch_summaries")
     def delete_batch_summaries(
-        self, batch_summaries: List[BatchSummary]
+        self, batch_summaries: list[BatchSummary]
     ) -> None:
         """Deletes multiple BatchSummary records from DynamoDB using
         transactions.
 
         Args:
-            batch_summaries (List[BatchSummary]):
+            batch_summaries (list[BatchSummary]):
                 A list of BatchSummary instances to delete.
 
         Raises:
@@ -241,8 +221,8 @@ class _BatchSummary(
 
     @handle_dynamodb_errors("get_batch_summaries_by_batch_ids")
     def get_batch_summaries_by_batch_ids(
-        self, batch_ids: List[str]
-    ) -> List[BatchSummary]:
+        self, batch_ids: list[str]
+    ) -> list[BatchSummary]:
         """
         Retrieves a list of BatchSummary records from DynamoDB by batch_id.
         """
@@ -263,8 +243,8 @@ class _BatchSummary(
 
     @handle_dynamodb_errors("get_batch_summaries_by_keys")
     def get_batch_summaries_by_keys(
-        self, keys: List[dict]
-    ) -> List[BatchSummary]:
+        self, keys: list[dict]
+    ) -> list[BatchSummary]:
         """
         Retrieves a list of BatchSummary records from DynamoDB by keys.
         """
@@ -282,36 +262,16 @@ class _BatchSummary(
             if key["SK"]["S"] != "STATUS":
                 raise EntityValidationError("SK must be 'STATUS'")
 
-        # Batch get items in chunks of 100 (DynamoDB limit)
-        results: List[Dict[str, Any]] = []
-        for i in range(0, len(keys), 100):
-            chunk = keys[i : i + 100]
-            request: BatchGetItemInputTypeDef = {
-                "RequestItems": {self.table_name: {"Keys": chunk}}
-            }
-
-            # Perform batch get with retry for unprocessed keys
-            response = self._client.batch_get_item(**request)
-            results.extend(response["Responses"].get(self.table_name, []))
-
-            # Handle unprocessed keys
-            unprocessed = response.get("UnprocessedKeys", {})
-            while unprocessed.get(self.table_name, {}).get("Keys"):
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
-                results.extend(response["Responses"].get(self.table_name, []))
-                unprocessed = response.get("UnprocessedKeys", {})
-
+        results = self._batch_get_items(keys)
         return [item_to_batch_summary(item) for item in results]
 
     @handle_dynamodb_errors("list_batch_summaries")
     def list_batch_summaries(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[
-        List[BatchSummary],
+    ) -> tuple[
+        list[BatchSummary],
         dict | None,
     ]:
         """
@@ -323,7 +283,7 @@ class _BatchSummary(
                 The key to start pagination from.
 
         Returns:
-            Tuple[List[BatchSummary], dict | None]:
+            tuple[list[BatchSummary], dict | None]:
                 A tuple containing the list of BatchSummary records and
                 the last evaluated key.
 
@@ -346,10 +306,10 @@ class _BatchSummary(
         self,
         status: str | BatchStatus,
         batch_type: str | BatchType = "WORD_EMBEDDING",
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[
-        List[BatchSummary],
+    ) -> tuple[
+        list[BatchSummary],
         dict | None,
     ]:
         """
@@ -363,7 +323,7 @@ class _BatchSummary(
                 The key to start pagination from.
 
         Returns:
-            Tuple[List[BatchSummary], dict | None]:
+            tuple[list[BatchSummary], dict | None]:
                 A tuple containing the list of BatchSummary records and
                 the last evaluated key.
 

@@ -180,7 +180,7 @@ def test_receipt_letter_init_invalid_line_id():
             angle_radians=0.0872665,
             confidence=0.98,
         )
-    with pytest.raises(ValueError, match="line_id must be positive"):
+    with pytest.raises(ValueError, match="line_id must be non-negative"):
         ReceiptLetter(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -229,7 +229,7 @@ def test_receipt_letter_init_invalid_word_id():
             angle_radians=0.0872665,
             confidence=0.98,
         )
-    with pytest.raises(ValueError, match="word_id must be positive"):
+    with pytest.raises(ValueError, match="word_id must be non-negative"):
         ReceiptLetter(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -256,7 +256,7 @@ def test_receipt_letter_init_invalid_word_id():
 @pytest.mark.unit
 def test_receipt_letter_init_invalid_id():
     """ReceiptLetter raises a ValueError if the id is not an integer"""
-    with pytest.raises(ValueError, match="id must be an integer"):
+    with pytest.raises(ValueError, match="letter_id must be an integer"):
         ReceiptLetter(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -278,7 +278,7 @@ def test_receipt_letter_init_invalid_id():
             angle_radians=0.0872665,
             confidence=0.98,
         )
-    with pytest.raises(ValueError, match="id must be positive"):
+    with pytest.raises(ValueError, match="letter_id must be non-negative"):
         ReceiptLetter(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -853,7 +853,7 @@ def test_item_to_word(example_receipt_letter):
         item_to_receipt_letter({})
     with pytest.raises(
         ValueError,
-        match="^Field 'text' must be a string type",
+        match="Field 'text' must be a string type",
     ):
         item_to_receipt_letter(
             {

@@ -1,5 +1,5 @@
 """
-Flattened geometry entity base class.
+Flattened text geometry entity base class.
 
 This module consolidates the 7 geometry mixins into a single base class,
 following the same pattern as FlattenedStandardMixin for data operations.
@@ -20,8 +20,8 @@ Benefits:
     - Maintains full backwards compatibility
 
 Usage:
-    @dataclass
-    class MyGeometryEntity(GeometryEntity):
+    @dataclass(kw_only=True)
+    class MyGeometryEntity(TextGeometryEntity):
         # Add entity-specific fields
         my_field: str
 
@@ -31,10 +31,15 @@ Usage:
 """
 
 from dataclasses import dataclass
-from math import atan2, pi
-from typing import Any, Dict, Optional, Tuple
+from math import atan2, cos, degrees, pi, radians, sin
+from typing import Any, Callable, ClassVar
 
 from receipt_dynamo.entities.base import DynamoDBEntity
+from receipt_dynamo.entities.entity_factory import (
+    EntityFactory,
+    create_geometry_extractors,
+    create_image_receipt_pk_parser,
+)
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
@@ -48,8 +53,8 @@ from receipt_dynamo.entities.util import (
 )
 
 
-@dataclass(eq=True, unsafe_hash=False)
-class GeometryEntity(DynamoDBEntity):
+@dataclass(kw_only=True)
+class TextGeometryEntity(DynamoDBEntity):
     """
     Flattened base class for entities with geometric properties.
 
@@ -73,16 +78,36 @@ class GeometryEntity(DynamoDBEntity):
         - Repr formatting
         - Geometry operations (translate, scale, rotate, etc.)
         - Perspective transforms
+
+    Class Variables:
+        BASE_REQUIRED_KEYS: Required DynamoDB item keys for geometry entities
     """
+
+    # Required keys shared by all geometry entities (subclasses can override)
+    BASE_REQUIRED_KEYS: ClassVar[set[str]] = {
+        "PK",
+        "SK",
+        "text",
+        "bounding_box",
+        "top_right",
+        "top_left",
+        "bottom_right",
+        "bottom_left",
+        "angle_degrees",
+        "angle_radians",
+        "confidence",
+    }
+    # Default REQUIRED_KEYS for subclasses that don't override
+    REQUIRED_KEYS: ClassVar[set[str]] = BASE_REQUIRED_KEYS
 
     # Core geometry fields - subclasses inherit these
     image_id: str
     text: str
-    bounding_box: Dict[str, float]
-    top_left: Dict[str, float]
-    top_right: Dict[str, float]
-    bottom_left: Dict[str, float]
-    bottom_right: Dict[str, float]
+    bounding_box: dict[str, float]
+    top_left: dict[str, float]
+    top_right: dict[str, float]
+    bottom_left: dict[str, float]
+    bottom_right: dict[str, float]
     angle_degrees: float
     angle_radians: float
     confidence: float
@@ -156,7 +181,7 @@ class GeometryEntity(DynamoDBEntity):
     # From: GeometrySerializationMixin + SerializationMixin
     # =========================================================================
 
-    def _get_geometry_fields(self) -> Dict[str, Any]:
+    def _get_geometry_fields(self) -> dict[str, Any]:
         """
         Return geometry fields serialized for DynamoDB.
 
@@ -178,12 +203,71 @@ class GeometryEntity(DynamoDBEntity):
             "confidence": serialize_confidence(self.confidence),
         }
 
+    @classmethod
+    def _from_item_with_geometry(
+        cls,
+        item: dict[str, Any],
+        sk_parser: Callable[[str], dict[str, Any]],
+        additional_extractors: dict[str, Callable] | None = None,
+    ) -> "TextGeometryEntity":
+        """
+        Create entity from DynamoDB item using EntityFactory.
+
+        This helper consolidates the common from_item pattern used by
+        geometry entities (Letter, Line, ReceiptLetter, etc.). It handles:
+        - Standard geometry field extraction
+        - PK parsing for image_id
+        - Custom SK parsing via provided parser
+        - Error wrapping with entity class name
+
+        Args:
+            item: DynamoDB item dictionary
+            sk_parser: Callable that parses SK string and returns dict of
+                extracted fields (e.g., line_id, word_id)
+            additional_extractors: Optional dict of additional field extractors
+                beyond the standard geometry extractors
+
+        Returns:
+            Instance of the entity class
+
+        Raises:
+            ValueError: If required fields are missing or have invalid format
+        """
+        # Build extractors: text + geometry + any additional
+        custom_extractors = {
+            "text": EntityFactory.extract_text_field,
+            **create_geometry_extractors(),
+        }
+        if additional_extractors:
+            custom_extractors.update(additional_extractors)
+
+        # Use EntityFactory with standard error handling
+        try:
+            return EntityFactory.create_entity(
+                entity_class=cls,
+                item=item,
+                required_keys=cls.REQUIRED_KEYS,
+                key_parsers={
+                    "PK": create_image_receipt_pk_parser(),
+                    "SK": sk_parser,
+                },
+                custom_extractors=custom_extractors,
+            )
+        except ValueError as e:
+            # Re-raise missing keys errors as-is
+            if str(e).startswith("Item is missing required keys:"):
+                raise
+            # Wrap other errors with entity class name
+            raise ValueError(
+                f"Error converting item to {cls.__name__}: {e}"
+            ) from e
+
     # =========================================================================
     # HASH
     # From: GeometryHashMixin
     # =========================================================================
 
-    def _get_base_geometry_hash_fields(self) -> Tuple[Any, ...]:
+    def _get_base_geometry_hash_fields(self) -> tuple[Any, ...]:
         """
         Return core geometry fields for hash computation.
 
@@ -204,13 +288,13 @@ class GeometryEntity(DynamoDBEntity):
             self.confidence,
         )
 
-    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+    def _get_geometry_hash_fields(self) -> tuple[Any, ...]:
         """
         Return fields to include in hash computation.
 
         Override in subclasses to add entity-specific fields:
 
-            def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+            def _get_geometry_hash_fields(self) -> tuple[Any, ...]:
                 return self._get_base_geometry_hash_fields() + (
                     self.receipt_id,
                     self.line_id,
@@ -225,6 +309,44 @@ class GeometryEntity(DynamoDBEntity):
     def __hash__(self) -> int:
         """Return hash based on geometry and entity-specific fields."""
         return hash(self._get_geometry_hash_fields())
+
+    # =========================================================================
+    # EQUALITY
+    # Helper for subclass __eq__ implementations
+    # =========================================================================
+
+    def _geometry_fields_equal(self, other: "TextGeometryEntity") -> bool:
+        """
+        Compare geometry fields for equality.
+
+        Subclasses can use this in their __eq__ implementation:
+
+            def __eq__(self, other: object) -> bool:
+                if not isinstance(other, MyEntity):
+                    return False
+                return (
+                    self.my_id == other.my_id
+                    and self._geometry_fields_equal(other)
+                )
+
+        Args:
+            other: Another TextGeometryEntity to compare against
+
+        Returns:
+            True if all geometry fields are equal
+        """
+        return (
+            self.image_id == other.image_id
+            and self.text == other.text
+            and self.bounding_box == other.bounding_box
+            and self.top_right == other.top_right
+            and self.top_left == other.top_left
+            and self.bottom_right == other.bottom_right
+            and self.bottom_left == other.bottom_left
+            and self.angle_degrees == other.angle_degrees
+            and self.angle_radians == other.angle_radians
+            and self.confidence == other.confidence
+        )
 
     # =========================================================================
     # REPR
@@ -260,12 +382,37 @@ class GeometryEntity(DynamoDBEntity):
             f"confidence={self.confidence}"
         )
 
+    def _iter_geometry_fields(self) -> tuple[tuple[str, Any], ...]:
+        """
+        Return geometry fields as tuple of (name, value) pairs.
+
+        Subclasses can use this in their __iter__ implementation:
+
+            def __iter__(self):
+                yield "my_id", self.my_id
+                yield from self._iter_geometry_fields()
+
+        Returns:
+            Tuple of (field_name, field_value) pairs for all geometry fields
+        """
+        return (
+            ("text", self.text),
+            ("bounding_box", self.bounding_box),
+            ("top_right", self.top_right),
+            ("top_left", self.top_left),
+            ("bottom_right", self.bottom_right),
+            ("bottom_left", self.bottom_left),
+            ("angle_degrees", self.angle_degrees),
+            ("angle_radians", self.angle_radians),
+            ("confidence", self.confidence),
+        )
+
     # =========================================================================
     # GEOMETRY OPERATIONS
     # From: GeometryMixin
     # =========================================================================
 
-    def calculate_centroid(self) -> Tuple[float, float]:
+    def calculate_centroid(self) -> tuple[float, float]:
         """
         Calculate the center point of the quadrilateral.
 
@@ -288,14 +435,14 @@ class GeometryEntity(DynamoDBEntity):
 
     def calculate_corners(
         self,
-        width: Optional[int] = None,
-        height: Optional[int] = None,
+        width: int | None = None,
+        height: int | None = None,
         flip_y: bool = False,
-    ) -> Tuple[
-        Tuple[float, float],
-        Tuple[float, float],
-        Tuple[float, float],
-        Tuple[float, float],
+    ) -> tuple[
+        tuple[float, float],
+        tuple[float, float],
+        tuple[float, float],
+        tuple[float, float],
     ]:
         """
         Convert normalized coordinates (0-1) to pixel coordinates.
@@ -306,7 +453,8 @@ class GeometryEntity(DynamoDBEntity):
             flip_y: If True, flip Y coordinates (for image coord systems)
 
         Returns:
-            Tuple of four corners: (top_left, top_right, bottom_left, bottom_right)
+            Tuple of four corners: (top_left, top_right, bottom_left,
+            bottom_right)
             Each corner is (x, y) tuple
 
         Raises:
@@ -322,7 +470,7 @@ class GeometryEntity(DynamoDBEntity):
         x_scale = float(width) if width else 1.0
         y_scale = float(height) if height else 1.0
 
-        def scale_point(pt: Dict[str, float]) -> Tuple[float, float]:
+        def scale_point(pt: dict[str, float]) -> tuple[float, float]:
             x = pt["x"] * x_scale
             y = pt["y"] * y_scale
             if flip_y:
@@ -421,23 +569,21 @@ class GeometryEntity(DynamoDBEntity):
         Raises:
             ValueError: If angle is outside [-90, 90] degrees
         """
-        import math
-
         if use_radians:
             theta = angle
-            if theta < -math.pi / 2 or theta > math.pi / 2:
+            if theta < -pi / 2 or theta > pi / 2:
                 raise ValueError(
                     f"Angle {theta} radians is outside [-pi/2, pi/2]"
                 )
         else:
             if angle < -90 or angle > 90:
                 raise ValueError(f"Angle {angle} degrees is outside [-90, 90]")
-            theta = math.radians(angle)
+            theta = radians(angle)
 
-        def rotate_point(px: float, py: float) -> Tuple[float, float]:
+        def rotate_point(px: float, py: float) -> tuple[float, float]:
             tx, ty = px - origin_x, py - origin_y
-            rx = tx * math.cos(theta) - ty * math.sin(theta)
-            ry = tx * math.sin(theta) + ty * math.cos(theta)
+            rx = tx * cos(theta) - ty * sin(theta)
+            ry = tx * sin(theta) + ty * cos(theta)
             return rx + origin_x, ry + origin_y
 
         for corner in [
@@ -449,7 +595,7 @@ class GeometryEntity(DynamoDBEntity):
             corner["x"], corner["y"] = rotate_point(corner["x"], corner["y"])
 
         self._update_bounding_box_from_corners()
-        self.angle_degrees += angle if not use_radians else math.degrees(angle)
+        self.angle_degrees += angle if not use_radians else degrees(angle)
         self.angle_radians += theta
         self._normalize_angles()
 
@@ -480,7 +626,9 @@ class GeometryEntity(DynamoDBEntity):
             )
         self._update_bounding_box_from_corners()
 
-    def rotate_90_ccw_in_place(self) -> None:
+    def rotate_90_ccw_in_place(
+        self, _old_width: float, _old_height: float
+    ) -> None:
         """
         Rotate the entity 90 degrees counter-clockwise in place.
 
@@ -488,10 +636,15 @@ class GeometryEntity(DynamoDBEntity):
         coordinates (0-1). The coordinates transform as:
             new_x = old_y
             new_y = 1 - old_x
-        """
-        import math
 
-        def rotate_90_ccw(px: float, py: float) -> Tuple[float, float]:
+        Args:
+            _old_width: The width of the original image/page (kept for API
+                compatibility)
+            _old_height: The height of the original image/page (kept for API
+                compatibility)
+        """
+
+        def rotate_90_ccw(px: float, py: float) -> tuple[float, float]:
             return py, -(px - 1)
 
         for corner in [
@@ -504,8 +657,81 @@ class GeometryEntity(DynamoDBEntity):
 
         self._update_bounding_box_from_corners()
         self.angle_degrees += 90
-        self.angle_radians += math.pi / 2
+        self.angle_radians += pi / 2
 
+    # pylint: disable=too-many-positional-arguments
+    def warp_affine_normalized_forward(
+        self,
+        _a: float,
+        _b: float,
+        c: float,
+        _d: float,
+        _e: float,
+        f: float,
+        src_width: float,
+        src_height: float,
+        dst_width: float,
+        dst_height: float,
+        _flip_y: bool = False,
+    ) -> None:
+        """
+        Apply a normalized forward affine transformation to the entity.
+
+        This method applies an affine transformation where the c and f
+        parameters are normalized offsets that get scaled based on the
+        bounding box dimensions and the source/destination dimensions.
+
+        The actual offset applied is:
+        - x_offset = c * (bounding_box.width / (src_width * dst_width))
+        - y_offset = f * (bounding_box.height / (src_height * dst_height))
+
+        Args:
+            _a, _b, c, _d, _e, f: The affine transformation coefficients.
+                Only c and f are used; others kept for API compatibility.
+            src_width: Source image width
+            src_height: Source image height
+            dst_width: Destination image width
+            dst_height: Destination image height
+            _flip_y: Whether to flip Y coordinates (not used in current
+                implementation, kept for API compatibility)
+
+        Raises:
+            ValueError: If any dimension is zero or negative
+        """
+        # Guard against zero/negative dimensions to avoid ZeroDivisionError
+        if src_width <= 0 or dst_width <= 0:
+            raise ValueError(
+                f"Width dimensions must be positive: "
+                f"src_width={src_width}, dst_width={dst_width}"
+            )
+        if src_height <= 0 or dst_height <= 0:
+            raise ValueError(
+                f"Height dimensions must be positive: "
+                f"src_height={src_height}, dst_height={dst_height}"
+            )
+
+        # Calculate the scaled offsets based on bounding box and image
+        # dimensions
+        x_offset = c * (self.bounding_box["width"] / (src_width * dst_width))
+        y_offset = f * (
+            self.bounding_box["height"] / (src_height * dst_height)
+        )
+
+        # Apply the transformation to all corners
+        self.top_left["x"] += x_offset
+        self.top_left["y"] += y_offset
+        self.top_right["x"] += x_offset
+        self.top_right["y"] += y_offset
+        self.bottom_left["x"] += x_offset
+        self.bottom_left["y"] += y_offset
+        self.bottom_right["x"] += x_offset
+        self.bottom_right["y"] += y_offset
+
+        # Update bounding box
+        self.bounding_box["x"] += x_offset
+        self.bounding_box["y"] += y_offset
+
+    # pylint: disable=too-many-positional-arguments
     def warp_affine(
         self,
         a: float,
@@ -526,9 +752,8 @@ class GeometryEntity(DynamoDBEntity):
         Args:
             a, b, c, d, e, f: Affine transformation coefficients
         """
-        import math
 
-        def transform_point(px: float, py: float) -> Tuple[float, float]:
+        def transform_point(px: float, py: float) -> tuple[float, float]:
             nx = a * px + b * py + c
             ny = d * px + e * py + f
             return nx, ny
@@ -548,9 +773,9 @@ class GeometryEntity(DynamoDBEntity):
         # Update angle based on transformation of unit vector
         dx, dy = transform_point(1, 0)
         origin_x, origin_y = transform_point(0, 0)
-        new_angle = math.atan2(dy - origin_y, dx - origin_x)
+        new_angle = atan2(dy - origin_y, dx - origin_x)
         self.angle_radians = new_angle
-        self.angle_degrees = math.degrees(new_angle)
+        self.angle_degrees = degrees(new_angle)
 
     def _update_bounding_box_from_corners(self) -> None:
         """Recalculate bounding box from corner points."""
@@ -573,22 +798,21 @@ class GeometryEntity(DynamoDBEntity):
 
     def _normalize_angles(self) -> None:
         """Normalize angles to standard ranges."""
-        import math
-
         while self.angle_degrees > 180:
             self.angle_degrees -= 360
         while self.angle_degrees < -180:
             self.angle_degrees += 360
-        while self.angle_radians > math.pi:
-            self.angle_radians -= 2 * math.pi
-        while self.angle_radians < -math.pi:
-            self.angle_radians += 2 * math.pi
+        while self.angle_radians > pi:
+            self.angle_radians -= 2 * pi
+        while self.angle_radians < -pi:
+            self.angle_radians += 2 * pi
 
     # =========================================================================
     # PERSPECTIVE TRANSFORMS
     # From: WarpTransformMixin
     # =========================================================================
 
+    # pylint: disable=too-many-positional-arguments
     def warp_transform(
         self,
         a: float,
@@ -634,6 +858,7 @@ class GeometryEntity(DynamoDBEntity):
             flip_y,
         )
 
+    # pylint: disable=too-many-positional-arguments
     def inverse_perspective_transform(
         self,
         a: float,
@@ -662,7 +887,8 @@ class GeometryEntity(DynamoDBEntity):
         This method solves for (X, Y) given (x_new, y_new).
 
         Args:
-            a, b, c, d, e, f, g, h: Perspective coefficients from original transform
+            a, b, c, d, e, f, g, h: Perspective coefficients from
+                original transform
             src_width: Original image width in pixels
             src_height: Original image height in pixels
             dst_width: Warped image width in pixels
@@ -732,4 +958,8 @@ class GeometryEntity(DynamoDBEntity):
         self.angle_degrees = self.angle_radians * 180.0 / pi
 
 
-__all__ = ["GeometryEntity"]
+# Backwards compatibility alias
+GeometryEntity = TextGeometryEntity
+
+
+__all__ = ["GeometryEntity", "TextGeometryEntity"]

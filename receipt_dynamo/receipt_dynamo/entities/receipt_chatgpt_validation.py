@@ -1,10 +1,13 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_chatgpt_validation.py
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
-from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.entities.util import (
+    assert_valid_uuid,
+    validate_iso_timestamp,
+    validate_metadata_field,
+)
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -20,11 +23,11 @@ class ReceiptChatGPTValidation(SerializationMixin):
     original_status: str
     revised_status: str
     reasoning: str
-    corrections: List[Dict[str, Any]]
+    corrections: list[dict[str, Any]]
     prompt: str
     response: str
-    timestamp: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    timestamp: str | None = None
+    metadata: dict[str, Any] | None = None
 
     def __post_init__(self):
         if not isinstance(self.receipt_id, int):
@@ -52,18 +55,11 @@ class ReceiptChatGPTValidation(SerializationMixin):
         if not isinstance(self.response, str):
             raise ValueError("response must be a string")
 
-        if self.timestamp is not None and not isinstance(self.timestamp, str):
-            raise ValueError("timestamp must be a string")
-        if self.timestamp is None:
-            self.timestamp = datetime.now().isoformat()
-
-        if self.metadata is not None and not isinstance(self.metadata, dict):
-            raise ValueError("metadata must be a dictionary")
-        if self.metadata is None:
-            self.metadata = {}
+        self.timestamp = validate_iso_timestamp(self.timestamp, "timestamp")
+        self.metadata = validate_metadata_field(self.metadata)
 
     @property
-    def key(self) -> Dict[str, Dict[str, str]]:
+    def key(self) -> dict[str, dict[str, str]]:
         """Return the DynamoDB key for this item."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -76,7 +72,7 @@ class ReceiptChatGPTValidation(SerializationMixin):
         }
 
     @property
-    def gsi1_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi1_key(self) -> dict[str, dict[str, str]]:
         """Return the GSI1 key for this item."""
         return {
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
@@ -84,14 +80,14 @@ class ReceiptChatGPTValidation(SerializationMixin):
         }
 
     @property
-    def gsi3_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi3_key(self) -> dict[str, dict[str, str]]:
         """Return the GSI3 key for this item."""
         return {
             "GSI3PK": {"S": f"VALIDATION_STATUS#{self.revised_status}"},
             "GSI3SK": {"S": f"CHATGPT#{self.timestamp}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to a DynamoDB item."""
         # Start with the keys which are already properly formatted
         item = {
@@ -113,7 +109,7 @@ class ReceiptChatGPTValidation(SerializationMixin):
         return item
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptChatGPTValidation":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptChatGPTValidation":
         """Create a ReceiptChatGPTValidation from a DynamoDB item."""
         # Extract image_id, receipt_id, and timestamp from keys
         image_id = item["PK"]["S"].split("#")[1]
@@ -151,7 +147,7 @@ class ReceiptChatGPTValidation(SerializationMixin):
 
 
 def item_to_receipt_chat_gpt_validation(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> ReceiptChatGPTValidation:
     """Convert a DynamoDB item to a ReceiptChatGPTValidation object."""
     return ReceiptChatGPTValidation.from_item(item)

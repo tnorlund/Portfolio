@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.util import _repr_str
 
@@ -25,6 +25,17 @@ class Queue:
             critical).
         job_count (int): The current number of jobs in the queue.
     """
+
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "description",
+        "created_at",
+        "max_concurrent_jobs",
+        "priority",
+        "job_count",
+    }
 
     queue_name: str
     description: str
@@ -73,7 +84,7 @@ class Queue:
             raise ValueError("job_count must be a non-negative integer")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the queue.
 
         Returns:
@@ -81,7 +92,7 @@ class Queue:
         """
         return {"PK": {"S": f"QUEUE#{self.queue_name}"}, "SK": {"S": "QUEUE"}}
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the queue.
 
         Returns:
@@ -92,7 +103,7 @@ class Queue:
             "GSI1SK": {"S": f"QUEUE#{self.queue_name}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the Queue object to a DynamoDB item.
 
         Returns:
@@ -128,11 +139,11 @@ class Queue:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the Queue object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over
+            Generator[tuple[str, Any], None, None]: An iterator over
                 attribute name/value pairs.
         """
         yield "queue_name", self.queue_name
@@ -151,8 +162,51 @@ class Queue:
         """
         return hash(self.queue_name)
 
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "Queue":
+        """Converts a DynamoDB item to a Queue object.
 
-def item_to_queue(item: Dict[str, Any]) -> Queue:
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            Queue: The Queue object represented by the DynamoDB item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+
+        try:
+            # Parse queue_name from the PK
+            queue_name = item["PK"]["S"].split("#")[1]
+
+            # Extract fields
+            description = item["description"]["S"]
+            created_at = item["created_at"]["S"]
+            max_concurrent_jobs = int(item["max_concurrent_jobs"]["N"])
+            priority = item["priority"]["S"]
+            job_count = int(item["job_count"]["N"])
+
+            return cls(
+                queue_name=queue_name,
+                description=description,
+                created_at=created_at,
+                max_concurrent_jobs=max_concurrent_jobs,
+                priority=priority,
+                job_count=job_count,
+            )
+        except (KeyError, IndexError) as e:
+            raise ValueError(f"Error converting item to Queue: {e}") from e
+
+
+def item_to_queue(item: dict[str, Any]) -> Queue:
     """Converts a DynamoDB item to a Queue object.
 
     Args:
@@ -164,42 +218,4 @@ def item_to_queue(item: Dict[str, Any]) -> Queue:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "description",
-        "created_at",
-        "max_concurrent_jobs",
-        "priority",
-        "job_count",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-
-    try:
-        # Parse queue_name from the PK
-        queue_name = item["PK"]["S"].split("#")[1]
-
-        # Extract fields
-        description = item["description"]["S"]
-        created_at = item["created_at"]["S"]
-        max_concurrent_jobs = int(item["max_concurrent_jobs"]["N"])
-        priority = item["priority"]["S"]
-        job_count = int(item["job_count"]["N"])
-
-        return Queue(
-            queue_name=queue_name,
-            description=description,
-            created_at=created_at,
-            max_concurrent_jobs=max_concurrent_jobs,
-            priority=priority,
-            job_count=job_count,
-        )
-    except (KeyError, IndexError) as e:
-        raise ValueError(f"Error converting item to Queue: {e}") from e
+    return Queue.from_item(item)

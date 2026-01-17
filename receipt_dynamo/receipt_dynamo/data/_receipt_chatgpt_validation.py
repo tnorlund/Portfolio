@@ -1,8 +1,7 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
@@ -22,13 +21,10 @@ from receipt_dynamo.entities.receipt_chatgpt_validation import (
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
+    pass
 
 
-class _ReceiptChatGPTValidation(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _ReceiptChatGPTValidation(FlattenedStandardMixin):
     """
     .. deprecated::
         This class is deprecated and not used in production. Consider removing
@@ -63,7 +59,7 @@ class _ReceiptChatGPTValidation(
     ) -> ReceiptChatGPTValidation
         Retrieves a single ReceiptChatGPTValidation by IDs.
     list_receipt_chat_gpt_validations(
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptChatGPTValidation], dict | None]
         Returns all ReceiptChatGPTValidations and the last evaluated key.
@@ -74,7 +70,7 @@ class _ReceiptChatGPTValidation(
         Returns all ReceiptChatGPTValidations for a given receipt.
     list_receipt_chat_gpt_validations_by_status(
         status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptChatGPTValidation], dict | None]
         Returns ReceiptChatGPTValidations with a specific status."""
@@ -278,7 +274,7 @@ class _ReceiptChatGPTValidation(
     @handle_dynamodb_errors("list_receipt_chat_gpt_validations")
     def list_receipt_chat_gpt_validations(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptChatGPTValidation], dict | None]:
         """Returns all ReceiptChatGPTValidations from the table.
@@ -346,32 +342,18 @@ class _ReceiptChatGPTValidation(
         self._validate_receipt_id(receipt_id)
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer.")
-        self._validate_image_id(image_id)
 
-        results, _ = self._query_entities(
-            index_name=None,
-            key_condition_expression=(
-                "PK = :pkVal AND begins_with(SK, :skPrefix)"
-            ),
-            expression_attribute_names=None,
-            expression_attribute_values={
-                ":pkVal": {"S": f"IMAGE#{image_id}"},
-                ":skPrefix": {
-                    "S": (
-                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#"
-                        f"VALIDATION#CHATGPT#"
-                    )
-                },
-            },
+        return self._query_by_image_sk_prefix(
+            image_id=image_id,
+            sk_prefix=f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#CHATGPT#",
             converter_func=item_to_receipt_chat_gpt_validation,
         )
-        return results
 
     @handle_dynamodb_errors("list_receipt_chat_gpt_validations_by_status")
     def list_receipt_chat_gpt_validations_by_status(
         self,
         status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptChatGPTValidation], dict | None]:
         """Returns all ReceiptChatGPTValidations with a specific status.

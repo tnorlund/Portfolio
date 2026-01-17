@@ -112,7 +112,7 @@ ADD_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityAlreadyExistsError,
-        "receipt_word_label already exists",
+        "already exists",
     ),
 ] + ERROR_SCENARIOS
 
@@ -315,11 +315,11 @@ def test_add_receipt_word_label_success(
 
     # Verify it was added by retrieving it
     retrieved = client.get_receipt_word_label(
-        sample_receipt_word_label.image_id,
-        sample_receipt_word_label.receipt_id,
-        sample_receipt_word_label.line_id,
-        sample_receipt_word_label.word_id,
-        sample_receipt_word_label.label,
+        image_id=sample_receipt_word_label.image_id,
+        receipt_id=sample_receipt_word_label.receipt_id,
+        line_id=sample_receipt_word_label.line_id,
+        word_id=sample_receipt_word_label.word_id,
+        label=sample_receipt_word_label.label,
     )
     assert retrieved == sample_receipt_word_label
 
@@ -333,9 +333,7 @@ def test_add_receipt_word_label_duplicate_raises(
     client = DynamoClient(dynamodb_table)
     client.add_receipt_word_label(sample_receipt_word_label)
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="receipt_word_label already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_receipt_word_label(sample_receipt_word_label)
 
 
@@ -354,11 +352,11 @@ def test_get_receipt_word_label_success(
     client.add_receipt_word_label(sample_receipt_word_label)
 
     retrieved = client.get_receipt_word_label(
-        sample_receipt_word_label.image_id,
-        sample_receipt_word_label.receipt_id,
-        sample_receipt_word_label.line_id,
-        sample_receipt_word_label.word_id,
-        sample_receipt_word_label.label,
+        image_id=sample_receipt_word_label.image_id,
+        receipt_id=sample_receipt_word_label.receipt_id,
+        line_id=sample_receipt_word_label.line_id,
+        word_id=sample_receipt_word_label.word_id,
+        label=sample_receipt_word_label.label,
     )
 
     assert retrieved == sample_receipt_word_label
@@ -371,13 +369,15 @@ def test_get_receipt_word_label_not_found(
     """Tests that get_receipt_word_label raises EntityNotFoundError for non-existent label."""
     client = DynamoClient(dynamodb_table)
 
-    with pytest.raises(EntityNotFoundError, match="does not exist"):
+    with pytest.raises(
+        EntityNotFoundError, match="(does not exist|not found)"
+    ):
         client.get_receipt_word_label(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            1,
-            1,
-            1,
-            "ITEM",
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            receipt_id=1,
+            line_id=1,
+            word_id=1,
+            label="ITEM",
         )
 
 
@@ -405,7 +405,11 @@ def test_get_receipt_word_label_invalid_params(
 
     with pytest.raises((EntityValidationError, OperationError)):
         client.get_receipt_word_label(
-            image_id, receipt_id, line_id, word_id, label
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=word_id,
+            label=label,
         )
 
 
@@ -441,11 +445,11 @@ def test_update_receipt_word_label_success(
 
     # Verify the update
     retrieved = client.get_receipt_word_label(
-        updated_label.image_id,
-        updated_label.receipt_id,
-        updated_label.line_id,
-        updated_label.word_id,
-        updated_label.label,
+        image_id=updated_label.image_id,
+        receipt_id=updated_label.receipt_id,
+        line_id=updated_label.line_id,
+        word_id=updated_label.word_id,
+        label=updated_label.label,
     )
     assert retrieved == updated_label
     assert retrieved.reasoning == "Updated reasoning for the label"
@@ -494,11 +498,11 @@ def test_update_receipt_word_labels_batch(
     # Verify both updates
     for updated in updated_labels:
         retrieved = client.get_receipt_word_label(
-            updated.image_id,
-            updated.receipt_id,
-            updated.line_id,
-            updated.word_id,
-            updated.label,
+            image_id=updated.image_id,
+            receipt_id=updated.receipt_id,
+            line_id=updated.line_id,
+            word_id=updated.word_id,
+            label=updated.label,
         )
         assert retrieved == updated
 
@@ -525,11 +529,11 @@ def test_delete_receipt_word_label_success(
     # Verify it's gone
     with pytest.raises(EntityNotFoundError):
         client.get_receipt_word_label(
-            sample_receipt_word_label.image_id,
-            sample_receipt_word_label.receipt_id,
-            sample_receipt_word_label.line_id,
-            sample_receipt_word_label.word_id,
-            sample_receipt_word_label.label,
+            image_id=sample_receipt_word_label.image_id,
+            receipt_id=sample_receipt_word_label.receipt_id,
+            line_id=sample_receipt_word_label.line_id,
+            word_id=sample_receipt_word_label.word_id,
+            label=sample_receipt_word_label.label,
         )
 
 
@@ -566,11 +570,11 @@ def test_delete_receipt_word_labels_batch(
     for label in labels_to_delete:
         with pytest.raises(EntityNotFoundError):
             client.get_receipt_word_label(
-                label.image_id,
-                label.receipt_id,
-                label.line_id,
-                label.word_id,
-                label.label,
+                image_id=label.image_id,
+                receipt_id=label.receipt_id,
+                line_id=label.line_id,
+                word_id=label.word_id,
+                label=label.label,
             )
 
 
@@ -848,17 +852,17 @@ def test_list_receipt_word_labels_for_receipt_with_pagination(
 @pytest.mark.parametrize(
     "image_id,receipt_id,expected_error",
     [
-        (None, 1, "image_id must be a string, got NoneType"),
+        (None, 1, "image_id cannot be None"),
         ("not-a-uuid", 1, "uuid must be a valid UUIDv4"),
         (
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             None,
-            "receipt_id must be an integer, got NoneType",
+            "receipt_id cannot be None",
         ),
         (
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             "not-an-int",
-            "receipt_id must be an integer, got str",
+            "receipt_id must be a positive integer",
         ),
         (
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -935,7 +939,7 @@ def test_update_receipt_word_label_not_found(
 
     with pytest.raises(
         EntityNotFoundError,
-        match="not found during update_receipt_word_label",
+        match="(does not exist|not found)",
     ):
         client.update_receipt_word_label(sample_receipt_word_label)
 

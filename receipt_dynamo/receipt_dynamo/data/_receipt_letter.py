@@ -1,8 +1,7 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_letter.py
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
@@ -18,10 +17,7 @@ if TYPE_CHECKING:
     pass
 
 
-class _ReceiptLetter(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _ReceiptLetter(FlattenedStandardMixin):
     """
     A class providing methods to interact with "ReceiptLetter" entities in
     DynamoDB.
@@ -78,7 +74,9 @@ class _ReceiptLetter(
             raise EntityValidationError(
                 "receipt_letter must be an instance of ReceiptLetter"
             )
-        self._add_entity(receipt_letter)
+        self._add_entity(
+            receipt_letter, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_receipt_letters")
     def add_receipt_letters(
@@ -132,7 +130,9 @@ class _ReceiptLetter(
             raise EntityValidationError(
                 "receipt_letter must be an instance of ReceiptLetter"
             )
-        self._update_entity(receipt_letter)
+        self._update_entity(
+            receipt_letter, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("update_receipt_letters")
     def update_receipt_letters(
@@ -197,18 +197,9 @@ class _ReceiptLetter(
         """
         self._validate_image_id(image_id)
         self._validate_receipt_id(receipt_id)
-        if line_id is None:
-            raise EntityValidationError("line_id cannot be None")
-        if not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer.")
-        if word_id is None:
-            raise EntityValidationError("word_id cannot be None")
-        if not isinstance(word_id, int):
-            raise EntityValidationError("word_id must be an integer.")
-        if letter_id is None:
-            raise EntityValidationError("letter_id cannot be None")
-        if not isinstance(letter_id, int):
-            raise EntityValidationError("letter_id must be an integer.")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
+        self._validate_positive_int_id(letter_id, "letter_id")
 
         # Direct key-based deletion is more efficient
         key = {
@@ -291,35 +282,11 @@ class _ReceiptLetter(
             If parameters are invalid or letter not found.
         """
         # Validate all parameters
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
+        self._validate_positive_int_id(receipt_id, "receipt_id")
         self._validate_image_id(image_id)
-        if line_id is None:
-            raise EntityValidationError("line_id cannot be None")
-        if not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer")
-        if line_id <= 0:
-            raise EntityValidationError("line_id must be a positive integer")
-        if word_id is None:
-            raise EntityValidationError("word_id cannot be None")
-        if not isinstance(word_id, int):
-            raise EntityValidationError("word_id must be an integer")
-        if word_id <= 0:
-            raise EntityValidationError("word_id must be a positive integer")
-        if letter_id is None:
-            raise EntityValidationError("letter_id cannot be None")
-        if not isinstance(letter_id, int):
-            raise EntityValidationError("letter_id must be an integer")
-        if letter_id <= 0:
-            raise EntityValidationError("letter_id must be a positive integer")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
+        self._validate_positive_int_id(letter_id, "letter_id")
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -342,7 +309,7 @@ class _ReceiptLetter(
     @handle_dynamodb_errors("list_receipt_letters")
     def list_receipt_letters(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptLetter], dict | None]:
         """
@@ -412,49 +379,17 @@ class _ReceiptLetter(
             If parameters are invalid.
         """
         # Validate parameters
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        self._validate_image_id(image_id)
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-        if line_id is None:
-            raise EntityValidationError("line_id cannot be None")
-        if not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer")
-        if line_id <= 0:
-            raise EntityValidationError("line_id must be a positive integer")
-        if word_id is None:
-            raise EntityValidationError("word_id cannot be None")
-        if not isinstance(word_id, int):
-            raise EntityValidationError("word_id must be an integer")
-        if word_id <= 0:
-            raise EntityValidationError("word_id must be a positive integer")
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
 
-        results, _ = self._query_entities(
-            index_name=None,
-            key_condition_expression=(
-                "PK = :pkVal AND begins_with(SK, :skPrefix)"
+        return self._query_by_image_sk_prefix(
+            image_id=image_id,
+            sk_prefix=(
+                f"RECEIPT#{receipt_id:05d}"
+                f"#LINE#{line_id:05d}"
+                f"#WORD#{word_id:05d}"
+                "#LETTER#"
             ),
-            expression_attribute_names=None,
-            expression_attribute_values={
-                ":pkVal": {"S": f"IMAGE#{image_id}"},
-                ":skPrefix": {
-                    "S": (
-                        f"RECEIPT#{receipt_id:05d}"
-                        f"#LINE#{line_id:05d}"
-                        f"#WORD#{word_id:05d}"
-                        "#LETTER#"
-                    )
-                },
-            },
             converter_func=item_to_receipt_letter,
         )
-        return results

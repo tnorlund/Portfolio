@@ -7,7 +7,7 @@ import pytest
 from botocore.exceptions import ClientError
 from pytest_mock import MockerFixture
 
-from receipt_dynamo.data._job_checkpoint import validate_last_evaluated_key
+from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
@@ -168,9 +168,7 @@ def test_addJobCheckpoint_raises_conditional_check_failed(
     job_checkpoint_dynamo.add_job_checkpoint(sample_job_checkpoint)
 
     # Try to add it again
-    with pytest.raises(
-        EntityAlreadyExistsError, match="job_checkpoint already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         job_checkpoint_dynamo.add_job_checkpoint(sample_job_checkpoint)
 
 

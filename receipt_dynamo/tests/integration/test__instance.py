@@ -208,7 +208,7 @@ def test_addInstance_raises_unknown_error(
     # Verify the correct exception is raised
     with pytest.raises(
         DynamoDBError,
-        match="DynamoDB error during add_instance",
+        match="DynamoDB error during",
     ):
         instance_dynamo.add_instance(sample_instance)
 
@@ -373,7 +373,7 @@ def test_updateInstance_raises_conditional_check_failed(
     # Try to update without adding first
     with pytest.raises(
         EntityNotFoundError,
-        match="instance not found during update_instance",
+        match="does not exist",
     ):
         instance_dynamo.update_instance(sample_instance)
 
@@ -426,7 +426,7 @@ def test_deleteInstance_raises_conditional_check_failed(
     # Try to delete without adding first
     with pytest.raises(
         EntityNotFoundError,
-        match="instance not found during delete_instance",
+        match="does not exist",
     ):
         instance_dynamo.delete_instance(sample_instance)
 

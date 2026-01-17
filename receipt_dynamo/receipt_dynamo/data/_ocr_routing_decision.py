@@ -1,7 +1,5 @@
 from typing import TYPE_CHECKING
 
-from botocore.exceptions import ClientError
-
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
     FlattenedStandardMixin,
@@ -11,14 +9,8 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities.ocr_routing_decision import (
     OCRRoutingDecision,
@@ -42,7 +34,10 @@ class _OCRRoutingDecision(FlattenedStandardMixin):
                 "ocr_routing_decision must be an instance of "
                 "OCRRoutingDecision"
             )
-        self._add_entity(ocr_routing_decision)
+        self._add_entity(
+            ocr_routing_decision,
+            condition_expression="attribute_not_exists(PK)",
+        )
 
     @handle_dynamodb_errors("add_ocr_routing_decisions")
     def add_ocr_routing_decisions(
@@ -81,7 +76,10 @@ class _OCRRoutingDecision(FlattenedStandardMixin):
                 "OCRRoutingDecision"
             )
 
-        self._update_entity(ocr_routing_decision)
+        self._update_entity(
+            ocr_routing_decision,
+            condition_expression="attribute_exists(PK)",
+        )
 
     @handle_dynamodb_errors("get_ocr_routing_decision")
     def get_ocr_routing_decision(
@@ -116,7 +114,10 @@ class _OCRRoutingDecision(FlattenedStandardMixin):
                 "ocr_routing_decision must be an instance of "
                 "OCRRoutingDecision"
             )
-        self._delete_entity(ocr_routing_decision)
+        self._delete_entity(
+            ocr_routing_decision,
+            condition_expression="attribute_exists(PK)",
+        )
 
     def delete_ocr_routing_decisions(
         self, ocr_routing_decisions: list[OCRRoutingDecision]

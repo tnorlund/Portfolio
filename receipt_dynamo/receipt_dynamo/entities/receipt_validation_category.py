@@ -1,10 +1,17 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_category.py
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
+from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_value
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
-from receipt_dynamo.entities.util import assert_valid_uuid
+from receipt_dynamo.entities.util import (
+    assert_valid_uuid,
+    validate_iso_timestamp,
+    validate_metadata_field,
+    validate_non_empty_string,
+    validate_positive_int,
+)
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -20,55 +27,28 @@ class ReceiptValidationCategory(SerializationMixin):
     field_category: str
     status: str
     reasoning: str
-    result_summary: Dict[str, int]
-    validation_timestamp: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    result_summary: dict[str, int]
+    validation_timestamp: str | None = None
+    metadata: dict[str, Any] | None = None
 
     def __post_init__(self):
-        if not isinstance(self.receipt_id, int):
-            raise ValueError("receipt_id must be an integer")
-        if self.receipt_id <= 0:
-            raise ValueError("receipt_id must be positive")
-
+        validate_positive_int("receipt_id", self.receipt_id)
         assert_valid_uuid(self.image_id)
-
-        if not isinstance(self.field_name, str):
-            raise ValueError("field_name must be a string")
-        if not self.field_name:
-            raise ValueError("field_name must not be empty")
-
-        if not isinstance(self.field_category, str):
-            raise ValueError("field_category must be a string")
-        if not self.field_category:
-            raise ValueError("field_category must not be empty")
-
-        if not isinstance(self.status, str):
-            raise ValueError("status must be a string")
-        if not self.status:
-            raise ValueError("status must not be empty")
-
-        if not isinstance(self.reasoning, str):
-            raise ValueError("reasoning must be a string")
-        if not self.reasoning:
-            raise ValueError("reasoning must not be empty")
+        validate_non_empty_string("field_name", self.field_name)
+        validate_non_empty_string("field_category", self.field_category)
+        validate_non_empty_string("status", self.status)
+        validate_non_empty_string("reasoning", self.reasoning)
 
         if not isinstance(self.result_summary, dict):
             raise ValueError("result_summary must be a dictionary")
 
-        if self.validation_timestamp is not None and not isinstance(
-            self.validation_timestamp, str
-        ):
-            raise ValueError("validation_timestamp must be a string")
-        if self.validation_timestamp is None:
-            self.validation_timestamp = datetime.now().isoformat()
-
-        if self.metadata is not None and not isinstance(self.metadata, dict):
-            raise ValueError("metadata must be a dictionary")
-        if self.metadata is None:
-            self.metadata = {}
+        self.validation_timestamp = validate_iso_timestamp(
+            self.validation_timestamp, "validation_timestamp"
+        )
+        self.metadata = validate_metadata_field(self.metadata)
 
     @property
-    def key(self) -> Dict[str, Dict[str, str]]:
+    def key(self) -> dict[str, dict[str, str]]:
         """Return the DynamoDB key for this item."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -81,7 +61,7 @@ class ReceiptValidationCategory(SerializationMixin):
         }
 
     @property
-    def gsi1_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi1_key(self) -> dict[str, dict[str, str]]:
         """Return the GSI1 key for this item."""
         return {
             "GSI1PK": {"S": f"VALIDATION_STATUS#{self.status}"},
@@ -94,7 +74,7 @@ class ReceiptValidationCategory(SerializationMixin):
         }
 
     @property
-    def gsi3_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi3_key(self) -> dict[str, dict[str, str]]:
         """Return the GSI3 key for this item."""
         return {
             "GSI3PK": {"S": f"FIELD_STATUS#{self.field_name}#{self.status}"},
@@ -103,7 +83,7 @@ class ReceiptValidationCategory(SerializationMixin):
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to a DynamoDB item."""
         # Start with the keys which are already properly formatted
         item = {
@@ -125,7 +105,7 @@ class ReceiptValidationCategory(SerializationMixin):
         return item
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptValidationCategory":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptValidationCategory":
         """Create a ReceiptValidationCategory from a DynamoDB item."""
         # Extract image_id, receipt_id, and field_name from keys
         image_id = item["PK"]["S"].split("#")[1]
@@ -169,58 +149,62 @@ class ReceiptValidationCategory(SerializationMixin):
         )
 
 
-def dynamo_to_python(dynamo_value):
-    """
-    Convert a DynamoDB typed value to a native Python value.
-
-    Args:
-        dynamo_value (dict): A DynamoDB formatted value with type indicators
-            like S, N, BOOL, M, L, etc.
-
-    Returns:
-        The equivalent Python native value (str, int, float, bool, dict,
-        list, None)
-    """
-    if not dynamo_value or not isinstance(dynamo_value, dict):
-        return dynamo_value
-
-    if "NULL" in dynamo_value:
-        return None
-    if "S" in dynamo_value:
-        return dynamo_value["S"]
-    if "N" in dynamo_value:
-        # Try to convert to int if possible, otherwise float
-        try:
-            return int(dynamo_value["N"])
-        except ValueError:
-            return float(dynamo_value["N"])
-    if "BOOL" in dynamo_value:
-        return dynamo_value["BOOL"]
-    if "M" in dynamo_value:
-        return {k: dynamo_to_python(v) for k, v in dynamo_value["M"].items()}
-    if "L" in dynamo_value:
-        return [dynamo_to_python(item) for item in dynamo_value["L"]]
-    if "SS" in dynamo_value:  # String Set
-        return set(dynamo_value["SS"])
-    if "NS" in dynamo_value:  # Number Set
-        # Try to convert to int if possible, otherwise float
-        result = set()
-        for num_str in dynamo_value["NS"]:
-            try:
-                result.add(int(num_str))
-            except ValueError:
-                result.add(float(num_str))
-        return result
-    if "BS" in dynamo_value:  # Binary Set
-        return set(dynamo_value["BS"])
-    # Handle any other type by returning the first value
-    for key, value in dynamo_value.items():
-        return value
+def _find_sk_value_after(sk_parts: list[str], key: str) -> str | None:
+    """Find the value after a key in SK parts."""
+    for i, part in enumerate(sk_parts):
+        if part == key and i + 1 < len(sk_parts):
+            return sk_parts[i + 1]
     return None
 
 
+def _extract_receipt_id(item: dict[str, Any], sk_parts: list[str]) -> int:
+    """Extract receipt_id from SK or item attributes."""
+    receipt_id_str = _find_sk_value_after(sk_parts, "RECEIPT")
+
+    if receipt_id_str is not None:
+        try:
+            return int(receipt_id_str.lstrip("0") or "0")
+        except ValueError:
+            return int(receipt_id_str)
+
+    if "receipt_id" in item:
+        return (
+            int(item["receipt_id"]["N"])
+            if "N" in item["receipt_id"]
+            else item["receipt_id"]
+        )
+    raise ValueError("Could not extract receipt_id from item")
+
+
+def _extract_image_id(item: dict[str, Any]) -> str:
+    """Extract image_id from PK or item attributes."""
+    pk_parts = item["PK"]["S"].split("#")
+    if len(pk_parts) > 1:
+        return pk_parts[1]
+
+    if "image_id" in item:
+        return (
+            item["image_id"]["S"]
+            if "S" in item["image_id"]
+            else item["image_id"]
+        )
+    raise ValueError("Could not extract image_id from item")
+
+
+def _extract_field_category(item: dict[str, Any], sk_parts: list[str]) -> str:
+    """Extract field_category from item or SK."""
+    if "field_category" in item:
+        return item["field_category"]["S"]
+
+    # Try SK pattern: CATEGORY#<field_name>#<category>
+    for i, part in enumerate(sk_parts):
+        if part == "CATEGORY" and i + 2 < len(sk_parts):
+            return sk_parts[i + 2]
+    return "general"
+
+
 def item_to_receipt_validation_category(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> ReceiptValidationCategory:
     """Convert a DynamoDB item to a ReceiptValidationCategory object.
 
@@ -230,121 +214,38 @@ def item_to_receipt_validation_category(
     Returns:
         ReceiptValidationCategory: The converted object.
     """
-    # Safely extract SK parts
     sk_parts = item["SK"]["S"].split("#")
 
-    # Get receipt_id from SK safely
-    receipt_id = None
-    for i, part in enumerate(sk_parts):
-        if part == "RECEIPT" and i + 1 < len(sk_parts):
-            receipt_id = sk_parts[i + 1]
-            break
+    receipt_id = _extract_receipt_id(item, sk_parts)
+    image_id = _extract_image_id(item)
 
-    # If receipt_id not found in SK, look for it as a separate attribute
-    if receipt_id is None:
-        if "receipt_id" in item:
-            receipt_id = (
-                int(item["receipt_id"]["N"])
-                if "N" in item["receipt_id"]
-                else item["receipt_id"]
-            )
-        else:
-            raise ValueError("Could not extract receipt_id from item")
-    else:
-        # Convert to integer (removing any leading zeros like in "00001")
-        try:
-            receipt_id = int(receipt_id.lstrip("0"))
-        except ValueError:
-            receipt_id = int(receipt_id)
-
-    # Get image_id safely
-    image_id = (
-        item["PK"]["S"].split("#")[1]
-        if len(item["PK"]["S"].split("#")) > 1
-        else None
-    )
-    if image_id is None and "image_id" in item:
-        image_id = (
-            item["image_id"]["S"]
-            if "S" in item["image_id"]
-            else item["image_id"]
-        )
-    if image_id is None:
-        raise ValueError("Could not extract image_id from item")
-
-    # Get field_name safely
-    field_name = None
-    # Try to find field_name after "CATEGORY#" in SK if it exists
-    for i, part in enumerate(sk_parts):
-        if part == "CATEGORY" and i + 1 < len(sk_parts):
-            field_name = sk_parts[i + 1]
-            break
-
-    # If not found in SK, try direct attribute
+    # Extract field_name from SK or attribute
+    field_name = _find_sk_value_after(sk_parts, "CATEGORY")
     if field_name is None:
-        if "field_name" in item:
-            field_name = (
-                item["field_name"]["S"]
-                if "S" in item["field_name"]
-                else item["field_name"]
-            )
-        else:
-            # Use a default or extract from another part of the item
-            field_name = "unknown"
+        field_name = (
+            item["field_name"]["S"]
+            if "field_name" in item and "S" in item["field_name"]
+            else "unknown"
+        )
 
-    # Get field_category safely - first try from the direct attribute
-    if "field_category" in item:
-        field_category = item["field_category"]["S"]
-    else:
-        # Try to extract from SK if it follows a pattern like
-        # CATEGORY#<field_name>#<category>
-        field_category = None
-        for i, part in enumerate(sk_parts):
-            if part == "CATEGORY" and i + 2 < len(sk_parts):
-                # Try to get the category after the field_name
-                field_category = sk_parts[i + 2]
-                break
+    field_category = _extract_field_category(item, sk_parts)
 
-        # If still not found, use a default value
-        if field_category is None:
-            field_category = "general"
+    # Extract simple string fields with defaults
+    status = item.get("status", {}).get("S", "unknown")
+    reasoning = item.get("reasoning", {}).get("S", "No reasoning provided")
+    validation_timestamp = item.get("validation_timestamp", {}).get(
+        "S", datetime.now().isoformat()
+    )
 
-    # Get status safely
-    if "status" in item:
-        status = item["status"]["S"]
-    else:
-        # Use a default status
-        status = "unknown"
-
-    # Get reasoning safely
-    if "reasoning" in item:
-        reasoning = item["reasoning"]["S"]
-    else:
-        # Use a default reasoning
-        reasoning = "No reasoning provided"
-
-    # Get result_summary safely
-    result_summary: Dict[str, Any]
-    if "result_summary" in item:
-        result_summary = dynamo_to_python(item["result_summary"])
-    else:
-        # Use an empty dictionary as default
-        result_summary = {}
-
-    # Get validation_timestamp safely
-    if "validation_timestamp" in item:
-        validation_timestamp = item["validation_timestamp"]["S"]
-    else:
-        # Use current timestamp as default
-        validation_timestamp = datetime.now().isoformat()
-
-    # Get metadata safely
-    metadata: Dict[str, Any]
-    if "metadata" in item:
-        metadata = dynamo_to_python(item["metadata"])
-    else:
-        # Use an empty dictionary as default
-        metadata = {}
+    # Extract complex fields using public parse function
+    result_summary: dict[str, Any] = (
+        parse_dynamodb_value(item["result_summary"])
+        if "result_summary" in item
+        else {}
+    )
+    metadata: dict[str, Any] = (
+        parse_dynamodb_value(item["metadata"]) if "metadata" in item else {}
+    )
 
     return ReceiptValidationCategory(
         receipt_id=receipt_id,

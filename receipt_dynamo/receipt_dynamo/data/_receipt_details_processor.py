@@ -4,7 +4,7 @@ This module handles the complex logic of querying and processing receipt
 details from GSI2, keeping the main _Receipt class focused on CRUD operations.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.entities.receipt import item_to_receipt
 from receipt_dynamo.entities.receipt_summary import (
@@ -19,8 +19,8 @@ from receipt_dynamo.entities.receipt_word_label import (
 
 def process_receipt_details_query(
     client: Any,
-    query_params: Dict[str, Any],
-    limit: Optional[int],
+    query_params: dict[str, Any],
+    limit: int | None,
 ) -> ReceiptSummaryPage:
     """Process GSI2 query response into receipt summaries.
 
@@ -32,8 +32,8 @@ def process_receipt_details_query(
     Returns:
         ReceiptSummaryPage with processed results
     """
-    summaries: Dict[str, ReceiptSummary] = {}
-    current_summary: Optional[ReceiptSummary] = None
+    summaries: dict[str, ReceiptSummary] = {}
+    current_summary: ReceiptSummary | None = None
     receipt_count = 0
 
     while True:
@@ -63,7 +63,7 @@ def process_receipt_details_query(
 
 
 def _should_stop_at_receipt_boundary(
-    item: Dict[str, Any], limit: Optional[int], count: int
+    item: dict[str, Any], limit: int | None, count: int
 ) -> bool:
     """Check if processing should stop at a receipt boundary."""
     if limit is None:
@@ -73,10 +73,10 @@ def _should_stop_at_receipt_boundary(
 
 
 def _process_receipt_detail_item(
-    item: Dict[str, Any],
-    summaries: Dict[str, ReceiptSummary],
-    current: Optional[ReceiptSummary],
-) -> Optional[Dict[str, Any]]:
+    item: dict[str, Any],
+    summaries: dict[str, ReceiptSummary],
+    current: ReceiptSummary | None,
+) -> dict[str, Any] | None:
     """Process a single item from the query."""
     item_type = item.get("TYPE", {}).get("S", "")
 
@@ -109,7 +109,7 @@ def _item_belongs_to_receipt(item: Any, receipt: Any) -> bool:
 
 
 def _create_receipt_summary_page(
-    summaries: Dict[str, ReceiptSummary], item: Dict[str, Any]
+    summaries: dict[str, ReceiptSummary], item: dict[str, Any]
 ) -> ReceiptSummaryPage:
     """Create a page when limit is reached."""
     return ReceiptSummaryPage(

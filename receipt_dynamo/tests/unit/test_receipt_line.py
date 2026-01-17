@@ -124,7 +124,7 @@ def test_receipt_line_init_invalid_image_id() -> None:
 @pytest.mark.unit
 def test_receipt_line_init_invalid_id() -> None:
     """Test that ReceiptLine raises an error for an invalid line ID."""
-    with pytest.raises(ValueError, match="^id must be an integer"):
+    with pytest.raises(ValueError, match="^line_id must be an integer"):
         ReceiptLine(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -139,7 +139,7 @@ def test_receipt_line_init_invalid_id() -> None:
             angle_radians=0.0,
             confidence=0.95,
         )
-    with pytest.raises(ValueError, match="^id must be positive"):
+    with pytest.raises(ValueError, match="^line_id must be non-negative"):
         ReceiptLine(
             receipt_id=1,  # invalid
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",

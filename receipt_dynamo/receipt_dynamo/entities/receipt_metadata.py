@@ -1,9 +1,14 @@
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
+from receipt_dynamo.entities.entity_factory import (
+    EntityFactory,
+    create_image_receipt_pk_parser,
+    create_image_receipt_sk_parser,
+)
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
 from receipt_dynamo.entities.util import (
     _repr_str,
@@ -59,11 +64,20 @@ class ReceiptMetadata(SerializationMixin):
             representative business in the cluster.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "place_id",
+        "merchant_name",
+        "timestamp",
+    }
+
     image_id: str
     receipt_id: int
     place_id: str
     merchant_name: str
-    matched_fields: List[str]
+    matched_fields: list[str]
     timestamp: datetime
     merchant_category: str = ""
     address: str = ""
@@ -142,7 +156,7 @@ class ReceiptMetadata(SerializationMixin):
         else:
             self.validation_status = MerchantValidationStatus.NO_MATCH.value
 
-    def _get_high_quality_matched_fields(self) -> List[str]:
+    def _get_high_quality_matched_fields(self) -> list[str]:
         """
         Validates the quality of matched fields and returns only
         high-quality matches.
@@ -181,7 +195,7 @@ class ReceiptMetadata(SerializationMixin):
                 meaningful_tokens: float = 0.0
                 has_number = False
 
-                for i, token in enumerate(tokens):
+                for token in tokens:
                     token_clean = token.rstrip(".,;:")
 
                     # Count as meaningful if:
@@ -203,18 +217,24 @@ class ReceiptMetadata(SerializationMixin):
                     elif len(tokens) > 1 and token_clean.isalpha():
                         meaningful_tokens += 0.5  # Count as half
 
-                # Consider valid if there are at least two meaningful tokens,
-                # a single descriptive token, or a street number with other
-                # components (e.g., "123 Main").
-                if (
-                    meaningful_tokens >= 2
-                    or (
-                        len(tokens) == 1
-                        and meaningful_tokens >= 1
-                        and not has_number
-                    )
-                    or (has_number and len(tokens) > 1)
-                ):
+                # Consider valid if:
+                # - At least 2 meaningful tokens (e.g., "123 Main St")
+                # - A single descriptive word (e.g., "Downtown")
+                # - A street number with other components (e.g., "123 Main")
+                has_enough_tokens = meaningful_tokens >= 2
+                is_single_descriptive = (
+                    len(tokens) == 1
+                    and meaningful_tokens >= 1
+                    and not has_number
+                )
+                has_number_with_context = has_number and len(tokens) > 1
+                is_valid_address = (
+                    has_enough_tokens
+                    or is_single_descriptive
+                    or has_number_with_context
+                )
+
+                if is_valid_address:
                     high_quality_fields.append(field)
             else:
                 # Unknown fields are kept as-is (future-proofing)
@@ -223,14 +243,14 @@ class ReceiptMetadata(SerializationMixin):
         return high_quality_fields
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Returns the primary key used to store this record in DynamoDB."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#METADATA"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """
         Returns the key for GSI1: used to index all receipts associated with a
         given merchant.
@@ -263,7 +283,7 @@ class ReceiptMetadata(SerializationMixin):
             },
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """
         Returns the key for GSI2: used to query records by ``place_id``. This
         index supports the incremental consolidation process by enabling
@@ -285,7 +305,7 @@ class ReceiptMetadata(SerializationMixin):
             },
         }
 
-    def gsi3_key(self) -> Dict[str, Any]:
+    def gsi3_key(self) -> dict[str, Any]:
         """
         Returns the key for GSI3: used to sort ``ReceiptMetadata`` entries by
         validation status. Supports filtering low/high-confidence merchant
@@ -296,7 +316,7 @@ class ReceiptMetadata(SerializationMixin):
             "GSI3SK": {"S": f"STATUS#{self.validation_status}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """
         Serializes the ``ReceiptMetadata`` object into a DynamoDB-compatible
         item. Includes primary key and GSI keys, as well as all
@@ -374,12 +394,12 @@ class ReceiptMetadata(SerializationMixin):
             f")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """
         Returns an iterator over the ReceiptMetadata object's attributes.
 
         Yields:
-            Tuple[str, Any]:
+            tuple[str, Any]:
                 A tuple containing the attribute name and its value.
         """
         yield "image_id", self.image_id
@@ -427,67 +447,79 @@ class ReceiptMetadata(SerializationMixin):
             )
         )
 
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptMetadata":
+        """Converts a DynamoDB item to a ReceiptMetadata object.
 
-def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
-    """Create ReceiptMetadata from DynamoDB item using EntityFactory."""
-    from receipt_dynamo.entities.entity_factory import (
-        EntityFactory,
-        create_image_receipt_pk_parser,
-        create_image_receipt_sk_parser,
-    )
+        Args:
+            item: The DynamoDB item to convert.
 
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "place_id",
-        "merchant_name",
-        "timestamp",
-    }
+        Returns:
+            ReceiptMetadata: The ReceiptMetadata object.
 
-    # Type-safe extractors
-    custom_extractors = {
-        "place_id": EntityFactory.extract_string_field(
-            "place_id", ""
-        ),  # Default to empty string if missing/NULL
-        "merchant_name": EntityFactory.extract_string_field(
-            "merchant_name", ""
-        ),  # Default to empty string if missing/NULL
-        "matched_fields": EntityFactory.extract_string_list_field(
-            "matched_fields"
-        ),
-        "timestamp": EntityFactory.extract_datetime_field("timestamp"),
-        "merchant_category": EntityFactory.extract_string_field(
-            "merchant_category", ""
-        ),
-        "address": EntityFactory.extract_string_field("address", ""),
-        "phone_number": EntityFactory.extract_string_field("phone_number", ""),
-        "validated_by": EntityFactory.extract_string_field("validated_by", ""),
-        "reasoning": EntityFactory.extract_string_field("reasoning", ""),
-        "canonical_place_id": EntityFactory.extract_string_field(
-            "canonical_place_id", ""
-        ),
-        "canonical_merchant_name": EntityFactory.extract_string_field(
-            "canonical_merchant_name", ""
-        ),
-        "canonical_address": EntityFactory.extract_string_field(
-            "canonical_address", ""
-        ),
-        "canonical_phone_number": EntityFactory.extract_string_field(
-            "canonical_phone_number", ""
-        ),
-        "validation_status": EntityFactory.extract_string_field(
-            "validation_status", ""
-        ),  # Default to empty string if missing/NULL
-    }
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        # Type-safe extractors
+        custom_extractors = {
+            "place_id": EntityFactory.extract_string_field("place_id", ""),
+            "merchant_name": EntityFactory.extract_string_field(
+                "merchant_name", ""
+            ),
+            "matched_fields": EntityFactory.extract_string_list_field(
+                "matched_fields"
+            ),
+            "timestamp": EntityFactory.extract_datetime_field("timestamp"),
+            "merchant_category": EntityFactory.extract_string_field(
+                "merchant_category", ""
+            ),
+            "address": EntityFactory.extract_string_field("address", ""),
+            "phone_number": EntityFactory.extract_string_field(
+                "phone_number", ""
+            ),
+            "validated_by": EntityFactory.extract_string_field(
+                "validated_by", ""
+            ),
+            "reasoning": EntityFactory.extract_string_field("reasoning", ""),
+            "canonical_place_id": EntityFactory.extract_string_field(
+                "canonical_place_id", ""
+            ),
+            "canonical_merchant_name": EntityFactory.extract_string_field(
+                "canonical_merchant_name", ""
+            ),
+            "canonical_address": EntityFactory.extract_string_field(
+                "canonical_address", ""
+            ),
+            "canonical_phone_number": EntityFactory.extract_string_field(
+                "canonical_phone_number", ""
+            ),
+            "validation_status": EntityFactory.extract_string_field(
+                "validation_status", ""
+            ),
+        }
 
-    return EntityFactory.create_entity(
-        entity_class=ReceiptMetadata,
-        item=item,
-        required_keys=required_keys,
-        key_parsers={
-            "PK": create_image_receipt_pk_parser(),
-            "SK": create_image_receipt_sk_parser(),
-        },
-        custom_extractors=custom_extractors,
-    )
+        return EntityFactory.create_entity(
+            entity_class=cls,
+            item=item,
+            required_keys=cls.REQUIRED_KEYS,
+            key_parsers={
+                "PK": create_image_receipt_pk_parser(),
+                "SK": create_image_receipt_sk_parser(),
+            },
+            custom_extractors=custom_extractors,
+        )
+
+
+def item_to_receipt_metadata(item: dict[str, Any]) -> ReceiptMetadata:
+    """Converts a DynamoDB item to a ReceiptMetadata object.
+
+    Args:
+        item (dict): The DynamoDB item to convert.
+
+    Returns:
+        ReceiptMetadata: The ReceiptMetadata object.
+
+    Raises:
+        ValueError: When the item format is invalid.
+    """
+    return ReceiptMetadata.from_item(item)

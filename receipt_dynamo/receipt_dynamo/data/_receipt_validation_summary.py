@@ -1,13 +1,11 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
-
 from receipt_dynamo.data.base_operations import (
-    BatchOperationsMixin,
-    DynamoDBBaseOperations,
+    FlattenedStandardMixin,
     PutRequestTypeDef,
-    QueryByTypeMixin,
-    SingleEntityCRUDMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.data.base_operations.shared_utils import (
+    validate_status_list_params,
 )
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
@@ -19,16 +17,8 @@ from receipt_dynamo.entities.receipt_validation_summary import (
 )
 from receipt_dynamo.entities.util import assert_valid_uuid
 
-if TYPE_CHECKING:
-    pass
 
-
-class _ReceiptValidationSummary(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    QueryByTypeMixin,
-):
+class _ReceiptValidationSummary(FlattenedStandardMixin):
     """
     .. deprecated::
         This class is deprecated and not used in production. Consider removing
@@ -53,13 +43,13 @@ class _ReceiptValidationSummary(
     ) -> ReceiptValidationSummary:
         Retrieves a single ReceiptValidationSummary by IDs.
     list_receipt_validation_summaries(
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationSummary], dict | None]:
         Returns ReceiptValidationSummaries and the last evaluated key.
     list_receipt_validation_summaries_by_status(
         status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationSummary], dict | None]:
         Returns ReceiptValidationSummaries with a specific status.
@@ -113,7 +103,7 @@ class _ReceiptValidationSummary(
 
     @handle_dynamodb_errors("update_receipt_validation_summaries")
     def update_receipt_validation_summaries(
-        self, summaries: List[ReceiptValidationSummary]
+        self, summaries: list[ReceiptValidationSummary]
     ):
         """Updates multiple ReceiptValidationSummaries in the database.
 
@@ -155,7 +145,9 @@ class _ReceiptValidationSummary(
         """
         self._validate_entity(summary, ReceiptValidationSummary, "summary")
 
-        self._delete_entity(summary, condition_expression=None)
+        self._delete_entity(
+            summary, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("get_receipt_validation_summary")
     def get_receipt_validation_summary(
@@ -208,15 +200,15 @@ class _ReceiptValidationSummary(
     @handle_dynamodb_errors("list_receipt_validation_summaries")
     def list_receipt_validation_summaries(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[ReceiptValidationSummary], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict | None = None,
+    ) -> tuple[list[ReceiptValidationSummary], dict | None]:
         """Returns ReceiptValidationSummaries and the last evaluated key.
 
         Args:
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict], optional): The key to start
+            last_evaluated_key (dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:
@@ -249,16 +241,16 @@ class _ReceiptValidationSummary(
     def list_receipt_validation_summaries_by_status(
         self,
         status: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[ReceiptValidationSummary], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict | None = None,
+    ) -> tuple[list[ReceiptValidationSummary], dict | None]:
         """Returns ReceiptValidationSummaries with a specific status.
 
         Args:
             status (str): The status to filter by.
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict], optional): The key to start
+            last_evaluated_key (dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:
@@ -271,18 +263,7 @@ class _ReceiptValidationSummary(
             Exception: If the ReceiptValidationSummaries cannot be retrieved
                 from DynamoDB.
         """
-        if not isinstance(status, str):
-            raise EntityValidationError(
-                f"status must be a string, got {type(status).__name__}"
-            )
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("limit must be an integer or None")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
-            raise EntityValidationError(
-                "last_evaluated_key must be a dictionary or None"
-            )
+        validate_status_list_params(status, limit, last_evaluated_key)
 
         return self._query_entities(
             index_name="GSI2",

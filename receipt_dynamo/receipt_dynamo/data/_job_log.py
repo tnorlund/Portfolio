@@ -1,6 +1,4 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
-
-from botocore.exceptions import ClientError
+from typing import TYPE_CHECKING, Dict
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -15,9 +13,7 @@ from receipt_dynamo.data.shared_exceptions import (
 from receipt_dynamo.entities.job_log import JobLog, item_to_job_log
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
+    pass
 
 
 class _JobLog(FlattenedStandardMixin):
@@ -29,11 +25,11 @@ class _JobLog(FlattenedStandardMixin):
     -------
     add_job_log(job_log: JobLog)
         Adds a job log entry to the database.
-    add_job_logs(job_logs: List[JobLog])
+    add_job_logs(job_logs: list[JobLog])
         Adds multiple job log entries to the database.
     get_job_log(job_id: str, log_id: str) -> JobLog
         Gets a specific job log entry.
-    list_job_logs(job_id: str) -> List[JobLog]
+    list_job_logs(job_id: str) -> list[JobLog]
         Lists all log entries for a specific job.
     delete_job_log(job_log: JobLog)
         Deletes a job log entry from the database.
@@ -59,11 +55,11 @@ class _JobLog(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("add_job_logs")
-    def add_job_logs(self, job_logs: List[JobLog]):
+    def add_job_logs(self, job_logs: list[JobLog]):
         """Adds multiple job logs to the DynamoDB table in a batch.
 
         Args:
-            job_logs (List[JobLog]): The job logs to add.
+            job_logs (list[JobLog]): The job logs to add.
 
         Raises:
             ValueError: If job_logs is None, not a list, or contains
@@ -134,9 +130,9 @@ class _JobLog(FlattenedStandardMixin):
     def list_job_logs(
         self,
         job_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[JobLog], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[JobLog], Dict | None]:
         """Lists all log entries for a specific job.
 
         Args:
@@ -146,7 +142,7 @@ class _JobLog(FlattenedStandardMixin):
                 from.
 
         Returns:
-            Tuple[List[JobLog], Optional[Dict]]: A tuple containing the list
+            tuple[list[JobLog], Dict | None]: A tuple containing the list
                 of job logs and the last evaluated key.
 
         Raises:

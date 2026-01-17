@@ -1,7 +1,8 @@
 import re
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
-from typing import Any, Dict, Type, Union
+from typing import Any
 
 
 def _repr_str(value: Any) -> str:
@@ -46,8 +47,8 @@ UUID_V4_REGEX = re.compile(
 
 
 def assert_valid_bounding_box(
-    bounding_box: Dict[str, Union[int, float]],
-) -> Dict[str, Union[int, float]]:
+    bounding_box: dict[str, int | float],
+) -> dict[str, int | float]:
     """
     Assert that the bounding box is valid.
     """
@@ -62,8 +63,8 @@ def assert_valid_bounding_box(
 
 
 def assert_valid_point(
-    point: Dict[str, Union[int, float]],
-) -> Dict[str, Union[int, float]]:
+    point: dict[str, int | float],
+) -> dict[str, int | float]:
     """
     Assert that the point is valid.
     """
@@ -112,7 +113,7 @@ def assert_valid_uuid(uuid: str) -> None:
         raise ValueError("uuid must be a valid UUIDv4")
 
 
-def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
+def normalize_enum(candidate: Any, enum_cls: type[Enum]) -> str:
     """Return the normalized ``enum_cls`` value for ``candidate``.
 
     Args:
@@ -141,7 +142,7 @@ def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
     )
 
 
-def shear_point(  # pylint: disable=too-many-arguments
+def shear_point(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     px: float,
     py: float,
     pivot_x: float,
@@ -202,7 +203,7 @@ def normalize_address(addr: str) -> str:
 # These utilities eliminate code duplication in entity to_item() methods
 
 
-def serialize_bounding_box(bounding_box: Dict[str, float]) -> Dict[str, Any]:
+def serialize_bounding_box(bounding_box: dict[str, float]) -> dict[str, Any]:
     """
     Serialize a bounding box dictionary to DynamoDB format.
 
@@ -225,7 +226,7 @@ def serialize_bounding_box(bounding_box: Dict[str, float]) -> Dict[str, Any]:
     }
 
 
-def serialize_coordinate_point(point: Dict[str, float]) -> Dict[str, Any]:
+def serialize_coordinate_point(point: dict[str, float]) -> dict[str, Any]:
     """
     Serialize a coordinate point (x, y) to DynamoDB format.
 
@@ -246,7 +247,7 @@ def serialize_coordinate_point(point: Dict[str, float]) -> Dict[str, Any]:
     }
 
 
-def serialize_confidence(confidence: float) -> Dict[str, str]:
+def serialize_confidence(confidence: float) -> dict[str, str]:
     """
     Serialize a confidence value to DynamoDB format.
 
@@ -261,7 +262,7 @@ def serialize_confidence(confidence: float) -> Dict[str, str]:
     return {"N": _format_float(confidence, 2, 2)}
 
 
-def build_base_item(entity, entity_type: str, gsi_keys=None) -> Dict[str, Any]:
+def build_base_item(entity, entity_type: str, gsi_keys=None) -> dict[str, Any]:
     """
     Build the base structure for entity to_item() methods.
 
@@ -311,7 +312,7 @@ def build_base_item(entity, entity_type: str, gsi_keys=None) -> Dict[str, Any]:
 # These utilities eliminate code duplication in item_to_* conversion functions
 
 
-def deserialize_bounding_box(item_field: Dict[str, Any]) -> Dict[str, float]:
+def deserialize_bounding_box(item_field: dict[str, Any]) -> dict[str, float]:
     """
     Deserialize a DynamoDB bounding box field back to a Python dict.
 
@@ -338,8 +339,8 @@ def deserialize_bounding_box(item_field: Dict[str, Any]) -> Dict[str, float]:
 
 
 def deserialize_coordinate_point(
-    item_field: Dict[str, Any],
-) -> Dict[str, float]:
+    item_field: dict[str, Any],
+) -> dict[str, float]:
     """
     Deserialize a DynamoDB coordinate point field back to a Python dict.
 
@@ -356,7 +357,7 @@ def deserialize_coordinate_point(
     return {key: float(value["N"]) for key, value in item_field["M"].items()}
 
 
-def deserialize_confidence(item_field: Dict[str, Any]) -> float:
+def deserialize_confidence(item_field: dict[str, Any]) -> float:
     """
     Deserialize a DynamoDB confidence field back to a Python float.
 
@@ -463,3 +464,90 @@ def validate_confidence_range(field_name: str, value: Any) -> float:
         raise ValueError(f"{field_name} must be between 0 and 1")
 
     return value
+
+
+def validate_metadata_field(metadata: Any) -> dict[str, Any]:
+    """
+    Validate and default a metadata field.
+
+    Eliminates duplicate validation code across entities that have
+    optional metadata dictionary fields (receipt_chatgpt_validation,
+    receipt_validation_category, etc.).
+
+    Args:
+        metadata: The metadata value to validate
+            (can be None, dict, or invalid)
+
+    Returns:
+        Validated metadata dict (empty dict if None was passed)
+
+    Raises:
+        ValueError: If metadata is not None and not a dictionary
+    """
+    if metadata is not None and not isinstance(metadata, dict):
+        raise ValueError("metadata must be a dictionary")
+    return metadata if metadata is not None else {}
+
+
+def validate_iso_timestamp(
+    value: Any, field_name: str = "timestamp", default_now: bool = True
+) -> str:
+    """
+    Validate and normalize a timestamp field to ISO format string.
+
+    Eliminates duplicate timestamp validation code across entities that
+    store timestamps as ISO strings (receipt_word_label, image, receipt, etc.).
+
+    Args:
+        value: The timestamp value (can be datetime, str, or None)
+        field_name: Name of the field for error messages
+        default_now: If True and value is None, return current time
+            as ISO string
+
+    Returns:
+        ISO format timestamp string
+
+    Raises:
+        ValueError: If value is not a valid datetime, ISO string, or None
+    """
+    if value is None:
+        if default_now:
+            return datetime.now().isoformat()
+        raise ValueError(f"{field_name} cannot be None")
+
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    if isinstance(value, str):
+        # Validate it's a valid ISO format by trying to parse it
+        try:
+            datetime.fromisoformat(value)
+            return value
+        except ValueError as e:
+            raise ValueError(
+                f"{field_name} must be a valid ISO format timestamp"
+            ) from e
+
+    raise ValueError(
+        f"{field_name} must be a datetime object or ISO format string"
+    )
+
+
+def validate_non_empty_string(field_name: str, value: Any) -> None:
+    """
+    Validate that a field is a non-empty string.
+
+    Eliminates duplicate validation code across entities that require
+    non-empty string fields like field_name, status, reasoning, etc.
+
+    Args:
+        field_name: Name of the field being validated (for error messages)
+        value: Value to validate
+
+    Raises:
+        ValueError: If value is not a string or is empty
+    """
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
+    if not value:
+        raise ValueError(f"{field_name} must not be empty")

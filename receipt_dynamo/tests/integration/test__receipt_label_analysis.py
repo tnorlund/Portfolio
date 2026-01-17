@@ -852,7 +852,7 @@ def test_deleteReceiptLabelAnalysis_success(
     client.delete_receipt_label_analysis(sample_receipt_label_analysis)
 
     # Assert - should raise when trying to get deleted item
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(ValueError, match="(does not exist|not found)"):
         client.get_receipt_label_analysis(
             sample_receipt_label_analysis.image_id,
             sample_receipt_label_analysis.receipt_id,
@@ -1026,7 +1026,7 @@ def test_deleteReceiptLabelAnalyses_success(
 
     # Assert - should raise when trying to get deleted items
     for analysis in analyses:
-        with pytest.raises(ValueError, match="does not exist"):
+        with pytest.raises(ValueError, match="(does not exist|not found)"):
             client.get_receipt_label_analysis(
                 analysis.image_id,
                 analysis.receipt_id,
@@ -1246,7 +1246,7 @@ def test_getReceiptLabelAnalysis_nonexistent_raises(
     client = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(ValueError, match="does not exist"):
+    with pytest.raises(ValueError, match="(does not exist|not found)"):
         client.get_receipt_label_analysis(
             sample_receipt_label_analysis.image_id,
             sample_receipt_label_analysis.receipt_id,
