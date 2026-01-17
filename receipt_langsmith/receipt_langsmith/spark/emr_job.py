@@ -15,6 +15,7 @@ Usage:
         --job-type all
 
 Job Types:
+    job-analytics: Job-level metrics by type (PatternComputation vs ReceiptEvaluation)
     receipt-analytics: Per-receipt metrics (duration, tokens, cost)
     step-timing: Step latency percentiles (P50/P95/P99)
     decision-analysis: LLM decision breakdown (VALID/INVALID/NEEDS_REVIEW)
@@ -56,6 +57,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--job-type",
         choices=[
+            "job-analytics",
             "receipt-analytics",
             "step-timing",
             "decision-analysis",
@@ -113,6 +115,25 @@ def main() -> int:
 
         try:
             # Run requested analytics
+            if args.job_type in ("job-analytics", "all"):
+                logger.info("Computing job analytics...")
+                job_stats = processor.compute_job_analytics(parsed)
+                processor.write_analytics(
+                    job_stats,
+                    f"{args.output}/job_analytics/",
+                )
+
+                job_by_merchant = processor.compute_job_analytics_by_merchant(parsed)
+                partition_by = (
+                    ["merchant_name"] if args.partition_by_merchant else None
+                )
+                processor.write_analytics(
+                    job_by_merchant,
+                    f"{args.output}/job_analytics_by_merchant/",
+                    partition_by=partition_by,
+                )
+                logger.info("Job analytics complete")
+
             if args.job_type in ("receipt-analytics", "all"):
                 logger.info("Computing receipt analytics...")
                 analytics = processor.compute_receipt_analytics(parsed)
