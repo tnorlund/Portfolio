@@ -800,7 +800,9 @@ def evaluate_financial_math(
         decisions = _pad_decisions(decisions, len(math_issues))
 
         # Step 4: Format output - create one result per involved value
-        return _format_financial_results(math_issues, decisions, image_id, receipt_id)
+        return _format_financial_results(
+            math_issues, decisions, image_id, receipt_id
+        )
 
     except Exception as e:
         # Check for rate limit errors
@@ -917,13 +919,17 @@ async def evaluate_financial_math_async(
                         )
                         if hasattr(structured_llm, "ainvoke"):
                             response: FinancialEvaluationResponse = (
-                                await structured_llm.ainvoke(prompt, config=llm_config)
+                                await structured_llm.ainvoke(
+                                    prompt, config=llm_config
+                                )
                             )
                         else:
                             # Run sync invoke in thread pool to avoid blocking event loop
                             response: FinancialEvaluationResponse = (
                                 await asyncio.to_thread(
-                                    structured_llm.invoke, prompt, config=llm_config
+                                    structured_llm.invoke,
+                                    prompt,
+                                    config=llm_config,
                                 )
                             )
                         decisions = response.to_ordered_list(num_issues)
@@ -994,7 +1000,9 @@ async def evaluate_financial_math_async(
 
         # Step 4: Format output
         decisions = _pad_decisions(decisions, len(math_issues))
-        return _format_financial_results(math_issues, decisions, image_id, receipt_id)
+        return _format_financial_results(
+            math_issues, decisions, image_id, receipt_id
+        )
 
     except Exception as e:
         from receipt_agent.utils import (

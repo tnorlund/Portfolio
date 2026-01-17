@@ -323,10 +323,12 @@ def upload_avif_to_s3(
         try:
             # pylint: disable=import-outside-toplevel,unused-import
             import pillow_avif  # noqa: F401
+
             # The import should auto-register the plugin
         except ImportError:
             try:
                 from pillow_heif import register_heif_opener
+
                 register_heif_opener()
             except ImportError as import_error:
                 raise AVIFError(

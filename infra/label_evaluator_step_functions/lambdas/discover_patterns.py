@@ -112,7 +112,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         execution_arn=execution_arn,
         merchant_name=merchant_name,
         name="PatternComputation",
-        inputs={"merchant_name": merchant_name, "force_rediscovery": force_rediscovery},
+        inputs={
+            "merchant_name": merchant_name,
+            "force_rediscovery": force_rediscovery,
+        },
         metadata={"execution_id": execution_id, "phase": "pattern_learning"},
         tags=["phase-1", "per-merchant"],
         enable_tracing=enable_tracing,
@@ -210,7 +213,10 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
                 "LearnLineItemPatterns",
                 trace_ctx,
                 run_type="llm",
-                inputs={"merchant_name": merchant_name, "prompt_length": len(prompt)},
+                inputs={
+                    "merchant_name": merchant_name,
+                    "prompt_length": len(prompt),
+                },
             ) as llm_ctx:
                 patterns = discover_patterns_with_llm(
                     prompt, config, trace_ctx=llm_ctx
@@ -318,6 +324,9 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         }
 
     # End the merchant trace to persist it (compute_patterns will add sibling via trace_id)
-    end_merchant_trace(merchant_trace, outputs={"patterns_discovered": result.get("patterns") is not None})
+    end_merchant_trace(
+        merchant_trace,
+        outputs={"patterns_discovered": result.get("patterns") is not None},
+    )
     flush_langsmith_traces()
     return result

@@ -186,7 +186,9 @@ def get_non_currency_pattern(text: str) -> str | None:
 
 def identify_line_item_rows(
     visual_lines: list[VisualLine],
-    patterns: dict | None = None,  # Reserved for future pattern-based detection
+    patterns: (
+        dict | None
+    ) = None,  # Reserved for future pattern-based detection
 ) -> list[LineItemRow]:
     """
     Identify which visual lines are line item rows based on patterns.
@@ -713,7 +715,11 @@ def evaluate_currency_labels(
         )
 
     # Log summary - safely handle unexpected decision values
-    decision_counts: dict[str, int] = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+    decision_counts: dict[str, int] = {
+        "VALID": 0,
+        "INVALID": 0,
+        "NEEDS_REVIEW": 0,
+    }
     for r in results:
         decision = r.get("llm_review", {}).get("decision", "OTHER")
         decision_counts[decision] = decision_counts.get(decision, 0) + 1
@@ -801,13 +807,17 @@ async def evaluate_currency_labels_async(
                     # Use ainvoke for async call
                     if hasattr(structured_llm, "ainvoke"):
                         response: CurrencyEvaluationResponse = (
-                            await structured_llm.ainvoke(prompt, config=llm_config)
+                            await structured_llm.ainvoke(
+                                prompt, config=llm_config
+                            )
                         )
                     else:
                         # Fallback to sync if no ainvoke - run in thread pool to avoid blocking
                         response: CurrencyEvaluationResponse = (
                             await asyncio.to_thread(
-                                structured_llm.invoke, prompt, config=llm_config
+                                structured_llm.invoke,
+                                prompt,
+                                config=llm_config,
                             )
                         )
                     decisions = response.to_ordered_list(num_words)
@@ -977,7 +987,11 @@ async def evaluate_currency_labels_async(
         )
 
     # Log summary - safely handle unexpected decision values
-    decision_counts: dict[str, int] = {"VALID": 0, "INVALID": 0, "NEEDS_REVIEW": 0}
+    decision_counts: dict[str, int] = {
+        "VALID": 0,
+        "INVALID": 0,
+        "NEEDS_REVIEW": 0,
+    }
     for r in results:
         decision = r.get("llm_review", {}).get("decision", "OTHER")
         decision_counts[decision] = decision_counts.get(decision, 0) + 1

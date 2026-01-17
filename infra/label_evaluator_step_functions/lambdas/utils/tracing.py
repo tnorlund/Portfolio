@@ -666,9 +666,7 @@ def child_trace(
             try:
                 child.end()
                 child.patch()
-                logger.info(
-                    "[child_trace] Child '%s' ended and patched", name
-                )
+                logger.info("[child_trace] Child '%s' ended and patched", name)
             except Exception as e:
                 logger.warning(
                     "Failed to finalize child trace: %s", e, exc_info=True

@@ -874,13 +874,17 @@ async def evaluate_metadata_labels_async(
                     )
                     if hasattr(structured_llm, "ainvoke"):
                         response: MetadataEvaluationResponse = (
-                            await structured_llm.ainvoke(prompt, config=llm_config)
+                            await structured_llm.ainvoke(
+                                prompt, config=llm_config
+                            )
                         )
                     else:
                         # Run sync invoke in thread pool to avoid blocking event loop
                         response: MetadataEvaluationResponse = (
                             await asyncio.to_thread(
-                                structured_llm.invoke, prompt, config=llm_config
+                                structured_llm.invoke,
+                                prompt,
+                                config=llm_config,
                             )
                         )
                     decisions = response.to_ordered_list(num_words)

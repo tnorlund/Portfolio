@@ -37,7 +37,6 @@ from typing import Any
 
 import boto3
 from pyspark.sql import SparkSession
-
 from receipt_langsmith.entities.visualization import (
     BoundingBox,
     DecisionCounts,

@@ -698,9 +698,7 @@ def build_receipt_context_prompt(
                 )
                 similar_evidence = []
 
-            similar_text = _build_legacy_similar_text(
-                similar_evidence, idx
-            )
+            similar_text = _build_legacy_similar_text(similar_evidence, idx)
 
         # Build drill-down section for constellation anomalies
         drill_down_text = ""
@@ -825,9 +823,7 @@ def _build_legacy_similar_text(
         similar_lines.append(line)
 
     return (
-        "\n".join(similar_lines)
-        if similar_lines
-        else "No similar words found"
+        "\n".join(similar_lines) if similar_lines else "No similar words found"
     )
 
 
@@ -853,7 +849,9 @@ def _build_drill_down_text(drill_down: list[dict[str, Any]]) -> str:
         drill_down_lines.append(
             f"Normal positions ({len(non_culprits)} words):"
         )
-        for w in sorted(non_culprits, key=lambda x: _get_y_position(x.get("position")))[:5]:
+        for w in sorted(
+            non_culprits, key=lambda x: _get_y_position(x.get("position"))
+        )[:5]:
             y = _get_y_position(w.get("position"))
             drill_down_lines.append(f'  - "{w.get("text", "?")}" at y={y:.2f}')
 

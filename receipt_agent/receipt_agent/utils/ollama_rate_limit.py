@@ -324,7 +324,9 @@ class RateLimitedLLMInvoker:
     circuit_breaker: OllamaCircuitBreaker | None = None
     max_jitter_seconds: float = 0.25
     call_count: int = field(default=0, init=False)
-    _async_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
+    _async_lock: asyncio.Lock = field(
+        default_factory=asyncio.Lock, init=False, repr=False
+    )
 
     def _apply_jitter(self) -> None:
         """Apply random jitter between calls to prevent thundering herd."""

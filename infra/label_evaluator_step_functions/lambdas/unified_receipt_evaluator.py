@@ -161,17 +161,17 @@ async def unified_receipt_evaluator(
         # Import utilities
         from utils.serialization import (
             deserialize_label,
-            deserialize_place,
             deserialize_patterns,
+            deserialize_place,
             deserialize_word,
             serialize_label,
             serialize_word,
         )
 
         # Initialize dynamo_table early for use across all phases
-        dynamo_table = os.environ.get(
-            "DYNAMODB_TABLE_NAME"
-        ) or os.environ.get("RECEIPT_AGENT_DYNAMO_TABLE_NAME")
+        dynamo_table = os.environ.get("DYNAMODB_TABLE_NAME") or os.environ.get(
+            "RECEIPT_AGENT_DYNAMO_TABLE_NAME"
+        )
 
         # 1. Load receipt data from S3 FIRST (before creating trace)
         # We need image_id and receipt_id to create the deterministic trace ID
@@ -185,22 +185,16 @@ async def unified_receipt_evaluator(
         )
 
         if target_data is None:
-            raise ValueError(
-                f"Receipt data not found at {data_s3_key}"
-            )
+            raise ValueError(f"Receipt data not found at {data_s3_key}")
 
         image_id = target_data.get("image_id")
         receipt_id = target_data.get("receipt_id")
 
         if not image_id or receipt_id is None:
-            raise ValueError(
-                "image_id and receipt_id are required in data"
-            )
+            raise ValueError("image_id and receipt_id are required in data")
 
         # Deserialize entities
-        words = [
-            deserialize_word(w) for w in target_data.get("words", [])
-        ]
+        words = [deserialize_word(w) for w in target_data.get("words", [])]
         labels = [
             deserialize_label(label_data)
             for label_data in target_data.get("labels", [])
@@ -271,9 +265,9 @@ async def unified_receipt_evaluator(
         patterns_s3_key = event.get("patterns_s3_key") or (
             f"patterns/{execution_id}/{merchant_hash}.json"
         )
-        line_item_patterns_s3_key = event.get(
-            "line_item_patterns_s3_key"
-        ) or (f"line_item_patterns/{merchant_hash}.json")
+        line_item_patterns_s3_key = event.get("line_item_patterns_s3_key") or (
+            f"line_item_patterns/{merchant_hash}.json"
+        )
 
         # Create child traces for parallel operations
         load_patterns_trace_ctx = start_child_trace(
@@ -369,16 +363,26 @@ async def unified_receipt_evaluator(
             )
         finally:
             # End child traces
-            end_child_trace(load_patterns_trace_ctx, outputs={
-                "has_patterns": patterns_data is not None,
-                "has_line_item_patterns": line_item_patterns_data is not None,
-            })
-            end_child_trace(build_visual_lines_trace_ctx, outputs={
-                "visual_line_count": len(visual_lines),
-            })
-            end_child_trace(setup_llm_trace_ctx, outputs={
-                "invoker_ready": llm_invoker is not None,
-            })
+            end_child_trace(
+                load_patterns_trace_ctx,
+                outputs={
+                    "has_patterns": patterns_data is not None,
+                    "has_line_item_patterns": line_item_patterns_data
+                    is not None,
+                },
+            )
+            end_child_trace(
+                build_visual_lines_trace_ctx,
+                outputs={
+                    "visual_line_count": len(visual_lines),
+                },
+            )
+            end_child_trace(
+                setup_llm_trace_ctx,
+                outputs={
+                    "invoker_ready": llm_invoker is not None,
+                },
+            )
 
         # Create historical spans for pattern computation (from batch Phase 1)
         # These show up in the trace as if they happened during this receipt's evaluation
@@ -387,7 +391,9 @@ async def unified_receipt_evaluator(
                 discovery_metadata = line_item_patterns_data.get(
                     "_trace_metadata", {}
                 )
-                discovery_start = discovery_metadata.get("discovery_start_time")
+                discovery_start = discovery_metadata.get(
+                    "discovery_start_time"
+                )
                 discovery_end = discovery_metadata.get("discovery_end_time")
 
                 if discovery_start and discovery_end:
@@ -417,7 +423,9 @@ async def unified_receipt_evaluator(
                     )
                     logger.info(
                         "Added DiscoverPatterns historical span (%.2fs)",
-                        discovery_metadata.get("discovery_duration_seconds", 0),
+                        discovery_metadata.get(
+                            "discovery_duration_seconds", 0
+                        ),
                     )
             except Exception as span_err:
                 logger.warning(
@@ -431,7 +439,9 @@ async def unified_receipt_evaluator(
                 computation_start = computation_metadata.get(
                     "computation_start_time"
                 )
-                computation_end = computation_metadata.get("computation_end_time")
+                computation_end = computation_metadata.get(
+                    "computation_end_time"
+                )
 
                 if computation_start and computation_end:
                     # Extract pattern names for outputs
@@ -489,7 +499,9 @@ async def unified_receipt_evaluator(
                     logger.info(
                         "Added ComputePatterns historical span "
                         "(%.2fs, %d constellations, %d label pairs)",
-                        computation_metadata.get("computation_duration_seconds", 0),
+                        computation_metadata.get(
+                            "computation_duration_seconds", 0
+                        ),
                         len(constellation_names),
                         len(label_pair_names),
                     )
@@ -501,15 +513,15 @@ async def unified_receipt_evaluator(
 
         # 4. Phase 1: Run currency, metadata, and geometric evaluations concurrently
         # Each evaluation gets its own child trace for visibility in LangSmith
+        from receipt_agent.agents.label_evaluator import (
+            create_compute_only_graph,
+            run_compute_only_sync,
+        )
         from receipt_agent.agents.label_evaluator.currency_subagent import (
             evaluate_currency_labels_async,
         )
         from receipt_agent.agents.label_evaluator.metadata_subagent import (
             evaluate_metadata_labels_async,
-        )
-        from receipt_agent.agents.label_evaluator import (
-            create_compute_only_graph,
-            run_compute_only_sync,
         )
         from receipt_agent.agents.label_evaluator.state import (
             EvaluatorState,
@@ -520,13 +532,19 @@ async def unified_receipt_evaluator(
             "currency_evaluation",
             trace_ctx,
             metadata={"image_id": image_id, "receipt_id": receipt_id},
-            inputs={"merchant_name": merchant_name, "num_visual_lines": len(visual_lines)},
+            inputs={
+                "merchant_name": merchant_name,
+                "num_visual_lines": len(visual_lines),
+            },
         )
         metadata_trace_ctx = start_child_trace(
             "metadata_evaluation",
             trace_ctx,
             metadata={"image_id": image_id, "receipt_id": receipt_id},
-            inputs={"merchant_name": merchant_name, "has_place": place is not None},
+            inputs={
+                "merchant_name": merchant_name,
+                "has_place": place is not None,
+            },
         )
         geometric_trace_ctx = start_child_trace(
             "geometric_evaluation",
@@ -577,16 +595,25 @@ async def unified_receipt_evaluator(
 
             # Run geometric evaluation concurrently with LLM calls using to_thread
             geometric_graph = create_compute_only_graph()
-            geometric_config = geometric_trace_ctx.get_langchain_config() if geometric_trace_ctx else None
+            geometric_config = (
+                geometric_trace_ctx.get_langchain_config()
+                if geometric_trace_ctx
+                else None
+            )
 
             async def run_geometric() -> dict:
                 return await asyncio.to_thread(
-                    run_compute_only_sync, geometric_graph, geometric_state, geometric_config
+                    run_compute_only_sync,
+                    geometric_graph,
+                    geometric_state,
+                    geometric_config,
                 )
 
             # Wait for all evaluations concurrently
-            currency_result, metadata_result, geometric_result = await asyncio.gather(
-                currency_task, metadata_task, run_geometric()
+            currency_result, metadata_result, geometric_result = (
+                await asyncio.gather(
+                    currency_task, metadata_task, run_geometric()
+                )
             )
 
             logger.info(
@@ -597,15 +624,24 @@ async def unified_receipt_evaluator(
             )
         finally:
             # End child traces with outputs
-            end_child_trace(currency_trace_ctx, outputs={
-                "decisions_count": len(currency_result),
-            })
-            end_child_trace(metadata_trace_ctx, outputs={
-                "decisions_count": len(metadata_result),
-            })
-            end_child_trace(geometric_trace_ctx, outputs={
-                "issues_found": geometric_result.get("issues_found", 0),
-            })
+            end_child_trace(
+                currency_trace_ctx,
+                outputs={
+                    "decisions_count": len(currency_result),
+                },
+            )
+            end_child_trace(
+                metadata_trace_ctx,
+                outputs={
+                    "decisions_count": len(metadata_result),
+                },
+            )
+            end_child_trace(
+                geometric_trace_ctx,
+                outputs={
+                    "issues_found": geometric_result.get("issues_found", 0),
+                },
+            )
 
         # 7. Apply Phase 1 corrections to DynamoDB
         applied_stats_currency = None
@@ -625,8 +661,7 @@ async def unified_receipt_evaluator(
                     invalid_currency = [
                         d
                         for d in currency_result
-                        if d.get("llm_review", {}).get("decision")
-                        == "INVALID"
+                        if d.get("llm_review", {}).get("decision") == "INVALID"
                     ]
                     if invalid_currency:
                         applied_stats_currency = apply_llm_decisions(
@@ -639,8 +674,7 @@ async def unified_receipt_evaluator(
                     invalid_metadata = [
                         d
                         for d in metadata_result
-                        if d.get("llm_review", {}).get("decision")
-                        == "INVALID"
+                        if d.get("llm_review", {}).get("decision") == "INVALID"
                     ]
                     if invalid_metadata:
                         applied_stats_metadata = apply_llm_decisions(
@@ -653,7 +687,9 @@ async def unified_receipt_evaluator(
         # Always run evaluation for diagnostics; only skip writes in dry_run mode
         financial_result = None
         if dynamo_table:
-            with child_trace("phase2_financial_validation", trace_ctx) as financial_ctx:
+            with child_trace(
+                "phase2_financial_validation", trace_ctx
+            ) as financial_ctx:
                 # Re-fetch labels from DynamoDB to get corrections
                 from receipt_dynamo import DynamoClient
 
@@ -661,10 +697,8 @@ async def unified_receipt_evaluator(
 
                 # Fetch fresh labels
                 fresh_labels = []
-                page, lek = (
-                    dynamo_client.list_receipt_word_labels_for_receipt(
-                        image_id=image_id, receipt_id=receipt_id
-                    )
+                page, lek = dynamo_client.list_receipt_word_labels_for_receipt(
+                    image_id=image_id, receipt_id=receipt_id
                 )
                 fresh_labels.extend(page or [])
                 while lek:
@@ -683,27 +717,21 @@ async def unified_receipt_evaluator(
                 )
 
                 # Rebuild visual lines with fresh labels
-                fresh_word_contexts = build_word_contexts(
-                    words, fresh_labels
-                )
-                fresh_visual_lines = assemble_visual_lines(
-                    fresh_word_contexts
-                )
+                fresh_word_contexts = build_word_contexts(words, fresh_labels)
+                fresh_visual_lines = assemble_visual_lines(fresh_word_contexts)
 
                 # Run financial validation
                 from receipt_agent.agents.label_evaluator.financial_subagent import (
                     evaluate_financial_math_async,
                 )
 
-                financial_result = (
-                    await evaluate_financial_math_async(
-                        visual_lines=fresh_visual_lines,
-                        llm=llm_invoker,
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                        merchant_name=merchant_name,
-                        trace_ctx=financial_ctx,
-                    )
+                financial_result = await evaluate_financial_math_async(
+                    visual_lines=fresh_visual_lines,
+                    llm=llm_invoker,
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    merchant_name=merchant_name,
+                    trace_ctx=financial_ctx,
                 )
 
                 # Apply financial corrections (only when not dry_run)
@@ -715,8 +743,7 @@ async def unified_receipt_evaluator(
                     invalid_financial = [
                         d
                         for d in financial_result
-                        if d.get("llm_review", {}).get("decision")
-                        == "INVALID"
+                        if d.get("llm_review", {}).get("decision") == "INVALID"
                     ]
                     if invalid_financial:
                         apply_llm_decisions(
@@ -754,14 +781,13 @@ async def unified_receipt_evaluator(
                             persist_directory=chroma_path
                         )
                     except Exception as e:
-                        logger.warning(
-                            "Could not initialize ChromaDB: %s", e
-                        )
+                        logger.warning("Could not initialize ChromaDB: %s", e)
 
                 # Get issues from geometric result
                 geometric_issues = geometric_result.get("issues", [])
 
                 if geometric_issues and chroma_client:
+                    from langchain_core.messages import HumanMessage
                     from receipt_agent.agents.label_evaluator.llm_review import (
                         assemble_receipt_text,
                     )
@@ -774,7 +800,6 @@ async def unified_receipt_evaluator(
                         format_label_evidence_for_prompt,
                         query_label_evidence,
                     )
-                    from langchain_core.messages import HumanMessage
 
                     # Gather context for issues using targeted boolean queries
                     issues_with_context = []
@@ -799,11 +824,13 @@ async def unified_receipt_evaluator(
                                 )
 
                                 # Format evidence for prompt
-                                evidence_text = format_label_evidence_for_prompt(
-                                    label_evidence,
-                                    target_label=current_label,
-                                    max_positive=5,
-                                    max_negative=3,
+                                evidence_text = (
+                                    format_label_evidence_for_prompt(
+                                        label_evidence,
+                                        target_label=current_label,
+                                        max_positive=5,
+                                        max_negative=3,
+                                    )
                                 )
 
                                 # Compute consensus for decision support
@@ -812,7 +839,9 @@ async def unified_receipt_evaluator(
                                 )
                             else:
                                 label_evidence = []
-                                evidence_text = "No evidence needed for O labels."
+                                evidence_text = (
+                                    "No evidence needed for O labels."
+                                )
                                 consensus, pos_count, neg_count = 0.0, 0, 0
 
                             issues_with_context.append(
@@ -854,7 +883,9 @@ async def unified_receipt_evaluator(
 
                         # Convert objects to dicts for assemble_receipt_text
                         words_as_dicts = [serialize_word(w) for w in words]
-                        labels_as_dicts = [serialize_label(lbl) for lbl in labels]
+                        labels_as_dicts = [
+                            serialize_label(lbl) for lbl in labels
+                        ]
                         receipt_text = assemble_receipt_text(
                             words=words_as_dicts,
                             labels=labels_as_dicts,
@@ -937,7 +968,9 @@ async def unified_receipt_evaluator(
 
         if financial_result:
             for d in financial_result:
-                decision = d.get("llm_review", {}).get("decision", "NEEDS_REVIEW")
+                decision = d.get("llm_review", {}).get(
+                    "decision", "NEEDS_REVIEW"
+                )
                 if decision in decision_counts["financial"]:
                     decision_counts["financial"][decision] += 1
 
@@ -965,9 +998,7 @@ async def unified_receipt_evaluator(
                 "duration_seconds": time.time() - start_time,
             }
 
-            upload_json_to_s3(
-                s3, batch_bucket, results_s3_key, results_data
-            )
+            upload_json_to_s3(s3, batch_bucket, results_s3_key, results_data)
             logger.info(
                 "Uploaded results to s3://%s/%s",
                 batch_bucket,
@@ -1035,7 +1066,9 @@ async def unified_receipt_evaluator(
         end_receipt_trace(
             receipt_trace,
             outputs={
-                "status": result.get("status", "unknown") if result else "unknown",
+                "status": (
+                    result.get("status", "unknown") if result else "unknown"
+                ),
                 "issues_found": result.get("issues_found", 0) if result else 0,
             },
         )

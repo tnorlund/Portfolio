@@ -123,7 +123,9 @@ def main() -> int:
                     f"{args.output}/job_analytics/",
                 )
 
-                job_by_merchant = processor.compute_job_analytics_by_merchant(parsed)
+                job_by_merchant = processor.compute_job_analytics_by_merchant(
+                    parsed
+                )
                 partition_by = (
                     ["merchant_name"] if args.partition_by_merchant else None
                 )

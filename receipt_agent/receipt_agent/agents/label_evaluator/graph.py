@@ -1248,7 +1248,9 @@ async def run_compute_only(
                 if key == "configurable":
                     # Merge configurable (caller values override defaults)
                     for ck, cv in value.items():
-                        if ck != "langsmith_headers":  # Skip headers - causes duplicates
+                        if (
+                            ck != "langsmith_headers"
+                        ):  # Skip headers - causes duplicates
                             invoke_config["configurable"][ck] = cv
                 else:
                     invoke_config[key] = value

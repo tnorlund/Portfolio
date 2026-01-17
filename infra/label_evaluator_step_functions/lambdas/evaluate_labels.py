@@ -557,7 +557,9 @@ def handler(event: dict[str, Any], _context: Any) -> "EvaluateLabelsOutput":
 
             graph = create_compute_only_graph()
             langchain_config = eval_ctx.get_langchain_config()
-            result = run_compute_only_sync(graph, state, config=langchain_config)
+            result = run_compute_only_sync(
+                graph, state, config=langchain_config
+            )
 
             compute_time = time.time() - compute_start
             logger.info(

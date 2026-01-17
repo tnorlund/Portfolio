@@ -189,7 +189,9 @@ def delete_receipt_and_related(
                     Bucket=receipt.raw_s3_bucket, Key=receipt.raw_s3_key
                 )
                 result["deleted"]["s3"] = 1
-                logger.info(f"  Deleted S3 object: s3://{receipt.raw_s3_bucket}/{receipt.raw_s3_key}")
+                logger.info(
+                    f"  Deleted S3 object: s3://{receipt.raw_s3_bucket}/{receipt.raw_s3_key}"
+                )
             except Exception as e:
                 logger.warning(f"  Failed to delete S3 object: {e}")
 
@@ -320,7 +322,9 @@ def main():
         logger.info("\nFailed receipts:")
         for r in results:
             if r["error"]:
-                logger.error(f"  {r['image_id']}_{r['receipt_id']}: {r['error']}")
+                logger.error(
+                    f"  {r['image_id']}_{r['receipt_id']}: {r['error']}"
+                )
 
     if not args.dry_run and successes == len(results):
         logger.info("\nAll orphaned receipts successfully cleaned up!")

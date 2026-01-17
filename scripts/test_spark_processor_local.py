@@ -11,15 +11,18 @@ Prerequisites:
     brew install openjdk@17
 """
 
-import sys
 import os
+import sys
 
 # Add receipt_langsmith to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'receipt_langsmith'))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "..", "receipt_langsmith")
+)
+
+import logging
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-import logging
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,7 +43,10 @@ def read_parquet_flexible(spark, path):
 
     # Convert timestamps if needed
     from pyspark.sql.types import LongType
-    if "start_time" in df.columns and isinstance(df.schema["start_time"].dataType, LongType):
+
+    if "start_time" in df.columns and isinstance(
+        df.schema["start_time"].dataType, LongType
+    ):
         df = df.withColumn(
             "start_time",
             (F.col("start_time") / 1_000_000_000).cast("timestamp"),
@@ -82,11 +88,17 @@ def parse_json_fields_flexible(df):
         )
         .withColumn(
             "metadata_receipt_id",
-            F.get_json_object(F.col("extra"), "$.metadata.receipt_id").cast("int"),
+            F.get_json_object(F.col("extra"), "$.metadata.receipt_id").cast(
+                "int"
+            ),
         )
         .withColumn(
             "duration_ms",
-            (F.col("end_time").cast("double") - F.col("start_time").cast("double")) * 1000,
+            (
+                F.col("end_time").cast("double")
+                - F.col("start_time").cast("double")
+            )
+            * 1000,
         )
     )
 
@@ -103,12 +115,13 @@ def main():
     logger.info(f"Output: {output_path}")
 
     # Initialize Spark with local mode
-    spark = SparkSession.builder \
-        .appName("LangSmithAnalytics-LocalTest") \
-        .master("local[*]") \
-        .config("spark.sql.legacy.parquet.nanosAsLong", "true") \
-        .config("spark.driver.memory", "2g") \
+    spark = (
+        SparkSession.builder.appName("LangSmithAnalytics-LocalTest")
+        .master("local[*]")
+        .config("spark.sql.legacy.parquet.nanosAsLong", "true")
+        .config("spark.driver.memory", "2g")
         .getOrCreate()
+    )
 
     # Set log level to reduce noise
     spark.sparkContext.setLogLevel("WARN")
@@ -129,10 +142,14 @@ def main():
         logger.info("=" * 60)
 
         logger.info("\nTrace names:")
-        parsed.groupBy("name").count().orderBy("count", ascending=False).show(30, truncate=False)
+        parsed.groupBy("name").count().orderBy("count", ascending=False).show(
+            30, truncate=False
+        )
 
         logger.info("\nRoot traces (parent_run_id is null):")
-        parsed.filter(parsed.parent_run_id.isNull()).select("name", "id", "status", "duration_ms").show(truncate=False)
+        parsed.filter(parsed.parent_run_id.isNull()).select(
+            "name", "id", "status", "duration_ms"
+        ).show(truncate=False)
 
         # ============================================================
         # PHASE 4: JOB ANALYTICS
@@ -143,16 +160,16 @@ def main():
 
         # Identify job types by root trace name
         jobs = parsed.filter(
-            (F.col("name") == "PatternComputation") |
-            (F.col("name") == "ReceiptEvaluation")
+            (F.col("name") == "PatternComputation")
+            | (F.col("name") == "ReceiptEvaluation")
         )
 
         # Add job_type column
         jobs_with_type = jobs.withColumn(
             "job_type",
             F.when(F.col("name") == "PatternComputation", "phase1_patterns")
-             .when(F.col("name") == "ReceiptEvaluation", "phase2_evaluation")
-             .otherwise("unknown")
+            .when(F.col("name") == "ReceiptEvaluation", "phase2_evaluation")
+            .otherwise("unknown"),
         )
 
         logger.info("\n1. Job type breakdown:")
@@ -169,7 +186,9 @@ def main():
         job_analytics.show(truncate=False)
 
         logger.info("\n3. Job analytics by type and merchant:")
-        job_by_merchant = jobs_with_type.groupBy("job_type", "metadata_merchant_name").agg(
+        job_by_merchant = jobs_with_type.groupBy(
+            "job_type", "metadata_merchant_name"
+        ).agg(
             F.count("*").alias("job_count"),
             F.avg("duration_ms").alias("avg_duration_ms"),
             F.sum("total_tokens").alias("total_tokens"),
@@ -210,14 +229,22 @@ def main():
 
         steps = parsed.filter(F.col("name").isin(step_names))
 
-        step_timing = steps.groupBy("name").agg(
-            F.avg("duration_ms").alias("avg_duration_ms"),
-            F.expr("percentile_approx(duration_ms, 0.5)").alias("p50_duration_ms"),
-            F.expr("percentile_approx(duration_ms, 0.95)").alias("p95_duration_ms"),
-            F.min("duration_ms").alias("min_duration_ms"),
-            F.max("duration_ms").alias("max_duration_ms"),
-            F.count("*").alias("total_runs"),
-        ).orderBy("avg_duration_ms", ascending=False)
+        step_timing = (
+            steps.groupBy("name")
+            .agg(
+                F.avg("duration_ms").alias("avg_duration_ms"),
+                F.expr("percentile_approx(duration_ms, 0.5)").alias(
+                    "p50_duration_ms"
+                ),
+                F.expr("percentile_approx(duration_ms, 0.95)").alias(
+                    "p95_duration_ms"
+                ),
+                F.min("duration_ms").alias("min_duration_ms"),
+                F.max("duration_ms").alias("max_duration_ms"),
+                F.count("*").alias("total_runs"),
+            )
+            .orderBy("avg_duration_ms", ascending=False)
+        )
 
         logger.info("\nStep timing (all phases):")
         step_timing.show(30, truncate=False)
@@ -245,7 +272,9 @@ def main():
         for row in receipt_traces.collect():
             receipt_id = row["id"]
             children = parsed.filter(F.col("parent_run_id") == receipt_id)
-            logger.info(f"  {receipt_id[:8]}... has {children.count()} children")
+            logger.info(
+                f"  {receipt_id[:8]}... has {children.count()} children"
+            )
 
         parsed.unpersist()
 

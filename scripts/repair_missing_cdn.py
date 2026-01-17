@@ -116,7 +116,7 @@ def repair_receipt_cdn(
     Downloads the raw image, generates CDN formats, and updates DynamoDB.
     If avif_only is True, only generates AVIF files (skips JPEG/WebP).
     """
-    from receipt_upload.utils import upload_avif_to_s3, generate_image_sizes
+    from receipt_upload.utils import generate_image_sizes, upload_avif_to_s3
 
     result = {
         "image_id": receipt.image_id,
@@ -131,21 +131,29 @@ def repair_receipt_cdn(
             f"  Downloading raw image from "
             f"s3://{receipt.raw_s3_bucket}/{receipt.raw_s3_key}"
         )
-        image = download_raw_image(s3_client, receipt.raw_s3_bucket, receipt.raw_s3_key)
+        image = download_raw_image(
+            s3_client, receipt.raw_s3_bucket, receipt.raw_s3_key
+        )
         logger.info(f"  Image size: {image.width}x{image.height}")
 
         # Build base key for CDN files
-        base_key = f"assets/{receipt.image_id}_RECEIPT_{receipt.receipt_id:05d}"
+        base_key = (
+            f"assets/{receipt.image_id}_RECEIPT_{receipt.receipt_id:05d}"
+        )
 
         if dry_run:
             mode = "AVIF only" if avif_only else "all CDN"
-            logger.info(f"  [DRY RUN] Would upload {mode} files with base_key: {base_key}")
+            logger.info(
+                f"  [DRY RUN] Would upload {mode} files with base_key: {base_key}"
+            )
             result["success"] = True
             return result
 
         if avif_only:
             # Only upload AVIF files
-            logger.info(f"  Uploading AVIF files to s3://{cdn_bucket}/{base_key}*.avif")
+            logger.info(
+                f"  Uploading AVIF files to s3://{cdn_bucket}/{base_key}*.avif"
+            )
 
             # Generate different sizes
             size_configs = {"thumbnail": 300, "small": 600, "medium": 1200}
@@ -161,10 +169,14 @@ def repair_receipt_cdn(
 
                 avif_key = f"{size_key}.avif"
                 try:
-                    upload_avif_to_s3(sized_image, cdn_bucket, avif_key, quality=85)
+                    upload_avif_to_s3(
+                        sized_image, cdn_bucket, avif_key, quality=85
+                    )
                     avif_keys[size_name] = avif_key
                 except Exception as e:
-                    logger.warning(f"  AVIF upload failed for {size_name}: {e}")
+                    logger.warning(
+                        f"  AVIF upload failed for {size_name}: {e}"
+                    )
                     avif_keys[size_name] = None
 
             # Update only AVIF fields
@@ -174,7 +186,9 @@ def repair_receipt_cdn(
             receipt.cdn_medium_avif_s3_key = avif_keys.get("medium")
         else:
             # Generate and upload all CDN formats
-            logger.info(f"  Uploading CDN files to s3://{cdn_bucket}/{base_key}.*")
+            logger.info(
+                f"  Uploading CDN files to s3://{cdn_bucket}/{base_key}.*"
+            )
             cdn_keys = upload_all_cdn_formats(
                 image=image,
                 s3_bucket=cdn_bucket,
@@ -264,7 +278,9 @@ def main():
     logger.info(f"CDN bucket: {cdn_bucket}")
 
     if not table_name or not cdn_bucket:
-        logger.error("Missing required Pulumi outputs (dynamodb_table_name, cdn_bucket_name)")
+        logger.error(
+            "Missing required Pulumi outputs (dynamodb_table_name, cdn_bucket_name)"
+        )
         sys.exit(1)
 
     # Initialize clients
@@ -279,7 +295,9 @@ def main():
         logger.info("Querying for receipts with CDN but missing AVIF...")
     else:
         logger.info("Querying for receipts with missing CDN files...")
-    receipts = get_receipts_missing_cdn(dynamo_client, avif_only=args.avif_only)
+    receipts = get_receipts_missing_cdn(
+        dynamo_client, avif_only=args.avif_only
+    )
     filter_desc = "missing AVIF" if args.avif_only else "missing CDN files"
     logger.info(f"Found {len(receipts)} receipts with {filter_desc}")
 
@@ -326,12 +344,16 @@ def main():
         logger.info("\nFailed receipts:")
         for r in results:
             if r["error"]:
-                logger.error(f"  {r['image_id']}_{r['receipt_id']}: {r['error']}")
+                logger.error(
+                    f"  {r['image_id']}_{r['receipt_id']}: {r['error']}"
+                )
 
     if not args.dry_run and successes == len(results):
         logger.info("\nAll receipts successfully repaired!")
         logger.info("\nNext steps:")
-        logger.info("1. Verify CDN files exist: aws s3 ls s3://<cdn-bucket>/assets/")
+        logger.info(
+            "1. Verify CDN files exist: aws s3 ls s3://<cdn-bucket>/assets/"
+        )
         logger.info("2. Re-run viz cache job to include these receipts")
         logger.info("3. Refresh frontend to confirm images display")
     elif args.dry_run:
