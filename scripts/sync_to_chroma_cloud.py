@@ -30,7 +30,6 @@ import os
 import shutil
 import sys
 import tempfile
-from typing import Iterator
 
 import boto3
 from botocore.exceptions import ClientError
@@ -40,8 +39,8 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
 
-from receipt_chroma import ChromaClient  # noqa: E402
-from receipt_chroma.s3 import download_snapshot_atomic  # noqa: E402
+from receipt_chroma import ChromaClient
+from receipt_chroma.s3 import download_snapshot_atomic
 
 # Configure logging
 logging.basicConfig(
@@ -55,34 +54,6 @@ ENV_BUCKETS = {
     "dev": "portfolio-dev-chromadb",
     "prod": "portfolio-prod-chromadb",
 }
-
-
-def chunked(data: dict, chunk_size: int) -> Iterator[dict]:
-    """Split data dict into chunks for batch processing.
-
-    Args:
-        data: Dictionary with ids, embeddings, metadatas, documents lists
-        chunk_size: Maximum items per chunk
-
-    Yields:
-        Dictionary chunks with same structure
-    """
-    ids = data.get("ids", [])
-    embeddings = data.get("embeddings")
-    metadatas = data.get("metadatas")
-    documents = data.get("documents")
-
-    for i in range(0, len(ids), chunk_size):
-        chunk = {
-            "ids": ids[i : i + chunk_size],
-        }
-        if embeddings:
-            chunk["embeddings"] = embeddings[i : i + chunk_size]
-        if metadatas:
-            chunk["metadatas"] = metadatas[i : i + chunk_size]
-        if documents:
-            chunk["documents"] = documents[i : i + chunk_size]
-        yield chunk
 
 
 def sync_collection(
@@ -168,14 +139,7 @@ def sync_collection(
                     "would_upload": total_count,
                 }
 
-            # Get all data from local collection
-            # ChromaDB limits: use include to get embeddings
-            logger.info("Reading all data from local snapshot...")
-            all_data = local_coll.get(
-                include=["embeddings", "metadatas", "documents"]
-            )
-
-            if not all_data.get("ids"):
+            if total_count == 0:
                 logger.warning(
                     "No items found in collection '%s'", collection
                 )
@@ -193,12 +157,32 @@ def sync_collection(
                 metadata={"synced_from": "s3_snapshot"},
             )
 
-            # Upload to cloud in batches of 5000 (Chroma Cloud limit)
+            # Read and upload in batches to avoid OOM for large collections
+            # Use paginated reads with limit/offset instead of loading all at once
             batch_size = 5000
             uploaded = 0
+            offset = 0
 
-            for batch in chunked(all_data, batch_size):
-                batch_count = len(batch["ids"])
+            while offset < total_count:
+                logger.info(
+                    "Reading batch from local snapshot (offset: %d/%d)",
+                    offset,
+                    total_count,
+                )
+
+                # Paginated read from local collection
+                batch_data = local_coll.get(
+                    include=["embeddings", "metadatas", "documents"],
+                    limit=batch_size,
+                    offset=offset,
+                )
+
+                batch_ids = batch_data.get("ids", [])
+                if not batch_ids:
+                    # No more data
+                    break
+
+                batch_count = len(batch_ids)
                 logger.info(
                     "Uploading batch of %d items (total: %d/%d)",
                     batch_count,
@@ -207,12 +191,14 @@ def sync_collection(
                 )
 
                 cloud_coll.upsert(
-                    ids=batch["ids"],
-                    embeddings=batch.get("embeddings"),
-                    metadatas=batch.get("metadatas"),
-                    documents=batch.get("documents"),
+                    ids=batch_ids,
+                    embeddings=batch_data.get("embeddings"),
+                    metadatas=batch_data.get("metadatas"),
+                    documents=batch_data.get("documents"),
                 )
+
                 uploaded += batch_count
+                offset += batch_count
 
             logger.info(
                 "Successfully uploaded %d items to Chroma Cloud", uploaded

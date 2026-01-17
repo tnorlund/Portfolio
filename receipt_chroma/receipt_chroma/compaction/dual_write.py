@@ -50,7 +50,9 @@ class CloudConfig:
     enabled: bool = True
 
     @classmethod
-    def from_env(cls, env: Optional[Dict[str, str]] = None) -> Optional["CloudConfig"]:
+    def from_env(
+        cls, env: Optional[Dict[str, str]] = None
+    ) -> Optional["CloudConfig"]:
         """Create CloudConfig from environment variables.
 
         Args:
@@ -286,7 +288,9 @@ def apply_collection_updates(
             1,
             {
                 "collection": collection.value,
-                "local_success": "true" if not local_result.has_errors else "false",
+                "local_success": (
+                    "true" if not local_result.has_errors else "false"
+                ),
                 "cloud_success": (
                     "true" if cloud_result and not cloud_error else "false"
                 ),

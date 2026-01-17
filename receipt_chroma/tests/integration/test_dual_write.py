@@ -283,7 +283,9 @@ def test_apply_collection_updates_dual_write_success(temp_chromadb_dir):
 
 
 @pytest.mark.integration
-def test_apply_collection_updates_cloud_failure_non_blocking(temp_chromadb_dir):
+def test_apply_collection_updates_cloud_failure_non_blocking(
+    temp_chromadb_dir,
+):
     """Test that cloud failure doesn't block local success."""
     mock_logger = MockLogger()
     mock_metrics = MagicMock()
@@ -309,7 +311,9 @@ def test_apply_collection_updates_cloud_failure_non_blocking(temp_chromadb_dir):
         with patch(
             "receipt_chroma.compaction.dual_write._create_cloud_client"
         ) as mock_create_cloud:
-            mock_create_cloud.side_effect = Exception("Cloud connection failed")
+            mock_create_cloud.side_effect = Exception(
+                "Cloud connection failed"
+            )
 
             result = apply_collection_updates(
                 stream_messages=[],
@@ -325,7 +329,8 @@ def test_apply_collection_updates_cloud_failure_non_blocking(temp_chromadb_dir):
     assert result.local_result is not None
     assert result.cloud_enabled is True
     assert result.cloud_result is None
-    assert result.cloud_error == "Cloud connection failed"
+    # Error format is "{type(e).__name__}: {e}" per dual_write.py
+    assert "Cloud connection failed" in result.cloud_error
     assert result.cloud_success is False
 
     # Verify error metric was tracked

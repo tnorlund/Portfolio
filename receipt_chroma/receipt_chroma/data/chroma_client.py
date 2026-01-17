@@ -164,8 +164,8 @@ class ChromaClient:
 
         # Chroma Cloud configuration
         self._cloud_api_key: Optional[str] = (
-            (cloud_api_key or "").strip() or None
-        )
+            cloud_api_key or ""
+        ).strip() or None
         self._cloud_tenant: Optional[str] = cloud_tenant
         self._cloud_database: Optional[str] = cloud_database
 
