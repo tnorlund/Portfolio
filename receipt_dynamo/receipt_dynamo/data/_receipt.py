@@ -1,5 +1,4 @@
 # infra/lambda_layer/python/dynamo/data/_receipt.py
-import warnings
 from typing import Any, Dict, Optional
 
 from receipt_dynamo.data.base_operations import (
@@ -26,10 +25,7 @@ from receipt_dynamo.entities.receipt_place import (
     item_to_receipt_place,
 )
 from receipt_dynamo.entities.receipt_summary import ReceiptSummaryPage
-from receipt_dynamo.entities.receipt_word import (
-    ReceiptWord,
-    item_to_receipt_word,
-)
+from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
 )
@@ -428,54 +424,3 @@ class _Receipt(FlattenedStandardMixin):
 
         # Use processor function to handle the complex query logic
         return process_receipt_details_query(self._client, query_params, limit)
-
-    @handle_dynamodb_errors("list_receipt_and_words")
-    def list_receipt_and_words(
-        self, image_id: str, receipt_id: int
-    ) -> tuple[Receipt, list[ReceiptWord]]:
-        """DEPRECATED: List a receipt and its words using GSI3
-
-        This method is deprecated due to GSI3 optimization changes.
-        Use get_receipt() and list_receipt_words_from_receipt() instead.
-
-        Args:
-            image_id (str): The ID of the image to list receipts from
-            receipt_id (int): The ID of the receipt to list words from
-
-        Returns:
-            tuple[Receipt, list[ReceiptWord]]: A tuple containing:
-                - The receipt object
-                - List of receipt words sorted by line_id and word_id
-
-        Raises:
-            ValueError: When input parameters are invalid or if the receipt
-                does not exist.
-            Exception: For underlying DynamoDB errors
-        """
-        warnings.warn(
-            "list_receipt_and_words is deprecated. Use get_receipt() and "
-            "list_receipt_words_from_receipt() instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._validate_image_id(image_id)
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id < 0:
-            raise EntityValidationError("receipt_id must be positive")
-
-        # Use the recommended alternative methods
-        try:
-            receipt = self.get_receipt(image_id, receipt_id)
-        except EntityNotFoundError as exc:
-            raise EntityNotFoundError(
-                f"receipt with receipt_id={receipt_id} and "
-                f"image_id={image_id} does not exist"
-            ) from exc
-
-        words = self.list_receipt_words_from_receipt(image_id, receipt_id)
-
-        # Sort words by line_id and word_id
-        words.sort(key=lambda w: (w.line_id, w.word_id))
-
-        return receipt, words
