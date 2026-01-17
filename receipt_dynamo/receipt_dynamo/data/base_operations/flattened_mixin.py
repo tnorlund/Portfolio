@@ -141,6 +141,54 @@ class FlattenedStandardMixin:
         """Validate pagination parameters."""
         validate_pagination_params(limit, last_evaluated_key)
 
+    def _validate_job_id(self, job_id: str) -> None:
+        """Validate a job ID.
+
+        Args:
+            job_id: The job ID to validate
+
+        Raises:
+            EntityValidationError: If job_id is None
+            ValueError: If job_id is not a valid UUID
+        """
+        if job_id is None:
+            raise EntityValidationError("job_id cannot be None")
+        assert_valid_uuid(job_id)
+
+    def _validate_image_receipt_indices(
+        self, indices: List[Tuple[str, int]], param_name: str = "indices"
+    ) -> None:
+        """Validate a list of (image_id, receipt_id) tuples.
+
+        This is the standard validation for get_*_by_indices methods that
+        accept a list of (image_id, receipt_id) tuples.
+
+        Args:
+            indices: List of (image_id, receipt_id) tuples
+            param_name: Name of the parameter for error messages
+
+        Raises:
+            EntityValidationError: If validation fails
+        """
+        if indices is None:
+            raise EntityValidationError(f"{param_name} cannot be None")
+        if not isinstance(indices, list):
+            raise EntityValidationError(f"{param_name} must be a list")
+        if not all(isinstance(index, tuple) for index in indices):
+            raise EntityValidationError(
+                f"{param_name} must be a list of tuples"
+            )
+        if not all(
+            isinstance(index[0], str) and isinstance(index[1], int)
+            for index in indices
+        ):
+            raise EntityValidationError(
+                f"{param_name} must be a list of tuples of "
+                "(image_id, receipt_id)"
+            )
+        if not all(index[1] > 0 for index in indices):
+            raise EntityValidationError("receipt_id must be positive")
+
     # ========== Single Entity CRUD Operations ==========
 
     @handle_dynamodb_errors("add_entity")

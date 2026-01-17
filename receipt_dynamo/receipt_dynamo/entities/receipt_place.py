@@ -281,6 +281,20 @@ class ReceiptPlace(SerializationMixin):
             "GSI3SK": {"S": sk},
         }
 
+    @property
+    def gsi4_key(self) -> dict[str, dict[str, str]]:
+        """Get GSI4 key for receipt details access pattern.
+
+        GSI4 enables efficient single-query retrieval of all receipt-related
+        entities (Receipt, Lines, Words, Labels, Place) while excluding Letters.
+        """
+        return {
+            "GSI4PK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
+            "GSI4SK": {"S": "1_PLACE"},
+        }
+
     def to_item(self) -> Dict[str, Any]:
         """
         Serialize the ReceiptPlace object into DynamoDB item format.
@@ -297,6 +311,7 @@ class ReceiptPlace(SerializationMixin):
             **self.gsi1_key,
             **self.gsi2_key,
             **self.gsi3_key,
+            **self.gsi4_key,
             "TYPE": {"S": "RECEIPT_PLACE"},
             # Required identity fields
             "image_id": {"S": self.image_id},

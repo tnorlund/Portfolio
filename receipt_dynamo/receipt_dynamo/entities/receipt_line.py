@@ -103,6 +103,19 @@ class ReceiptLine(ReceiptTextGeometryEntity):
             "GSI3SK": {"S": "LINE"},
         }
 
+    def gsi4_key(self) -> Dict[str, Any]:
+        """Generates the GSI4 key for receipt details access pattern.
+
+        GSI4 enables efficient single-query retrieval of all receipt-related
+        entities (Receipt, Lines, Words, Labels, Place) while excluding Letters.
+        """
+        return {
+            "GSI4PK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
+            "GSI4SK": {"S": f"2_LINE#{self.line_id:05d}"},
+        }
+
     def to_item(self) -> Dict[str, Any]:
         """
         Converts the ReceiptLine object to a DynamoDB item.
@@ -115,6 +128,7 @@ class ReceiptLine(ReceiptTextGeometryEntity):
             **build_base_item(self, "RECEIPT_LINE"),
             **self.gsi1_key(),
             **self.gsi3_key(),
+            **self.gsi4_key(),
             **self._get_geometry_fields(),
             **self._get_receipt_fields_for_serialization(),
         }

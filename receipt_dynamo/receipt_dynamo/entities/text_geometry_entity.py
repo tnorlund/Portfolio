@@ -260,6 +260,31 @@ class TextGeometryEntity(DynamoDBEntity):
             f"confidence={self.confidence}"
         )
 
+    def _iter_geometry_fields(self) -> Tuple[Tuple[str, Any], ...]:
+        """
+        Return geometry fields as tuple of (name, value) pairs.
+
+        Subclasses can use this in their __iter__ implementation:
+
+            def __iter__(self):
+                yield "my_id", self.my_id
+                yield from self._iter_geometry_fields()
+
+        Returns:
+            Tuple of (field_name, field_value) pairs for all geometry fields
+        """
+        return (
+            ("text", self.text),
+            ("bounding_box", self.bounding_box),
+            ("top_right", self.top_right),
+            ("top_left", self.top_left),
+            ("bottom_right", self.bottom_right),
+            ("bottom_left", self.bottom_left),
+            ("angle_degrees", self.angle_degrees),
+            ("angle_radians", self.angle_radians),
+            ("confidence", self.confidence),
+        )
+
     # =========================================================================
     # GEOMETRY OPERATIONS
     # From: GeometryMixin

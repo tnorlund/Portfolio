@@ -155,6 +155,22 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             },
         }
 
+    def gsi4_key(self) -> Dict[str, Any]:
+        """Generates the GSI4 key for receipt details access pattern.
+
+        GSI4 enables efficient single-query retrieval of all receipt-related
+        entities (Receipt, Lines, Words, Labels, Place) while excluding Letters.
+
+        Returns:
+            dict: The GSI4 key with PK and SK for this receipt.
+        """
+        return {
+            "GSI4PK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
+            "GSI4SK": {"S": "0_RECEIPT"},
+        }
+
     def to_item(self) -> Dict[str, Any]:
         """Converts the Receipt object to a DynamoDB item.
 
@@ -165,6 +181,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
+            **self.gsi4_key(),
             "TYPE": {"S": "RECEIPT"},
             "width": {"N": str(self.width)},
             "height": {"N": str(self.height)},

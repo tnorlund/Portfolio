@@ -12,7 +12,6 @@ from receipt_dynamo.entities.job_checkpoint import (
     JobCheckpoint,
     item_to_job_checkpoint,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
@@ -96,9 +95,7 @@ class _JobCheckpoint(FlattenedStandardMixin):
             ValueError: If the job checkpoint does not exist
             Exception: If the request failed due to an unknown error.
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
         if not timestamp or not isinstance(timestamp, str):
             raise EntityValidationError(
                 "Timestamp is required and must be a non-empty string."
@@ -135,9 +132,7 @@ class _JobCheckpoint(FlattenedStandardMixin):
                 If parameters are invalid or the checkpoint doesn't exist
             Exception: If the request failed due to an unknown error.
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
         if not timestamp or not isinstance(timestamp, str):
             raise EntityValidationError(
                 "Timestamp is required and must be a non-empty string."
@@ -208,9 +203,7 @@ class _JobCheckpoint(FlattenedStandardMixin):
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
 
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("Limit must be an integer")
@@ -256,9 +249,7 @@ class _JobCheckpoint(FlattenedStandardMixin):
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
 
         results, _ = self._query_entities(
             index_name=None,
@@ -288,9 +279,7 @@ class _JobCheckpoint(FlattenedStandardMixin):
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
         if not timestamp or not isinstance(timestamp, str):
             raise EntityValidationError(
                 "Timestamp is required and must be a non-empty string."

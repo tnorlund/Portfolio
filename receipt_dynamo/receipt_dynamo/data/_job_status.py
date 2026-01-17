@@ -11,7 +11,6 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
 )
 from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import QueryInputTypeDef
@@ -67,9 +66,7 @@ class _JobStatus(FlattenedStandardMixin):
             EntityValidationError: If job_id is invalid.
             EntityNotFoundError: If the job has no status updates.
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
 
         results, _ = self._query_entities(
             index_name=None,
@@ -115,9 +112,7 @@ class _JobStatus(FlattenedStandardMixin):
         Raises:
             EntityValidationError: If parameters are invalid.
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
 
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("Limit must be an integer")

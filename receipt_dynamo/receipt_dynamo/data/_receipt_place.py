@@ -332,21 +332,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
         ValueError
             If indices is invalid.
         """
-        if indices is None:
-            raise EntityValidationError("indices cannot be None")
-        if not isinstance(indices, list):
-            raise EntityValidationError("indices must be a list")
-        if not all(isinstance(index, tuple) for index in indices):
-            raise EntityValidationError("indices must be a list of tuples")
-        if not all(
-            isinstance(index[0], str) and isinstance(index[1], int)
-            for index in indices
-        ):
-            raise EntityValidationError(
-                "indices must be a list of tuples of (image_id, receipt_id)"
-            )
-        if not all(index[1] > 0 for index in indices):
-            raise EntityValidationError("receipt_id must be positive")
+        self._validate_image_receipt_indices(indices)
 
         keys = [
             {

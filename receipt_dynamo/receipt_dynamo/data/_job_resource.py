@@ -18,7 +18,6 @@ from receipt_dynamo.entities.job_resource import (
     JobResource,
     item_to_job_resource,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import QueryInputTypeDef
@@ -71,9 +70,7 @@ class _JobResource(FlattenedStandardMixin):
         Raises:
             ValueError: If the job resource does not exist
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
         if not resource_id or not isinstance(resource_id, str):
             raise EntityValidationError(
                 "Resource ID is required and must be a non-empty string."
@@ -116,9 +113,7 @@ class _JobResource(FlattenedStandardMixin):
             ValueError: If the job resource does not exist or parameters are
                 invalid
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
         if not resource_id or not isinstance(resource_id, str):
             raise EntityValidationError(
                 "Resource ID is required and must be a non-empty string."
@@ -213,9 +208,7 @@ class _JobResource(FlattenedStandardMixin):
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
 
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("Limit must be an integer")

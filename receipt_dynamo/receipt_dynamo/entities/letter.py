@@ -124,15 +124,7 @@ class Letter(TextGeometryEntity):
         yield "word_id", self.word_id
         yield "line_id", self.line_id
         yield "letter_id", self.letter_id
-        yield "text", self.text
-        yield "bounding_box", self.bounding_box
-        yield "top_right", self.top_right
-        yield "top_left", self.top_left
-        yield "bottom_right", self.bottom_right
-        yield "bottom_left", self.bottom_left
-        yield "angle_degrees", self.angle_degrees
-        yield "angle_radians", self.angle_radians
-        yield "confidence", self.confidence
+        yield from self._iter_geometry_fields()
 
     def __eq__(self, other: object) -> bool:
         """Determines whether two Letter objects are equal.

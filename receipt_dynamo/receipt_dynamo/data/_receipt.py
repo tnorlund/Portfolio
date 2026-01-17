@@ -15,9 +15,6 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
-from receipt_dynamo.entities.receipt_letter import (
-    item_to_receipt_letter,
-)
 from receipt_dynamo.entities.receipt_line import (
     item_to_receipt_line,
 )
@@ -206,17 +203,23 @@ class _Receipt(FlattenedStandardMixin):
     def get_receipt_details(
         self, image_id: str, receipt_id: int
     ) -> ReceiptDetails:
-        """Get a receipt with its details
+        """Get a receipt with its details using optimized GSI4 query.
+
+        This method uses GSI4 which is designed for efficient single-query
+        retrieval of receipt details. By design, GSI4 excludes ReceiptLetters
+        to reduce read costs - letters are rarely needed in most access patterns.
 
         Args:
             image_id (str): The ID of the image the receipt belongs to
             receipt_id (int): The ID of the receipt to get
 
         Returns:
-            ReceiptDetails: Dataclass with receipt and related data
+            ReceiptDetails: Dataclass with receipt and related data.
+                Note: letters will be an empty list (excluded from GSI4).
         """
 
         # Custom converter function that handles multiple entity types
+        # Note: RECEIPT_LETTER is not included because GSI4 excludes letters
         def convert_item(item):
             item_type = item.get("TYPE", {}).get("S")
             if item_type == "RECEIPT":
@@ -225,22 +228,22 @@ class _Receipt(FlattenedStandardMixin):
                 return ("line", item_to_receipt_line(item))
             if item_type == "RECEIPT_WORD":
                 return ("word", item_to_receipt_word(item))
-            if item_type == "RECEIPT_LETTER":
-                return ("letter", item_to_receipt_letter(item))
             if item_type == "RECEIPT_WORD_LABEL":
                 return ("label", item_to_receipt_word_label(item))
             if item_type == "RECEIPT_PLACE":
                 return ("place", item_to_receipt_place(item))
             return None
 
-        # Query all items for this receipt
+        # Query GSI4 for all receipt-related items (excluding letters)
+        # GSI4PK: IMAGE#{image_id}#RECEIPT#{receipt_id:05d}
         items, _ = self._query_entities(
-            index_name=None,  # Query main table
-            key_condition_expression="PK = :pk AND begins_with(SK, :sk)",
+            index_name="GSI4",
+            key_condition_expression="GSI4PK = :pk",
             expression_attribute_names=None,
             expression_attribute_values={
-                ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
+                ":pk": {
+                    "S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+                },
             },
             converter_func=convert_item,
             limit=None,  # Get all items
@@ -249,7 +252,7 @@ class _Receipt(FlattenedStandardMixin):
 
         receipt = None
         place = None
-        lines, words, letters, labels = [], [], [], []
+        lines, words, labels = [], [], []
 
         # Process converted items
         for item in items:
@@ -262,8 +265,6 @@ class _Receipt(FlattenedStandardMixin):
                 lines.append(entity)
             elif item_type == "word":
                 words.append(entity)
-            elif item_type == "letter":
-                letters.append(entity)
             elif item_type == "label":
                 labels.append(entity)
             elif item_type == "place":
@@ -280,9 +281,9 @@ class _Receipt(FlattenedStandardMixin):
             receipt=receipt,
             lines=lines,
             words=words,
-            letters=letters,
             labels=labels,
             place=place,
+            # letters excluded by GSI4 design - uses default empty list
         )
 
     @handle_dynamodb_errors("list_receipts")

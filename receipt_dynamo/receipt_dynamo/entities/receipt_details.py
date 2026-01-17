@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Generator, List, Optional
 
 from receipt_dynamo.entities.receipt import Receipt
@@ -13,13 +13,18 @@ if TYPE_CHECKING:
 
 @dataclass
 class ReceiptDetails:
-    """Container for a receipt and its related data."""
+    """Container for a receipt and its related data.
+
+    Note: The optimized GSI4 query (get_receipt_details) does not fetch letters
+    by design, as they are rarely needed. The letters field defaults to an
+    empty list for backward compatibility.
+    """
 
     receipt: Receipt
     lines: List[ReceiptLine]
     words: List[ReceiptWord]
-    letters: List[ReceiptLetter]
     labels: List[ReceiptWordLabel]
+    letters: List[ReceiptLetter] = field(default_factory=list)
     place: Optional["ReceiptPlace"] = None
 
     def __iter__(self) -> Generator[

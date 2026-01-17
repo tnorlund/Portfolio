@@ -337,6 +337,10 @@ def test_receipt_to_item(example_receipt):
         "GSI2SK": {
             "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
         },
+        "GSI4PK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
+        "GSI4SK": {"S": "0_RECEIPT"},
         "TYPE": {"S": "RECEIPT"},
         "width": {"N": "200"},
         "height": {"N": "100"},

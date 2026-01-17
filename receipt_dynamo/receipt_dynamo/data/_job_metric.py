@@ -9,7 +9,6 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
 )
 from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 _BATCH_SIZE = 25
@@ -101,9 +100,7 @@ class _JobMetric(FlattenedStandardMixin):
         Raises:
             ValueError: If the job metric does not exist
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
         if not metric_name or not isinstance(metric_name, str):
             raise EntityValidationError(
                 "Metric name is required and must be a non-empty string."
@@ -156,9 +153,7 @@ class _JobMetric(FlattenedStandardMixin):
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
 
         if limit is not None and not isinstance(limit, int):
             raise EntityValidationError("Limit must be an integer")
