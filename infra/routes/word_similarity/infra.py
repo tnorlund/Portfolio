@@ -1,3 +1,10 @@
+"""Word Similarity API Lambda - serves cached word similarity results from S3.
+
+This module defines a factory function to create the word similarity Lambda.
+The Lambda is created in __main__.py after the cache generator component
+(which provides the cache bucket) is created.
+"""
+
 import json
 import os
 
@@ -5,9 +12,6 @@ import pulumi
 import pulumi_aws as aws
 
 from pulumi import AssetArchive, FileArchive, Input, Output
-
-# Import the cache bucket name from the cache generator route
-from routes.word_similarity_cache_generator.infra import cache_bucket_name
 
 # Reference the directory containing index.py
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "handler")
@@ -18,66 +22,73 @@ ROUTE_NAME = os.path.basename(os.path.dirname(__file__))
 stack = pulumi.get_stack()
 
 
-# Define the IAM role for the Lambda function
-lambda_role = aws.iam.Role(
-    f"api_{ROUTE_NAME}_lambda_role",
-    assume_role_policy="""{
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Action": "sts:AssumeRole",
-                "Principal": {
-                    "Service": "lambda.amazonaws.com"
-                },
-                "Effect": "Allow",
-                "Sid": ""
-            }
-        ]
-    }""",
-)
-
-# IAM policy for S3 read access to cache bucket
-s3_policy = aws.iam.Policy(
-    f"api_{ROUTE_NAME}_s3_policy",
-    description="IAM policy for Lambda to read S3 word similarity cache",
-    policy=cache_bucket_name.apply(
-        lambda bucket: json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Action": ["s3:GetObject", "s3:ListBucket"],
-                        "Resource": [
-                            f"arn:aws:s3:::{bucket}/*",
-                            f"arn:aws:s3:::{bucket}",
-                        ],
-                    }
-                ],
-            }
-        )
-    ),
-)
-
-# Attach policies to role
-aws.iam.RolePolicyAttachment(
-    f"api_{ROUTE_NAME}_s3_policy_attachment",
-    role=lambda_role.name,
-    policy_arn=s3_policy.arn,
-)
-
-# Attach basic execution role
-aws.iam.RolePolicyAttachment(
-    f"api_{ROUTE_NAME}_basic_execution",
-    role=lambda_role.name,
-    policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-)
-
-
 def create_word_similarity_lambda(
     cache_bucket_name: Input[str],
 ) -> aws.lambda_.Function:
-    """Create the word similarity API Lambda function."""
+    """Create the word similarity API Lambda function.
+
+    Args:
+        cache_bucket_name: S3 bucket name containing the word similarity cache.
+
+    Returns:
+        The Lambda function resource.
+    """
+    # Define the IAM role for the Lambda function
+    lambda_role = aws.iam.Role(
+        f"api_{ROUTE_NAME}_lambda_role",
+        assume_role_policy="""{
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Action": "sts:AssumeRole",
+                    "Principal": {
+                        "Service": "lambda.amazonaws.com"
+                    },
+                    "Effect": "Allow",
+                    "Sid": ""
+                }
+            ]
+        }""",
+    )
+
+    # IAM policy for S3 read access to cache bucket
+    s3_policy = aws.iam.Policy(
+        f"api_{ROUTE_NAME}_s3_policy",
+        description="IAM policy for Lambda to read S3 word similarity cache",
+        policy=Output.from_input(cache_bucket_name).apply(
+            lambda bucket: json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["s3:GetObject", "s3:ListBucket"],
+                            "Resource": [
+                                f"arn:aws:s3:::{bucket}/*",
+                                f"arn:aws:s3:::{bucket}",
+                            ],
+                        }
+                    ],
+                }
+            )
+        ),
+    )
+
+    # Attach policies to role
+    aws.iam.RolePolicyAttachment(
+        f"api_{ROUTE_NAME}_s3_policy_attachment",
+        role=lambda_role.name,
+        policy_arn=s3_policy.arn,
+    )
+
+    # Attach basic execution role
+    aws.iam.RolePolicyAttachment(
+        f"api_{ROUTE_NAME}_basic_execution",
+        role=lambda_role.name,
+        policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+    )
+
+    # Create Lambda function
     word_similarity_lambda = aws.lambda_.Function(
         f"api_{ROUTE_NAME}_GET_lambda",
         runtime="python3.12",
@@ -99,23 +110,18 @@ def create_word_similarity_lambda(
         tags={"environment": stack},
     )
 
+    # CloudWatch log group for the Lambda function
+    aws.cloudwatch.LogGroup(
+        f"api_{ROUTE_NAME}_lambda_log_group",
+        name=word_similarity_lambda.name.apply(
+            lambda function_name: f"/aws/lambda/{function_name}"
+        ),
+        retention_in_days=30,
+    )
+
     return word_similarity_lambda
 
 
-# Create the Lambda function instance
-word_similarity_lambda = create_word_similarity_lambda(
-    cache_bucket_name=cache_bucket_name,
-)
-
-# CloudWatch log group for the Lambda function
-log_group = aws.cloudwatch.LogGroup(
-    f"api_{ROUTE_NAME}_lambda_log_group",
-    name=word_similarity_lambda.name.apply(
-        lambda function_name: f"/aws/lambda/{function_name}"
-    ),
-    retention_in_days=30,
-)
-
-# Export Lambda details
-pulumi.export(f"{ROUTE_NAME}_lambda_arn", word_similarity_lambda.arn)
-pulumi.export(f"{ROUTE_NAME}_lambda_name", word_similarity_lambda.name)
+# Module-level variable set by __main__.py after Lambda is created
+# Used by api_gateway.py for route creation
+word_similarity_lambda: aws.lambda_.Function | None = None

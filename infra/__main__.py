@@ -334,6 +334,69 @@ sqs_interface_endpoint = aws.ec2.VpcEndpoint(
     private_dns_enabled=True,
 )
 
+# Word Similarity Cache Generator Lambda (in VPC for DynamoDB Gateway endpoint access)
+# This reduces DynamoDB query latency variance by using AWS backbone instead of public internet
+from routes.word_similarity_cache_generator.infra import (
+    create_word_similarity_cache_generator,
+)
+
+word_similarity_cache_generator = create_word_similarity_cache_generator(
+    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
+    vpc_subnet_ids=nat.private_subnet_ids.apply(lambda ids: [ids[0]]),
+    lambda_security_group_id=security.sg_lambda_id,
+)
+
+pulumi.export(
+    "word_similarity_cache_generator_lambda_arn",
+    word_similarity_cache_generator.lambda_function.arn,
+)
+pulumi.export(
+    "word_similarity_cache_bucket_name",
+    word_similarity_cache_generator.cache_bucket.id,
+)
+
+# Word Similarity API Lambda (depends on cache generator bucket)
+from routes.word_similarity.infra import create_word_similarity_lambda
+
+word_similarity_lambda = create_word_similarity_lambda(
+    cache_bucket_name=word_similarity_cache_generator.cache_bucket.id,
+)
+
+pulumi.export("word_similarity_lambda_arn", word_similarity_lambda.arn)
+pulumi.export("word_similarity_lambda_name", word_similarity_lambda.name)
+
+# Create API Gateway route for word_similarity
+if hasattr(api_gateway, "api"):
+    integration_word_similarity = aws.apigatewayv2.Integration(
+        "word_similarity_lambda_integration",
+        api_id=api_gateway.api.id,
+        integration_type="AWS_PROXY",
+        integration_uri=word_similarity_lambda.invoke_arn,
+        integration_method="POST",
+        payload_format_version="2.0",
+    )
+    route_word_similarity = aws.apigatewayv2.Route(
+        "word_similarity_route",
+        api_id=api_gateway.api.id,
+        route_key="GET /word_similarity",
+        target=integration_word_similarity.id.apply(
+            lambda id: f"integrations/{id}"
+        ),
+        opts=pulumi.ResourceOptions(
+            replace_on_changes=["route_key", "target"],
+            delete_before_replace=True,
+        ),
+    )
+    lambda_permission_word_similarity = aws.lambda_.Permission(
+        "word_similarity_lambda_permission",
+        action="lambda:InvokeFunction",
+        function=word_similarity_lambda.name,
+        principal="apigateway.amazonaws.com",
+        source_arn=api_gateway.api.execution_arn.apply(
+            lambda arn: f"{arn}/*/*"
+        ),
+    )
+
 # Recreate workers to use NAT private subnets for egress
 workers_nat = ChromaWorkers(
     name=f"chroma-workers-nat-{pulumi.get_stack()}",
