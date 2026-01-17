@@ -1,8 +1,5 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
-
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
+    FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -10,33 +7,12 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
 )
 from receipt_dynamo.entities.job_metric import JobMetric, item_to_job_metric
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 # DynamoDB batch_write_item can only handle up to 25 items per call
 _BATCH_SIZE = 25
 
-if TYPE_CHECKING:
-    pass
 
-
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
-    required_keys = {"PK", "SK"}
-    if not required_keys.issubset(lek.keys()):
-        raise EntityValidationError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
-    for key in required_keys:
-        if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise EntityValidationError(
-                f"LastEvaluatedKey[{key}] must be a dict containing "
-                "a key 'S'"
-            )
-
-
-class _JobMetric(
-    DynamoDBBaseOperations,
-    SingleEntityCRUDMixin,
-):
+class _JobMetric(FlattenedStandardMixin):
     @handle_dynamodb_errors("add_job_metric")
     def add_job_metric(self, job_metric: JobMetric):
         """Adds a job metric to the database
@@ -52,19 +28,20 @@ class _JobMetric(
         self._add_entity(
             job_metric,
             condition_expression=(
-                "attribute_not_exists(PK) OR attribute_not_exists(SK)"
+                "attribute_not_exists(PK) AND attribute_not_exists(SK)"
             ),
         )
 
     @handle_dynamodb_errors("add_job_metrics")
-    def add_job_metrics(self, job_metrics: List[JobMetric]) -> None:
-        """Adds multiple job metrics to the database in a single batch operation.
+    def add_job_metrics(self, job_metrics: list[JobMetric]) -> None:
+        """Adds multiple job metrics in a single batch operation.
 
-        This is more efficient than calling add_job_metric multiple times
-        as it uses DynamoDB's batch_write_item to write up to 25 items per call.
+        This is more efficient than calling add_job_metric multiple
+        times as it uses DynamoDB's batch_write_item to write up to
+        25 items per call.
 
         Args:
-            job_metrics (List[JobMetric]): The job metrics to add to the database
+            job_metrics (list[JobMetric]): The job metrics to add
 
         Raises:
             EntityValidationError: When job_metrics is None or not a list
@@ -107,9 +84,7 @@ class _JobMetric(
         Raises:
             ValueError: If the job metric does not exist
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
         if not metric_name or not isinstance(metric_name, str):
             raise EntityValidationError(
                 "Metric name is required and must be a non-empty string."
@@ -138,8 +113,8 @@ class _JobMetric(
     def list_job_metrics(
         self,
         job_id: str,
-        metric_name: Optional[str] = None,
-        limit: Optional[int] = None,
+        metric_name: str | None = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
@@ -162,20 +137,11 @@ class _JobMetric(
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
 
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
+        self._validate_pagination_params(
+            limit, last_evaluated_key, validate_attribute_format=True
+        )
 
         # Build the expression attribute values based on whether
         # metric_name is provided
@@ -203,7 +169,7 @@ class _JobMetric(
     def get_metrics_by_name(
         self,
         metric_name: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
@@ -230,16 +196,9 @@ class _JobMetric(
                 "Metric name is required and must be a non-empty string."
             )
 
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
+        self._validate_pagination_params(
+            limit, last_evaluated_key, validate_attribute_format=True
+        )
 
         return self._query_entities(
             index_name="GSI1",
@@ -257,7 +216,7 @@ class _JobMetric(
     def get_metrics_by_name_across_jobs(
         self,
         metric_name: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
@@ -289,16 +248,9 @@ class _JobMetric(
                 "Metric name is required and must be a non-empty string."
             )
 
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
+        self._validate_pagination_params(
+            limit, last_evaluated_key, validate_attribute_format=True
+        )
 
         return self._query_entities(
             index_name="GSI2",

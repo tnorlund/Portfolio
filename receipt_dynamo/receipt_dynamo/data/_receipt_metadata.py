@@ -1,15 +1,10 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_metadata.py
-from typing import TYPE_CHECKING, List, Optional, Tuple
-
-from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
-    QueryInputTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
@@ -19,12 +14,6 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
 )
 from receipt_dynamo.entities import ReceiptMetadata, item_to_receipt_metadata
-
-if TYPE_CHECKING:
-    pass
-
-# DynamoDB batch_write_item can only handle up to 25 items per call
-CHUNK_SIZE = 25
 
 
 class _ReceiptMetadata(
@@ -46,16 +35,16 @@ class _ReceiptMetadata(
     -------
     add_receipt_metadata(receipt_metadata: ReceiptMetadata):
         Adds a single ReceiptMetadata item to the database, ensuring unique ID.
-    add_receipt_metadatas(receipt_metadatas: List[ReceiptMetadata]):
+    add_receipt_metadatas(receipt_metadatas: list[ReceiptMetadata]):
         Adds multiple ReceiptMetadata items to the database in chunks of up to
         25 items.
     update_receipt_metadata(receipt_metadata: ReceiptMetadata):
         Updates an existing ReceiptMetadata item in the database.
-    update_receipt_metadatas(receipt_metadatas: List[ReceiptMetadata]):
+    update_receipt_metadatas(receipt_metadatas: list[ReceiptMetadata]):
         Updates multiple ReceiptMetadata items using transactions.
     delete_receipt_metadata(receipt_metadata: ReceiptMetadata):
         Deletes a single ReceiptMetadata item from the database.
-    delete_receipt_metadatas(receipt_metadatas: List[ReceiptMetadata]):
+    delete_receipt_metadatas(receipt_metadatas: list[ReceiptMetadata]):
         Deletes multiple ReceiptMetadata items using transactions.
     get_receipt_metadata(image_id: str, receipt_id: int) -> ReceiptMetadata:
         Retrieves a single ReceiptMetadata item by image and receipt IDs.
@@ -65,19 +54,19 @@ class _ReceiptMetadata(
         Retrieves multiple ReceiptMetadata items by their indices.
     get_receipt_metadatas(keys: list[dict]) -> list[ReceiptMetadata]:
         Retrieves multiple ReceiptMetadata items using batch get.
-    list_receipt_metadatas(...) -> Tuple[List[ReceiptMetadata], dict | None]:
+    list_receipt_metadatas(...) -> tuple[list[ReceiptMetadata], dict | None]:
         Lists ReceiptMetadata records with optional pagination.
     get_receipt_metadatas_by_merchant(
         ...
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         Retrieves ReceiptMetadata records by merchant name.
     list_receipt_metadatas_with_place_id(
         ...
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         Retrieves ReceiptMetadata records that have a specific place_id.
     get_receipt_metadatas_by_confidence(
         ...
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         Retrieves ReceiptMetadata records by confidence score.
     """
 
@@ -109,14 +98,14 @@ class _ReceiptMetadata(
 
     @handle_dynamodb_errors("add_receipt_metadatas")
     def add_receipt_metadatas(
-        self, receipt_metadatas: List[ReceiptMetadata]
+        self, receipt_metadatas: list[ReceiptMetadata]
     ) -> None:
         """
         Adds multiple ReceiptMetadata records to DynamoDB in batches.
 
         Parameters
         ----------
-        receipt_metadatas : List[ReceiptMetadata]
+        receipt_metadatas : list[ReceiptMetadata]
             A list of ReceiptMetadata instances to add.
 
         Raises
@@ -166,7 +155,7 @@ class _ReceiptMetadata(
 
     @handle_dynamodb_errors("update_receipt_metadatas")
     def update_receipt_metadatas(
-        self, receipt_metadatas: List[ReceiptMetadata]
+        self, receipt_metadatas: list[ReceiptMetadata]
     ) -> None:
         """
         Updates multiple ReceiptMetadata records in DynamoDB using
@@ -174,7 +163,7 @@ class _ReceiptMetadata(
 
         Parameters
         ----------
-        receipt_metadatas : List[ReceiptMetadata]
+        receipt_metadatas : list[ReceiptMetadata]
             A list of ReceiptMetadata instances to update.
 
         Raises
@@ -220,18 +209,20 @@ class _ReceiptMetadata(
         self._validate_entity(
             receipt_metadata, ReceiptMetadata, "receipt_metadata"
         )
-        self._delete_entity(receipt_metadata)
+        self._delete_entity(
+            receipt_metadata, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_metadatas")
     def delete_receipt_metadatas(
-        self, receipt_metadatas: List[ReceiptMetadata]
+        self, receipt_metadatas: list[ReceiptMetadata]
     ) -> None:
         """
         Deletes multiple ReceiptMetadata records from DynamoDB.
 
         Parameters
         ----------
-        receipt_metadatas : List[ReceiptMetadata]
+        receipt_metadatas : list[ReceiptMetadata]
             A list of ReceiptMetadata instances to delete.
 
         Raises
@@ -321,21 +312,7 @@ class _ReceiptMetadata(
         ValueError
             If indices is invalid.
         """
-        if indices is None:
-            raise EntityValidationError("indices cannot be None")
-        if not isinstance(indices, list):
-            raise EntityValidationError("indices must be a list")
-        if not all(isinstance(index, tuple) for index in indices):
-            raise EntityValidationError("indices must be a list of tuples")
-        if not all(
-            isinstance(index[0], str) and isinstance(index[1], int)
-            for index in indices
-        ):
-            raise EntityValidationError(
-                "indices must be a list of tuples of (image_id, receipt_id)"
-            )
-        if not all(index[1] > 0 for index in indices):
-            raise EntityValidationError("receipt_id must be positive")
+        self._validate_image_receipt_indices(indices)
 
         keys = [
             {
@@ -366,46 +343,16 @@ class _ReceiptMetadata(
         ValueError
             If keys is invalid.
         """
-        if keys is None:
-            raise EntityValidationError("keys cannot be None")
-        if not isinstance(keys, list):
-            raise EntityValidationError("keys must be a list")
-        if not all(isinstance(key, dict) for key in keys):
-            raise EntityValidationError("keys must be a list of dictionaries")
-        for key in keys:
-            if not {"PK", "SK"}.issubset(key.keys()):
-                raise EntityValidationError("keys must contain 'PK' and 'SK'")
-            if not key["PK"]["S"].startswith("IMAGE#"):
-                raise EntityValidationError("PK must start with 'IMAGE#'")
-            if not key["SK"]["S"].startswith("RECEIPT#"):
-                raise EntityValidationError("SK must start with 'RECEIPT#'")
-            if not key["SK"]["S"].split("#")[-1] == "METADATA":
-                raise EntityValidationError("SK must contain 'METADATA'")
-
-        results = []
-        for i in range(0, len(keys), CHUNK_SIZE):
-            chunk = keys[i : i + CHUNK_SIZE]
-            response = self._client.batch_get_item(
-                RequestItems={self.table_name: {"Keys": chunk}}
-            )
-            batch_items = response["Responses"].get(self.table_name, [])
-            results.extend(batch_items)
-            unprocessed = response.get("UnprocessedKeys", {})
-            while unprocessed.get(self.table_name):
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
-                batch_items = response["Responses"].get(self.table_name, [])
-                results.extend(batch_items)
-                unprocessed = response.get("UnprocessedKeys", {})
+        self._validate_batch_receipt_keys(keys, "METADATA")
+        results = self._batch_get_items(keys)
         return [item_to_receipt_metadata(result) for result in results]
 
     @handle_dynamodb_errors("list_receipt_metadatas")
     def list_receipt_metadatas(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         """
         Lists ReceiptMetadata records from DynamoDB with optional pagination.
 
@@ -418,7 +365,7 @@ class _ReceiptMetadata(
 
         Returns
         -------
-        Tuple[List[ReceiptMetadata], dict | None]
+        tuple[list[ReceiptMetadata], dict | None]
             A tuple containing the list of ReceiptMetadata records and the last
             evaluated key.
 
@@ -427,17 +374,7 @@ class _ReceiptMetadata(
         ValueError
             If parameters are invalid.
         """
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("limit must be positive")
-
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
-            raise EntityValidationError(
-                "last_evaluated_key must be a dictionary"
-            )
+        self._validate_pagination_params(limit, last_evaluated_key)
 
         return self._query_by_type(
             entity_type="RECEIPT_METADATA",
@@ -450,9 +387,9 @@ class _ReceiptMetadata(
     def get_receipt_metadatas_by_merchant(
         self,
         merchant_name: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         """
         Retrieves ReceiptMetadata records from DynamoDB by merchant name.
 
@@ -467,7 +404,7 @@ class _ReceiptMetadata(
 
         Returns
         -------
-        Tuple[List[ReceiptMetadata], dict | None]
+        tuple[list[ReceiptMetadata], dict | None]
             A tuple containing the list of ReceiptMetadata records and the last
             evaluated key.
 
@@ -497,9 +434,9 @@ class _ReceiptMetadata(
     def list_receipt_metadatas_with_place_id(
         self,
         place_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         """
         Retrieves ReceiptMetadata records that have a specific place_id.
 
@@ -516,7 +453,7 @@ class _ReceiptMetadata(
 
         Returns
         -------
-        Tuple[List[ReceiptMetadata], dict | None]
+        tuple[list[ReceiptMetadata], dict | None]
             A tuple containing the list of ReceiptMetadata records and the last
             evaluated key.
 
@@ -529,16 +466,7 @@ class _ReceiptMetadata(
             raise EntityValidationError("place_id cannot be empty")
         if not isinstance(place_id, str):
             raise EntityValidationError("place_id must be a string")
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("limit must be positive")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
-            raise EntityValidationError(
-                "last_evaluated_key must be a dictionary"
-            )
+        self._validate_pagination_params(limit, last_evaluated_key)
 
         return self._query_entities(
             index_name="GSI2",
@@ -555,9 +483,9 @@ class _ReceiptMetadata(
         self,
         confidence: float,
         above: bool = True,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         """
         Retrieves ReceiptMetadata records by confidence score.
 
@@ -574,7 +502,7 @@ class _ReceiptMetadata(
 
         Returns
         -------
-        Tuple[List[ReceiptMetadata], dict | None]
+        tuple[list[ReceiptMetadata], dict | None]
             A tuple containing the list of ReceiptMetadata records and the last
             evaluated key.
 

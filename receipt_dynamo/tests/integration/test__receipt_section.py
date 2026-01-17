@@ -101,7 +101,7 @@ def test_delete_receipt_section(
         sample_receipt_section.section_type,
     )
 
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(ValueError, match="(does not exist|not found)"):
         client.get_receipt_section(
             sample_receipt_section.receipt_id,
             sample_receipt_section.image_id,

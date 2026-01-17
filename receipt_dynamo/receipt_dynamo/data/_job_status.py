@@ -1,73 +1,59 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
+
+from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
-    QueryByParentMixin,
-    SingleEntityCRUDMixin,
+    FlattenedStandardMixin,
+    handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     EntityValidationError,
 )
 from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
+    pass
 
 
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
-    required_keys = {"PK", "SK"}
-    if not required_keys.issubset(lek.keys()):
-        raise EntityValidationError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
-    for key in required_keys:
-        if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise EntityValidationError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
-            )
+class _JobStatus(FlattenedStandardMixin):
+    """Mixin for job status operations in DynamoDB."""
 
-
-class _JobStatus(
-    DynamoDBBaseOperations,
-    QueryByParentMixin,
-    SingleEntityCRUDMixin,
-):
-    def add_job_status(self, job_status: JobStatus):
-        """Adds a job status update to the database
+    @handle_dynamodb_errors("add_job_status")
+    def add_job_status(self, job_status: JobStatus) -> None:
+        """Adds a job status update to the database.
 
         Args:
-            job_status (JobStatus): The job status to add to the database
+            job_status: The job status to add to the database.
 
         Raises:
-            ValueError: When a job status with the same timestamp already
-                exists
+            EntityValidationError: When validation fails.
+            EntityAlreadyExistsError: When a job status with the same
+                timestamp already exists.
         """
+        self._validate_entity(job_status, JobStatus, "job_status")
         self._add_entity(
             job_status,
-            JobStatus,
-            "job_status",
             condition_expression=(
-                "attribute_not_exists(PK) OR attribute_not_exists(SK)"
+                "attribute_not_exists(PK) AND attribute_not_exists(SK)"
             ),
         )
 
+    @handle_dynamodb_errors("get_latest_job_status")
     def get_latest_job_status(self, job_id: str) -> JobStatus:
-        """Gets the latest status for a job
+        """Gets the latest status for a job.
 
         Args:
-            job_id (str): The ID of the job to get the latest status for
+            job_id: The ID of the job to get the latest status for.
 
         Returns:
-            JobStatus: The latest job status
+            The latest job status.
 
         Raises:
-            ValueError: If the job does not exist or has no status updates
+            EntityValidationError: If job_id is invalid.
+            EntityNotFoundError: If the job has no status updates.
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
 
         results, _ = self._query_entities(
             index_name=None,
@@ -89,50 +75,38 @@ class _JobStatus(
 
         return results[0]
 
+    @handle_dynamodb_errors("list_job_statuses")
     def list_job_statuses(
         self,
         job_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobStatus], dict | None]:
-        """
-        Retrieve status updates for a job from the database.
+        """Retrieve status updates for a job from the database.
 
-        Parameters:
-            job_id (str): The ID of the job to get status updates for.
-            limit (int, optional): The maximum number of status updates to
-                return.
-            last_evaluated_key (dict, optional): A key that marks the
-                starting point for the query.
+        Args:
+            job_id: The ID of the job to get status updates for.
+            limit: The maximum number of status updates to return.
+            last_evaluated_key: A key that marks the starting point for
+                the query.
 
         Returns:
-            tuple:
+            A tuple containing:
                 - A list of JobStatus objects for the specified job.
-                - A dict representing the LastEvaluatedKey from the final
-                  query page, or None if no further pages.
+                - A dict representing the LastEvaluatedKey, or None if
+                  no further pages.
 
         Raises:
-            ValueError: If parameters are invalid.
-            Exception: If the underlying database query fails.
+            EntityValidationError: If parameters are invalid.
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
-
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
+        self._validate_job_id(job_id)
+        self._validate_pagination_params(
+            limit, last_evaluated_key, validate_attribute_format=True
+        )
 
         return self._query_by_parent(
-            parent_pk=f"JOB#{job_id}",
-            child_sk_prefix="STATUS#",
+            parent_key_prefix=f"JOB#{job_id}",
+            child_key_prefix="STATUS#",
             converter_func=item_to_job_status,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -140,18 +114,15 @@ class _JobStatus(
 
     def _get_job_with_status(
         self, job_id: str
-    ) -> Tuple[Optional[Any], List[JobStatus]]:
-        """Get a job with all its status updates
+    ) -> tuple[Any | None, list[JobStatus]]:
+        """Get a job with all its status updates.
 
         Args:
-            job_id (str): The ID of the job to get
+            job_id: The ID of the job to get.
 
         Returns:
-            Tuple[Optional[Any], List[JobStatus]]: A tuple containing the job
-                and a list of its status updates.
-            The job will be None if no job was found, and the job will need
-            to be converted to the proper type
-            by the calling class.
+            A tuple containing the job (as raw item) and a list of its
+            status updates. The job will be None if no job was found.
         """
         try:
             response = self._client.query(
@@ -163,11 +134,10 @@ class _JobStatus(
             )
 
             job = None
-            statuses: List[JobStatus] = []
+            statuses: list[JobStatus] = []
 
             for item in response["Items"]:
                 if item["TYPE"]["S"] == "JOB":
-                    # Return the raw item to be converted by the caller
                     job = item
                 if item["TYPE"]["S"] == "JOB_STATUS":
                     statuses.append(item_to_job_status(item))
@@ -185,7 +155,6 @@ class _JobStatus(
 
                 for item in response["Items"]:
                     if item["TYPE"]["S"] == "JOB":
-                        # Return the raw item to be converted by the caller
                         job = item
                     if item["TYPE"]["S"] == "JOB_STATUS":
                         statuses.append(item_to_job_status(item))

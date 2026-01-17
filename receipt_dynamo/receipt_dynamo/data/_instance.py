@@ -1,11 +1,8 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict
 
-# Runtime imports needed by the class methods
 from receipt_dynamo.data.base_operations import (
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
-    QueryByParentMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
@@ -19,15 +16,8 @@ from receipt_dynamo.entities.instance_job import (
     item_to_instance_job,
 )
 
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
 
-
-class _Instance(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-    QueryByParentMixin,
-):
+class _Instance(FlattenedStandardMixin):
     """Class for interacting with instance-related data in DynamoDB."""
 
     @handle_dynamodb_errors("add_instance")
@@ -47,11 +37,11 @@ class _Instance(
         )
 
     @handle_dynamodb_errors("add_instances")
-    def add_instances(self, instances: List[Instance]) -> None:
+    def add_instances(self, instances: list[Instance]) -> None:
         """Adds multiple instances to the DynamoDB table.
 
         Args:
-            instances (List[Instance]): The instances to add.
+            instances (list[Instance]): The instances to add.
 
         Raises:
             EntityValidationError: If instances parameters are invalid.
@@ -133,14 +123,14 @@ class _Instance(
     @handle_dynamodb_errors("get_instance_with_jobs")
     def get_instance_with_jobs(
         self, instance_id: str
-    ) -> Tuple[Instance, List[InstanceJob]]:
+    ) -> tuple[Instance, list[InstanceJob]]:
         """Gets an instance and its associated jobs from the DynamoDB table.
 
         Args:
             instance_id (str): The ID of the instance to get.
 
         Returns:
-            Tuple[Instance, List[InstanceJob]]: The instance and its jobs.
+            tuple[Instance, list[InstanceJob]]: The instance and its jobs.
 
         Raises:
             ValueError:
@@ -259,9 +249,9 @@ class _Instance(
     @handle_dynamodb_errors("list_instances")
     def list_instances(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[Instance], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[Instance], Dict | None]:
         """Lists instances in the DynamoDB table.
 
         Args:
@@ -270,7 +260,7 @@ class _Instance(
                 The exclusive start key for pagination.
 
         Returns:
-            Tuple[List[Instance], Optional[Dict]]:
+            tuple[list[Instance], Dict | None]:
                 A tuple containing the list of instances and the last evaluated
                 key for pagination, if any.
 
@@ -290,9 +280,9 @@ class _Instance(
     def list_instances_by_status(
         self,
         status: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[Instance], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[Instance], Dict | None]:
         """Lists instances by status in the DynamoDB table.
 
         Args:
@@ -302,7 +292,7 @@ class _Instance(
                 The exclusive start key for pagination.
 
         Returns:
-            Tuple[List[Instance], Optional[Dict]]:
+            tuple[list[Instance], Dict | None]:
                 A tuple containing the list of instances and the last evaluated
                 key for pagination, if any.
 

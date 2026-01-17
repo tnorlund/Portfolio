@@ -5,9 +5,10 @@ AI Usage Metric entity for tracking costs and usage of AI services.
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from .base import DynamoDBEntity
+from .entity_factory import EntityFactory
 from .entity_mixins import SerializationMixin
 
 
@@ -26,26 +27,33 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
     - GSI2SK: "COST#{date}#{service}"
     """
 
+    REQUIRED_KEYS = {
+        "service",
+        "model",
+        "operation",
+        "timestamp",
+    }
+
     service: str  # "openai", "anthropic", "google_places"
     model: str  # "gpt-3.5-turbo", "claude-3-opus", etc.
     operation: str  # "completion", "embedding", "place_lookup", "code_review"
     timestamp: datetime
-    request_id: Optional[str] = None
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
-    total_tokens: Optional[int] = None
+    request_id: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
     api_calls: int = 1
-    cost_usd: Optional[float] = None
-    latency_ms: Optional[int] = None
-    user_id: Optional[str] = None
-    job_id: Optional[str] = None
-    batch_id: Optional[str] = None
-    github_pr: Optional[int] = None
-    environment: Optional[str] = (
+    cost_usd: float | None = None
+    latency_ms: int | None = None
+    user_id: str | None = None
+    job_id: str | None = None
+    batch_id: str | None = None
+    github_pr: int | None = None
+    environment: str | None = (
         None  # "production", "staging", "cicd", "development"
     )
-    error: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = field(default_factory=dict)
+    error: str | None = None
+    metadata: dict[str, Any] | None = field(default_factory=dict)
     # Computed fields
     date: str = field(init=False)
     month: str = field(init=False)
@@ -99,7 +107,7 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
         return f"COST#{self.date}#{self.service}"
 
     @property
-    def gsi3pk(self) -> Optional[str]:
+    def gsi3pk(self) -> str | None:
         """Enhanced GSI3 PK with priority hierarchy for scope-based queries."""
         # Priority: job_id > user_id > batch_id > environment
         if self.job_id:
@@ -113,14 +121,14 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
         return None
 
     @property
-    def gsi3sk(self) -> Optional[str]:
+    def gsi3sk(self) -> str | None:
         """GSI3 SK for temporal ordering."""
         if self.job_id or self.user_id or self.batch_id or self.environment:
             return f"AI_USAGE#{self.timestamp.isoformat()}"
         return None
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Returns the primary key for DynamoDB."""
         return {"PK": {"S": self.pk}, "SK": {"S": self.sk}}
 
@@ -144,7 +152,7 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
             f"{tokens_str} {cost_str}>"
         )
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item format using SerializationMixin."""
         # Build GSI keys
         gsi_keys = {
@@ -238,15 +246,13 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
             exclude_fields=exclude_fields,
         )
 
-    def to_dynamodb_item(self) -> Dict[str, Any]:
+    def to_dynamodb_item(self) -> dict[str, Any]:
         """Compatibility method for tests expecting to_dynamodb_item."""
         return self.to_item()
 
     @classmethod
     def from_dynamodb_item(cls, item: Dict) -> "AIUsageMetric":
         """Create instance from DynamoDB item using type-safe EntityFactory."""
-        from receipt_dynamo.entities.entity_factory import EntityFactory
-
         # Type-safe extractors for all fields
         custom_extractors = {
             "service": EntityFactory.extract_string_field("service"),
@@ -273,23 +279,31 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
             ),
         }
 
-        required_keys = {
-            "service",
-            "model",
-            "operation",
-            "timestamp",
-        }
-
         # No field mappings needed - using snake_case consistently
         field_mappings = {}
 
         return EntityFactory.create_entity(
             entity_class=cls,
             item=item,
-            required_keys=required_keys,
+            required_keys=cls.REQUIRED_KEYS,
             field_mappings=field_mappings,
             custom_extractors=custom_extractors,
         )
+
+    @classmethod
+    def from_item(cls, item: Dict) -> "AIUsageMetric":
+        """Converts a DynamoDB item to an AIUsageMetric object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            AIUsageMetric: The AIUsageMetric object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        return cls.from_dynamodb_item(item)
 
     @classmethod
     def query_by_service_date(
@@ -297,8 +311,8 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
         dynamo_client,
         service: str,
         start_date: str,
-        end_date: Optional[str] = None,
-    ) -> List["AIUsageMetric"]:
+        end_date: str | None = None,
+    ) -> list["AIUsageMetric"]:
         """Query usage metrics by service and date range."""
         key_condition = "GSI1PK = :pk AND GSI1SK BETWEEN :start AND :end"
         expression_values = {
@@ -323,7 +337,7 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
     @classmethod
     def get_total_cost_by_date(
         cls, dynamo_client, date: str
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Get total cost for all services on a specific date."""
         key_condition = "GSI2PK = :pk AND begins_with(GSI2SK, :date)"
         expression_values = {
@@ -338,7 +352,7 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
             ExpressionAttributeValues=expression_values,
         )
 
-        costs_by_service: Dict[str, Any] = {}
+        costs_by_service: dict[str, Any] = {}
         for item in response.get("Items", []):
             metric = cls.from_dynamodb_item(item)
             if metric.cost_usd:

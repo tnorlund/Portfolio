@@ -1,12 +1,17 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
+from receipt_dynamo.constants import JobStatus
 from receipt_dynamo.entities.dynamodb_utils import (
     dict_to_dynamodb_map,
     parse_dynamodb_map,
 )
-from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
+from receipt_dynamo.entities.util import (
+    _repr_str,
+    assert_valid_uuid,
+    normalize_enum,
+)
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -32,11 +37,24 @@ class Job:
             critical).
         job_config (Dict): The configuration for the job (stored as a JSON).
         estimated_duration (int): The estimated duration of the job in seconds.
-        tags (Dict[str, str]): Tags associated with the job.
-        storage (Dict[str, str]): S3 storage paths (bucket, prefixes).
-        results (Dict[str, Any]): Training results populated after completion.
+        tags (dict[str, str]): Tags associated with the job.
+        storage (dict[str, str]): S3 storage paths (bucket, prefixes).
+        results (dict[str, Any]): Training results populated after completion.
             Expected keys: best_f1, best_epoch, train_runtime, total_flos.
     """
+
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "name",
+        "description",
+        "created_at",
+        "created_by",
+        "status",
+        "priority",
+        "job_config",
+    }
 
     job_id: str
     name: str
@@ -45,16 +63,16 @@ class Job:
     created_by: str
     status: str
     priority: str
-    job_config: Dict[str, Any]
-    estimated_duration: Optional[int] = None
-    tags: Optional[Dict[str, str]] = None
+    job_config: dict[str, Any]
+    estimated_duration: int | None = None
+    tags: dict[str, str] | None = None
     # Optional S3 storage metadata for this job. Expected keys (all optional):
     #   bucket, run_root_prefix, checkpoints_prefix, best_prefix, logs_prefix,
     #   config_prefix, publish_model_prefix
-    storage: Optional[Dict[str, str]] = None
+    storage: dict[str, str] | None = None
     # Optional training results/outcomes. Populated after training completes.
     # Expected keys: best_f1, best_epoch, train_runtime, total_flos, etc.
-    results: Optional[Dict[str, Any]] = None
+    results: dict[str, Any] | None = None
 
     def __post_init__(self):
         """Validates fields after dataclass initialization.
@@ -82,20 +100,7 @@ class Job:
         if not isinstance(self.created_by, str) or not self.created_by:
             raise ValueError("created_by must be a non-empty string")
 
-        valid_statuses = [
-            "pending",
-            "running",
-            "succeeded",
-            "failed",
-            "cancelled",
-            "interrupted",
-        ]
-        if (
-            not isinstance(self.status, str)
-            or self.status.lower() not in valid_statuses
-        ):
-            raise ValueError(f"status must be one of {valid_statuses}")
-        self.status = self.status.lower()
+        self.status = normalize_enum(self.status, JobStatus)
 
         valid_priorities = ["low", "medium", "high", "critical"]
         if (
@@ -127,7 +132,7 @@ class Job:
             if not isinstance(self.storage, dict):
                 raise ValueError("storage must be a dictionary when provided")
             # Normalize prefixes to have trailing '/'
-            normalized: Dict[str, str] = {}
+            normalized: dict[str, str] = {}
             for k, v in self.storage.items():
                 if not isinstance(k, str) or not isinstance(v, str):
                     raise ValueError("storage keys and values must be strings")
@@ -135,7 +140,8 @@ class Job:
                     normalized[k] = v + "/"
                 else:
                     normalized[k] = v
-            # Replace with normalized copy to avoid mutating the input dict elsewhere
+            # Replace with normalized copy to avoid mutating the input
+            # dict elsewhere
             self.storage = normalized
 
         # Validate optional results map
@@ -144,7 +150,7 @@ class Job:
                 raise ValueError("results must be a dictionary when provided")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the job.
 
         Returns:
@@ -152,7 +158,7 @@ class Job:
         """
         return {"PK": {"S": f"JOB#{self.job_id}"}, "SK": {"S": "JOB"}}
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the job.
 
         Returns:
@@ -163,7 +169,7 @@ class Job:
             "GSI1SK": {"S": f"CREATED#{self.created_at}"},
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """Generates the GSI2 key for the job (lookup by name).
 
         Returns:
@@ -174,7 +180,7 @@ class Job:
             "GSI2SK": {"S": f"CREATED#{self.created_at}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the Job object to a DynamoDB item.
 
         Returns:
@@ -231,11 +237,11 @@ class Job:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the Job object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the Job
+            Generator[tuple[str, Any], None, None]: An iterator over the Job
                 object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
@@ -287,7 +293,7 @@ class Job:
         )
 
     # ----- S3 Storage helper methods -----
-    def storage_bucket(self) -> Optional[str]:
+    def storage_bucket(self) -> str | None:
         """Returns the S3 bucket associated with this job, if provided."""
         return (
             (self.storage or {}).get("bucket")
@@ -295,23 +301,24 @@ class Job:
             else None
         )
 
-    def storage_prefix(self, key: str) -> Optional[str]:
-        """Returns a storage prefix by key (e.g., 'run_root_prefix', 'best_prefix')."""
+    def storage_prefix(self, key: str) -> str | None:
+        """Returns a storage prefix by key (e.g., 'run_root_prefix')."""
         return (
             (self.storage or {}).get(key) if self.storage is not None else None
         )
 
-    def s3_uri_for_prefix(self, key: str) -> Optional[str]:
-        """Builds an s3:// URI for a named prefix if bucket and prefix are set."""
+    def s3_uri_for_prefix(self, key: str) -> str | None:
+        """Builds an s3:// URI for a named prefix if both are set."""
         bucket = self.storage_bucket()
         prefix = self.storage_prefix(key)
         if bucket and prefix:
             return f"s3://{bucket}/{prefix}"
         return None
 
-    def best_dir_uri(self) -> Optional[str]:
+    def best_dir_uri(self) -> str | None:
         """Returns the s3:// URI to the best checkpoint directory if known."""
-        # Prefer explicit best_prefix; otherwise derive from run_root_prefix if available
+        # Prefer explicit best_prefix; otherwise derive from
+        # run_root_prefix if available
         explicit = self.s3_uri_for_prefix("best_prefix")
         if explicit:
             return explicit
@@ -321,12 +328,87 @@ class Job:
             return f"s3://{bucket}/{run_root}best/"
         return None
 
-    def publish_dir_uri(self) -> Optional[str]:
-        """Returns the s3:// URI where the publishable model bundle should live, if set."""
+    def publish_dir_uri(self) -> str | None:
+        """Returns the s3:// URI where the publishable model lives."""
         return self.s3_uri_for_prefix("publish_model_prefix")
 
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "Job":
+        """Converts a DynamoDB item to a Job object.
 
-def item_to_job(item: Dict[str, Any]) -> Job:
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            Job: The Job object represented by the DynamoDB item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+
+        try:
+            # Parse job_id from the PK
+            job_id = item["PK"]["S"].split("#")[1]
+
+            # Extract basic string fields
+            name = item["name"]["S"]
+            description = item["description"]["S"]
+            created_at = item["created_at"]["S"]
+            created_by = item["created_by"]["S"]
+            status = item["status"]["S"]
+            priority = item["priority"]["S"]
+
+            # Parse job_config from DynamoDB map
+            job_config = parse_dynamodb_map(item["job_config"]["M"])
+
+            # Parse optional fields
+            estimated_duration = (
+                int(item["estimated_duration"]["N"])
+                if "estimated_duration" in item
+                else None
+            )
+
+            # Parse tags if present
+            tags: dict[str, Any] | None = None
+            if "tags" in item and "M" in item["tags"]:
+                tags = {k: v["S"] for k, v in item["tags"]["M"].items()}
+
+            # Parse optional storage map
+            storage: dict[str, Any] | None = None
+            if "storage" in item and "M" in item["storage"]:
+                storage = parse_dynamodb_map(item["storage"]["M"])
+
+            # Parse optional results map
+            results: dict[str, Any] | None = None
+            if "results" in item and "M" in item["results"]:
+                results = parse_dynamodb_map(item["results"]["M"])
+
+            return cls(
+                job_id=job_id,
+                name=name,
+                description=description,
+                created_at=created_at,
+                created_by=created_by,
+                status=status,
+                priority=priority,
+                job_config=job_config,
+                estimated_duration=estimated_duration,
+                tags=tags,
+                storage=storage,
+                results=results,
+            )
+        except KeyError as e:
+            raise ValueError(f"Error converting item to Job: {e}") from e
+
+
+def item_to_job(item: dict[str, Any]) -> Job:
     """Converts a DynamoDB item to a Job object.
 
     Args:
@@ -338,76 +420,4 @@ def item_to_job(item: Dict[str, Any]) -> Job:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "name",
-        "description",
-        "created_at",
-        "created_by",
-        "status",
-        "priority",
-        "job_config",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-
-    try:
-        # Parse job_id from the PK
-        job_id = item["PK"]["S"].split("#")[1]
-
-        # Extract basic string fields
-        name = item["name"]["S"]
-        description = item["description"]["S"]
-        created_at = item["created_at"]["S"]
-        created_by = item["created_by"]["S"]
-        status = item["status"]["S"]
-        priority = item["priority"]["S"]
-
-        # Parse job_config from DynamoDB map
-        job_config = parse_dynamodb_map(item["job_config"]["M"])
-
-        # Parse optional fields
-        estimated_duration = (
-            int(item["estimated_duration"]["N"])
-            if "estimated_duration" in item
-            else None
-        )
-
-        # Parse tags if present
-        tags: Optional[Dict[str, Any]] = None
-        if "tags" in item and "M" in item["tags"]:
-            tags = {k: v["S"] for k, v in item["tags"]["M"].items()}
-
-        # Parse optional storage map
-        storage: Optional[Dict[str, Any]] = None
-        if "storage" in item and "M" in item["storage"]:
-            storage = parse_dynamodb_map(item["storage"]["M"])
-
-        # Parse optional results map
-        results: Optional[Dict[str, Any]] = None
-        if "results" in item and "M" in item["results"]:
-            results = parse_dynamodb_map(item["results"]["M"])
-
-        return Job(
-            job_id=job_id,
-            name=name,
-            description=description,
-            created_at=created_at,
-            created_by=created_by,
-            status=status,
-            priority=priority,
-            job_config=job_config,
-            estimated_duration=estimated_duration,
-            tags=tags,
-            storage=storage,
-            results=results,
-        )
-    except KeyError as e:
-        raise ValueError(f"Error converting item to Job: {e}") from e
+    return Job.from_item(item)

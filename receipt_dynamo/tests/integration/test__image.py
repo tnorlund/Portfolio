@@ -59,22 +59,22 @@ def _sample_image(unique_image_id: str) -> Image:
 def _sample_line(unique_image_id: str) -> Line:
     """Provides a sample Line for testing."""
     return Line(
-        unique_image_id,
-        1,
-        "test_string",
-        {
+        image_id=unique_image_id,
+        line_id=1,
+        text="test_string",
+        bounding_box={
             "x": 0.4454263367632384,
             "height": 0.022867568134581906,
             "width": 0.08690182470506236,
             "y": 0.9167082878750482,
         },
-        {"y": 0.9307722198001792, "x": 0.5323281614683008},
-        {"y": 0.9395758560096301, "x": 0.44837726658954413},
-        {"x": 0.529377231641995, "y": 0.9167082878750482},
-        {"x": 0.4454263367632384, "y": 0.9255119240844992},
-        -5.986527,
-        -0.10448461,
-        1,
+        top_right={"y": 0.9307722198001792, "x": 0.5323281614683008},
+        top_left={"y": 0.9395758560096301, "x": 0.44837726658954413},
+        bottom_right={"x": 0.529377231641995, "y": 0.9167082878750482},
+        bottom_left={"x": 0.4454263367632384, "y": 0.9255119240844992},
+        angle_degrees=-5.986527,
+        angle_radians=-0.10448461,
+        confidence=1.0,
     )
 
 
@@ -82,23 +82,23 @@ def _sample_line(unique_image_id: str) -> Line:
 def _sample_word(unique_image_id: str) -> Word:
     """Provides a sample Word for testing."""
     return Word(
-        unique_image_id,
-        2,
-        3,
-        "test_string",
-        {
+        image_id=unique_image_id,
+        line_id=2,
+        word_id=3,
+        text="test_string",
+        bounding_box={
             "y": 0.9167082878750482,
             "width": 0.08690182470506236,
             "x": 0.4454263367632384,
             "height": 0.022867568134581906,
         },
-        {"y": 0.9307722198001792, "x": 0.5323281614683008},
-        {"x": 0.44837726658954413, "y": 0.9395758560096301},
-        {"y": 0.9167082878750482, "x": 0.529377231641995},
-        {"x": 0.4454263367632384, "y": 0.9255119240844992},
-        -5.986527,
-        -0.10448461,
-        1,
+        top_right={"y": 0.9307722198001792, "x": 0.5323281614683008},
+        top_left={"x": 0.44837726658954413, "y": 0.9395758560096301},
+        bottom_right={"y": 0.9167082878750482, "x": 0.529377231641995},
+        bottom_left={"x": 0.4454263367632384, "y": 0.9255119240844992},
+        angle_degrees=-5.986527,
+        angle_radians=-0.10448461,
+        confidence=1.0,
     )
 
 
@@ -106,24 +106,24 @@ def _sample_word(unique_image_id: str) -> Word:
 def _sample_letter(unique_image_id: str) -> Letter:
     """Provides a sample Letter for testing."""
     return Letter(
-        unique_image_id,
-        1,
-        1,
-        1,
-        "0",
-        {
+        image_id=unique_image_id,
+        line_id=1,
+        word_id=1,
+        letter_id=1,
+        text="0",
+        bounding_box={
             "height": 0.022867568333804766,
             "width": 0.08688726243285705,
             "x": 0.4454336178993411,
             "y": 0.9167082877754368,
         },
-        {"x": 0.5323208803321982, "y": 0.930772983660083},
-        {"x": 0.44837726707985254, "y": 0.9395758561092415},
-        {"x": 0.5293772311516867, "y": 0.9167082877754368},
-        {"x": 0.4454336178993411, "y": 0.9255111602245953},
-        -5.986527,
-        -0.1044846,
-        1,
+        top_right={"x": 0.5323208803321982, "y": 0.930772983660083},
+        top_left={"x": 0.44837726707985254, "y": 0.9395758561092415},
+        bottom_right={"x": 0.5293772311516867, "y": 0.9167082877754368},
+        bottom_left={"x": 0.4454336178993411, "y": 0.9255111602245953},
+        angle_degrees=-5.986527,
+        angle_radians=-0.1044846,
+        confidence=1.0,
     )
 
 
@@ -242,7 +242,7 @@ ADD_ERROR_SCENARIOS = [
     (
         "ConditionalCheckFailedException",
         EntityAlreadyExistsError,
-        "image already exists",
+        "already exists",
     ),
 ] + ERROR_SCENARIOS
 
@@ -459,7 +459,7 @@ def test_add_image_duplicate_raises(
     client = DynamoClient(dynamodb_table)
     client.add_image(sample_image)
 
-    with pytest.raises(EntityAlreadyExistsError, match="image already exists"):
+    with pytest.raises(EntityAlreadyExistsError, match="already exists"):
         client.add_image(sample_image)
 
 

@@ -1,32 +1,23 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
-
-from botocore.exceptions import ClientError
+from typing import TYPE_CHECKING, Any
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.base_operations.shared_utils import (
+    validate_pagination_params,
+)
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        BatchGetItemInputTypeDef,
-        QueryInputTypeDef,
-    )
-
-# DynamoDB batch_write_item can only handle up to 25 items per call
-CHUNK_SIZE = 25
+    pass
 
 
 class _ReceiptWord(
@@ -88,7 +79,9 @@ class _ReceiptWord(
             raise EntityValidationError(
                 "receipt_word must be an instance of ReceiptWord"
             )
-        self._add_entity(receipt_word)
+        self._add_entity(
+            receipt_word, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_receipt_words")
     def add_receipt_words(self, receipt_words: list[ReceiptWord]) -> None:
@@ -114,7 +107,9 @@ class _ReceiptWord(
             raise EntityValidationError(
                 "receipt_word must be an instance of ReceiptWord"
             )
-        self._update_entity(receipt_word)
+        self._update_entity(
+            receipt_word, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("update_receipt_words")
     def update_receipt_words(self, receipt_words: list[ReceiptWord]) -> None:
@@ -140,7 +135,9 @@ class _ReceiptWord(
             raise EntityValidationError(
                 "receipt_word must be an instance of ReceiptWord"
             )
-        self._delete_entity(receipt_word)
+        self._delete_entity(
+            receipt_word, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_words")
     def delete_receipt_words(self, receipt_words: list[ReceiptWord]) -> None:
@@ -177,23 +174,10 @@ class _ReceiptWord(
     ) -> ReceiptWord:
         """Retrieves a single ReceiptWord by IDs."""
         # Validate parameters
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
-        if receipt_id is None or not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-        if line_id is None or not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer")
-        if line_id <= 0:
-            raise EntityValidationError("line_id must be a positive integer")
-        if word_id is None or not isinstance(word_id, int):
-            raise EntityValidationError("word_id must be an integer")
-        if word_id <= 0:
-            raise EntityValidationError("word_id must be a positive integer")
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
             sort_key=(
@@ -311,71 +295,18 @@ class _ReceiptWord(
                 raise EntityValidationError(
                     "SK must contain a 5-digit word ID"
                 )
-        results = []
 
-        try:
-            # Split keys into chunks of up to 100
-            for i in range(0, len(keys), CHUNK_SIZE):
-                chunk = keys[i : i + CHUNK_SIZE]
-
-                # Prepare parameters for BatchGetItem
-                request: BatchGetItemInputTypeDef = {
-                    "RequestItems": {
-                        self.table_name: {
-                            "Keys": chunk,
-                        }
-                    }
-                }
-
-                # Perform BatchGet
-                response = self._client.batch_get_item(**request)
-
-                # Combine all found items
-                batch_items = response["Responses"].get(self.table_name, [])
-                results.extend(batch_items)
-
-                # Retry unprocessed keys if any
-                unprocessed = response.get("UnprocessedKeys", {})
-                while unprocessed.get(self.table_name, {}).get(
-                    "Keys"
-                ):  # type: ignore[call-overload]
-                    response = self._client.batch_get_item(
-                        RequestItems=unprocessed
-                    )
-                    batch_items = response["Responses"].get(
-                        self.table_name, []
-                    )
-                    results.extend(batch_items)
-                    unprocessed = response.get("UnprocessedKeys", {})
-
-            return [item_to_receipt_word(result) for result in results]
-
-        except ClientError as e:
-            raise EntityValidationError(
-                f"Could not get ReceiptWords from the database: {e}"
-            ) from e
+        results = self._batch_get_items(keys)
+        return [item_to_receipt_word(item) for item in results]
 
     @handle_dynamodb_errors("list_receipt_words")
     def list_receipt_words(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[list[ReceiptWord], Optional[Dict[str, Any]]]:
+    ) -> tuple[list[ReceiptWord], dict[str, Any] | None]:
         """Returns all ReceiptWords from the table."""
-        if limit is not None:
-            if not isinstance(limit, int):
-                raise EntityValidationError(
-                    "limit must be an integer or None."
-                )
-            if limit <= 0:
-                raise EntityValidationError("limit must be greater than 0.")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
-            raise EntityValidationError(
-                "last_evaluated_key must be a dictionary or None."
-            )
-
+        validate_pagination_params(limit, last_evaluated_key)
         return self._query_by_type(
             entity_type="RECEIPT_WORD",
             converter_func=item_to_receipt_word,
@@ -417,30 +348,9 @@ class _ReceiptWord(
         self, image_id: str, receipt_id: int
     ) -> list[ReceiptWord]:
         """Returns all ReceiptWords under a specific receipt/image."""
-        # Validate parameters
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
-        if receipt_id is None or not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-        # Use GSI3 for efficient querying by image_id + receipt_id
-        # This eliminates the need for client-side filtering
-        results, _ = self._query_entities(
-            index_name="GSI3",
-            key_condition_expression="GSI3PK = :pk AND GSI3SK = :sk",
-            expression_attribute_names=None,
-            expression_attribute_values={
-                ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"},
-                ":sk": {"S": "WORD"},
-            },
-            converter_func=item_to_receipt_word,
+        return self._query_entities_by_receipt_gsi3(
+            image_id, receipt_id, "WORD", item_to_receipt_word
         )
-
-        return results
 
     @handle_dynamodb_errors("list_receipt_words_by_embedding_status")
     def list_receipt_words_by_embedding_status(

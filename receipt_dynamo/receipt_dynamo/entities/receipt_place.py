@@ -19,10 +19,14 @@ Differences from ReceiptMetadata:
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from decimal import Decimal
+from typing import Any
+
+from boto3.dynamodb.types import TypeDeserializer
 
 from receipt_dynamo.constants import ValidationMethod
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
@@ -36,13 +40,15 @@ from receipt_dynamo.entities.util import (
 logger = __import__("logging").getLogger(__name__)
 
 # Validation thresholds (reserved for future field validation logic)
-# Currently ReceiptPlace relies on Google Places API validation, but these constants
-# are available if additional client-side validation is needed in the future
+# Currently ReceiptPlace relies on Google Places API validation, but
+# these constants are available if additional client-side validation
+# is needed in the future.
 MIN_PHONE_DIGITS = 7
 MIN_NAME_LENGTH = 2
 
-# Fields that are computed (GSI keys) and should not be passed to constructor
-# Includes GSI4 and geohash for backward compatibility with older records that had geospatial indexing
+# Fields that are computed (GSI keys) and should not be passed to
+# constructor. Includes GSI4 and geohash for backward compatibility
+# with older records that had geospatial indexing.
 COMPUTED_FIELDS = {
     "PK",
     "SK",
@@ -67,13 +73,14 @@ class ReceiptPlace(SerializationMixin):
     Captures comprehensive location data from Google Places API (v1).
     Replaces ReceiptMetadata with richer merchant and location data.
 
-    Each ReceiptPlace record is stored in DynamoDB using the image_id and
-    receipt_id, and indexed by merchant name, place_id, and validation status via GSIs.
+    Each ReceiptPlace record is stored in DynamoDB using the image_id
+    and receipt_id, and indexed by merchant name, place_id, and
+    validation status via GSIs.
 
     Attributes:
         image_id (str): UUID of the image the receipt belongs to.
         receipt_id (int): Identifier of the receipt within the image.
-        place_id (str): Google Places API ID of the matched business (ChIJ...).
+        place_id (str): Google Places API ID of the matched business.
 
         merchant_name (str): Business name (e.g., "Starbucks").
         merchant_category (str): Primary business type/category.
@@ -91,27 +98,39 @@ class ReceiptPlace(SerializationMixin):
         viewport_sw_lng (float): Viewport southwest corner longitude.
         plus_code (str): Open Location Code (Plus Code).
 
-        phone_number (str): Phone in national format (e.g., "(555) 123-4567").
-        phone_intl (str): Phone in international format (e.g., "+1 555 123-4567").
+        phone_number (str): Phone in national format.
+        phone_intl (str): Phone in international format.
         website (str): Business website URL.
         maps_url (str): Google Maps link for the place.
 
-        business_status (str): Status (OPERATIONAL, CLOSED_TEMPORARILY, CLOSED_PERMANENTLY).
+        business_status (str): Status (OPERATIONAL, CLOSED_TEMPORARILY,
+            CLOSED_PERMANENTLY).
         open_now (bool): Whether the place is currently open.
-        hours_summary (list[str]): Human-readable hours (e.g., "Mon: 9 AM - 5 PM").
+        hours_summary (list[str]): Human-readable hours.
         hours_data (dict): Structured hours data (periods).
 
         photo_references (list[str]): Photo resource names from Google.
 
-        matched_fields (list[str]): Which fields matched (e.g., ["name", "phone"]).
-        validated_by (str): Source of validation (INFERENCE, GPT, MANUAL).
+        matched_fields (list[str]): Which fields matched.
+        validated_by (str): Source of validation (INFERENCE, GPT,
+            MANUAL).
         validation_status (str): Status (MATCHED, UNSURE, NO_MATCH).
         confidence (float): Match confidence score (0.0-1.0).
         reasoning (str): Why this match was made.
 
         timestamp (datetime): When created/updated.
-        places_api_version (str): Which API version was used ("v1" or "legacy").
+        places_api_version (str): API version ("v1" or "legacy").
     """
+
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "image_id",
+        "receipt_id",
+        "place_id",
+        "merchant_name",
+    }
 
     # === Identity (Required) ===
     image_id: str
@@ -121,20 +140,20 @@ class ReceiptPlace(SerializationMixin):
     # === Basic Info ===
     merchant_name: str
     merchant_category: str = ""
-    merchant_types: List[str] = field(default_factory=list)
+    merchant_types: list[str] = field(default_factory=list)
 
     # === Address ===
     formatted_address: str = ""
     short_address: str = ""
-    address_components: Dict[str, Any] = field(default_factory=dict)
+    address_components: dict[str, Any] = field(default_factory=dict)
 
     # === Location & Geometry ===
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    viewport_ne_lat: Optional[float] = None
-    viewport_ne_lng: Optional[float] = None
-    viewport_sw_lat: Optional[float] = None
-    viewport_sw_lng: Optional[float] = None
+    latitude: float | None = None
+    longitude: float | None = None
+    viewport_ne_lat: float | None = None
+    viewport_ne_lng: float | None = None
+    viewport_sw_lat: float | None = None
+    viewport_sw_lng: float | None = None
     plus_code: str = ""
 
     # === Contact ===
@@ -145,15 +164,15 @@ class ReceiptPlace(SerializationMixin):
 
     # === Business Status & Hours ===
     business_status: str = ""
-    open_now: Optional[bool] = None
-    hours_summary: List[str] = field(default_factory=list)
-    hours_data: Dict[str, Any] = field(default_factory=dict)
+    open_now: bool | None = None
+    hours_summary: list[str] = field(default_factory=list)
+    hours_data: dict[str, Any] = field(default_factory=dict)
 
     # === Media ===
-    photo_references: List[str] = field(default_factory=list)
+    photo_references: list[str] = field(default_factory=list)
 
     # === Validation & Metadata ===
-    matched_fields: List[str] = field(default_factory=list)
+    matched_fields: list[str] = field(default_factory=list)
     validated_by: str = ""
     validation_status: str = ""
     confidence: float = 0.0
@@ -188,12 +207,14 @@ class ReceiptPlace(SerializationMixin):
             self.photo_references = list(dict.fromkeys(self.photo_references))
 
         # Validate confidence score
-        if not (0.0 <= self.confidence <= 1.0):
+        if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(
-                f"confidence must be between 0.0 and 1.0, got {self.confidence}"
+                f"confidence must be between 0.0 and 1.0, "
+                f"got {self.confidence}"
             )
 
-        # Validate merchant_name produces non-empty GSI1 key after normalization
+        # Validate merchant_name produces non-empty GSI1 key after
+        # normalization
         if not self.merchant_name:
             raise ValueError("merchant_name cannot be empty")
         normalized_merchant = self.merchant_name.upper()
@@ -201,27 +222,28 @@ class ReceiptPlace(SerializationMixin):
         normalized_merchant = normalized_merchant.strip("_")
         if not normalized_merchant:
             raise ValueError(
-                f"merchant_name '{self.merchant_name}' contains no alphanumeric "
-                "characters and would produce an invalid GSI1 key"
+                f"merchant_name '{self.merchant_name}' contains no "
+                "alphanumeric characters and would produce an invalid "
+                "GSI1 key"
             )
 
         # Validate coordinates if present
         if self.latitude is not None:
-            if not (-90.0 <= self.latitude <= 90.0):
+            if not -90.0 <= self.latitude <= 90.0:
                 raise ValueError(f"latitude out of range: {self.latitude}")
         if self.longitude is not None:
-            if not (-180.0 <= self.longitude <= 180.0):
+            if not -180.0 <= self.longitude <= 180.0:
                 raise ValueError(f"longitude out of range: {self.longitude}")
 
         # Validate viewport coordinates if present
         for attr in ["viewport_ne_lat", "viewport_sw_lat"]:
             val = getattr(self, attr, None)
-            if val is not None and not (-90.0 <= val <= 90.0):
+            if val is not None and not -90.0 <= val <= 90.0:
                 raise ValueError(f"{attr} out of range: {val}")
 
         for attr in ["viewport_ne_lng", "viewport_sw_lng"]:
             val = getattr(self, attr, None)
-            if val is not None and not (-180.0 <= val <= 180.0):
+            if val is not None and not -180.0 <= val <= 180.0:
                 raise ValueError(f"{attr} out of range: {val}")
 
     @property
@@ -235,25 +257,24 @@ class ReceiptPlace(SerializationMixin):
     @property
     def gsi1_key(self) -> dict[str, dict[str, str]]:
         """Get GSI1 key (query by merchant name)."""
-        # Normalize name: uppercase, replace special chars with underscore, collapse whitespace
+        # Normalize name: uppercase, replace special chars with
+        # underscore, collapse whitespace
         normalized_name = self.merchant_name.upper()
         normalized_name = re.sub(r"[^A-Z0-9]+", "_", normalized_name)
         normalized_name = normalized_name.strip("_")
+        sk = f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#PLACE"
         return {
             "GSI1PK": {"S": f"MERCHANT#{normalized_name}"},
-            "GSI1SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#PLACE"
-            },
+            "GSI1SK": {"S": sk},
         }
 
     @property
     def gsi2_key(self) -> dict[str, dict[str, str]]:
         """Get GSI2 key (query by place_id)."""
+        sk = f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#PLACE"
         return {
             "GSI2PK": {"S": f"PLACE#{self.place_id}"},
-            "GSI2SK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#PLACE"
-            },
+            "GSI2SK": {"S": sk},
         }
 
     @property
@@ -261,19 +282,36 @@ class ReceiptPlace(SerializationMixin):
         """Get GSI3 key (query by confidence and validation status)."""
         # Format confidence to 4 decimal places for consistent sorting
         confidence_str = f"{self.confidence:.4f}"
+        sk = (
+            f"CONFIDENCE#{confidence_str}#STATUS#{self.validation_status}"
+            f"#IMAGE#{self.image_id}"
+        )
         return {
             "GSI3PK": {"S": "PLACE_VALIDATION"},
-            "GSI3SK": {
-                "S": f"CONFIDENCE#{confidence_str}#STATUS#{self.validation_status}#IMAGE#{self.image_id}"
-            },
+            "GSI3SK": {"S": sk},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    @property
+    def gsi4_key(self) -> dict[str, dict[str, str]]:
+        """Get GSI4 key for receipt details access pattern.
+
+        GSI4 enables efficient single-query retrieval of all receipt-related
+        entities (Receipt, Lines, Words, Labels, Place) excluding Letters.
+        """
+        return {
+            "GSI4PK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
+            "GSI4SK": {"S": "1_PLACE"},
+        }
+
+    def to_item(self) -> dict[str, Any]:
         """
         Serialize the ReceiptPlace object into DynamoDB item format.
 
-        Includes primary keys, GSI keys, and all location/merchant data with
-        appropriate DynamoDB type annotations (S for string, N for number, etc).
+        Includes primary keys, GSI keys, and all location/merchant
+        data with appropriate DynamoDB type annotations (S for string,
+        N for number, etc).
 
         Returns:
             Dict with DynamoDB formatted item ready for PutItem/UpdateItem
@@ -283,6 +321,7 @@ class ReceiptPlace(SerializationMixin):
             **self.gsi1_key,
             **self.gsi2_key,
             **self.gsi3_key,
+            **self.gsi4_key,
             "TYPE": {"S": "RECEIPT_PLACE"},
             # Required identity fields
             "image_id": {"S": self.image_id},
@@ -316,7 +355,8 @@ class ReceiptPlace(SerializationMixin):
                 else:
                     item[attr] = {"NULL": True}
 
-        # List fields (string sets) - filter out empty strings (DynamoDB SS rejects empty strings)
+        # List fields (string sets) - filter out empty strings
+        # (DynamoDB SS rejects empty strings)
         merchant_types_filtered = [
             s.strip()
             for s in self.merchant_types
@@ -369,14 +409,10 @@ class ReceiptPlace(SerializationMixin):
 
         # Complex fields (JSON/Maps)
         if self.address_components:
-            import json
-
             item["address_components"] = {
                 "S": json.dumps(self.address_components)
             }
         if self.hours_data:
-            import json
-
             item["hours_data"] = {"S": json.dumps(self.hours_data)}
 
         return item
@@ -393,106 +429,120 @@ class ReceiptPlace(SerializationMixin):
             f")"
         )
 
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptPlace":
+        """Converts a DynamoDB item to a ReceiptPlace object.
 
-def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
-    """
-    Create ReceiptPlace from DynamoDB item (low-level client format with type annotations).
+        Args:
+            item: The DynamoDB item to convert.
 
-    Handles DynamoDB JSON format items like {'S': 'value'}, {'N': '123'}, etc.
+        Returns:
+            ReceiptPlace: The ReceiptPlace object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        # First, deserialize from DynamoDB JSON format to Python types
+        deserializer = TypeDeserializer()
+        deserialized = {
+            k: deserializer.deserialize(v) for k, v in item.items()
+        }
+
+        # Filter out computed fields
+        filtered_item = {
+            k: v for k, v in deserialized.items() if k not in COMPUTED_FIELDS
+        }
+
+        # Parse complex fields that were JSON-serialized
+        if "address_components" in filtered_item and isinstance(
+            filtered_item["address_components"], str
+        ):
+            try:
+                filtered_item["address_components"] = json.loads(
+                    filtered_item["address_components"]
+                )
+            except (json.JSONDecodeError, TypeError):
+                filtered_item["address_components"] = {}
+
+        if "hours_data" in filtered_item and isinstance(
+            filtered_item["hours_data"], str
+        ):
+            try:
+                filtered_item["hours_data"] = json.loads(
+                    filtered_item["hours_data"]
+                )
+            except (json.JSONDecodeError, TypeError):
+                filtered_item["hours_data"] = {}
+
+        # Parse timestamp if it's a string
+        if "timestamp" in filtered_item and isinstance(
+            filtered_item["timestamp"], str
+        ):
+            filtered_item["timestamp"] = datetime.fromisoformat(
+                filtered_item["timestamp"]
+            )
+
+        # Convert receipt_id: boto3 deserializes numbers as Decimal, need int
+        if "receipt_id" in filtered_item:
+            if isinstance(filtered_item["receipt_id"], Decimal):
+                filtered_item["receipt_id"] = int(filtered_item["receipt_id"])
+            elif isinstance(filtered_item["receipt_id"], str):
+                try:
+                    filtered_item["receipt_id"] = int(
+                        filtered_item["receipt_id"]
+                    )
+                except (ValueError, TypeError):
+                    pass
+
+        # Handle None values for string fields that should be empty strings
+        for attr_name in [
+            "merchant_category",
+            "formatted_address",
+            "short_address",
+            "phone_number",
+            "phone_intl",
+            "website",
+            "maps_url",
+            "business_status",
+            "plus_code",
+            "validated_by",
+            "reasoning",
+            "places_api_version",
+        ]:
+            if attr_name in filtered_item and filtered_item[attr_name] is None:
+                filtered_item[attr_name] = ""
+
+        # Convert Decimal numbers to float for floating point fields
+        for attr_name in [
+            "latitude",
+            "longitude",
+            "confidence",
+            "viewport_ne_lat",
+            "viewport_ne_lng",
+            "viewport_sw_lat",
+            "viewport_sw_lng",
+        ]:
+            if attr_name in filtered_item:
+                value = filtered_item[attr_name]
+                if isinstance(value, (str, int, Decimal)):
+                    try:
+                        filtered_item[attr_name] = float(value)
+                    except (ValueError, TypeError):
+                        filtered_item.pop(attr_name, None)
+
+        return cls(**filtered_item)
+
+
+def item_to_receipt_place(item: dict[str, Any]) -> ReceiptPlace:
+    """Converts a DynamoDB item to a ReceiptPlace object.
 
     Args:
-        item: Dict from DynamoDB in low-level client format
+        item (dict): The DynamoDB item to convert.
 
     Returns:
-        ReceiptPlace instance
+        ReceiptPlace: The ReceiptPlace object.
+
+    Raises:
+        ValueError: When the item format is invalid.
     """
-    import json
-    from decimal import Decimal
-
-    from boto3.dynamodb.types import TypeDeserializer
-
-    # First, deserialize from DynamoDB JSON format to Python types
-    deserializer = TypeDeserializer()
-    deserialized = {k: deserializer.deserialize(v) for k, v in item.items()}
-
-    # Filter out computed fields
-    filtered_item = {
-        k: v for k, v in deserialized.items() if k not in COMPUTED_FIELDS
-    }
-
-    # Parse complex fields that were JSON-serialized
-    if "address_components" in filtered_item and isinstance(
-        filtered_item["address_components"], str
-    ):
-        try:
-            filtered_item["address_components"] = json.loads(
-                filtered_item["address_components"]
-            )
-        except (json.JSONDecodeError, TypeError):
-            filtered_item["address_components"] = {}
-
-    if "hours_data" in filtered_item and isinstance(
-        filtered_item["hours_data"], str
-    ):
-        try:
-            filtered_item["hours_data"] = json.loads(
-                filtered_item["hours_data"]
-            )
-        except (json.JSONDecodeError, TypeError):
-            filtered_item["hours_data"] = {}
-
-    # Parse timestamp if it's a string
-    if "timestamp" in filtered_item and isinstance(
-        filtered_item["timestamp"], str
-    ):
-        filtered_item["timestamp"] = datetime.fromisoformat(
-            filtered_item["timestamp"]
-        )
-
-    # Convert receipt_id: boto3 deserializes numbers as Decimal, need int
-    if "receipt_id" in filtered_item:
-        if isinstance(filtered_item["receipt_id"], Decimal):
-            filtered_item["receipt_id"] = int(filtered_item["receipt_id"])
-        elif isinstance(filtered_item["receipt_id"], str):
-            try:
-                filtered_item["receipt_id"] = int(filtered_item["receipt_id"])
-            except (ValueError, TypeError):
-                pass
-
-    # Handle None values for string fields that should be empty strings
-    for attr_name in [
-        "merchant_category",
-        "formatted_address",
-        "short_address",
-        "phone_number",
-        "phone_intl",
-        "website",
-        "maps_url",
-        "business_status",
-        "plus_code",
-        "validated_by",
-        "reasoning",
-        "places_api_version",
-    ]:
-        if attr_name in filtered_item and filtered_item[attr_name] is None:
-            filtered_item[attr_name] = ""
-
-    # Convert Decimal numbers to float for floating point fields
-    for attr_name in [
-        "latitude",
-        "longitude",
-        "confidence",
-        "viewport_ne_lat",
-        "viewport_ne_lng",
-        "viewport_sw_lat",
-        "viewport_sw_lng",
-    ]:
-        if attr_name in filtered_item:
-            value = filtered_item[attr_name]
-            if isinstance(value, (str, int, Decimal)):
-                try:
-                    filtered_item[attr_name] = float(value)
-                except (ValueError, TypeError):
-                    filtered_item.pop(attr_name, None)
-
-    return ReceiptPlace(**filtered_item)
+    return ReceiptPlace.from_item(item)

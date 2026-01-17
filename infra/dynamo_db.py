@@ -44,6 +44,14 @@ dynamodb_table = aws.dynamodb.Table(
             name="TYPE",
             type="S",
         ),
+        aws.dynamodb.TableAttributeArgs(
+            name="GSI4PK",
+            type="S",
+        ),
+        aws.dynamodb.TableAttributeArgs(
+            name="GSI4SK",
+            type="S",
+        ),
     ],
     hash_key="PK",
     range_key="SK",
@@ -79,6 +87,12 @@ dynamodb_table = aws.dynamodb.Table(
         aws.dynamodb.TableGlobalSecondaryIndexArgs(
             name="GSITYPE",
             hash_key="TYPE",
+            projection_type="ALL",
+        ),
+        aws.dynamodb.TableGlobalSecondaryIndexArgs(
+            name="GSI4",
+            hash_key="GSI4PK",
+            range_key="GSI4SK",
             projection_type="ALL",
         ),
     ],

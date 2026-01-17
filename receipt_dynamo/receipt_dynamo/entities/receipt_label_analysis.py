@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Generator
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -19,7 +19,7 @@ class ReceiptLabelAnalysis:
     Attributes:
         image_id (str): UUID identifying the associated image.
         receipt_id (int): Number identifying the receipt.
-        labels (List[Dict]): List of label dictionaries containing label
+        labels (list[Dict]): List of label dictionaries containing label
             information.
         timestamp_added (datetime): When this analysis was created.
         version (str): Version of the analysis (for tracking changes over
@@ -29,13 +29,20 @@ class ReceiptLabelAnalysis:
             history.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "labels",
+        "timestamp_added",
+    }
+
     image_id: str
     receipt_id: int
-    labels: List[Dict[str, Any]]
+    labels: list[dict[str, Any]]
     timestamp_added: datetime | str
     version: str = "1.0"
     overall_reasoning: str = ""
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
     def __post_init__(self):
         """Initializes and validates the ReceiptLabelAnalysis object.
@@ -89,7 +96,7 @@ class ReceiptLabelAnalysis:
             }
 
     @property
-    def key(self) -> Dict[str, Dict[str, str]]:
+    def key(self) -> dict[str, dict[str, str]]:
         """Returns the primary key for DynamoDB.
 
         Returns:
@@ -100,7 +107,7 @@ class ReceiptLabelAnalysis:
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#LABELS"},
         }
 
-    def gsi1_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi1_key(self) -> dict[str, dict[str, str]]:
         """Returns the GSI1 key for DynamoDB.
 
         Returns:
@@ -111,7 +118,7 @@ class ReceiptLabelAnalysis:
             "GSI1SK": {"S": f"LABELS#{self.timestamp_added}"},
         }
 
-    def gsi2_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi2_key(self) -> dict[str, dict[str, str]]:
         """Returns the GSI2 key for DynamoDB.
 
         Returns:
@@ -124,7 +131,7 @@ class ReceiptLabelAnalysis:
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the ReceiptLabelAnalysis object to a DynamoDB item.
 
         Returns:
@@ -162,8 +169,8 @@ class ReceiptLabelAnalysis:
         }
 
     def _convert_bounding_box(
-        self, bounding_box: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, bounding_box: dict[str, Any]
+    ) -> dict[str, Any]:
         """Converts a bounding box dictionary to DynamoDB format.
 
         Args:
@@ -176,7 +183,7 @@ class ReceiptLabelAnalysis:
         if not bounding_box:
             return {}
 
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
 
         for key in ["top_left", "top_right", "bottom_left", "bottom_right"]:
             if key in bounding_box:
@@ -205,11 +212,11 @@ class ReceiptLabelAnalysis:
             f"version={self.version})"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Return an iterator over the object's attributes.
 
         Yields:
-            Tuple[str, Any]: A tuple containing an attribute name and its
+            tuple[str, Any]: A tuple containing an attribute name and its
                 value.
         """
         yield "image_id", self.image_id
@@ -238,9 +245,148 @@ class ReceiptLabelAnalysis:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptLabelAnalysis":
+        """Converts a DynamoDB item to a ReceiptLabelAnalysis object.
+
+        Args:
+            item: A DynamoDB item representing a ReceiptLabelAnalysis.
+
+        Returns:
+            ReceiptLabelAnalysis: A ReceiptLabelAnalysis object.
+
+        Raises:
+            ValueError: If the item is not a valid ReceiptLabelAnalysis item.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            raise ValueError(f"Item is missing required keys: {missing_keys}")
+
+        # Extract image_id and receipt_id from PK and SK
+        image_id = item["PK"]["S"].replace("IMAGE#", "")
+        sk_parts = item["SK"]["S"].split("#")
+
+        if (
+            len(sk_parts) < 4
+            or sk_parts[0] != "RECEIPT"
+            or sk_parts[2] != "ANALYSIS"
+            or sk_parts[3] != "LABELS"
+        ):
+            raise ValueError("Invalid SK format for ReceiptLabelAnalysis")
+
+        receipt_id = int(sk_parts[1])
+
+        # Extract labels
+        labels = _parse_labels_list(item)
+
+        # Extract timestamp_added
+        timestamp_added = (
+            datetime.fromisoformat(item["timestamp_added"]["S"])
+            if "timestamp_added" in item and "S" in item["timestamp_added"]
+            else datetime.now()
+        )
+
+        # Extract version
+        version = (
+            item["version"]["S"]
+            if "version" in item and "S" in item["version"]
+            else "1.0"
+        )
+
+        # Extract overall_reasoning
+        overall_reasoning = (
+            item["overall_reasoning"]["S"]
+            if "overall_reasoning" in item and "S" in item["overall_reasoning"]
+            else ""
+        )
+
+        # Extract metadata
+        metadata = None
+        if "metadata" in item and "S" in item["metadata"]:
+            try:
+                metadata = json.loads(item["metadata"]["S"])
+            except json.JSONDecodeError:
+                metadata = None
+
+        return cls(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            labels=labels,
+            timestamp_added=timestamp_added,
+            version=version,
+            overall_reasoning=overall_reasoning,
+            metadata=metadata,
+        )
+
+
+def _parse_labels_list(item: dict[str, Any]) -> list[dict[str, Any]]:
+    """Parse labels list from DynamoDB item format."""
+    labels = []
+    if "labels" not in item or "L" not in item["labels"]:
+        return labels
+
+    for label_item in item["labels"]["L"]:
+        if "M" in label_item:
+            label_dict = _parse_single_label(label_item["M"])
+            if label_dict:
+                labels.append(label_dict)
+    return labels
+
+
+def _parse_single_label(label_map: dict[str, Any]) -> dict[str, Any]:
+    """Parse a single label from DynamoDB map format."""
+    label_dict: dict[str, Any] = {}
+
+    # Extract string fields
+    if "label_type" in label_map and "S" in label_map["label_type"]:
+        label_dict["label_type"] = label_map["label_type"]["S"]
+    if "text" in label_map and "S" in label_map["text"]:
+        label_dict["text"] = label_map["text"]["S"]
+    if "reasoning" in label_map and "S" in label_map["reasoning"]:
+        label_dict["reasoning"] = label_map["reasoning"]["S"]
+
+    # Extract numeric fields
+    if "line_id" in label_map and "N" in label_map["line_id"]:
+        label_dict["line_id"] = int(label_map["line_id"]["N"])
+    if "word_id" in label_map and "N" in label_map["word_id"]:
+        label_dict["word_id"] = int(label_map["word_id"]["N"])
+
+    # Extract bounding_box if present
+    if "bounding_box" in label_map and "M" in label_map["bounding_box"]:
+        bbox = _parse_bounding_box(label_map["bounding_box"]["M"])
+        if bbox:
+            label_dict["bounding_box"] = bbox
+
+    return label_dict
+
+
+def _parse_bounding_box(bbox_map: dict[str, Any]) -> dict[str, Any]:
+    """Parse bounding box corners from DynamoDB map format."""
+    bbox: dict[str, Any] = {}
+    corners = ["top_left", "top_right", "bottom_left", "bottom_right"]
+
+    for corner in corners:
+        if corner in bbox_map and "M" in bbox_map[corner]:
+            point = _parse_corner_point(bbox_map[corner]["M"])
+            if point:
+                bbox[corner] = point
+    return bbox
+
+
+def _parse_corner_point(
+    point_map: dict[str, Any],
+) -> dict[str, float | None]:
+    """Parse a corner point (x, y) from DynamoDB map format."""
+    point: dict[str, float] = {}
+    if "x" in point_map and "N" in point_map["x"]:
+        point["x"] = float(point_map["x"]["N"])
+    if "y" in point_map and "N" in point_map["y"]:
+        point["y"] = float(point_map["y"]["N"])
+    return point if point else None
+
 
 def item_to_receipt_label_analysis(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> ReceiptLabelAnalysis:
     """Converts a DynamoDB item to a ReceiptLabelAnalysis object.
 
@@ -253,140 +399,4 @@ def item_to_receipt_label_analysis(
     Raises:
         ValueError: If the item is not a valid ReceiptLabelAnalysis item.
     """
-    if "PK" not in item or "SK" not in item:
-        raise ValueError("Item must have PK and SK attributes")
-
-    # Extract image_id and receipt_id from PK and SK
-    image_id = item["PK"]["S"].replace("IMAGE#", "")
-    sk_parts = item["SK"]["S"].split("#")
-
-    if (
-        len(sk_parts) < 4
-        or sk_parts[0] != "RECEIPT"
-        or sk_parts[2] != "ANALYSIS"
-        or sk_parts[3] != "LABELS"
-    ):
-        raise ValueError("Invalid SK format for ReceiptLabelAnalysis")
-
-    receipt_id = int(sk_parts[1])
-
-    # Extract labels
-    labels = []
-    if "labels" in item and "L" in item["labels"]:
-        for label_item in item["labels"]["L"]:
-            if "M" in label_item:
-                label_dict: Dict[str, Any] = {}
-
-                if (
-                    "label_type" in label_item["M"]
-                    and "S" in label_item["M"]["label_type"]
-                ):
-                    label_dict["label_type"] = label_item["M"]["label_type"][
-                        "S"
-                    ]
-
-                if (
-                    "line_id" in label_item["M"]
-                    and "N" in label_item["M"]["line_id"]
-                ):
-                    label_dict["line_id"] = int(
-                        label_item["M"]["line_id"]["N"]
-                    )
-
-                if (
-                    "word_id" in label_item["M"]
-                    and "N" in label_item["M"]["word_id"]
-                ):
-                    label_dict["word_id"] = int(
-                        label_item["M"]["word_id"]["N"]
-                    )
-
-                if (
-                    "text" in label_item["M"]
-                    and "S" in label_item["M"]["text"]
-                ):
-                    label_dict["text"] = label_item["M"]["text"]["S"]
-
-                if (
-                    "reasoning" in label_item["M"]
-                    and "S" in label_item["M"]["reasoning"]
-                ):
-                    label_dict["reasoning"] = label_item["M"]["reasoning"]["S"]
-
-                # Extract bounding_box if present
-                if (
-                    "bounding_box" in label_item["M"]
-                    and "M" in label_item["M"]["bounding_box"]
-                ):
-                    bbox: Dict[str, Any] = {}
-                    bbox_item = label_item["M"]["bounding_box"]["M"]
-
-                    for corner in [
-                        "top_left",
-                        "top_right",
-                        "bottom_left",
-                        "bottom_right",
-                    ]:
-                        if corner in bbox_item and "M" in bbox_item[corner]:
-                            point: Dict[str, Any] = {}
-                            if (
-                                "x" in bbox_item[corner]["M"]
-                                and "N" in bbox_item[corner]["M"]["x"]
-                            ):
-                                point["x"] = float(
-                                    bbox_item[corner]["M"]["x"]["N"]
-                                )
-                            if (
-                                "y" in bbox_item[corner]["M"]
-                                and "N" in bbox_item[corner]["M"]["y"]
-                            ):
-                                point["y"] = float(
-                                    bbox_item[corner]["M"]["y"]["N"]
-                                )
-
-                            if point:
-                                bbox[corner] = point
-
-                    if bbox:
-                        label_dict["bounding_box"] = bbox
-
-                labels.append(label_dict)
-
-    # Extract timestamp_added
-    timestamp_added = (
-        datetime.fromisoformat(item["timestamp_added"]["S"])
-        if "timestamp_added" in item and "S" in item["timestamp_added"]
-        else datetime.now()
-    )
-
-    # Extract version
-    version = (
-        item["version"]["S"]
-        if "version" in item and "S" in item["version"]
-        else "1.0"
-    )
-
-    # Extract overall_reasoning
-    overall_reasoning = (
-        item["overall_reasoning"]["S"]
-        if "overall_reasoning" in item and "S" in item["overall_reasoning"]
-        else ""
-    )
-
-    # Extract metadata
-    metadata = None
-    if "metadata" in item and "S" in item["metadata"]:
-        try:
-            metadata = json.loads(item["metadata"]["S"])
-        except json.JSONDecodeError:
-            metadata = None
-
-    return ReceiptLabelAnalysis(
-        image_id=image_id,
-        receipt_id=receipt_id,
-        labels=labels,
-        timestamp_added=timestamp_added,
-        version=version,
-        overall_reasoning=overall_reasoning,
-        metadata=metadata,
-    )
+    return ReceiptLabelAnalysis.from_item(item)

@@ -1,6 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
-
-from botocore.exceptions import ClientError
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -8,19 +6,11 @@ from receipt_dynamo.data.base_operations import (
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
-from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBError,
-    EntityAlreadyExistsError,
-    EntityNotFoundError,
-    EntityValidationError,
-)
+from receipt_dynamo.data.shared_exceptions import EntityValidationError
 from receipt_dynamo.entities.label_count_cache import (
     LabelCountCache,
     item_to_label_count_cache,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 class _LabelCountCache(FlattenedStandardMixin):
@@ -34,17 +24,19 @@ class _LabelCountCache(FlattenedStandardMixin):
             raise EntityValidationError(
                 "item must be an instance of the LabelCountCache class."
             )
-        self._add_entity(item)
+        self._add_entity(item, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_label_count_caches")
     def add_label_count_caches(self, items: list[LabelCountCache]) -> None:
         if items is None:
             raise EntityValidationError("items cannot be None")
+        if not items:
+            raise EntityValidationError("items cannot be an empty list")
         if not isinstance(items, list) or not all(
             isinstance(item, LabelCountCache) for item in items
         ):
             raise EntityValidationError(
-                "items must be a list of LabelCountCache objects.f"
+                "items must be a list of LabelCountCache objects."
             )
         request_items = [
             WriteRequestTypeDef(
@@ -62,14 +54,8 @@ class _LabelCountCache(FlattenedStandardMixin):
             isinstance(cache, LabelCountCache) for cache in caches
         ):
             raise EntityValidationError(
-                "items must be a list of LabelCountCache objects."
+                "caches must be a list of LabelCountCache objects."
             )
-        for i, cache in enumerate(caches):
-            if not isinstance(cache, LabelCountCache):
-                raise EntityValidationError(
-                    f"caches[{i}] must be a LabelCountCache object, "
-                    f"got {type(cache).__name__}"
-                )
         self._delete_entities(caches)
 
     @handle_dynamodb_errors("update_label_count_cache")
@@ -80,10 +66,10 @@ class _LabelCountCache(FlattenedStandardMixin):
             raise EntityValidationError(
                 "item must be an instance of the LabelCountCache class."
             )
-        self._update_entity(item)
+        self._update_entity(item, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("get_label_count_cache")
-    def get_label_count_cache(self, label: str) -> Optional[LabelCountCache]:
+    def get_label_count_cache(self, label: str) -> LabelCountCache | None:
         return self._get_entity(
             primary_key="LABEL_CACHE",
             sort_key=f"LABEL#{label}",
@@ -94,9 +80,10 @@ class _LabelCountCache(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_label_count_caches")
     def list_label_count_caches(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[LabelCountCache], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[LabelCountCache], dict[str, Any] | None]:
+        self._validate_pagination_params(limit, last_evaluated_key)
         return self._query_by_type(
             entity_type="LABEL_COUNT_CACHE",
             converter_func=item_to_label_count_cache,

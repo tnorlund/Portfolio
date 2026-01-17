@@ -356,5 +356,5 @@ def test_item_to_ocr_routing_decision_invalid_item():
         # Missing other required fields
     }
 
-    with pytest.raises(ValueError, match="Invalid item format"):
+    with pytest.raises(ValueError, match="missing required keys"):
         item_to_ocr_routing_decision(item)

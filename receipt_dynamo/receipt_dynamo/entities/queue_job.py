@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
@@ -25,6 +25,8 @@ class QueueJob:
         position (int): The position of the job in the queue (lower numbers
             are processed first).
     """
+
+    REQUIRED_KEYS = {"PK", "SK", "TYPE", "enqueued_at", "priority", "position"}
 
     queue_name: str
     job_id: str
@@ -67,7 +69,7 @@ class QueueJob:
             raise ValueError("position must be a non-negative integer")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the queue-job association.
 
         Returns:
@@ -78,7 +80,7 @@ class QueueJob:
             "SK": {"S": f"JOB#{self.job_id}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the queue-job association.
 
         Returns:
@@ -89,7 +91,7 @@ class QueueJob:
             "GSI1SK": {"S": f"JOB#{self.job_id}#QUEUE#{self.queue_name}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the QueueJob object to a DynamoDB item.
 
         Returns:
@@ -122,11 +124,11 @@ class QueueJob:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the QueueJob object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over
+            Generator[tuple[str, Any], None, None]: An iterator over
                 attribute name/value pairs.
         """
         yield "queue_name", self.queue_name
@@ -151,8 +153,51 @@ class QueueJob:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "QueueJob":
+        """Converts a DynamoDB item to a QueueJob object.
 
-def item_to_queue_job(item: Dict[str, Any]) -> QueueJob:
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            QueueJob: The QueueJob object represented by the DynamoDB item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+
+        try:
+            # Parse queue_name from the PK
+            queue_name = item["PK"]["S"].split("#")[1]
+
+            # Parse job_id from the SK
+            job_id = item["SK"]["S"].split("#")[1]
+
+            # Extract fields
+            enqueued_at = item["enqueued_at"]["S"]
+            priority = item["priority"]["S"]
+            position = int(item["position"]["N"])
+
+            return cls(
+                queue_name=queue_name,
+                job_id=job_id,
+                enqueued_at=enqueued_at,
+                priority=priority,
+                position=position,
+            )
+        except (KeyError, IndexError) as e:
+            raise ValueError(f"Error converting item to QueueJob: {e}") from e
+
+
+def item_to_queue_job(item: dict[str, Any]) -> QueueJob:
     """Converts a DynamoDB item to a QueueJob object.
 
     Args:
@@ -164,33 +209,4 @@ def item_to_queue_job(item: Dict[str, Any]) -> QueueJob:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {"PK", "SK", "TYPE", "enqueued_at", "priority", "position"}
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-
-    try:
-        # Parse queue_name from the PK
-        queue_name = item["PK"]["S"].split("#")[1]
-
-        # Parse job_id from the SK
-        job_id = item["SK"]["S"].split("#")[1]
-
-        # Extract fields
-        enqueued_at = item["enqueued_at"]["S"]
-        priority = item["priority"]["S"]
-        position = int(item["position"]["N"])
-
-        return QueueJob(
-            queue_name=queue_name,
-            job_id=job_id,
-            enqueued_at=enqueued_at,
-            priority=priority,
-            position=position,
-        )
-    except (KeyError, IndexError) as e:
-        raise ValueError(f"Error converting item to QueueJob: {e}") from e
+    return QueueJob.from_item(item)

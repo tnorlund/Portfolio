@@ -1,25 +1,18 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.base_operations.shared_utils import (
+    validate_batch_get_keys,
+)
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
-    EntityValidationError,
 )
 from receipt_dynamo.entities import item_to_word
 from receipt_dynamo.entities.util import assert_valid_uuid
 from receipt_dynamo.entities.word import Word
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        BatchGetItemInputTypeDef,
-    )
-
-# DynamoDB batch_write_item can only handle up to 25 items per call
-# So let's chunk the items in groups of 25
-CHUNK_SIZE = 25
 
 
 class _Word(FlattenedStandardMixin):
@@ -45,8 +38,8 @@ class _Word(FlattenedStandardMixin):
     get_words(keys: list[dict]) -> list[Word]
         Gets multiple words from the database.
     list_words(
-        limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None
-    ) -> Tuple[list[Word], Optional[Dict[str, Any]]]
+        limit: int | None = None, last_evaluated_key: Dict | None = None
+    ) -> tuple[list[Word], dict[str, Any] | None]
         Lists all words from the database.
     list_words_from_line(image_id: str, line_id: int) -> list[Word]
         Lists all words from a specific line.
@@ -63,10 +56,10 @@ class _Word(FlattenedStandardMixin):
             ValueError: When a word with the same ID already exists
         """
         self._validate_entity(word, Word, "word")
-        self._add_entity(word)
+        self._add_entity(word, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_words")
-    def add_words(self, words: List[Word]):
+    def add_words(self, words: list[Word]):
         """Adds a list of words to the database
 
         Args:
@@ -76,7 +69,7 @@ class _Word(FlattenedStandardMixin):
             ValueError: When validation fails or words cannot be added
         """
         self._validate_entity_list(words, Word, "words")
-        self._add_entities_batch(words, Word, "words")
+        self._add_entities(words, Word, "words")
 
     @handle_dynamodb_errors("update_word")
     def update_word(self, word: Word):
@@ -89,10 +82,10 @@ class _Word(FlattenedStandardMixin):
             ValueError: When a word with the same ID does not exist
         """
         self._validate_entity(word, Word, "word")
-        self._update_entity(word)
+        self._update_entity(word, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_words")
-    def update_words(self, words: List[Word]):
+    def update_words(self, words: list[Word]):
         """
         Updates multiple Word items in the database.
 
@@ -138,10 +131,12 @@ class _Word(FlattenedStandardMixin):
             angle_radians=0.0,
             confidence=0.01,
         )
-        self._delete_entity(temp_word)
+        self._delete_entity(
+            temp_word, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_words")
-    def delete_words(self, words: List[Word]):
+    def delete_words(self, words: list[Word]):
         """Deletes a list of words from the database"""
         self._validate_entity_list(words, Word, "words")
         self._delete_entities(words)
@@ -190,56 +185,18 @@ class _Word(FlattenedStandardMixin):
         return result
 
     @handle_dynamodb_errors("get_words")
-    def get_words(self, keys: List[Dict]) -> List[Word]:
-        """Get a list of words using a list of keys"""
-        # Check the validity of the keys
-        for key in keys:
-            if not {"PK", "SK"}.issubset(key.keys()):
-                raise EntityValidationError("Keys must contain 'PK' and 'SK'")
-            if not key["PK"]["S"].startswith("IMAGE#"):
-                raise EntityValidationError("PK must start with 'IMAGE#'")
-            if not key["SK"]["S"].startswith("LINE#"):
-                raise EntityValidationError("SK must start with 'LINE#'")
-            if not key["SK"]["S"].split("#")[-2] == "WORD":
-                raise EntityValidationError("SK must contain 'WORD'")
-        results = []
-
-        # Split keys into chunks of up to 100
-        for i in range(0, len(keys), CHUNK_SIZE):
-            chunk = keys[i : i + CHUNK_SIZE]
-
-            # Prepare parameters for BatchGetItem
-            request: BatchGetItemInputTypeDef = {
-                "RequestItems": {self.table_name: {"Keys": chunk}}
-            }
-
-            # Perform BatchGet
-            response = self._client.batch_get_item(**request)
-
-            # Combine all found items
-            batch_items = response["Responses"].get(self.table_name, [])
-            results.extend(batch_items)
-
-            # Retry unprocessed keys if any
-            unprocessed = response.get("UnprocessedKeys", {})
-            while unprocessed.get(self.table_name, {}).get(
-                "Keys"
-            ):  # type: ignore[call-overload]
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
-                batch_items = response["Responses"].get(self.table_name, [])
-                results.extend(batch_items)
-                unprocessed = response.get("UnprocessedKeys", {})
-
-        return [item_to_word(result) for result in results]
+    def get_words(self, keys: list[Dict]) -> list[Word]:
+        """Get a list of words using a list of keys."""
+        validate_batch_get_keys(keys, "WORD")
+        results = self._batch_get_items(keys)
+        return [item_to_word(item) for item in results]
 
     @handle_dynamodb_errors("list_words")
     def list_words(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[Word], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[Word], dict[str, Any] | None]:
         """Lists all words from the database
 
         Args:
@@ -257,7 +214,7 @@ class _Word(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("list_words_from_line")
-    def list_words_from_line(self, image_id: str, line_id: int) -> List[Word]:
+    def list_words_from_line(self, image_id: str, line_id: int) -> list[Word]:
         """List all words from a specific line in an image.
 
         Args:

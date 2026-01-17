@@ -186,7 +186,7 @@ def test_item_to_ocr_job_missing_keys():
         "SK": {"S": "OCR_JOB#uuid"},
         "TYPE": {"S": "OCR_JOB"},
     }
-    with pytest.raises(ValueError, match=r"missing keys"):
+    with pytest.raises(ValueError, match=r"missing required keys"):
         item_to_ocr_job(item)
 
 
@@ -204,7 +204,7 @@ def test_item_to_ocr_job_malformed_updated_at():
         "job_type": {"S": "REFINEMENT"},
         "receipt_id": {"N": "123"},
     }
-    with pytest.raises(ValueError, match="Error converting item to OCRJob"):
+    with pytest.raises(ValueError, match="Invalid isoformat string"):
         item_to_ocr_job(bad_item)
 
 
@@ -234,5 +234,5 @@ def test_item_to_ocr_job_unexpected_error():
         "job_type": {"S": "REFINEMENT"},
         "receipt_id": {"N": "123"},
     }
-    with pytest.raises(ValueError, match="Error converting item to OCRJob"):
+    with pytest.raises(TypeError, match="argument must be str"):
         item_to_ocr_job(bad_item)

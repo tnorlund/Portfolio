@@ -7,7 +7,7 @@ It uses DynamoDB TTL to automatically release locks after a specified time.
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.entities.base import DynamoDBEntity
@@ -33,15 +33,17 @@ class CompactionLock(DynamoDBEntity):
         ISO timestamp—when the lock auto-expires (TTL enabled on table).
     collection : ChromaDBCollection
         The ChromaDB collection this lock protects (lines or words).
-    heartbeat : Optional[str | datetime]
+    heartbeat : str | datetime | None
         Optional ISO timestamp updated periodically by long-running jobs.
     """
+
+    REQUIRED_KEYS = {"PK", "SK", "owner", "expires", "collection"}
 
     lock_id: str
     owner: str
     expires: str | datetime
     collection: ChromaDBCollection
-    heartbeat: Optional[str | datetime] = None
+    heartbeat: str | datetime | None = None
 
     # ────────────────────────── validation ────────────────────────────
     def __post_init__(self) -> None:
@@ -57,12 +59,12 @@ class CompactionLock(DynamoDBEntity):
                 # Try to convert string to enum
                 try:
                     self.collection = ChromaDBCollection(self.collection)
-                except ValueError:
+                except ValueError as exc:
                     valid_values = [c.value for c in ChromaDBCollection]
                     raise ValueError(
                         f"ChromaDBCollection must be one of: "
                         f"{valid_values}, got: {self.collection}"
-                    )
+                    ) from exc
             else:
                 raise ValueError(
                     f"collection must be ChromaDBCollection or str, "
@@ -86,7 +88,7 @@ class CompactionLock(DynamoDBEntity):
 
     # ───────────────────────── DynamoDB keys ──────────────────────────
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         # One row per lock_id and collection combination
         return {
             "PK": {"S": f"LOCK#{self.collection.value}#{self.lock_id}"},
@@ -94,7 +96,7 @@ class CompactionLock(DynamoDBEntity):
         }
 
     @property
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         # Enables "list all active locks by collection and expiry"
         # admin queries
         expires_str = (
@@ -108,7 +110,7 @@ class CompactionLock(DynamoDBEntity):
         }
 
     # ───────────────────── DynamoDB marshalling ───────────────────────
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         # Ensure datetime fields are converted to ISO strings
         expires_str = (
             self.expires
@@ -147,36 +149,66 @@ class CompactionLock(DynamoDBEntity):
             ")"
         )
 
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "CompactionLock":
+        """Converts a DynamoDB item to a CompactionLock object.
 
-# Helper for reverse conversion
-def item_to_compaction_lock(item: Dict[str, Any]) -> "CompactionLock":
-    required = {"PK", "SK", "owner", "expires", "collection"}
-    missing = DynamoDBEntity.validate_keys(item, required)
-    if missing:
-        raise ValueError(f"Lock item missing keys: {missing}")
+        Args:
+            item: The DynamoDB item to convert.
 
-    # Parse PK format: LOCK#{collection}#{lock_id}
-    pk_parts = item["PK"]["S"].split("#")
-    if len(pk_parts) < 3 or pk_parts[0] != "LOCK":
-        raise ValueError(f"Invalid lock PK format: {item['PK']['S']}")
+        Returns:
+            CompactionLock: The CompactionLock object.
 
-    collection_value = pk_parts[1]
-    lock_id = "#".join(pk_parts[2:])  # Rejoin in case lock_id contains #
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        missing = DynamoDBEntity.validate_keys(item, cls.REQUIRED_KEYS)
+        if missing:
+            raise ValueError(f"Lock item missing keys: {missing}")
 
-    # Validate collection value
-    try:
-        collection = ChromaDBCollection(collection_value)
-    except ValueError:
-        valid_values = [c.value for c in ChromaDBCollection]
-        raise ValueError(
-            f"Invalid collection in item: {collection_value}. "
-            f"Must be one of: {valid_values}"
-        )
+        try:
+            # Parse PK format: LOCK#{collection}#{lock_id}
+            pk_parts = item["PK"]["S"].split("#")
+            if len(pk_parts) < 3 or pk_parts[0] != "LOCK":
+                raise ValueError(f"Invalid lock PK format: {item['PK']['S']}")
 
-    return CompactionLock(
-        lock_id=lock_id,
-        owner=item["owner"]["S"],
-        expires=item["expires"]["S"],
-        collection=collection,
-        heartbeat=item.get("heartbeat", {}).get("S"),
-    )
+            collection_value = pk_parts[1]
+            # Rejoin in case lock_id contains #
+            lock_id = "#".join(pk_parts[2:])
+
+            # Validate collection value
+            try:
+                collection = ChromaDBCollection(collection_value)
+            except ValueError as exc:
+                valid_values = [c.value for c in ChromaDBCollection]
+                raise ValueError(
+                    f"Invalid collection in item: {collection_value}. "
+                    f"Must be one of: {valid_values}"
+                ) from exc
+
+            return cls(
+                lock_id=lock_id,
+                owner=item["owner"]["S"],
+                expires=item["expires"]["S"],
+                collection=collection,
+                heartbeat=item.get("heartbeat", {}).get("S"),
+            )
+        except Exception as e:
+            raise ValueError(
+                f"Error converting item to CompactionLock: {e}"
+            ) from e
+
+
+def item_to_compaction_lock(item: dict[str, Any]) -> "CompactionLock":
+    """Converts a DynamoDB item to a CompactionLock object.
+
+    Args:
+        item (dict): The DynamoDB item to convert.
+
+    Returns:
+        CompactionLock: The CompactionLock object.
+
+    Raises:
+        ValueError: When the item format is invalid.
+    """
+    return CompactionLock.from_item(item)

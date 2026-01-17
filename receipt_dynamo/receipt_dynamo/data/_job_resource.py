@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
@@ -18,23 +18,9 @@ from receipt_dynamo.entities.job_resource import (
     JobResource,
     item_to_job_resource,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
-
-
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
-    required_keys = {"PK", "SK"}
-    if not required_keys.issubset(lek.keys()):
-        raise EntityValidationError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
-    for key in required_keys:
-        if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise EntityValidationError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
-            )
+    pass
 
 
 class _JobResource(FlattenedStandardMixin):
@@ -53,7 +39,7 @@ class _JobResource(FlattenedStandardMixin):
         self._add_entity(
             job_resource,
             condition_expression=(
-                "attribute_not_exists(PK) OR attribute_not_exists(SK)"
+                "attribute_not_exists(PK) AND attribute_not_exists(SK)"
             ),
         )
 
@@ -71,9 +57,7 @@ class _JobResource(FlattenedStandardMixin):
         Raises:
             ValueError: If the job resource does not exist
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
         if not resource_id or not isinstance(resource_id, str):
             raise EntityValidationError(
                 "Resource ID is required and must be a non-empty string."
@@ -101,7 +85,7 @@ class _JobResource(FlattenedStandardMixin):
         job_id: str,
         resource_id: str,
         status: str,
-        released_at: Optional[str] = None,
+        released_at: str | None = None,
     ):
         """Updates the status of a job resource
 
@@ -116,9 +100,7 @@ class _JobResource(FlattenedStandardMixin):
             ValueError: If the job resource does not exist or parameters are
                 invalid
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
+        self._validate_job_id(job_id)
         if not resource_id or not isinstance(resource_id, str):
             raise EntityValidationError(
                 "Resource ID is required and must be a non-empty string."
@@ -191,7 +173,7 @@ class _JobResource(FlattenedStandardMixin):
     def list_job_resources(
         self,
         job_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobResource], dict | None]:
         """
@@ -213,29 +195,9 @@ class _JobResource(FlattenedStandardMixin):
             ValueError: If parameters are invalid.
             Exception: If the underlying database query fails.
         """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-        assert_valid_uuid(job_id)
-
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
-
-        return self._query_entities(
-            index_name=None,
-            key_condition_expression="PK = :pk AND begins_with(SK, :sk)",
-            expression_attribute_names=None,
-            expression_attribute_values={
-                ":pk": {"S": f"JOB#{job_id}"},
-                ":sk": {"S": "RESOURCE#"},
-            },
+        return self._query_by_job_sk_prefix(
+            job_id=job_id,
+            sk_prefix="RESOURCE#",
             converter_func=item_to_job_resource,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -245,7 +207,7 @@ class _JobResource(FlattenedStandardMixin):
     def list_resources_by_type(
         self,
         resource_type: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobResource], dict | None]:
         """
@@ -272,16 +234,9 @@ class _JobResource(FlattenedStandardMixin):
                 "Resource type is required and must be a non-empty string."
             )
 
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("Limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("Limit must be greater than 0")
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "LastEvaluatedKey must be a dictionary"
-                )
-            validate_last_evaluated_key(last_evaluated_key)
+        self._validate_pagination_params(
+            limit, last_evaluated_key, validate_attribute_format=True
+        )
 
         return self._query_entities(
             index_name="GSI1",

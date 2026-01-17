@@ -1,8 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     TransactWriteItemTypeDef,
@@ -17,13 +16,8 @@ from receipt_dynamo.entities.job import Job, item_to_job
 from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
 from receipt_dynamo.entities.util import assert_valid_uuid
 
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
 
-
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
+def validate_last_evaluated_key(lek: dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
@@ -36,10 +30,7 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
             )
 
 
-class _Job(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _Job(FlattenedStandardMixin):
     """
     A class used to represent a Job in the database.
 
@@ -61,16 +52,16 @@ class _Job(
         Gets a job from the database.
     get_job_by_name(name: str, ...) -> tuple[list[Job], dict | None]
         Gets jobs by name using GSI2.
-    get_job_with_status(job_id: str) -> Tuple[Job, List[JobStatus]]
+    get_job_with_status(job_id: str) -> tuple[Job, list[JobStatus]]
         Gets a job with all its status updates.
     list_jobs(
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]
         Lists all jobs from the database.
     list_jobs_by_status(
         status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]
         Lists jobs filtered by status.
@@ -87,7 +78,7 @@ class _Job(
             ValueError: When a job with the same ID already exists
         """
         self._validate_entity(job, Job, "job")
-        self._add_entity(job)
+        self._add_entity(job, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_jobs")
     def add_jobs(self, jobs: list[Job]):
@@ -120,7 +111,7 @@ class _Job(
             ValueError: When the job does not exist
         """
         self._validate_entity(job, Job, "job")
-        self._update_entity(job)
+        self._update_entity(job, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_jobs")
     def update_jobs(self, jobs: list[Job]):
@@ -152,7 +143,7 @@ class _Job(
             ValueError: When the job does not exist
         """
         self._validate_entity(job, Job, "job")
-        self._delete_entity(job)
+        self._delete_entity(job, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("delete_jobs")
     def delete_jobs(self, jobs: list[Job]):
@@ -220,7 +211,7 @@ class _Job(
     def get_job_by_name(
         self,
         name: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
@@ -232,12 +223,13 @@ class _Job(
         Args:
             name (str): The name of the job(s) to retrieve.
             limit (int, optional): Maximum number of jobs to return.
-            last_evaluated_key (dict, optional): Pagination key from previous query.
+            last_evaluated_key (dict, optional): Pagination key from
+                previous query.
 
         Returns:
             tuple[list[Job], dict | None]: A tuple containing:
                 - A list of Job objects with the specified name.
-                - The LastEvaluatedKey for pagination, or None if no more pages.
+                - The LastEvaluatedKey for pagination, or None.
 
         Raises:
             EntityValidationError: If parameters are invalid.
@@ -256,7 +248,8 @@ class _Job(
                 for k in ["PK", "SK", "GSI2PK", "GSI2SK"]
             ):
                 raise EntityValidationError(
-                    "LastEvaluatedKey must contain PK, SK, GSI2PK, and GSI2SK keys"
+                    "LastEvaluatedKey must contain PK, SK, GSI2PK, "
+                    "and GSI2SK keys"
                 )
 
         return self._query_entities(
@@ -275,14 +268,14 @@ class _Job(
         )
 
     @handle_dynamodb_errors("get_job_with_status")
-    def get_job_with_status(self, job_id: str) -> Tuple[Job, List[JobStatus]]:
+    def get_job_with_status(self, job_id: str) -> tuple[Job, list[JobStatus]]:
         """Get a job with all its status updates
 
         Args:
             job_id (str): The ID of the job to get
 
         Returns:
-            Tuple[Job, List[JobStatus]]: A tuple containing the job and a list
+            tuple[Job, list[JobStatus]]: A tuple containing the job and a list
                 of its status updates
         """
         if job_id is None:
@@ -313,7 +306,7 @@ class _Job(
     @handle_dynamodb_errors("list_jobs")
     def list_jobs(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
@@ -347,7 +340,7 @@ class _Job(
     def list_jobs_by_status(
         self,
         status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """

@@ -20,7 +20,10 @@ Classes:
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from math import degrees as math_degrees
+from math import pi
+from math import radians as math_radians
+from typing import Any
 
 from receipt_dynamo.entities.util import _format_float
 
@@ -51,13 +54,13 @@ class Point:
         object.__setattr__(self, "x", float(self.x))
         object.__setattr__(self, "y", float(self.y))
 
-    def to_dict(self) -> Dict[str, float]:
+    def to_dict(self) -> dict[str, float]:
         """Convert to dict for backwards compatibility with existing code."""
         return {"x": self.x, "y": self.y}
 
     def to_dynamodb(
         self, precision: int = 20, scale: int = 22
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Serialize to DynamoDB map format.
 
@@ -66,7 +69,7 @@ class Point:
             scale: Total length for formatting
 
         Returns:
-            DynamoDB-formatted map: {"M": {"x": {"N": "..."}, "y": {"N": "..."}}}
+            DynamoDB-formatted map with x and y numeric values.
         """
         return {
             "M": {
@@ -76,7 +79,7 @@ class Point:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "Point":
+    def from_dict(cls, d: dict[str, Any]) -> "Point":
         """
         Create from dictionary.
 
@@ -89,7 +92,7 @@ class Point:
         return cls(x=float(d["x"]), y=float(d["y"]))
 
     @classmethod
-    def from_dynamodb(cls, item: Dict[str, Any]) -> "Point":
+    def from_dynamodb(cls, item: dict[str, Any]) -> "Point":
         """
         Create from DynamoDB map format.
 
@@ -133,7 +136,7 @@ class BoundingBox:
                 )
             object.__setattr__(self, field_name, float(val))
 
-    def to_dict(self) -> Dict[str, float]:
+    def to_dict(self) -> dict[str, float]:
         """Convert to dict for backwards compatibility."""
         return {
             "x": self.x,
@@ -144,7 +147,7 @@ class BoundingBox:
 
     def to_dynamodb(
         self, precision: int = 20, scale: int = 22
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Serialize to DynamoDB map format.
 
@@ -161,7 +164,7 @@ class BoundingBox:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "BoundingBox":
+    def from_dict(cls, d: dict[str, Any]) -> "BoundingBox":
         """Create from dictionary."""
         return cls(
             x=float(d["x"]),
@@ -171,7 +174,7 @@ class BoundingBox:
         )
 
     @classmethod
-    def from_dynamodb(cls, item: Dict[str, Any]) -> "BoundingBox":
+    def from_dynamodb(cls, item: dict[str, Any]) -> "BoundingBox":
         """Create from DynamoDB map format."""
         m = item["M"]
         return cls(
@@ -226,7 +229,7 @@ class Corners:
     bottom_left: Point
     bottom_right: Point
 
-    def to_dict(self) -> Dict[str, Dict[str, float]]:
+    def to_dict(self) -> dict[str, dict[str, float]]:
         """Convert to nested dict for backwards compatibility."""
         return {
             "top_left": self.top_left.to_dict(),
@@ -237,7 +240,7 @@ class Corners:
 
     def to_dynamodb(
         self, precision: int = 20, scale: int = 22
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """Serialize all corners to DynamoDB format."""
         return {
             "top_left": self.top_left.to_dynamodb(precision, scale),
@@ -249,10 +252,10 @@ class Corners:
     @classmethod
     def from_dicts(
         cls,
-        top_left: Dict[str, Any],
-        top_right: Dict[str, Any],
-        bottom_left: Dict[str, Any],
-        bottom_right: Dict[str, Any],
+        top_left: dict[str, Any],
+        top_right: dict[str, Any],
+        bottom_left: dict[str, Any],
+        bottom_right: dict[str, Any],
     ) -> "Corners":
         """
         Create from four corner dictionaries.
@@ -268,7 +271,7 @@ class Corners:
         )
 
     @classmethod
-    def from_dynamodb(cls, item: Dict[str, Any]) -> "Corners":
+    def from_dynamodb(cls, item: dict[str, Any]) -> "Corners":
         """Create from DynamoDB item containing corner fields."""
         return cls(
             top_left=Point.from_dynamodb(item["top_left"]),
@@ -344,16 +347,12 @@ class Angle:
     @classmethod
     def from_degrees(cls, degrees: float) -> "Angle":
         """Create from degrees, computing radians automatically."""
-        import math
-
-        return cls(degrees=degrees, radians=math.radians(degrees))
+        return cls(degrees=degrees, radians=math_radians(degrees))
 
     @classmethod
     def from_radians(cls, radians: float) -> "Angle":
         """Create from radians, computing degrees automatically."""
-        import math
-
-        return cls(degrees=math.degrees(radians), radians=radians)
+        return cls(degrees=math_degrees(radians), radians=radians)
 
     def normalized(self) -> "Angle":
         """
@@ -362,8 +361,6 @@ class Angle:
         Returns:
             New Angle instance with normalized values
         """
-        import math
-
         deg = self.degrees
         while deg > 180:
             deg -= 360
@@ -371,10 +368,10 @@ class Angle:
             deg += 360
 
         rad = self.radians
-        while rad > math.pi:
-            rad -= 2 * math.pi
-        while rad < -math.pi:
-            rad += 2 * math.pi
+        while rad > pi:
+            rad -= 2 * pi
+        while rad < -pi:
+            rad += 2 * pi
 
         return Angle(degrees=deg, radians=rad)
 
@@ -410,12 +407,12 @@ class S3Location:
         """Return S3 URI (s3://bucket/key)."""
         return f"s3://{self.bucket}/{self.key}"
 
-    def to_dynamodb(self) -> Dict[str, Any]:
+    def to_dynamodb(self) -> dict[str, Any]:
         """
         Serialize to DynamoDB map format.
 
         Returns:
-            DynamoDB-formatted map: {"M": {"bucket": {"S": ...}, "key": {"S": ...}}}
+            DynamoDB-formatted map with bucket and key string values.
         """
         return {
             "M": {
@@ -425,12 +422,12 @@ class S3Location:
         }
 
     @classmethod
-    def from_dynamodb(cls, item: Dict[str, Any]) -> "S3Location":
+    def from_dynamodb(cls, item: dict[str, Any]) -> "S3Location":
         """
         Create from DynamoDB map format.
 
         Args:
-            item: DynamoDB map: {"M": {"bucket": {"S": ...}, "key": {"S": ...}}}
+            item: DynamoDB map with bucket and key string values.
         """
         m = item["M"]
         return cls(bucket=m["bucket"]["S"], key=m["key"]["S"])
@@ -441,7 +438,7 @@ class CDNVariants:
     """
     Consolidated CDN image variants for different sizes and formats.
 
-    Replaces 12 individual Optional[str] fields with a single object
+    Replaces 12 individual str | None fields with a single object
     that manages all CDN key variants. Provides backward-compatible
     properties for accessing individual fields.
 
@@ -472,21 +469,21 @@ class CDNVariants:
     """
 
     # Full size variants
-    original: Optional[str] = None
-    webp: Optional[str] = None
-    avif: Optional[str] = None
+    original: str | None = None
+    webp: str | None = None
+    avif: str | None = None
     # Thumbnail variants (~150px)
-    thumbnail: Optional[str] = None
-    thumbnail_webp: Optional[str] = None
-    thumbnail_avif: Optional[str] = None
+    thumbnail: str | None = None
+    thumbnail_webp: str | None = None
+    thumbnail_avif: str | None = None
     # Small variants (~300px)
-    small: Optional[str] = None
-    small_webp: Optional[str] = None
-    small_avif: Optional[str] = None
+    small: str | None = None
+    small_webp: str | None = None
+    small_avif: str | None = None
     # Medium variants (~600px)
-    medium: Optional[str] = None
-    medium_webp: Optional[str] = None
-    medium_avif: Optional[str] = None
+    medium: str | None = None
+    medium_webp: str | None = None
+    medium_avif: str | None = None
 
     def __post_init__(self) -> None:
         """Validate all fields are strings or None."""
@@ -511,7 +508,7 @@ class CDNVariants:
                     f"got {type(value).__name__}"
                 )
 
-    def to_dynamodb(self) -> Dict[str, Any]:
+    def to_dynamodb(self) -> dict[str, Any]:
         """
         Serialize present CDN fields to DynamoDB format.
 
@@ -536,7 +533,7 @@ class CDNVariants:
             "cdn_medium_webp_s3_key": self.medium_webp,
             "cdn_medium_avif_s3_key": self.medium_avif,
         }
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
         for field_name, value in field_mapping.items():
             # Use explicit is not None check to allow empty strings
             if value is not None:
@@ -544,7 +541,7 @@ class CDNVariants:
         return result
 
     @classmethod
-    def from_dynamodb(cls, item: Dict[str, Any]) -> "CDNVariants":
+    def from_dynamodb(cls, item: dict[str, Any]) -> "CDNVariants":
         """
         Extract CDN fields from DynamoDB item.
 
@@ -555,7 +552,7 @@ class CDNVariants:
             CDNVariants instance with all available fields
         """
 
-        def get_optional(key: str) -> Optional[str]:
+        def get_optional(key: str) -> str | None:
             if key in item and "S" in item[key]:
                 return item[key]["S"]
             return None
@@ -594,7 +591,7 @@ class CDNVariants:
             ]
         )
 
-    def get_best_variant(self, size: str = "original") -> Optional[str]:
+    def get_best_variant(self, size: str = "original") -> str | None:
         """
         Get the best available variant for a given size.
 
@@ -608,11 +605,11 @@ class CDNVariants:
         """
         if size == "original":
             return self.avif or self.webp or self.original
-        elif size == "thumbnail":
+        if size == "thumbnail":
             return self.thumbnail_avif or self.thumbnail_webp or self.thumbnail
-        elif size == "small":
+        if size == "small":
             return self.small_avif or self.small_webp or self.small
-        elif size == "medium":
+        if size == "medium":
             return self.medium_avif or self.medium_webp or self.medium
         return None
 

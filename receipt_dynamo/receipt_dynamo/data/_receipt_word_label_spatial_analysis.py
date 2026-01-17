@@ -1,9 +1,11 @@
-"""Receipt Word Label Spatial Analysis data access using base operations framework."""
+"""Receipt Word Label Spatial Analysis data access operations."""
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
+    PutRequestTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -14,20 +16,13 @@ from receipt_dynamo.entities.receipt_word_label_spatial_analysis import (
     ReceiptWordLabelSpatialAnalysis,
     item_to_receipt_word_label_spatial_analysis,
 )
-from receipt_dynamo.entities.util import assert_valid_uuid
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        PutRequestTypeDef,
-        WriteRequestTypeDef,
-    )
 
 
 class _ReceiptWordLabelSpatialAnalysis(
     FlattenedStandardMixin,
 ):
     """
-    A class used to access receipt word label spatial analysis entities in DynamoDB.
+    Access receipt word label spatial analysis entities in DynamoDB.
 
     This class provides methods to store and retrieve spatial relationship data
     between valid receipt word labels, supporting label validation workflows
@@ -54,16 +49,18 @@ class _ReceiptWordLabelSpatialAnalysis(
             ReceiptWordLabelSpatialAnalysis,
             "spatial_analysis",
         )
-        self._add_entity(spatial_analysis)
+        self._add_entity(
+            spatial_analysis, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_receipt_word_label_spatial_analyses")
     def add_receipt_word_label_spatial_analyses(
-        self, spatial_analyses: List[ReceiptWordLabelSpatialAnalysis]
+        self, spatial_analyses: list[ReceiptWordLabelSpatialAnalysis]
     ) -> None:
         """Adds multiple spatial analyses to the database
 
         Args:
-            spatial_analyses (List[ReceiptWordLabelSpatialAnalysis]): The
+            spatial_analyses (list[ReceiptWordLabelSpatialAnalysis]): The
                 spatial analyses to add to the database
 
         Raises:
@@ -73,11 +70,6 @@ class _ReceiptWordLabelSpatialAnalysis(
             spatial_analyses,
             ReceiptWordLabelSpatialAnalysis,
             "spatial_analyses",
-        )
-
-        from receipt_dynamo.data.base_operations import (
-            PutRequestTypeDef,
-            WriteRequestTypeDef,
         )
 
         request_items = [
@@ -107,16 +99,18 @@ class _ReceiptWordLabelSpatialAnalysis(
             ReceiptWordLabelSpatialAnalysis,
             "spatial_analysis",
         )
-        self._update_entity(spatial_analysis)
+        self._update_entity(
+            spatial_analysis, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("update_receipt_word_label_spatial_analyses")
     def update_receipt_word_label_spatial_analyses(
-        self, spatial_analyses: List[ReceiptWordLabelSpatialAnalysis]
+        self, spatial_analyses: list[ReceiptWordLabelSpatialAnalysis]
     ) -> None:
         """Updates multiple spatial analyses in the database
 
         Args:
-            spatial_analyses (List[ReceiptWordLabelSpatialAnalysis]): The
+            spatial_analyses (list[ReceiptWordLabelSpatialAnalysis]): The
                 spatial analyses to update
 
         Raises:
@@ -146,16 +140,18 @@ class _ReceiptWordLabelSpatialAnalysis(
             ReceiptWordLabelSpatialAnalysis,
             "spatial_analysis",
         )
-        self._delete_entity(spatial_analysis)
+        self._delete_entity(
+            spatial_analysis, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_word_label_spatial_analyses")
     def delete_receipt_word_label_spatial_analyses(
-        self, spatial_analyses: List[ReceiptWordLabelSpatialAnalysis]
+        self, spatial_analyses: list[ReceiptWordLabelSpatialAnalysis]
     ) -> None:
         """Deletes multiple spatial analyses from the database
 
         Args:
-            spatial_analyses (List[ReceiptWordLabelSpatialAnalysis]): The
+            spatial_analyses (list[ReceiptWordLabelSpatialAnalysis]): The
                 spatial analyses to delete
 
         Raises:
@@ -207,41 +203,10 @@ class _ReceiptWordLabelSpatialAnalysis(
             EntityNotFoundError: When the spatial analysis does not exist
         """
         # Validate inputs
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
-        if line_id is None:
-            raise EntityValidationError("line_id cannot be None")
-        if word_id is None:
-            raise EntityValidationError("word_id cannot be None")
-
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
-            )
-        if not isinstance(line_id, int):
-            raise EntityValidationError(
-                f"line_id must be an integer, got {type(line_id).__name__}"
-            )
-        if not isinstance(word_id, int):
-            raise EntityValidationError(
-                f"word_id must be an integer, got {type(word_id).__name__}"
-            )
-
-        # Validate positive integers
-        if receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be positive")
-        if line_id <= 0:
-            raise EntityValidationError("line_id must be positive")
-        if word_id <= 0:
-            raise EntityValidationError("word_id must be positive")
-
-        assert_valid_uuid(image_id)
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
+        self._validate_positive_int_id(word_id, "word_id")
 
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
@@ -267,45 +232,33 @@ class _ReceiptWordLabelSpatialAnalysis(
         self,
         image_id: str,
         receipt_id: int,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[
-        List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]
-    ]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None]:
         """Lists all spatial analyses for a specific receipt using GSI2
 
         Args:
             image_id (str): The image ID
             receipt_id (int): The receipt ID
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptWordLabelSpatialAnalysis], dict | None]:
                 The spatial analyses for the receipt and last evaluated key
 
         Raises:
             EntityValidationError: When validation fails
         """
         # Validate inputs
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
-            )
-        if receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be positive")
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
 
         if limit is not None:
             if not isinstance(limit, int):
                 raise EntityValidationError("limit must be an integer")
             if limit <= 0:
                 raise EntityValidationError("limit must be greater than 0")
-
-        assert_valid_uuid(image_id)
 
         return self._query_entities(
             index_name="GSI2",
@@ -325,11 +278,9 @@ class _ReceiptWordLabelSpatialAnalysis(
     def get_spatial_analyses_by_label(
         self,
         label: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[
-        List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]
-    ]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None]:
         """Retrieves spatial analyses by label type using GSI1
 
         This method enables cross-receipt analysis of spatial patterns for
@@ -337,11 +288,11 @@ class _ReceiptWordLabelSpatialAnalysis(
 
         Args:
             label (str): The label type to search for
-            limit (Optional[int]): Maximum number of analyses to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of analyses to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptWordLabelSpatialAnalysis], dict | None]:
                 The spatial analyses and last evaluated key
 
         Raises:
@@ -375,37 +326,30 @@ class _ReceiptWordLabelSpatialAnalysis(
     def list_spatial_analyses_for_image(
         self,
         image_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[
-        List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]
-    ]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None]:
         """Lists all spatial analyses for a given image
 
         Args:
             image_id (str): The image ID
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptWordLabelSpatialAnalysis], dict | None]:
                 The spatial analyses for the image and last evaluated key
 
         Raises:
             EntityValidationError: When validation fails
         """
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
+        self._validate_image_id(image_id)
 
         if limit is not None:
             if not isinstance(limit, int):
                 raise EntityValidationError("limit must be an integer")
             if limit <= 0:
                 raise EntityValidationError("limit must be greater than 0")
-
-        assert_valid_uuid(image_id)
 
         # Since we need to find SK patterns ending with SPATIAL_ANALYSIS,
         # we'll scan the partition but this should be limited to one image
@@ -429,19 +373,17 @@ class _ReceiptWordLabelSpatialAnalysis(
     @handle_dynamodb_errors("list_receipt_word_label_spatial_analyses")
     def list_receipt_word_label_spatial_analyses(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[
-        List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]
-    ]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None]:
         """Lists all spatial analyses with pagination
 
         Args:
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptWordLabelSpatialAnalysis], dict | None]:
                 The spatial analyses and last evaluated key
 
         Raises:

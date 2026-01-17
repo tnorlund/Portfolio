@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.dynamodb_utils import (
     dict_to_dynamodb_map,
@@ -27,7 +27,7 @@ class JobResource:
         gpu_count (int): Number of GPUs allocated to the job.
         allocated_at (datetime): The timestamp when the resources were
             allocated.
-        released_at (Optional[datetime]): The timestamp when the resources were
+        released_at (datetime | None): The timestamp when the resources were
             released, if applicable.
         status (str): The current status of the resource allocation
             (allocated, released, failed).
@@ -36,6 +36,19 @@ class JobResource:
             resource allocation.
     """
 
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "TYPE",
+        "job_id",
+        "resource_id",
+        "instance_id",
+        "instance_type",
+        "resource_type",
+        "allocated_at",
+        "status",
+    }
+
     job_id: str
     resource_id: str
     instance_id: str
@@ -43,9 +56,9 @@ class JobResource:
     resource_type: str
     allocated_at: str
     status: str
-    gpu_count: Optional[int] = None
-    released_at: Optional[str] = None
-    resource_config: Optional[Dict[str, Any]] = None
+    gpu_count: int | None = None
+    released_at: str | None = None
+    resource_config: dict[str, Any] | None = None
 
     def __post_init__(self):
         """Validates fields after dataclass initialization.
@@ -117,7 +130,7 @@ class JobResource:
             self.resource_config = {}
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the job resource.
 
         Returns:
@@ -128,7 +141,7 @@ class JobResource:
             "SK": {"S": f"RESOURCE#{self.resource_id}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the job resource.
 
         Returns:
@@ -139,7 +152,7 @@ class JobResource:
             "GSI1SK": {"S": f"RESOURCE#{self.resource_id}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the JobResource object to a DynamoDB item.
 
         Returns:
@@ -193,11 +206,11 @@ class JobResource:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the JobResource object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the
+            Generator[tuple[str, Any], None, None]: An iterator over the
                 JobResource object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
@@ -231,8 +244,67 @@ class JobResource:
             )
         )
 
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "JobResource":
+        """Converts a DynamoDB item to a JobResource object.
 
-def item_to_job_resource(item: Dict[str, Any]) -> JobResource:
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            JobResource: The JobResource object represented by the DynamoDB
+                item.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item.keys()):
+            missing_keys = cls.REQUIRED_KEYS - item.keys()
+            additional_keys = item.keys() - cls.REQUIRED_KEYS
+            raise ValueError(
+                f"Invalid item format\nmissing keys: {missing_keys}\n"
+                f"additional keys: {additional_keys}"
+            )
+
+        try:
+            job_id = item["job_id"]["S"]
+            resource_id = item["resource_id"]["S"]
+            instance_id = item["instance_id"]["S"]
+            instance_type = item["instance_type"]["S"]
+            resource_type = item["resource_type"]["S"]
+            allocated_at = item["allocated_at"]["S"]
+            status = item["status"]["S"]
+
+            released_at = item.get("released_at", {}).get("S", None)
+            gpu_count = (
+                int(item["gpu_count"]["N"]) if "gpu_count" in item else None
+            )
+
+            resource_config = None
+            if "resource_config" in item:
+                resource_config = parse_dynamodb_map(
+                    item["resource_config"]["M"]
+                )
+
+            return cls(
+                job_id=job_id,
+                resource_id=resource_id,
+                instance_id=instance_id,
+                instance_type=instance_type,
+                resource_type=resource_type,
+                allocated_at=allocated_at,
+                status=status,
+                gpu_count=gpu_count,
+                released_at=released_at,
+                resource_config=resource_config,
+            )
+        except (KeyError, ValueError) as e:
+            raise ValueError(
+                f"Error converting item to JobResource: {e}"
+            ) from e
+
+
+def item_to_job_resource(item: dict[str, Any]) -> JobResource:
     """Converts a DynamoDB item to a JobResource object.
 
     Args:
@@ -244,55 +316,4 @@ def item_to_job_resource(item: Dict[str, Any]) -> JobResource:
     Raises:
         ValueError: When the item format is invalid.
     """
-    required_keys = {
-        "PK",
-        "SK",
-        "TYPE",
-        "job_id",
-        "resource_id",
-        "instance_id",
-        "instance_type",
-        "resource_type",
-        "allocated_at",
-        "status",
-    }
-    if not required_keys.issubset(item.keys()):
-        missing_keys = required_keys - item.keys()
-        additional_keys = item.keys() - required_keys
-        raise ValueError(
-            f"Invalid item format\nmissing keys: {missing_keys}\n"
-            f"additional keys: {additional_keys}"
-        )
-
-    try:
-        job_id = item["job_id"]["S"]
-        resource_id = item["resource_id"]["S"]
-        instance_id = item["instance_id"]["S"]
-        instance_type = item["instance_type"]["S"]
-        resource_type = item["resource_type"]["S"]
-        allocated_at = item["allocated_at"]["S"]
-        status = item["status"]["S"]
-
-        released_at = item.get("released_at", {}).get("S", None)
-        gpu_count = (
-            int(item["gpu_count"]["N"]) if "gpu_count" in item else None
-        )
-
-        resource_config = None
-        if "resource_config" in item:
-            resource_config = parse_dynamodb_map(item["resource_config"]["M"])
-
-        return JobResource(
-            job_id=job_id,
-            resource_id=resource_id,
-            instance_id=instance_id,
-            instance_type=instance_type,
-            resource_type=resource_type,
-            allocated_at=allocated_at,
-            status=status,
-            gpu_count=gpu_count,
-            released_at=released_at,
-            resource_config=resource_config,
-        )
-    except (KeyError, ValueError) as e:
-        raise ValueError(f"Error converting item to JobResource: {e}") from e
+    return JobResource.from_item(item)

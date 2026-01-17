@@ -1,22 +1,18 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
-    DeleteRequestTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
-    PutRequestTypeDef,
-    WriteRequestTypeDef,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.data.base_operations.shared_utils import (
+    DEFAULT_GEOMETRY_FIELDS,
 )
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities import item_to_line
 from receipt_dynamo.entities.line import Line
 
 
-class _Line(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _Line(FlattenedStandardMixin):
     """
     A class used to represent a Line in the database.
 
@@ -36,8 +32,8 @@ class _Line(
         Deletes multiple lines from the database.
     get_line(image_id: str, line_id: int) -> Line
         Gets a line from the database.
-    list_lines(limit: Optional[int] = None, last_evaluated_key: Optional[Dict]
-        = None) -> Tuple[list[Line], Optional[Dict]]
+    list_lines(limit: int | None = None, last_evaluated_key: dict | None
+        = None) -> tuple[list[Line], dict | None]
         Lists all lines from the database.
     list_lines_from_image(image_id: str) -> list[Line]
         Lists all lines from a specific image.
@@ -54,10 +50,10 @@ class _Line(
             ValueError: When a line with the same ID already exists
         """
         self._validate_entity(line, Line, "line")
-        self._add_entity(line)
+        self._add_entity(line, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_lines")
-    def add_lines(self, lines: List[Line]):
+    def add_lines(self, lines: list[Line]):
         """Adds a list of lines to the database
 
         Args:
@@ -80,10 +76,10 @@ class _Line(
             ValueError: When a line with the same ID does not exist
         """
         self._validate_entity(line, Line, "line")
-        self._update_entity(line)
+        self._update_entity(line, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_lines")
-    def update_lines(self, lines: List[Line]):
+    def update_lines(self, lines: list[Line]):
         """Updates a list of lines in the database
 
         Args:
@@ -92,6 +88,7 @@ class _Line(
         Raises:
             ValueError: When validation fails or lines don't exist
         """
+        self._validate_entity_list(lines, Line, "lines")
         self._update_entities(lines, Line, "lines")
 
     @handle_dynamodb_errors("delete_line")
@@ -110,22 +107,14 @@ class _Line(
             image_id=image_id,
             line_id=line_id,
             text="",  # Empty text is allowed
-            # Required geometry fields
-            bounding_box={"x": 0, "y": 0, "width": 0, "height": 0},
-            top_right={"x": 0, "y": 0},
-            top_left={"x": 0, "y": 0},
-            bottom_right={"x": 0, "y": 0},
-            bottom_left={"x": 0, "y": 0},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
+            **DEFAULT_GEOMETRY_FIELDS,
         )
         self._delete_entity(
             temp_line, condition_expression="attribute_exists(PK)"
         )
 
     @handle_dynamodb_errors("delete_lines")
-    def delete_lines(self, lines: List[Line]):
+    def delete_lines(self, lines: list[Line]):
         """Deletes a list of lines from the database
 
         Args:
@@ -179,9 +168,9 @@ class _Line(
     @handle_dynamodb_errors("list_lines")
     def list_lines(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[Line], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[Line], dict[str, Any] | None]:
         """Lists all lines in the database
 
         Args:
@@ -199,7 +188,7 @@ class _Line(
         )
 
     @handle_dynamodb_errors("list_lines_from_image")
-    def list_lines_from_image(self, image_id: str) -> List[Line]:
+    def list_lines_from_image(self, image_id: str) -> list[Line]:
         """Lists all lines from an image
 
         Args:

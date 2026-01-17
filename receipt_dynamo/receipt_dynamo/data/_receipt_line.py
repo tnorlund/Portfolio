@@ -1,9 +1,12 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.data.base_operations.shared_utils import (
+    validate_pagination_params,
 )
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
@@ -12,15 +15,6 @@ from receipt_dynamo.data.shared_exceptions import (
 from receipt_dynamo.entities import item_to_receipt_line
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.util import assert_valid_uuid
-
-if TYPE_CHECKING:
-    from mypy_boto3_dynamodb import DynamoDBClient
-
-    from receipt_dynamo.data.base_operations import (
-        BatchGetItemInputTypeDef,
-    )
-
-CHUNK_SIZE = 25
 
 
 class _ReceiptLine(FlattenedStandardMixin):
@@ -59,7 +53,9 @@ class _ReceiptLine(FlattenedStandardMixin):
             raise EntityValidationError(
                 "receipt_line must be an instance of ReceiptLine"
             )
-        self._add_entity(receipt_line)
+        self._add_entity(
+            receipt_line, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_receipt_lines")
     def add_receipt_lines(self, receipt_lines: list[ReceiptLine]) -> None:
@@ -85,7 +81,9 @@ class _ReceiptLine(FlattenedStandardMixin):
             raise EntityValidationError(
                 "receipt_line must be an instance of ReceiptLine"
             )
-        self._update_entity(receipt_line)
+        self._update_entity(
+            receipt_line, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("update_receipt_lines")
     def update_receipt_lines(self, receipt_lines: list[ReceiptLine]) -> None:
@@ -108,19 +106,9 @@ class _ReceiptLine(FlattenedStandardMixin):
     ) -> None:
         """Deletes a single ReceiptLine by IDs."""
         # Validate parameters
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
-        if receipt_id is None or not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-        if line_id is None or not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer")
-        if line_id <= 0:
-            raise EntityValidationError("line_id must be a positive integer")
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
         # Direct key-based deletion is more efficient than creating
         # dummy objects
         key = {
@@ -154,19 +142,9 @@ class _ReceiptLine(FlattenedStandardMixin):
     ) -> ReceiptLine:
         """Retrieves a single ReceiptLine by IDs."""
         # Validate parameters
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
-        if receipt_id is None or not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-        if line_id is None or not isinstance(line_id, int):
-            raise EntityValidationError("line_id must be an integer")
-        if line_id <= 0:
-            raise EntityValidationError("line_id must be a positive integer")
+        self._validate_image_id(image_id)
+        self._validate_positive_int_id(receipt_id, "receipt_id")
+        self._validate_positive_int_id(line_id, "line_id")
         result = self._get_entity(
             primary_key=f"IMAGE#{image_id}",
             sort_key=f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}",
@@ -238,27 +216,7 @@ class _ReceiptLine(FlattenedStandardMixin):
         for key in keys:
             self._validate_receipt_line_key(key)
 
-        # Batch get items in chunks of 25 (DynamoDB limit)
-        results: List[Dict[str, Any]] = []
-        for i in range(0, len(keys), CHUNK_SIZE):
-            chunk = keys[i : i + CHUNK_SIZE]
-            request: BatchGetItemInputTypeDef = {
-                "RequestItems": {self.table_name: {"Keys": chunk}}
-            }
-
-            # Perform batch get with retry for unprocessed keys
-            response = self._client.batch_get_item(**request)
-            results.extend(response["Responses"].get(self.table_name, []))
-
-            # Handle unprocessed keys
-            unprocessed = response.get("UnprocessedKeys", {})
-            while unprocessed.get(self.table_name, {}).get("Keys"):
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
-                results.extend(response["Responses"].get(self.table_name, []))
-                unprocessed = response.get("UnprocessedKeys", {})
-
+        results = self._batch_get_items(keys)
         return [item_to_receipt_line(item) for item in results]
 
     def _validate_receipt_line_key(self, key: dict) -> None:
@@ -290,23 +248,11 @@ class _ReceiptLine(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipt_lines")
     def list_receipt_lines(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[list[ReceiptLine], Optional[Dict[str, Any]]]:
+    ) -> tuple[list[ReceiptLine], dict[str, Any] | None]:
         """Returns all ReceiptLines from the table."""
-        if limit is not None:
-            if not isinstance(limit, int):
-                raise EntityValidationError(
-                    "limit must be an integer or None."
-                )
-            if limit <= 0:
-                raise EntityValidationError("limit must be greater than 0.")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
-            raise EntityValidationError(
-                "last_evaluated_key must be a dictionary or None."
-            )
+        validate_pagination_params(limit, last_evaluated_key)
         return self._query_by_type(
             entity_type="RECEIPT_LINE",
             converter_func=item_to_receipt_line,
@@ -357,28 +303,6 @@ class _ReceiptLine(FlattenedStandardMixin):
         self, image_id: str, receipt_id: int
     ) -> list[ReceiptLine]:
         """Returns all lines under a specific receipt/image."""
-        # Validate parameters
-        if image_id is None:
-            raise EntityValidationError("image_id cannot be None")
-        assert_valid_uuid(image_id)
-        if receipt_id is None or not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer")
-        if receipt_id <= 0:
-            raise EntityValidationError(
-                "receipt_id must be a positive integer"
-            )
-
-        # Use GSI3 for efficient querying by image_id + receipt_id
-        # This eliminates the need for client-side filtering
-        results, _ = self._query_entities(
-            index_name="GSI3",
-            key_condition_expression="GSI3PK = :pk AND GSI3SK = :sk",
-            expression_attribute_names=None,
-            expression_attribute_values={
-                ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"},
-                ":sk": {"S": "LINE"},
-            },
-            converter_func=item_to_receipt_line,
+        return self._query_entities_by_receipt_gsi3(
+            image_id, receipt_id, "LINE", item_to_receipt_line
         )
-
-        return results

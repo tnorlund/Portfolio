@@ -1,22 +1,18 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
-
-from botocore.exceptions import ClientError
+from typing import TYPE_CHECKING, Any
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.base_operations import (
-    CommonValidationMixin,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
-    TransactionalOperationsMixin,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.base_operations.shared_utils import (
+    validate_last_evaluated_key,
+)
 from receipt_dynamo.data.shared_exceptions import (
-    BatchOperationError,
     EntityNotFoundError,
     EntityValidationError,
-    OperationError,
 )
 from receipt_dynamo.entities.completion_batch_result import (
     CompletionBatchResult,
@@ -24,36 +20,10 @@ from receipt_dynamo.entities.completion_batch_result import (
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
+    pass
 
 
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
-    """Validate that a LastEvaluatedKey has the required DynamoDB format.
-
-    Args:
-        lek: The LastEvaluatedKey dictionary to validate.
-
-    Raises:
-        ValueError: If the key format is invalid or missing required fields.
-    """
-    required_keys = {"PK", "SK"}
-    if not required_keys.issubset(lek.keys()):
-        raise EntityValidationError(
-            f"LastEvaluatedKey must contain keys: {required_keys}"
-        )
-    for key in required_keys:
-        if not isinstance(lek[key], dict) or "S" not in lek[key]:
-            raise EntityValidationError(
-                f"LastEvaluatedKey[{key}] must be a dict containing a key 'S'"
-            )
-
-
-class _CompletionBatchResult(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _CompletionBatchResult(FlattenedStandardMixin):
     """
     .. deprecated::
         This class is deprecated and not used in production. Consider removing
@@ -80,7 +50,7 @@ class _CompletionBatchResult(
 
     @handle_dynamodb_errors("add_completion_batch_results")
     def add_completion_batch_results(
-        self, results: List[CompletionBatchResult]
+        self, results: list[CompletionBatchResult]
     ) -> None:
         """Add multiple completion batch results to DynamoDB in batches.
 
@@ -125,6 +95,7 @@ class _CompletionBatchResult(
         receipt_id: int,
         line_id: int,
         word_id: int,
+        *,
         label: str,
     ) -> CompletionBatchResult:
         result = self._get_entity(
@@ -149,9 +120,9 @@ class _CompletionBatchResult(
     @handle_dynamodb_errors("list_completion_batch_results")
     def list_completion_batch_results(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[CompletionBatchResult], dict | None]:
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise EntityValidationError("limit must be a positive integer.")
         return self._query_by_type(
@@ -165,9 +136,9 @@ class _CompletionBatchResult(
     def get_completion_batch_results_by_status(
         self,
         status: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[CompletionBatchResult], dict | None]:
         if status not in [s.value for s in ValidationStatus]:
             raise EntityValidationError("Invalid status.")
         if last_evaluated_key:
@@ -187,9 +158,9 @@ class _CompletionBatchResult(
     def get_completion_batch_results_by_label_target(
         self,
         label_target: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[CompletionBatchResult], dict | None]:
         if not isinstance(label_target, str):
             raise EntityValidationError("label_target must be a string.")
         if last_evaluated_key:
@@ -211,9 +182,9 @@ class _CompletionBatchResult(
     def get_completion_batch_results_by_receipt(
         self,
         receipt_id: int,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[CompletionBatchResult], dict | None]:
         if not isinstance(receipt_id, int) or receipt_id <= 0:
             raise EntityValidationError(
                 "receipt_id must be a positive integer"

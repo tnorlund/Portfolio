@@ -1,25 +1,19 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.base_operations.shared_utils import (
+    DEFAULT_GEOMETRY_FIELDS,
+    validate_batch_get_keys,
+)
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
-    EntityValidationError,
 )
 from receipt_dynamo.entities import item_to_letter
 from receipt_dynamo.entities.letter import Letter
 from receipt_dynamo.entities.util import assert_valid_uuid
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        BatchGetItemInputTypeDef,
-    )
-
-# DynamoDB batch_write_item can only handle up to 25 items per call
-# So let's chunk the items in groups of 25
-CHUNK_SIZE = 25
 
 
 class _Letter(FlattenedStandardMixin):
@@ -44,9 +38,10 @@ class _Letter(FlattenedStandardMixin):
         -> Letter
         Gets a letter from the database.
     get_letters(keys: list[dict]) -> list[Letter]
-        Gets multiple letters from the database.
-    list_letters(limit: Optional[int] = None, last_evaluated_key:
-        Optional[Dict] = None) -> Tuple[list[Letter], Optional[Dict[str, Any]]]
+        Gets multiple letters from the database. Missing keys are silently
+        omitted (DynamoDB BatchGetItem behavior).
+    list_letters(limit: int | None = None, last_evaluated_key:
+        dict | None = None) -> tuple[list[Letter], dict[str, Any] | None]
         Lists all letters from the database.
     list_letters_from_word(image_id: str, line_id: int, word_id: int)
         -> list[Letter]
@@ -64,10 +59,12 @@ class _Letter(FlattenedStandardMixin):
             ValueError: When a letter with the same ID already exists
         """
         self._validate_entity(letter, Letter, "letter")
-        self._add_entity(letter)
+        self._add_entity(
+            letter, condition_expression="attribute_not_exists(PK)"
+        )
 
     @handle_dynamodb_errors("add_letters")
-    def add_letters(self, letters: List[Letter]):
+    def add_letters(self, letters: list[Letter]):
         """Adds a list of letters to the database
 
         Args:
@@ -77,7 +74,7 @@ class _Letter(FlattenedStandardMixin):
             ValueError: When validation fails or letters cannot be added
         """
         self._validate_entity_list(letters, Letter, "letters")
-        self._add_entities_batch(letters, Letter, "letters")
+        self._add_entities(letters, Letter, "letters")
 
     @handle_dynamodb_errors("update_letter")
     def update_letter(self, letter: Letter):
@@ -90,10 +87,12 @@ class _Letter(FlattenedStandardMixin):
             ValueError: When the letter does not exist
         """
         self._validate_entity(letter, Letter, "letter")
-        self._update_entity(letter)
+        self._update_entity(
+            letter, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("update_letters")
-    def update_letters(self, letters: List[Letter]):
+    def update_letters(self, letters: list[Letter]):
         """
         Updates multiple Letter items in the database.
 
@@ -134,20 +133,14 @@ class _Letter(FlattenedStandardMixin):
             word_id=word_id,
             letter_id=letter_id,
             text="X",  # Single character required
-            # Required geometry fields
-            bounding_box={"x": 0, "y": 0, "width": 0, "height": 0},
-            top_right={"x": 0, "y": 0},
-            top_left={"x": 0, "y": 0},
-            bottom_right={"x": 0, "y": 0},
-            bottom_left={"x": 0, "y": 0},
-            angle_degrees=0.0,
-            angle_radians=0.0,
-            confidence=0.5,
+            **DEFAULT_GEOMETRY_FIELDS,
         )
-        self._delete_entity(temp_letter)
+        self._delete_entity(
+            temp_letter, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_letters")
-    def delete_letters(self, letters: List[Letter]):
+    def delete_letters(self, letters: list[Letter]):
         """Deletes a list of letters from the database
 
         Args:
@@ -208,56 +201,26 @@ class _Letter(FlattenedStandardMixin):
         return result
 
     @handle_dynamodb_errors("get_letters")
-    def get_letters(self, keys: List[Dict]) -> List[Letter]:
-        """Get a list of letters using a list of keys"""
-        # Check the validity of the keys
-        for key in keys:
-            if not {"PK", "SK"}.issubset(key.keys()):
-                raise EntityValidationError("Keys must contain 'PK' and 'SK'")
-            if not key["PK"]["S"].startswith("IMAGE#"):
-                raise EntityValidationError("PK must start with 'IMAGE#'")
-            if not key["SK"]["S"].startswith("LINE#"):
-                raise EntityValidationError("SK must start with 'LINE#'")
-            if not key["SK"]["S"].split("#")[-2] == "LETTER":
-                raise EntityValidationError("SK must contain 'LETTER'")
-        results = []
+    def get_letters(self, keys: list[dict]) -> list[Letter]:
+        """Get a list of letters using a list of keys.
 
-        # Split keys into chunks of up to 25
-        for i in range(0, len(keys), CHUNK_SIZE):
-            chunk = keys[i : i + CHUNK_SIZE]
+        Args:
+            keys: List of DynamoDB key dicts with PK and SK
 
-            # Prepare parameters for BatchGetItem
-            request: BatchGetItemInputTypeDef = {
-                "RequestItems": {self.table_name: {"Keys": chunk}}
-            }
-
-            # Perform BatchGet
-            response = self._client.batch_get_item(**request)
-
-            # Combine all found items
-            batch_items = response["Responses"].get(self.table_name, [])
-            results.extend(batch_items)
-
-            # Retry unprocessed keys if any
-            unprocessed = response.get("UnprocessedKeys", {})
-            while unprocessed.get(self.table_name, {}).get(
-                "Keys"
-            ):  # type: ignore[call-overload]
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
-                batch_items = response["Responses"].get(self.table_name, [])
-                results.extend(batch_items)
-                unprocessed = response.get("UnprocessedKeys", {})
-
-        return [item_to_letter(result) for result in results]
+        Returns:
+            list[Letter]: Letters found in the database. Missing keys are
+                silently omitted (DynamoDB BatchGetItem behavior).
+        """
+        validate_batch_get_keys(keys, "LETTER")
+        results = self._batch_get_items(keys)
+        return [item_to_letter(item) for item in results]
 
     @handle_dynamodb_errors("list_letters")
     def list_letters(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[Letter], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[Letter], dict[str, Any] | None]:
         """Lists all letters in the database
 
         Args:
@@ -277,7 +240,7 @@ class _Letter(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_letters_from_word")
     def list_letters_from_word(
         self, image_id: str, line_id: int, word_id: int
-    ) -> List[Letter]:
+    ) -> list[Letter]:
         """List all letters from a specific word.
 
         Args:

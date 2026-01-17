@@ -1,12 +1,23 @@
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 
 @dataclass(eq=True, unsafe_hash=False)
 class LabelCountCache:
     """Represents cached label validation counts stored in DynamoDB."""
+
+    REQUIRED_KEYS = {
+        "PK",
+        "SK",
+        "valid_count",
+        "invalid_count",
+        "pending_count",
+        "needs_review_count",
+        "none_count",
+        "last_updated",
+    }
 
     label: str
     valid_count: int
@@ -15,7 +26,7 @@ class LabelCountCache:
     needs_review_count: int
     none_count: int
     last_updated: str
-    time_to_live: Optional[int] = None
+    time_to_live: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.label, str) or not self.label:
@@ -47,10 +58,10 @@ class LabelCountCache:
                 raise ValueError("time_to_live must be in the future")
 
     @property
-    def key(self) -> Dict[str, Dict[str, str]]:
+    def key(self) -> dict[str, dict[str, str]]:
         return {"PK": {"S": "LABEL_CACHE"}, "SK": {"S": f"LABEL#{self.label}"}}
 
-    def to_item(self) -> Dict[str, Dict[str, Any]]:
+    def to_item(self) -> dict[str, dict[str, Any]]:
         item = {
             **self.key,
             "TYPE": {"S": "LABEL_COUNT_CACHE"},
@@ -66,7 +77,7 @@ class LabelCountCache:
             item["time_to_live"] = {"N": str(self.time_to_live)}
         return item
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         yield "label", self.label
         yield "valid_count", self.valid_count
         yield "invalid_count", self.invalid_count
@@ -91,49 +102,71 @@ class LabelCountCache:
             base += f", time_to_live={self.time_to_live}"
         return base + ")"
 
+    @classmethod
+    def from_item(cls, item: dict[str, Any]) -> "LabelCountCache":
+        """Converts a DynamoDB item to a LabelCountCache object.
+
+        Args:
+            item: The DynamoDB item to convert.
+
+        Returns:
+            LabelCountCache: The LabelCountCache object.
+
+        Raises:
+            ValueError: When the item format is invalid.
+        """
+        if not cls.REQUIRED_KEYS.issubset(item):
+            raise ValueError("Item is missing required keys")
+
+        try:
+            label = item["SK"]["S"].split("#", 1)[1]
+            valid_count = int(item["valid_count"]["N"])
+            invalid_count = int(item["invalid_count"]["N"])
+            pending_count = int(item["pending_count"]["N"])
+            needs_review_count = int(item["needs_review_count"]["N"])
+            none_count = int(item["none_count"]["N"])
+            last_updated = item["last_updated"]["S"]
+            # Support both field names for backward compatibility
+            ttl = None
+            if "TimeToLive" in item:
+                ttl = int(item["TimeToLive"]["N"])
+            elif "time_to_live" in item:
+                ttl = int(item["time_to_live"]["N"])
+
+            # When loading from DynamoDB, expired TTLs should be allowed
+            # DynamoDB doesn't immediately delete expired items
+            # Set expired TTLs to None to avoid validation errors
+            if ttl is not None and ttl < int(time.time()):
+                ttl = None
+
+            return cls(
+                label=label,
+                valid_count=valid_count,
+                invalid_count=invalid_count,
+                pending_count=pending_count,
+                needs_review_count=needs_review_count,
+                none_count=none_count,
+                last_updated=last_updated,
+                time_to_live=ttl,
+            )
+        except Exception as e:
+            raise ValueError(
+                f"Error converting item to LabelCountCache: {e}"
+            ) from e
+
 
 def item_to_label_count_cache(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> LabelCountCache:
-    required = {
-        "PK",
-        "SK",
-        "valid_count",
-        "invalid_count",
-        "pending_count",
-        "needs_review_count",
-        "none_count",
-        "last_updated",
-    }
-    if not required.issubset(item):
-        raise ValueError("Item is missing required keys")
-    label = item["SK"]["S"].split("#", 1)[1]
-    valid_count = int(item["valid_count"]["N"])
-    invalid_count = int(item["invalid_count"]["N"])
-    pending_count = int(item["pending_count"]["N"])
-    needs_review_count = int(item["needs_review_count"]["N"])
-    none_count = int(item["none_count"]["N"])
-    last_updated = item["last_updated"]["S"]
-    # Support both field names for backward compatibility during migration
-    ttl = None
-    if "TimeToLive" in item:
-        ttl = int(item["TimeToLive"]["N"])
-    elif "time_to_live" in item:
-        ttl = int(item["time_to_live"]["N"])
+    """Converts a DynamoDB item to a LabelCountCache object.
 
-    # When loading from DynamoDB, expired TTLs should be allowed
-    # DynamoDB doesn't immediately delete expired items
-    # Set expired TTLs to None to avoid validation errors
-    if ttl is not None and ttl < int(time.time()):
-        ttl = None
+    Args:
+        item (dict): The DynamoDB item to convert.
 
-    return LabelCountCache(
-        label=label,
-        valid_count=valid_count,
-        invalid_count=invalid_count,
-        pending_count=pending_count,
-        needs_review_count=needs_review_count,
-        none_count=none_count,
-        last_updated=last_updated,
-        time_to_live=ttl,
-    )
+    Returns:
+        LabelCountCache: The LabelCountCache object.
+
+    Raises:
+        ValueError: When the item format is invalid.
+    """
+    return LabelCountCache.from_item(item)

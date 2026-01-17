@@ -1,12 +1,15 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict
 
 from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
+)
+from receipt_dynamo.data.base_operations.shared_utils import (
+    validate_receipt_field_params,
+    validate_status_list_params,
 )
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
@@ -21,10 +24,7 @@ if TYPE_CHECKING:
     pass
 
 
-class _ReceiptValidationCategory(
-    DynamoDBBaseOperations,
-    FlattenedStandardMixin,
-):
+class _ReceiptValidationCategory(FlattenedStandardMixin):
     """
     .. deprecated::
         This class is deprecated and not used in production. Consider removing
@@ -56,20 +56,20 @@ class _ReceiptValidationCategory(
     ) -> ReceiptValidationCategory:
         Retrieves a single ReceiptValidationCategory by IDs.
     list_receipt_validation_categories(
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         Returns ReceiptValidationCategories and the last evaluated key.
     list_receipt_validation_categories_by_status(
         status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         Returns ReceiptValidationCategories with a specific status.
     list_receipt_validation_categories_for_receipt(
         receipt_id: int,
         image_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         Returns ReceiptValidationCategories for a specific receipt.
@@ -100,7 +100,7 @@ class _ReceiptValidationCategory(
 
     @handle_dynamodb_errors("add_receipt_validation_categories")
     def add_receipt_validation_categories(
-        self, categories: List[ReceiptValidationCategory]
+        self, categories: list[ReceiptValidationCategory]
     ):
         """Adds multiple ReceiptValidationCategories to DynamoDB in batches.
 
@@ -150,7 +150,7 @@ class _ReceiptValidationCategory(
 
     @handle_dynamodb_errors("update_receipt_validation_categories")
     def update_receipt_validation_categories(
-        self, categories: List[ReceiptValidationCategory]
+        self, categories: list[ReceiptValidationCategory]
     ):
         """Updates multiple ReceiptValidationCategories in the database.
 
@@ -182,11 +182,13 @@ class _ReceiptValidationCategory(
             Exception: If the category cannot be deleted from DynamoDB.
         """
         self._validate_entity(category, ReceiptValidationCategory, "category")
-        self._delete_entity(category)
+        self._delete_entity(
+            category, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_validation_categories")
     def delete_receipt_validation_categories(
-        self, categories: List[ReceiptValidationCategory]
+        self, categories: list[ReceiptValidationCategory]
     ):
         """Deletes multiple ReceiptValidationCategories in batch.
 
@@ -230,19 +232,7 @@ class _ReceiptValidationCategory(
             Exception: If the ReceiptValidationCategory cannot be retrieved
                 from DynamoDB.
         """
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError(
-                f"receipt_id must be an integer, got "
-                f"{type(receipt_id).__name__}"
-            )
-        if not isinstance(image_id, str):
-            raise EntityValidationError(
-                f"image_id must be a string, got {type(image_id).__name__}"
-            )
-        if not isinstance(field_name, str):
-            raise EntityValidationError(
-                f"field_name must be a string, got {type(field_name).__name__}"
-            )
+        validate_receipt_field_params(receipt_id, image_id, field_name)
 
         try:
             self._validate_image_id(image_id)
@@ -270,15 +260,15 @@ class _ReceiptValidationCategory(
     @handle_dynamodb_errors("list_receipt_validation_categories")
     def list_receipt_validation_categories(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[ReceiptValidationCategory], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[ReceiptValidationCategory], Dict | None]:
         """Returns ReceiptValidationCategories and the last evaluated key.
 
         Args:
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict], optional): The key to start
+            last_evaluated_key (Dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:
@@ -311,16 +301,16 @@ class _ReceiptValidationCategory(
     def list_receipt_validation_categories_by_status(
         self,
         status: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[ReceiptValidationCategory], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[ReceiptValidationCategory], Dict | None]:
         """Returns ReceiptValidationCategories with a specific status.
 
         Args:
             status (str): The status to filter by.
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict], optional): The key to start
+            last_evaluated_key (Dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:
@@ -333,18 +323,7 @@ class _ReceiptValidationCategory(
             Exception: If the ReceiptValidationCategories cannot be retrieved
                 from DynamoDB.
         """
-        if not isinstance(status, str):
-            raise EntityValidationError(
-                f"status must be a string, got {type(status).__name__}"
-            )
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("limit must be an integer or None")
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
-            raise EntityValidationError(
-                "last_evaluated_key must be a dictionary or None"
-            )
+        validate_status_list_params(status, limit, last_evaluated_key)
 
         return self._query_entities(
             index_name="GSI1",
@@ -363,17 +342,17 @@ class _ReceiptValidationCategory(
         self,
         receipt_id: int,
         image_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[ReceiptValidationCategory], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[ReceiptValidationCategory], Dict | None]:
         """Returns ReceiptValidationCategories for a specific receipt.
 
         Args:
             receipt_id (int): The Receipt ID to query.
             image_id (str): The Image ID to query.
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict], optional): The key to start
+            last_evaluated_key (Dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:
@@ -404,29 +383,10 @@ class _ReceiptValidationCategory(
                 "last_evaluated_key must be a dictionary or None"
             )
 
-        try:
-            self._validate_image_id(image_id)
-        except ValueError as e:
-            raise EntityValidationError(f"Invalid image_id format: {e}") from e
-
-        return self._query_entities(
-            index_name=None,
-            key_condition_expression=(
-                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
-            ),
-            expression_attribute_names={
-                "#pk": "PK",
-                "#sk": "SK",
-            },
-            expression_attribute_values={
-                ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk_prefix": {
-                    "S": (
-                        f"RECEIPT#{receipt_id:05d}#ANALYSIS#VALIDATION#"
-                        "CATEGORY#"
-                    )
-                },
-            },
+        return self._query_by_image_receipt_sk_prefix(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            sk_suffix="ANALYSIS#VALIDATION#CATEGORY#",
             converter_func=item_to_receipt_validation_category,
             limit=limit,
             last_evaluated_key=last_evaluated_key,

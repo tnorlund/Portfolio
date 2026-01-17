@@ -216,7 +216,7 @@ def test_validation_result_init_invalid_result_index():
             validation_timestamp="2023-05-15T10:30:00",
         )
 
-    with pytest.raises(ValueError, match="result_index must be positive"):
+    with pytest.raises(ValueError, match="result_index must be non-negative"):
         ReceiptValidationResult(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -373,7 +373,7 @@ def test_validation_result_init_invalid_validation_timestamp():
     """Test initialization with invalid validation_timestamp"""
     with pytest.raises(
         ValueError,
-        match="validation_timestamp must be a datetime, string, or None",
+        match="validation_timestamp must be a datetime object or ISO format string",
     ):
         ReceiptValidationResult(
             receipt_id=1,
@@ -390,9 +390,7 @@ def test_validation_result_init_invalid_validation_timestamp():
 @pytest.mark.unit
 def test_validation_result_init_invalid_metadata():
     """Test initialization with invalid metadata"""
-    with pytest.raises(
-        ValueError, match="metadata must be a dictionary or None"
-    ):
+    with pytest.raises(ValueError, match="metadata must be a dictionary"):
         ReceiptValidationResult(
             receipt_id=1,
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",

@@ -6,7 +6,7 @@ Chroma compaction jobs across multiple workers.
 """
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict
 
 from botocore.exceptions import ClientError
 
@@ -20,7 +20,6 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
-    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
 )
@@ -123,16 +122,17 @@ class _CompactionLock(FlattenedStandardMixin):
                 existing_lock = self.get_compaction_lock(lock_id, collection)
                 if existing_lock is None:
                     raise EntityNotFoundError(
-                        f"Lock '{lock_id}' for collection '{collection.value}' not found"
+                        f"Lock '{lock_id}' for collection "
+                        f"'{collection.value}' not found"
                     ) from e
                 raise EntityValidationError(
-                    f"Cannot delete lock '{lock_id}' for collection '{collection.value}' - "
-                    f"owned by {existing_lock.owner}"
+                    f"Cannot delete lock '{lock_id}' for collection "
+                    f"'{collection.value}' - owned by {existing_lock.owner}"
                 ) from e
             raise
 
     @handle_dynamodb_errors("delete_compaction_locks")
-    def delete_compaction_locks(self, locks: List[CompactionLock]) -> None:
+    def delete_compaction_locks(self, locks: list[CompactionLock]) -> None:
         """
         Deletes multiple compaction locks in batch.
 
@@ -186,7 +186,7 @@ class _CompactionLock(FlattenedStandardMixin):
     @handle_dynamodb_errors("get_compaction_lock")
     def get_compaction_lock(
         self, lock_id: str, collection: "ChromaDBCollection"
-    ) -> Optional[CompactionLock]:
+    ) -> CompactionLock | None:
         """
         Retrieves a compaction lock by ID and collection.
 
@@ -210,9 +210,9 @@ class _CompactionLock(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_compaction_locks")
     def list_compaction_locks(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[CompactionLock], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[CompactionLock], dict[str, Any] | None]:
         """
         Lists all compaction locks.
 
@@ -233,20 +233,24 @@ class _CompactionLock(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_active_compaction_locks")
     def list_active_compaction_locks(
         self,
-        collection: Optional[ChromaDBCollection] = None,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[CompactionLock], Optional[Dict[str, Any]]]:
+        collection: ChromaDBCollection | None = None,
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[CompactionLock], dict[str, Any] | None]:
         """
         Lists all active (non-expired) compaction locks.
 
         Args:
-            collection: Optional collection filter. If None, returns locks from all collections.
+            collection: Optional collection filter. If None, returns
+                locks from all collections (pagination not supported in
+                this case; last_evaluated_key is ignored).
             limit: Maximum number of locks to return
-            last_evaluated_key: Pagination token
+            last_evaluated_key: Pagination token (only used when
+                collection is specified)
 
         Returns:
-            Tuple of (locks, pagination_token)
+            Tuple of (locks, pagination_token). When collection is None,
+            pagination_token is always None.
         """
         now = datetime.now(timezone.utc).isoformat()
 
@@ -264,28 +268,36 @@ class _CompactionLock(FlattenedStandardMixin):
                 limit=limit,
                 last_evaluated_key=last_evaluated_key,
             )
-        else:
-            # Query all collections and combine results
-            all_locks = []
-            for coll in ChromaDBCollection:
-                locks, _ = self._query_entities(
-                    index_name="GSI1",
-                    key_condition_expression="GSI1PK = :pk AND GSI1SK > :sk",
-                    expression_attribute_names=None,
-                    expression_attribute_values={
-                        ":pk": {"S": f"LOCK#{coll.value}"},
-                        ":sk": {"S": f"EXPIRES#{now}"},
-                    },
-                    converter_func=item_to_compaction_lock,
-                    limit=None,  # Get all for this collection
-                )
-                all_locks.extend(locks)
+        # Query all collections and combine results
+        # Note: Pagination is not supported when collection=None because we
+        # need to query each collection separately. This is acceptable since
+        # ChromaDBCollection has only a few values (currently 2).
+        all_locks: list[CompactionLock] = []
+        remaining = limit  # Track remaining items to fetch
 
-            # Apply limit if specified
-            if limit is not None:
-                all_locks = all_locks[:limit]
+        for coll in ChromaDBCollection:
+            # Stop early if we've collected enough items
+            if remaining is not None and remaining <= 0:
+                break
 
-            return all_locks, None  # No pagination for combined results
+            locks, _ = self._query_entities(
+                index_name="GSI1",
+                key_condition_expression="GSI1PK = :pk AND GSI1SK > :sk",
+                expression_attribute_names=None,
+                expression_attribute_values={
+                    ":pk": {"S": f"LOCK#{coll.value}"},
+                    ":sk": {"S": f"EXPIRES#{now}"},
+                },
+                converter_func=item_to_compaction_lock,
+                limit=remaining,  # Respect remaining limit per collection
+            )
+            all_locks.extend(locks)
+
+            # Update remaining count
+            if remaining is not None:
+                remaining -= len(locks)
+
+        return all_locks, None  # No pagination for combined results
 
     @handle_dynamodb_errors("cleanup_expired_locks")
     def cleanup_expired_locks(self) -> int:

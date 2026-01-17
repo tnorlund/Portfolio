@@ -10,19 +10,15 @@ records in DynamoDB.
 """
 
 import re
-import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from boto3.dynamodb.types import TypeDeserializer
-from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
-    DynamoDBBaseOperations,
     FlattenedStandardMixin,
     PutRequestTypeDef,
     PutTypeDef,
-    QueryInputTypeDef,
     TransactWriteItemTypeDef,
     WriteRequestTypeDef,
     handle_dynamodb_errors,
@@ -34,23 +30,17 @@ from receipt_dynamo.data.shared_exceptions import (
 from receipt_dynamo.entities import ReceiptPlace
 from receipt_dynamo.entities.receipt_place import item_to_receipt_place
 
-# DynamoDB batch_write_item can only handle up to 25 items per call
-CHUNK_SIZE = 25
-
-# Maximum retry attempts for unprocessed items in batch operations
-# With exponential backoff (2^n seconds, max 32s), this allows up to ~13 minutes of retries
-MAX_BATCH_RETRIES = 10
-
 # Type deserializer for converting DynamoDB JSON format to Python types
 _deserializer = TypeDeserializer()
 
 
-def _deserialize_item(dynamo_item: Dict[str, Any]) -> Dict[str, Any]:
+def _deserialize_item(dynamo_item: dict[str, Any]) -> dict[str, Any]:
     """
     Deserialize a DynamoDB item from low-level client format to Python types.
 
     The low-level boto3 client returns items in DynamoDB JSON format
-    (e.g., {"S": "value"}, {"N": "123"}). This function converts to native Python types.
+    (e.g., {"S": "value"}, {"N": "123"}). This function converts to
+    native Python types.
 
     Args:
         dynamo_item: Item in DynamoDB JSON format from low-level client
@@ -87,32 +77,32 @@ class _ReceiptPlace(FlattenedStandardMixin):
     -------
     add_receipt_place(receipt_place: ReceiptPlace):
         Adds a single ReceiptPlace item to the database.
-    add_receipt_places(receipt_places: List[ReceiptPlace]):
+    add_receipt_places(receipt_places: list[ReceiptPlace]):
         Adds multiple ReceiptPlace items in batches.
     update_receipt_place(receipt_place: ReceiptPlace):
         Updates an existing ReceiptPlace item.
-    update_receipt_places(receipt_places: List[ReceiptPlace]):
+    update_receipt_places(receipt_places: list[ReceiptPlace]):
         Updates multiple ReceiptPlace items using transactions.
     delete_receipt_place(receipt_place: ReceiptPlace):
         Deletes a single ReceiptPlace item.
-    delete_receipt_places(receipt_places: List[ReceiptPlace]):
+    delete_receipt_places(receipt_places: list[ReceiptPlace]):
         Deletes multiple ReceiptPlace items using transactions.
     get_receipt_place(image_id: str, receipt_id: int) -> ReceiptPlace:
         Retrieves a single ReceiptPlace item by indices.
-    get_receipt_places_by_indices(...) -> List[ReceiptPlace]:
+    get_receipt_places_by_indices(...) -> list[ReceiptPlace]:
         Retrieves multiple ReceiptPlace items by indices.
-    get_receipt_places(...) -> List[ReceiptPlace]:
+    get_receipt_places(...) -> list[ReceiptPlace]:
         Retrieves multiple ReceiptPlace items using batch get.
-    list_receipt_places(...) -> Tuple[List[ReceiptPlace], dict | None]:
+    list_receipt_places(...)
         Lists ReceiptPlace records with pagination.
-    get_receipt_places_by_merchant(...) -> Tuple[List[ReceiptPlace], dict | None]:
+    get_receipt_places_by_merchant(...)
         Retrieves ReceiptPlace records by merchant name (GSI1).
-    list_receipt_places_with_place_id(...) -> Tuple[List[ReceiptPlace], dict | None]:
+    list_receipt_places_with_place_id(...)
         Retrieves ReceiptPlace records by place_id (GSI2).
-    get_receipt_places_by_status(...) -> Tuple[List[ReceiptPlace], dict | None]:
+    get_receipt_places_by_status(...)
         Retrieves ReceiptPlace records by validation status (GSI3).
-    get_receipt_places_by_confidence(...) -> Tuple[List[ReceiptPlace], dict | None]:
-        Retrieves ReceiptPlace records by confidence score (GSI3 range queries).
+    get_receipt_places_by_confidence(...)
+        Retrieves ReceiptPlace records by confidence (GSI3 range).
     """
 
     @handle_dynamodb_errors("add_receipt_place")
@@ -140,13 +130,13 @@ class _ReceiptPlace(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("add_receipt_places")
-    def add_receipt_places(self, receipt_places: List[ReceiptPlace]) -> None:
+    def add_receipt_places(self, receipt_places: list[ReceiptPlace]) -> None:
         """
         Adds multiple ReceiptPlace records to DynamoDB in batches.
 
         Parameters
         ----------
-        receipt_places : List[ReceiptPlace]
+        receipt_places : list[ReceiptPlace]
             A list of ReceiptPlace instances to add.
 
         Raises
@@ -192,14 +182,14 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("update_receipt_places")
     def update_receipt_places(
-        self, receipt_places: List[ReceiptPlace]
+        self, receipt_places: list[ReceiptPlace]
     ) -> None:
         """
         Updates multiple ReceiptPlace records in DynamoDB using transactions.
 
         Parameters
         ----------
-        receipt_places : List[ReceiptPlace]
+        receipt_places : list[ReceiptPlace]
             A list of ReceiptPlace instances to update.
 
         Raises
@@ -241,18 +231,20 @@ class _ReceiptPlace(FlattenedStandardMixin):
             If receipt_place is invalid.
         """
         self._validate_entity(receipt_place, ReceiptPlace, "receipt_place")
-        self._delete_entity(receipt_place)
+        self._delete_entity(
+            receipt_place, condition_expression="attribute_exists(PK)"
+        )
 
     @handle_dynamodb_errors("delete_receipt_places")
     def delete_receipt_places(
-        self, receipt_places: List[ReceiptPlace]
+        self, receipt_places: list[ReceiptPlace]
     ) -> None:
         """
         Deletes multiple ReceiptPlace records from DynamoDB.
 
         Parameters
         ----------
-        receipt_places : List[ReceiptPlace]
+        receipt_places : list[ReceiptPlace]
             A list of ReceiptPlace instances to delete.
 
         Raises
@@ -342,21 +334,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
         ValueError
             If indices is invalid.
         """
-        if indices is None:
-            raise EntityValidationError("indices cannot be None")
-        if not isinstance(indices, list):
-            raise EntityValidationError("indices must be a list")
-        if not all(isinstance(index, tuple) for index in indices):
-            raise EntityValidationError("indices must be a list of tuples")
-        if not all(
-            isinstance(index[0], str) and isinstance(index[1], int)
-            for index in indices
-        ):
-            raise EntityValidationError(
-                "indices must be a list of tuples of (image_id, receipt_id)"
-            )
-        if not all(index[1] > 0 for index in indices):
-            raise EntityValidationError("receipt_id must be positive")
+        self._validate_image_receipt_indices(indices)
 
         keys = [
             {
@@ -387,62 +365,16 @@ class _ReceiptPlace(FlattenedStandardMixin):
         ValueError
             If keys is invalid.
         """
-        if keys is None:
-            raise EntityValidationError("keys cannot be None")
-        if not isinstance(keys, list):
-            raise EntityValidationError("keys must be a list")
-        if not all(isinstance(key, dict) for key in keys):
-            raise EntityValidationError("keys must be a list of dictionaries")
-        for key in keys:
-            if not {"PK", "SK"}.issubset(key.keys()):
-                raise EntityValidationError("keys must contain 'PK' and 'SK'")
-            if not key["PK"]["S"].startswith("IMAGE#"):
-                raise EntityValidationError("PK must start with 'IMAGE#'")
-            if not key["SK"]["S"].startswith("RECEIPT#"):
-                raise EntityValidationError("SK must start with 'RECEIPT#'")
-            if not key["SK"]["S"].split("#")[-1] == "PLACE":
-                raise EntityValidationError("SK must contain 'PLACE'")
-
-        results = []
-        for i in range(0, len(keys), CHUNK_SIZE):
-            chunk = keys[i : i + CHUNK_SIZE]
-            response = self._client.batch_get_item(
-                RequestItems={self.table_name: {"Keys": chunk}}
-            )
-            batch_items = response["Responses"].get(self.table_name, [])
-            results.extend(batch_items)
-            unprocessed = response.get("UnprocessedKeys", {})
-            retry_count = 0
-            while (
-                unprocessed.get(self.table_name)
-                and retry_count < MAX_BATCH_RETRIES
-            ):
-                # Exponential backoff: 2^retry_count seconds, max 32 seconds
-                wait_time = min(2**retry_count, 32)
-                time.sleep(wait_time)
-                response = self._client.batch_get_item(
-                    RequestItems=unprocessed
-                )
-                batch_items = response["Responses"].get(self.table_name, [])
-                results.extend(batch_items)
-                unprocessed = response.get("UnprocessedKeys", {})
-                retry_count += 1
-            # Log warning if max retries exceeded
-            if unprocessed.get(self.table_name):
-                logger = __import__("logging").getLogger(__name__)
-                logger.warning(
-                    f"Max batch retries ({MAX_BATCH_RETRIES}) exceeded for "
-                    f"get_receipt_places_by_ids. {len(unprocessed.get(self.table_name, []))} "
-                    "items remain unprocessed."
-                )
+        self._validate_batch_receipt_keys(keys, "PLACE")
+        results = self._batch_get_items(keys)
         return [item_to_receipt_place(result) for result in results]
 
     @handle_dynamodb_errors("list_receipt_places")
     def list_receipt_places(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptPlace], dict | None]:
+    ) -> tuple[list[ReceiptPlace], dict | None]:
         """
         Lists ReceiptPlace records from DynamoDB with optional pagination.
 
@@ -455,7 +387,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         Returns
         -------
-        Tuple[List[ReceiptPlace], dict | None]
+        tuple[list[ReceiptPlace], dict | None]
             A tuple containing the list of ReceiptPlace records and the last
             evaluated key.
 
@@ -464,17 +396,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
         ValueError
             If parameters are invalid.
         """
-        if limit is not None and not isinstance(limit, int):
-            raise EntityValidationError("limit must be an integer")
-        if limit is not None and limit <= 0:
-            raise EntityValidationError("limit must be positive")
-
-        if last_evaluated_key is not None and not isinstance(
-            last_evaluated_key, dict
-        ):
-            raise EntityValidationError(
-                "last_evaluated_key must be a dictionary"
-            )
+        self._validate_pagination_params(limit, last_evaluated_key)
 
         return self._query_by_type(
             entity_type="RECEIPT_PLACE",
@@ -487,9 +409,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
     def get_receipt_places_by_merchant(
         self,
         merchant_name: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptPlace], dict | None]:
+    ) -> tuple[list[ReceiptPlace], dict | None]:
         """
         Retrieves ReceiptPlace records from DynamoDB by merchant name (GSI1).
 
@@ -504,7 +426,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         Returns
         -------
-        Tuple[List[ReceiptPlace], dict | None]
+        tuple[list[ReceiptPlace], dict | None]
             A tuple containing the list of ReceiptPlace records and the last
             evaluated key.
 
@@ -517,7 +439,8 @@ class _ReceiptPlace(FlattenedStandardMixin):
             raise EntityValidationError("merchant_name cannot be None")
         if not isinstance(merchant_name, str):
             raise EntityValidationError("merchant_name must be a string")
-        # Use same normalization as entity gsi1_key: uppercase, replace special chars, strip underscores
+        # Use same normalization as entity gsi1_key: uppercase,
+        # replace special chars, strip underscores
         normalized_merchant_name = merchant_name.upper()
         normalized_merchant_name = re.sub(
             r"[^A-Z0-9]+", "_", normalized_merchant_name
@@ -543,9 +466,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
     def list_receipt_places_with_place_id(
         self,
         place_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptPlace], dict | None]:
+    ) -> tuple[list[ReceiptPlace], dict | None]:
         """
         Retrieves ReceiptPlace records that have a specific place_id (GSI2).
 
@@ -562,7 +485,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         Returns
         -------
-        Tuple[List[ReceiptPlace], dict | None]
+        tuple[list[ReceiptPlace], dict | None]
             A tuple containing the list of ReceiptPlace records and the last
             evaluated key.
 
@@ -604,20 +527,22 @@ class _ReceiptPlace(FlattenedStandardMixin):
     def get_receipt_places_by_status(
         self,
         validation_status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptPlace], dict | None]:
+    ) -> tuple[list[ReceiptPlace], dict | None]:
         """
         Retrieves ReceiptPlace records by validation status (GSI3).
 
-        Uses GSI3 to query places by validation status, with optional pagination.
-        Note: GSI3SK now includes confidence for range queries, so we query for all
-        confidence values and filter by status.
+        Uses GSI3 to query places by validation status, with optional
+        pagination. Note: GSI3SK now includes confidence for range
+        queries, so we query for all confidence values and filter by
+        status.
 
         Parameters
         ----------
         validation_status : str
-            The validation status to filter by (MATCHED, UNSURE, NO_MATCH).
+            The validation status to filter by (MATCHED, UNSURE,
+            NO_MATCH).
         limit : int, optional
             Maximum number of records to retrieve.
         last_evaluated_key : dict, optional
@@ -625,9 +550,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         Returns
         -------
-        Tuple[List[ReceiptPlace], dict | None]
-            A tuple containing the list of ReceiptPlace records and the last
-            evaluated key.
+        tuple[list[ReceiptPlace], dict | None]
+            A tuple containing the list of ReceiptPlace records and
+            the last evaluated key.
 
         Raises
         ------
@@ -636,14 +561,17 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         Performance Notes
         -----------------
-        This query uses a FilterExpression to match status, which means DynamoDB
-        evaluates the status filter after the key condition. Items that don't match
-        the filter still consume read capacity. This is a known tradeoff of the GSI3
-        design where confidence is prioritized in the sort key for range queries.
+        This query uses a FilterExpression to match status, which
+        means DynamoDB evaluates the status filter after the key
+        condition. Items that don't match the filter still consume
+        read capacity. This is a known tradeoff of the GSI3 design
+        where confidence is prioritized in the sort key for range
+        queries.
 
-        For use cases where status queries are critical, consider restructuring GSI3SK
-        to put status before confidence, at the cost of less efficient confidence range
-        queries. This design prioritizes confidence-based quality control queries.
+        For use cases where status queries are critical, consider
+        restructuring GSI3SK to put status before confidence, at the
+        cost of less efficient confidence range queries. This design
+        prioritizes confidence-based quality control queries.
         """
         if not validation_status:
             raise EntityValidationError("validation_status cannot be empty")
@@ -662,7 +590,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         return self._query_entities(
             index_name="GSI3",
-            key_condition_expression="GSI3PK = :pk AND begins_with(GSI3SK, :sk_prefix)",
+            key_condition_expression=(
+                "GSI3PK = :pk AND begins_with(GSI3SK, :sk_prefix)"
+            ),
             expression_attribute_names=None,
             expression_attribute_values={
                 ":pk": {"S": "PLACE_VALIDATION"},
@@ -680,9 +610,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
         self,
         confidence: float,
         above: bool = True,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptPlace], dict | None]:
+    ) -> tuple[list[ReceiptPlace], dict | None]:
         """
         Retrieves ReceiptPlace records by confidence score threshold.
 
@@ -711,7 +641,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         Returns
         -------
-        Tuple[List[ReceiptPlace], dict | None]
+        tuple[list[ReceiptPlace], dict | None]
             Tuple of (list of ReceiptPlace records, pagination token).
             Pagination token is None if no more results.
 

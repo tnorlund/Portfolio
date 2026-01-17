@@ -1,26 +1,25 @@
 """
 Mixin classes for common DynamoDB operations.
 
+.. deprecated::
+    These mixins are deprecated. Use FlattenedStandardMixin instead,
+    which provides all functionality in a single class without deep
+    inheritance chains or MRO conflicts.
+
 This module provides reusable mixins that can be composed to create
 data access classes with common CRUD functionality.
 """
 
-import time
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
     Type,
 )
 
-from receipt_dynamo.data.shared_exceptions import EntityValidationError
-from receipt_dynamo.entities.util import assert_valid_uuid
-
 from .error_handling import ErrorMessageConfig, handle_dynamodb_errors
+from .shared_utils import batch_write_with_retry_dict
 from .validators import EntityValidator
 
 if TYPE_CHECKING:
@@ -28,9 +27,22 @@ if TYPE_CHECKING:
     from mypy_boto3_dynamodb import DynamoDBClient
 
 
+def _emit_deprecation_warning(mixin_name: str) -> None:
+    """Emit a deprecation warning for old mixins."""
+    warnings.warn(
+        f"{mixin_name} is deprecated. Use FlattenedStandardMixin instead, "
+        "which provides all functionality without MRO conflicts.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
+
 class SingleEntityCRUDMixin:
     """
     Mixin providing single entity CRUD operations.
+
+    .. deprecated::
+        Use FlattenedStandardMixin instead.
 
     Requires the using class to implement DynamoOperationsProtocol:
     - table_name: str
@@ -39,6 +51,10 @@ class SingleEntityCRUDMixin:
     This mixin adds add, update, and delete functionality for single entities
     with consistent validation and error handling.
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _emit_deprecation_warning("SingleEntityCRUDMixin")
 
     # Declare expected attributes for type checker
     if TYPE_CHECKING:
@@ -133,6 +149,9 @@ class BatchOperationsMixin:
     """
     Mixin providing batch operation functionality.
 
+    .. deprecated::
+        Use FlattenedStandardMixin instead.
+
     Requires the using class to implement DynamoOperationsProtocol:
     - table_name: str
     - _client: DynamoDBClient
@@ -140,6 +159,10 @@ class BatchOperationsMixin:
     This mixin adds batch write operations with automatic retry logic
     and chunking for large datasets.
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _emit_deprecation_warning("BatchOperationsMixin")
 
     # Declare expected attributes for type checker
     if TYPE_CHECKING:
@@ -157,7 +180,7 @@ class BatchOperationsMixin:
     @handle_dynamodb_errors("batch_write")
     def _batch_write_with_retry_dict(
         self,
-        request_items: Dict[str, List[Dict[str, Any]]],
+        request_items: dict[str, list[dict[str, Any]]],
         max_retries: int = 3,
         initial_backoff: float = 0.1,
     ) -> None:
@@ -169,30 +192,13 @@ class BatchOperationsMixin:
             max_retries: Maximum number of retries for unprocessed items
             initial_backoff: Initial backoff time in seconds
         """
-        backoff = initial_backoff
-
-        for attempt in range(max_retries + 1):
-            response = self._client.batch_write_item(
-                RequestItems=request_items
-            )
-
-            unprocessed_items = response.get("UnprocessedItems", {})
-            if not unprocessed_items:
-                break
-
-            if attempt < max_retries:
-                time.sleep(backoff)
-                backoff *= 2  # Exponential backoff
-                request_items = unprocessed_items
-            else:
-                # Final attempt failed, log unprocessed items
-                raise RuntimeError(
-                    f"Failed to process all items after {max_retries} retries"
-                )
+        batch_write_with_retry_dict(
+            self._client, request_items, max_retries, initial_backoff
+        )
 
     def _prepare_batch_request(
-        self, entities: List[Any], operation: str = "PutRequest"
-    ) -> Dict[str, List[Dict[str, Any]]]:
+        self, entities: list[Any], operation: str = "PutRequest"
+    ) -> dict[str, list[dict[str, Any]]]:
         """
         Prepare batch request items from entities.
 
@@ -214,8 +220,8 @@ class BatchOperationsMixin:
         return {self.table_name: items}
 
     def _split_into_batches(
-        self, entities: List[Any], batch_size: int = 25
-    ) -> List[List[Any]]:
+        self, entities: list[Any], batch_size: int = 25
+    ) -> list[list[Any]]:
         """
         Split entities into batches for processing.
 
@@ -233,7 +239,7 @@ class BatchOperationsMixin:
 
     @handle_dynamodb_errors("add_entities")
     def _add_entities_batch(
-        self, entities: List[Any], entity_class: Type[Any], param_name: str
+        self, entities: list[Any], entity_class: Type[Any], param_name: str
     ) -> None:
         """
         Add multiple entities using batch operations.
@@ -260,6 +266,9 @@ class TransactionalOperationsMixin:
     """
     Mixin providing transactional operation functionality.
 
+    .. deprecated::
+        Use FlattenedStandardMixin instead.
+
     Requires the using class to implement DynamoOperationsProtocol:
     - table_name: str
     - _client: DynamoDBClient
@@ -268,13 +277,17 @@ class TransactionalOperationsMixin:
     for operations that exceed DynamoDB's 25-item transaction limit.
     """
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _emit_deprecation_warning("TransactionalOperationsMixin")
+
     # Declare expected attributes for type checker
     if TYPE_CHECKING:
         table_name: str
         _client: "DynamoDBClient"
 
     def _transact_write_items(
-        self, transact_items: List[Dict[str, Any]]
+        self, transact_items: list[dict[str, Any]]
     ) -> None:
         """
         Perform transactional write operation.
@@ -286,7 +299,7 @@ class TransactionalOperationsMixin:
 
     def _prepare_transact_update_item(
         self, entity: Any, condition_expression: str = "attribute_exists(PK)"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Prepare a transactional update item.
 
@@ -313,7 +326,7 @@ class TransactionalOperationsMixin:
         self,
         entity: Any,
         condition_expression: str = "attribute_not_exists(PK)",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Prepare a transactional put item.
 
@@ -333,7 +346,7 @@ class TransactionalOperationsMixin:
         }
 
     def _transact_write_with_chunking(
-        self, transact_items: List[Dict[str, Any]]
+        self, transact_items: list[dict[str, Any]]
     ) -> None:
         """
         Perform transactional write with automatic chunking for large batches.
@@ -358,7 +371,7 @@ class TransactionalOperationsMixin:
 
     def _update_entities(
         self,
-        entities: List[Any],
+        entities: list[Any],
         entity_type: Type[Any],
         entity_name: str,
     ) -> None:
@@ -377,7 +390,7 @@ class TransactionalOperationsMixin:
 
         Example:
             # In a data access class
-            def update_images(self, images: List[Image]) -> None:
+            def update_images(self, images: list[Image]) -> None:
                 self._update_entities(images, Image, "images", "update_images")
         """
         if not hasattr(self, "_validator") or self._validator is None:
@@ -420,28 +433,33 @@ class QueryByTypeMixin:
     """
     Mixin for querying entities by TYPE using GSITYPE index.
 
+    .. deprecated::
+        Use FlattenedStandardMixin instead.
+
     This mixin provides a standardized way to query all entities of a specific
     type using the GSITYPE global secondary index, reducing code duplication
     across data access classes.
     """
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _emit_deprecation_warning("QueryByTypeMixin")
+
     # Declare expected attributes for type checker
     if TYPE_CHECKING:
         table_name: str
         _client: "DynamoDBClient"
-        _query_entities: Callable[
-            ..., Tuple[List[Any], Optional[Dict[str, Any]]]
-        ]
+        _query_entities: Callable[..., tuple[list[Any], dict[str, Any] | None]]
         _validate_entity: Callable[..., None]
 
     @handle_dynamodb_errors("query_by_type")
     def _query_by_type(
         self,
         entity_type: str,
-        converter_func: "Callable[[Dict[str, Any]], Any]",
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[Any], Optional[Dict[str, Any]]]:
+        converter_func: "Callable[[dict[str, Any]], Any]",
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[Any], dict[str, Any] | None]:
         """
         Query all entities of a specific type using GSITYPE index.
 
@@ -482,31 +500,37 @@ class QueryByParentMixin:
     """
     Mixin for querying child entities by parent ID.
 
+    .. deprecated::
+        Use FlattenedStandardMixin instead.
+
     This mixin provides a standardized way to query child entities that belong
     to a parent entity using PK/SK prefix matching, reducing code duplication
     for hierarchical queries.
     """
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        _emit_deprecation_warning("QueryByParentMixin")
+
     # Declare expected attributes for type checker
     if TYPE_CHECKING:
         table_name: str
         _client: "DynamoDBClient"
-        _query_entities: Callable[
-            ..., Tuple[List[Any], Optional[Dict[str, Any]]]
-        ]
+        _query_entities: Callable[..., tuple[list[Any], dict[str, Any] | None]]
 
     @handle_dynamodb_errors("query_by_parent")
     def _query_by_parent(
         self,
         parent_pk: str,
         child_sk_prefix: str,
-        converter_func: "Callable[[Dict[str, Any]], Any]",
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-        filter_expression: Optional[str] = None,
-        expression_attribute_names: Optional[Dict[str, str]] = None,
-        expression_attribute_values: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[Any], Optional[Dict[str, Any]]]:
+        converter_func: "Callable[[dict[str, Any]], Any]",
+        *,
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+        filter_expression: str | None = None,
+        expression_attribute_names: dict[str, str] | None = None,
+        expression_attribute_values: dict[str, Any] | None = None,
+    ) -> tuple[list[Any], dict[str, Any] | None]:
         """
         Query child entities by parent using PK and SK prefix.
 
@@ -561,143 +585,3 @@ class QueryByParentMixin:
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )
-
-
-class CommonValidationMixin:
-    """
-    Mixin for common validation patterns across DynamoDB entities.
-
-    This mixin provides standardized validation methods for common patterns
-    like UUID validation, ID checks, and pagination key validation.
-    """
-
-    # Declare expected attributes for type checker
-    if TYPE_CHECKING:
-        from ..shared_exceptions import EntityValidationError
-
-    def _validate_image_id(
-        self, image_id: Optional[str], param_name: str = "image_id"
-    ) -> None:
-        """
-        Validate image_id is not None and is a valid UUID.
-
-        Args:
-            image_id: The image ID to validate
-            param_name: Parameter name for error messages
-
-        Raises:
-            EntityValidationError: If image_id is None or invalid
-        """
-        from ...entities.util import assert_valid_uuid
-        from ..shared_exceptions import EntityValidationError
-
-        if image_id is None:
-            raise EntityValidationError(f"{param_name} cannot be None")
-        assert_valid_uuid(image_id)
-
-    def _validate_receipt_id(
-        self, receipt_id: Optional[int], param_name: str = "receipt_id"
-    ) -> None:
-        """
-        Validate receipt_id is not None and is a positive integer.
-
-        Args:
-            receipt_id: The receipt ID to validate
-            param_name: Parameter name for error messages
-
-        Raises:
-            EntityValidationError: If receipt_id is None or invalid
-        """
-        from ..shared_exceptions import EntityValidationError
-
-        if receipt_id is None:
-            raise EntityValidationError(f"{param_name} cannot be None")
-        if not isinstance(receipt_id, int) or receipt_id <= 0:
-            raise EntityValidationError(
-                f"{param_name} must be a positive integer"
-            )
-
-    def _validate_pagination_key(
-        self, last_evaluated_key: Optional[Dict[str, Any]]
-    ) -> None:
-        """
-        Validate pagination key for query operations.
-
-        Args:
-            last_evaluated_key: The pagination key to validate
-
-        Raises:
-            EntityValidationError: If last_evaluated_key is invalid
-        """
-        from ..shared_exceptions import EntityValidationError
-
-        if last_evaluated_key is not None:
-            if not isinstance(last_evaluated_key, dict):
-                raise EntityValidationError(
-                    "last_evaluated_key must be a dictionary"
-                )
-
-            # Validate required keys
-            required_keys = {"PK", "SK"}
-            if not all(key in last_evaluated_key for key in required_keys):
-                raise EntityValidationError(
-                    f"last_evaluated_key must contain keys: {required_keys}"
-                )
-
-
-# =============================================================================
-# CONSOLIDATED ACCESSOR MIXINS
-# =============================================================================
-
-
-class StandardAccessorMixin(
-    SingleEntityCRUDMixin,
-    BatchOperationsMixin,
-    TransactionalOperationsMixin,
-    QueryByTypeMixin,
-    CommonValidationMixin,
-):
-    """
-    Standard mixin for DynamoDB accessors that need full functionality.
-
-    This combines the most common pattern used by ~70% of accessor classes:
-    - Single entity CRUD operations
-    - Batch operations
-    - Transactional operations
-    - Query by type functionality
-    - Common validation
-
-    Usage:
-        class _MyEntity(DynamoDBBaseOperations, StandardAccessorMixin):
-            pass
-
-    This reduces inheritance from 6 classes to 2, helping with pylint's
-    too-many-ancestors warning.
-    """
-
-    if TYPE_CHECKING:
-        table_name: str
-        _client: "DynamoDBClient"
-
-
-class SimplifiedAccessorMixin(
-    SingleEntityCRUDMixin,
-    CommonValidationMixin,
-):
-    """
-    Simplified mixin for DynamoDB accessors that need only basic CRUD.
-
-    This is for entities that only need:
-    - Single entity CRUD operations
-    - Common validation
-
-    Usage:
-        class _SimpleEntity(DynamoDBBaseOperations, SimplifiedAccessorMixin):
-            pass
-
-    This keeps inheritance minimal for simple use cases.
-    """
-
-    if TYPE_CHECKING:
-        table_name: str
-        _client: "DynamoDBClient"
