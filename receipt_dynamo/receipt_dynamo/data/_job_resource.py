@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
@@ -20,7 +20,7 @@ from receipt_dynamo.entities.job_resource import (
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
+    pass
 
 
 class _JobResource(FlattenedStandardMixin):
@@ -85,7 +85,7 @@ class _JobResource(FlattenedStandardMixin):
         job_id: str,
         resource_id: str,
         status: str,
-        released_at: Optional[str] = None,
+        released_at: str | None = None,
     ):
         """Updates the status of a job resource
 
@@ -173,7 +173,7 @@ class _JobResource(FlattenedStandardMixin):
     def list_job_resources(
         self,
         job_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobResource], dict | None]:
         """
@@ -207,7 +207,7 @@ class _JobResource(FlattenedStandardMixin):
     def list_resources_by_type(
         self,
         resource_type: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobResource], dict | None]:
         """

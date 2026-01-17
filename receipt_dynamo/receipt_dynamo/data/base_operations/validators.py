@@ -5,7 +5,7 @@ This module provides consistent validation logic for entities and parameters
 across all DynamoDB data access classes.
 """
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Type
 
 from .error_handling import ErrorMessageConfig
 
@@ -16,7 +16,7 @@ class ValidationMessageGenerator:
     def __init__(self, config: ErrorMessageConfig) -> None:
         self.config: ErrorMessageConfig = config
         # Pre-build lookup dictionary for efficient message generation
-        self._message_generators: Dict[str, Callable[[str, str], str]] = {
+        self._message_generators: dict[str, Callable[[str, str], str]] = {
             "required": self._generate_required_message,
             "type_mismatch": self._generate_type_mismatch_message,
             "list_required": self._generate_list_required_message,
@@ -27,7 +27,7 @@ class ValidationMessageGenerator:
         self,
         message_type: str,
         param_name: str,
-        class_name: Optional[str] = None,
+        class_name: str | None = None,
     ) -> str:
         """
         Generate validation error message using dictionary-based lookup.
@@ -76,7 +76,7 @@ class ValidationMessageGenerator:
         )
 
     def _generate_required_message(
-        self, param_name: str, _class_name: Optional[str] = None
+        self, param_name: str, _class_name: str | None = None
     ) -> str:
         """Internal method for generating required parameter messages."""
         # Check for special cases first
@@ -149,8 +149,8 @@ class EntityValidator:
             ValidationMessageGenerator(config)
         )
         # Dictionary-based validation rules for better maintainability
-        self._validation_rules: Dict[
-            str, List[Tuple[str, Callable[[Dict[str, Any]], None]]]
+        self._validation_rules: dict[
+            str, list[tuple[str, Callable[[dict[str, Any]], None]]]
         ] = {
             "single_entity": [
                 ("null_check", self._validate_not_null),
@@ -177,7 +177,7 @@ class EntityValidator:
         Raises:
             ValueError: If validation fails
         """
-        context: Dict[str, Any] = {
+        context: dict[str, Any] = {
             "entity": entity,
             "entity_class": entity_class,
             "param_name": param_name,
@@ -186,7 +186,7 @@ class EntityValidator:
         self._run_validation_chain("single_entity", context)
 
     def validate_entity_list(
-        self, entities: List[Any], entity_class: Type[Any], param_name: str
+        self, entities: list[Any], entity_class: Type[Any], param_name: str
     ) -> None:
         """
         Validate a list of entities with consistent error messages.
@@ -199,7 +199,7 @@ class EntityValidator:
         Raises:
             ValueError: If validation fails
         """
-        context: Dict[str, Any] = {
+        context: dict[str, Any] = {
             "entity": entities,
             "entity_class": entity_class,
             "param_name": param_name,
@@ -208,7 +208,7 @@ class EntityValidator:
         self._run_validation_chain("entity_list", context)
 
     def _run_validation_chain(
-        self, validation_type: str, context: Dict[str, Any]
+        self, validation_type: str, context: dict[str, Any]
     ) -> None:
         """
         Execute validation chain based on validation type.
@@ -232,7 +232,7 @@ class EntityValidator:
                 # Re-raise with context about which validation failed
                 raise ValueError(str(e)) from e
 
-    def _validate_not_null(self, context: Dict[str, Any]) -> None:
+    def _validate_not_null(self, context: dict[str, Any]) -> None:
         """Validate that entity is not None."""
         if context["entity"] is None:
             raise ValueError(
@@ -241,7 +241,7 @@ class EntityValidator:
                 )
             )
 
-    def _validate_instance_type(self, context: Dict[str, Any]) -> None:
+    def _validate_instance_type(self, context: dict[str, Any]) -> None:
         """Validate that entity is of expected type."""
         entity = context["entity"]
         entity_class = context["entity_class"]
@@ -254,7 +254,7 @@ class EntityValidator:
                 )
             )
 
-    def _validate_is_list(self, context: Dict[str, Any]) -> None:
+    def _validate_is_list(self, context: dict[str, Any]) -> None:
         """Validate that entity is a list."""
         entity = context["entity"]
         entity_class = context["entity_class"]
@@ -267,7 +267,7 @@ class EntityValidator:
                 )
             )
 
-    def _validate_list_contents(self, context: Dict[str, Any]) -> None:
+    def _validate_list_contents(self, context: dict[str, Any]) -> None:
         """Validate that all items in list are of expected type."""
         entities = context["entity"]
         entity_class = context["entity_class"]
@@ -288,8 +288,8 @@ class EntityValidator:
         dictionary-based patterns."""
         # Define transformation rules using dictionary lookup for better
         # maintainability
-        transformation_rules: Dict[
-            str, Dict[str, Union[List[str], Dict[str, str]]]
+        transformation_rules: dict[
+            str, dict[str, list[str] | dict[str, str]]
         ] = {
             # Operations that expect "were" (remove "given")
             "remove_given": {

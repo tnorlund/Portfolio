@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
@@ -41,7 +41,7 @@ class JobDependency:
     dependency_job_id: str
     type: str
     created_at: str
-    condition: Optional[str] = None
+    condition: str | None = None
 
     def __post_init__(self):
         """Validates fields after dataclass initialization.
@@ -76,7 +76,7 @@ class JobDependency:
             raise ValueError("condition must be a string")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the job dependency.
 
         Returns:
@@ -87,7 +87,7 @@ class JobDependency:
             "SK": {"S": f"DEPENDS_ON#{self.dependency_job_id}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the job dependency.
 
         Returns:
@@ -103,7 +103,7 @@ class JobDependency:
             },
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """Generates the GSI2 key for the job dependency.
 
         Returns:
@@ -119,7 +119,7 @@ class JobDependency:
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the JobDependency object to a DynamoDB item.
 
         Returns:
@@ -158,11 +158,11 @@ class JobDependency:
             "\n)"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the JobDependency object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the
+            Generator[tuple[str, Any], None, None]: An iterator over the
                 JobDependency object's attribute name/value pairs.
         """
         yield "dependent_job_id", self.dependent_job_id
@@ -188,7 +188,7 @@ class JobDependency:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "JobDependency":
+    def from_item(cls, item: dict[str, Any]) -> "JobDependency":
         """Converts a DynamoDB item to a JobDependency object.
 
         Args:
@@ -234,7 +234,7 @@ class JobDependency:
             ) from e
 
 
-def item_to_job_dependency(item: Dict[str, Any]) -> JobDependency:
+def item_to_job_dependency(item: dict[str, Any]) -> JobDependency:
     """Converts a DynamoDB item to a JobDependency object.
 
     Args:

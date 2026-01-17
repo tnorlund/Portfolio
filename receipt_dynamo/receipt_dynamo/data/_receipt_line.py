@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
@@ -248,9 +248,9 @@ class _ReceiptLine(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipt_lines")
     def list_receipt_lines(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[list[ReceiptLine], Optional[Dict[str, Any]]]:
+    ) -> tuple[list[ReceiptLine], dict[str, Any] | None]:
         """Returns all ReceiptLines from the table."""
         validate_pagination_params(limit, last_evaluated_key)
         return self._query_by_type(

@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.constants import BatchStatus
+from receipt_dynamo.entities.entity_mixins import BatchResultGSIMixin
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_type,
@@ -12,7 +13,7 @@ from receipt_dynamo.entities.util import (
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class CompletionBatchResult:
+class CompletionBatchResult(BatchResultGSIMixin):
     """
     A completion batch result is a result of a completion batch.
     """
@@ -78,7 +79,7 @@ class CompletionBatchResult:
         assert_type("validated_at", self.validated_at, datetime, ValueError)
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """
         The key for the completion batch result is a composite key that
         consists of the batch id and the receipt id, line id, and word id.
@@ -100,29 +101,15 @@ class CompletionBatchResult:
         }
 
     @property
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         return {
             "GSI1PK": {"S": f"LABEL#{self.original_label}"},
             "GSI1SK": {"S": f"STATUS#{self.status}"},
         }
 
-    @property
-    def gsi2_key(self) -> Dict[str, Any]:
-        return {
-            "GSI2PK": {"S": f"BATCH#{self.batch_id}"},
-            "GSI2SK": {"S": f"STATUS#{self.status}"},
-        }
+    # gsi2_key and gsi3_key are provided by BatchResultGSIMixin
 
-    @property
-    def gsi3_key(self) -> Dict[str, Any]:
-        return {
-            "GSI3PK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id}"
-            },
-            "GSI3SK": {"S": f"BATCH#{self.batch_id}#STATUS#{self.status}"},
-        }
-
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """
         Converts the completion batch result to an item for DynamoDB.
         """
@@ -163,7 +150,7 @@ class CompletionBatchResult:
     def __str__(self) -> str:
         return self.__repr__()
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         yield "batch_id", self.batch_id
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
@@ -193,7 +180,7 @@ class CompletionBatchResult:
 
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "CompletionBatchResult":
+    def from_item(cls, item: dict[str, Any]) -> "CompletionBatchResult":
         """Converts a DynamoDB item to a CompletionBatchResult object.
 
         Args:
@@ -245,7 +232,7 @@ class CompletionBatchResult:
 
 
 def item_to_completion_batch_result(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> CompletionBatchResult:
     """Converts a DynamoDB item to a CompletionBatchResult object.
 

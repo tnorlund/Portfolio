@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict
 
 from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
@@ -21,7 +21,7 @@ from receipt_dynamo.entities.receipt_validation_result import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
+    pass
 
 
 class _ReceiptValidationResult(FlattenedStandardMixin):
@@ -54,7 +54,7 @@ class _ReceiptValidationResult(FlattenedStandardMixin):
     ) -> ReceiptValidationResult:
         Retrieves a single ReceiptValidationResult by IDs.
     list_receipt_validation_results(
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationResult], dict | None]:
         Returns ReceiptValidationResults and the last evaluated key.
@@ -62,13 +62,13 @@ class _ReceiptValidationResult(FlattenedStandardMixin):
         receipt_id: int,
         image_id: str,
         field_name: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationResult], dict | None]:
         Returns ReceiptValidationResults for a specific field.
     list_receipt_validation_results_by_type(
         result_type: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationResult], dict | None]:
         Returns ReceiptValidationResults with a specific type.
@@ -97,7 +97,7 @@ class _ReceiptValidationResult(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("add_receipt_validation_results")
     def add_receipt_validation_results(
-        self, results: List[ReceiptValidationResult]
+        self, results: list[ReceiptValidationResult]
     ):
         """Adds multiple ReceiptValidationResults to DynamoDB in batches.
 
@@ -145,7 +145,7 @@ class _ReceiptValidationResult(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("update_receipt_validation_results")
     def update_receipt_validation_results(
-        self, results: List[ReceiptValidationResult]
+        self, results: list[ReceiptValidationResult]
     ):
         """Updates multiple ReceiptValidationResults in the database.
 
@@ -181,7 +181,7 @@ class _ReceiptValidationResult(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("delete_receipt_validation_results")
     def delete_receipt_validation_results(
-        self, results: List[ReceiptValidationResult]
+        self, results: list[ReceiptValidationResult]
     ):
         """Deletes multiple ReceiptValidationResults in batch.
 
@@ -276,15 +276,15 @@ class _ReceiptValidationResult(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipt_validation_results")
     def list_receipt_validation_results(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[ReceiptValidationResult], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[ReceiptValidationResult], Dict | None]:
         """Returns ReceiptValidationResults and the last evaluated key.
 
         Args:
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict], optional): The key to start
+            last_evaluated_key (Dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:
@@ -322,18 +322,18 @@ class _ReceiptValidationResult(FlattenedStandardMixin):
         image_id: str,
         field_name: str,
         *,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[ReceiptValidationResult], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[ReceiptValidationResult], Dict | None]:
         """Returns ReceiptValidationResults for a specific field.
 
         Args:
             receipt_id (int): The Receipt ID to query.
             image_id (str): The Image ID to query.
             field_name (str): The field name to filter by.
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict], optional): The key to start
+            last_evaluated_key (Dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:
@@ -392,16 +392,16 @@ class _ReceiptValidationResult(FlattenedStandardMixin):
     def list_receipt_validation_results_by_type(
         self,
         result_type: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[ReceiptValidationResult], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[ReceiptValidationResult], Dict | None]:
         """Returns ReceiptValidationResults with a specific type.
 
         Args:
             result_type (str): The result type to filter by.
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict], optional): The key to start
+            last_evaluated_key (Dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:

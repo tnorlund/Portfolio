@@ -12,7 +12,7 @@ Benefits:
 """
 
 from dataclasses import dataclass
-from typing import Any, ClassVar, Dict, Set
+from typing import Any, ClassVar
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
@@ -42,7 +42,7 @@ class ReceiptTextGeometryEntity(TextGeometryEntity):
 
     # Receipt entities use the same required keys as base geometry entities
     # (receipt_id from SK parsing, embedding_status/is_noise have defaults)
-    REQUIRED_KEYS: ClassVar[Set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
+    REQUIRED_KEYS: ClassVar[set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
 
     # Receipt-specific fields
     receipt_id: int
@@ -92,7 +92,7 @@ class ReceiptTextGeometryEntity(TextGeometryEntity):
                 f"{type(self.is_noise).__name__}"
             )
 
-    def _get_receipt_fields_for_serialization(self) -> Dict[str, Any]:
+    def _get_receipt_fields_for_serialization(self) -> dict[str, Any]:
         """
         Return receipt-specific fields serialized for DynamoDB.
 

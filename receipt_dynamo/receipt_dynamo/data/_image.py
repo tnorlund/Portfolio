@@ -7,7 +7,7 @@ This refactored version reduces code from ~792 lines to ~250 lines
 (68% reduction)
 while maintaining full backward compatibility and all functionality.
 """
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data.base_operations import (
@@ -40,9 +40,7 @@ from receipt_dynamo.entities.line import Line
 from receipt_dynamo.entities.receipt import Receipt
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
+    pass
 
 
 class _Image(FlattenedStandardMixin):
@@ -62,7 +60,7 @@ class _Image(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("add_images")
-    def add_images(self, images: List[Image]) -> None:
+    def add_images(self, images: list[Image]) -> None:
         """Adds multiple Image items to the database in batches."""
         self._validate_entity_list(images, Image, "images")
 
@@ -98,7 +96,7 @@ class _Image(FlattenedStandardMixin):
         self._update_entity(image, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_images")
-    def update_images(self, images: List[Image]) -> None:
+    def update_images(self, images: list[Image]) -> None:
         """Updates multiple Image items in the database."""
         self._update_entities(images, Image, "images")
 
@@ -244,9 +242,9 @@ class _Image(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_images")
     def list_images(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[Image], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[Image], Dict | None]:
         """Lists images from the database via a global secondary index."""
         return self._query_by_type(
             "IMAGE", item_to_image, limit, last_evaluated_key
@@ -256,10 +254,10 @@ class _Image(FlattenedStandardMixin):
     def list_images_by_type(
         self,
         image_type: str | ImageType,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-        receipt_count: Optional[int] = None,
-    ) -> Tuple[List[Image], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+        receipt_count: int | None = None,
+    ) -> tuple[list[Image], Dict | None]:
         """Lists images from the database by type.
 
         Optionally filtered by exact receipt count.
@@ -333,9 +331,9 @@ class _Image(FlattenedStandardMixin):
         self,
         entity_type: str,
         converter_func: Any,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[Any], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[Any], Dict | None]:
         """Generic method to query entities by TYPE using GSITYPE index."""
         return self._query_entities(
             index_name="GSITYPE",

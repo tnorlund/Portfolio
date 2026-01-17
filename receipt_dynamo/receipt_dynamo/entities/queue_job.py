@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
@@ -69,7 +69,7 @@ class QueueJob:
             raise ValueError("position must be a non-negative integer")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the queue-job association.
 
         Returns:
@@ -80,7 +80,7 @@ class QueueJob:
             "SK": {"S": f"JOB#{self.job_id}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the queue-job association.
 
         Returns:
@@ -91,7 +91,7 @@ class QueueJob:
             "GSI1SK": {"S": f"JOB#{self.job_id}#QUEUE#{self.queue_name}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the QueueJob object to a DynamoDB item.
 
         Returns:
@@ -124,11 +124,11 @@ class QueueJob:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the QueueJob object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over
+            Generator[tuple[str, Any], None, None]: An iterator over
                 attribute name/value pairs.
         """
         yield "queue_name", self.queue_name
@@ -154,7 +154,7 @@ class QueueJob:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "QueueJob":
+    def from_item(cls, item: dict[str, Any]) -> "QueueJob":
         """Converts a DynamoDB item to a QueueJob object.
 
         Args:
@@ -197,7 +197,7 @@ class QueueJob:
             raise ValueError(f"Error converting item to QueueJob: {e}") from e
 
 
-def item_to_queue_job(item: Dict[str, Any]) -> QueueJob:
+def item_to_queue_job(item: dict[str, Any]) -> QueueJob:
     """Converts a DynamoDB item to a QueueJob object.
 
     Args:

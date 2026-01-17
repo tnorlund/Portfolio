@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -12,7 +12,7 @@ from receipt_dynamo.entities.queue_job import QueueJob, item_to_queue_job
 from receipt_dynamo.entities.rwl_queue import Queue, item_to_queue
 
 
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
+def validate_last_evaluated_key(lek: dict[str, Any]) -> None:
     """Validates the format of a LastEvaluatedKey for pagination.
 
     Args:
@@ -145,9 +145,9 @@ class _Queue(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_queues")
     def list_queues(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> tuple[list[Queue], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[Queue], dict[str, Any] | None]:
         """Lists all queues in the DynamoDB table.
 
         Args:
@@ -234,9 +234,9 @@ class _Queue(FlattenedStandardMixin):
     def list_jobs_in_queue(
         self,
         queue_name: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> tuple[list[QueueJob], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[QueueJob], dict[str, Any] | None]:
         """Lists all jobs in a queue in the DynamoDB table.
 
         Args:
@@ -285,9 +285,9 @@ class _Queue(FlattenedStandardMixin):
     def find_queues_for_job(
         self,
         job_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> tuple[list[QueueJob], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[QueueJob], dict[str, Any] | None]:
         """Finds all queues that contain a specific job.
 
         Args:

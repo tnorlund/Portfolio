@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.constants import SectionType
 from receipt_dynamo.entities.util import (
@@ -88,7 +88,7 @@ class ReceiptSection:
             raise ValueError("created_at must be a datetime or ISO string")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generate the primary key for the receipt section."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -100,7 +100,7 @@ class ReceiptSection:
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert the ReceiptSection to a DynamoDB item."""
         return {
             **self.key,
@@ -124,7 +124,7 @@ class ReceiptSection:
             f")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Iterate over the attributes of the ReceiptSection."""
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
@@ -146,7 +146,7 @@ class ReceiptSection:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptSection":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptSection":
         """Converts a DynamoDB item to a ReceiptSection object.
 
         Args:
@@ -185,7 +185,7 @@ class ReceiptSection:
             ) from e
 
 
-def item_to_receipt_section(item: Dict[str, Any]) -> ReceiptSection:
+def item_to_receipt_section(item: dict[str, Any]) -> ReceiptSection:
     """Converts a DynamoDB item to a ReceiptSection object.
 
     Args:

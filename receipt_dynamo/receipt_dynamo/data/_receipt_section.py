@@ -1,5 +1,4 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_section.py
-from typing import Optional
 
 from botocore.exceptions import ClientError
 
@@ -351,7 +350,7 @@ class _ReceiptSection(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipt_sections")
     def list_receipt_sections(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptSection], dict | None]:
         """

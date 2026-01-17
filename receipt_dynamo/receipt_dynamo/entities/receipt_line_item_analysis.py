@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, Generator
 
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -23,7 +23,7 @@ class ReceiptLineItemAnalysis:
         receipt_id (str): UUID identifying the receipt.
         timestamp_added (datetime or str):
             The timestamp when the analysis was added.
-        items (List[Dict]): List of line items identified in the receipt.
+        items (list[Dict]): List of line items identified in the receipt.
         reasoning (str):
             Detailed reasoning explaining how the analysis was performed.
         subtotal (Decimal, optional): The subtotal amount from the receipt.
@@ -33,12 +33,12 @@ class ReceiptLineItemAnalysis:
         discounts (Decimal, optional): Any discounts on the receipt.
         tips (Decimal, optional): Any tips on the receipt.
         total_found (int): The number of line items found.
-        discrepancies (List[str]): Any discrepancies found during analysis.
+        discrepancies (list[str]): Any discrepancies found during analysis.
         version (str): Version of the analysis.
         metadata (Dict): Additional metadata about the analysis.
         word_labels (Dict):
             Mapping of (line_id, word_id) tuples to label information.
-        timestamp_updated (Optional[str]):
+        timestamp_updated (str | None):
             The timestamp when the analysis was last updated.
     """
 
@@ -55,21 +55,21 @@ class ReceiptLineItemAnalysis:
 
     image_id: str
     receipt_id: int
-    timestamp_added: Union[datetime, str]
-    items: List[Dict[str, Any]]
+    timestamp_added: datetime | str
+    items: list[dict[str, Any]]
     reasoning: str
     version: str
-    subtotal: Optional[Union[Decimal, str]] = None
-    tax: Optional[Union[Decimal, str]] = None
-    total: Optional[Union[Decimal, str]] = None
-    fees: Optional[Union[Decimal, str]] = None
-    discounts: Optional[Union[Decimal, str]] = None
-    tips: Optional[Union[Decimal, str]] = None
-    total_found: Optional[int] = None
-    discrepancies: Optional[List[str]] = None
-    metadata: Optional[Dict[str, Any]] = None
-    word_labels: Optional[Dict[Tuple[int, int], Any]] = None
-    timestamp_updated: Optional[str] = None
+    subtotal: Decimal | str | None = None
+    tax: Decimal | str | None = None
+    total: Decimal | str | None = None
+    fees: Decimal | str | None = None
+    discounts: Decimal | str | None = None
+    tips: Decimal | str | None = None
+    total_found: int | None = None
+    discrepancies: list[str] | None = None
+    metadata: dict[str, Any] | None = None
+    word_labels: dict[tuple[int, int | None, Any]] = None
+    timestamp_updated: str | None = None
 
     def __post_init__(self):
         """Initializes and validates the ReceiptLineItemAnalysis object.
@@ -121,7 +121,7 @@ class ReceiptLineItemAnalysis:
         self._init_optional_fields()
 
     def _validate_timestamp(
-        self, value: Union[datetime, str], field_name: str
+        self, value: datetime | str, field_name: str
     ) -> str:
         """Validate and convert a timestamp to ISO format string."""
         if isinstance(value, datetime):
@@ -170,7 +170,7 @@ class ReceiptLineItemAnalysis:
         raise ValueError(f"{field_name} must be a Decimal, string, or None")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the receipt line item analysis.
 
         Returns:
@@ -181,7 +181,7 @@ class ReceiptLineItemAnalysis:
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#LINE_ITEMS"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the receipt line item analysis.
 
         Returns:
@@ -192,7 +192,7 @@ class ReceiptLineItemAnalysis:
             "GSI1SK": {"S": f"LINE_ITEMS#{self.timestamp_added}"},
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """Generates the GSI2 key for the receipt line item analysis.
 
         Returns:
@@ -205,7 +205,7 @@ class ReceiptLineItemAnalysis:
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the ReceiptLineItemAnalysis object to a DynamoDB item.
 
         Returns:
@@ -213,7 +213,7 @@ class ReceiptLineItemAnalysis:
                 A dictionary representing the ReceiptLineItemAnalysis object as
                 a DynamoDB item.
         """
-        item: Dict[str, Any] = {
+        item: dict[str, Any] = {
             **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
@@ -229,13 +229,13 @@ class ReceiptLineItemAnalysis:
             item["timestamp_updated"] = {"S": self.timestamp_updated}
 
         # Convert items list to DynamoDB format
-        items_list: List[Dict[str, Any]] = [
+        items_list: list[dict[str, Any]] = [
             self._convert_item_to_dynamo(i) for i in self.items
         ]
         item["items"] = {"L": items_list}
 
         # Convert discrepancies list to DynamoDB format
-        discrepancies_list: List[Dict[str, str]] = [
+        discrepancies_list: list[dict[str, str]] = [
             {"S": discrepancy} for discrepancy in self.discrepancies
         ]
         item["discrepancies"] = {"L": discrepancies_list}
@@ -261,11 +261,11 @@ class ReceiptLineItemAnalysis:
 
         return item
 
-    def _serialize_word_labels(self) -> Dict[str, Any]:
+    def _serialize_word_labels(self) -> dict[str, Any]:
         """Serialize word_labels to DynamoDB format."""
         if not self.word_labels:
             return {"NULL": True}
-        word_labels_dynamo: Dict[str, Any] = {}
+        word_labels_dynamo: dict[str, Any] = {}
         for (line_id, word_id), label_info in self.word_labels.items():
             key = f"{line_id}:{word_id}"
             word_labels_dynamo[key] = {
@@ -274,13 +274,13 @@ class ReceiptLineItemAnalysis:
         return {"M": word_labels_dynamo}
 
     @staticmethod
-    def _serialize_optional_decimal(value: Any) -> Dict[str, Any]:
+    def _serialize_optional_decimal(value: Any) -> dict[str, Any]:
         """Serialize an optional Decimal to DynamoDB format."""
         if value is not None:
             return {"S": str(value)}
         return {"NULL": True}
 
-    def _convert_item_to_dynamo(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_item_to_dynamo(self, item: dict[str, Any]) -> dict[str, Any]:
         """Converts a line item dictionary to DynamoDB format.
 
         Args:
@@ -289,7 +289,7 @@ class ReceiptLineItemAnalysis:
         Returns:
             Dict: The line item in DynamoDB format.
         """
-        result: Dict[str, Any] = {"M": {}}
+        result: dict[str, Any] = {"M": {}}
 
         # Add required fields
         if "description" in item:
@@ -307,7 +307,7 @@ class ReceiptLineItemAnalysis:
         # Convert quantity if present
         if "quantity" in item and item["quantity"]:
             quantity = item["quantity"]
-            quantity_map: Dict[str, Any] = {"M": {}}
+            quantity_map: dict[str, Any] = {"M": {}}
 
             if "amount" in quantity:
                 quantity_map["M"]["amount"] = {"S": str(quantity["amount"])}
@@ -320,7 +320,7 @@ class ReceiptLineItemAnalysis:
         # Convert price if present
         if "price" in item and item["price"]:
             price = item["price"]
-            price_map: Dict[str, Any] = {"M": {}}
+            price_map: dict[str, Any] = {"M": {}}
 
             if "unit_price" in price and price["unit_price"] is not None:
                 price_map["M"]["unit_price"] = {"S": str(price["unit_price"])}
@@ -343,7 +343,7 @@ class ReceiptLineItemAnalysis:
 
         return result
 
-    def _convert_dict_to_dynamo(self, d: Dict) -> Dict:
+    def _convert_dict_to_dynamo(self, d: dict) -> dict:
         """Recursively converts a dictionary to DynamoDB format.
 
         Args:
@@ -352,7 +352,7 @@ class ReceiptLineItemAnalysis:
         Returns:
             Dict: The dictionary in DynamoDB format.
         """
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
         for k, v in d.items():
             if isinstance(v, dict):
                 result[k] = {"M": self._convert_dict_to_dynamo(v)}
@@ -392,7 +392,7 @@ class ReceiptLineItemAnalysis:
         self.metadata["processing_metrics"][metric_name] = value
 
     def add_history_event(
-        self, event_type: str, details: Optional[Dict[str, Any]] = None
+        self, event_type: str, details: dict[str, Any] | None = None
     ) -> None:
         """Adds a history event to the metadata.
 
@@ -471,7 +471,7 @@ class ReceiptLineItemAnalysis:
 
     def get_item_by_description(
         self, description: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Find a line item by its description.
 
@@ -479,7 +479,7 @@ class ReceiptLineItemAnalysis:
             description (str): The description to search for.
 
         Returns:
-            Optional[Dict]: The matching line item, or None if not found.
+            Dict | None: The matching line item, or None if not found.
         """
         for item in self.items:
             if item.get("description", "").lower() == description.lower():
@@ -508,11 +508,11 @@ class ReceiptLineItemAnalysis:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Return an iterator over the object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]:
+            Generator[tuple[str, Any], None, None]:
                 An iterator over attribute name/value pairs.
         """
         yield "image_id", self.image_id
@@ -564,7 +564,7 @@ class ReceiptLineItemAnalysis:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptLineItemAnalysis":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptLineItemAnalysis":
         """Converts a DynamoDB item to a ReceiptLineItemAnalysis object.
 
         Args:
@@ -626,7 +626,7 @@ class ReceiptLineItemAnalysis:
             )
 
             # Extract word_labels
-            word_labels: Optional[Dict[Tuple[int, int], Dict[str, Any]]] = None
+            word_labels: dict[tuple[int, int | None, dict[str, Any]]] = None
             if "word_labels" in item and item["word_labels"].get("M"):
                 word_labels = {}
                 word_labels_dynamo = item["word_labels"]["M"]
@@ -663,7 +663,7 @@ class ReceiptLineItemAnalysis:
 
 
 def item_to_receipt_line_item_analysis(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> ReceiptLineItemAnalysis:
     """Converts a DynamoDB item to a ReceiptLineItemAnalysis object.
 
@@ -681,7 +681,7 @@ def item_to_receipt_line_item_analysis(
     return ReceiptLineItemAnalysis.from_item(item)
 
 
-def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:
+def _convert_dynamo_to_item(dynamo_item: dict) -> dict:
     """Converts a DynamoDB format item to a Python dictionary.
 
     Args:
@@ -690,7 +690,7 @@ def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:
     Returns:
         Dict: The item as a Python dictionary.
     """
-    item: Dict[str, Any] = {}
+    item: dict[str, Any] = {}
     item_map = dynamo_item.get("M", {})
 
     # Extract basic fields
@@ -737,7 +737,7 @@ def _convert_dynamo_to_item(dynamo_item: Dict) -> Dict:
     return item
 
 
-def _convert_dynamo_to_dict(dynamo_dict: Dict) -> Dict:
+def _convert_dynamo_to_dict(dynamo_dict: dict) -> dict:
     """Recursively convert a DynamoDB format dictionary to a Python
     dictionary.
 
@@ -747,7 +747,7 @@ def _convert_dynamo_to_dict(dynamo_dict: Dict) -> Dict:
     Returns:
         Dict: The dictionary as a Python dictionary.
     """
-    result: Dict[str, Any] = {}
+    result: dict[str, Any] = {}
     for k, v in dynamo_dict.items():
         if "M" in v:
             result[k] = _convert_dynamo_to_dict(v["M"])

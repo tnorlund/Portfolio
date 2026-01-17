@@ -5,7 +5,7 @@ This refactored version reduces code from ~944 lines to ~300 lines
 functionality.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -24,7 +24,7 @@ from receipt_dynamo.entities.receipt_label_analysis import (
 )
 
 
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
+def validate_last_evaluated_key(lek: dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
@@ -75,12 +75,12 @@ class _ReceiptLabelAnalysis(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("add_receipt_label_analyses")
     def add_receipt_label_analyses(
-        self, receipt_label_analyses: List[ReceiptLabelAnalysis]
+        self, receipt_label_analyses: list[ReceiptLabelAnalysis]
     ):
         """Adds multiple receipt label analyses to the database
 
         Args:
-            receipt_label_analyses (List[ReceiptLabelAnalysis]): The receipt
+            receipt_label_analyses (list[ReceiptLabelAnalysis]): The receipt
                 label analyses to add to the database
 
         Raises:
@@ -127,12 +127,12 @@ class _ReceiptLabelAnalysis(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("update_receipt_label_analyses")
     def update_receipt_label_analyses(
-        self, receipt_label_analyses: List[ReceiptLabelAnalysis]
+        self, receipt_label_analyses: list[ReceiptLabelAnalysis]
     ):
         """Updates multiple receipt label analyses in the database
 
         Args:
-            receipt_label_analyses (List[ReceiptLabelAnalysis]): The receipt
+            receipt_label_analyses (list[ReceiptLabelAnalysis]): The receipt
                 label analyses to update in the database
 
         Raises:
@@ -171,12 +171,12 @@ class _ReceiptLabelAnalysis(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("delete_receipt_label_analyses")
     def delete_receipt_label_analyses(
-        self, receipt_label_analyses: List[ReceiptLabelAnalysis]
+        self, receipt_label_analyses: list[ReceiptLabelAnalysis]
     ):
         """Deletes multiple receipt label analyses from the database
 
         Args:
-            receipt_label_analyses (List[ReceiptLabelAnalysis]): The receipt
+            receipt_label_analyses (list[ReceiptLabelAnalysis]): The receipt
                 label analyses to delete from the database
 
         Raises:
@@ -206,14 +206,14 @@ class _ReceiptLabelAnalysis(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("get_receipt_label_analysis")
     def get_receipt_label_analysis(
-        self, image_id: str, receipt_id: int, version: Optional[str] = None
+        self, image_id: str, receipt_id: int, version: str | None = None
     ) -> ReceiptLabelAnalysis:
         """Retrieves a receipt label analysis from the database
 
         Args:
             image_id (str): The image ID
             receipt_id (int): The receipt ID
-            version (Optional[str]): The version of the analysis
+            version (str | None): The version of the analysis
 
         Returns:
             ReceiptLabelAnalysis: The receipt label analysis from the database
@@ -265,19 +265,19 @@ class _ReceiptLabelAnalysis(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipt_label_analyses")
     def list_receipt_label_analyses(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptLabelAnalysis], dict[str, Any] | None]:
         """Lists all receipt label analyses
 
         Args:
-            limit (Optional[int]): The maximum number of items to return
+            limit (int | None): The maximum number of items to return
             last_evaluated_key (
-                Optional[Dict[str, Any]]
+                dict[str, Any] | None
             ): The key to start from
 
         Returns:
-            Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]: The
+            tuple[list[ReceiptLabelAnalysis], dict[str, Any] | None]: The
                 receipt label analyses and the last evaluated key
         """
         # Use the QueryByTypeMixin for standardized GSITYPE queries
@@ -291,7 +291,7 @@ class _ReceiptLabelAnalysis(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipt_label_analyses_for_image")
     def list_receipt_label_analyses_for_image(
         self, image_id: str
-    ) -> List[ReceiptLabelAnalysis]:
+    ) -> list[ReceiptLabelAnalysis]:
         """Lists all receipt label analyses for a given image
 
         Args:
@@ -299,7 +299,7 @@ class _ReceiptLabelAnalysis(FlattenedStandardMixin):
 
         Returns:
 
-            List[ReceiptLabelAnalysis]:
+            list[ReceiptLabelAnalysis]:
                 The receipt label analyses for the image
         """
         if not isinstance(image_id, str):
@@ -335,19 +335,19 @@ class _ReceiptLabelAnalysis(FlattenedStandardMixin):
     def get_receipt_label_analyses_by_image(
         self,
         image_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptLabelAnalysis], dict[str, Any] | None]:
         """Gets receipt label analyses for a given image with pagination
         support
 
         Args:
             image_id (str): The image ID
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Pagination key
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Pagination key
 
         Returns:
-            Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptLabelAnalysis], dict[str, Any] | None]:
                 The receipt label analyses and pagination key
         """
         if not isinstance(image_id, str):
@@ -428,20 +428,20 @@ class _ReceiptLabelAnalysis(FlattenedStandardMixin):
         self,
         image_id: str,
         receipt_id: int,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptLabelAnalysis], dict[str, Any] | None]:
         """Gets receipt label analyses for a given image and receipt with
         pagination support
 
         Args:
             image_id (str): The image ID
             receipt_id (int): The receipt ID
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Pagination key
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Pagination key
 
         Returns:
-            Tuple[List[ReceiptLabelAnalysis], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptLabelAnalysis], dict[str, Any] | None]:
                 The receipt label analyses and pagination key
         """
         if not isinstance(image_id, str):

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
@@ -17,7 +17,7 @@ from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
+def validate_last_evaluated_key(lek: dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
@@ -52,16 +52,16 @@ class _Job(FlattenedStandardMixin):
         Gets a job from the database.
     get_job_by_name(name: str, ...) -> tuple[list[Job], dict | None]
         Gets jobs by name using GSI2.
-    get_job_with_status(job_id: str) -> Tuple[Job, List[JobStatus]]
+    get_job_with_status(job_id: str) -> tuple[Job, list[JobStatus]]
         Gets a job with all its status updates.
     list_jobs(
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]
         Lists all jobs from the database.
     list_jobs_by_status(
         status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]
         Lists jobs filtered by status.
@@ -211,7 +211,7 @@ class _Job(FlattenedStandardMixin):
     def get_job_by_name(
         self,
         name: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
@@ -268,14 +268,14 @@ class _Job(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("get_job_with_status")
-    def get_job_with_status(self, job_id: str) -> Tuple[Job, List[JobStatus]]:
+    def get_job_with_status(self, job_id: str) -> tuple[Job, list[JobStatus]]:
         """Get a job with all its status updates
 
         Args:
             job_id (str): The ID of the job to get
 
         Returns:
-            Tuple[Job, List[JobStatus]]: A tuple containing the job and a list
+            tuple[Job, list[JobStatus]]: A tuple containing the job and a list
                 of its status updates
         """
         if job_id is None:
@@ -306,7 +306,7 @@ class _Job(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_jobs")
     def list_jobs(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """
@@ -340,7 +340,7 @@ class _Job(FlattenedStandardMixin):
     def list_jobs_by_status(
         self,
         status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Job], dict | None]:
         """

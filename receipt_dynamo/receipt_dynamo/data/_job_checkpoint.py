@@ -1,4 +1,3 @@
-from typing import Optional
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -26,15 +25,15 @@ class _JobCheckpoint(FlattenedStandardMixin):
         Gets a specific job checkpoint by job ID and timestamp.
     update_best_checkpoint(job_id: str, timestamp: str)
         Updates the 'is_best' flag for checkpoints in a job.
-    list_job_checkpoints(job_id: str, limit: Optional[int] = None,
-                         last_evaluated_key: Optional[Dict] = None)
+    list_job_checkpoints(job_id: str, limit: int | None = None,
+                         last_evaluated_key: Dict | None = None)
         Lists all checkpoints for a specific job.
-    get_best_checkpoint(job_id: str) -> Optional[JobCheckpoint]
+    get_best_checkpoint(job_id: str) -> JobCheckpoint | None
         Gets the checkpoint marked as best for a job.
     delete_job_checkpoint(job_id: str, timestamp: str)
         Deletes a specific job checkpoint.
-    list_all_job_checkpoints(limit: Optional[int] = None,
-                             last_evaluated_key: Optional[Dict] = None)
+    list_all_job_checkpoints(limit: int | None = None,
+                             last_evaluated_key: Dict | None = None)
         Lists all job checkpoints across all jobs.
     """
 
@@ -166,7 +165,7 @@ class _JobCheckpoint(FlattenedStandardMixin):
     def list_job_checkpoints(
         self,
         job_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobCheckpoint], dict | None]:
         """
@@ -199,7 +198,7 @@ class _JobCheckpoint(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("get_best_checkpoint")
-    def get_best_checkpoint(self, job_id: str) -> Optional[JobCheckpoint]:
+    def get_best_checkpoint(self, job_id: str) -> JobCheckpoint | None:
         """
         Retrieve the best checkpoint for a job from the database.
 
@@ -208,7 +207,7 @@ class _JobCheckpoint(FlattenedStandardMixin):
                 The ID of the job to get the best checkpoint for.
 
         Returns:
-            Optional[JobCheckpoint]:
+            JobCheckpoint | None:
                 The best checkpoint for the job, or None if no best
                 checkpoint exists.
 
@@ -273,7 +272,7 @@ class _JobCheckpoint(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_all_job_checkpoints")
     def list_all_job_checkpoints(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobCheckpoint], dict | None]:
         """

@@ -13,7 +13,7 @@ import decimal
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.util import assert_type, format_type_error
 
@@ -29,7 +29,7 @@ class SpatialPattern:
 
     pattern_type: str
     description: str
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
     def __post_init__(self):
         """
@@ -47,7 +47,7 @@ class SpatialPattern:
         if self.metadata is None:
             self.metadata = {}
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert the SpatialPattern to a dictionary."""
         return {
             "pattern_type": self.pattern_type,
@@ -56,7 +56,7 @@ class SpatialPattern:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SpatialPattern":
+    def from_dict(cls, data: dict[str, Any]) -> "SpatialPattern":
         """
         Create a SpatialPattern from a dictionary.
 
@@ -99,8 +99,8 @@ class ContentPattern:
 
     pattern_type: str
     description: str
-    examples: Optional[List[str]] = None
-    metadata: Optional[Dict[str, Any]] = None
+    examples: list[str] | None = None
+    metadata: dict[str, Any] | None = None
 
     def __post_init__(self):
         """
@@ -126,7 +126,7 @@ class ContentPattern:
         for i, example in enumerate(self.examples):
             assert_type(f"examples[{i}]", example, str)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert the ContentPattern to a dictionary."""
         return {
             "pattern_type": self.pattern_type,
@@ -136,7 +136,7 @@ class ContentPattern:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ContentPattern":
+    def from_dict(cls, data: dict[str, Any]) -> "ContentPattern":
         """
         Create a ContentPattern from a dictionary.
 
@@ -190,13 +190,13 @@ class ReceiptSection:
     def __init__(
         self,
         name: str,
-        line_ids: List[int],
-        spatial_patterns: List[SpatialPattern],
-        content_patterns: List[ContentPattern],
+        line_ids: list[int],
+        spatial_patterns: list[SpatialPattern],
+        content_patterns: list[ContentPattern],
         reasoning: str,
-        start_line: Optional[int] = None,
-        end_line: Optional[int] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        start_line: int | None = None,
+        end_line: int | None = None,
+        metadata: dict[str, Any] | None = None,
     ):
         """
         Initialize a ReceiptSection.
@@ -284,8 +284,8 @@ class ReceiptSection:
         self.reasoning = reasoning
 
         # Calculate start and end lines if not provided
-        self.start_line: Optional[int]
-        self.end_line: Optional[int]
+        self.start_line: int | None
+        self.end_line: int | None
         if line_ids:
             self.start_line = (
                 start_line if start_line is not None else min(line_ids)
@@ -297,7 +297,7 @@ class ReceiptSection:
 
         self.metadata = metadata or {}
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert the ReceiptSection to a dictionary."""
         return {
             "name": self.name,
@@ -317,7 +317,7 @@ class ReceiptSection:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ReceiptSection":
+    def from_dict(cls, data: dict[str, Any]) -> "ReceiptSection":
         """
         Create a ReceiptSection from a dictionary.
 
@@ -458,15 +458,15 @@ class ReceiptStructureAnalysis:
         self,
         receipt_id: int,
         image_id: str,
-        sections: List[ReceiptSection],
+        sections: list[ReceiptSection],
         overall_reasoning: str,
         version: str = "1.0.0",
-        metadata: Optional[Dict[str, Any]] = None,
-        timestamp_added: Optional[datetime] = None,
-        timestamp_updated: Optional[datetime] = None,
-        processing_metrics: Optional[Dict[str, Any]] = None,
-        source_info: Optional[Dict[str, Any]] = None,
-        processing_history: Optional[List[Dict[str, Any]]] = None,
+        metadata: dict[str, Any] | None = None,
+        timestamp_added: datetime | None = None,
+        timestamp_updated: datetime | None = None,
+        processing_metrics: dict[str, Any] | None = None,
+        source_info: dict[str, Any] | None = None,
+        processing_history: list[dict[str, Any] | None] = None,
     ):
         """
         Initialize a ReceiptStructureAnalysis.
@@ -587,23 +587,23 @@ class ReceiptStructureAnalysis:
         )
 
     @property
-    def discovered_sections(self) -> List[ReceiptSection]:
+    def discovered_sections(self) -> list[ReceiptSection]:
         """
         Backward compatibility property for code that still uses
         discovered_sections.
 
         Returns:
-            List[ReceiptSection]: The sections in this analysis
+            list[ReceiptSection]: The sections in this analysis
         """
         return self.sections
 
     @property
-    def key(self) -> Dict[str, Dict[str, str]]:
+    def key(self) -> dict[str, dict[str, str]]:
         """
         Get the primary key for the DynamoDB table.
 
         Returns:
-            Dict[str, Dict[str, str]]: The primary key
+            dict[str, dict[str, str]]: The primary key
         """
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -615,12 +615,12 @@ class ReceiptStructureAnalysis:
             },
         }
 
-    def gsi1_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi1_key(self) -> dict[str, dict[str, str]]:
         """
         Get the GSI1 key for the DynamoDB table.
 
         Returns:
-            Dict[str, str]: The GSI1 key
+            dict[str, str]: The GSI1 key
         """
         timestamp_str = self.timestamp_added.isoformat()
         return {
@@ -628,12 +628,12 @@ class ReceiptStructureAnalysis:
             "GSI1SK": {"S": f"STRUCTURE#{timestamp_str}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """
         Convert to a DynamoDB item.
 
         Returns:
-            Dict[str, Any]: The item representation for DynamoDB
+            dict[str, Any]: The item representation for DynamoDB
         """
         # Create a list of sections in DynamoDB format
         section_list = []
@@ -720,7 +720,7 @@ class ReceiptStructureAnalysis:
             history_list.append(history_dict)
 
         # Format metrics
-        metrics_dict: Dict[str, Any] = {"M": {}}
+        metrics_dict: dict[str, Any] = {"M": {}}
         if self.processing_metrics:
             for key, value in self.processing_metrics.items():
                 if key == "section_count":
@@ -744,7 +744,7 @@ class ReceiptStructureAnalysis:
                     metrics_dict["M"][key] = {"S": str(value)}
 
         # Format source info
-        source_info_dict: Dict[str, Any] = {"M": {}}
+        source_info_dict: dict[str, Any] = {"M": {}}
         if self.source_info:
             for key, value in self.source_info.items():
                 source_info_dict["M"][key] = {"S": str(value)}
@@ -778,14 +778,14 @@ class ReceiptStructureAnalysis:
 
         return item
 
-    def get_section_by_name(self, name: str) -> Optional[ReceiptSection]:
+    def get_section_by_name(self, name: str) -> ReceiptSection | None:
         """Find a section by its name."""
         for section in self.sections:
             if section.name.lower() == name.lower():
                 return section
         return None
 
-    def get_section_for_line(self, line_id: int) -> Optional[ReceiptSection]:
+    def get_section_for_line(self, line_id: int) -> ReceiptSection | None:
         """Find which section contains the given line ID."""
         for section in self.sections:
             if line_id in section.line_ids:
@@ -794,7 +794,7 @@ class ReceiptStructureAnalysis:
 
     def get_sections_with_pattern(
         self, pattern_type: str
-    ) -> List[ReceiptSection]:
+    ) -> list[ReceiptSection]:
         """Find sections that contain a specific pattern type."""
         matching_sections = []
         for section in self.sections:
@@ -831,7 +831,7 @@ class ReceiptStructureAnalysis:
         Returns:
             str: A text summary of the receipt's structure
         """
-        result: List[str] = [
+        result: list[str] = [
             f"Receipt contains {len(self.sections)} sections."
         ]
 
@@ -886,7 +886,7 @@ class ReceiptStructureAnalysis:
             and self.source_info == other.source_info
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Iterator for the analysis attributes."""
         yield "receipt_id", self.receipt_id
         yield "image_id", self.image_id
@@ -927,7 +927,7 @@ class ReceiptStructureAnalysis:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptStructureAnalysis":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptStructureAnalysis":
         """Convert a DynamoDB item to a ReceiptStructureAnalysis.
 
         Args:
@@ -1002,7 +1002,7 @@ class ReceiptStructureAnalysis:
         )
 
     @classmethod
-    def _parse_sections(cls, item: Dict[str, Any]) -> List[ReceiptSection]:
+    def _parse_sections(cls, item: dict[str, Any]) -> list[ReceiptSection]:
         """Parse sections from DynamoDB item format."""
         sections = []
         sections_attr = item.get("sections", {"L": []})
@@ -1029,7 +1029,7 @@ class ReceiptStructureAnalysis:
 
 
 def _extract_string_field(
-    item: Dict[str, Any], field_name: str, default: str
+    item: dict[str, Any], field_name: str, default: str
 ) -> str:
     """Extract a string field from DynamoDB item format."""
     field_attr = item.get(field_name, {"S": default})
@@ -1038,7 +1038,7 @@ def _extract_string_field(
     return str(field_attr)
 
 
-def _parse_timestamp(attr: Any) -> Optional[datetime]:
+def _parse_timestamp(attr: Any) -> datetime | None:
     """Parse a timestamp from DynamoDB attribute format."""
     if not attr:
         return None
@@ -1049,13 +1049,13 @@ def _parse_timestamp(attr: Any) -> Optional[datetime]:
         return None
 
 
-def _parse_string_map(attr: Any) -> Dict[str, Any]:
+def _parse_string_map(attr: Any) -> dict[str, Any]:
     """Parse a simple string map from DynamoDB attribute format."""
     if not attr or not isinstance(attr, dict):
         return {}
     if "M" not in attr:
         return attr
-    result: Dict[str, Any] = {}
+    result: dict[str, Any] = {}
     for k, v in attr["M"].items():
         if isinstance(v, dict) and "S" in v:
             result[k] = v["S"]
@@ -1064,14 +1064,14 @@ def _parse_string_map(attr: Any) -> Dict[str, Any]:
     return result
 
 
-def _parse_processing_metrics(attr: Any) -> Dict[str, Any]:
+def _parse_processing_metrics(attr: Any) -> dict[str, Any]:
     """Parse processing metrics from DynamoDB attribute format."""
     if not attr or not isinstance(attr, dict):
         return {}
     if "M" not in attr:
         return attr
 
-    result: Dict[str, Any] = {}
+    result: dict[str, Any] = {}
     for k, v in attr["M"].items():
         if not isinstance(v, dict):
             result[k] = v
@@ -1093,7 +1093,7 @@ def _parse_processing_metrics(attr: Any) -> Dict[str, Any]:
     return result
 
 
-def _parse_processing_history(attr: Any) -> List[Dict[str, Any]]:
+def _parse_processing_history(attr: Any) -> list[dict[str, Any]]:
     """Parse processing history from DynamoDB attribute format."""
     if not attr or not isinstance(attr, dict):
         return []
@@ -1114,9 +1114,9 @@ def _parse_processing_history(attr: Any) -> List[Dict[str, Any]]:
     return result
 
 
-def _parse_section_map(section_map: Dict[str, Any]) -> Dict[str, Any]:
+def _parse_section_map(section_map: dict[str, Any]) -> dict[str, Any]:
     """Parse a section map from DynamoDB format to plain dict."""
-    section_data: Dict[str, Any] = {}
+    section_data: dict[str, Any] = {}
 
     # Basic properties
     section_data["name"] = section_map.get("name", {}).get("S", "")
@@ -1149,7 +1149,7 @@ def _parse_section_map(section_map: Dict[str, Any]) -> Dict[str, Any]:
     return section_data
 
 
-def _parse_line_ids(line_ids_attr: List[Any]) -> List[int]:
+def _parse_line_ids(line_ids_attr: list[Any]) -> list[int]:
     """Parse line IDs from DynamoDB list format."""
     return [
         int(line_id["N"])
@@ -1158,7 +1158,7 @@ def _parse_line_ids(line_ids_attr: List[Any]) -> List[int]:
     ]
 
 
-def _parse_spatial_patterns(patterns_attr: List[Any]) -> List[Dict[str, Any]]:
+def _parse_spatial_patterns(patterns_attr: list[Any]) -> list[dict[str, Any]]:
     """Parse spatial patterns from DynamoDB list format."""
     patterns = []
     for sp in patterns_attr:
@@ -1174,7 +1174,7 @@ def _parse_spatial_patterns(patterns_attr: List[Any]) -> List[Dict[str, Any]]:
     return patterns
 
 
-def _parse_content_patterns(patterns_attr: List[Any]) -> List[Dict[str, Any]]:
+def _parse_content_patterns(patterns_attr: list[Any]) -> list[dict[str, Any]]:
     """Parse content patterns from DynamoDB list format."""
     patterns = []
     for cp in patterns_attr:
@@ -1196,13 +1196,13 @@ def _parse_content_patterns(patterns_attr: List[Any]) -> List[Dict[str, Any]]:
     return patterns
 
 
-def _parse_pattern_metadata(metadata_attr: Dict[str, Any]) -> Dict[str, Any]:
+def _parse_pattern_metadata(metadata_attr: dict[str, Any]) -> dict[str, Any]:
     """Parse pattern metadata from DynamoDB map format."""
     return {k: v.get("S", "") for k, v in metadata_attr.items()}
 
 
 def item_to_receipt_structure_analysis(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> ReceiptStructureAnalysis:
     """
     Convert a DynamoDB item to a ReceiptStructureAnalysis.

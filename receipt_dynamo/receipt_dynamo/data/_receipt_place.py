@@ -10,7 +10,7 @@ records in DynamoDB.
 """
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from boto3.dynamodb.types import TypeDeserializer
 
@@ -34,7 +34,7 @@ from receipt_dynamo.entities.receipt_place import item_to_receipt_place
 _deserializer = TypeDeserializer()
 
 
-def _deserialize_item(dynamo_item: Dict[str, Any]) -> Dict[str, Any]:
+def _deserialize_item(dynamo_item: dict[str, Any]) -> dict[str, Any]:
     """
     Deserialize a DynamoDB item from low-level client format to Python types.
 
@@ -77,21 +77,21 @@ class _ReceiptPlace(FlattenedStandardMixin):
     -------
     add_receipt_place(receipt_place: ReceiptPlace):
         Adds a single ReceiptPlace item to the database.
-    add_receipt_places(receipt_places: List[ReceiptPlace]):
+    add_receipt_places(receipt_places: list[ReceiptPlace]):
         Adds multiple ReceiptPlace items in batches.
     update_receipt_place(receipt_place: ReceiptPlace):
         Updates an existing ReceiptPlace item.
-    update_receipt_places(receipt_places: List[ReceiptPlace]):
+    update_receipt_places(receipt_places: list[ReceiptPlace]):
         Updates multiple ReceiptPlace items using transactions.
     delete_receipt_place(receipt_place: ReceiptPlace):
         Deletes a single ReceiptPlace item.
-    delete_receipt_places(receipt_places: List[ReceiptPlace]):
+    delete_receipt_places(receipt_places: list[ReceiptPlace]):
         Deletes multiple ReceiptPlace items using transactions.
     get_receipt_place(image_id: str, receipt_id: int) -> ReceiptPlace:
         Retrieves a single ReceiptPlace item by indices.
-    get_receipt_places_by_indices(...) -> List[ReceiptPlace]:
+    get_receipt_places_by_indices(...) -> list[ReceiptPlace]:
         Retrieves multiple ReceiptPlace items by indices.
-    get_receipt_places(...) -> List[ReceiptPlace]:
+    get_receipt_places(...) -> list[ReceiptPlace]:
         Retrieves multiple ReceiptPlace items using batch get.
     list_receipt_places(...)
         Lists ReceiptPlace records with pagination.
@@ -130,13 +130,13 @@ class _ReceiptPlace(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("add_receipt_places")
-    def add_receipt_places(self, receipt_places: List[ReceiptPlace]) -> None:
+    def add_receipt_places(self, receipt_places: list[ReceiptPlace]) -> None:
         """
         Adds multiple ReceiptPlace records to DynamoDB in batches.
 
         Parameters
         ----------
-        receipt_places : List[ReceiptPlace]
+        receipt_places : list[ReceiptPlace]
             A list of ReceiptPlace instances to add.
 
         Raises
@@ -182,14 +182,14 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("update_receipt_places")
     def update_receipt_places(
-        self, receipt_places: List[ReceiptPlace]
+        self, receipt_places: list[ReceiptPlace]
     ) -> None:
         """
         Updates multiple ReceiptPlace records in DynamoDB using transactions.
 
         Parameters
         ----------
-        receipt_places : List[ReceiptPlace]
+        receipt_places : list[ReceiptPlace]
             A list of ReceiptPlace instances to update.
 
         Raises
@@ -237,14 +237,14 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("delete_receipt_places")
     def delete_receipt_places(
-        self, receipt_places: List[ReceiptPlace]
+        self, receipt_places: list[ReceiptPlace]
     ) -> None:
         """
         Deletes multiple ReceiptPlace records from DynamoDB.
 
         Parameters
         ----------
-        receipt_places : List[ReceiptPlace]
+        receipt_places : list[ReceiptPlace]
             A list of ReceiptPlace instances to delete.
 
         Raises
@@ -372,9 +372,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipt_places")
     def list_receipt_places(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptPlace], dict | None]:
+    ) -> tuple[list[ReceiptPlace], dict | None]:
         """
         Lists ReceiptPlace records from DynamoDB with optional pagination.
 
@@ -387,7 +387,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         Returns
         -------
-        Tuple[List[ReceiptPlace], dict | None]
+        tuple[list[ReceiptPlace], dict | None]
             A tuple containing the list of ReceiptPlace records and the last
             evaluated key.
 
@@ -409,9 +409,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
     def get_receipt_places_by_merchant(
         self,
         merchant_name: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptPlace], dict | None]:
+    ) -> tuple[list[ReceiptPlace], dict | None]:
         """
         Retrieves ReceiptPlace records from DynamoDB by merchant name (GSI1).
 
@@ -426,7 +426,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         Returns
         -------
-        Tuple[List[ReceiptPlace], dict | None]
+        tuple[list[ReceiptPlace], dict | None]
             A tuple containing the list of ReceiptPlace records and the last
             evaluated key.
 
@@ -466,9 +466,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
     def list_receipt_places_with_place_id(
         self,
         place_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptPlace], dict | None]:
+    ) -> tuple[list[ReceiptPlace], dict | None]:
         """
         Retrieves ReceiptPlace records that have a specific place_id (GSI2).
 
@@ -485,7 +485,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         Returns
         -------
-        Tuple[List[ReceiptPlace], dict | None]
+        tuple[list[ReceiptPlace], dict | None]
             A tuple containing the list of ReceiptPlace records and the last
             evaluated key.
 
@@ -527,9 +527,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
     def get_receipt_places_by_status(
         self,
         validation_status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptPlace], dict | None]:
+    ) -> tuple[list[ReceiptPlace], dict | None]:
         """
         Retrieves ReceiptPlace records by validation status (GSI3).
 
@@ -550,7 +550,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         Returns
         -------
-        Tuple[List[ReceiptPlace], dict | None]
+        tuple[list[ReceiptPlace], dict | None]
             A tuple containing the list of ReceiptPlace records and
             the last evaluated key.
 
@@ -610,9 +610,9 @@ class _ReceiptPlace(FlattenedStandardMixin):
         self,
         confidence: float,
         above: bool = True,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptPlace], dict | None]:
+    ) -> tuple[list[ReceiptPlace], dict | None]:
         """
         Retrieves ReceiptPlace records by confidence score threshold.
 
@@ -641,7 +641,7 @@ class _ReceiptPlace(FlattenedStandardMixin):
 
         Returns
         -------
-        Tuple[List[ReceiptPlace], dict | None]
+        tuple[list[ReceiptPlace], dict | None]
             Tuple of (list of ReceiptPlace records, pagination token).
             Pagination token is None if no more results.
 

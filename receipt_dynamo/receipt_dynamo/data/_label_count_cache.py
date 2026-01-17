@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -73,7 +73,7 @@ class _LabelCountCache(FlattenedStandardMixin):
         self._update_entity(item, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("get_label_count_cache")
-    def get_label_count_cache(self, label: str) -> Optional[LabelCountCache]:
+    def get_label_count_cache(self, label: str) -> LabelCountCache | None:
         return self._get_entity(
             primary_key="LABEL_CACHE",
             sort_key=f"LABEL#{label}",
@@ -84,9 +84,9 @@ class _LabelCountCache(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_label_count_caches")
     def list_label_count_caches(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[LabelCountCache], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[LabelCountCache], dict[str, Any] | None]:
         return self._query_by_type(
             entity_type="LABEL_COUNT_CACHE",
             converter_func=item_to_label_count_cache,

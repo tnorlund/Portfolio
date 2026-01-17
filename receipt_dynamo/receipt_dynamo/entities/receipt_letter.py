@@ -1,12 +1,7 @@
 from dataclasses import dataclass
-from typing import Any, ClassVar, Dict, Generator, Set, Tuple
+from typing import Any, ClassVar, Generator
 
 from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
-from receipt_dynamo.entities.entity_factory import (
-    EntityFactory,
-    create_geometry_extractors,
-    create_image_receipt_pk_parser,
-)
 from receipt_dynamo.entities.util import (
     _repr_str,
 )
@@ -94,7 +89,7 @@ class ReceiptLetter(TextGeometryEntity):
             raise ValueError("confidence must be between 0 and 1")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """
         Generates the primary key for the receipt letter.
 
@@ -113,7 +108,7 @@ class ReceiptLetter(TextGeometryEntity):
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """
         Converts the ReceiptLetter object to a DynamoDB item.
 
@@ -147,12 +142,12 @@ class ReceiptLetter(TextGeometryEntity):
             and self._geometry_fields_equal(other)
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """
         Returns an iterator over the ReceiptLetter object's attributes.
 
         Yields:
-            Tuple[str, any]: A tuple containing the attribute name and its
+            tuple[str, any]: A tuple containing the attribute name and its
             value.
         """
         yield "image_id", self.image_id
@@ -181,7 +176,7 @@ class ReceiptLetter(TextGeometryEntity):
             f")"
         )
 
-    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+    def _get_geometry_hash_fields(self) -> tuple[Any, ...]:
         """Include entity-specific ID fields in hash computation."""
         return self._get_base_geometry_hash_fields() + (
             self.receipt_id,
@@ -196,10 +191,10 @@ class ReceiptLetter(TextGeometryEntity):
         return hash(self._get_geometry_hash_fields())
 
     # Use base class required keys (no additional keys for ReceiptLetter)
-    REQUIRED_KEYS: ClassVar[Set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
+    REQUIRED_KEYS: ClassVar[set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptLetter":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptLetter":
         """Convert a DynamoDB item to a ReceiptLetter object.
 
         Args:
@@ -212,8 +207,8 @@ class ReceiptLetter(TextGeometryEntity):
         Raises:
             ValueError: If required fields are missing or have invalid format.
         """
-        # Custom SK parser for RECEIPT#/LINE#/WORD#/LETTER# pattern
-        def parse_receipt_letter_sk(sk: str) -> Dict[str, Any]:
+
+        def parse_receipt_letter_sk(sk: str) -> dict[str, Any]:
             """Parse SK to extract receipt_id, line_id, word_id, letter_id."""
             parts = sk.split("#")
             if (
@@ -224,7 +219,6 @@ class ReceiptLetter(TextGeometryEntity):
                 or parts[6] != "LETTER"
             ):
                 raise ValueError(f"Invalid SK format for ReceiptLetter: {sk}")
-
             return {
                 "receipt_id": int(parts[1]),
                 "line_id": int(parts[3]),
@@ -232,26 +226,10 @@ class ReceiptLetter(TextGeometryEntity):
                 "letter_id": int(parts[7]),
             }
 
-        # Type-safe extractors for all fields
-        custom_extractors = {
-            "text": EntityFactory.extract_text_field,
-            **create_geometry_extractors(),  # Handles all geometry fields
-        }
-
-        # Use EntityFactory to create the entity with full type safety
-        return EntityFactory.create_entity(
-            entity_class=cls,
-            item=item,
-            required_keys=cls.REQUIRED_KEYS,
-            key_parsers={
-                "PK": create_image_receipt_pk_parser(),
-                "SK": parse_receipt_letter_sk,
-            },
-            custom_extractors=custom_extractors,
-        )
+        return cls._from_item_with_geometry(item, parse_receipt_letter_sk)
 
 
-def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:
+def item_to_receipt_letter(item: dict[str, Any]) -> ReceiptLetter:
     """Convert a DynamoDB item to a ReceiptLetter object.
 
     This is a convenience function that delegates to ReceiptLetter.from_item().

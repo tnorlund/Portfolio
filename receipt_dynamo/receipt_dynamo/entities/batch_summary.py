@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.entities.util import (
@@ -30,7 +30,7 @@ class BatchSummary:
     submitted_at: str | datetime
     status: str | BatchStatus
     result_file_id: str
-    receipt_refs: Optional[list[tuple[str, int]]] = None
+    receipt_refs: list[tuple[str, int | None]] = None
 
     def __post_init__(self):
         assert_type("batch_id", self.batch_id, str, ValueError)
@@ -64,13 +64,13 @@ class BatchSummary:
             )
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         return {
             "PK": {"S": f"BATCH#{self.batch_id}"},
             "SK": {"S": "STATUS"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         return {
             "GSI1PK": {"S": f"STATUS#{self.status}"},
             "GSI1SK": {
@@ -78,7 +78,7 @@ class BatchSummary:
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         return {
             **self.key,
             **self.gsi1_key(),
@@ -122,7 +122,7 @@ class BatchSummary:
     def __str__(self) -> str:
         return self.__repr__()
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         yield "batch_id", self.batch_id
         yield "batch_type", self.batch_type
         yield "openai_batch_id", self.openai_batch_id
@@ -131,7 +131,7 @@ class BatchSummary:
         yield "result_file_id", self.result_file_id
         yield "receipt_refs", self.receipt_refs
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Return a dictionary representation of the BatchSummary."""
         return dict(self)
 
@@ -152,7 +152,7 @@ class BatchSummary:
 
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "BatchSummary":
+    def from_item(cls, item: dict[str, Any]) -> "BatchSummary":
         """Converts a DynamoDB item to a BatchSummary object.
 
         Args:
@@ -197,7 +197,7 @@ class BatchSummary:
             ) from e
 
 
-def item_to_batch_summary(item: Dict[str, Any]) -> BatchSummary:
+def item_to_batch_summary(item: dict[str, Any]) -> BatchSummary:
     """Converts a DynamoDB item to a BatchSummary object.
 
     Args:

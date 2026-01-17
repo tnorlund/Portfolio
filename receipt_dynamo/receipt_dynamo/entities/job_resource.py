@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.dynamodb_utils import (
     dict_to_dynamodb_map,
@@ -27,7 +27,7 @@ class JobResource:
         gpu_count (int): Number of GPUs allocated to the job.
         allocated_at (datetime): The timestamp when the resources were
             allocated.
-        released_at (Optional[datetime]): The timestamp when the resources were
+        released_at (datetime | None): The timestamp when the resources were
             released, if applicable.
         status (str): The current status of the resource allocation
             (allocated, released, failed).
@@ -56,9 +56,9 @@ class JobResource:
     resource_type: str
     allocated_at: str
     status: str
-    gpu_count: Optional[int] = None
-    released_at: Optional[str] = None
-    resource_config: Optional[Dict[str, Any]] = None
+    gpu_count: int | None = None
+    released_at: str | None = None
+    resource_config: dict[str, Any] | None = None
 
     def __post_init__(self):
         """Validates fields after dataclass initialization.
@@ -130,7 +130,7 @@ class JobResource:
             self.resource_config = {}
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the job resource.
 
         Returns:
@@ -141,7 +141,7 @@ class JobResource:
             "SK": {"S": f"RESOURCE#{self.resource_id}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the job resource.
 
         Returns:
@@ -152,7 +152,7 @@ class JobResource:
             "GSI1SK": {"S": f"RESOURCE#{self.resource_id}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the JobResource object to a DynamoDB item.
 
         Returns:
@@ -206,11 +206,11 @@ class JobResource:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the JobResource object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the
+            Generator[tuple[str, Any], None, None]: An iterator over the
                 JobResource object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
@@ -245,7 +245,7 @@ class JobResource:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "JobResource":
+    def from_item(cls, item: dict[str, Any]) -> "JobResource":
         """Converts a DynamoDB item to a JobResource object.
 
         Args:
@@ -304,7 +304,7 @@ class JobResource:
             ) from e
 
 
-def item_to_job_resource(item: Dict[str, Any]) -> JobResource:
+def item_to_job_resource(item: dict[str, Any]) -> JobResource:
     """Converts a DynamoDB item to a JobResource object.
 
     Args:

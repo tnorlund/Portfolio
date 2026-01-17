@@ -1,4 +1,3 @@
-from typing import List, Optional
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -35,7 +34,7 @@ class _JobMetric(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("add_job_metrics")
-    def add_job_metrics(self, job_metrics: List[JobMetric]) -> None:
+    def add_job_metrics(self, job_metrics: list[JobMetric]) -> None:
         """Adds multiple job metrics in a single batch operation.
 
         This is more efficient than calling add_job_metric multiple
@@ -43,7 +42,7 @@ class _JobMetric(FlattenedStandardMixin):
         25 items per call.
 
         Args:
-            job_metrics (List[JobMetric]): The job metrics to add
+            job_metrics (list[JobMetric]): The job metrics to add
 
         Raises:
             EntityValidationError: When job_metrics is None or not a list
@@ -115,8 +114,8 @@ class _JobMetric(FlattenedStandardMixin):
     def list_job_metrics(
         self,
         job_id: str,
-        metric_name: Optional[str] = None,
-        limit: Optional[int] = None,
+        metric_name: str | None = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
@@ -171,7 +170,7 @@ class _JobMetric(FlattenedStandardMixin):
     def get_metrics_by_name(
         self,
         metric_name: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """
@@ -218,7 +217,7 @@ class _JobMetric(FlattenedStandardMixin):
     def get_metrics_by_name_across_jobs(
         self,
         metric_name: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobMetric], dict | None]:
         """

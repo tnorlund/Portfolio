@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.util import (
@@ -46,11 +46,11 @@ class ReceiptWordLabel:
     line_id: int
     word_id: int
     label: str
-    reasoning: Optional[str]
+    reasoning: str | None
     timestamp_added: datetime | str
-    validation_status: Optional[str] = None
-    label_proposed_by: Optional[str] = None
-    label_consolidated_from: Optional[str] = None
+    validation_status: str | None = None
+    label_proposed_by: str | None = None
+    label_consolidated_from: str | None = None
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -95,7 +95,7 @@ class ReceiptWordLabel:
                 raise ValueError("label_consolidated_from cannot be empty")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the receipt word label.
 
         Returns:
@@ -111,7 +111,7 @@ class ReceiptWordLabel:
             },
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generate the GSI1 key for this ReceiptWordLabel.
 
         The GSI1PK will be exactly 40 characters long, with the format:
@@ -133,7 +133,7 @@ class ReceiptWordLabel:
             },
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """
         Generates the secondary index key for the receipt word label.
 
@@ -150,7 +150,7 @@ class ReceiptWordLabel:
             },
         }
 
-    def gsi3_key(self) -> Dict[str, Any]:
+    def gsi3_key(self) -> dict[str, Any]:
         """
         Generates the GSI3 key for the receipt word label.
 
@@ -177,7 +177,7 @@ class ReceiptWordLabel:
             },
         }
 
-    def gsi4_key(self) -> Dict[str, Any]:
+    def gsi4_key(self) -> dict[str, Any]:
         """Generates the GSI4 key for receipt details access pattern.
 
         GSI4 enables efficient single-query retrieval of all receipt-related
@@ -195,7 +195,7 @@ class ReceiptWordLabel:
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the ReceiptWordLabel object to a DynamoDB item.
 
         Returns:
@@ -228,7 +228,7 @@ class ReceiptWordLabel:
             ),
         }
 
-    def to_receipt_word_key(self) -> Dict[str, Any]:
+    def to_receipt_word_key(self) -> dict[str, Any]:
         """Generates the key for the ReceiptWord table associated with this
         label.
 
@@ -269,11 +269,11 @@ class ReceiptWordLabel:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the ReceiptWordLabel object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the
+            Generator[tuple[str, Any], None, None]: An iterator over the
                 ReceiptWordLabel object's attribute name/value pairs.
         """
         yield "image_id", self.image_id
@@ -339,7 +339,7 @@ class ReceiptWordLabel:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptWordLabel":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptWordLabel":
         """Converts a DynamoDB item to a ReceiptWordLabel object.
 
         Args:
@@ -412,7 +412,7 @@ class ReceiptWordLabel:
             ) from e
 
 
-def item_to_receipt_word_label(item: Dict[str, Any]) -> ReceiptWordLabel:
+def item_to_receipt_word_label(item: dict[str, Any]) -> ReceiptWordLabel:
     """Converts a DynamoDB item to a ReceiptWordLabel object.
 
     Args:

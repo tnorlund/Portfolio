@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict
 
 from botocore.exceptions import ClientError
 
@@ -19,7 +19,7 @@ from receipt_dynamo.entities.places_cache import (
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
+    pass
 
 # DynamoDB batch_write_item can handle up to 25 items per call
 CHUNK_SIZE = 25
@@ -104,7 +104,7 @@ class _PlacesCache(
         self._update_entity(item, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_places_caches")
-    def update_places_caches(self, caches: List[PlacesCache]):
+    def update_places_caches(self, caches: list[PlacesCache]):
         """
         Updates a list of PlacesCache items in the database.
         """
@@ -183,7 +183,7 @@ class _PlacesCache(
         self._delete_entity(item, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("delete_places_caches")
-    def delete_places_caches(self, places_cache_items: List[PlacesCache]):
+    def delete_places_caches(self, places_cache_items: list[PlacesCache]):
         """
         Deletes a list of PlacesCache items from the database.
         """
@@ -196,7 +196,7 @@ class _PlacesCache(
     @handle_dynamodb_errors("get_places_cache")
     def get_places_cache(
         self, search_type: str, search_value: str
-    ) -> Optional[PlacesCache]:
+    ) -> PlacesCache | None:
         """
         Retrieves a single PlacesCache from DynamoDB by its primary key.
 
@@ -205,7 +205,7 @@ class _PlacesCache(
             search_value (str): The search value.
 
         Returns:
-            Optional[PlacesCache]: The PlacesCache object if found, None
+            PlacesCache | None: The PlacesCache object if found, None
                 otherwise.
         """
         temp_cache = PlacesCache(
@@ -226,7 +226,7 @@ class _PlacesCache(
     @handle_dynamodb_errors("get_places_cache_by_place_id")
     def get_places_cache_by_place_id(
         self, place_id: str
-    ) -> Optional[PlacesCache]:
+    ) -> PlacesCache | None:
         """
         Retrieves a PlacesCache by its place_id using GSI1.
 
@@ -234,7 +234,7 @@ class _PlacesCache(
             place_id (str): The Google Places place_id.
 
         Returns:
-            Optional[PlacesCache]: The PlacesCache object if found, None
+            PlacesCache | None: The PlacesCache object if found, None
                 otherwise.
         """
         results, _ = self._query_entities(
@@ -256,20 +256,20 @@ class _PlacesCache(
     @handle_dynamodb_errors("list_places_caches")
     def list_places_caches(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[PlacesCache], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[PlacesCache], Dict | None]:
         """
         Lists PlacesCache items from the database using GSI2 (LAST_USED index).
         Supports optional pagination via a limit and a LastEvaluatedKey.
 
         Args:
-            limit (Optional[int]): Maximum number of items to return.
-            last_evaluated_key (Optional[Dict]): Key to continue from a
+            limit (int | None): Maximum number of items to return.
+            last_evaluated_key (Dict | None): Key to continue from a
                 previous query.
 
         Returns:
-            Tuple[List[PlacesCache], Optional[Dict]]: List of items and last
+            tuple[list[PlacesCache], Dict | None]: List of items and last
                 evaluated key.
         """
         if limit is not None and not isinstance(limit, int):

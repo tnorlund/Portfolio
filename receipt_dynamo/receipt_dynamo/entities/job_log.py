@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
@@ -36,8 +36,8 @@ class JobLog:
     timestamp: str
     log_level: str
     message: str
-    source: Optional[str] = None
-    exception: Optional[str] = None
+    source: str | None = None
+    exception: str | None = None
 
     def __post_init__(self):
         """Validates fields after dataclass initialization.
@@ -72,7 +72,7 @@ class JobLog:
             raise ValueError("exception must be a string")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the job log.
 
         Returns:
@@ -83,7 +83,7 @@ class JobLog:
             "SK": {"S": f"LOG#{self.timestamp}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the job log.
 
         Returns:
@@ -94,7 +94,7 @@ class JobLog:
             "GSI1SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the JobLog object to a DynamoDB item.
 
         Returns:
@@ -134,11 +134,11 @@ class JobLog:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the JobLog object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the
+            Generator[tuple[str, Any], None, None]: An iterator over the
                 JobLog object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
@@ -166,7 +166,7 @@ class JobLog:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "JobLog":
+    def from_item(cls, item: dict[str, Any]) -> "JobLog":
         """Converts a DynamoDB item to a JobLog object.
 
         Args:
@@ -213,7 +213,7 @@ class JobLog:
             raise ValueError(f"Error converting item to JobLog: {e}") from e
 
 
-def item_to_job_log(item: Dict[str, Any]) -> JobLog:
+def item_to_job_log(item: dict[str, Any]) -> JobLog:
     """Converts a DynamoDB item to a JobLog object.
 
     Args:

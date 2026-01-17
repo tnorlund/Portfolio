@@ -9,11 +9,7 @@ from datetime import datetime
 from typing import (
     Any,
     Callable,
-    Dict,
-    List,
-    Optional,
     Protocol,
-    Set,
     Type,
     TypeVar,
     cast,
@@ -32,11 +28,11 @@ T = TypeVar("T")
 class DynamoDBItemExtractor(Protocol):
     """Protocol for type-safe field extractors."""
 
-    def __call__(self, item: Dict[str, Any]) -> Any:
+    def __call__(self, item: dict[str, Any]) -> Any:
         """Extract a field value from a DynamoDB item."""
 
 
-KeyParser = Callable[[str], Dict[str, Any]]
+KeyParser = Callable[[str], dict[str, Any]]
 
 
 class EntityFactory(SerializationMixin):
@@ -51,11 +47,11 @@ class EntityFactory(SerializationMixin):
     def create_entity(
         cls,
         entity_class: Type[T],
-        item: Dict[str, Any],
-        required_keys: Set[str],
-        field_mappings: Optional[Dict[str, str]] = None,
-        custom_extractors: Optional[Dict[str, DynamoDBItemExtractor]] = None,
-        key_parsers: Optional[Dict[str, KeyParser]] = None,
+        item: dict[str, Any],
+        required_keys: set[str],
+        field_mappings: dict[str, str] | None = None,
+        custom_extractors: dict[str, DynamoDBItemExtractor | None] = None,
+        key_parsers: dict[str, KeyParser | None] = None,
     ) -> T:
         """
         Generic entity creation from DynamoDB item with full type safety.
@@ -83,7 +79,7 @@ class EntityFactory(SerializationMixin):
         key_parsers = key_parsers or {}
 
         # Extract constructor arguments
-        kwargs: Dict[str, Any] = {}
+        kwargs: dict[str, Any] = {}
 
         # Parse key components if needed
         for key_name, parser in key_parsers.items():
@@ -121,7 +117,7 @@ class EntityFactory(SerializationMixin):
             ) from e
 
     @classmethod
-    def parse_image_receipt_key(cls, pk: str, sk: str) -> Dict[str, Any]:
+    def parse_image_receipt_key(cls, pk: str, sk: str) -> dict[str, Any]:
         """
         Parse common IMAGE#/RECEIPT# key pattern with type safety.
 
@@ -147,13 +143,13 @@ class EntityFactory(SerializationMixin):
             return {
                 "image_id": image_id,
                 "receipt_id": receipt_id,
-                "sk_parts": sk_parts,  # List[str]
+                "sk_parts": sk_parts,  # list[str]
             }
         except (IndexError, ValueError) as e:
             raise ValueError(f"Error parsing IMAGE/RECEIPT keys: {e}") from e
 
     @classmethod
-    def parse_receipt_line_word_key(cls, pk: str, sk: str) -> Dict[str, Any]:
+    def parse_receipt_line_word_key(cls, pk: str, sk: str) -> dict[str, Any]:
         """
         Parse RECEIPT#/LINE#/WORD# key pattern with type safety.
 
@@ -202,7 +198,7 @@ class EntityFactory(SerializationMixin):
 
     # Type-safe field extractors
     @staticmethod
-    def extract_geometry_fields(item: Dict[str, Any]) -> Dict[str, Any]:
+    def extract_geometry_fields(item: dict[str, Any]) -> dict[str, Any]:
         """
         Extract common geometry fields with type safety.
 
@@ -224,7 +220,7 @@ class EntityFactory(SerializationMixin):
         }
 
     @staticmethod
-    def extract_text_field(item: Dict[str, Any]) -> str:
+    def extract_text_field(item: dict[str, Any]) -> str:
         """Extract text field from DynamoDB item with type safety."""
         if "text" not in item:
             raise ValueError("Missing required field: text")
@@ -237,14 +233,14 @@ class EntityFactory(SerializationMixin):
 
     @staticmethod
     def extract_optional_extracted_data(
-        item: Dict[str, Any],
-    ) -> Optional[Dict[str, Any]]:
+        item: dict[str, Any],
+    ) -> dict[str, Any] | None:
         """Extract optional extracted_data field with type safety."""
         if "extracted_data" not in item or item["extracted_data"].get("NULL"):
             return None
 
         extracted_data = item["extracted_data"]["M"]
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
 
         # Extract type if present
         if "type" in extracted_data and "S" in extracted_data["type"]:
@@ -257,12 +253,12 @@ class EntityFactory(SerializationMixin):
         return result if result else None
 
     @staticmethod
-    def extract_embedding_status(item: Dict[str, Any]) -> str:
+    def extract_embedding_status(item: dict[str, Any]) -> str:
         """Extract embedding_status with default and type safety."""
         return cast(str, item.get("embedding_status", {}).get("S", "none"))
 
     @staticmethod
-    def extract_is_noise(item: Dict[str, Any]) -> bool:
+    def extract_is_noise(item: dict[str, Any]) -> bool:
         """Extract is_noise boolean with default False and type safety."""
         return cast(bool, item.get("is_noise", {}).get("BOOL", False))
 
@@ -270,18 +266,18 @@ class EntityFactory(SerializationMixin):
     def extract_datetime_field(field_name: str) -> DynamoDBItemExtractor:
         """Create a type-safe datetime field extractor."""
 
-        def extractor(item: Dict[str, Any]) -> datetime:
+        def extractor(item: dict[str, Any]) -> datetime:
             return datetime.fromisoformat(cast(str, item[field_name]["S"]))
 
         return extractor
 
     @staticmethod
     def extract_string_field(
-        field_name: str, default: Optional[str] = None
+        field_name: str, default: str | None = None
     ) -> DynamoDBItemExtractor:
         """Create a type-safe string field extractor with default."""
 
-        def extractor(item: Dict[str, Any]) -> Optional[str]:
+        def extractor(item: dict[str, Any]) -> str | None:
             if field_name not in item:
                 return default
             value = item[field_name].get("S")
@@ -293,18 +289,18 @@ class EntityFactory(SerializationMixin):
     def extract_string_list_field(field_name: str) -> DynamoDBItemExtractor:
         """Create a type-safe string list field extractor."""
 
-        def extractor(item: Dict[str, Any]) -> List[str]:
-            return cast(List[str], item.get(field_name, {}).get("SS", []))
+        def extractor(item: dict[str, Any]) -> list[str]:
+            return cast(list[str], item.get(field_name, {}).get("SS", []))
 
         return extractor
 
     @staticmethod
     def extract_int_field(
-        field_name: str, default: Optional[int] = None
+        field_name: str, default: int | None = None
     ) -> DynamoDBItemExtractor:
         """Create a type-safe int field extractor with optional default."""
 
-        def extractor(item: Dict[str, Any]) -> Optional[int]:
+        def extractor(item: dict[str, Any]) -> int | None:
             if field_name not in item:
                 return default
             n_value = item[field_name].get("N")
@@ -314,11 +310,11 @@ class EntityFactory(SerializationMixin):
 
     @staticmethod
     def extract_float_field(
-        field_name: str, default: Optional[float] = None
+        field_name: str, default: float | None = None
     ) -> DynamoDBItemExtractor:
         """Create a type-safe float field extractor with optional default."""
 
-        def extractor(item: Dict[str, Any]) -> Optional[float]:
+        def extractor(item: dict[str, Any]) -> float | None:
             if field_name not in item:
                 return default
             n_value = item[field_name].get("N")
@@ -331,7 +327,7 @@ class EntityFactory(SerializationMixin):
 def create_image_receipt_pk_parser() -> KeyParser:
     """Create a type-safe PK parser for IMAGE# pattern."""
 
-    def parser(pk: str) -> Dict[str, Any]:
+    def parser(pk: str) -> dict[str, Any]:
         return {
             "image_id": EntityFactory.parse_image_receipt_key(
                 pk, "RECEIPT#00000"
@@ -344,7 +340,7 @@ def create_image_receipt_pk_parser() -> KeyParser:
 def create_image_receipt_sk_parser() -> KeyParser:
     """Create a type-safe SK parser for RECEIPT# pattern."""
 
-    def parser(sk: str) -> Dict[str, Any]:
+    def parser(sk: str) -> dict[str, Any]:
         return {
             "receipt_id": EntityFactory.parse_image_receipt_key(
                 "IMAGE#dummy", sk
@@ -357,7 +353,7 @@ def create_image_receipt_sk_parser() -> KeyParser:
 def create_receipt_line_word_sk_parser() -> KeyParser:
     """Create a type-safe SK parser for RECEIPT#/LINE#/WORD# pattern."""
 
-    def parser(sk: str) -> Dict[str, Any]:
+    def parser(sk: str) -> dict[str, Any]:
         parsed = EntityFactory.parse_image_receipt_key("IMAGE#dummy", sk)
         sk_parts = sk.split("#")
         return {
@@ -369,13 +365,13 @@ def create_receipt_line_word_sk_parser() -> KeyParser:
     return parser
 
 
-def create_geometry_extractors() -> Dict[str, DynamoDBItemExtractor]:
+def create_geometry_extractors() -> dict[str, DynamoDBItemExtractor]:
     """Create type-safe extractors for geometry fields."""
 
     def create_geometry_field_extractor(
         field_name: str,
     ) -> DynamoDBItemExtractor:
-        def extractor(item: Dict[str, Any]) -> Any:
+        def extractor(item: dict[str, Any]) -> Any:
             geometry_fields = EntityFactory.extract_geometry_fields(item)
             return geometry_fields[field_name]
 
@@ -404,7 +400,7 @@ def create_ocr_job_sk_parser() -> KeyParser:
     Parses SK like "OCR_JOB#{job_id}" or "OCR_ROUTING#{job_id}"
     """
 
-    def parser(sk: str) -> Dict[str, Any]:
+    def parser(sk: str) -> dict[str, Any]:
         sk_parts = sk.split("#")
         if len(sk_parts) < 2:
             raise ValueError(f"Invalid OCR job SK format: {sk}")
@@ -413,7 +409,7 @@ def create_ocr_job_sk_parser() -> KeyParser:
     return parser
 
 
-def create_ocr_job_extractors() -> Dict[str, DynamoDBItemExtractor]:
+def create_ocr_job_extractors() -> dict[str, DynamoDBItemExtractor]:
     """Create type-safe extractors for common OCR job fields.
 
     These fields are shared between OCRJob and OCRRoutingDecision:
@@ -437,7 +433,7 @@ def _create_optional_datetime_extractor(
 ) -> DynamoDBItemExtractor:
     """Create extractor for optional datetime field."""
 
-    def extractor(item: Dict[str, Any]) -> Optional[datetime]:
+    def extractor(item: dict[str, Any]) -> datetime | None:
         if field_name not in item:
             return None
         if "S" not in item[field_name]:

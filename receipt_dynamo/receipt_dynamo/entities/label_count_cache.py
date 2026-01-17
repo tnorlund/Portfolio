@@ -1,7 +1,7 @@
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -26,7 +26,7 @@ class LabelCountCache:
     needs_review_count: int
     none_count: int
     last_updated: str
-    time_to_live: Optional[int] = None
+    time_to_live: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.label, str) or not self.label:
@@ -58,10 +58,10 @@ class LabelCountCache:
                 raise ValueError("time_to_live must be in the future")
 
     @property
-    def key(self) -> Dict[str, Dict[str, str]]:
+    def key(self) -> dict[str, dict[str, str]]:
         return {"PK": {"S": "LABEL_CACHE"}, "SK": {"S": f"LABEL#{self.label}"}}
 
-    def to_item(self) -> Dict[str, Dict[str, Any]]:
+    def to_item(self) -> dict[str, dict[str, Any]]:
         item = {
             **self.key,
             "TYPE": {"S": "LABEL_COUNT_CACHE"},
@@ -77,7 +77,7 @@ class LabelCountCache:
             item["time_to_live"] = {"N": str(self.time_to_live)}
         return item
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         yield "label", self.label
         yield "valid_count", self.valid_count
         yield "invalid_count", self.invalid_count
@@ -103,7 +103,7 @@ class LabelCountCache:
         return base + ")"
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "LabelCountCache":
+    def from_item(cls, item: dict[str, Any]) -> "LabelCountCache":
         """Converts a DynamoDB item to a LabelCountCache object.
 
         Args:
@@ -156,7 +156,7 @@ class LabelCountCache:
 
 
 def item_to_label_count_cache(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> LabelCountCache:
     """Converts a DynamoDB item to a LabelCountCache object.
 

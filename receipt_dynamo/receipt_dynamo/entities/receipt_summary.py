@@ -6,7 +6,7 @@ operations that don't require fetching all related entities.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_word import ReceiptWord
@@ -22,8 +22,8 @@ class ReceiptSummary:
     """
 
     receipt: Receipt
-    words: List[ReceiptWord]
-    word_labels: List[ReceiptWordLabel]
+    words: list[ReceiptWord]
+    word_labels: list[ReceiptWordLabel]
 
     @property
     def key(self) -> str:
@@ -71,8 +71,8 @@ class ReceiptSummaryPage:
         - The combination "{image_id}_{receipt_id}" is globally unique
     """
 
-    summaries: Dict[str, ReceiptSummary]
-    last_evaluated_key: Optional[Dict[str, Any]]
+    summaries: dict[str, ReceiptSummary]
+    last_evaluated_key: dict[str, Any] | None
 
     def __len__(self) -> int:
         """Return the number of summaries in this page."""
@@ -120,27 +120,27 @@ class ReceiptSummaryPage:
         """
         return self.last_evaluated_key is not None
 
-    def keys(self) -> List[str]:
+    def keys(self) -> list[str]:
         """Get all composite keys in this page.
 
         Returns:
-            List[str]: List of composite keys in format
+            list[str]: List of composite keys in format
                       "{image_id}_{receipt_id}"
         """
         return list(self.summaries.keys())
 
-    def values(self) -> List[ReceiptSummary]:
+    def values(self) -> list[ReceiptSummary]:
         """Get all receipt summaries in this page.
 
         Returns:
-            List[ReceiptSummary]: List of all receipt summaries in this page
+            list[ReceiptSummary]: List of all receipt summaries in this page
         """
         return list(self.summaries.values())
 
-    def items(self) -> List[tuple[str, ReceiptSummary]]:
+    def items(self) -> list[tuple[str, ReceiptSummary]]:
         """Get all key-summary pairs in this page.
 
         Returns:
-            List[tuple[str, ReceiptSummary]]: List of (key, summary) tuples
+            list[tuple[str, ReceiptSummary]]: List of (key, summary) tuples
         """
         return list(self.summaries.items())

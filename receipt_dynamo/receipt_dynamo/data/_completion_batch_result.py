@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.base_operations import (
@@ -20,9 +20,7 @@ from receipt_dynamo.entities.completion_batch_result import (
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
+    pass
 
 
 class _CompletionBatchResult(FlattenedStandardMixin):
@@ -52,7 +50,7 @@ class _CompletionBatchResult(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("add_completion_batch_results")
     def add_completion_batch_results(
-        self, results: List[CompletionBatchResult]
+        self, results: list[CompletionBatchResult]
     ) -> None:
         """Add multiple completion batch results to DynamoDB in batches.
 
@@ -122,9 +120,9 @@ class _CompletionBatchResult(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_completion_batch_results")
     def list_completion_batch_results(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[CompletionBatchResult], dict | None]:
         if limit is not None and (not isinstance(limit, int) or limit <= 0):
             raise EntityValidationError("limit must be a positive integer.")
         return self._query_by_type(
@@ -138,9 +136,9 @@ class _CompletionBatchResult(FlattenedStandardMixin):
     def get_completion_batch_results_by_status(
         self,
         status: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[CompletionBatchResult], dict | None]:
         if status not in [s.value for s in ValidationStatus]:
             raise EntityValidationError("Invalid status.")
         if last_evaluated_key:
@@ -160,9 +158,9 @@ class _CompletionBatchResult(FlattenedStandardMixin):
     def get_completion_batch_results_by_label_target(
         self,
         label_target: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[CompletionBatchResult], dict | None]:
         if not isinstance(label_target, str):
             raise EntityValidationError("label_target must be a string.")
         if last_evaluated_key:
@@ -184,9 +182,9 @@ class _CompletionBatchResult(FlattenedStandardMixin):
     def get_completion_batch_results_by_receipt(
         self,
         receipt_id: int,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[CompletionBatchResult], Optional[dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[CompletionBatchResult], dict | None]:
         if not isinstance(receipt_id, int) or receipt_id <= 0:
             raise EntityValidationError(
                 "receipt_id must be a positive integer"

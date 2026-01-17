@@ -15,10 +15,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
-    List,
     NoReturn,
-    Optional,
-    Tuple,
     Type,
 )
 
@@ -70,9 +67,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
     def __init__(self) -> None:
         """Initialize the base operations with lazy-loaded components."""
-        self._error_config: Optional[ErrorMessageConfig] = None
-        self._error_handler: Optional[ErrorHandler] = None
-        self._validator: Optional[EntityValidator] = None
+        self._error_config: ErrorMessageConfig | None = None
+        self._error_handler: ErrorHandler | None = None
+        self._validator: EntityValidator | None = None
 
     def _ensure_initialized(self) -> None:
         """Lazily initialize error handling components."""
@@ -93,7 +90,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         self,
         error: ClientError,
         operation: str,
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ) -> NoReturn:
         """
         Handle DynamoDB ClientError with appropriate exception types and
@@ -133,7 +130,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         self._validator.validate_entity(entity, entity_class, param_name)
 
     def _validate_entity_list(
-        self, entities: List[Any], entity_class: Type[Any], param_name: str
+        self, entities: list[Any], entity_class: Type[Any], param_name: str
     ) -> None:
         """
         Validate a list of entities with consistent error messages.
@@ -155,7 +152,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
     def _execute_put_item(
         self,
         entity: Any,
-        condition_expression: Optional[str],
+        condition_expression: str | None,
         **kwargs: Any,
     ) -> None:
         """
@@ -169,7 +166,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         item = entity.to_item()
 
         # Build put_item parameters
-        put_params: Dict[str, Any] = {
+        put_params: dict[str, Any] = {
             "TableName": self.table_name,
             "Item": item,
             **kwargs,
@@ -184,7 +181,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
     def _execute_delete_item(
         self,
         entity: Any,
-        condition_expression: Optional[str],
+        condition_expression: str | None,
         **kwargs: Any,
     ) -> None:
         """
@@ -258,7 +255,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
     def _delete_entities(
         self,
-        entities: List[Any],
+        entities: list[Any],
         condition_expression: str = "attribute_exists(PK)",
         **kwargs: Any,
     ) -> None:
@@ -291,9 +288,9 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         sort_key: str,
         entity_class: Type[Any],
         *,
-        converter_func: Optional[Any] = None,
+        converter_func: Any | None = None,
         consistent_read: bool = False,
-    ) -> Optional[Any]:
+    ) -> Any | None:
         """
         Get a single entity from DynamoDB.
 
@@ -331,7 +328,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
     def _batch_write_with_retry(
         self,
-        request_items: List[Any],
+        request_items: list[Any],
         max_retries: int = 3,
         initial_backoff: float = 0.1,
     ) -> None:
@@ -355,17 +352,17 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
     # pylint: disable=too-many-positional-arguments
     def _query_entities(
         self,
-        index_name: Optional[str],
+        index_name: str | None,
         key_condition_expression: str,
-        expression_attribute_names: Optional[Dict[str, str]],
-        expression_attribute_values: Dict[str, Any],
+        expression_attribute_names: dict[str, str] | None,
+        expression_attribute_values: dict[str, Any],
         converter_func: Any,
         *,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
         scan_index_forward: bool = True,
-        filter_expression: Optional[str] = None,
-    ) -> Tuple[List[Any], Optional[Dict]]:
+        filter_expression: str | None = None,
+    ) -> tuple[list[Any], Dict | None]:
         """
         Query entities from DynamoDB with pagination support.
 
@@ -388,7 +385,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             ClientError: If the DynamoDB operation fails
         """
         entities = []
-        query_params: Dict[str, Any] = {
+        query_params: dict[str, Any] = {
             "TableName": self.table_name,
             "KeyConditionExpression": key_condition_expression,
             "ExpressionAttributeValues": expression_attribute_values,
@@ -474,8 +471,8 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
 
     def _validate_pagination_params(
         self,
-        limit: Optional[int],
-        last_evaluated_key: Optional[Dict[str, Any]],
+        limit: int | None,
+        last_evaluated_key: dict[str, Any] | None,
     ) -> None:
         """Validate pagination parameters."""
         validate_pagination_params(

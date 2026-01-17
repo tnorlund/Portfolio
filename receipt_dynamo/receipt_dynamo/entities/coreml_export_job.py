@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.constants import CoreMLExportStatus
 from receipt_dynamo.entities.util import (
@@ -51,15 +51,15 @@ class CoreMLExportJob:
     model_s3_uri: str
     created_at: datetime
     status: str = CoreMLExportStatus.PENDING.value
-    quantize: Optional[str] = None
-    output_s3_prefix: Optional[str] = None
-    updated_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    mlpackage_s3_uri: Optional[str] = None
-    bundle_s3_uri: Optional[str] = None
-    model_size_bytes: Optional[int] = None
-    export_duration_seconds: Optional[float] = None
-    error_message: Optional[str] = None
+    quantize: str | None = None
+    output_s3_prefix: str | None = None
+    updated_at: datetime | None = None
+    completed_at: datetime | None = None
+    mlpackage_s3_uri: str | None = None
+    bundle_s3_uri: str | None = None
+    model_size_bytes: int | None = None
+    export_duration_seconds: float | None = None
+    error_message: str | None = None
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -102,28 +102,28 @@ class CoreMLExportJob:
             )
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generate the primary key for the export job."""
         return {
             "PK": {"S": f"COREML_EXPORT#{self.export_id}"},
             "SK": {"S": "EXPORT"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generate GSI1 key for querying by training job ID."""
         return {
             "GSI1PK": {"S": f"JOB#{self.job_id}"},
             "GSI1SK": {"S": f"COREML_EXPORT#{self.export_id}"},
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """Generate GSI2 key for querying by status."""
         return {
             "GSI2PK": {"S": f"COREML_EXPORT_STATUS#{self.status}"},
             "GSI2SK": {"S": f"COREML_EXPORT#{self.export_id}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to DynamoDB item format."""
         item = {
             **self.key,
@@ -205,7 +205,7 @@ class CoreMLExportJob:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         yield "export_id", self.export_id
         yield "job_id", self.job_id
         yield "model_s3_uri", self.model_s3_uri
@@ -262,7 +262,7 @@ class CoreMLExportJob:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "CoreMLExportJob":
+    def from_item(cls, item: dict[str, Any]) -> "CoreMLExportJob":
         """Converts a DynamoDB item to a CoreMLExportJob object.
 
         Args:
@@ -368,7 +368,7 @@ class CoreMLExportJob:
             ) from e
 
 
-def item_to_coreml_export_job(item: Dict[str, Any]) -> CoreMLExportJob:
+def item_to_coreml_export_job(item: dict[str, Any]) -> CoreMLExportJob:
     """Converts a DynamoDB item to a CoreMLExportJob object.
 
     Args:

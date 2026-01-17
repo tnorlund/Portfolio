@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.entities.base import DynamoDBEntity
@@ -32,7 +32,7 @@ class OCRRoutingDecision(DynamoDBEntity):
         s3_bucket (str): S3 bucket containing the image.
         s3_key (str): S3 key for the image.
         created_at (datetime): When the routing decision was created.
-        updated_at (Optional[datetime]): When the routing decision was last
+        updated_at (datetime | None): When the routing decision was last
             updated.
         receipt_count (int): Number of receipts detected.
         status (str): Status of the OCR routing decision.
@@ -55,7 +55,7 @@ class OCRRoutingDecision(DynamoDBEntity):
     s3_bucket: str
     s3_key: str
     created_at: datetime
-    updated_at: Optional[datetime]
+    updated_at: datetime | None
     receipt_count: int
     status: str = OCRStatus.PENDING.value
 
@@ -89,19 +89,19 @@ class OCRRoutingDecision(DynamoDBEntity):
         self.status = normalize_enum(self.status, OCRStatus)
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"ROUTING#{self.job_id}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         return {
             "GSI1PK": {"S": f"OCR_ROUTING_DECISION_STATUS#{self.status}"},
             "GSI1SK": {"S": f"ROUTING#{self.job_id}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         return {
             **self.key,
             **self.gsi1_key(),
@@ -145,7 +145,7 @@ class OCRRoutingDecision(DynamoDBEntity):
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "OCRRoutingDecision":
+    def from_item(cls, item: dict[str, Any]) -> "OCRRoutingDecision":
         """Converts a DynamoDB item to an OCRRoutingDecision object.
 
         Args:
@@ -176,7 +176,7 @@ class OCRRoutingDecision(DynamoDBEntity):
         )
 
 
-def item_to_ocr_routing_decision(item: Dict[str, Any]) -> OCRRoutingDecision:
+def item_to_ocr_routing_decision(item: dict[str, Any]) -> OCRRoutingDecision:
     """Converts a DynamoDB item to an OCRRoutingDecision object.
 
     Args:

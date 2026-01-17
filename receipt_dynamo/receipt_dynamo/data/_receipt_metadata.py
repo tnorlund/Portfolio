@@ -1,5 +1,4 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_metadata.py
-from typing import List, Optional, Tuple
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
@@ -36,16 +35,16 @@ class _ReceiptMetadata(
     -------
     add_receipt_metadata(receipt_metadata: ReceiptMetadata):
         Adds a single ReceiptMetadata item to the database, ensuring unique ID.
-    add_receipt_metadatas(receipt_metadatas: List[ReceiptMetadata]):
+    add_receipt_metadatas(receipt_metadatas: list[ReceiptMetadata]):
         Adds multiple ReceiptMetadata items to the database in chunks of up to
         25 items.
     update_receipt_metadata(receipt_metadata: ReceiptMetadata):
         Updates an existing ReceiptMetadata item in the database.
-    update_receipt_metadatas(receipt_metadatas: List[ReceiptMetadata]):
+    update_receipt_metadatas(receipt_metadatas: list[ReceiptMetadata]):
         Updates multiple ReceiptMetadata items using transactions.
     delete_receipt_metadata(receipt_metadata: ReceiptMetadata):
         Deletes a single ReceiptMetadata item from the database.
-    delete_receipt_metadatas(receipt_metadatas: List[ReceiptMetadata]):
+    delete_receipt_metadatas(receipt_metadatas: list[ReceiptMetadata]):
         Deletes multiple ReceiptMetadata items using transactions.
     get_receipt_metadata(image_id: str, receipt_id: int) -> ReceiptMetadata:
         Retrieves a single ReceiptMetadata item by image and receipt IDs.
@@ -55,19 +54,19 @@ class _ReceiptMetadata(
         Retrieves multiple ReceiptMetadata items by their indices.
     get_receipt_metadatas(keys: list[dict]) -> list[ReceiptMetadata]:
         Retrieves multiple ReceiptMetadata items using batch get.
-    list_receipt_metadatas(...) -> Tuple[List[ReceiptMetadata], dict | None]:
+    list_receipt_metadatas(...) -> tuple[list[ReceiptMetadata], dict | None]:
         Lists ReceiptMetadata records with optional pagination.
     get_receipt_metadatas_by_merchant(
         ...
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         Retrieves ReceiptMetadata records by merchant name.
     list_receipt_metadatas_with_place_id(
         ...
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         Retrieves ReceiptMetadata records that have a specific place_id.
     get_receipt_metadatas_by_confidence(
         ...
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         Retrieves ReceiptMetadata records by confidence score.
     """
 
@@ -99,14 +98,14 @@ class _ReceiptMetadata(
 
     @handle_dynamodb_errors("add_receipt_metadatas")
     def add_receipt_metadatas(
-        self, receipt_metadatas: List[ReceiptMetadata]
+        self, receipt_metadatas: list[ReceiptMetadata]
     ) -> None:
         """
         Adds multiple ReceiptMetadata records to DynamoDB in batches.
 
         Parameters
         ----------
-        receipt_metadatas : List[ReceiptMetadata]
+        receipt_metadatas : list[ReceiptMetadata]
             A list of ReceiptMetadata instances to add.
 
         Raises
@@ -156,7 +155,7 @@ class _ReceiptMetadata(
 
     @handle_dynamodb_errors("update_receipt_metadatas")
     def update_receipt_metadatas(
-        self, receipt_metadatas: List[ReceiptMetadata]
+        self, receipt_metadatas: list[ReceiptMetadata]
     ) -> None:
         """
         Updates multiple ReceiptMetadata records in DynamoDB using
@@ -164,7 +163,7 @@ class _ReceiptMetadata(
 
         Parameters
         ----------
-        receipt_metadatas : List[ReceiptMetadata]
+        receipt_metadatas : list[ReceiptMetadata]
             A list of ReceiptMetadata instances to update.
 
         Raises
@@ -216,14 +215,14 @@ class _ReceiptMetadata(
 
     @handle_dynamodb_errors("delete_receipt_metadatas")
     def delete_receipt_metadatas(
-        self, receipt_metadatas: List[ReceiptMetadata]
+        self, receipt_metadatas: list[ReceiptMetadata]
     ) -> None:
         """
         Deletes multiple ReceiptMetadata records from DynamoDB.
 
         Parameters
         ----------
-        receipt_metadatas : List[ReceiptMetadata]
+        receipt_metadatas : list[ReceiptMetadata]
             A list of ReceiptMetadata instances to delete.
 
         Raises
@@ -351,9 +350,9 @@ class _ReceiptMetadata(
     @handle_dynamodb_errors("list_receipt_metadatas")
     def list_receipt_metadatas(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         """
         Lists ReceiptMetadata records from DynamoDB with optional pagination.
 
@@ -366,7 +365,7 @@ class _ReceiptMetadata(
 
         Returns
         -------
-        Tuple[List[ReceiptMetadata], dict | None]
+        tuple[list[ReceiptMetadata], dict | None]
             A tuple containing the list of ReceiptMetadata records and the last
             evaluated key.
 
@@ -388,9 +387,9 @@ class _ReceiptMetadata(
     def get_receipt_metadatas_by_merchant(
         self,
         merchant_name: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         """
         Retrieves ReceiptMetadata records from DynamoDB by merchant name.
 
@@ -405,7 +404,7 @@ class _ReceiptMetadata(
 
         Returns
         -------
-        Tuple[List[ReceiptMetadata], dict | None]
+        tuple[list[ReceiptMetadata], dict | None]
             A tuple containing the list of ReceiptMetadata records and the last
             evaluated key.
 
@@ -435,9 +434,9 @@ class _ReceiptMetadata(
     def list_receipt_metadatas_with_place_id(
         self,
         place_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         """
         Retrieves ReceiptMetadata records that have a specific place_id.
 
@@ -454,7 +453,7 @@ class _ReceiptMetadata(
 
         Returns
         -------
-        Tuple[List[ReceiptMetadata], dict | None]
+        tuple[list[ReceiptMetadata], dict | None]
             A tuple containing the list of ReceiptMetadata records and the last
             evaluated key.
 
@@ -484,9 +483,9 @@ class _ReceiptMetadata(
         self,
         confidence: float,
         above: bool = True,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[List[ReceiptMetadata], dict | None]:
+    ) -> tuple[list[ReceiptMetadata], dict | None]:
         """
         Retrieves ReceiptMetadata records by confidence score.
 
@@ -503,7 +502,7 @@ class _ReceiptMetadata(
 
         Returns
         -------
-        Tuple[List[ReceiptMetadata], dict | None]
+        tuple[list[ReceiptMetadata], dict | None]
             A tuple containing the list of ReceiptMetadata records and the last
             evaluated key.
 

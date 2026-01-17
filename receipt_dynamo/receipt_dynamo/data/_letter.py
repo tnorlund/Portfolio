@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -38,8 +38,8 @@ class _Letter(FlattenedStandardMixin):
         Gets a letter from the database.
     get_letters(keys: list[dict]) -> list[Letter]
         Gets multiple letters from the database.
-    list_letters(limit: Optional[int] = None, last_evaluated_key:
-        Optional[Dict] = None) -> Tuple[list[Letter], Optional[Dict[str, Any]]]
+    list_letters(limit: int | None = None, last_evaluated_key:
+        Dict | None = None) -> tuple[list[Letter], dict[str, Any] | None]
         Lists all letters from the database.
     list_letters_from_word(image_id: str, line_id: int, word_id: int)
         -> list[Letter]
@@ -62,7 +62,7 @@ class _Letter(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("add_letters")
-    def add_letters(self, letters: List[Letter]):
+    def add_letters(self, letters: list[Letter]):
         """Adds a list of letters to the database
 
         Args:
@@ -90,7 +90,7 @@ class _Letter(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("update_letters")
-    def update_letters(self, letters: List[Letter]):
+    def update_letters(self, letters: list[Letter]):
         """
         Updates multiple Letter items in the database.
 
@@ -146,7 +146,7 @@ class _Letter(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("delete_letters")
-    def delete_letters(self, letters: List[Letter]):
+    def delete_letters(self, letters: list[Letter]):
         """Deletes a list of letters from the database
 
         Args:
@@ -207,7 +207,7 @@ class _Letter(FlattenedStandardMixin):
         return result
 
     @handle_dynamodb_errors("get_letters")
-    def get_letters(self, keys: List[Dict]) -> List[Letter]:
+    def get_letters(self, keys: list[Dict]) -> list[Letter]:
         """Get a list of letters using a list of keys."""
         validate_batch_get_keys(keys, "LETTER")
         results = self._batch_get_items(keys)
@@ -216,9 +216,9 @@ class _Letter(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_letters")
     def list_letters(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[Letter], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[Letter], dict[str, Any] | None]:
         """Lists all letters in the database
 
         Args:
@@ -238,7 +238,7 @@ class _Letter(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_letters_from_word")
     def list_letters_from_word(
         self, image_id: str, line_id: int, word_id: int
-    ) -> List[Letter]:
+    ) -> list[Letter]:
         """List all letters from a specific word.
 
         Args:

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.util import _repr_str
 
@@ -109,7 +109,7 @@ class Instance:
         self.health_status = self.health_status.lower()
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the instance.
 
         Returns:
@@ -120,7 +120,7 @@ class Instance:
             "SK": {"S": "INSTANCE"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the instance.
 
         Returns:
@@ -131,7 +131,7 @@ class Instance:
             "GSI1SK": {"S": f"INSTANCE#{self.instance_id}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the Instance object to a DynamoDB item.
 
         Returns:
@@ -173,11 +173,11 @@ class Instance:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the Instance object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the
+            Generator[tuple[str, Any], None, None]: An iterator over the
                 Instance object's attribute name/value pairs.
         """
         yield "instance_id", self.instance_id
@@ -212,7 +212,7 @@ class Instance:
 
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Instance":
+    def from_item(cls, item: dict[str, Any]) -> "Instance":
         """Converts a DynamoDB item to an Instance object.
 
         Args:
@@ -261,7 +261,7 @@ class Instance:
             raise ValueError(f"Error converting item to Instance: {e}") from e
 
 
-def item_to_instance(item: Dict[str, Any]) -> Instance:
+def item_to_instance(item: dict[str, Any]) -> Instance:
     """Converts a DynamoDB item to an Instance object.
 
     Args:

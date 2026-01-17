@@ -17,13 +17,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import (
     Any,
-    Dict,
-    List,
-    Optional,
     Protocol,
-    Set,
     TypeVar,
-    Union,
 )
 
 from receipt_dynamo.entities.util import _repr_str
@@ -37,7 +32,7 @@ class HasKey(Protocol):
     """Protocol for entities that have a DynamoDB key property."""
 
     @property
-    def key(self) -> Dict[str, Any]: ...
+    def key(self) -> dict[str, Any]: ...
 
 
 # =============================================================================
@@ -59,10 +54,10 @@ class SerializationMixin:
     def build_dynamodb_item(
         self,
         entity_type: str,
-        gsi_methods: Optional[List[str]] = None,
-        custom_fields: Optional[Dict[str, Any]] = None,
-        exclude_fields: Optional[Set[str]] = None,
-    ) -> Dict[str, Any]:
+        gsi_methods: list[str] | None = None,
+        custom_fields: dict[str, Any] | None = None,
+        exclude_fields: set[str] | None = None,
+    ) -> dict[str, Any]:
         """
         Build a DynamoDB item from entity attributes.
 
@@ -115,7 +110,7 @@ class SerializationMixin:
 
     def _serialize_value(
         self, value: Any, serialize_decimal: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Convert a Python value to DynamoDB attribute format.
 
@@ -171,7 +166,7 @@ class SerializationMixin:
         return {"S": str(value)}
         # pylint: enable=too-many-return-statements
 
-    def _python_to_dynamo(self, value: Any) -> Dict[str, Any]:
+    def _python_to_dynamo(self, value: Any) -> dict[str, Any]:
         """
         Convert a Python value to a DynamoDB typed value.
 
@@ -181,7 +176,7 @@ class SerializationMixin:
         return self._serialize_value(value)
 
     @staticmethod
-    def _dynamo_to_python(dynamo_value: Dict[str, Any]) -> Any:
+    def _dynamo_to_python(dynamo_value: dict[str, Any]) -> Any:
         """
         Convert a DynamoDB typed value to a Python value.
 
@@ -227,10 +222,10 @@ class SerializationMixin:
     @classmethod
     def safe_deserialize_field(
         cls,
-        item: Dict[str, Any],
+        item: dict[str, Any],
         field_name: str,
         default: Any = None,
-        field_type: Optional[type] = None,
+        field_type: type | None = None,
     ) -> Any:
         """
         Safely deserialize a field from a DynamoDB item.
@@ -273,7 +268,7 @@ class SerializationMixin:
 
     @classmethod
     def validate_required_keys(
-        cls, item: Dict[str, Any], required_keys: Set[str]
+        cls, item: dict[str, Any], required_keys: set[str]
     ) -> None:
         """
         Validate that a DynamoDB item contains all required keys.
@@ -291,8 +286,8 @@ class SerializationMixin:
 
     @classmethod
     def extract_key_components(
-        cls, item: Dict[str, Any], pk_pattern: str, sk_pattern: str
-    ) -> Dict[str, Union[str, int]]:
+        cls, item: dict[str, Any], pk_pattern: str, sk_pattern: str
+    ) -> dict[str, str | int]:
         """
         Extract structured components from PK/SK strings.
 
@@ -357,23 +352,23 @@ class CDNFieldsMixin:
     """
 
     # CDN fields - all optional with None defaults
-    sha256: Optional[str] = None
-    cdn_s3_bucket: Optional[str] = None
-    cdn_s3_key: Optional[str] = None
-    cdn_webp_s3_key: Optional[str] = None
-    cdn_avif_s3_key: Optional[str] = None
+    sha256: str | None = None
+    cdn_s3_bucket: str | None = None
+    cdn_s3_key: str | None = None
+    cdn_webp_s3_key: str | None = None
+    cdn_avif_s3_key: str | None = None
     # Thumbnail versions
-    cdn_thumbnail_s3_key: Optional[str] = None
-    cdn_thumbnail_webp_s3_key: Optional[str] = None
-    cdn_thumbnail_avif_s3_key: Optional[str] = None
+    cdn_thumbnail_s3_key: str | None = None
+    cdn_thumbnail_webp_s3_key: str | None = None
+    cdn_thumbnail_avif_s3_key: str | None = None
     # Small versions
-    cdn_small_s3_key: Optional[str] = None
-    cdn_small_webp_s3_key: Optional[str] = None
-    cdn_small_avif_s3_key: Optional[str] = None
+    cdn_small_s3_key: str | None = None
+    cdn_small_webp_s3_key: str | None = None
+    cdn_small_avif_s3_key: str | None = None
     # Medium versions
-    cdn_medium_s3_key: Optional[str] = None
-    cdn_medium_webp_s3_key: Optional[str] = None
-    cdn_medium_avif_s3_key: Optional[str] = None
+    cdn_medium_s3_key: str | None = None
+    cdn_medium_webp_s3_key: str | None = None
+    cdn_medium_avif_s3_key: str | None = None
 
     # Define CDN field groups for iteration
     CDN_BASIC_FIELDS = [
@@ -416,7 +411,7 @@ class CDNFieldsMixin:
                 if value is not None and not isinstance(value, str):
                     raise ValueError(f"{field_name} must be a string")
 
-    def cdn_fields_to_dynamodb_item(self) -> Dict[str, Dict[str, Any]]:
+    def cdn_fields_to_dynamodb_item(self) -> dict[str, dict[str, Any]]:
         """
         Convert CDN fields to DynamoDB item format.
 
@@ -475,7 +470,7 @@ class CDNFieldsMixin:
         )
 
     @classmethod
-    def _cdn_fields_from_item(cls, item: Dict[str, Any]) -> Dict[str, Any]:
+    def _cdn_fields_from_item(cls, item: dict[str, Any]) -> dict[str, Any]:
         """
         Extract CDN fields from a DynamoDB item.
 
@@ -518,6 +513,50 @@ class CDNFieldsMixin:
 
 
 # =============================================================================
+# Batch Result GSI Keys
+# =============================================================================
+
+
+class BatchResultGSIMixin:
+    """
+    Mixin providing shared GSI key methods for batch result entities.
+
+    CompletionBatchResult and EmbeddingBatchResult share identical GSI2 and
+    GSI3 access patterns for querying by batch/status and image/receipt.
+
+    Required attributes on the implementing class:
+        batch_id: str - The batch identifier
+        image_id: str - The image identifier
+        receipt_id: int - The receipt identifier (zero-padded to 5 digits)
+        status: str - The batch status
+    """
+
+    # These attributes must be defined by the implementing class
+    batch_id: str
+    image_id: str
+    receipt_id: int
+    status: str
+
+    @property
+    def gsi2_key(self) -> dict[str, Any]:
+        """GSI2 key for querying batch results by batch_id and status."""
+        return {
+            "GSI2PK": {"S": f"BATCH#{self.batch_id}"},
+            "GSI2SK": {"S": f"STATUS#{self.status}"},
+        }
+
+    @property
+    def gsi3_key(self) -> dict[str, Any]:
+        """GSI3 key for querying batch results by image/receipt."""
+        return {
+            "GSI3PK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
+            "GSI3SK": {"S": f"BATCH#{self.batch_id}#STATUS#{self.status}"},
+        }
+
+
+# =============================================================================
 # Exports
 # =============================================================================
 
@@ -527,4 +566,5 @@ __all__ = [
     # Core mixins
     "SerializationMixin",
     "CDNFieldsMixin",
+    "BatchResultGSIMixin",
 ]

@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from boto3.dynamodb.types import TypeDeserializer
 
@@ -140,20 +140,20 @@ class ReceiptPlace(SerializationMixin):
     # === Basic Info ===
     merchant_name: str
     merchant_category: str = ""
-    merchant_types: List[str] = field(default_factory=list)
+    merchant_types: list[str] = field(default_factory=list)
 
     # === Address ===
     formatted_address: str = ""
     short_address: str = ""
-    address_components: Dict[str, Any] = field(default_factory=dict)
+    address_components: dict[str, Any] = field(default_factory=dict)
 
     # === Location & Geometry ===
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    viewport_ne_lat: Optional[float] = None
-    viewport_ne_lng: Optional[float] = None
-    viewport_sw_lat: Optional[float] = None
-    viewport_sw_lng: Optional[float] = None
+    latitude: float | None = None
+    longitude: float | None = None
+    viewport_ne_lat: float | None = None
+    viewport_ne_lng: float | None = None
+    viewport_sw_lat: float | None = None
+    viewport_sw_lng: float | None = None
     plus_code: str = ""
 
     # === Contact ===
@@ -164,15 +164,15 @@ class ReceiptPlace(SerializationMixin):
 
     # === Business Status & Hours ===
     business_status: str = ""
-    open_now: Optional[bool] = None
-    hours_summary: List[str] = field(default_factory=list)
-    hours_data: Dict[str, Any] = field(default_factory=dict)
+    open_now: bool | None = None
+    hours_summary: list[str] = field(default_factory=list)
+    hours_data: dict[str, Any] = field(default_factory=dict)
 
     # === Media ===
-    photo_references: List[str] = field(default_factory=list)
+    photo_references: list[str] = field(default_factory=list)
 
     # === Validation & Metadata ===
-    matched_fields: List[str] = field(default_factory=list)
+    matched_fields: list[str] = field(default_factory=list)
     validated_by: str = ""
     validation_status: str = ""
     confidence: float = 0.0
@@ -305,7 +305,7 @@ class ReceiptPlace(SerializationMixin):
             "GSI4SK": {"S": "1_PLACE"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """
         Serialize the ReceiptPlace object into DynamoDB item format.
 
@@ -430,7 +430,7 @@ class ReceiptPlace(SerializationMixin):
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptPlace":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptPlace":
         """Converts a DynamoDB item to a ReceiptPlace object.
 
         Args:
@@ -533,7 +533,7 @@ class ReceiptPlace(SerializationMixin):
         return cls(**filtered_item)
 
 
-def item_to_receipt_place(item: Dict[str, Any]) -> ReceiptPlace:
+def item_to_receipt_place(item: dict[str, Any]) -> ReceiptPlace:
     """Converts a DynamoDB item to a ReceiptPlace object.
 
     Args:

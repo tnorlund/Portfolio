@@ -1,7 +1,7 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_category.py
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_value
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
@@ -27,9 +27,9 @@ class ReceiptValidationCategory(SerializationMixin):
     field_category: str
     status: str
     reasoning: str
-    result_summary: Dict[str, int]
-    validation_timestamp: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    result_summary: dict[str, int]
+    validation_timestamp: str | None = None
+    metadata: dict[str, Any] | None = None
 
     def __post_init__(self):
         validate_positive_int("receipt_id", self.receipt_id)
@@ -48,7 +48,7 @@ class ReceiptValidationCategory(SerializationMixin):
         self.metadata = validate_metadata_field(self.metadata)
 
     @property
-    def key(self) -> Dict[str, Dict[str, str]]:
+    def key(self) -> dict[str, dict[str, str]]:
         """Return the DynamoDB key for this item."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -61,7 +61,7 @@ class ReceiptValidationCategory(SerializationMixin):
         }
 
     @property
-    def gsi1_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi1_key(self) -> dict[str, dict[str, str]]:
         """Return the GSI1 key for this item."""
         return {
             "GSI1PK": {"S": f"VALIDATION_STATUS#{self.status}"},
@@ -74,7 +74,7 @@ class ReceiptValidationCategory(SerializationMixin):
         }
 
     @property
-    def gsi3_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi3_key(self) -> dict[str, dict[str, str]]:
         """Return the GSI3 key for this item."""
         return {
             "GSI3PK": {"S": f"FIELD_STATUS#{self.field_name}#{self.status}"},
@@ -83,7 +83,7 @@ class ReceiptValidationCategory(SerializationMixin):
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to a DynamoDB item."""
         # Start with the keys which are already properly formatted
         item = {
@@ -105,7 +105,7 @@ class ReceiptValidationCategory(SerializationMixin):
         return item
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptValidationCategory":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptValidationCategory":
         """Create a ReceiptValidationCategory from a DynamoDB item."""
         # Extract image_id, receipt_id, and field_name from keys
         image_id = item["PK"]["S"].split("#")[1]
@@ -149,7 +149,7 @@ class ReceiptValidationCategory(SerializationMixin):
         )
 
 
-def _find_sk_value_after(sk_parts: List[str], key: str) -> Optional[str]:
+def _find_sk_value_after(sk_parts: list[str], key: str) -> str | None:
     """Find the value after a key in SK parts."""
     for i, part in enumerate(sk_parts):
         if part == key and i + 1 < len(sk_parts):
@@ -157,7 +157,7 @@ def _find_sk_value_after(sk_parts: List[str], key: str) -> Optional[str]:
     return None
 
 
-def _extract_receipt_id(item: Dict[str, Any], sk_parts: List[str]) -> int:
+def _extract_receipt_id(item: dict[str, Any], sk_parts: list[str]) -> int:
     """Extract receipt_id from SK or item attributes."""
     receipt_id_str = _find_sk_value_after(sk_parts, "RECEIPT")
 
@@ -176,7 +176,7 @@ def _extract_receipt_id(item: Dict[str, Any], sk_parts: List[str]) -> int:
     raise ValueError("Could not extract receipt_id from item")
 
 
-def _extract_image_id(item: Dict[str, Any]) -> str:
+def _extract_image_id(item: dict[str, Any]) -> str:
     """Extract image_id from PK or item attributes."""
     pk_parts = item["PK"]["S"].split("#")
     if len(pk_parts) > 1:
@@ -192,7 +192,7 @@ def _extract_image_id(item: Dict[str, Any]) -> str:
 
 
 def _extract_field_category(
-    item: Dict[str, Any], sk_parts: List[str]
+    item: dict[str, Any], sk_parts: list[str]
 ) -> str:
     """Extract field_category from item or SK."""
     if "field_category" in item:
@@ -206,7 +206,7 @@ def _extract_field_category(
 
 
 def item_to_receipt_validation_category(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> ReceiptValidationCategory:
     """Convert a DynamoDB item to a ReceiptValidationCategory object.
 
@@ -240,12 +240,12 @@ def item_to_receipt_validation_category(
     )
 
     # Extract complex fields using public parse function
-    result_summary: Dict[str, Any] = (
+    result_summary: dict[str, Any] = (
         parse_dynamodb_value(item["result_summary"])
         if "result_summary" in item
         else {}
     )
-    metadata: Dict[str, Any] = (
+    metadata: dict[str, Any] = (
         parse_dynamodb_value(item["metadata"]) if "metadata" in item else {}
     )
 

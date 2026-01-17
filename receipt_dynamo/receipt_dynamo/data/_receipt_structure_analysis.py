@@ -5,7 +5,7 @@ reduction) while maintaining full backward compatibility and all
 functionality.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (
         DeleteRequestTypeDef,
         PutRequestTypeDef,
-        QueryInputTypeDef,
         WriteRequestTypeDef,
     )
 else:
@@ -206,14 +205,14 @@ class _ReceiptStructureAnalysis(FlattenedStandardMixin):
         self,
         receipt_id: int,
         image_id: str,
-        version: Optional[str] = None,
+        version: str | None = None,
     ) -> ReceiptStructureAnalysis:
         """Retrieves a single ReceiptStructureAnalysis by IDs.
 
         Args:
             receipt_id (int): The Receipt ID to query.
             image_id (str): The Image ID to query.
-            version (Optional[str]): The version of the analysis. If None,
+            version (str | None): The version of the analysis. If None,
                 returns the first analysis found.
 
         Returns:
@@ -298,19 +297,19 @@ class _ReceiptStructureAnalysis(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipt_structure_analyses")
     def list_receipt_structure_analyses(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptStructureAnalysis], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptStructureAnalysis], dict[str, Any] | None]:
         """Lists all ReceiptStructureAnalyses.
 
         Args:
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict[str, Any]], optional): The key to
+            last_evaluated_key (dict[str, Any] | None, optional): The key to
                 start from for pagination. Defaults to None.
 
         Returns:
-            Tuple[List[ReceiptStructureAnalysis], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptStructureAnalysis], dict[str, Any] | None]:
                 A tuple containing the list of ReceiptStructureAnalyses and the
                 last evaluated key for pagination.
 

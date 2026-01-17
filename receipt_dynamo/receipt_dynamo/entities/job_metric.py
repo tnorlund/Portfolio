@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple, Union
+from typing import Any, Generator
 
 from receipt_dynamo.entities.dynamodb_utils import (
     dict_to_dynamodb_map,
@@ -30,11 +30,11 @@ class JobMetric:
         timestamp (str): ISO-formatted timestamp when the metric was recorded.
         value (Union[float, Dict]): The value of the metric (may be a simple
             number or a complex structure).
-        unit (Optional[str]): The unit of the metric (e.g., 'percent',
+        unit (str | None): The unit of the metric (e.g., 'percent',
             'seconds').
-        step (Optional[int]): The training step at which the metric was
+        step (int | None): The training step at which the metric was
             recorded.
-        epoch (Optional[int]): The training epoch at which the metric was
+        epoch (int | None): The training epoch at which the metric was
             recorded.
     """
 
@@ -43,10 +43,10 @@ class JobMetric:
     job_id: str
     metric_name: str
     timestamp: str
-    value: Union[int, float, Dict[str, Any]]
-    unit: Optional[str] = None
-    step: Optional[int] = None
-    epoch: Optional[int] = None
+    value: int | float | dict[str, Any]
+    unit: str | None = None
+    step: int | None = None
+    epoch: int | None = None
 
     def __post_init__(self):
         """Validates fields after dataclass initialization.
@@ -81,7 +81,7 @@ class JobMetric:
                     ) from e
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the job metric.
 
         Returns:
@@ -92,7 +92,7 @@ class JobMetric:
             "SK": {"S": f"METRIC#{self.metric_name}#{self.timestamp}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """
         Generate a Global Secondary Index (GSI) key for the job metric.
 
@@ -104,7 +104,7 @@ class JobMetric:
             "GSI1SK": {"S": f"{self.timestamp}"},
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """
         Generate a second Global Secondary Index (GSI2) key for the job
         metric. This enables efficient comparison of the same metric across
@@ -118,7 +118,7 @@ class JobMetric:
             "GSI2SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the JobMetric object to a DynamoDB item.
 
         Returns:
@@ -177,11 +177,11 @@ class JobMetric:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the JobMetric object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the
+            Generator[tuple[str, Any], None, None]: An iterator over the
                 JobMetric object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
@@ -218,7 +218,7 @@ class JobMetric:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "JobMetric":
+    def from_item(cls, item: dict[str, Any]) -> "JobMetric":
         """Converts a DynamoDB item to a JobMetric object.
 
         Args:
@@ -257,7 +257,7 @@ class JobMetric:
             timestamp = item["timestamp"]["S"]
 
             # Parse value based on its type
-            value: Union[int, float, Dict[str, Any]]
+            value: int | float | dict[str, Any]
             if "N" in item["value"]:
                 try:
                     value = int(item["value"]["N"])
@@ -298,7 +298,7 @@ class JobMetric:
             raise ValueError(f"Error parsing item: {str(e)}") from e
 
 
-def item_to_job_metric(item: Dict[str, Any]) -> JobMetric:
+def item_to_job_metric(item: dict[str, Any]) -> JobMetric:
     """Converts a DynamoDB item to a JobMetric object.
 
     Args:

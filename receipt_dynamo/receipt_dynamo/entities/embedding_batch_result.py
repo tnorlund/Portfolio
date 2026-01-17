@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.entities.entity_mixins import BatchResultGSIMixin
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_type,
@@ -43,7 +44,7 @@ def validate_pinecone_id_format(
 
 
 @dataclass(eq=True, unsafe_hash=False)
-class EmbeddingBatchResult:
+class EmbeddingBatchResult(BatchResultGSIMixin):
     REQUIRED_KEYS = {
         "PK",
         "SK",
@@ -62,7 +63,7 @@ class EmbeddingBatchResult:
     pinecone_id: str
     status: str
     text: str
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     def __post_init__(self):
         assert_valid_uuid(self.batch_id)
@@ -100,7 +101,7 @@ class EmbeddingBatchResult:
             )
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         sk = (
             f"RESULT#IMAGE#{self.image_id}"
             f"#RECEIPT#{self.receipt_id:05d}"
@@ -112,25 +113,13 @@ class EmbeddingBatchResult:
             "SK": {"S": sk},
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
-        return {
-            "GSI2PK": {"S": f"BATCH#{self.batch_id}"},
-            "GSI2SK": {"S": f"STATUS#{self.status}"},
-        }
+    # gsi2_key and gsi3_key are provided by BatchResultGSIMixin
 
-    def gsi3_key(self) -> Dict[str, Any]:
-        return {
-            "GSI3PK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
-            },
-            "GSI3SK": {"S": f"BATCH#{self.batch_id}#STATUS#{self.status}"},
-        }
-
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         return {
             **self.key,
-            **self.gsi2_key(),
-            **self.gsi3_key(),
+            **self.gsi2_key,
+            **self.gsi3_key,
             "TYPE": {"S": "EMBEDDING_BATCH_RESULT"},
             "image_id": {"S": self.image_id},
             "pinecone_id": {"S": self.pinecone_id},
@@ -161,7 +150,7 @@ class EmbeddingBatchResult:
     def __str__(self) -> str:
         return self.__repr__()
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         yield "batch_id", self.batch_id
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
@@ -191,7 +180,7 @@ class EmbeddingBatchResult:
 
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "EmbeddingBatchResult":
+    def from_item(cls, item: dict[str, Any]) -> "EmbeddingBatchResult":
         """Converts a DynamoDB item to an EmbeddingBatchResult object.
 
         Args:
@@ -215,7 +204,7 @@ class EmbeddingBatchResult:
             batch_id = item["PK"]["S"].split("#", 1)[1]
 
             # Split SK into parts for flexible parsing
-            sk_parts: List[str] = item["SK"]["S"].split("#")
+            sk_parts: list[str] = item["SK"]["S"].split("#")
 
             # Helper to find the value after a given key in SK
             def sk_value(key: str) -> str:
@@ -262,7 +251,7 @@ class EmbeddingBatchResult:
 
 
 def item_to_embedding_batch_result(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> EmbeddingBatchResult:
     """Converts a DynamoDB item to an EmbeddingBatchResult object.
 

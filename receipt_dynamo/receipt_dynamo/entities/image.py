@@ -1,7 +1,7 @@
 # infra/lambda_layer/python/dynamo/entities/image.py
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.entities.base import DynamoDBEntity
@@ -63,7 +63,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
     raw_s3_key: str
     # Optional fields (CDN fields inherited from CDNFieldsMixin)
     image_type: ImageType | str = ImageType.SCAN
-    receipt_count: Optional[int] = None  # Only for query filtering
+    receipt_count: int | None = None  # Only for query filtering
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -106,7 +106,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
                 )
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the image.
 
         Returns:
@@ -115,7 +115,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         return {"PK": {"S": f"IMAGE#{self.image_id}"}, "SK": {"S": "IMAGE"}}
 
     @property
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the image.
 
         Returns:
@@ -127,7 +127,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         }
 
     @property
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """Generates the GSI2 key for the image.
 
         Returns:
@@ -139,7 +139,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         }
 
     @property
-    def gsi3_key(self) -> Dict[str, Any]:
+    def gsi3_key(self) -> dict[str, Any]:
         """Generates the GSI3 key for the image.
 
         Returns:
@@ -155,7 +155,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             "GSI3SK": {"S": f"NUM_RECEIPTS#{receipt_count_str}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the Image object to a DynamoDB item.
 
         Returns:
@@ -204,7 +204,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Image":
+    def from_item(cls, item: dict[str, Any]) -> "Image":
         """Converts a DynamoDB item to an Image object.
 
         Args:
@@ -247,7 +247,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             raise ValueError(f"Error converting item to Image: {e}") from e
 
 
-def item_to_image(item: Dict[str, Any]) -> Image:
+def item_to_image(item: dict[str, Any]) -> Image:
     """Converts a DynamoDB item to an Image object.
 
     Args:

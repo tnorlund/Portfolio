@@ -1,7 +1,7 @@
 """Word entity with geometry and character information for DynamoDB."""
 
 from dataclasses import dataclass
-from typing import Any, ClassVar, Dict, Optional, Set, Tuple
+from typing import Any, ClassVar
 
 from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
 from receipt_dynamo.entities.entity_factory import (
@@ -54,7 +54,7 @@ class Word(TextGeometryEntity):
     # Entity-specific ID fields
     line_id: int
     word_id: int
-    extracted_data: Optional[Dict[str, Any]] = None
+    extracted_data: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -71,7 +71,7 @@ class Word(TextGeometryEntity):
             )
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the Word.
 
         Returns:
@@ -82,7 +82,7 @@ class Word(TextGeometryEntity):
             "SK": {"S": f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"},
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """Generates the GSI2 key for the Word.
 
         Returns:
@@ -95,7 +95,7 @@ class Word(TextGeometryEntity):
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the Word object to a DynamoDB item.
 
         Returns:
@@ -124,10 +124,10 @@ class Word(TextGeometryEntity):
 
     def calculate_centroid(
         self,
-        width: Optional[int] = None,
-        height: Optional[int] = None,
+        width: int | None = None,
+        height: int | None = None,
         flip_y: bool = False,
-    ) -> Tuple[float, float]:
+    ) -> tuple[float, float]:
         """Calculates the centroid of the Word.
 
         Args:
@@ -139,7 +139,7 @@ class Word(TextGeometryEntity):
                 Defaults to False.
 
         Returns:
-            Tuple[float, float]: The (x, y) coordinates of the centroid.
+            tuple[float, float]: The (x, y) coordinates of the centroid.
 
         Raises:
             ValueError: If only one of width or height is provided.
@@ -161,10 +161,10 @@ class Word(TextGeometryEntity):
 
     def calculate_bounding_box(
         self,
-        width: Optional[int] = None,
-        height: Optional[int] = None,
+        width: int | None = None,
+        height: int | None = None,
         flip_y: bool = False,
-    ) -> Tuple[float, float, float, float]:
+    ) -> tuple[float, float, float, float]:
         """Calculates the bounding box of the Word.
 
         Args:
@@ -176,7 +176,7 @@ class Word(TextGeometryEntity):
                 Defaults to False.
 
         Returns:
-            Tuple[float, float, float, float]: The bounding box of the Word
+            tuple[float, float, float, float]: The bounding box of the Word
                 with keys 'x', 'y', 'width', and 'height'.
 
         Raises:
@@ -202,14 +202,14 @@ class Word(TextGeometryEntity):
 
     def calculate_corners(
         self,
-        width: Optional[int] = None,
-        height: Optional[int] = None,
+        width: int | None = None,
+        height: int | None = None,
         flip_y: bool = False,
-    ) -> Tuple[
-        Tuple[float, float],
-        Tuple[float, float],
-        Tuple[float, float],
-        Tuple[float, float],
+    ) -> tuple[
+        tuple[float, float],
+        tuple[float, float],
+        tuple[float, float],
+        tuple[float, float],
     ]:
         """Calculates the top-left and top-right, and the bottom-left and
         bottom-right corners of the Word in image coordinates.
@@ -223,11 +223,11 @@ class Word(TextGeometryEntity):
                 Defaults to False.
 
         Returns:
-            Tuple[
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
+            tuple[
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
             ]: The corners of the Word.
 
         Raises:
@@ -267,7 +267,7 @@ class Word(TextGeometryEntity):
             (bottom_right_x, bottom_right_y),
         )
 
-    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+    def _get_geometry_hash_fields(self) -> tuple[Any, ...]:
         """Include entity-specific ID fields in hash computation."""
         return self._get_base_geometry_hash_fields() + (
             self.image_id,
@@ -290,10 +290,10 @@ class Word(TextGeometryEntity):
         return f"Word(" f"word_id={self.word_id}, " f"{geometry_fields}" f")"
 
     # Use base class required keys (no additional keys needed for Word)
-    REQUIRED_KEYS: ClassVar[Set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
+    REQUIRED_KEYS: ClassVar[set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Word":
+    def from_item(cls, item: dict[str, Any]) -> "Word":
         """Convert a DynamoDB item to a Word object.
 
         Args:
@@ -306,7 +306,7 @@ class Word(TextGeometryEntity):
             ValueError: If required fields are missing or have invalid format.
         """
         # Custom SK parser for LINE#{line_id:05d}#WORD#{word_id:05d} pattern
-        def parse_word_sk(sk: str) -> Dict[str, Any]:
+        def parse_word_sk(sk: str) -> dict[str, Any]:
             """Parse the SK to extract line_id and word_id."""
             parts = sk.split("#")
             if len(parts) < 4 or parts[0] != "LINE" or parts[2] != "WORD":
@@ -351,7 +351,7 @@ class Word(TextGeometryEntity):
             raise ValueError(f"Error converting item to Word: {e}") from e
 
 
-def item_to_word(item: Dict[str, Any]) -> Word:
+def item_to_word(item: dict[str, Any]) -> Word:
     """Convert a DynamoDB item to a Word object.
 
     This is a convenience function that delegates to Word.from_item().

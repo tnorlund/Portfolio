@@ -7,7 +7,7 @@ handling into a single cohesive module.
 
 import random
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 from botocore.exceptions import ClientError
 
@@ -153,7 +153,7 @@ class ErrorContextExtractor:
     @staticmethod
     def extract_context(
         error: ClientError, operation: str, **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Extract relevant context from a ClientError for debugging."""
         context = {
             "operation": operation,
@@ -186,7 +186,7 @@ class ErrorContextExtractor:
 class ErrorHandler:
     """Handles DynamoDB operation errors with proper exception mapping."""
 
-    def __init__(self, config: Optional[ErrorMessageConfig] = None):
+    def __init__(self, config: ErrorMessageConfig | None = None):
         self.config = config or ErrorMessageConfig()
         self.context_extractor = ErrorContextExtractor()
 
@@ -246,7 +246,7 @@ class ErrorHandler:
         )
 
     def _raise_not_found_error(
-        self, operation: str, context: Dict[str, Any]
+        self, operation: str, context: dict[str, Any]
     ) -> None:
         """Raise EntityNotFoundError with operation-specific message."""
         if operation in self.config.ENTITY_NOT_FOUND_PATTERNS:
@@ -322,7 +322,7 @@ def handle_dynamodb_errors(operation_name: str):
 
 def _extract_operation_context(
     operation_name: str, args: tuple, kwargs: dict
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Extract relevant context from operation parameters."""
     context = {}
 

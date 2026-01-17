@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.util import _repr_str
 
@@ -84,7 +84,7 @@ class Queue:
             raise ValueError("job_count must be a non-negative integer")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the queue.
 
         Returns:
@@ -92,7 +92,7 @@ class Queue:
         """
         return {"PK": {"S": f"QUEUE#{self.queue_name}"}, "SK": {"S": "QUEUE"}}
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the queue.
 
         Returns:
@@ -103,7 +103,7 @@ class Queue:
             "GSI1SK": {"S": f"QUEUE#{self.queue_name}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the Queue object to a DynamoDB item.
 
         Returns:
@@ -139,11 +139,11 @@ class Queue:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the Queue object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over
+            Generator[tuple[str, Any], None, None]: An iterator over
                 attribute name/value pairs.
         """
         yield "queue_name", self.queue_name
@@ -163,7 +163,7 @@ class Queue:
         return hash(self.queue_name)
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Queue":
+    def from_item(cls, item: dict[str, Any]) -> "Queue":
         """Converts a DynamoDB item to a Queue object.
 
         Args:
@@ -206,7 +206,7 @@ class Queue:
             raise ValueError(f"Error converting item to Queue: {e}") from e
 
 
-def item_to_queue(item: Dict[str, Any]) -> Queue:
+def item_to_queue(item: dict[str, Any]) -> Queue:
     """Converts a DynamoDB item to a Queue object.
 
     Args:

@@ -1,6 +1,6 @@
 """Receipt Word Label Spatial Analysis data access operations."""
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -55,12 +55,12 @@ class _ReceiptWordLabelSpatialAnalysis(
 
     @handle_dynamodb_errors("add_receipt_word_label_spatial_analyses")
     def add_receipt_word_label_spatial_analyses(
-        self, spatial_analyses: List[ReceiptWordLabelSpatialAnalysis]
+        self, spatial_analyses: list[ReceiptWordLabelSpatialAnalysis]
     ) -> None:
         """Adds multiple spatial analyses to the database
 
         Args:
-            spatial_analyses (List[ReceiptWordLabelSpatialAnalysis]): The
+            spatial_analyses (list[ReceiptWordLabelSpatialAnalysis]): The
                 spatial analyses to add to the database
 
         Raises:
@@ -105,12 +105,12 @@ class _ReceiptWordLabelSpatialAnalysis(
 
     @handle_dynamodb_errors("update_receipt_word_label_spatial_analyses")
     def update_receipt_word_label_spatial_analyses(
-        self, spatial_analyses: List[ReceiptWordLabelSpatialAnalysis]
+        self, spatial_analyses: list[ReceiptWordLabelSpatialAnalysis]
     ) -> None:
         """Updates multiple spatial analyses in the database
 
         Args:
-            spatial_analyses (List[ReceiptWordLabelSpatialAnalysis]): The
+            spatial_analyses (list[ReceiptWordLabelSpatialAnalysis]): The
                 spatial analyses to update
 
         Raises:
@@ -146,12 +146,12 @@ class _ReceiptWordLabelSpatialAnalysis(
 
     @handle_dynamodb_errors("delete_receipt_word_label_spatial_analyses")
     def delete_receipt_word_label_spatial_analyses(
-        self, spatial_analyses: List[ReceiptWordLabelSpatialAnalysis]
+        self, spatial_analyses: list[ReceiptWordLabelSpatialAnalysis]
     ) -> None:
         """Deletes multiple spatial analyses from the database
 
         Args:
-            spatial_analyses (List[ReceiptWordLabelSpatialAnalysis]): The
+            spatial_analyses (list[ReceiptWordLabelSpatialAnalysis]): The
                 spatial analyses to delete
 
         Raises:
@@ -232,21 +232,21 @@ class _ReceiptWordLabelSpatialAnalysis(
         self,
         image_id: str,
         receipt_id: int,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[
-        List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[
+        list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None
     ]:
         """Lists all spatial analyses for a specific receipt using GSI2
 
         Args:
             image_id (str): The image ID
             receipt_id (int): The receipt ID
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabelSpatialAnalysis], dict | None]:
+            tuple[list[ReceiptWordLabelSpatialAnalysis], dict | None]:
                 The spatial analyses for the receipt and last evaluated key
 
         Raises:
@@ -280,10 +280,10 @@ class _ReceiptWordLabelSpatialAnalysis(
     def get_spatial_analyses_by_label(
         self,
         label: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[
-        List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[
+        list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None
     ]:
         """Retrieves spatial analyses by label type using GSI1
 
@@ -292,11 +292,11 @@ class _ReceiptWordLabelSpatialAnalysis(
 
         Args:
             label (str): The label type to search for
-            limit (Optional[int]): Maximum number of analyses to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of analyses to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabelSpatialAnalysis], dict | None]:
+            tuple[list[ReceiptWordLabelSpatialAnalysis], dict | None]:
                 The spatial analyses and last evaluated key
 
         Raises:
@@ -330,20 +330,20 @@ class _ReceiptWordLabelSpatialAnalysis(
     def list_spatial_analyses_for_image(
         self,
         image_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[
-        List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[
+        list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None
     ]:
         """Lists all spatial analyses for a given image
 
         Args:
             image_id (str): The image ID
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabelSpatialAnalysis], dict | None]:
+            tuple[list[ReceiptWordLabelSpatialAnalysis], dict | None]:
                 The spatial analyses for the image and last evaluated key
 
         Raises:
@@ -379,19 +379,19 @@ class _ReceiptWordLabelSpatialAnalysis(
     @handle_dynamodb_errors("list_receipt_word_label_spatial_analyses")
     def list_receipt_word_label_spatial_analyses(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[
-        List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[
+        list[ReceiptWordLabelSpatialAnalysis], dict[str, Any] | None
     ]:
         """Lists all spatial analyses with pagination
 
         Args:
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabelSpatialAnalysis], dict | None]:
+            tuple[list[ReceiptWordLabelSpatialAnalysis], dict | None]:
                 The spatial analyses and last evaluated key
 
         Raises:

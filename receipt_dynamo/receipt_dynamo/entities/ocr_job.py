@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.constants import OCRJobType, OCRStatus
 from receipt_dynamo.entities.entity_factory import (
@@ -39,10 +39,10 @@ class OCRJob:
     s3_bucket: str
     s3_key: str
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime | None = None
     status: str = OCRStatus.PENDING.value
     job_type: str = OCRJobType.FIRST_PASS.value
-    receipt_id: Optional[int] = None
+    receipt_id: int | None = None
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -72,25 +72,25 @@ class OCRJob:
             raise ValueError("receipt_id must be an integer or None")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"OCR_JOB#{self.job_id}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         return {
             "GSI1PK": {"S": f"OCR_JOB_STATUS#{self.status}"},
             "GSI1SK": {"S": f"OCR_JOB#{self.job_id}"},
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         return {
             "GSI2PK": {"S": f"OCR_JOB_STATUS#{self.status}"},
             "GSI2SK": {"S": f"OCR_JOB#{self.job_id}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         return {
             **self.key,
             **self.gsi1_key(),
@@ -128,7 +128,7 @@ class OCRJob:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         yield "image_id", self.image_id
         yield "job_id", self.job_id
         yield "s3_bucket", self.s3_bucket
@@ -170,7 +170,7 @@ class OCRJob:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "OCRJob":
+    def from_item(cls, item: dict[str, Any]) -> "OCRJob":
         """Converts a DynamoDB item to an OCRJob object.
 
         Args:
@@ -201,7 +201,7 @@ class OCRJob:
         )
 
 
-def item_to_ocr_job(item: Dict[str, Any]) -> OCRJob:
+def item_to_ocr_job(item: dict[str, Any]) -> OCRJob:
     """Converts a DynamoDB item to an OCRJob object.
 
     Args:

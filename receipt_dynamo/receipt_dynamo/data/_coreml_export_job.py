@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 from receipt_dynamo.constants import CoreMLExportStatus
 from receipt_dynamo.data.base_operations import (
@@ -129,8 +129,8 @@ class _CoreMLExportJob(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_coreml_export_jobs")
     def list_coreml_export_jobs(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
     ) -> tuple[list[CoreMLExportJob], dict | None]:
         """Lists all CoreML export jobs from the database.
 
@@ -158,7 +158,7 @@ class _CoreMLExportJob(FlattenedStandardMixin):
     def get_coreml_export_jobs_by_status(
         self,
         status: CoreMLExportStatus,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[CoreMLExportJob], dict | None]:
         """Gets CoreML export jobs by status from the database.
@@ -199,7 +199,7 @@ class _CoreMLExportJob(FlattenedStandardMixin):
     def get_coreml_export_jobs_for_job(
         self,
         job_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[CoreMLExportJob], dict | None]:
         """Gets all CoreML export jobs for a specific training job.

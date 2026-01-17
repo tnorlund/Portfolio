@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List, Optional
 
 from receipt_dynamo.entities.receipt_chatgpt_validation import (
     ReceiptChatGPTValidation,
@@ -34,31 +33,31 @@ class ReceiptAnalysis:
     Attributes:
         image_id (str): UUID identifying the image containing the receipt
         receipt_id (int): ID of the receipt being analyzed
-        label_analysis (Optional[ReceiptLabelAnalysis]): Analysis of
+        label_analysis (ReceiptLabelAnalysis | None): Analysis of
             labels/fields in the receipt
-        structure_analysis (Optional[ReceiptStructureAnalysis]): Analysis of
+        structure_analysis (ReceiptStructureAnalysis | None): Analysis of
             the structural layout
-        line_item_analysis (Optional[ReceiptLineItemAnalysis]): Analysis of
+        line_item_analysis (ReceiptLineItemAnalysis | None): Analysis of
             line items (products, prices)
-        validation_summary (Optional[ReceiptValidationSummary]): Validation
+        validation_summary (ReceiptValidationSummary | None): Validation
             results and issues
-        validation_categories (List[ReceiptValidationCategory]): Detailed
+        validation_categories (list[ReceiptValidationCategory]): Detailed
             validation by category
-        validation_results (List[ReceiptValidationResult]): Individual
+        validation_results (list[ReceiptValidationResult]): Individual
             validation results
-        chatgpt_validations (List[ReceiptChatGPTValidation]): ChatGPT
+        chatgpt_validations (list[ReceiptChatGPTValidation]): ChatGPT
             validation results
     """
 
     image_id: str
     receipt_id: int
-    label_analysis: Optional[ReceiptLabelAnalysis] = None
-    structure_analysis: Optional[ReceiptStructureAnalysis] = None
-    line_item_analysis: Optional[ReceiptLineItemAnalysis] = None
-    validation_summary: Optional[ReceiptValidationSummary] = None
-    validation_categories: Optional[List[ReceiptValidationCategory]] = None
-    validation_results: Optional[List[ReceiptValidationResult]] = None
-    chatgpt_validations: Optional[List[ReceiptChatGPTValidation]] = None
+    label_analysis: ReceiptLabelAnalysis | None = None
+    structure_analysis: ReceiptStructureAnalysis | None = None
+    line_item_analysis: ReceiptLineItemAnalysis | None = None
+    validation_summary: ReceiptValidationSummary | None = None
+    validation_categories: list[ReceiptValidationCategory] | None = None
+    validation_results: list[ReceiptValidationResult] | None = None
+    chatgpt_validations: list[ReceiptChatGPTValidation] | None = None
 
     def __post_init__(self):
         """Initialize empty lists for collection fields if they are None."""

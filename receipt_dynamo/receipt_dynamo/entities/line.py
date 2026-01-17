@@ -1,13 +1,8 @@
 from dataclasses import dataclass
 from math import sqrt
-from typing import Any, ClassVar, Dict, Set, Tuple
+from typing import Any, ClassVar
 
 from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
-from receipt_dynamo.entities.entity_factory import (
-    EntityFactory,
-    create_geometry_extractors,
-    create_image_receipt_pk_parser,
-)
 from receipt_dynamo.entities.util import (
     build_base_item,
 )
@@ -60,7 +55,7 @@ class Line(TextGeometryEntity):
         self._validate_geometry()
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the line.
 
         Returns:
@@ -71,7 +66,7 @@ class Line(TextGeometryEntity):
             "SK": {"S": f"LINE#{self.line_id:05d}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the line.
 
         Returns:
@@ -82,7 +77,7 @@ class Line(TextGeometryEntity):
             "GSI1SK": {"S": f"LINE#{self.line_id:05d}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the Line object to a DynamoDB item.
 
         Returns:
@@ -105,7 +100,7 @@ class Line(TextGeometryEntity):
             + (self.top_right["y"] - self.bottom_left["y"]) ** 2
         )
 
-    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+    def _get_geometry_hash_fields(self) -> tuple[Any, ...]:
         """Include entity-specific ID fields in hash computation."""
         return self._get_base_geometry_hash_fields() + (
             self.image_id,
@@ -128,10 +123,10 @@ class Line(TextGeometryEntity):
         )
 
     # Use base class required keys (no additional keys needed for Line)
-    REQUIRED_KEYS: ClassVar[Set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
+    REQUIRED_KEYS: ClassVar[set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Line":
+    def from_item(cls, item: dict[str, Any]) -> "Line":
         """Convert a DynamoDB item to a Line object.
 
         Args:
@@ -143,42 +138,18 @@ class Line(TextGeometryEntity):
         Raises:
             ValueError: If required fields are missing or have invalid format.
         """
-        # Custom SK parser for LINE#{line_id:05d} pattern
-        def parse_line_sk(sk: str) -> Dict[str, Any]:
-            """Parse the SK to extract line_id."""
+
+        def parse_line_sk(sk: str) -> dict[str, Any]:
+            """Parse SK to extract line_id."""
             parts = sk.split("#")
             if len(parts) < 2 or parts[0] != "LINE":
                 raise ValueError(f"Invalid SK format for Line: {sk}")
-
             return {"line_id": int(parts[1])}
 
-        # Type-safe extractors for all fields
-        custom_extractors = {
-            "text": EntityFactory.extract_text_field,
-            **create_geometry_extractors(),  # Handles all geometry fields
-        }
-
-        # Use EntityFactory to create the entity with full type safety
-        try:
-            return EntityFactory.create_entity(
-                entity_class=cls,
-                item=item,
-                required_keys=cls.REQUIRED_KEYS,
-                key_parsers={
-                    "PK": create_image_receipt_pk_parser(),
-                    "SK": parse_line_sk,
-                },
-                custom_extractors=custom_extractors,
-            )
-        except ValueError as e:
-            # Check if it's a missing keys error and re-raise as-is
-            if str(e).startswith("Item is missing required keys:"):
-                raise
-            # Otherwise, wrap the error
-            raise ValueError(f"Error converting item to Line: {e}") from e
+        return cls._from_item_with_geometry(item, parse_line_sk)
 
 
-def item_to_line(item: Dict[str, Any]) -> Line:
+def item_to_line(item: dict[str, Any]) -> Line:
     """Convert a DynamoDB item to a Line object.
 
     This is a convenience function that delegates to Line.from_item().

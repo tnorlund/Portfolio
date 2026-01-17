@@ -1,5 +1,5 @@
 # infra/lambda_layer/python/dynamo/data/_receipt.py
-from typing import Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
@@ -289,7 +289,7 @@ class _Receipt(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipts")
     def list_receipts(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[Receipt], dict | None]:
         """
@@ -373,8 +373,8 @@ class _Receipt(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipt_details")
     def list_receipt_details(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
     ) -> ReceiptSummaryPage:
         """List receipts with their words and word labels using GSI2.
 

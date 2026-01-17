@@ -6,7 +6,7 @@ Chroma compaction jobs across multiple workers.
 """
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict
 
 from botocore.exceptions import ClientError
 
@@ -132,7 +132,7 @@ class _CompactionLock(FlattenedStandardMixin):
             raise
 
     @handle_dynamodb_errors("delete_compaction_locks")
-    def delete_compaction_locks(self, locks: List[CompactionLock]) -> None:
+    def delete_compaction_locks(self, locks: list[CompactionLock]) -> None:
         """
         Deletes multiple compaction locks in batch.
 
@@ -186,7 +186,7 @@ class _CompactionLock(FlattenedStandardMixin):
     @handle_dynamodb_errors("get_compaction_lock")
     def get_compaction_lock(
         self, lock_id: str, collection: "ChromaDBCollection"
-    ) -> Optional[CompactionLock]:
+    ) -> CompactionLock | None:
         """
         Retrieves a compaction lock by ID and collection.
 
@@ -210,9 +210,9 @@ class _CompactionLock(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_compaction_locks")
     def list_compaction_locks(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[CompactionLock], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[CompactionLock], dict[str, Any] | None]:
         """
         Lists all compaction locks.
 
@@ -233,10 +233,10 @@ class _CompactionLock(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_active_compaction_locks")
     def list_active_compaction_locks(
         self,
-        collection: Optional[ChromaDBCollection] = None,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[CompactionLock], Optional[Dict[str, Any]]]:
+        collection: ChromaDBCollection | None = None,
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[CompactionLock], dict[str, Any] | None]:
         """
         Lists all active (non-expired) compaction locks.
 

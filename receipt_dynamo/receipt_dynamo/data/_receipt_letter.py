@@ -1,5 +1,5 @@
 # infra/lambda_layer/python/dynamo/data/_receipt_letter.py
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -311,7 +311,7 @@ class _ReceiptLetter(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipt_letters")
     def list_receipt_letters(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptLetter], dict | None]:
         """

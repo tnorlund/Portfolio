@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.constants import JobStatus
 from receipt_dynamo.entities.dynamodb_utils import (
@@ -37,9 +37,9 @@ class Job:
             critical).
         job_config (Dict): The configuration for the job (stored as a JSON).
         estimated_duration (int): The estimated duration of the job in seconds.
-        tags (Dict[str, str]): Tags associated with the job.
-        storage (Dict[str, str]): S3 storage paths (bucket, prefixes).
-        results (Dict[str, Any]): Training results populated after completion.
+        tags (dict[str, str]): Tags associated with the job.
+        storage (dict[str, str]): S3 storage paths (bucket, prefixes).
+        results (dict[str, Any]): Training results populated after completion.
             Expected keys: best_f1, best_epoch, train_runtime, total_flos.
     """
 
@@ -63,16 +63,16 @@ class Job:
     created_by: str
     status: str
     priority: str
-    job_config: Dict[str, Any]
-    estimated_duration: Optional[int] = None
-    tags: Optional[Dict[str, str]] = None
+    job_config: dict[str, Any]
+    estimated_duration: int | None = None
+    tags: dict[str, str] | None = None
     # Optional S3 storage metadata for this job. Expected keys (all optional):
     #   bucket, run_root_prefix, checkpoints_prefix, best_prefix, logs_prefix,
     #   config_prefix, publish_model_prefix
-    storage: Optional[Dict[str, str]] = None
+    storage: dict[str, str] | None = None
     # Optional training results/outcomes. Populated after training completes.
     # Expected keys: best_f1, best_epoch, train_runtime, total_flos, etc.
-    results: Optional[Dict[str, Any]] = None
+    results: dict[str, Any] | None = None
 
     def __post_init__(self):
         """Validates fields after dataclass initialization.
@@ -132,7 +132,7 @@ class Job:
             if not isinstance(self.storage, dict):
                 raise ValueError("storage must be a dictionary when provided")
             # Normalize prefixes to have trailing '/'
-            normalized: Dict[str, str] = {}
+            normalized: dict[str, str] = {}
             for k, v in self.storage.items():
                 if not isinstance(k, str) or not isinstance(v, str):
                     raise ValueError("storage keys and values must be strings")
@@ -150,7 +150,7 @@ class Job:
                 raise ValueError("results must be a dictionary when provided")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the job.
 
         Returns:
@@ -158,7 +158,7 @@ class Job:
         """
         return {"PK": {"S": f"JOB#{self.job_id}"}, "SK": {"S": "JOB"}}
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the job.
 
         Returns:
@@ -169,7 +169,7 @@ class Job:
             "GSI1SK": {"S": f"CREATED#{self.created_at}"},
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """Generates the GSI2 key for the job (lookup by name).
 
         Returns:
@@ -180,7 +180,7 @@ class Job:
             "GSI2SK": {"S": f"CREATED#{self.created_at}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the Job object to a DynamoDB item.
 
         Returns:
@@ -237,11 +237,11 @@ class Job:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the Job object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the Job
+            Generator[tuple[str, Any], None, None]: An iterator over the Job
                 object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
@@ -293,7 +293,7 @@ class Job:
         )
 
     # ----- S3 Storage helper methods -----
-    def storage_bucket(self) -> Optional[str]:
+    def storage_bucket(self) -> str | None:
         """Returns the S3 bucket associated with this job, if provided."""
         return (
             (self.storage or {}).get("bucket")
@@ -301,13 +301,13 @@ class Job:
             else None
         )
 
-    def storage_prefix(self, key: str) -> Optional[str]:
+    def storage_prefix(self, key: str) -> str | None:
         """Returns a storage prefix by key (e.g., 'run_root_prefix')."""
         return (
             (self.storage or {}).get(key) if self.storage is not None else None
         )
 
-    def s3_uri_for_prefix(self, key: str) -> Optional[str]:
+    def s3_uri_for_prefix(self, key: str) -> str | None:
         """Builds an s3:// URI for a named prefix if both are set."""
         bucket = self.storage_bucket()
         prefix = self.storage_prefix(key)
@@ -315,7 +315,7 @@ class Job:
             return f"s3://{bucket}/{prefix}"
         return None
 
-    def best_dir_uri(self) -> Optional[str]:
+    def best_dir_uri(self) -> str | None:
         """Returns the s3:// URI to the best checkpoint directory if known."""
         # Prefer explicit best_prefix; otherwise derive from
         # run_root_prefix if available
@@ -328,12 +328,12 @@ class Job:
             return f"s3://{bucket}/{run_root}best/"
         return None
 
-    def publish_dir_uri(self) -> Optional[str]:
+    def publish_dir_uri(self) -> str | None:
         """Returns the s3:// URI where the publishable model lives."""
         return self.s3_uri_for_prefix("publish_model_prefix")
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Job":
+    def from_item(cls, item: dict[str, Any]) -> "Job":
         """Converts a DynamoDB item to a Job object.
 
         Args:
@@ -376,17 +376,17 @@ class Job:
             )
 
             # Parse tags if present
-            tags: Optional[Dict[str, Any]] = None
+            tags: dict[str, Any] | None = None
             if "tags" in item and "M" in item["tags"]:
                 tags = {k: v["S"] for k, v in item["tags"]["M"].items()}
 
             # Parse optional storage map
-            storage: Optional[Dict[str, Any]] = None
+            storage: dict[str, Any] | None = None
             if "storage" in item and "M" in item["storage"]:
                 storage = parse_dynamodb_map(item["storage"]["M"])
 
             # Parse optional results map
-            results: Optional[Dict[str, Any]] = None
+            results: dict[str, Any] | None = None
             if "results" in item and "M" in item["results"]:
                 results = parse_dynamodb_map(item["results"]["M"])
 
@@ -408,7 +408,7 @@ class Job:
             raise ValueError(f"Error converting item to Job: {e}") from e
 
 
-def item_to_job(item: Dict[str, Any]) -> Job:
+def item_to_job(item: dict[str, Any]) -> Job:
     """Converts a DynamoDB item to a Job object.
 
     Args:

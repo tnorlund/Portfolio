@@ -10,7 +10,7 @@ Use cases:
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.constants import CompactionState
 from receipt_dynamo.entities.base import DynamoDBEntity
@@ -45,17 +45,17 @@ class CompactionRun(DynamoDBEntity):
     # Per-collection state
     lines_state: str
     words_state: str
-    lines_started_at: Optional[str | datetime]
-    lines_finished_at: Optional[str | datetime]
-    words_started_at: Optional[str | datetime]
-    words_finished_at: Optional[str | datetime]
+    lines_started_at: str | datetime | None
+    lines_finished_at: str | datetime | None
+    words_started_at: str | datetime | None
+    words_finished_at: str | datetime | None
     lines_error: str
     words_error: str
     lines_merged_vectors: int
     words_merged_vectors: int
 
     created_at: str | datetime
-    updated_at: Optional[str | datetime]
+    updated_at: str | datetime | None
     """
 
     REQUIRED_KEYS = {
@@ -76,10 +76,10 @@ class CompactionRun(DynamoDBEntity):
     lines_state: str = "PENDING"
     words_state: str = "PENDING"
 
-    lines_started_at: Optional[str | datetime] = None
-    lines_finished_at: Optional[str | datetime] = None
-    words_started_at: Optional[str | datetime] = None
-    words_finished_at: Optional[str | datetime] = None
+    lines_started_at: str | datetime | None = None
+    lines_finished_at: str | datetime | None = None
+    words_started_at: str | datetime | None = None
+    words_finished_at: str | datetime | None = None
 
     lines_error: str = ""
     words_error: str = ""
@@ -90,7 +90,7 @@ class CompactionRun(DynamoDBEntity):
     created_at: str | datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
-    updated_at: Optional[str | datetime] = None
+    updated_at: str | datetime | None = None
 
     # ────────────────────────── validation ────────────────────────────
     def __post_init__(self) -> None:
@@ -148,7 +148,7 @@ class CompactionRun(DynamoDBEntity):
 
     # ───────────────────── DynamoDB keys ─────────────────────
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         # Align keys with receipt design: partition by image,
         # sort by receipt/run
         sk = f"RECEIPT#{self.receipt_id:05d}#COMPACTION_RUN#{self.run_id}"
@@ -157,7 +157,7 @@ class CompactionRun(DynamoDBEntity):
             "SK": {"S": sk},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         # List runs by created_at (table-per-env, so no env in key)
         created = (
             self.created_at
@@ -170,8 +170,8 @@ class CompactionRun(DynamoDBEntity):
         }
 
     # ───────────────────── DynamoDB marshalling ───────────────────────
-    def to_item(self) -> Dict[str, Any]:
-        item: Dict[str, Any] = {
+    def to_item(self) -> dict[str, Any]:
+        item: dict[str, Any] = {
             **self.key,
             **self.gsi1_key(),
             "TYPE": {"S": "COMPACTION_RUN"},
@@ -188,7 +188,7 @@ class CompactionRun(DynamoDBEntity):
         }
 
         # Optional timestamps and error fields
-        def _opt_str(name: str, val: Optional[str]) -> Dict[str, Any]:
+        def _opt_str(name: str, val: str | None) -> dict[str, Any]:
             return {name: {"S": val}} if val else {name: {"NULL": True}}
 
         for name in (
@@ -221,7 +221,7 @@ class CompactionRun(DynamoDBEntity):
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "CompactionRun":
+    def from_item(cls, item: dict[str, Any]) -> "CompactionRun":
         """Converts a DynamoDB item to a CompactionRun object.
 
         Args:
@@ -299,7 +299,7 @@ class CompactionRun(DynamoDBEntity):
             ) from e
 
 
-def item_to_compaction_run(item: Dict[str, Any]) -> CompactionRun:
+def item_to_compaction_run(item: dict[str, Any]) -> CompactionRun:
     """Converts a DynamoDB item to a CompactionRun object.
 
     Args:

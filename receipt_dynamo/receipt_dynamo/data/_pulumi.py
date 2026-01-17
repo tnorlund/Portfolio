@@ -1,10 +1,10 @@
 import json
 import subprocess
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
-def load_env(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
+def load_env(env: str = "dev", working_dir: str = None) -> dict[str, Any]:
     """Retrieves Pulumi stack outputs for the specified environment.
 
     Args:
@@ -55,7 +55,7 @@ def load_env(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
         return {}  # Return an empty dictionary on failure
 
 
-def load_secrets(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
+def load_secrets(env: str = "dev", working_dir: str = None) -> dict[str, Any]:
     """Retrieves Pulumi stack secrets for the specified environment.
 
     Args:

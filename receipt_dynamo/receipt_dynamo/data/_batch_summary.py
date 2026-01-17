@@ -5,7 +5,7 @@ deleting, and querying batch summary data, including support for pagination
 and GSI lookups by status.
 """
 
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.data.base_operations import (
@@ -28,9 +28,7 @@ from receipt_dynamo.entities.batch_summary import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
+    pass
 
 
 class _BatchSummary(FlattenedStandardMixin):
@@ -58,13 +56,13 @@ class _BatchSummary(FlattenedStandardMixin):
     @handle_dynamodb_errors("add_batch_summaries")
     def add_batch_summaries(
         self,
-        batch_summaries: List[BatchSummary],
+        batch_summaries: list[BatchSummary],
     ) -> None:
         """
         Adds multiple BatchSummary records to DynamoDB in batches.
 
         Args:
-            batch_summaries (List[BatchSummary]):
+            batch_summaries (list[BatchSummary]):
                 A list of BatchSummary instances to add.
 
         Raises:
@@ -104,13 +102,13 @@ class _BatchSummary(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("update_batch_summaries")
     def update_batch_summaries(
-        self, batch_summaries: List[BatchSummary]
+        self, batch_summaries: list[BatchSummary]
     ) -> None:
         """
         Updates multiple BatchSummary records in DynamoDB using transactions.
 
         Args:
-            batch_summaries (List[BatchSummary]):
+            batch_summaries (list[BatchSummary]):
                 A list of BatchSummary instances to update.
 
         Raises:
@@ -157,13 +155,13 @@ class _BatchSummary(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("delete_batch_summaries")
     def delete_batch_summaries(
-        self, batch_summaries: List[BatchSummary]
+        self, batch_summaries: list[BatchSummary]
     ) -> None:
         """Deletes multiple BatchSummary records from DynamoDB using
         transactions.
 
         Args:
-            batch_summaries (List[BatchSummary]):
+            batch_summaries (list[BatchSummary]):
                 A list of BatchSummary instances to delete.
 
         Raises:
@@ -223,8 +221,8 @@ class _BatchSummary(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("get_batch_summaries_by_batch_ids")
     def get_batch_summaries_by_batch_ids(
-        self, batch_ids: List[str]
-    ) -> List[BatchSummary]:
+        self, batch_ids: list[str]
+    ) -> list[BatchSummary]:
         """
         Retrieves a list of BatchSummary records from DynamoDB by batch_id.
         """
@@ -245,8 +243,8 @@ class _BatchSummary(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("get_batch_summaries_by_keys")
     def get_batch_summaries_by_keys(
-        self, keys: List[dict]
-    ) -> List[BatchSummary]:
+        self, keys: list[dict]
+    ) -> list[BatchSummary]:
         """
         Retrieves a list of BatchSummary records from DynamoDB by keys.
         """
@@ -270,10 +268,10 @@ class _BatchSummary(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_batch_summaries")
     def list_batch_summaries(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[
-        List[BatchSummary],
+    ) -> tuple[
+        list[BatchSummary],
         dict | None,
     ]:
         """
@@ -285,7 +283,7 @@ class _BatchSummary(FlattenedStandardMixin):
                 The key to start pagination from.
 
         Returns:
-            Tuple[List[BatchSummary], dict | None]:
+            tuple[list[BatchSummary], dict | None]:
                 A tuple containing the list of BatchSummary records and
                 the last evaluated key.
 
@@ -308,10 +306,10 @@ class _BatchSummary(FlattenedStandardMixin):
         self,
         status: str | BatchStatus,
         batch_type: str | BatchType = "WORD_EMBEDDING",
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[
-        List[BatchSummary],
+    ) -> tuple[
+        list[BatchSummary],
         dict | None,
     ]:
         """
@@ -325,7 +323,7 @@ class _BatchSummary(FlattenedStandardMixin):
                 The key to start pagination from.
 
         Returns:
-            Tuple[List[BatchSummary], dict | None]:
+            tuple[list[BatchSummary], dict | None]:
                 A tuple containing the list of BatchSummary records and
                 the last evaluated key.
 

@@ -1,12 +1,7 @@
 from dataclasses import dataclass
-from typing import Any, ClassVar, Dict, Generator, Set, Tuple
+from typing import Any, ClassVar, Generator
 
 from receipt_dynamo.entities.text_geometry_entity import TextGeometryEntity
-from receipt_dynamo.entities.entity_factory import (
-    EntityFactory,
-    create_geometry_extractors,
-    create_image_receipt_pk_parser,
-)
 from receipt_dynamo.entities.util import (
     build_base_item,
     validate_positive_int,
@@ -65,7 +60,7 @@ class Letter(TextGeometryEntity):
             raise ValueError("text must be exactly one character")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the Letter.
 
         Returns:
@@ -80,7 +75,7 @@ class Letter(TextGeometryEntity):
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the Letter object to a DynamoDB item.
 
         Returns:
@@ -113,11 +108,11 @@ class Letter(TextGeometryEntity):
             f")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the Letter object's attributes.
 
         Yields:
-            Tuple[str, Any]: A tuple containing the attribute name and its
+            tuple[str, Any]: A tuple containing the attribute name and its
                 value.
         """
         yield "image_id", self.image_id
@@ -145,7 +140,7 @@ class Letter(TextGeometryEntity):
             and self._geometry_fields_equal(other)
         )
 
-    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+    def _get_geometry_hash_fields(self) -> tuple[Any, ...]:
         """Include entity-specific ID fields in hash computation."""
         return self._get_base_geometry_hash_fields() + (
             self.image_id,
@@ -159,10 +154,10 @@ class Letter(TextGeometryEntity):
         return hash(self._get_geometry_hash_fields())
 
     # Use base class required keys (no additional keys needed for Letter)
-    REQUIRED_KEYS: ClassVar[Set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
+    REQUIRED_KEYS: ClassVar[set[str]] = TextGeometryEntity.BASE_REQUIRED_KEYS
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Letter":
+    def from_item(cls, item: dict[str, Any]) -> "Letter":
         """Convert a DynamoDB item to a Letter object.
 
         Args:
@@ -174,12 +169,10 @@ class Letter(TextGeometryEntity):
         Raises:
             ValueError: If required fields are missing or have invalid format.
         """
-        # Custom SK parser for LINE#...#WORD#...#LETTER#{letter_id:05d} pattern
-        def parse_letter_sk(sk: str) -> Dict[str, Any]:
-            """Parse the SK to extract line_id, word_id, and letter_id."""
-            parts = sk.split("#")
 
-            # Expected format: LINE#{line_id}#WORD#{word_id}#LETTER#{letter_id}
+        def parse_letter_sk(sk: str) -> dict[str, Any]:
+            """Parse SK to extract line_id, word_id, and letter_id."""
+            parts = sk.split("#")
             if (
                 len(parts) < 6
                 or parts[0] != "LINE"
@@ -187,40 +180,16 @@ class Letter(TextGeometryEntity):
                 or parts[4] != "LETTER"
             ):
                 raise ValueError(f"Invalid SK format for Letter: {sk}")
-
             return {
                 "line_id": int(parts[1]),
                 "word_id": int(parts[3]),
                 "letter_id": int(parts[5]),
             }
 
-        # Type-safe extractors for all fields
-        custom_extractors = {
-            "text": EntityFactory.extract_text_field,
-            **create_geometry_extractors(),  # Handles all geometry fields
-        }
-
-        # Use EntityFactory to create the entity with full type safety
-        try:
-            return EntityFactory.create_entity(
-                entity_class=cls,
-                item=item,
-                required_keys=cls.REQUIRED_KEYS,
-                key_parsers={
-                    "PK": create_image_receipt_pk_parser(),
-                    "SK": parse_letter_sk,
-                },
-                custom_extractors=custom_extractors,
-            )
-        except ValueError as e:
-            # Check if it's a missing keys error and re-raise as-is
-            if str(e).startswith("Item is missing required keys:"):
-                raise
-            # Otherwise, wrap the error
-            raise ValueError(f"Error converting item to Letter: {e}") from e
+        return cls._from_item_with_geometry(item, parse_letter_sk)
 
 
-def item_to_letter(item: Dict[str, Any]) -> Letter:
+def item_to_letter(item: dict[str, Any]) -> Letter:
     """Convert a DynamoDB item to a Letter object.
 
     This is a convenience function that delegates to Letter.from_item().

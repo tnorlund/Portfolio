@@ -32,9 +32,14 @@ Usage:
 
 from dataclasses import dataclass
 from math import atan2, cos, degrees, pi, radians, sin
-from typing import Any, ClassVar, Dict, Optional, Set, Tuple
+from typing import Any, Callable, ClassVar
 
 from receipt_dynamo.entities.base import DynamoDBEntity
+from receipt_dynamo.entities.entity_factory import (
+    EntityFactory,
+    create_geometry_extractors,
+    create_image_receipt_pk_parser,
+)
 from receipt_dynamo.entities.util import (
     _format_float,
     _repr_str,
@@ -78,8 +83,8 @@ class TextGeometryEntity(DynamoDBEntity):
         BASE_REQUIRED_KEYS: Required DynamoDB item keys for geometry entities
     """
 
-    # Required keys shared by all geometry entities (subclasses add their own)
-    BASE_REQUIRED_KEYS: ClassVar[Set[str]] = {
+    # Required keys shared by all geometry entities (subclasses can override)
+    BASE_REQUIRED_KEYS: ClassVar[set[str]] = {
         "PK",
         "SK",
         "text",
@@ -92,15 +97,17 @@ class TextGeometryEntity(DynamoDBEntity):
         "angle_radians",
         "confidence",
     }
+    # Default REQUIRED_KEYS for subclasses that don't override
+    REQUIRED_KEYS: ClassVar[set[str]] = BASE_REQUIRED_KEYS
 
     # Core geometry fields - subclasses inherit these
     image_id: str
     text: str
-    bounding_box: Dict[str, float]
-    top_left: Dict[str, float]
-    top_right: Dict[str, float]
-    bottom_left: Dict[str, float]
-    bottom_right: Dict[str, float]
+    bounding_box: dict[str, float]
+    top_left: dict[str, float]
+    top_right: dict[str, float]
+    bottom_left: dict[str, float]
+    bottom_right: dict[str, float]
     angle_degrees: float
     angle_radians: float
     confidence: float
@@ -174,7 +181,7 @@ class TextGeometryEntity(DynamoDBEntity):
     # From: GeometrySerializationMixin + SerializationMixin
     # =========================================================================
 
-    def _get_geometry_fields(self) -> Dict[str, Any]:
+    def _get_geometry_fields(self) -> dict[str, Any]:
         """
         Return geometry fields serialized for DynamoDB.
 
@@ -196,12 +203,71 @@ class TextGeometryEntity(DynamoDBEntity):
             "confidence": serialize_confidence(self.confidence),
         }
 
+    @classmethod
+    def _from_item_with_geometry(
+        cls,
+        item: dict[str, Any],
+        sk_parser: Callable[[str], dict[str, Any]],
+        additional_extractors: dict[str, Callable] | None = None,
+    ) -> "TextGeometryEntity":
+        """
+        Create entity from DynamoDB item using EntityFactory.
+
+        This helper consolidates the common from_item pattern used by
+        geometry entities (Letter, Line, ReceiptLetter, etc.). It handles:
+        - Standard geometry field extraction
+        - PK parsing for image_id
+        - Custom SK parsing via provided parser
+        - Error wrapping with entity class name
+
+        Args:
+            item: DynamoDB item dictionary
+            sk_parser: Callable that parses SK string and returns dict of
+                extracted fields (e.g., line_id, word_id)
+            additional_extractors: Optional dict of additional field extractors
+                beyond the standard geometry extractors
+
+        Returns:
+            Instance of the entity class
+
+        Raises:
+            ValueError: If required fields are missing or have invalid format
+        """
+        # Build extractors: text + geometry + any additional
+        custom_extractors = {
+            "text": EntityFactory.extract_text_field,
+            **create_geometry_extractors(),
+        }
+        if additional_extractors:
+            custom_extractors.update(additional_extractors)
+
+        # Use EntityFactory with standard error handling
+        try:
+            return EntityFactory.create_entity(
+                entity_class=cls,
+                item=item,
+                required_keys=cls.REQUIRED_KEYS,
+                key_parsers={
+                    "PK": create_image_receipt_pk_parser(),
+                    "SK": sk_parser,
+                },
+                custom_extractors=custom_extractors,
+            )
+        except ValueError as e:
+            # Re-raise missing keys errors as-is
+            if str(e).startswith("Item is missing required keys:"):
+                raise
+            # Wrap other errors with entity class name
+            raise ValueError(
+                f"Error converting item to {cls.__name__}: {e}"
+            ) from e
+
     # =========================================================================
     # HASH
     # From: GeometryHashMixin
     # =========================================================================
 
-    def _get_base_geometry_hash_fields(self) -> Tuple[Any, ...]:
+    def _get_base_geometry_hash_fields(self) -> tuple[Any, ...]:
         """
         Return core geometry fields for hash computation.
 
@@ -222,13 +288,13 @@ class TextGeometryEntity(DynamoDBEntity):
             self.confidence,
         )
 
-    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+    def _get_geometry_hash_fields(self) -> tuple[Any, ...]:
         """
         Return fields to include in hash computation.
 
         Override in subclasses to add entity-specific fields:
 
-            def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+            def _get_geometry_hash_fields(self) -> tuple[Any, ...]:
                 return self._get_base_geometry_hash_fields() + (
                     self.receipt_id,
                     self.line_id,
@@ -316,7 +382,7 @@ class TextGeometryEntity(DynamoDBEntity):
             f"confidence={self.confidence}"
         )
 
-    def _iter_geometry_fields(self) -> Tuple[Tuple[str, Any], ...]:
+    def _iter_geometry_fields(self) -> tuple[tuple[str, Any], ...]:
         """
         Return geometry fields as tuple of (name, value) pairs.
 
@@ -346,7 +412,7 @@ class TextGeometryEntity(DynamoDBEntity):
     # From: GeometryMixin
     # =========================================================================
 
-    def calculate_centroid(self) -> Tuple[float, float]:
+    def calculate_centroid(self) -> tuple[float, float]:
         """
         Calculate the center point of the quadrilateral.
 
@@ -369,14 +435,14 @@ class TextGeometryEntity(DynamoDBEntity):
 
     def calculate_corners(
         self,
-        width: Optional[int] = None,
-        height: Optional[int] = None,
+        width: int | None = None,
+        height: int | None = None,
         flip_y: bool = False,
-    ) -> Tuple[
-        Tuple[float, float],
-        Tuple[float, float],
-        Tuple[float, float],
-        Tuple[float, float],
+    ) -> tuple[
+        tuple[float, float],
+        tuple[float, float],
+        tuple[float, float],
+        tuple[float, float],
     ]:
         """
         Convert normalized coordinates (0-1) to pixel coordinates.
@@ -404,7 +470,7 @@ class TextGeometryEntity(DynamoDBEntity):
         x_scale = float(width) if width else 1.0
         y_scale = float(height) if height else 1.0
 
-        def scale_point(pt: Dict[str, float]) -> Tuple[float, float]:
+        def scale_point(pt: dict[str, float]) -> tuple[float, float]:
             x = pt["x"] * x_scale
             y = pt["y"] * y_scale
             if flip_y:
@@ -514,7 +580,7 @@ class TextGeometryEntity(DynamoDBEntity):
                 raise ValueError(f"Angle {angle} degrees is outside [-90, 90]")
             theta = radians(angle)
 
-        def rotate_point(px: float, py: float) -> Tuple[float, float]:
+        def rotate_point(px: float, py: float) -> tuple[float, float]:
             tx, ty = px - origin_x, py - origin_y
             rx = tx * cos(theta) - ty * sin(theta)
             ry = tx * sin(theta) + ty * cos(theta)
@@ -578,7 +644,7 @@ class TextGeometryEntity(DynamoDBEntity):
                 compatibility)
         """
 
-        def rotate_90_ccw(px: float, py: float) -> Tuple[float, float]:
+        def rotate_90_ccw(px: float, py: float) -> tuple[float, float]:
             return py, -(px - 1)
 
         for corner in [
@@ -672,7 +738,7 @@ class TextGeometryEntity(DynamoDBEntity):
             a, b, c, d, e, f: Affine transformation coefficients
         """
 
-        def transform_point(px: float, py: float) -> Tuple[float, float]:
+        def transform_point(px: float, py: float) -> tuple[float, float]:
             nx = a * px + b * py + c
             ny = d * px + e * py + f
             return nx, ny

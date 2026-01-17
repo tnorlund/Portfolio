@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.base_operations import (
@@ -17,7 +17,7 @@ from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
+    pass
 
 
 class _ReceiptWord(
@@ -302,9 +302,9 @@ class _ReceiptWord(
     @handle_dynamodb_errors("list_receipt_words")
     def list_receipt_words(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
-    ) -> Tuple[list[ReceiptWord], Optional[Dict[str, Any]]]:
+    ) -> tuple[list[ReceiptWord], dict[str, Any] | None]:
         """Returns all ReceiptWords from the table."""
         validate_pagination_params(limit, last_evaluated_key)
         return self._query_by_type(

@@ -2,7 +2,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Literal, Optional, Tuple
+from typing import Any, Generator, Literal
 
 from receipt_dynamo.entities.util import normalize_address
 
@@ -48,12 +48,12 @@ class PlacesCache:
     search_type: SearchTypes
     search_value: str
     place_id: str
-    places_response: Dict[str, Any]
+    places_response: dict[str, Any]
     last_updated: str
     query_count: int = 0
-    normalized_value: Optional[str] = None
-    value_hash: Optional[str] = None
-    time_to_live: Optional[int] = None
+    normalized_value: str | None = None
+    value_hash: str | None = None
+    time_to_live: int | None = None
 
     def __post_init__(self):
         """
@@ -132,7 +132,7 @@ class PlacesCache:
         raise ValueError(f"Invalid search type: {self.search_type}")
 
     @property
-    def key(self) -> Dict[str, Dict[str, str]]:
+    def key(self) -> dict[str, dict[str, str]]:
         """
         Generate the primary key for DynamoDB.
 
@@ -145,7 +145,7 @@ class PlacesCache:
             "SK": {"S": f"VALUE#{padded_value}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Dict[str, Any]]:
+    def gsi1_key(self) -> dict[str, dict[str, Any]]:
         """
         Generate the GSI1 key for DynamoDB.
 
@@ -157,7 +157,7 @@ class PlacesCache:
             "GSI1SK": {"S": f"PLACE_ID#{self.place_id}"},
         }
 
-    def to_item(self) -> Dict[str, Dict[str, Any]]:
+    def to_item(self) -> dict[str, dict[str, Any]]:
         """
         Convert to a DynamoDB item format.
         Includes all necessary attributes for the base table and GSIs:
@@ -194,12 +194,12 @@ class PlacesCache:
 
         return item
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """
         Returns an iterator over the PlacesCache object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the
+            Generator[tuple[str, Any], None, None]: An iterator over the
                 PlacesCache object's attribute name/value pairs.
         """
         yield "search_type", self.search_type
@@ -237,7 +237,7 @@ class PlacesCache:
         return base + ")"
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "PlacesCache":
+    def from_item(cls, item: dict[str, Any]) -> "PlacesCache":
         """Converts a DynamoDB item to a PlacesCache object.
 
         Args:
@@ -321,7 +321,7 @@ class PlacesCache:
             ) from e
 
 
-def item_to_places_cache(item: Dict[str, Any]) -> "PlacesCache":
+def item_to_places_cache(item: dict[str, Any]) -> "PlacesCache":
     """Converts a DynamoDB item to a PlacesCache object.
 
     Args:

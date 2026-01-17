@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from receipt_dynamo.constants import LabelStatus
 from receipt_dynamo.entities.util import (
@@ -22,12 +22,12 @@ class LabelMetadata:
 
     label: str
     status: str
-    aliases: List[str]
+    aliases: list[str]
     description: str
     schema_version: int
     last_updated: datetime
-    label_target: Optional[str] = None
-    receipt_refs: Optional[list[tuple[str, int]]] = None
+    label_target: str | None = None
+    receipt_refs: list[tuple[str, int | None]] = None
 
     def __post_init__(self) -> None:
         # Convert datetime to str if needed for last_updated
@@ -65,25 +65,25 @@ class LabelMetadata:
                 )
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         return {
             "PK": {"S": f"LABEL#{self.label}"},
             "SK": {"S": "METADATA"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         return {
             "GSI1PK": {"S": f"LABEL#{self.label}"},
             "GSI1SK": {"S": "METADATA"},
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         return {
             "GSI2PK": {"S": f"LABEL_TARGET#{self.label_target}"},
             "GSI2SK": {"S": f"LABEL#{self.label}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         return {
             **self.key,
             **self.gsi1_key(),
@@ -131,7 +131,7 @@ class LabelMetadata:
         return self.__repr__()
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "LabelMetadata":
+    def from_item(cls, item: dict[str, Any]) -> "LabelMetadata":
         """Converts a DynamoDB item to a LabelMetadata object.
 
         Args:
@@ -188,7 +188,7 @@ class LabelMetadata:
             ) from e
 
 
-def item_to_label_metadata(item: Dict[str, Any]) -> LabelMetadata:
+def item_to_label_metadata(item: dict[str, Any]) -> LabelMetadata:
     """Converts a DynamoDB item to a LabelMetadata object.
 
     Args:

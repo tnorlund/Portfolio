@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
@@ -77,7 +77,7 @@ class ReceiptMetadata(SerializationMixin):
     receipt_id: int
     place_id: str
     merchant_name: str
-    matched_fields: List[str]
+    matched_fields: list[str]
     timestamp: datetime
     merchant_category: str = ""
     address: str = ""
@@ -156,7 +156,7 @@ class ReceiptMetadata(SerializationMixin):
         else:
             self.validation_status = MerchantValidationStatus.NO_MATCH.value
 
-    def _get_high_quality_matched_fields(self) -> List[str]:
+    def _get_high_quality_matched_fields(self) -> list[str]:
         """
         Validates the quality of matched fields and returns only
         high-quality matches.
@@ -243,14 +243,14 @@ class ReceiptMetadata(SerializationMixin):
         return high_quality_fields
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Returns the primary key used to store this record in DynamoDB."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#METADATA"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """
         Returns the key for GSI1: used to index all receipts associated with a
         given merchant.
@@ -283,7 +283,7 @@ class ReceiptMetadata(SerializationMixin):
             },
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """
         Returns the key for GSI2: used to query records by ``place_id``. This
         index supports the incremental consolidation process by enabling
@@ -305,7 +305,7 @@ class ReceiptMetadata(SerializationMixin):
             },
         }
 
-    def gsi3_key(self) -> Dict[str, Any]:
+    def gsi3_key(self) -> dict[str, Any]:
         """
         Returns the key for GSI3: used to sort ``ReceiptMetadata`` entries by
         validation status. Supports filtering low/high-confidence merchant
@@ -316,7 +316,7 @@ class ReceiptMetadata(SerializationMixin):
             "GSI3SK": {"S": f"STATUS#{self.validation_status}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """
         Serializes the ``ReceiptMetadata`` object into a DynamoDB-compatible
         item. Includes primary key and GSI keys, as well as all
@@ -394,12 +394,12 @@ class ReceiptMetadata(SerializationMixin):
             f")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """
         Returns an iterator over the ReceiptMetadata object's attributes.
 
         Yields:
-            Tuple[str, Any]:
+            tuple[str, Any]:
                 A tuple containing the attribute name and its value.
         """
         yield "image_id", self.image_id
@@ -448,7 +448,7 @@ class ReceiptMetadata(SerializationMixin):
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptMetadata":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptMetadata":
         """Converts a DynamoDB item to a ReceiptMetadata object.
 
         Args:
@@ -510,7 +510,7 @@ class ReceiptMetadata(SerializationMixin):
         )
 
 
-def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
+def item_to_receipt_metadata(item: dict[str, Any]) -> ReceiptMetadata:
     """Converts a DynamoDB item to a ReceiptMetadata object.
 
     Args:

@@ -1,6 +1,6 @@
 """AI Usage Metric data access mixin for DynamoDB operations."""
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 from botocore.exceptions import ClientError
 
@@ -44,8 +44,8 @@ class _AIUsageMetric(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("batch_add_ai_usage_metrics")
     def batch_put_ai_usage_metrics(
-        self, metrics: List[AIUsageMetric]
-    ) -> List[AIUsageMetric]:
+        self, metrics: list[AIUsageMetric]
+    ) -> list[AIUsageMetric]:
         """
         Store multiple AI usage metrics in DynamoDB using batch write.
 
@@ -83,8 +83,8 @@ class _AIUsageMetric(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("query_ai_usage_metrics_by_date")
     def query_ai_usage_metrics_by_date(
-        self, date: str, service: Optional[str] = None, limit: int = 100
-    ) -> List[Dict[str, Any]]:
+        self, date: str, service: str | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
         """
         Query AI usage metrics by date with optional service filter.
 
@@ -125,7 +125,7 @@ class _AIUsageMetric(FlattenedStandardMixin):
     @handle_dynamodb_errors("get_ai_usage_metric")
     def get_ai_usage_metric(
         self, service: str, model: str, timestamp: str, request_id: str
-    ) -> Optional[AIUsageMetric]:
+    ) -> AIUsageMetric | None:
         """
         Get a specific AI usage metric.
 

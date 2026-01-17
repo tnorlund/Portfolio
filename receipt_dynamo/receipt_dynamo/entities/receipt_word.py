@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from math import atan2
-from typing import Any, ClassVar, Dict, Optional, Set, Tuple
+from typing import Any, ClassVar
 
 from receipt_dynamo.entities.receipt_text_geometry_entity import (
     ReceiptTextGeometryEntity,
@@ -55,7 +55,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
     # Entity-specific ID fields
     line_id: int
     word_id: int
-    extracted_data: Optional[Dict[str, Any]] = None
+    extracted_data: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -88,7 +88,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
             raise ValueError("extracted_data must be a dict")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """
         Generates the primary key for the receipt word.
 
@@ -106,7 +106,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
             },
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """
         Generates the secondary index key for the receipt word.
         """
@@ -123,7 +123,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
             },
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """
         Generates the secondary index key for the receipt word.
 
@@ -142,7 +142,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
             },
         }
 
-    def gsi3_key(self) -> Dict[str, Any]:
+    def gsi3_key(self) -> dict[str, Any]:
         """
         Generates the secondary index key for the receipt word.
 
@@ -156,7 +156,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
             "GSI3SK": {"S": "WORD"},
         }
 
-    def gsi4_key(self) -> Dict[str, Any]:
+    def gsi4_key(self) -> dict[str, Any]:
         """Generates the GSI4 key for receipt details access pattern.
 
         GSI4 enables efficient single-query retrieval of all receipt-related
@@ -171,7 +171,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
             },
         }
 
-    def _serialize_extracted_data(self) -> Dict[str, Any]:
+    def _serialize_extracted_data(self) -> dict[str, Any]:
         """Serialize extracted_data for DynamoDB."""
         if self.extracted_data is None:
             return {"NULL": True}
@@ -179,7 +179,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
             "M": {k: {"S": str(v)} for k, v in self.extracted_data.items()}
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """
         Converts the ReceiptWord object to a DynamoDB item.
 
@@ -216,7 +216,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
 
     def distance_and_angle_from__receipt_word(
         self, other: "ReceiptWord"
-    ) -> Tuple[float, float]:
+    ) -> tuple[float, float]:
         """
         Calculates the distance and the angle between this receipt word and
         another receipt word.
@@ -225,7 +225,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
             other (ReceiptWord): The other receipt word.
 
         Returns:
-            Tuple[float, float]: The distance and angle between the two receipt
+            tuple[float, float]: The distance and angle between the two receipt
             words.
         """
         x1, y1 = self.calculate_centroid()
@@ -234,7 +234,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
         angle = atan2(y2 - y1, x2 - x1)
         return distance, angle
 
-    def diff(self, other: "ReceiptWord") -> Dict[str, Any]:
+    def diff(self, other: "ReceiptWord") -> dict[str, Any]:
         """
         Compare this ReceiptWord with another and return their differences.
 
@@ -245,12 +245,12 @@ class ReceiptWord(ReceiptTextGeometryEntity):
             dict: A dictionary containing the differences between the two
             ReceiptWord objects.
         """
-        differences: Dict[str, Any] = {}
+        differences: dict[str, Any] = {}
         for attr, value in sorted(self.__dict__.items()):
             other_value = getattr(other, attr)
             if other_value != value:
                 if isinstance(value, dict) and isinstance(other_value, dict):
-                    diff: Dict[str, Any] = {}
+                    diff: dict[str, Any] = {}
                     all_keys = set(value.keys()) | set(other_value.keys())
                     for k in all_keys:
                         if value.get(k) != other_value.get(k):
@@ -264,7 +264,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
                     differences[attr] = {"self": value, "other": other_value}
         return differences
 
-    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+    def _get_geometry_hash_fields(self) -> tuple[Any, ...]:
         """
         Override to include entity-specific ID fields in hash computation.
 
@@ -290,12 +290,12 @@ class ReceiptWord(ReceiptTextGeometryEntity):
         return hash(self._get_geometry_hash_fields())
 
     # Inherit REQUIRED_KEYS from ReceiptTextGeometryEntity
-    REQUIRED_KEYS: ClassVar[Set[str]] = (
+    REQUIRED_KEYS: ClassVar[set[str]] = (
         ReceiptTextGeometryEntity.REQUIRED_KEYS
     )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptWord":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptWord":
         """Convert a DynamoDB item to a ReceiptWord object.
 
         Args:
@@ -337,7 +337,7 @@ class ReceiptWord(ReceiptTextGeometryEntity):
         )
 
 
-def item_to_receipt_word(item: Dict[str, Any]) -> ReceiptWord:
+def item_to_receipt_word(item: dict[str, Any]) -> ReceiptWord:
     """Convert a DynamoDB item to a ReceiptWord object.
 
     This is a convenience function that delegates to ReceiptWord.from_item().

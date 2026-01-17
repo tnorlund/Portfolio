@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict
 
 from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
@@ -56,20 +56,20 @@ class _ReceiptValidationCategory(FlattenedStandardMixin):
     ) -> ReceiptValidationCategory:
         Retrieves a single ReceiptValidationCategory by IDs.
     list_receipt_validation_categories(
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         Returns ReceiptValidationCategories and the last evaluated key.
     list_receipt_validation_categories_by_status(
         status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         Returns ReceiptValidationCategories with a specific status.
     list_receipt_validation_categories_for_receipt(
         receipt_id: int,
         image_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationCategory], dict | None]:
         Returns ReceiptValidationCategories for a specific receipt.
@@ -100,7 +100,7 @@ class _ReceiptValidationCategory(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("add_receipt_validation_categories")
     def add_receipt_validation_categories(
-        self, categories: List[ReceiptValidationCategory]
+        self, categories: list[ReceiptValidationCategory]
     ):
         """Adds multiple ReceiptValidationCategories to DynamoDB in batches.
 
@@ -150,7 +150,7 @@ class _ReceiptValidationCategory(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("update_receipt_validation_categories")
     def update_receipt_validation_categories(
-        self, categories: List[ReceiptValidationCategory]
+        self, categories: list[ReceiptValidationCategory]
     ):
         """Updates multiple ReceiptValidationCategories in the database.
 
@@ -188,7 +188,7 @@ class _ReceiptValidationCategory(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("delete_receipt_validation_categories")
     def delete_receipt_validation_categories(
-        self, categories: List[ReceiptValidationCategory]
+        self, categories: list[ReceiptValidationCategory]
     ):
         """Deletes multiple ReceiptValidationCategories in batch.
 
@@ -260,15 +260,15 @@ class _ReceiptValidationCategory(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipt_validation_categories")
     def list_receipt_validation_categories(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[ReceiptValidationCategory], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[ReceiptValidationCategory], Dict | None]:
         """Returns ReceiptValidationCategories and the last evaluated key.
 
         Args:
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict], optional): The key to start
+            last_evaluated_key (Dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:
@@ -301,16 +301,16 @@ class _ReceiptValidationCategory(FlattenedStandardMixin):
     def list_receipt_validation_categories_by_status(
         self,
         status: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[ReceiptValidationCategory], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[ReceiptValidationCategory], Dict | None]:
         """Returns ReceiptValidationCategories with a specific status.
 
         Args:
             status (str): The status to filter by.
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict], optional): The key to start
+            last_evaluated_key (Dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:
@@ -342,17 +342,17 @@ class _ReceiptValidationCategory(FlattenedStandardMixin):
         self,
         receipt_id: int,
         image_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[ReceiptValidationCategory], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[ReceiptValidationCategory], Dict | None]:
         """Returns ReceiptValidationCategories for a specific receipt.
 
         Args:
             receipt_id (int): The Receipt ID to query.
             image_id (str): The Image ID to query.
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict], optional): The key to start
+            last_evaluated_key (Dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:

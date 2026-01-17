@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, ClassVar, Dict, Set, Tuple
+from typing import Any, ClassVar
 
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities.receipt_text_geometry_entity import (
@@ -61,7 +61,7 @@ class ReceiptLine(ReceiptTextGeometryEntity):
         self._validate_receipt_fields()
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """
         Generates the primary key for the receipt line.
 
@@ -75,7 +75,7 @@ class ReceiptLine(ReceiptTextGeometryEntity):
             },
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """
         Generates the secondary index key for the receipt line.
         """
@@ -91,7 +91,7 @@ class ReceiptLine(ReceiptTextGeometryEntity):
             },
         }
 
-    def gsi3_key(self) -> Dict[str, Any]:
+    def gsi3_key(self) -> dict[str, Any]:
         """
         Generates the GSI3 secondary index key for the receipt line.
         Enables efficient querying by image_id + receipt_id.
@@ -103,7 +103,7 @@ class ReceiptLine(ReceiptTextGeometryEntity):
             "GSI3SK": {"S": "LINE"},
         }
 
-    def gsi4_key(self) -> Dict[str, Any]:
+    def gsi4_key(self) -> dict[str, Any]:
         """Generates the GSI4 key for receipt details access pattern.
 
         GSI4 enables efficient single-query retrieval of all receipt-related
@@ -116,7 +116,7 @@ class ReceiptLine(ReceiptTextGeometryEntity):
             "GSI4SK": {"S": f"2_LINE#{self.line_id:05d}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """
         Converts the ReceiptLine object to a DynamoDB item.
 
@@ -146,7 +146,7 @@ class ReceiptLine(ReceiptTextGeometryEntity):
             f")"
         )
 
-    def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
+    def _get_geometry_hash_fields(self) -> tuple[Any, ...]:
         """Include entity-specific ID fields in hash computation."""
         return self._get_base_geometry_hash_fields() + (
             self.receipt_id,
@@ -161,12 +161,12 @@ class ReceiptLine(ReceiptTextGeometryEntity):
         return hash(self._get_geometry_hash_fields())
 
     # Inherit REQUIRED_KEYS from ReceiptTextGeometryEntity
-    REQUIRED_KEYS: ClassVar[Set[str]] = (
+    REQUIRED_KEYS: ClassVar[set[str]] = (
         ReceiptTextGeometryEntity.REQUIRED_KEYS
     )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptLine":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptLine":
         """Convert a DynamoDB item to a ReceiptLine object.
 
         Args:
@@ -180,7 +180,7 @@ class ReceiptLine(ReceiptTextGeometryEntity):
             ValueError: If required fields are missing or have invalid format.
         """
         # Custom SK parser for RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}
-        def parse_receipt_line_sk(sk: str) -> Dict[str, Any]:
+        def parse_receipt_line_sk(sk: str) -> dict[str, Any]:
             """Parse the SK to extract receipt_id and line_id."""
             parts = sk.split("#")
             if len(parts) < 4 or parts[0] != "RECEIPT" or parts[2] != "LINE":
@@ -225,7 +225,7 @@ class ReceiptLine(ReceiptTextGeometryEntity):
             ) from e
 
 
-def item_to_receipt_line(item: Dict[str, Any]) -> ReceiptLine:
+def item_to_receipt_line(item: dict[str, Any]) -> ReceiptLine:
     """Convert a DynamoDB item to a ReceiptLine object.
 
     This is a convenience function that delegates to ReceiptLine.from_item().

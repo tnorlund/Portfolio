@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass, fields
-from typing import Any, Dict, Iterable
+from typing import Any, Iterable
 
 
 @dataclass
@@ -10,12 +10,12 @@ class DynamoDBEntity:
         for f in fields(self):
             yield f.name, getattr(self, f.name)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @staticmethod
     def validate_keys(
-        item: Dict[str, Any], required_keys: Iterable[str]
+        item: dict[str, Any], required_keys: Iterable[str]
     ) -> set[str]:
         """Return any missing required keys."""
         return set(required_keys) - set(item.keys())

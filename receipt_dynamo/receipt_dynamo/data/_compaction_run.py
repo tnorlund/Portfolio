@@ -6,7 +6,7 @@ receipt keys (PK=IMAGE#<image_id>, SK=RECEIPT#<id>#COMPACTION_RUN#<run_id>).
 """
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -62,7 +62,7 @@ class _CompactionRun(FlattenedStandardMixin):
     @handle_dynamodb_errors("get_compaction_run")
     def get_compaction_run(
         self, image_id: str, receipt_id: int, run_id: str
-    ) -> Optional[CompactionRun]:
+    ) -> CompactionRun | None:
         """Fetch a compaction run by primary key (image, receipt, run)."""
         pk = f"IMAGE#{image_id}"
         sk = f"RECEIPT#{receipt_id:05d}#COMPACTION_RUN#{run_id}"
@@ -79,9 +79,9 @@ class _CompactionRun(FlattenedStandardMixin):
         self,
         image_id: str,
         receipt_id: int,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[CompactionRun], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[CompactionRun], dict[str, Any] | None]:
         """List runs for a specific receipt ordered by SK.
 
         Uses PK=IMAGE#<image_id> and begins_with on SK.
@@ -104,9 +104,9 @@ class _CompactionRun(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_recent_compaction_runs")
     def list_recent_compaction_runs(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[CompactionRun], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[CompactionRun], dict[str, Any] | None]:
         """List recent runs using GSI1 (RUNS / CREATED_AT#...)."""
         return self._query_entities(
             index_name="GSI1",

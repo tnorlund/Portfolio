@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.dynamodb_utils import (
     dict_to_dynamodb_map,
@@ -56,7 +56,7 @@ class JobCheckpoint:
     epoch: int
     model_state: bool = True
     optimizer_state: bool = True
-    metrics: Optional[Dict[str, Any]] = None
+    metrics: dict[str, Any] | None = None
     is_best: bool = False
 
     def __post_init__(self):
@@ -101,7 +101,7 @@ class JobCheckpoint:
             raise ValueError("is_best must be a boolean")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the job checkpoint.
 
         Returns:
@@ -112,7 +112,7 @@ class JobCheckpoint:
             "SK": {"S": f"CHECKPOINT#{self.timestamp}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the job checkpoint.
 
         Returns:
@@ -123,7 +123,7 @@ class JobCheckpoint:
             "GSI1SK": {"S": f"JOB#{self.job_id}#{self.timestamp}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the JobCheckpoint object to a DynamoDB item.
 
         Returns:
@@ -173,11 +173,11 @@ class JobCheckpoint:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the JobCheckpoint object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]:
+            Generator[tuple[str, Any], None, None]:
                 An iterator over the JobCheckpoint object's attribute
                 name/value pairs.
         """
@@ -215,7 +215,7 @@ class JobCheckpoint:
             )
         )
 
-    def _dict_to_dynamodb_map(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _dict_to_dynamodb_map(self, data: dict[str, Any]) -> dict[str, Any]:
         """Converts a Python dictionary to a DynamoDB map format.
 
         This is a wrapper around the imported dict_to_dynamodb_map function
@@ -230,7 +230,7 @@ class JobCheckpoint:
         return dict_to_dynamodb_map(data)
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "JobCheckpoint":
+    def from_item(cls, item: dict[str, Any]) -> "JobCheckpoint":
         """Converts a DynamoDB item to a JobCheckpoint object.
 
         Args:
@@ -245,7 +245,7 @@ class JobCheckpoint:
                 JobCheckpoint.
         """
         try:
-            metrics: Dict[str, Any] = {}
+            metrics: dict[str, Any] = {}
             if "metrics" in item and "M" in item["metrics"]:
                 metrics = parse_dynamodb_map(item["metrics"]["M"])
 
@@ -272,7 +272,7 @@ class JobCheckpoint:
             ) from e
 
 
-def item_to_job_checkpoint(item: Dict[str, Any]) -> JobCheckpoint:
+def item_to_job_checkpoint(item: dict[str, Any]) -> JobCheckpoint:
     """Converts a DynamoDB item to a JobCheckpoint object.
 
     Args:

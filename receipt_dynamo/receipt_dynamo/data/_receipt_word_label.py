@@ -5,7 +5,7 @@ This refactored version reduces code from ~969 lines to ~310 lines
 functionality.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from botocore.exceptions import ClientError
 
@@ -33,12 +33,10 @@ from receipt_dynamo.entities.receipt_word_label import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
+    pass
 
 
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
+def validate_last_evaluated_key(lek: dict[str, Any]) -> None:
     required_keys = {"PK", "SK"}
     if not required_keys.issubset(lek.keys()):
         raise EntityValidationError(
@@ -63,7 +61,7 @@ class _ReceiptWordLabel(
     """
 
     def _validate_receipt_word_labels_for_add(
-        self, receipt_word_labels: List[ReceiptWordLabel]
+        self, receipt_word_labels: list[ReceiptWordLabel]
     ) -> None:
         """Custom validation for add operation with specific error messages"""
         if receipt_word_labels is None:
@@ -141,12 +139,12 @@ class _ReceiptWordLabel(
 
     @handle_dynamodb_errors("add_receipt_word_labels")
     def add_receipt_word_labels(
-        self, receipt_word_labels: List[ReceiptWordLabel]
+        self, receipt_word_labels: list[ReceiptWordLabel]
     ):
         """Adds a list of receipt word labels to the database
 
         Args:
-            receipt_word_labels (List[ReceiptWordLabel]): The receipt word
+            receipt_word_labels (list[ReceiptWordLabel]): The receipt word
                 labels to add to the database
 
         Raises:
@@ -207,12 +205,12 @@ class _ReceiptWordLabel(
 
     @handle_dynamodb_errors("update_receipt_word_labels")
     def update_receipt_word_labels(
-        self, receipt_word_labels: List[ReceiptWordLabel]
+        self, receipt_word_labels: list[ReceiptWordLabel]
     ):
         """Updates multiple receipt word labels in the database
 
         Args:
-            receipt_word_labels (List[ReceiptWordLabel]): The receipt word
+            receipt_word_labels (list[ReceiptWordLabel]): The receipt word
                 labels to update
 
         Raises:
@@ -242,12 +240,12 @@ class _ReceiptWordLabel(
 
     @handle_dynamodb_errors("delete_receipt_word_labels")
     def delete_receipt_word_labels(
-        self, receipt_word_labels: List[ReceiptWordLabel]
+        self, receipt_word_labels: list[ReceiptWordLabel]
     ):
         """Deletes multiple receipt word labels from the database
 
         Args:
-            receipt_word_labels (List[ReceiptWordLabel]): The receipt word
+            receipt_word_labels (list[ReceiptWordLabel]): The receipt word
                 labels to delete
 
         Raises:
@@ -331,16 +329,16 @@ class _ReceiptWordLabel(
 
     @handle_dynamodb_errors("get_receipt_word_labels")
     def get_receipt_word_labels(
-        self, keys: List[Tuple[int, int, str]]
-    ) -> List[ReceiptWordLabel]:
+        self, keys: list[tuple[int, int, str]]
+    ) -> list[ReceiptWordLabel]:
         """Retrieves multiple receipt word labels from the database
 
         Args:
-            keys (List[Tuple[int, int, str]]): List of
+            keys (list[tuple[int, int, str]]): List of
                 (receipt_id, word_id, image_id) tuples
 
         Returns:
-            List[ReceiptWordLabel]: The receipt word labels from the database
+            list[ReceiptWordLabel]: The receipt word labels from the database
 
         Raises:
             ValueError: When any key is invalid
@@ -369,18 +367,18 @@ class _ReceiptWordLabel(
     @handle_dynamodb_errors("list_receipt_word_labels")
     def list_receipt_word_labels(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
         """Lists all receipt word labels
 
         Args:
-            limit (Optional[int]): The maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start
+            limit (int | None): The maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): The key to start
                 from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels
+            tuple[list[ReceiptWordLabel], dict[str, Any] | None]: The labels
                 and last evaluated key
         """
         if limit is not None:
@@ -399,18 +397,18 @@ class _ReceiptWordLabel(
     def list_receipt_word_labels_for_image(
         self,
         image_id: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
         """Lists all receipt word labels for a given image
 
         Args:
             image_id (str): The image ID
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
                 The receipt word labels for the image and last evaluated key
         """
         if not isinstance(image_id, str):
@@ -455,19 +453,19 @@ class _ReceiptWordLabel(
         self,
         image_id: str,
         receipt_id: int,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
         """Lists all receipt word labels for a specific receipt
 
         Args:
             image_id (str): The image ID
             receipt_id (int): The receipt ID
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
                 The receipt word labels for the receipt and last evaluated key
         """
         self._validate_image_id(image_id)
@@ -514,9 +512,9 @@ class _ReceiptWordLabel(
         line_id: int,
         word_id: int,
         *,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
         """Lists all receipt word labels for a specific word
 
         Args:
@@ -524,11 +522,11 @@ class _ReceiptWordLabel(
             receipt_id (int): The receipt ID
             line_id (int): The line ID
             word_id (int): The word ID
-            limit (Optional[int]): Maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
+            limit (int | None): Maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+            tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
                 The receipt word labels for the specific word and last
                 evaluated key
         """
@@ -576,19 +574,19 @@ class _ReceiptWordLabel(
     def get_receipt_word_labels_by_label(
         self,
         label: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
         """Retrieve receipt word labels by label type using GSI1.
 
         Args:
             label (str): The label type to search for
-            limit (Optional[int]): The maximum number of labels to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start
+            limit (int | None): The maximum number of labels to return
+            last_evaluated_key (dict[str, Any] | None): The key to start
                 the query from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: A tuple
+            tuple[list[ReceiptWordLabel], dict[str, Any] | None]: A tuple
                 containing:
                 - List of ReceiptWordLabel objects
                 - Last evaluated key for pagination (None if no more pages)
@@ -623,19 +621,19 @@ class _ReceiptWordLabel(
     def list_receipt_word_labels_with_status(
         self,
         status: ValidationStatus,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[ReceiptWordLabel], dict[str, Any] | None]:
         """Lists receipt word labels with a specific validation status
 
         Args:
             status (ValidationStatus): The validation status to filter by
-            limit (Optional[int]): The maximum number of items to return
-            last_evaluated_key (Optional[Dict[str, Any]]): The key to start
+            limit (int | None): The maximum number of items to return
+            last_evaluated_key (dict[str, Any] | None): The key to start
                 from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels
+            tuple[list[ReceiptWordLabel], dict[str, Any] | None]: The labels
                 and last evaluated key
         """
         if not isinstance(status, ValidationStatus):

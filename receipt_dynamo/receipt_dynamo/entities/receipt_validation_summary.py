@@ -1,7 +1,7 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_summary.py
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.entities.util import assert_valid_uuid
 
@@ -17,12 +17,12 @@ class ReceiptValidationSummary:
     image_id: str
     overall_status: str
     overall_reasoning: str
-    field_summary: Dict[str, Dict[str, Any]]
-    validation_timestamp: Optional[str] = None
+    field_summary: dict[str, dict[str, Any]]
+    validation_timestamp: str | None = None
     version: str = "1.0.0"
-    metadata: Optional[Dict[str, Any]] = None
-    timestamp_added: Optional[datetime] = None
-    timestamp_updated: Optional[datetime] = None
+    metadata: dict[str, Any] | None = None
+    timestamp_added: datetime | None = None
+    timestamp_updated: datetime | None = None
 
     def __post_init__(self):
         """
@@ -97,21 +97,21 @@ class ReceiptValidationSummary:
             )
 
     @property
-    def key(self) -> Dict[str, Dict[str, str]]:
+    def key(self) -> dict[str, dict[str, str]]:
         """Return the DynamoDB key for this item."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#VALIDATION"},
         }
 
-    def gsi1_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi1_key(self) -> dict[str, dict[str, str]]:
         """Return the GSI1 key for this item."""
         return {
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
             "GSI1SK": {"S": f"VALIDATION#{self.validation_timestamp}"},
         }
 
-    def gsi2_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi2_key(self) -> dict[str, dict[str, str]]:
         """Return the GSI2 key for this item."""
         return {
             "GSI2PK": {
@@ -120,14 +120,14 @@ class ReceiptValidationSummary:
             "GSI2SK": {"S": f"TIMESTAMP#{self.validation_timestamp}"},
         }
 
-    def gsi3_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi3_key(self) -> dict[str, dict[str, str]]:
         """Return the GSI3 key for this item."""
         return {
             "GSI3PK": {"S": f"VALIDATION_STATUS#{self.overall_status}"},
             "GSI3SK": {"S": f"TIMESTAMP#{self.validation_timestamp}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to a DynamoDB item."""
 
         # Helper function to convert a dict to DynamoDB M (map) format
@@ -199,13 +199,13 @@ class ReceiptValidationSummary:
         return item
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptValidationSummary":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptValidationSummary":
         """Create a ReceiptValidationSummary from a DynamoDB item."""
 
         # Helper function to convert DynamoDB format back to Python dicts
         def dynamo_to_python(dynamo_item):
             if "M" in dynamo_item:
-                result: Dict[str, Any] = {}
+                result: dict[str, Any] = {}
                 for k, v in dynamo_item["M"].items():
                     if "S" in v:
                         result[k] = v["S"]
@@ -309,7 +309,7 @@ class ReceiptValidationSummary:
         self.metadata["processing_metrics"][metric_name] = value
 
     def add_history_event(
-        self, event_type: str, details: Optional[Dict[str, Any]] = None
+        self, event_type: str, details: dict[str, Any] | None = None
     ) -> None:
         """Adds a history event to the metadata.
 
@@ -333,7 +333,7 @@ class ReceiptValidationSummary:
 
 
 def item_to_receipt_validation_summary(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> ReceiptValidationSummary:
     """
     Converts a DynamoDB item to a ReceiptValidationSummary object.
@@ -365,7 +365,7 @@ def item_to_receipt_validation_summary(
         # Helper function to convert DynamoDB format back to Python dicts
         def dynamo_to_python(dynamo_item):
             if "M" in dynamo_item:
-                result: Dict[str, Any] = {}
+                result: dict[str, Any] = {}
                 for k, v in dynamo_item["M"].items():
                     if "S" in v:
                         result[k] = v["S"]

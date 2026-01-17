@@ -10,7 +10,7 @@ This module provides shared functions for:
 from typing import Any, Dict
 
 
-def parse_dynamodb_map(dynamodb_map: Dict) -> Dict[str, Any]:
+def parse_dynamodb_map(dynamodb_map: Dict) -> dict[str, Any]:
     """
     Parse a DynamoDB map into a Python dictionary.
 
@@ -20,7 +20,7 @@ def parse_dynamodb_map(dynamodb_map: Dict) -> Dict[str, Any]:
     Returns:
         A Python dictionary with parsed values
     """
-    result: Dict[str, Any] = {}
+    result: dict[str, Any] = {}
     for k, v in dynamodb_map.items():
         if "M" in v:
             result[k] = parse_dynamodb_map(v["M"])
@@ -99,13 +99,13 @@ def dict_to_dynamodb_map(d: Dict) -> Dict:
     Returns:
         A DynamoDB map in the format {"key": {"S": "value"}, ...}
     """
-    result: Dict[str, Any] = {}
+    result: dict[str, Any] = {}
     for k, v in d.items():
         result[k] = to_dynamodb_value(v)
     return result
 
 
-def to_dynamodb_value(value: Any) -> Dict[str, Any]:
+def to_dynamodb_value(value: Any) -> dict[str, Any]:
     """
     Convert a Python value to DynamoDB format.
 
@@ -148,7 +148,7 @@ def to_dynamodb_value(value: Any) -> Dict[str, Any]:
 
 
 def validate_required_keys(
-    item: Dict[str, Any], required_keys: set, entity_name: str = "item"
+    item: dict[str, Any], required_keys: set, entity_name: str = "item"
 ) -> None:
     """
     Validate that an item contains all required keys.

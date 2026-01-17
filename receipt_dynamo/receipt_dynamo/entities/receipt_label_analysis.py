@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Generator
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -19,7 +19,7 @@ class ReceiptLabelAnalysis:
     Attributes:
         image_id (str): UUID identifying the associated image.
         receipt_id (int): Number identifying the receipt.
-        labels (List[Dict]): List of label dictionaries containing label
+        labels (list[Dict]): List of label dictionaries containing label
             information.
         timestamp_added (datetime): When this analysis was created.
         version (str): Version of the analysis (for tracking changes over
@@ -38,11 +38,11 @@ class ReceiptLabelAnalysis:
 
     image_id: str
     receipt_id: int
-    labels: List[Dict[str, Any]]
+    labels: list[dict[str, Any]]
     timestamp_added: datetime | str
     version: str = "1.0"
     overall_reasoning: str = ""
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
     def __post_init__(self):
         """Initializes and validates the ReceiptLabelAnalysis object.
@@ -96,7 +96,7 @@ class ReceiptLabelAnalysis:
             }
 
     @property
-    def key(self) -> Dict[str, Dict[str, str]]:
+    def key(self) -> dict[str, dict[str, str]]:
         """Returns the primary key for DynamoDB.
 
         Returns:
@@ -107,7 +107,7 @@ class ReceiptLabelAnalysis:
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}#ANALYSIS#LABELS"},
         }
 
-    def gsi1_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi1_key(self) -> dict[str, dict[str, str]]:
         """Returns the GSI1 key for DynamoDB.
 
         Returns:
@@ -118,7 +118,7 @@ class ReceiptLabelAnalysis:
             "GSI1SK": {"S": f"LABELS#{self.timestamp_added}"},
         }
 
-    def gsi2_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi2_key(self) -> dict[str, dict[str, str]]:
         """Returns the GSI2 key for DynamoDB.
 
         Returns:
@@ -131,7 +131,7 @@ class ReceiptLabelAnalysis:
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the ReceiptLabelAnalysis object to a DynamoDB item.
 
         Returns:
@@ -169,8 +169,8 @@ class ReceiptLabelAnalysis:
         }
 
     def _convert_bounding_box(
-        self, bounding_box: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, bounding_box: dict[str, Any]
+    ) -> dict[str, Any]:
         """Converts a bounding box dictionary to DynamoDB format.
 
         Args:
@@ -183,7 +183,7 @@ class ReceiptLabelAnalysis:
         if not bounding_box:
             return {}
 
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
 
         for key in ["top_left", "top_right", "bottom_left", "bottom_right"]:
             if key in bounding_box:
@@ -212,11 +212,11 @@ class ReceiptLabelAnalysis:
             f"version={self.version})"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Return an iterator over the object's attributes.
 
         Yields:
-            Tuple[str, Any]: A tuple containing an attribute name and its
+            tuple[str, Any]: A tuple containing an attribute name and its
                 value.
         """
         yield "image_id", self.image_id
@@ -246,7 +246,7 @@ class ReceiptLabelAnalysis:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptLabelAnalysis":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptLabelAnalysis":
         """Converts a DynamoDB item to a ReceiptLabelAnalysis object.
 
         Args:
@@ -319,7 +319,7 @@ class ReceiptLabelAnalysis:
         )
 
 
-def _parse_labels_list(item: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _parse_labels_list(item: dict[str, Any]) -> list[dict[str, Any]]:
     """Parse labels list from DynamoDB item format."""
     labels = []
     if "labels" not in item or "L" not in item["labels"]:
@@ -333,9 +333,9 @@ def _parse_labels_list(item: Dict[str, Any]) -> List[Dict[str, Any]]:
     return labels
 
 
-def _parse_single_label(label_map: Dict[str, Any]) -> Dict[str, Any]:
+def _parse_single_label(label_map: dict[str, Any]) -> dict[str, Any]:
     """Parse a single label from DynamoDB map format."""
-    label_dict: Dict[str, Any] = {}
+    label_dict: dict[str, Any] = {}
 
     # Extract string fields
     if "label_type" in label_map and "S" in label_map["label_type"]:
@@ -360,9 +360,9 @@ def _parse_single_label(label_map: Dict[str, Any]) -> Dict[str, Any]:
     return label_dict
 
 
-def _parse_bounding_box(bbox_map: Dict[str, Any]) -> Dict[str, Any]:
+def _parse_bounding_box(bbox_map: dict[str, Any]) -> dict[str, Any]:
     """Parse bounding box corners from DynamoDB map format."""
-    bbox: Dict[str, Any] = {}
+    bbox: dict[str, Any] = {}
     corners = ["top_left", "top_right", "bottom_left", "bottom_right"]
 
     for corner in corners:
@@ -374,10 +374,10 @@ def _parse_bounding_box(bbox_map: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _parse_corner_point(
-    point_map: Dict[str, Any],
-) -> Optional[Dict[str, float]]:
+    point_map: dict[str, Any],
+) -> dict[str, float | None]:
     """Parse a corner point (x, y) from DynamoDB map format."""
-    point: Dict[str, float] = {}
+    point: dict[str, float] = {}
     if "x" in point_map and "N" in point_map["x"]:
         point["x"] = float(point_map["x"]["N"])
     if "y" in point_map and "N" in point_map["y"]:
@@ -386,7 +386,7 @@ def _parse_corner_point(
 
 
 def item_to_receipt_label_analysis(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> ReceiptLabelAnalysis:
     """Converts a DynamoDB item to a ReceiptLabelAnalysis object.
 

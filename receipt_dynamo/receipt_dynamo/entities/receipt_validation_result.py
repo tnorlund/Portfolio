@@ -1,6 +1,6 @@
 # receipt_dynamo/receipt_dynamo/entities/receipt_validation_result.py
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.entities.entity_mixins import SerializationMixin
 from receipt_dynamo.entities.util import (
@@ -28,11 +28,11 @@ class ReceiptValidationResult(SerializationMixin):
     type: str
     message: str
     reasoning: str
-    field: Optional[str] = None
-    expected_value: Optional[str] = None
-    actual_value: Optional[str] = None
-    validation_timestamp: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    field: str | None = None
+    expected_value: str | None = None
+    actual_value: str | None = None
+    validation_timestamp: str | None = None
+    metadata: dict[str, Any] | None = None
 
     def __post_init__(self):
         validate_positive_int("receipt_id", self.receipt_id)
@@ -56,6 +56,13 @@ class ReceiptValidationResult(SerializationMixin):
         ):
             raise ValueError("actual_value must be a string or None")
 
+        # pylint: disable=duplicate-code
+        # ReceiptValidationResult and ReceiptValidationCategory share similar
+        # validation patterns and DynamoDB key structures because they are
+        # related validation entities. However, they have distinct SK patterns
+        # (Result includes result_index, Category does not) and slightly
+        # different validation logic. A shared mixin would require overriding
+        # most methods, adding complexity without benefit.
         if self.validation_timestamp is not None:
             self.validation_timestamp = validate_iso_timestamp(
                 self.validation_timestamp, "validation_timestamp"
@@ -63,7 +70,7 @@ class ReceiptValidationResult(SerializationMixin):
         self.metadata = validate_metadata_field(self.metadata)
 
     @property
-    def key(self) -> Dict[str, Dict[str, str]]:
+    def key(self) -> dict[str, dict[str, str]]:
         """Return the DynamoDB key for this item."""
         return {
             "PK": {"S": f"IMAGE#{self.image_id}"},
@@ -74,9 +81,10 @@ class ReceiptValidationResult(SerializationMixin):
                 )
             },
         }
+        # pylint: enable=duplicate-code
 
     @property
-    def gsi1_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi1_key(self) -> dict[str, dict[str, str]]:
         """Return the GSI1 key for this item."""
         return {
             "GSI1PK": {"S": "ANALYSIS_TYPE"},
@@ -89,7 +97,7 @@ class ReceiptValidationResult(SerializationMixin):
         }
 
     @property
-    def gsi3_key(self) -> Dict[str, Dict[str, str]]:
+    def gsi3_key(self) -> dict[str, dict[str, str]]:
         """Return the GSI3 key for this item."""
         return {
             "GSI3PK": {"S": f"RESULT_TYPE#{self.type}"},
@@ -101,10 +109,10 @@ class ReceiptValidationResult(SerializationMixin):
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Convert to a DynamoDB item."""
         # Start with the keys which are already properly formatted
-        item: Dict[str, Any] = {
+        item: dict[str, Any] = {
             **self.key,
             **self.gsi1_key,
             **self.gsi3_key,
@@ -135,7 +143,7 @@ class ReceiptValidationResult(SerializationMixin):
         return item
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptValidationResult":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptValidationResult":
         """Create a ReceiptValidationResult from a DynamoDB item."""
         # Extract image_id, receipt_id, field_name, and result_index from keys
         image_id = item["PK"]["S"].split("#")[1]
@@ -195,7 +203,7 @@ class ReceiptValidationResult(SerializationMixin):
 
 
 def item_to_receipt_validation_result(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> ReceiptValidationResult:
     """Convert a DynamoDB item to a ReceiptValidationResult object.
 

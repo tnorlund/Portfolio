@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -38,8 +38,8 @@ class _Word(FlattenedStandardMixin):
     get_words(keys: list[dict]) -> list[Word]
         Gets multiple words from the database.
     list_words(
-        limit: Optional[int] = None, last_evaluated_key: Optional[Dict] = None
-    ) -> Tuple[list[Word], Optional[Dict[str, Any]]]
+        limit: int | None = None, last_evaluated_key: Dict | None = None
+    ) -> tuple[list[Word], dict[str, Any] | None]
         Lists all words from the database.
     list_words_from_line(image_id: str, line_id: int) -> list[Word]
         Lists all words from a specific line.
@@ -59,7 +59,7 @@ class _Word(FlattenedStandardMixin):
         self._add_entity(word, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_words")
-    def add_words(self, words: List[Word]):
+    def add_words(self, words: list[Word]):
         """Adds a list of words to the database
 
         Args:
@@ -85,7 +85,7 @@ class _Word(FlattenedStandardMixin):
         self._update_entity(word, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_words")
-    def update_words(self, words: List[Word]):
+    def update_words(self, words: list[Word]):
         """
         Updates multiple Word items in the database.
 
@@ -136,7 +136,7 @@ class _Word(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("delete_words")
-    def delete_words(self, words: List[Word]):
+    def delete_words(self, words: list[Word]):
         """Deletes a list of words from the database"""
         self._validate_entity_list(words, Word, "words")
         self._delete_entities(words)
@@ -185,7 +185,7 @@ class _Word(FlattenedStandardMixin):
         return result
 
     @handle_dynamodb_errors("get_words")
-    def get_words(self, keys: List[Dict]) -> List[Word]:
+    def get_words(self, keys: list[Dict]) -> list[Word]:
         """Get a list of words using a list of keys."""
         validate_batch_get_keys(keys, "WORD")
         results = self._batch_get_items(keys)
@@ -194,9 +194,9 @@ class _Word(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_words")
     def list_words(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[Word], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[Word], dict[str, Any] | None]:
         """Lists all words from the database
 
         Args:
@@ -214,7 +214,7 @@ class _Word(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("list_words_from_line")
-    def list_words_from_line(self, image_id: str, line_id: int) -> List[Word]:
+    def list_words_from_line(self, image_id: str, line_id: int) -> list[Word]:
         """List all words from a specific line in an image.
 
         Args:

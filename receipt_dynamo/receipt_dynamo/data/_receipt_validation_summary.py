@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -45,13 +45,13 @@ class _ReceiptValidationSummary(FlattenedStandardMixin):
     ) -> ReceiptValidationSummary:
         Retrieves a single ReceiptValidationSummary by IDs.
     list_receipt_validation_summaries(
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationSummary], dict | None]:
         Returns ReceiptValidationSummaries and the last evaluated key.
     list_receipt_validation_summaries_by_status(
         status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None
     ) -> tuple[list[ReceiptValidationSummary], dict | None]:
         Returns ReceiptValidationSummaries with a specific status.
@@ -105,7 +105,7 @@ class _ReceiptValidationSummary(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("update_receipt_validation_summaries")
     def update_receipt_validation_summaries(
-        self, summaries: List[ReceiptValidationSummary]
+        self, summaries: list[ReceiptValidationSummary]
     ):
         """Updates multiple ReceiptValidationSummaries in the database.
 
@@ -202,15 +202,15 @@ class _ReceiptValidationSummary(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipt_validation_summaries")
     def list_receipt_validation_summaries(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[ReceiptValidationSummary], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[ReceiptValidationSummary], Dict | None]:
         """Returns ReceiptValidationSummaries and the last evaluated key.
 
         Args:
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict], optional): The key to start
+            last_evaluated_key (Dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:
@@ -243,16 +243,16 @@ class _ReceiptValidationSummary(FlattenedStandardMixin):
     def list_receipt_validation_summaries_by_status(
         self,
         status: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[ReceiptValidationSummary], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[ReceiptValidationSummary], Dict | None]:
         """Returns ReceiptValidationSummaries with a specific status.
 
         Args:
             status (str): The status to filter by.
-            limit (Optional[int], optional): The maximum number of items to
+            limit (int | None, optional): The maximum number of items to
                 return. Defaults to None.
-            last_evaluated_key (Optional[Dict], optional): The key to start
+            last_evaluated_key (Dict | None, optional): The key to start
                 from for pagination. Defaults to None.
 
         Returns:

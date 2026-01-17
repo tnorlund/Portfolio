@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
@@ -27,7 +27,7 @@ class LabelHygieneResult:
     canonical_label: str
     reasoning: str
     gpt_agreed: bool
-    source_batch_id: Optional[str]
+    source_batch_id: str | None
     example_ids: list[str]
     timestamp: datetime
     image_id: str
@@ -71,25 +71,25 @@ class LabelHygieneResult:
             raise ValueError("timestamp must be a datetime object")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         return {
             "PK": {"S": f"LABEL_HYGIENE#{self.hygiene_id}"},
             "SK": {"S": f"FROM#{self.alias}#TO#{self.canonical_label}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         return {
             "GSI1PK": {"S": f"ALIAS#{self.alias}"},
             "GSI1SK": {"S": f"TO#{self.canonical_label}"},
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         return {
             "GSI2PK": {"S": f"CANONICAL_LABEL#{self.canonical_label}"},
             "GSI2SK": {"S": f"ALIAS#{self.alias}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         return {
             **self.key,
             **self.gsi1_key(),
@@ -129,7 +129,7 @@ class LabelHygieneResult:
     def __str__(self) -> str:
         return self.__repr__()
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         yield "hygiene_id", self.hygiene_id
         yield "alias", self.alias
         yield "canonical_label", self.canonical_label
@@ -158,7 +158,7 @@ class LabelHygieneResult:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "LabelHygieneResult":
+    def from_item(cls, item: dict[str, Any]) -> "LabelHygieneResult":
         """Converts a DynamoDB item to a LabelHygieneResult object.
 
         Args:
@@ -206,7 +206,7 @@ class LabelHygieneResult:
             ) from e
 
 
-def item_to_label_hygiene_result(item: Dict[str, Any]) -> LabelHygieneResult:
+def item_to_label_hygiene_result(item: dict[str, Any]) -> LabelHygieneResult:
     """Converts a DynamoDB item to a LabelHygieneResult object.
 
     Args:

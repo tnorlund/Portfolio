@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import uuid4
 
 from receipt_dynamo.constants import EmbeddingStatus
@@ -57,7 +57,7 @@ class _EmbeddingBatchResult(
 
     @handle_dynamodb_errors("add_embedding_batch_results")
     def add_embedding_batch_results(
-        self, embedding_batch_results: List[EmbeddingBatchResult]
+        self, embedding_batch_results: list[EmbeddingBatchResult]
     ) -> None:
         """
         Batch add EmbeddingBatchResults to DynamoDB.
@@ -102,7 +102,7 @@ class _EmbeddingBatchResult(
 
     @handle_dynamodb_errors("update_embedding_batch_results")
     def update_embedding_batch_results(
-        self, embedding_batch_results: List[EmbeddingBatchResult]
+        self, embedding_batch_results: list[EmbeddingBatchResult]
     ):
         """
         Batch update EmbeddingBatchResults in DynamoDB.
@@ -163,7 +163,7 @@ class _EmbeddingBatchResult(
 
     @handle_dynamodb_errors("delete_embedding_batch_results")
     def delete_embedding_batch_results(
-        self, embedding_batch_results: List[EmbeddingBatchResult]
+        self, embedding_batch_results: list[EmbeddingBatchResult]
     ):
         """
         Batch delete EmbeddingBatchResults from DynamoDB.
@@ -242,9 +242,9 @@ class _EmbeddingBatchResult(
     @handle_dynamodb_errors("list_embedding_batch_results")
     def list_embedding_batch_results(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[EmbeddingBatchResult], Optional[dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[EmbeddingBatchResult], dict | None]:
         """
         List all EmbeddingBatchResults, paginated.
         """
@@ -261,9 +261,9 @@ class _EmbeddingBatchResult(
     def get_embedding_batch_results_by_status(
         self,
         status: str,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[EmbeddingBatchResult], Optional[dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[EmbeddingBatchResult], dict | None]:
         """
         Query EmbeddingBatchResults by status using GSI2.
         """
@@ -291,9 +291,9 @@ class _EmbeddingBatchResult(
         self,
         image_id: str,
         receipt_id: int,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[EmbeddingBatchResult], Optional[dict]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[EmbeddingBatchResult], dict | None]:
         """
         Query EmbeddingBatchResults by receipt_id using GSI3.
         """

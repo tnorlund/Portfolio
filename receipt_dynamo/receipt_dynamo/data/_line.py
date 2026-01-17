@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict
 
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
@@ -29,8 +29,8 @@ class _Line(FlattenedStandardMixin):
         Deletes multiple lines from the database.
     get_line(image_id: str, line_id: int) -> Line
         Gets a line from the database.
-    list_lines(limit: Optional[int] = None, last_evaluated_key: Optional[Dict]
-        = None) -> Tuple[list[Line], Optional[Dict]]
+    list_lines(limit: int | None = None, last_evaluated_key: Dict | None
+        = None) -> tuple[list[Line], Dict | None]
         Lists all lines from the database.
     list_lines_from_image(image_id: str) -> list[Line]
         Lists all lines from a specific image.
@@ -50,7 +50,7 @@ class _Line(FlattenedStandardMixin):
         self._add_entity(line, condition_expression="attribute_not_exists(PK)")
 
     @handle_dynamodb_errors("add_lines")
-    def add_lines(self, lines: List[Line]):
+    def add_lines(self, lines: list[Line]):
         """Adds a list of lines to the database
 
         Args:
@@ -76,7 +76,7 @@ class _Line(FlattenedStandardMixin):
         self._update_entity(line, condition_expression="attribute_exists(PK)")
 
     @handle_dynamodb_errors("update_lines")
-    def update_lines(self, lines: List[Line]):
+    def update_lines(self, lines: list[Line]):
         """Updates a list of lines in the database
 
         Args:
@@ -118,7 +118,7 @@ class _Line(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("delete_lines")
-    def delete_lines(self, lines: List[Line]):
+    def delete_lines(self, lines: list[Line]):
         """Deletes a list of lines from the database
 
         Args:
@@ -172,9 +172,9 @@ class _Line(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_lines")
     def list_lines(
         self,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict] = None,
-    ) -> Tuple[List[Line], Optional[Dict]]:
+        limit: int | None = None,
+        last_evaluated_key: Dict | None = None,
+    ) -> tuple[list[Line], Dict | None]:
         """Lists all lines in the database
 
         Args:
@@ -192,7 +192,7 @@ class _Line(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("list_lines_from_image")
-    def list_lines_from_image(self, image_id: str) -> List[Line]:
+    def list_lines_from_image(self, image_id: str) -> list[Line]:
         """Lists all lines from an image
 
         Args:

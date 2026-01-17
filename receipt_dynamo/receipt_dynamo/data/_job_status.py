@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from botocore.exceptions import ClientError
 
@@ -13,7 +13,7 @@ from receipt_dynamo.data.shared_exceptions import (
 from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
+    pass
 
 
 class _JobStatus(FlattenedStandardMixin):
@@ -79,7 +79,7 @@ class _JobStatus(FlattenedStandardMixin):
     def list_job_statuses(
         self,
         job_id: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[JobStatus], dict | None]:
         """Retrieve status updates for a job from the database.
@@ -114,7 +114,7 @@ class _JobStatus(FlattenedStandardMixin):
 
     def _get_job_with_status(
         self, job_id: str
-    ) -> Tuple[Optional[Any], List[JobStatus]]:
+    ) -> tuple[Any | None, list[JobStatus]]:
         """Get a job with all its status updates.
 
         Args:
@@ -134,7 +134,7 @@ class _JobStatus(FlattenedStandardMixin):
             )
 
             job = None
-            statuses: List[JobStatus] = []
+            statuses: list[JobStatus] = []
 
             for item in response["Items"]:
                 if item["TYPE"]["S"] == "JOB":

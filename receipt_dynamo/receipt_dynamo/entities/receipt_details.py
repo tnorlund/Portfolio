@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Generator, List, Optional
+from typing import TYPE_CHECKING, Generator
 
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
@@ -21,19 +21,19 @@ class ReceiptDetails:
     """
 
     receipt: Receipt
-    lines: List[ReceiptLine]
-    words: List[ReceiptWord]
-    labels: List[ReceiptWordLabel]
-    letters: List[ReceiptLetter] = field(default_factory=list)
-    place: Optional["ReceiptPlace"] = None
+    lines: list[ReceiptLine]
+    words: list[ReceiptWord]
+    labels: list[ReceiptWordLabel]
+    letters: list[ReceiptLetter] = field(default_factory=list)
+    place: "ReceiptPlace" | None = None
 
     def __iter__(self) -> Generator[
         Receipt
-        | List[ReceiptLine]
-        | List[ReceiptWord]
-        | List[ReceiptLetter]
-        | List[ReceiptWordLabel]
-        | Optional["ReceiptPlace"],
+        | list[ReceiptLine]
+        | list[ReceiptWord]
+        | list[ReceiptLetter]
+        | list[ReceiptWordLabel]
+        | "ReceiptPlace" | None,
         None,
         None,
     ]:

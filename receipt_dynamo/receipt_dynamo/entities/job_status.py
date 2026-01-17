@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.constants import JobStatus as JobStatusEnum
 from receipt_dynamo.entities.util import (
@@ -43,10 +43,10 @@ class JobStatus:
     job_id: str
     status: str
     updated_at: str
-    progress: Optional[float] = None
-    message: Optional[str] = None
-    updated_by: Optional[str] = None
-    instance_id: Optional[str] = None
+    progress: float | None = None
+    message: str | None = None
+    updated_by: str | None = None
+    instance_id: str | None = None
 
     def __post_init__(self):
         """Validates fields after dataclass initialization.
@@ -90,7 +90,7 @@ class JobStatus:
             raise ValueError("instance_id must be a string")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the job status.
 
         Returns:
@@ -101,7 +101,7 @@ class JobStatus:
             "SK": {"S": f"STATUS#{self.updated_at}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the job status.
 
         Returns:
@@ -112,7 +112,7 @@ class JobStatus:
             "GSI1SK": {"S": f"UPDATED#{self.updated_at}"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the JobStatus object to a DynamoDB item.
 
         Returns:
@@ -159,11 +159,11 @@ class JobStatus:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the JobStatus object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the
+            Generator[tuple[str, Any], None, None]: An iterator over the
                 JobStatus object's attribute name/value pairs.
         """
         yield "job_id", self.job_id
@@ -193,7 +193,7 @@ class JobStatus:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "JobStatus":
+    def from_item(cls, item: dict[str, Any]) -> "JobStatus":
         """Converts a DynamoDB item to a JobStatus object.
 
         Args:
@@ -248,7 +248,7 @@ class JobStatus:
             ) from e
 
 
-def item_to_job_status(item: Dict[str, Any]) -> JobStatus:
+def item_to_job_status(item: dict[str, Any]) -> JobStatus:
     """Converts a DynamoDB item to a JobStatus object.
 
     Args:

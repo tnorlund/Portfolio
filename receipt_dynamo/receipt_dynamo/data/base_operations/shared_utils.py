@@ -6,12 +6,12 @@ base operations classes to eliminate code duplication.
 """
 
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
 
-def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
+def validate_last_evaluated_key(lek: dict[str, Any]) -> None:
     """Validate that a LastEvaluatedKey has the required DynamoDB format.
 
     Args:
@@ -35,8 +35,8 @@ def validate_last_evaluated_key(lek: Dict[str, Any]) -> None:
 
 def validate_status_list_params(
     status: str,
-    limit: Optional[int],
-    last_evaluated_key: Optional[Dict[str, Any]],
+    limit: int | None,
+    last_evaluated_key: dict[str, Any] | None,
 ) -> None:
     """
     Validate parameters for status-based listing methods.
@@ -67,8 +67,8 @@ def validate_status_list_params(
 
 
 def validate_pagination_params(
-    limit: Optional[int],
-    last_evaluated_key: Optional[Dict[str, Any]],
+    limit: int | None,
+    last_evaluated_key: dict[str, Any] | None,
     validate_attribute_format: bool = False,
 ) -> None:
     """
@@ -117,15 +117,15 @@ def validate_pagination_params(
 def build_query_params(
     table_name: str,
     key_condition_expression: str,
-    expression_attribute_values: Dict[str, Any],
+    expression_attribute_values: dict[str, Any],
     *,
-    index_name: Optional[str] = None,
-    expression_attribute_names: Optional[Dict[str, str]] = None,
-    filter_expression: Optional[str] = None,
-    exclusive_start_key: Optional[Dict[str, Any]] = None,
-    limit: Optional[int] = None,
-    scan_index_forward: Optional[bool] = None,
-) -> Dict[str, Any]:
+    index_name: str | None = None,
+    expression_attribute_names: dict[str, str] | None = None,
+    filter_expression: str | None = None,
+    exclusive_start_key: dict[str, Any] | None = None,
+    limit: int | None = None,
+    scan_index_forward: bool | None = None,
+) -> dict[str, Any]:
     """
     Build query parameters for DynamoDB queries.
 
@@ -168,7 +168,7 @@ def build_query_params(
 
 def build_get_item_key(
     primary_key: str, sort_key: str
-) -> Dict[str, Dict[str, str]]:
+) -> dict[str, dict[str, str]]:
     """
     Build a DynamoDB key for get_item operations.
 

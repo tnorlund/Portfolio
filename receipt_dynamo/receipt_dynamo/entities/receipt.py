@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.entity_mixins import CDNFieldsMixin
@@ -77,10 +77,10 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
     timestamp_added: str | datetime
     raw_s3_bucket: str
     raw_s3_key: str
-    top_left: Dict[str, Any]
-    top_right: Dict[str, Any]
-    bottom_left: Dict[str, Any]
-    bottom_right: Dict[str, Any]
+    top_left: dict[str, Any]
+    top_right: dict[str, Any]
+    bottom_left: dict[str, Any]
+    bottom_right: dict[str, Any]
     # Optional CDN fields inherited from CDNFieldsMixin
 
     def __post_init__(self) -> None:
@@ -109,7 +109,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
         self.validate_cdn_fields()
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the receipt.
 
         Returns:
@@ -120,7 +120,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             "SK": {"S": f"RECEIPT#{self.receipt_id:05d}"},
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generates the GSI1 key for the receipt.
 
         Returns:
@@ -131,7 +131,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             "GSI1SK": {"S": f"RECEIPT#{self.receipt_id:05d}"},
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """Generates the GSI2 key for the receipt.
 
         Returns:
@@ -144,7 +144,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             },
         }
 
-    def gsi4_key(self) -> Dict[str, Any]:
+    def gsi4_key(self) -> dict[str, Any]:
         """Generates the GSI4 key for receipt details access pattern.
 
         GSI4 enables efficient single-query retrieval of all receipt-related
@@ -160,7 +160,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             "GSI4SK": {"S": "0_RECEIPT"},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the Receipt object to a DynamoDB item.
 
         Returns:
@@ -269,7 +269,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "Receipt":
+    def from_item(cls, item: dict[str, Any]) -> "Receipt":
         """Converts a DynamoDB item to a Receipt object.
 
         Args:
@@ -320,7 +320,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             raise ValueError(f"Error converting item to Receipt: {e}") from e
 
 
-def item_to_receipt(item: Dict[str, Any]) -> Receipt:
+def item_to_receipt(item: dict[str, Any]) -> Receipt:
     """Converts a DynamoDB item to a Receipt object.
 
     Args:

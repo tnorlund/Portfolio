@@ -19,18 +19,18 @@ from receipt_dynamo.entities.word import Word
 class ImageDetails:
     """Collection of all data associated with an image."""
 
-    images: List[Image]
-    lines: List[Line]
-    words: List[Word]
-    letters: List[Letter]
-    receipts: List[Receipt]
-    receipt_lines: List[ReceiptLine]
-    receipt_words: List[ReceiptWord]
-    receipt_letters: List[ReceiptLetter]
-    receipt_word_labels: List[ReceiptWordLabel]
-    receipt_places: List[ReceiptPlace]
-    ocr_jobs: List[OCRJob]
-    ocr_routing_decisions: List[OCRRoutingDecision]
+    images: list[Image]
+    lines: list[Line]
+    words: list[Word]
+    letters: list[Letter]
+    receipts: list[Receipt]
+    receipt_lines: list[ReceiptLine]
+    receipt_words: list[ReceiptWord]
+    receipt_letters: list[ReceiptLetter]
+    receipt_word_labels: list[ReceiptWordLabel]
+    receipt_places: list[ReceiptPlace]
+    ocr_jobs: list[OCRJob]
+    ocr_routing_decisions: list[OCRRoutingDecision]
 
     def __iter__(self) -> Generator[List, None, None]:
         yield self.images

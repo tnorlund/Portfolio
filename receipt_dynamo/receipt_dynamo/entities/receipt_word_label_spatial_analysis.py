@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.util import (
     _repr_str,
@@ -71,8 +71,8 @@ class ReceiptWordLabelSpatialAnalysis:
         line_id (int): Number identifying the line containing the word.
         word_id (int): Number identifying the word.
         from_label (str): The label assigned to this word.
-        from_position (Dict[str, float]): Position (x, y coordinates).
-        spatial_relationships (List[SpatialRelationship]): All
+        from_position (dict[str, float]): Position (x, y coordinates).
+        spatial_relationships (list[SpatialRelationship]): All
             relationships to other valid labels.
         timestamp_added (str): ISO timestamp when analysis was computed.
         analysis_version (str): Version of the analysis algorithm used.
@@ -93,8 +93,8 @@ class ReceiptWordLabelSpatialAnalysis:
     line_id: int
     word_id: int
     from_label: str
-    from_position: Dict[str, float]
-    spatial_relationships: List[SpatialRelationship]
+    from_position: dict[str, float]
+    spatial_relationships: list[SpatialRelationship]
     timestamp_added: datetime | str
     analysis_version: str = "1.0"
 
@@ -138,7 +138,7 @@ class ReceiptWordLabelSpatialAnalysis:
             raise ValueError("analysis_version must be a non-empty string")
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for spatial analysis.
 
         Returns:
@@ -154,7 +154,7 @@ class ReceiptWordLabelSpatialAnalysis:
             },
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generate the GSI1 key for finding analyses by label type.
 
         GSI1PK: SPATIAL_ANALYSIS#<label>
@@ -169,7 +169,7 @@ class ReceiptWordLabelSpatialAnalysis:
             "GSI1SK": {"S": gsi1_sk},
         }
 
-    def gsi2_key(self) -> Dict[str, Any]:
+    def gsi2_key(self) -> dict[str, Any]:
         """Generate the GSI2 key for finding analyses for a receipt.
 
         GSI2PK: IMAGE#<image_id>#RECEIPT#<receipt_id>#SPATIAL
@@ -187,7 +187,7 @@ class ReceiptWordLabelSpatialAnalysis:
             "GSI2SK": {"S": gsi2_sk},
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the object to a DynamoDB item.
 
         Returns:
@@ -241,7 +241,7 @@ class ReceiptWordLabelSpatialAnalysis:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the object's attributes."""
         yield "image_id", self.image_id
         yield "receipt_id", self.receipt_id
@@ -300,7 +300,7 @@ class ReceiptWordLabelSpatialAnalysis:
 
     @classmethod
     def from_item(
-        cls, item: Dict[str, Any]
+        cls, item: dict[str, Any]
     ) -> "ReceiptWordLabelSpatialAnalysis":
         """Converts a DynamoDB item to a spatial analysis object.
 
@@ -375,7 +375,7 @@ class ReceiptWordLabelSpatialAnalysis:
 
 
 def item_to_receipt_word_label_spatial_analysis(
-    item: Dict[str, Any],
+    item: dict[str, Any],
 ) -> ReceiptWordLabelSpatialAnalysis:
     """Converts a DynamoDB item to a ReceiptWordLabelSpatialAnalysis object.
 

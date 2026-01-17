@@ -15,10 +15,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
     Type,
 )
 
@@ -184,7 +180,7 @@ class BatchOperationsMixin:
     @handle_dynamodb_errors("batch_write")
     def _batch_write_with_retry_dict(
         self,
-        request_items: Dict[str, List[Dict[str, Any]]],
+        request_items: dict[str, list[dict[str, Any]]],
         max_retries: int = 3,
         initial_backoff: float = 0.1,
     ) -> None:
@@ -201,8 +197,8 @@ class BatchOperationsMixin:
         )
 
     def _prepare_batch_request(
-        self, entities: List[Any], operation: str = "PutRequest"
-    ) -> Dict[str, List[Dict[str, Any]]]:
+        self, entities: list[Any], operation: str = "PutRequest"
+    ) -> dict[str, list[dict[str, Any]]]:
         """
         Prepare batch request items from entities.
 
@@ -224,8 +220,8 @@ class BatchOperationsMixin:
         return {self.table_name: items}
 
     def _split_into_batches(
-        self, entities: List[Any], batch_size: int = 25
-    ) -> List[List[Any]]:
+        self, entities: list[Any], batch_size: int = 25
+    ) -> list[list[Any]]:
         """
         Split entities into batches for processing.
 
@@ -243,7 +239,7 @@ class BatchOperationsMixin:
 
     @handle_dynamodb_errors("add_entities")
     def _add_entities_batch(
-        self, entities: List[Any], entity_class: Type[Any], param_name: str
+        self, entities: list[Any], entity_class: Type[Any], param_name: str
     ) -> None:
         """
         Add multiple entities using batch operations.
@@ -291,7 +287,7 @@ class TransactionalOperationsMixin:
         _client: "DynamoDBClient"
 
     def _transact_write_items(
-        self, transact_items: List[Dict[str, Any]]
+        self, transact_items: list[dict[str, Any]]
     ) -> None:
         """
         Perform transactional write operation.
@@ -303,7 +299,7 @@ class TransactionalOperationsMixin:
 
     def _prepare_transact_update_item(
         self, entity: Any, condition_expression: str = "attribute_exists(PK)"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Prepare a transactional update item.
 
@@ -330,7 +326,7 @@ class TransactionalOperationsMixin:
         self,
         entity: Any,
         condition_expression: str = "attribute_not_exists(PK)",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Prepare a transactional put item.
 
@@ -350,7 +346,7 @@ class TransactionalOperationsMixin:
         }
 
     def _transact_write_with_chunking(
-        self, transact_items: List[Dict[str, Any]]
+        self, transact_items: list[dict[str, Any]]
     ) -> None:
         """
         Perform transactional write with automatic chunking for large batches.
@@ -375,7 +371,7 @@ class TransactionalOperationsMixin:
 
     def _update_entities(
         self,
-        entities: List[Any],
+        entities: list[Any],
         entity_type: Type[Any],
         entity_name: str,
     ) -> None:
@@ -394,7 +390,7 @@ class TransactionalOperationsMixin:
 
         Example:
             # In a data access class
-            def update_images(self, images: List[Image]) -> None:
+            def update_images(self, images: list[Image]) -> None:
                 self._update_entities(images, Image, "images", "update_images")
         """
         if not hasattr(self, "_validator") or self._validator is None:
@@ -454,7 +450,7 @@ class QueryByTypeMixin:
         table_name: str
         _client: "DynamoDBClient"
         _query_entities: Callable[
-            ..., Tuple[List[Any], Optional[Dict[str, Any]]]
+            ..., tuple[list[Any], dict[str, Any] | None]
         ]
         _validate_entity: Callable[..., None]
 
@@ -462,10 +458,10 @@ class QueryByTypeMixin:
     def _query_by_type(
         self,
         entity_type: str,
-        converter_func: "Callable[[Dict[str, Any]], Any]",
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[Any], Optional[Dict[str, Any]]]:
+        converter_func: "Callable[[dict[str, Any]], Any]",
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[Any], dict[str, Any] | None]:
         """
         Query all entities of a specific type using GSITYPE index.
 
@@ -523,7 +519,7 @@ class QueryByParentMixin:
         table_name: str
         _client: "DynamoDBClient"
         _query_entities: Callable[
-            ..., Tuple[List[Any], Optional[Dict[str, Any]]]
+            ..., tuple[list[Any], dict[str, Any] | None]
         ]
 
     @handle_dynamodb_errors("query_by_parent")
@@ -531,14 +527,14 @@ class QueryByParentMixin:
         self,
         parent_pk: str,
         child_sk_prefix: str,
-        converter_func: "Callable[[Dict[str, Any]], Any]",
+        converter_func: "Callable[[dict[str, Any]], Any]",
         *,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-        filter_expression: Optional[str] = None,
-        expression_attribute_names: Optional[Dict[str, str]] = None,
-        expression_attribute_values: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[Any], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+        filter_expression: str | None = None,
+        expression_attribute_names: dict[str, str] | None = None,
+        expression_attribute_values: dict[str, Any] | None = None,
+    ) -> tuple[list[Any], dict[str, Any] | None]:
         """
         Query child entities by parent using PK and SK prefix.
 

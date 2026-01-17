@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Tuple
+from typing import Any, Generator
 
 from receipt_dynamo.entities.util import (
     _repr_str,
@@ -24,7 +24,7 @@ class ReceiptField:
             "ADDRESS", etc.).
         image_id (str): UUID identifying the associated image.
         receipt_id (int): Number identifying the receipt.
-        words (List[dict]): List of dictionaries containing word information:
+        words (list[dict]): List of dictionaries containing word information:
             - word_id (int): ID of the word
             - line_id (int): ID of the line containing the word
             - label (str): Label assigned to the word
@@ -44,7 +44,7 @@ class ReceiptField:
     field_type: str
     image_id: str
     receipt_id: int
-    words: List[Dict[str, Any]]
+    words: list[dict[str, Any]]
     reasoning: str
     timestamp_added: datetime | str
 
@@ -102,7 +102,7 @@ class ReceiptField:
             )
 
     @property
-    def key(self) -> Dict[str, Any]:
+    def key(self) -> dict[str, Any]:
         """Generates the primary key for the receipt field.
 
         Returns:
@@ -115,7 +115,7 @@ class ReceiptField:
             },
         }
 
-    def gsi1_key(self) -> Dict[str, Any]:
+    def gsi1_key(self) -> dict[str, Any]:
         """Generate the GSI1 key for this ReceiptField.
 
         Returns:
@@ -128,7 +128,7 @@ class ReceiptField:
             },
         }
 
-    def to_item(self) -> Dict[str, Any]:
+    def to_item(self) -> dict[str, Any]:
         """Converts the ReceiptField object to a DynamoDB item.
 
         Returns:
@@ -172,11 +172,11 @@ class ReceiptField:
             ")"
         )
 
-    def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
+    def __iter__(self) -> Generator[tuple[str, Any], None, None]:
         """Returns an iterator over the ReceiptField object's attributes.
 
         Returns:
-            Generator[Tuple[str, Any], None, None]: An iterator over the
+            Generator[tuple[str, Any], None, None]: An iterator over the
                 ReceiptField object's attribute name/value pairs.
         """
         yield "field_type", self.field_type
@@ -204,7 +204,7 @@ class ReceiptField:
         )
 
     @classmethod
-    def from_item(cls, item: Dict[str, Any]) -> "ReceiptField":
+    def from_item(cls, item: dict[str, Any]) -> "ReceiptField":
         """Converts a DynamoDB item to a ReceiptField object.
 
         Args:
@@ -235,7 +235,7 @@ class ReceiptField:
             # Convert words from DynamoDB format to list of dicts
             words = []
             for word_item in item["words"]["L"]:
-                word_dict: Dict[str, Any] = {}
+                word_dict: dict[str, Any] = {}
                 for key, value in word_item["M"].items():
                     if isinstance(value, dict):
                         if "S" in value:
@@ -265,7 +265,7 @@ class ReceiptField:
             ) from e
 
 
-def item_to_receipt_field(item: Dict[str, Any]) -> ReceiptField:
+def item_to_receipt_field(item: dict[str, Any]) -> ReceiptField:
     """Converts a DynamoDB item to a ReceiptField object.
 
     Args:

@@ -9,10 +9,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
     Type,
     TypeVar,
 )
@@ -91,7 +87,7 @@ class FlattenedStandardMixin:
         self._validator.validate_entity(entity, expected_type, param_name)
 
     def _validate_entity_list(
-        self, entities: List[Any], expected_type: Type[T], param_name: str
+        self, entities: list[Any], expected_type: Type[T], param_name: str
     ) -> None:
         """Validate a list of entities."""
         self._ensure_validator_initialized()
@@ -135,8 +131,8 @@ class FlattenedStandardMixin:
 
     def _validate_pagination_params(
         self,
-        limit: Optional[int],
-        last_evaluated_key: Optional[Dict[str, Any]],
+        limit: int | None,
+        last_evaluated_key: dict[str, Any] | None,
         validate_attribute_format: bool = False,
     ) -> None:
         """Validate pagination parameters.
@@ -166,7 +162,7 @@ class FlattenedStandardMixin:
         assert_valid_uuid(job_id)
 
     def _validate_image_receipt_indices(
-        self, indices: List[Tuple[str, int]], param_name: str = "indices"
+        self, indices: list[tuple[str, int]], param_name: str = "indices"
     ) -> None:
         """Validate a list of (image_id, receipt_id) tuples.
 
@@ -200,7 +196,7 @@ class FlattenedStandardMixin:
             raise EntityValidationError("receipt_id must be positive")
 
     def _validate_batch_receipt_keys(
-        self, keys: List[Dict[str, Any]], expected_sk_suffix: str
+        self, keys: list[dict[str, Any]], expected_sk_suffix: str
     ) -> None:
         """Validate batch keys for receipt-related entities.
 
@@ -234,7 +230,7 @@ class FlattenedStandardMixin:
 
     @handle_dynamodb_errors("add_entity")
     def _add_entity(
-        self, entity: T, condition_expression: Optional[str] = None
+        self, entity: T, condition_expression: str | None = None
     ) -> None:
         """Add a single entity to DynamoDB."""
         put_params = {
@@ -259,7 +255,7 @@ class FlattenedStandardMixin:
             raise
 
     def _add_entities(
-        self, entities: List[T], entity_type: Type[T], param_name: str
+        self, entities: list[T], entity_type: Type[T], param_name: str
     ) -> None:
         """Add multiple entities using transactional writes with existence
         check."""
@@ -287,7 +283,7 @@ class FlattenedStandardMixin:
 
     @handle_dynamodb_errors("update_entity")
     def _update_entity(
-        self, entity: T, condition_expression: Optional[str] = None
+        self, entity: T, condition_expression: str | None = None
     ) -> None:
         """Update a single entity in DynamoDB."""
         put_params = {
@@ -313,7 +309,7 @@ class FlattenedStandardMixin:
 
     @handle_dynamodb_errors("delete_entity")
     def _delete_entity(
-        self, entity: T, condition_expression: Optional[str] = None
+        self, entity: T, condition_expression: str | None = None
     ) -> None:
         """Delete a single entity from DynamoDB."""
         delete_params = {
@@ -343,8 +339,8 @@ class FlattenedStandardMixin:
         primary_key: str,
         sort_key: str,
         entity_class: Type[T],  # pylint: disable=unused-argument
-        converter_func: Callable[[Dict[str, Any]], T],
-    ) -> Optional[T]:
+        converter_func: Callable[[dict[str, Any]], T],
+    ) -> T | None:
         """Get a single entity from DynamoDB."""
         response = self._client.get_item(
             TableName=self.table_name,
@@ -359,7 +355,7 @@ class FlattenedStandardMixin:
     # ========== Batch Operations ==========
 
     def _batch_write_with_retry(
-        self, request_items: List[WriteRequestTypeDef]
+        self, request_items: list[WriteRequestTypeDef]
     ) -> None:
         """Execute batch write operations with retry logic."""
         remaining_items = request_items
@@ -382,8 +378,8 @@ class FlattenedStandardMixin:
                     remaining_items.extend(unprocessed)
 
     def _batch_get_items(
-        self, keys: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+        self, keys: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Execute batch get operations with chunking and retry logic.
 
         Args:
@@ -400,7 +396,7 @@ class FlattenedStandardMixin:
         if not keys:
             return []
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
 
         # Process keys in chunks of BATCH_GET_CHUNK_SIZE
         for i in range(0, len(keys), BATCH_GET_CHUNK_SIZE):
@@ -434,7 +430,7 @@ class FlattenedStandardMixin:
     # ========== Transactional Operations ==========
 
     def _transact_write_with_chunking(
-        self, transact_items: List[TransactWriteItemTypeDef]
+        self, transact_items: list[TransactWriteItemTypeDef]
     ) -> None:
         """Execute transactional writes with chunking for large batches."""
         # Process in chunks of 25 (DynamoDB transact limit)
@@ -444,7 +440,7 @@ class FlattenedStandardMixin:
 
     @handle_dynamodb_errors("update_entities")
     def _update_entities(
-        self, entities: List[T], entity_type: Type[T], param_name: str
+        self, entities: list[T], entity_type: Type[T], param_name: str
     ) -> None:
         """Update multiple entities using transactions."""
         self._validate_entity_list(entities, entity_type, param_name)
@@ -468,7 +464,7 @@ class FlattenedStandardMixin:
 
     def _delete_entities(
         self,
-        entities: List[T],
+        entities: list[T],
         condition_expression: str = "attribute_exists(PK)",
     ) -> None:
         """Delete multiple entities using transactional writes."""
@@ -498,8 +494,8 @@ class FlattenedStandardMixin:
     # ========== Query Operations ==========
 
     def _build_last_evaluated_key(
-        self, item: Dict[str, Any], index_name: Optional[str]
-    ) -> Dict[str, Any]:
+        self, item: dict[str, Any], index_name: str | None
+    ) -> dict[str, Any]:
         """Build a LastEvaluatedKey from a DynamoDB item.
 
         Args:
@@ -510,7 +506,7 @@ class FlattenedStandardMixin:
             A LastEvaluatedKey dict suitable for pagination
         """
         # Always include the table's primary key
-        key: Dict[str, Any] = {
+        key: dict[str, Any] = {
             "PK": item["PK"],
             "SK": item["SK"],
         }
@@ -534,17 +530,17 @@ class FlattenedStandardMixin:
     # pylint: disable=too-many-positional-arguments
     def _query_entities(
         self,
-        index_name: Optional[str],
+        index_name: str | None,
         key_condition_expression: str,
-        expression_attribute_names: Optional[Dict[str, str]],
-        expression_attribute_values: Dict[str, Any],
-        converter_func: Callable[[Dict[str, Any]], T],
+        expression_attribute_names: dict[str, str] | None,
+        expression_attribute_values: dict[str, Any],
+        converter_func: Callable[[dict[str, Any]], T],
         *,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-        filter_expression: Optional[str] = None,
-        scan_index_forward: Optional[bool] = None,
-    ) -> Tuple[List[T], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+        filter_expression: str | None = None,
+        scan_index_forward: bool | None = None,
+    ) -> tuple[list[T], dict[str, Any] | None]:
         """Query entities with pagination support."""
         entities = []
         current_last_key = last_evaluated_key
@@ -612,10 +608,10 @@ class FlattenedStandardMixin:
     def _query_by_type(
         self,
         entity_type: str,
-        converter_func: Callable[[Dict[str, Any]], T],
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[T], Optional[Dict[str, Any]]]:
+        converter_func: Callable[[dict[str, Any]], T],
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[T], dict[str, Any] | None]:
         """Query entities by TYPE using GSITYPE index.
 
         Note: The index is named GSITYPE but uses TYPE as its partition key.
@@ -635,11 +631,11 @@ class FlattenedStandardMixin:
         self,
         parent_key_prefix: str,
         child_key_prefix: str,
-        converter_func: Callable[[Dict[str, Any]], T],
+        converter_func: Callable[[dict[str, Any]], T],
         *,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[T], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[T], dict[str, Any] | None]:
         """Query child entities by parent ID."""
         return self._query_entities(
             index_name=None,
@@ -659,8 +655,8 @@ class FlattenedStandardMixin:
         image_id: str,
         receipt_id: int,
         entity_type: str,
-        converter_func: Callable[[Dict[str, Any]], T],
-    ) -> List[T]:
+        converter_func: Callable[[dict[str, Any]], T],
+    ) -> list[T]:
         """Query entities by image_id and receipt_id using GSI3.
 
         This is a common pattern for listing receipt-level entities
@@ -695,11 +691,11 @@ class FlattenedStandardMixin:
         image_id: str,
         receipt_id: int,
         sk_suffix: str,
-        converter_func: Callable[[Dict[str, Any]], T],
+        converter_func: Callable[[dict[str, Any]], T],
         *,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[T], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+    ) -> tuple[list[T], dict[str, Any] | None]:
         """Query entities by image_id with SK prefix on main table.
 
         This is a common pattern for listing receipt analysis entities
@@ -748,8 +744,8 @@ class FlattenedStandardMixin:
         self,
         image_id: str,
         sk_prefix: str,
-        converter_func: Callable[[Dict[str, Any]], T],
-    ) -> List[T]:
+        converter_func: Callable[[dict[str, Any]], T],
+    ) -> list[T]:
         """Query entities by image_id with SK prefix on main table.
 
         This helper returns results without pagination.
@@ -785,12 +781,12 @@ class FlattenedStandardMixin:
         self,
         job_id: str,
         sk_prefix: str,
-        converter_func: Callable[[Dict[str, Any]], T],
+        converter_func: Callable[[dict[str, Any]], T],
         *,
-        limit: Optional[int] = None,
-        last_evaluated_key: Optional[Dict[str, Any]] = None,
-        scan_index_forward: Optional[bool] = None,
-    ) -> Tuple[List[T], Optional[Dict[str, Any]]]:
+        limit: int | None = None,
+        last_evaluated_key: dict[str, Any] | None = None,
+        scan_index_forward: bool | None = None,
+    ) -> tuple[list[T], dict[str, Any] | None]:
         """Query entities by job_id with SK prefix on main table.
 
         This is a common pattern for listing job-related entities

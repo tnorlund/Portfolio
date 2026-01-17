@@ -2,7 +2,7 @@ import re
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
-from typing import Any, Dict, Type, Union
+from typing import Any
 
 
 def _repr_str(value: Any) -> str:
@@ -47,8 +47,8 @@ UUID_V4_REGEX = re.compile(
 
 
 def assert_valid_bounding_box(
-    bounding_box: Dict[str, Union[int, float]],
-) -> Dict[str, Union[int, float]]:
+    bounding_box: dict[str, int | float],
+) -> dict[str, int | float]:
     """
     Assert that the bounding box is valid.
     """
@@ -63,8 +63,8 @@ def assert_valid_bounding_box(
 
 
 def assert_valid_point(
-    point: Dict[str, Union[int, float]],
-) -> Dict[str, Union[int, float]]:
+    point: dict[str, int | float],
+) -> dict[str, int | float]:
     """
     Assert that the point is valid.
     """
@@ -113,7 +113,7 @@ def assert_valid_uuid(uuid: str) -> None:
         raise ValueError("uuid must be a valid UUIDv4")
 
 
-def normalize_enum(candidate: Any, enum_cls: Type[Enum]) -> str:
+def normalize_enum(candidate: Any, enum_cls: type[Enum]) -> str:
     """Return the normalized ``enum_cls`` value for ``candidate``.
 
     Args:
@@ -203,7 +203,7 @@ def normalize_address(addr: str) -> str:
 # These utilities eliminate code duplication in entity to_item() methods
 
 
-def serialize_bounding_box(bounding_box: Dict[str, float]) -> Dict[str, Any]:
+def serialize_bounding_box(bounding_box: dict[str, float]) -> dict[str, Any]:
     """
     Serialize a bounding box dictionary to DynamoDB format.
 
@@ -226,7 +226,7 @@ def serialize_bounding_box(bounding_box: Dict[str, float]) -> Dict[str, Any]:
     }
 
 
-def serialize_coordinate_point(point: Dict[str, float]) -> Dict[str, Any]:
+def serialize_coordinate_point(point: dict[str, float]) -> dict[str, Any]:
     """
     Serialize a coordinate point (x, y) to DynamoDB format.
 
@@ -247,7 +247,7 @@ def serialize_coordinate_point(point: Dict[str, float]) -> Dict[str, Any]:
     }
 
 
-def serialize_confidence(confidence: float) -> Dict[str, str]:
+def serialize_confidence(confidence: float) -> dict[str, str]:
     """
     Serialize a confidence value to DynamoDB format.
 
@@ -262,7 +262,7 @@ def serialize_confidence(confidence: float) -> Dict[str, str]:
     return {"N": _format_float(confidence, 2, 2)}
 
 
-def build_base_item(entity, entity_type: str, gsi_keys=None) -> Dict[str, Any]:
+def build_base_item(entity, entity_type: str, gsi_keys=None) -> dict[str, Any]:
     """
     Build the base structure for entity to_item() methods.
 
@@ -312,7 +312,7 @@ def build_base_item(entity, entity_type: str, gsi_keys=None) -> Dict[str, Any]:
 # These utilities eliminate code duplication in item_to_* conversion functions
 
 
-def deserialize_bounding_box(item_field: Dict[str, Any]) -> Dict[str, float]:
+def deserialize_bounding_box(item_field: dict[str, Any]) -> dict[str, float]:
     """
     Deserialize a DynamoDB bounding box field back to a Python dict.
 
@@ -339,8 +339,8 @@ def deserialize_bounding_box(item_field: Dict[str, Any]) -> Dict[str, float]:
 
 
 def deserialize_coordinate_point(
-    item_field: Dict[str, Any],
-) -> Dict[str, float]:
+    item_field: dict[str, Any],
+) -> dict[str, float]:
     """
     Deserialize a DynamoDB coordinate point field back to a Python dict.
 
@@ -357,7 +357,7 @@ def deserialize_coordinate_point(
     return {key: float(value["N"]) for key, value in item_field["M"].items()}
 
 
-def deserialize_confidence(item_field: Dict[str, Any]) -> float:
+def deserialize_confidence(item_field: dict[str, Any]) -> float:
     """
     Deserialize a DynamoDB confidence field back to a Python float.
 
@@ -466,7 +466,7 @@ def validate_confidence_range(field_name: str, value: Any) -> float:
     return value
 
 
-def validate_metadata_field(metadata: Any) -> Dict[str, Any]:
+def validate_metadata_field(metadata: Any) -> dict[str, Any]:
     """
     Validate and default a metadata field.
 

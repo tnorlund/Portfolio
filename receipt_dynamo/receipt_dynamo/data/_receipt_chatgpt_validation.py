@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
@@ -21,7 +21,7 @@ from receipt_dynamo.entities.receipt_chatgpt_validation import (
 )
 
 if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import QueryInputTypeDef
+    pass
 
 
 class _ReceiptChatGPTValidation(FlattenedStandardMixin):
@@ -59,7 +59,7 @@ class _ReceiptChatGPTValidation(FlattenedStandardMixin):
     ) -> ReceiptChatGPTValidation
         Retrieves a single ReceiptChatGPTValidation by IDs.
     list_receipt_chat_gpt_validations(
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptChatGPTValidation], dict | None]
         Returns all ReceiptChatGPTValidations and the last evaluated key.
@@ -70,7 +70,7 @@ class _ReceiptChatGPTValidation(FlattenedStandardMixin):
         Returns all ReceiptChatGPTValidations for a given receipt.
     list_receipt_chat_gpt_validations_by_status(
         status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptChatGPTValidation], dict | None]
         Returns ReceiptChatGPTValidations with a specific status."""
@@ -274,7 +274,7 @@ class _ReceiptChatGPTValidation(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_receipt_chat_gpt_validations")
     def list_receipt_chat_gpt_validations(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptChatGPTValidation], dict | None]:
         """Returns all ReceiptChatGPTValidations from the table.
@@ -353,7 +353,7 @@ class _ReceiptChatGPTValidation(FlattenedStandardMixin):
     def list_receipt_chat_gpt_validations_by_status(
         self,
         status: str,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         last_evaluated_key: dict | None = None,
     ) -> tuple[list[ReceiptChatGPTValidation], dict | None]:
         """Returns all ReceiptChatGPTValidations with a specific status.
