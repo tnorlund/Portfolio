@@ -1054,9 +1054,10 @@ def handler(event, context):
                                         ),
                                         "SparkSubmitParameters": (
                                             "--conf spark.sql.legacy.parquet.nanosAsLong=true "
+                                            "--conf spark.dynamicAllocation.enabled=false "
                                             "--conf spark.executor.cores=2 "
                                             "--conf spark.executor.memory=4g "
-                                            "--conf spark.executor.instances=4 "
+                                            "--conf spark.executor.instances=2 "
                                             "--conf spark.driver.cores=2 "
                                             "--conf spark.driver.memory=4g"
                                         ),

@@ -562,8 +562,10 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
         "./environment/bin/python "
         "--conf spark.executorEnv.PYSPARK_PYTHON="
         "./environment/bin/python "
+        "--conf spark.dynamicAllocation.enabled=false "
         "--conf spark.executor.cores=2 "
         "--conf spark.executor.memory=4g "
+        "--conf spark.executor.instances=2 "
         "--conf spark.driver.cores=2 "
         "--conf spark.driver.memory=4g"
     )
